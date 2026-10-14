@@ -223,8 +223,9 @@ Helm chart:
 adp/bkn/bkn-backend/helm/bkn-backend/
 ```
 
-The normal product deployment path is the repository-level installer under
-`deploy/`, which installs this service together with its dependencies.
+The normal product deployment path is the installer in
+[openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy), which installs
+this service together with its dependencies.
 
 ## Maintainer Checklist
 

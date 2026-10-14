@@ -74,6 +74,14 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler Create Success")
 	c.Set(operationAuditTargetIDKey, taskID)
+	// The task id is only an audit join key; keep the business snapshot readable.
+	if r.auditRecorder != nil {
+		if task, err := r.bts.GetByID(ctx, taskID); err == nil && task != nil {
+			if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+				c.Set("operation_audit_target_names", []string{name})
+			}
+		}
+	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, map[string]any{"id": taskID})
 }
@@ -253,12 +261,26 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
+	var auditNames []string
+	if r.auditRecorder != nil {
+		auditNames = make([]string, 0, len(ids))
+		for _, id := range ids {
+			if task, getErr := r.bts.GetByID(ctx, id); getErr == nil && task != nil {
+				if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+					auditNames = append(auditNames, name)
+				}
+			}
+		}
+	}
 
 	if err := r.bts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+	if len(auditNames) > 0 {
+		c.Set("operation_audit_target_names", auditNames)
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
@@ -301,6 +323,8 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	r.captureBuildTaskAuditName(c, ctx, taskID)
+
 	if err := r.bts.Start(ctx, taskID, req.Reset); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -308,6 +332,8 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	// Start/Stop return only after their guarded task status update commits.
+	c.Set("operation_audit_committed", true)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, nil)
 }
@@ -339,6 +365,8 @@ func (r *restHandler) stopBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	taskID := c.Param("id")
+	r.captureBuildTaskAuditName(c, ctx, taskID)
+
 	if err := r.bts.Stop(ctx, taskID); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -346,8 +374,23 @@ func (r *restHandler) stopBuildTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
+	// Start/Stop return only after their guarded task status update commits.
+	c.Set("operation_audit_committed", true)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
 	rest.ReplyOK(c, http.StatusAccepted, nil)
 }
 
 // =========================== helpers ===========================
+
+func (r *restHandler) captureBuildTaskAuditName(c *gin.Context, ctx context.Context, taskID string) {
+	if r.auditRecorder == nil {
+		return
+	}
+	// An unavailable source snapshot must not fall back to an unrelated client name.
+	c.Set("operation_audit_target_names", []string{})
+	if task, err := r.bts.GetByID(ctx, taskID); err == nil && task != nil {
+		if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+			c.Set("operation_audit_target_names", []string{name})
+		}
+	}
+}

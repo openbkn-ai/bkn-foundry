@@ -210,7 +210,7 @@ Helm chart：
 adp/bkn/bkn-backend/helm/bkn-backend/
 ```
 
-常规产品部署入口是仓库级 `deploy/` 安装器，它会将本服务和依赖一起安装。
+常规产品部署入口是独立仓库 [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy) 的安装器，它会将本服务和依赖一起安装。
 
 ## 维护检查项
 

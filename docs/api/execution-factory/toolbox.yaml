@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 工具箱
+  title: 执行工厂 · 工具箱 API
   description: |
     工具箱（tool box）是**一组工具的容器**，也是权限与发布的单位。Agent 挂载的是
     工具箱，不是单个工具。

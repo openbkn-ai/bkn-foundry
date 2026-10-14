@@ -5,7 +5,7 @@
 openapi: 3.0.3
 x-internal: true
 info:
-  title: Knowledge Network Managed Proxy Execution API
+  title: 身份与授权 · 代理执行校验 API
   version: 0.1.0
   description: |
     Cluster-internal Tool and MCP execution contract used by ontology-query

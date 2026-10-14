@@ -6,7 +6,12 @@
 package httphandler
 
 import (
+	"context"
+	"fmt"
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
@@ -111,5 +116,44 @@ func TestClientIPIsOnlyExposedOnAuthorizedSecurityDetail(t *testing.T) {
 	unauthorizedDetail, unauthorizedRedacted := projectClientIP(record, true, false)
 	if !unauthorizedRedacted || unauthorizedDetail.Attributes["client_ip"] != nil {
 		t.Fatalf("unauthorized detail projection=%#v redacted=%t", unauthorizedDetail.Attributes, unauthorizedRedacted)
+	}
+}
+
+func TestAuditLedgerMixedSearchPreservesRawContinuation(t *testing.T) {
+	for _, count := range []int{0, 20, 21} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			reader, err := auditstore.NewReader(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			when := time.Date(2026, 9, 25, 9, 30, 0, 0, time.UTC)
+			from, to := when.Add(-time.Hour), when.Add(time.Hour)
+			rows := sqlmock.NewRows([]string{"event_id", "source_id", "payload", "occurred_at", "broker_received_at", "recorded_at"})
+			for i := 0; i < count; i++ {
+				eventID := fmt.Sprintf("evt-%03d", i)
+				occurredAt := when.Add(-time.Duration(i) * time.Second)
+				payload := fmt.Sprintf(`{"event_id":%q,"source_id":"bkn-safe","category":"audit.admin","event_name":"user.created","occurred_at":%q,"actor":{"id":"admin"},"target":{"type":"user","id":"user-a"},"scope":{"business_module":"system_management"},"outcome":"success"}`, eventID, occurredAt.Format(time.RFC3339Nano))
+				rows.AddRow(eventID, "bkn-safe", []byte(payload), occurredAt, when, when)
+			}
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT event_id, source_id, payload, occurred_at, broker_received_at, recorded_at FROM bkn_audit.audit_event_202609")).WithArgs(from, to, "audit.admin", 21).WillReturnRows(rows)
+			page, err := NewAuditLedgerSource(reader).Search(context.Background(), observabilityvo.LogQuery{TimeFrom: &from, TimeTo: &to, Limit: 20, Categories: []string{"audit.admin"}, AuthorizedCategories: []string{"audit.admin"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page.Records) != min(count, 20) || (page.NextCursor != "") != (count > 20) {
+				t.Fatalf("count=%d page=%+v", count, page)
+			}
+			if count > 0 && page.LastPosition.LogID != fmt.Sprintf("evt-%03d", min(count, 20)-1) {
+				t.Fatal("last consumed boundary must exclude lookahead")
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }

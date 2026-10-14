@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: MCP
+  title: 执行工厂 · MCP API
   description: |
     MCP（Model Context Protocol）Server 的注册、管理与代理调用。这里的 MCP 有**两个
     方向**，别混：

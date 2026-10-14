@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 逻辑属性求值
+  title: 上下文加载 · 逻辑属性求值 API
   description: |
     批量求一批对象实例的**逻辑属性**（指标 `metric` 或算子 `operator`）值。
 

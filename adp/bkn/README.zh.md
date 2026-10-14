@@ -148,7 +148,7 @@ make ci
 
 ## 部署
 
-常规部署入口是仓库级 `deploy/` 安装器和 release manifest。
+常规部署入口是独立仓库 [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy) 的安装器和 release manifest。
 
 服务级镜像构建示例：
 

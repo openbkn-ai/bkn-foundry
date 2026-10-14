@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: BKN Backend API
+  title: BKN 知识网络 · 导入导出 API
   description: |
     BKN (Business Knowledge Network) Backend API provides import and export operations for business knowledge networks.
   version: 1.0.0

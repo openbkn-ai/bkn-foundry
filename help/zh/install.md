@@ -2,9 +2,9 @@
 
 本页说明 BKN Foundry 的**环境要求**、**部署步骤**与**安装后检查**。
 
-> **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)**（[English](../../deploy/dev/README.md)）与 `deploy/dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh bkn-foundry install`**；当前 **`bkn-foundry install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**。
+> **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`dev/README.zh.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md)**（[English](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.md)）与 `dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh bkn-foundry install`**；当前 **`bkn-foundry install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`OPENBKN_SKIP_DATA_SERVICES_BUNDLE=true`**。
 
-> 📌 安装通过产品包或源码中的 `deploy/` 目录下的 `deploy.sh` 脚本完成。
+> 📌 安装通过 [openbkn-deploy](https://github.com/openbkn-ai/openbkn-deploy) 仓库或其发布包中的 `deploy.sh` 完成。
 
 > **`deploy.sh` 全局参数**（`--distro=k3s|k8s`、`-y`、`--force-upgrade`、`--config=…` 等）只有写在**模块名之前**才会生效，例如 `bash ./deploy.sh --distro=k8s openbkn install`。写成 `... install --distro=k8s` **不会**按全局参数解析。可改用 `export KUBE_DISTRO=k8s` 再执行安装命令，或把 `--distro` 挪到前面（与 `-y`、`--force-upgrade` 一致）。
 
@@ -25,17 +25,17 @@
 | 🧠 内存 | 48 GB | 64 GB |
 | 💾 磁盘 | 200 GB | 500 GB |
 
-`deploy/preflight.sh` 与 `deploy.sh` **同时支持** **Ubuntu / Debian**（apt）与 **Rocky / Alma / CentOS Stream / openEuler**（dnf/yum），详见 `deploy/README.zh.md`。
+`preflight.sh` 与 `deploy.sh` **同时支持** **Ubuntu / Debian**（apt）与 **Rocky / Alma / CentOS Stream / openEuler**（dnf/yum），详见 `README.zh.md`。
 
 ### Git、Node.js、Python
 
 | 工具 | 说明 |
 | --- | --- |
 | **Git** | `deploy.sh` / `preflight.sh` **不会**调用 `git`。只有从 **Git 仓库 clone** 开发/更新时才需要本机装 Git；使用**已解压的产品包**或构建产物时，**安装目标机可以不装 Git**。 |
-| **Node.js** | **22.19.0+** 与 **`@openbkn/bkn-sdk`** 的 npm `engines`、`deploy/onboard.sh` 及 preflight 检查一致（环境变量 **`PREFLIGHT_OPENBKN_MIN_NODE`**，默认 **22.19.0**）。比的是完整版本而不是主版本号：22.0.0 能过「≥22」却装不上 CLI —— npm 遇到运行时满足不了 `engines` 的版本会跳过它、装一个旧的，且不报错。**仅起 K8s / Helm** 时，目标机**可以不装 Node**；缺 Node 或版本低于 22 时 preflight 多为 **[WARN]**（非阻塞），也可在**另一台已装 Node 22+ 的机器**上跑 `onboard.sh`，或通过 **`preflight.sh --fix`** 里与 Node 相关的可选项安装。详见下文 **客户端工具**。 |
-| **Python** **3** | 日常跑 **`preflight` / `deploy.sh` 不强制**要求。若使用 **`deploy/preflight.sh --output=json`**（JSON 输出依赖 **`python3`**），则**必须**安装 Python 3。若目标机 **PATH 上已有 `python3`**，preflight 会检查其版本为 **CPython 3.6+**（与 `deploy/scripts/lib/onboard_*.py` 一致；可用 **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`** 覆盖，默认 **3** / **6**）。部分与 `kubectl` 相关的辅助解析在存在 `python3` 时也会使用。 |
+| **Node.js** | **22.19.0+** 与 **`@openbkn/bkn-sdk`** 的 npm `engines`、`onboard.sh` 及 preflight 检查一致（环境变量 **`PREFLIGHT_OPENBKN_MIN_NODE`**，默认 **22.19.0**）。比的是完整版本而不是主版本号：22.0.0 能过「≥22」却装不上 CLI —— npm 遇到运行时满足不了 `engines` 的版本会跳过它、装一个旧的，且不报错。**仅起 K8s / Helm** 时，目标机**可以不装 Node**；缺 Node 或版本低于 22 时 preflight 多为 **[WARN]**（非阻塞），也可在**另一台已装 Node 22+ 的机器**上跑 `onboard.sh`，或通过 **`preflight.sh --fix`** 里与 Node 相关的可选项安装。详见下文 **客户端工具**。 |
+| **Python** **3** | 日常跑 **`preflight` / `deploy.sh` 不强制**要求。若使用 **`preflight.sh --output=json`**（JSON 输出依赖 **`python3`**），则**必须**安装 Python 3。若目标机 **PATH 上已有 `python3`**，preflight 会检查其版本为 **CPython 3.6+**（与 `scripts/lib/onboard_*.py` 一致；可用 **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`** 覆盖，默认 **3** / **6**）。部分与 `kubectl` 相关的辅助解析在存在 `python3` 时也会使用。 |
 
-**`deploy/scripts/lib/onboard_*.py`（供 `onboard.sh` 调用）**：实现上约定 **CPython 3.6 起至当前主线 3.x** 可调（兼容 CentOS 7 自带的 **3.6.x**；**3.5 及以下**不适用，因其缺少 f-string 等语法）。不向 **PyYAML 5.1 以后**才有的 `yaml.dump(..., sort_keys=...)` 等参数。维护者或 CI 可执行 **`bash deploy/scripts/lib/preflight_checks_test.sh`**，在存在 **`python3`** 时会对这两个文件做一次 **`py_compile`**；本机若有多个解释器，可 **`EXTRA_PYTHONS="python3.9 python3.12"`** 再跑一遍以覆盖多版本。
+**`scripts/lib/onboard_*.py`（供 `onboard.sh` 调用）**：实现上约定 **CPython 3.6 起至当前主线 3.x** 可调（兼容 CentOS 7 自带的 **3.6.x**；**3.5 及以下**不适用，因其缺少 f-string 等语法）。不向 **PyYAML 5.1 以后**才有的 `yaml.dump(..., sort_keys=...)` 等参数。维护者或 CI 可执行 **`bash ./scripts/lib/preflight_checks_test.sh`**，在存在 **`python3`** 时会对这两个文件做一次 **`py_compile`**；本机若有多个解释器，可 **`EXTRA_PYTHONS="python3.9 python3.12"`** 再跑一遍以覆盖多版本。
 
 ### 🛠️ 主机准备（典型 Linux）
 
@@ -87,12 +87,13 @@ npx openbkn --help
 
 ---
 
-## 📥 进入 deploy 目录
+## 📥 进入 openbkn-deploy 目录
 
-在已解压的产品目录或构建环境中：
+在目标主机克隆部署仓库（或进入已解压的发布包目录）：
 
 ```bash
-cd deploy
+git clone https://github.com/openbkn-ai/openbkn-deploy.git
+cd openbkn-deploy
 chmod +x deploy.sh
 ```
 
@@ -102,14 +103,14 @@ chmod +x deploy.sh
 
 ## 🩺 装机前体检 / 修复：`preflight.sh`
 
-在 `deploy.sh` 之前，建议先在**安装目标主机**上以 `root` / `sudo` 跑一次 **`deploy/preflight.sh`**：内核 / sysctl / containerd / `kubectl` / `helm` / `python3`（若在 PATH 上则要求 **≥3.6**）/ Node / `openbkn` CLI 等一次过；缺什么按需修（每项默认 y/N 询问，`-y` 全自动）。
+在 `deploy.sh` 之前，建议先在**安装目标主机**上以 `root` / `sudo` 跑一次 **`preflight.sh`**：内核 / sysctl / containerd / `kubectl` / `helm` / `python3`（若在 PATH 上则要求 **≥3.6**）/ Node / `openbkn` CLI 等一次过；缺什么按需修（每项默认 y/N 询问，`-y` 全自动）。
 
 ```bash
-sudo bash deploy/preflight.sh                # 仅检查（默认；仍需 root）
-sudo bash deploy/preflight.sh --fix          # 检查 + 交互修复
-sudo bash deploy/preflight.sh --fix -y       # 全部自动确认修复
-sudo bash deploy/preflight.sh --list-fixes   # 预览将会执行哪些修复，不改任何东西
-sudo bash deploy/preflight.sh --help         # 全部参数
+sudo bash ./preflight.sh                # 仅检查（默认；仍需 root）
+sudo bash ./preflight.sh --fix          # 检查 + 交互修复
+sudo bash ./preflight.sh --fix -y       # 全部自动确认修复
+sudo bash ./preflight.sh --list-fixes   # 预览将会执行哪些修复，不改任何东西
+sudo bash ./preflight.sh --help         # 全部参数
 ```
 
 常用参数：
@@ -120,7 +121,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 | `--fix` | 检查 + 应用修复（K8s / sysctl / containerd / Helm / 防火墙 / SELinux / 系统调优 / sysctl 等）；同时按需提示安装 Node 22.19+ + `openbkn` |
 | `-y` / `--yes` | **全部**修复项自动确认 |
 | `-n` / `--no` | 全部修复项自动拒绝（仅查看风险描述，不改东西） |
-| `--fix-allow=LIST` | 仅自动确认指定修复项（其余跳过），如 `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`（旧名 `k8s-apt-source` 仍可作别名）。可用 `sudo bash deploy/preflight.sh --list-fixes` 查看本机当前可用的全部修复名 |
+| `--fix-allow=LIST` | 仅自动确认指定修复项（其余跳过），如 `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`（旧名 `k8s-apt-source` 仍可作别名）。可用 `sudo bash ./preflight.sh --list-fixes` 查看本机当前可用的全部修复名 |
 | `--role=target\|admin\|both` | `target` = 仅 `kubectl`/`helm`；`admin` = `openbkn` / Node / npm；`both`（默认）= 全部 |
 | `--no-recheck` | 修复完不再重新跑一遍完整检查 |
 | `--lenient` | 把「会阻塞 install + `--fix` 能搞定」的 `[FAIL]` 项（sysctl / 内核模块 / containerd / kubectl / helm / swap / apt 源损坏 / 缺 kubeadm 或 containerd 安装候选 / ulimit / inotify / vm.max_map_count / overlay）降回 `[WARN]`。等同 `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`。 |
@@ -172,16 +173,16 @@ sudo bash deploy/preflight.sh --help         # 全部参数
     sudo bash ./preflight.sh --check-only   # 再检查直到关键 [FAIL] 消失（或配合 --lenient）
   Only then install:
     sudo bash ./deploy.sh openbkn install              # 完整安装
-  Finally: sudo bash ./onboard.sh from deploy/ (Linux；macOS dev 用普通 bash。Node 22+ + openbkn on PATH；sudo bash ./preflight.sh --fix helps …)
+  Finally: sudo bash ./onboard.sh from openbkn-deploy/ (Linux；macOS dev 用普通 bash。Node 22+ + openbkn on PATH；sudo bash ./preflight.sh --fix helps …)
 ```
 
 **说明：**
 
-- **`[FIXED]` 为 0** 但一开始有 `[FAIL]`：常见于交互式 `--fix` 时**全部按了 Enter**，默认选项为 **「不应用该项修复」（N）**；需要 **`sudo bash deploy/preflight.sh --fix -y`**，或在每个提示处输入 **`y`**。
+- **`[FIXED]` 为 0** 但一开始有 `[FAIL]`：常见于交互式 `--fix` 时**全部按了 Enter**，默认选项为 **「不应用该项修复」（N）**；需要 **`sudo bash ./preflight.sh --fix -y`**，或在每个提示处输入 **`y`**。
 - **常见 Outstanding [FAIL] 类别**（与修复名大致对应）：`docker-disable`（与 k3s / containerd 冲突时停 Docker）、`system-tuning`（转发、swap、内核模块、`overlay` 等）、`kernel-limits`（`vm.max_map_count` / inotify）、`nofile-limits`（`ulimit -n`）、`k8s-pkgs-repo` + `k8s-bins`（Kubernetes 源与 `kubeadm`/`kubectl`）、`containerd-install`、`helm-v3`。RPM 系若 **`kubernetes.repo` 对 kube 包设置了 `exclude`**，安装侧需 **`--disableexcludes=kubernetes`**，preflight 与脚本的探测/安装语义已对齐）。
 - **`--fix` 后务必再跑一次 `--check-only`**，确认关键项已为 `[OK]` 再执行 **`deploy.sh`**。
 
-更细的故障条目与手动兜底见 **`deploy/README.zh.md` → Troubleshooting**。
+更细的故障条目与手动兜底见 **`README.zh.md` → Troubleshooting**。
 
 ---
 
@@ -234,14 +235,13 @@ export INGRESS_NGINX_HTTPS_PORT=8443
 
 ## Post-install：`onboard.sh`（安装后引导）
 
-在 `deploy.sh openbkn install` 之后，可在能访问集群的机器上运行 **`deploy/onboard.sh`**，需 **Node 22+**、**kubectl**、**openbkn**（`npm i -g @openbkn/bkn-sdk`）。在 **`deploy/`** 目录执行，**Linux 上需要 `sudo`**（与 `sudo deploy.sh` 对齐）：
+在 `deploy.sh openbkn install` 之后，可在能访问集群的机器上运行 **`onboard.sh`**，需 **Node 22+**、**kubectl**、**openbkn**（`npm i -g @openbkn/bkn-sdk`）。在 **`openbkn-deploy/`** 目录执行，**Linux 上需要 `sudo`**（与 `sudo deploy.sh` 对齐）：
 
 ```bash
-cd deploy
 sudo bash ./onboard.sh --help
 ```
 
-> **为什么要 `sudo`？** `onboard.sh` 读安装期写下的 `$HOME/.openbkn-ai/config.yaml`（`sudo deploy.sh` 会写到 `/root/.openbkn-ai/`，权限 700），并把 `openbkn` 认证状态写到 `$HOME/.bkn`。不加 `sudo` 时读到的是当前用户的 home——若该用户没有这个文件就会回退到仓库内模板 `deploy/conf/config.yaml`，**可能解析出和安装时不一致的 access URL**。命中此路径时脚本启动会打印黄色的 `[onboard][hint]`；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。**macOS 开发路径**（`bash deploy/dev/mac.sh onboard`）**不要**加 `sudo`：Docker Desktop / `kind` / `$HOME` 都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard；`deploy.sh` 在 `Darwin` 上已跳过 root 检查。详见 [`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md) · [`deploy/dev/README.md`](../../deploy/dev/README.md)。
+> **为什么要 `sudo`？** `onboard.sh` 读安装期写下的 `$HOME/.openbkn-ai/config.yaml`（`sudo deploy.sh` 会写到 `/root/.openbkn-ai/`，权限 700），并把 `openbkn` 认证状态写到 `$HOME/.bkn`。不加 `sudo` 时读到的是当前用户的 home——若该用户没有这个文件就会回退到仓库内模板 `conf/config.yaml`，**可能解析出和安装时不一致的 access URL**。命中此路径时脚本启动会打印黄色的 `[onboard][hint]`；可用 `ONBOARD_SUDO_HINT_DISABLED=1` 关闭。**macOS 开发路径**（`bash ./dev/mac.sh onboard`）**不要**加 `sudo`：Docker Desktop / `kind` / `$HOME` 都属于当前用户，`sudo` 会把它们重定向到 `/var/root` 并割裂安装与 onboard；`deploy.sh` 在 `Darwin` 上已跳过 root 检查。详见 [`dev/README.zh.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md) · [`dev/README.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.md)。
 
 常用参数：
 
@@ -249,7 +249,7 @@ sudo bash ./onboard.sh --help
 | --- | --- |
 | 无参数 | 交互模式：按需引导安装 Node / `openbkn`，完成认证（单一 CLI——管理能力内置于 `openbkn admin`），再依次走模型 / BKN 提示 |
 | `-y` / `--yes` | 全部自动：bootstrap、HTTP 默认登录（`admin` + 安装时生成、记录在 config.yaml `bknSafe.initialPassword` 的初始密码）、`test` 用户创建 + 角色同步、`openbkn` 以 `test` 重登。会**跳过交互式模型注册**；如需非交互注册模型，请用 `--config=models.yaml`。 |
-| `--config=xxx.yaml` | 非交互：按 YAML 注册模型与可选 BKN；参考 `deploy/conf/models.yaml.example` |
+| `--config=xxx.yaml` | 非交互：按 YAML 注册模型与可选 BKN；参考 `conf/models.yaml.example` |
 | `--enable-bkn-search` | 仅做 BKN ConfigMap 类操作（仍先走 probe） |
 
 脚本**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
@@ -260,7 +260,7 @@ sudo bash ./onboard.sh --help
 4. **业务用户 `test`**（`onboard_provision_bkn_safe_test_user`）— 创建 `test`，密码 `111111`（可用 `ONBOARD_TEST_USER_PASSWORD` 覆盖），把 `openbkn admin role list` 中**所有**角色都挂上，然后 **`openbkn auth login` 为 `test`**，让 SDK 会话切到业务用户，供后续步骤使用。若 `test` 已存在，则只做角色同步。
 5. **模型注册**（交互式或 YAML）— 使用**以 `test` 登录的 `openbkn`（`~/.bkn`）**。Context Loader 的内置工具只通过 MCP 面提供，不再注册进执行工厂工具箱；查看方式见[快速开始](quick-start.md)。
 
-任何一步失败脚本都会非零退出并打印清楚原因；修好之后重跑 `sudo bash deploy/onboard.sh`（Linux）/ `bash deploy/onboard.sh`（macOS dev）即可——已成功的步骤会被检测并跳过（重复运行幂等）。
+任何一步失败脚本都会非零退出并打印清楚原因；修好之后重跑 `sudo bash ./onboard.sh`（Linux）/ `bash ./onboard.sh`（macOS dev）即可——已成功的步骤会被检测并跳过（重复运行幂等）。
 
 结束前会打印 **英文** 完成报告（可用 `ONBOARD_NO_COMPLETION_REPORT=1` 关闭）。
 
@@ -312,7 +312,7 @@ sequenceDiagram
   participant O as onboard.sh
   participant K as openbkn
   participant A as openbkn admin
-  U->>O: 在 deploy/ 下执行
+  U->>O: 在 openbkn-deploy/ 下执行
   O->>K: openbkn auth — HTTP（admin + 记录的初始密码）或浏览器
   O->>A: openbkn admin（同一登录 / token）— HTTP 默认或 -k 浏览器
   A->>A: 创建 user、设密、挂载角色
@@ -550,15 +550,15 @@ openbkn call '/api/mf-model-manager/v1/small-model/list?page=1&size=50'
 
 ## 🔧 故障排查
 
-按症状索引（CoreDNS 不就绪、镜像拉不下来、Kubernetes apt / yum 源缺失或 404、`containerd` 装不上、严格模式 `[FAIL]` 项等）请看 [`deploy/README.zh.md` → Troubleshooting](../../deploy/README.zh.md#-troubleshooting)。
+按症状索引（CoreDNS 不就绪、镜像拉不下来、Kubernetes apt / yum 源缺失或 404、`containerd` 装不上、严格模式 `[FAIL]` 项等）请看 [`README.zh.md` → Troubleshooting](https://github.com/openbkn-ai/openbkn-deploy/blob/main/README.zh.md#-troubleshooting)。
 
 `preflight.sh` 报的 `[FAIL]` 大多数都能自动修：
 
 ```bash
-sudo bash deploy/preflight.sh --fix -y                         # 全部自动确认修
-sudo bash deploy/preflight.sh --fix --fix-allow=k8s-pkgs-repo # 只配置 / 迁移 K8s 源（也可用 k8s-apt-source）
-sudo bash deploy/preflight.sh --fix --fix-allow=containerd-install
-sudo bash deploy/preflight.sh --check-only --lenient           # 只看 WARN，不 FAIL（lab 机模式）
+sudo bash ./preflight.sh --fix -y                         # 全部自动确认修
+sudo bash ./preflight.sh --fix --fix-allow=k8s-pkgs-repo # 只配置 / 迁移 K8s 源（也可用 k8s-apt-source）
+sudo bash ./preflight.sh --fix --fix-allow=containerd-install
+sudo bash ./preflight.sh --check-only --lenient           # 只看 WARN，不 FAIL（lab 机模式）
 ```
 
 定位问题时还可以收集：

@@ -9,6 +9,7 @@ import (
 	"container/heap"
 	"context"
 	"errors"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -212,6 +213,13 @@ func (service *Service) listPage(
 		visibleSources = operationAuditSources(visibleSources)
 	}
 	if len(visibleSources) == 0 {
+		// A business-only caller cannot query the audit-only deployment. This
+		// is an unsupported access scope, not a retryable source outage.
+		if service.operationAuditOnly && !intersects(effectiveCategories, []string{
+			observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity,
+		}) {
+			return observabilityvo.ListResult{}, ErrAccessDenied
+		}
 		return observabilityvo.ListResult{}, ErrSourcesUnavailable
 	}
 	// The disabled Audit inventory entry must not disable direct pagination of
@@ -297,7 +305,6 @@ func (service *Service) listPage(
 	succeeded := 0
 	failed := 0
 	coveragePartial := false
-	sourcePageSizes := make(map[string]int)
 	sourceCandidates := make(map[string]int)
 	sourceLastRawPosition := make(map[string]observabilityvo.SourcePosition)
 	candidateBatches := make([][]logCandidate, 0, len(visibleSources))
@@ -323,14 +330,13 @@ func (service *Service) listPage(
 		page := sourceResult.page
 		result.SourceStatus = append(result.SourceStatus, sourceResult.status)
 		coveragePartial = coveragePartial || sourceResult.status.Status == "degraded"
-		sourcePageSizes[source.ID()] = len(page.Records)
 		countExact = countExact && normalizedAccuracy(page.CountAccuracy) == "exact"
 		if page.LastPosition != nil {
 			sourceLastRawPosition[source.ID()] = *page.LastPosition
 		} else if len(page.Records) > 0 {
 			sourceLastRawPosition[source.ID()] = positionForRecord(page.Records[len(page.Records)-1])
 		}
-		if page.NextCursor != "" || page.Count > int64(len(page.Records)) {
+		if page.NextCursor != "" {
 			sourceHasMore = true
 		}
 		candidates := make([]logCandidate, 0, len(page.Records))
@@ -384,12 +390,11 @@ func (service *Service) listPage(
 	for _, candidate := range merged {
 		result.Records = append(result.Records, candidate.record)
 	}
-	for _, size := range sourcePageSizes {
-		if size >= sourceQuery.Limit {
-			hasMore = true
-		}
-	}
 	if hasMore {
+		previousPositions := make(map[string]observabilityvo.SourcePosition, len(positions))
+		for sourceID, position := range positions {
+			previousPositions[sourceID] = position
+		}
 		includedBySource := make(map[string]int)
 		for _, candidate := range merged {
 			positions[candidate.adapterSourceID] = positionForRecord(candidate.record)
@@ -400,7 +405,17 @@ func (service *Service) listPage(
 				positions[sourceID] = rawPosition
 			}
 		}
-		if len(positions) > 0 {
+		// Empty projected pages may advance raw positions, but refreshing only the
+		// expiry of an unchanged cursor would create an endless continuation.
+		progressed := false
+		for sourceID, position := range positions {
+			previous, existed := previousPositions[sourceID]
+			if !existed || !position.EventTimestamp.Equal(previous.EventTimestamp) ||
+				position.LogID != previous.LogID || !reflect.DeepEqual(position.SearchAfter, previous.SearchAfter) {
+				progressed = true
+			}
+		}
+		if progressed {
 			result.NextCursor = encodeCursor(service.cursorKey, cursorPayload{
 				Version:          cursorVersion,
 				SortVersion:      cursorSortVersion,
@@ -546,7 +561,7 @@ func (service *Service) Get(
 	if service.operationAuditOnly {
 		detailCategories = authorizedOperationAuditCategories(profile, capabilities, observabilityvo.LogQuery{})
 		if !capabilities.GlobalLogSearch {
-			detailCategories = []string{observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryRuntimeBusiness}
+			detailCategories = []string{observabilityvo.CategoryRuntimeBusiness}
 		}
 		capabilities.AllowedLogCategories = normalizedStrings(append(
 			capabilities.AllowedLogCategories, detailCategories...,
@@ -690,15 +705,15 @@ func authorizedOperationAuditCategories(
 	capabilities observabilityvo.AccessCapabilities,
 	query observabilityvo.LogQuery,
 ) []string {
-	allowed := make([]string, 0, 3)
-	if hasRole(profile, "network_builder", "admin", "audit", "security", "super_admin") {
-		allowed = append(allowed, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryRuntimeBusiness)
+	// Operation-audit mode narrows the projection, not the role matrix.
+	allowed := make([]string, 0, 4)
+	for _, category := range capabilities.AllowedLogCategories {
+		if isOperationAuditCategory(category) || category == observabilityvo.CategoryRuntimeBusiness {
+			allowed = append(allowed, category)
+		}
 	}
-	if hasRole(profile, "audit", "security", "super_admin") {
-		allowed = append(allowed, observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditSecurity)
-	}
-	if !capabilities.GlobalLogSearch && query.IsAssociatedDrilldown() {
-		allowed = []string{observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryRuntimeBusiness}
+	if !capabilities.GlobalLogSearch && query.IsAssociatedDrilldown() && profile.AccountActive {
+		allowed = []string{observabilityvo.CategoryRuntimeBusiness}
 	}
 	allowed = normalizedStrings(allowed)
 	if len(query.Categories) == 0 {
@@ -882,9 +897,6 @@ func canReadLog(
 		return false
 	}
 	if associated && !capabilities.GlobalLogSearch {
-		if isOperationAuditCategory(record.Category) {
-			return record.ActorID != "" && record.ActorID == profile.EffectiveSubjectID
-		}
 		if record.Category != observabilityvo.CategoryRuntimeBusiness && record.Category != observabilityvo.CategoryRuntimeModel {
 			return false
 		}
@@ -902,9 +914,7 @@ func canReadLog(
 	}
 	switch record.Category {
 	case observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity:
-		return hasRole(profile, "admin", "super_admin") ||
-			(record.ActorID != "" && record.ActorID == profile.EffectiveSubjectID) ||
-			evidencevo.CanReadRecord(profile, recordScope, evidencevo.AccessViewBusiness)
+		return profile.AccountActive && contains(observabilityvo.CapabilitiesFor(profile).AllowedLogCategories, record.Category)
 	case observabilityvo.CategoryRuntimeBusiness, observabilityvo.CategoryRuntimeModel:
 		return evidencevo.CanReadRecord(profile, recordScope, evidencevo.AccessViewBusiness) ||
 			hasRole(profile, "admin", "super_admin")

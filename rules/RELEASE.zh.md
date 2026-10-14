@@ -208,7 +208,6 @@ Release 分支创建后进入**代码冻结**状态：
   - `infra/oss-gateway-backend/charts/Chart.yaml`
   - `infra/mf-model-manager/charts/Chart.yaml`
   - `infra/mf-model-api/charts/Chart.yaml`
-  - `deploy/charts/proton-mariadb/Chart.yaml`
 - 各 Python 包的 `pyproject.toml`，例如：
   - `infra/sandbox/sandbox_control_plane/pyproject.toml`
 - 仓库根的版本入口 / `CHANGELOG.md` 版本节

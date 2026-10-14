@@ -1,3 +1,5 @@
+from app.commons.i18n.audit import MODEL_QUOTA, USER_QUOTA
+from app.utils.operation_audit import set_operation_audit_target
 import datetime
 import time
 from fastapi.responses import JSONResponse
@@ -13,7 +15,7 @@ from app.interfaces import logics, dbaccess
 num_type_list = [0, 1000, 10000, 100000000, 1000000, 10000000]
 
 
-async def add_model_quota_config(para: logics.AddModelQuota, user_id: str):
+async def add_model_quota_config(para: logics.AddModelQuota, user_id: str, audit_request=None):
     try:
         try:
             exist = llm_model_dao.check_model_is_exist(para.model_id)
@@ -63,6 +65,7 @@ async def add_model_quota_config(para: logics.AddModelQuota, user_id: str):
             }
             quota_config_cache_tree.update(config_dict)
             model_quota_dao.add_new_model_quota_config(db_config)
+            _audit_model_quota(audit_request, new_id, para.model_id)
         except Exception as e:
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
@@ -75,7 +78,7 @@ async def add_model_quota_config(para: logics.AddModelQuota, user_id: str):
                             content=error_dict)
 
 
-async def edit_model_quota_config(para: logics.EditModelQuota, conf_id: str, user_id: str):
+async def edit_model_quota_config(para: logics.EditModelQuota, conf_id: str, user_id: str, audit_request=None):
     try:
         try:
             exist = model_quota_dao.get_model_config(conf_id)
@@ -138,6 +141,7 @@ async def edit_model_quota_config(para: logics.EditModelQuota, conf_id: str, use
                 price_type=para.price_type
             )
             model_quota_dao.edit_model_quota_config(db_config)
+            _audit_model_quota(audit_request, conf_id, exist[0]["f_model_id"])
             model_id = exist[0]["f_model_id"]
             config_dict = {
                 "f_model_id": model_id,
@@ -286,7 +290,7 @@ async def delete_model_quota_config(conf_id, user_id: str):
                             content=error_dict)
 
 
-async def add_user_model_quota_config(para: logics.AddUserModelQuotaList, user_id: str):
+async def add_user_model_quota_config(para: logics.AddUserModelQuotaList, user_id: str, audit_request=None):
     try:
         if para.list == []:
             error_dict = ModelFactory_Router_ParamError_FormatError_Error.copy()
@@ -395,6 +399,16 @@ async def add_user_model_quota_config(para: logics.AddUserModelQuotaList, user_i
         try:
             model_quota_dao.edit_user_quota_config_by_edit_list(edit_list)
             model_quota_dao.add_user_quota_config_by_add_list(add_list)
+            if audit_request is not None:
+                try:
+                    rows = model_quota_dao.get_list_from_user_quota_config_by_conf_id(para.list[0].model_quota_id)
+                    users = await get_username_by_ids(user_ids)
+                    targets = [row for row in rows if row["f_user_id"] in user_ids]
+                    names = [USER_QUOTA.format(user=users.get(row['f_user_id'], ''), model=conf[0]['f_model_name']) for row in targets]
+                    if len(targets) == len(user_ids) and all(users.get(row["f_user_id"]) not in (None, "", "-", row["f_user_id"]) for row in targets):
+                        set_operation_audit_target(audit_request, [row["f_id"] for row in targets], names)
+                except Exception:
+                    StandLogger.error("operation_audit_snapshot_failed target_type=user_model_quota")
         except Exception as e:
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
@@ -548,12 +562,29 @@ async def get_user_model_quota_config_list(conf_id, request: logics.GetModelQuot
                             content=error_dict)
 
 
-async def delete_user_model_quota_config(conf_id_list, user_id: str):
+async def delete_user_model_quota_config(conf_id_list, user_id: str, audit_request=None):
     try:
 
         try:
             res = model_quota_dao.get_model_name_by_quota_config_id(conf_id_list)
+            audit_rows = []
+            audit_users = {}
+            if audit_request is not None:
+                try:
+                    for conf_id in conf_id_list:
+                        rows = model_quota_dao.get_user_model_config(conf_id)
+                        for row in rows or []:
+                            config = model_quota_dao.get_model_config(row["f_model_conf"])
+                            if config:
+                                row = dict(row, f_model_name=config[0]["f_model_name"])
+                                audit_rows.append(row)
+                    audit_users = await get_username_by_ids([row["f_user_id"] for row in audit_rows])
+                except Exception:
+                    StandLogger.error("operation_audit_snapshot_failed target_type=user_model_quota")
             model_quota_dao.delete_user_model_quota_config_by_id_list(conf_id_list)
+            if len(audit_rows) == len(conf_id_list) and all(audit_users.get(row["f_user_id"]) not in (None, "", "-", row["f_user_id"]) for row in audit_rows):
+                set_operation_audit_target(audit_request, conf_id_list,
+                    [USER_QUOTA.format(user=audit_users[row['f_user_id']], model=row['f_model_name']) for row in audit_rows])
             global redis_util
             if redis_util is None:
                 redis_util = await get_redis_util()
@@ -747,3 +778,13 @@ async def remain_check(userId, model_id_list):
         error_dict["description"] = str(e.args)
         error_dict["detail"] = str(e.args)
         return JSONResponse(status_code=400, content=error_dict)
+
+
+def _audit_model_quota(request, conf_id, model_id):
+    if request is not None:
+        try:
+            name = llm_model_dao.get_model_name_by_id(model_id)
+            if name and name not in ("-", str(model_id)):
+                set_operation_audit_target(request, [conf_id], [MODEL_QUOTA.format(name=name)])
+        except Exception:
+            StandLogger.error("operation_audit_snapshot_failed target_type=model_quota")

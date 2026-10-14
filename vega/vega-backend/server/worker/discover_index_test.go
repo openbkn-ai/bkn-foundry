@@ -270,7 +270,9 @@ func TestEnrichIndexMetadataSynchronizesFieldDescriptions(t *testing.T) {
 		ID:          "r1",
 		Description: "人工索引说明",
 		SourceMetadata: map[string]any{
-			"original_description": "",
+			"description":          "",
+			"original_description": "legacy comment",
+			"original_name":        "legacy-name",
 		},
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "empty", Description: ""},
@@ -294,7 +296,9 @@ func TestEnrichIndexMetadataSynchronizesFieldDescriptions(t *testing.T) {
 	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
 			assert.Equal(t, "人工索引说明", updated.Description)
-			assert.Equal(t, "", updated.SourceMetadata["original_description"])
+			assert.Equal(t, "", updated.SourceMetadata["description"])
+			assert.NotContains(t, updated.SourceMetadata, "original_description")
+			assert.NotContains(t, updated.SourceMetadata, "original_name")
 			assert.Equal(t, map[string]any{"description": "新 mapping 说明", "owner": "search-team"}, updated.SourceMetadata["mapping_meta"])
 			fields := make(map[string]*interfaces.Property, len(updated.SchemaDefinition))
 			for _, field := range updated.SchemaDefinition {

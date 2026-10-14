@@ -1,8 +1,8 @@
 # 🚀 Quick start
 
-This walkthrough assumes BKN Foundry is already [installed and deployed](install.md), including the post-install checks on that page. **Full installs assume Linux**; optional **macOS** + kind flow: [`deploy/dev/README.md`](../../deploy/dev/README.md) ([中文](../../deploy/dev/README.zh.md)).
+This walkthrough assumes BKN Foundry is already [installed and deployed](install.md), including the post-install checks on that page. **Full installs assume Linux**; optional **macOS** + kind flow: [`dev/README.md`](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.md) ([中文](https://github.com/openbkn-ai/openbkn-deploy/blob/main/dev/README.zh.md)).
 
-> Before installing on a new host, run **`sudo bash deploy/preflight.sh`** (check / `--fix`) to validate kernel, sysctl, containerd, kubectl, helm, Node and the `openbkn` CLI. After `deploy.sh openbkn install`, run **`sudo bash deploy/onboard.sh`** (Linux — matches `sudo deploy.sh`; macOS dev path uses plain `bash`) to register an LLM + embedding, patch the BKN ConfigMap (only when the default actually changes), and create the business user **`test`** unless explicitly skipped (Context Loader serves its tools over MCP only and registers no toolbox, so neither onboard nor install has a step for it). Both are documented in [Install — Pre-install host check / fix: `preflight.sh`](install.md#-pre-install-host-check--fix-preflightsh) and [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
+> Before installing on a new host, run **`sudo bash ./preflight.sh`** (check / `--fix`) to validate kernel, sysctl, containerd, kubectl, helm, Node and the `openbkn` CLI. After `deploy.sh openbkn install`, run **`sudo bash ./onboard.sh`** (Linux — matches `sudo deploy.sh`; macOS dev path uses plain `bash`) to register an LLM + embedding, patch the BKN ConfigMap (only when the default actually changes), and create the business user **`test`** unless explicitly skipped (Context Loader serves its tools over MCP only and registers no toolbox, so neither onboard nor install has a step for it). Both are documented in [Install — Pre-install host check / fix: `preflight.sh`](install.md#-pre-install-host-check--fix-preflightsh) and [Install — Post-install: `onboard.sh`](install.md#post-install-onboardsh).
 
 > **Model configuration note**: **Register at least one LLM and one embedding (vector) small model** when possible: the LLM powers Agent chat and reasoning; the embedding model powers semantic search and vectorization. Semantic search (Step 4) and Agent chat (Step 5) depend on these; after registering an embedding, complete [Enable BKN semantic search](manual/model.md#enable-bkn-semantic-search) in the cluster (ConfigMap / default small-model name). Other registration details are in [Model management](manual/model.md). See also [Install and deploy — Configure models](install.md#configure-models). Data source connection, knowledge network creation, and conditional queries work without models.
 
@@ -16,12 +16,12 @@ This walkthrough assumes BKN Foundry is already [installed and deployed](install
 
 An OpenBKN installation requires a real user to sign in. Pick **one** of the two paths below to obtain a sign-in account:
 
-#### Path A (recommended): let `bash deploy/onboard.sh` prepare it
+#### Path A (recommended): let `bash ./onboard.sh` prepare it
 
 `onboard.sh` automatically installs / signs in `openbkn` (admin is built into the same CLI), creates the business user **`test`** (password `111111` unless `ONBOARD_TEST_USER_PASSWORD` is set), assigns **every** role from `openbkn admin role list`, and switches local `~/.bkn` to `test`.
 
 ```bash
-cd deploy
+cd openbkn-deploy
 sudo bash ./onboard.sh        # interactive (Linux — matches sudo deploy.sh)
 sudo bash ./onboard.sh -y     # non-interactive (defaults)
 # macOS dev path:  bash ./dev/mac.sh onboard       # no sudo needed

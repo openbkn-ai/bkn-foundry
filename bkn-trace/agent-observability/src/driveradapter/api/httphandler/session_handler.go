@@ -154,6 +154,11 @@ type operationCallFactsResponse struct {
 	Total   int                           `json:"total"`
 }
 
+type operationCallSummariesResponse struct {
+	Entries []sessionvo.OperationCallSummary `json:"entries"`
+	Total   int                              `json:"total"`
+}
+
 func RegisterSessionRoutes(
 	mux *http.ServeMux,
 	basePath string,
@@ -341,7 +346,7 @@ func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r 
 			RequestHash: request.RequestHash, AgentName: request.AgentName,
 			LeaseDuration: time.Duration(request.LeaseSeconds) * time.Second,
 		})
-		h.writeLifecycleResult(w, r, value, err, http.StatusCreated)
+		h.writeInteractionLifecycleResult(w, r, value, err, http.StatusCreated)
 	case len(parts) == 4 && parts[1] == "interactions" && parts[3] == "operations:ensure" && r.Method == http.MethodPost:
 		var request ensureOperationRequest
 		if err := decodeLifecycleBody(w, r, &request); err != nil {
@@ -388,6 +393,16 @@ func (h *SessionHandler) handleInteractionSubresource(w http.ResponseWriter, r *
 		return
 	}
 	if len(parts) == 2 && parts[1] == "operations" && r.Method == http.MethodGet {
+		if view := r.URL.Query().Get("view"); view != "" && view != "full" && view != "summary" {
+			writeLifecycleError(w, r, http.StatusBadRequest, "operation_view_invalid", "view must be full or summary")
+			return
+		} else if view == "summary" {
+			values, err := h.service.ListOperationCallSummaries(r.Context(), owner, parts[0])
+			h.writeLifecycleResult(w, r, operationCallSummariesResponse{
+				Entries: values, Total: len(values),
+			}, err, http.StatusOK)
+			return
+		}
 		values, err := h.service.ListOperationCallFacts(r.Context(), owner, parts[0])
 		h.writeLifecycleResult(w, r, operationCallFactsResponse{
 			Entries: values, Total: len(values),
@@ -471,7 +486,7 @@ func (h *SessionHandler) handleManagedFinish(
 			Claims: request.Claims, CompletionReason: reason, SystemPartialReasons: partialReasons,
 		},
 	})
-	h.writeLifecycleResult(w, r, value, err, http.StatusOK)
+	h.writeInteractionLifecycleResult(w, r, value, err, http.StatusOK)
 }
 
 func managedOutcomeStatus(outcome string) (sessionvo.InteractionStatus, bool) {
@@ -665,6 +680,17 @@ func (h *SessionHandler) writeLifecycleResult(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeJSON(w, r, status, value)
+}
+
+func (h *SessionHandler) writeInteractionLifecycleResult(w http.ResponseWriter, r *http.Request, value sessionvo.Interaction, err error, status int) {
+	if err != nil {
+		writeSessionDomainError(w, r, err)
+		return
+	}
+	writeJSON(w, r, status, struct {
+		sessionvo.Interaction
+		CaptureEnabled bool `json:"capture_enabled"`
+	}{Interaction: value, CaptureEnabled: !h.service.CapturePolicyDisabled()})
 }
 
 func splitLifecyclePath(path string) []string {

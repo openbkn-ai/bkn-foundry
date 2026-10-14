@@ -1,0 +1,735 @@
+openapi: 3.1.0
+info:
+  title: 模型管理 · 模型配额 API
+  version: 0.1.0
+  description: Public HTTP contract derived from the current route signatures and Pydantic request models.
+    Internal /api/private routes are excluded. Dynamic controller results remain an open JSON schema.
+paths:
+  /user-quota/remain-check:
+    get:
+      summary: User Quota Remain Check
+      operationId: remain_check_20_api_mf_model_manager_v1_user_quota_remain_check_get
+      parameters:
+      - required: true
+        schema:
+          type: string
+          title: Model Id List
+        name: model_id_list
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/model_quota_router.py
+  /user-quota/delete:
+    post:
+      summary: User Quota Delete
+      operationId: delete_user_model_quota_config_45_api_mf_model_manager_v1_user_quota_delete_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfIdList'
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/model_quota_router.py
+  /model-quota:
+    post:
+      summary: Model Quota
+      operationId: add_model_quota_51_api_mf_model_manager_v1_model_quota_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddModelQuota'
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/model_quota_router.py
+  /model-quota/{conf_id}:
+    get:
+      summary: Model Quota {Conf_Id}
+      operationId: get_model_quota_89_api_mf_model_manager_v1_model_quota__conf_id__get
+      parameters:
+      - required: true
+        schema:
+          type: string
+          title: Conf Id
+        name: conf_id
+        in: path
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/model_quota_router.py
+    post:
+      summary: Model Quota {Conf_Id}
+      operationId: edit_model_quota_63_api_mf_model_manager_v1_model_quota__conf_id__post
+      parameters:
+      - required: true
+        schema:
+          title: Conf Id
+        name: conf_id
+        in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditModelQuota'
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/model_quota_router.py
+  /model-quota/list:
+    get:
+      summary: Model Quota List
+      operationId: get_model_quota_list_69_api_mf_model_manager_v1_model_quota_list_get
+      parameters:
+      - required: true
+        schema:
+          type: integer
+          minimum: 0.0
+          title: Page
+        name: page
+        in: query
+      - required: false
+        schema:
+          type: integer
+          minimum: 0.0
+          title: Size
+          default: 20
+        name: size
+        in: query
+      - required: true
+        schema:
+          type: string
+          pattern: ^(create_time|update_time|model_name|total_price)$
+          title: Rule
+        name: rule
+        in: query
+      - required: true
+        schema:
+          type: string
+          pattern: ^(desc|asc)$
+          title: Order
+        name: order
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Name
+          default: ''
+        name: name
+        in: query
+      - required: false
+        schema:
+          type: string
+          title: Api Model
+          default: ''
+        name: api_model
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/model_quota_router.py
+  /user-quota:
+    post:
+      summary: User Quota
+      operationId: add_user_model_quota_95_api_mf_model_manager_v1_user_quota_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddUserModelQuotaList'
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/model_quota_router.py
+  /user-quota/list:
+    get:
+      summary: User Quota List
+      operationId: get_user_quota_list_101_api_mf_model_manager_v1_user_quota_list_get
+      parameters:
+      - required: true
+        schema:
+          type: string
+          maxLength: 19
+          minLength: 19
+          pattern: ^[0-9]*$
+          title: Conf Id
+        name: conf_id
+        in: query
+      - required: true
+        schema:
+          type: integer
+          minimum: 0.0
+          title: Page
+        name: page
+        in: query
+      - required: false
+        schema:
+          type: integer
+          minimum: 0.0
+          title: Size
+          default: 20
+        name: size
+        in: query
+      - required: true
+        schema:
+          type: string
+          pattern: ^(create_time|update_time)$
+          title: Rule
+        name: rule
+        in: query
+      - required: true
+        schema:
+          type: string
+          pattern: ^(desc|asc)$
+          title: Order
+        name: order
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/model_quota_router.py
+components:
+  schemas:
+    AddModelQuota:
+      properties:
+        model_id:
+          type: string
+          maxLength: 19
+          minLength: 19
+          title: Model Id
+          description: Bound model ID
+        billing_type:
+          type: integer
+          maximum: 1.0
+          minimum: 0.0
+          title: Billing Type
+        input_tokens:
+          type: number
+          maximum: 9999.9999
+          minimum: 1.0
+          title: Input Tokens
+          description: Total input token quota
+        output_tokens:
+          type: number
+          maximum: 9999.9999
+          minimum: 0.0
+          title: Output Tokens
+          description: Total output token quota
+          default: 0.0
+        currency_type:
+          type: integer
+          maximum: 1.0
+          minimum: 0.0
+          title: Currency Type
+        referprice_in:
+          type: number
+          maximum: 1000.0
+          minimum: 0.0
+          title: Referprice In
+          description: Input token unit price
+        referprice_out:
+          type: number
+          maximum: 1000.0
+          minimum: 0.0
+          title: Referprice Out
+          description: Output token unit price
+          default: 0
+        num_type:
+          items:
+            type: integer
+            maximum: 5.0
+            minimum: 0.0
+          type: array
+          maxItems: 2
+          minItems: 2
+          title: Num Type
+        price_type:
+          items:
+            type: string
+            pattern: ^(thousand|million)$
+          type: array
+          maxItems: 2
+          minItems: 2
+          title: Price Type
+      type: object
+      required:
+      - model_id
+      - billing_type
+      - input_tokens
+      - currency_type
+      - referprice_in
+      - num_type
+      - price_type
+      title: AddModelQuota
+    AddUserModelQuota:
+      properties:
+        model_quota_id:
+          type: string
+          maxLength: 19
+          minLength: 19
+          title: Model Quota Id
+          description: Bound model quota configuration ID
+        input_tokens:
+          type: number
+          maximum: 9999.9999
+          minimum: 1.0
+          title: Input Tokens
+          description: Total input token quota
+        output_tokens:
+          type: number
+          maximum: 9999.9999
+          minimum: 0.0
+          title: Output Tokens
+          description: Total output token quota
+          default: 0.0
+        user_id:
+          type: string
+          title: User Id
+        num_type:
+          items:
+            type: integer
+            maximum: 5.0
+            minimum: 0.0
+          type: array
+          maxItems: 2
+          minItems: 2
+          title: Num Type
+      type: object
+      required:
+      - model_quota_id
+      - input_tokens
+      - user_id
+      - num_type
+      title: AddUserModelQuota
+    AddUserModelQuotaList:
+      properties:
+        list:
+          items:
+            $ref: '#/components/schemas/AddUserModelQuota'
+          type: array
+          title: List
+      type: object
+      required:
+      - list
+      title: AddUserModelQuotaList
+    ConfIdList:
+      properties:
+        conf_id_list:
+          items: {}
+          type: array
+          title: Conf Id List
+      type: object
+      required:
+      - conf_id_list
+      title: ConfIdList
+    EditModelQuota:
+      properties:
+        input_tokens:
+          type: number
+          maximum: 9999.9999
+          minimum: 1.0
+          title: Input Tokens
+          description: Total input token quota
+        output_tokens:
+          type: number
+          maximum: 9999.9999
+          minimum: 0.0
+          title: Output Tokens
+          description: Total output token quota
+          default: 0.0
+        currency_type:
+          type: integer
+          maximum: 1.0
+          minimum: 0.0
+          title: Currency Type
+        referprice_in:
+          type: number
+          maximum: 1000.0
+          minimum: 0.0
+          title: Referprice In
+          description: Input token unit price
+        referprice_out:
+          type: number
+          maximum: 1000.0
+          minimum: 0.0
+          title: Referprice Out
+          description: Output token unit price
+          default: 0.0
+        billing_type:
+          type: integer
+          maximum: 1.0
+          minimum: 0.0
+          title: Billing Type
+        num_type:
+          items:
+            type: integer
+            maximum: 5.0
+            minimum: 0.0
+          type: array
+          maxItems: 2
+          minItems: 2
+          title: Num Type
+        price_type:
+          items:
+            type: string
+            pattern: ^(thousand|million)$
+          type: array
+          maxItems: 2
+          minItems: 2
+          title: Price Type
+      type: object
+      required:
+      - input_tokens
+      - currency_type
+      - referprice_in
+      - billing_type
+      - num_type
+      - price_type
+      title: EditModelQuota
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    FastApiError:
+      type: object
+      additionalProperties: true
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        detail:
+          type: string
+        solution:
+          type: string
+        link:
+          type: string
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+servers:
+- url: /api/mf-model-manager/v1
+security:
+- BearerAuth: []

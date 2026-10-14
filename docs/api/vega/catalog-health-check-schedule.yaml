@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: CatalogHealthCheckSchedule
+  title: VEGA 引擎 · 目录健康检查调度 API
   description: |
     Vega Backend Catalog health-check schedule API.
 

@@ -283,6 +283,26 @@ jobs:
           digest_for() {
             cat "${DIGEST_DIR}/digest__${IMAGE}__${1}/${1}"
           }
+          wait_for_manifest() {
+            local ref="$1"
+            local attempt
+            local delay
+            local max_attempts=6
+            for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+              if docker manifest inspect "${ref}" >/dev/null 2>&1; then
+                return 0
+              fi
+              if [ "${attempt}" -lt "${max_attempts}" ]; then
+                delay=$((attempt * 5))
+                echo "Waiting ${delay}s for ${ref} to become visible (attempt ${attempt}/${max_attempts})"
+                sleep "${delay}"
+              fi
+            done
+            echo "::error::manifest did not become visible after ${max_attempts} attempts: ${ref}"
+            # Run once without suppressing stderr so the registry error is
+            # preserved in the job log.
+            docker manifest inspect "${ref}"
+          }
           for arch in "${archs[@]}"; do
             file="${DIGEST_DIR}/digest__${IMAGE}__${arch}/${arch}"
             if [ ! -f "${file}" ]; then
@@ -308,8 +328,28 @@ jobs:
             for arch in "${archs[@]}"; do
               children+=("${repo}@$(digest_for "${arch}")")
             done
+            # SWR can acknowledge a push before the manifest is readable by
+            # digest. Wait for every child before asking `docker manifest
+            # create` to resolve it; GHCR normally succeeds on the first try.
+            for child in "${children[@]}"; do
+              wait_for_manifest "${child}"
+            done
             docker manifest create "${repo}:${tag}" "${children[@]}"
-            docker manifest push "${repo}:${tag}"
+            local push_attempt
+            local push_delay
+            local max_push_attempts=6
+            for ((push_attempt = 1; push_attempt <= max_push_attempts; push_attempt++)); do
+              if docker manifest push "${repo}:${tag}"; then
+                break
+              fi
+              if [ "${push_attempt}" -eq "${max_push_attempts}" ]; then
+                echo "::error::failed to push ${repo}:${tag} after ${max_push_attempts} attempts"
+                return 1
+              fi
+              push_delay=$((push_attempt * 5))
+              echo "Waiting ${push_delay}s before retrying manifest push for ${repo}:${tag} (attempt ${push_attempt}/${max_push_attempts})"
+              sleep "${push_delay}"
+            done
             echo "Pushed multi-arch ${repo}:${tag}"
             docker manifest inspect "${repo}:${tag}" | head -30
           }

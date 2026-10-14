@@ -1,0 +1,512 @@
+openapi: 3.1.0
+info:
+  title: 模型管理 · 大模型管理 API
+  version: 0.1.0
+  description: Public HTTP contract derived from the current route signatures and Pydantic request models.
+    Internal /api/private routes are excluded. Dynamic controller results remain an open JSON schema.
+paths:
+  /llm/add:
+    post:
+      summary: Llm Add
+      operationId: add_llm_28_api_mf_model_manager_v1_llm_add_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/llm_router.py
+  /llm/delete:
+    post:
+      summary: Llm Delete
+      operationId: remove_llm_34_api_mf_model_manager_v1_llm_delete_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Ids
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/llm_router.py
+  /llm/edit:
+    post:
+      summary: Llm Edit
+      operationId: edit_llm_46_api_mf_model_manager_v1_llm_edit_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/llm_router.py
+  /llm/list:
+    get:
+      summary: Llm List
+      operationId: source_llm_52_api_mf_model_manager_v1_llm_list_get
+      parameters:
+      - required: true
+        schema:
+          title: Page
+        name: page
+        in: query
+      - required: true
+        schema:
+          title: Size
+        name: size
+        in: query
+      - required: false
+        schema:
+          title: Order
+          default: desc
+        name: order
+        in: query
+      - required: false
+        schema:
+          title: Rule
+          default: update_time
+        name: rule
+        in: query
+      - required: false
+        schema:
+          title: Series
+          default: all
+        name: series
+        in: query
+      - required: false
+        schema:
+          title: Name
+          default: ''
+        name: name
+        in: query
+      - required: false
+        schema:
+          title: Api Model
+          default: ''
+        name: api_model
+        in: query
+      - required: false
+        schema:
+          title: Model Type
+          default: ''
+        name: model_type
+        in: query
+      - required: false
+        schema:
+          type: boolean
+          title: Quota
+        name: quota
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/llm_router.py
+  /llm/names:
+    post:
+      summary: Llm Names
+      operationId: names_llm_59_api_mf_model_manager_v1_llm_names_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              title: Model Para
+        required: true
+        description: JSON request accepted by the implemented handler signature. Dictionary fields are
+          validated by the controller.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/llm_router.py
+  /llm/get:
+    get:
+      summary: Llm Get
+      operationId: check_llm__65_api_mf_model_manager_v1_llm_get_get
+      parameters:
+      - required: true
+        schema:
+          title: Model Id
+        name: model_id
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/llm_router.py
+  /llm-api-doc:
+    get:
+      summary: Llm Api Doc
+      operationId: api_doc_llm_71_api_mf_model_manager_v1_llm_api_doc_get
+      parameters:
+      - required: true
+        schema:
+          title: Llm Id
+        name: llm_id
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/llm_router.py
+  /llm/monitor/list:
+    get:
+      summary: Llm Monitor List
+      operationId: monitor_llm_157_api_mf_model_manager_v1_llm_monitor_list_get
+      parameters:
+      - required: true
+        schema:
+          title: Model Id
+        name: model_id
+        in: query
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Invalid request (Model Factory validation/error envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '401':
+          description: Missing, invalid or expired Bearer access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller is not allowed to perform this operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '404':
+          description: Model or requested resource was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '500':
+          description: Internal model service failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+      description: Current route signature. Successful results are returned by the controller without
+        a FastAPI response_model; no fixed response object is enforced at this route.
+      x-implementation: infra/mf-model-manager/app/routers/llm_router.py
+components:
+  schemas:
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    FastApiError:
+      type: object
+      additionalProperties: true
+      properties:
+        code:
+          type: string
+        description:
+          type: string
+        detail:
+          type: string
+        solution:
+          type: string
+        link:
+          type: string
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+servers:
+- url: /api/mf-model-manager/v1
+security:
+- BearerAuth: []

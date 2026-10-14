@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     port: int = Field(default=8000)
     workers: int = Field(default=4)
 
+    # Aggregate UTF-8 bytes of stdout, stderr and serialized return value.
+    max_execution_result_bytes: int = Field(default=4 * 1024 * 1024, ge=1, le=8 * 1024 * 1024)
+
     # ============== Database ==============
     database_url: str = Field(default="mysql+aiomysql://sandbox:password@localhost:3308/openbkn")
     db_pool_size: int = Field(default=20)
@@ -148,7 +151,9 @@ class Settings(BaseSettings):
 
     # ============== Cleanup ==============
     idle_threshold_minutes: int = Field(
-        default=-1, ge=-1, description="Idle timeout in minutes; -1 means never, disabling idle cleanup"
+        default=-1,
+        ge=-1,
+        description="Idle timeout in minutes; -1 means never, disabling idle cleanup",
     )
     max_lifetime_hours: int = Field(
         default=-1, ge=-1, description="Maximum lifetime in hours; -1 means never"

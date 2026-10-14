@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 知识网络浏览
+  title: 上下文加载 · 知识网络浏览 API
   description: |
     Context Loader（服务名 `agent-retrieval`）的知识网络浏览接口：从「有哪些知识网络」
     到「这张网里有哪些对象类 / 关系类」，再按需下钻取完整定义。
@@ -479,14 +479,17 @@ components:
             $ref: '#/components/schemas/ConceptGroup'
         object_types:
           type: array
+          nullable: true
           items:
             $ref: '#/components/schemas/ObjectType'
         relation_types:
           type: array
+          nullable: true
           items:
             $ref: '#/components/schemas/RelationType'
         action_types:
           type: array
+          nullable: true
           items:
             $ref: '#/components/schemas/ActionType'
         mounted_capabilities:

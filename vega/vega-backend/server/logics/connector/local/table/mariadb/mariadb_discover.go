@@ -15,8 +15,10 @@ import (
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
+	"github.com/bytedance/sonic"
 	_ "github.com/go-sql-driver/mysql"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -100,6 +102,13 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 			return nil, fmt.Errorf("required table metadata contains NULL")
 		}
 
+		// SQL 条件用于缩小范围；配置范围统一按源端原始名称精确匹配。
+		// 此处过滤可避免数据库比较规则与配置语义不一致，
+		// 并保留普通 SQL 条件，避免 BINARY/COLLATE 影响索引使用或条件下推。
+		if !c.databaseAllowed(schemaName.String) {
+			continue
+		}
+
 		meta := &interfaces.TableMeta{
 			Name:        tableName.String,
 			TableType:   c.mapTableType(tableType.String),
@@ -169,6 +178,9 @@ func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.T
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
+	if !c.databaseAllowed(table.Database) {
+		return fmt.Errorf("database %q is outside the connector scope", table.Database)
+	}
 
 	// Obtain the basic information of the table (engine, character set, number of rows, comments)
 	if err := c.fetchTableStatus(ctx, table); err != nil {
@@ -189,32 +201,7 @@ func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.T
 	if err := c.fetchForeignKeys(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch foreign keys: %w", err)
 	}
-
 	return nil
-}
-
-// GetTableMetaByIdentifier loads complete metadata for a database.table identifier.
-func (c *MariaDBConnector) GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.TableMeta, error) {
-	separator := strings.LastIndexByte(sourceIdentifier, '.')
-	if separator <= 0 || separator == len(sourceIdentifier)-1 {
-		return nil, fmt.Errorf("invalid MariaDB table source identifier %q", sourceIdentifier)
-	}
-	database, tableName := sourceIdentifier[:separator], sourceIdentifier[separator+1:]
-	tables, err := c.listTables(ctx, database, tableName)
-	if err != nil {
-		return nil, fmt.Errorf("list tables: %w", err)
-	}
-	if len(tables) == 0 {
-		return nil, fmt.Errorf("table %q in database %q not found", tableName, database)
-	}
-	if len(tables) > 1 {
-		return nil, fmt.Errorf("table %q in database %q is ambiguous", tableName, database)
-	}
-	table := tables[0]
-	if err := c.GetTableMeta(ctx, table); err != nil {
-		return nil, err
-	}
-	return table, nil
 }
 
 // fetchTableStatus retrieves table status from information_schema.TABLES.
@@ -266,37 +253,36 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 
 	table.TableType = c.mapTableType(tableType.String)
 
-	// Initialize the Properties map
-	if table.Properties == nil {
-		table.Properties = make(map[string]any)
+	// Properties 以本次读取结果为准，成功后整体替换。
+	properties := map[string]any{
+		"engine":              engine.String,
+		"collation":           collation.String,
+		"estimated_row_count": tableRows.Int64,
+		"data_length":         dataLength.Int64,
+		"index_length":        indexLength.Int64,
 	}
-
-	table.Properties["engine"] = engine.String
-	table.Properties["collation"] = collation.String
-	table.Properties["estimated_row_count"] = tableRows.Int64
-	table.Properties["data_length"] = dataLength.Int64
-	table.Properties["index_length"] = indexLength.Int64
 	if autoIncrement.Valid {
-		table.Properties["auto_increment"] = autoIncrement.Int64
+		properties["auto_increment"] = autoIncrement.Int64
 	}
 	table.Description = description.String
 
 	if createTime.Valid {
-		table.Properties["create_time"] = createTime.Time.UnixMilli()
+		properties["create_time"] = createTime.Time.UnixMilli()
 	}
 	if updateTime.Valid {
-		table.Properties["update_time"] = updateTime.Time.UnixMilli()
+		properties["update_time"] = updateTime.Time.UnixMilli()
 	}
 
 	// Infer the Charset from Collation
 	if coll := collation.String; coll != "" {
 		for i, ch := range coll {
 			if ch == '_' {
-				table.Properties["charset"] = coll[:i]
+				properties["charset"] = coll[:i]
 				break
 			}
 		}
 	}
+	table.Properties = properties
 	return nil
 }
 
@@ -635,6 +621,14 @@ func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
 		if !schema.Valid {
 			return nil, fmt.Errorf("required schema metadata contains NULL")
 		}
+
+		// SQL 条件用于缩小范围；配置范围统一按源端原始名称精确匹配。
+		// 此处过滤可避免数据库比较规则与配置语义不一致，
+		// 并保留普通 SQL 条件，避免 BINARY/COLLATE 影响索引使用或条件下推。
+		if !c.databaseAllowed(schema.String) {
+			continue
+		}
+
 		schemas = append(schemas, schema.String)
 	}
 	if err := rows.Err(); err != nil {
@@ -643,26 +637,17 @@ func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
 	return schemas, nil
 }
 
-// CountRows reads an exact count for a table or view within connector scope.
-func (c *MariaDBConnector) CountRows(ctx context.Context, table *interfaces.TableMeta) (int64, error) {
+// CountRows 使用源 SQL 表引用获取表或视图的精确数量。
+func (c *MariaDBConnector) CountRows(ctx context.Context, sourceIdentifier string) (int64, error) {
+	if sourceIdentifier == "" {
+		return 0, fmt.Errorf("empty source identifier")
+	}
 	if err := c.Connect(ctx); err != nil {
 		return 0, err
 	}
-	if table == nil || table.Name == "" {
-		return 0, fmt.Errorf("invalid table metadata")
-	}
-	database, name := table.Database, table.Name
-	if database == "" {
-		database = table.Schema
-	}
-	if database == "" {
-		return 0, fmt.Errorf("invalid table metadata")
-	}
-	if !c.databaseAllowed(database) {
-		return 0, fmt.Errorf("database is outside the connector scope")
-	}
+
 	query, args, err := sq.Select("COUNT(*)").
-		From(fmt.Sprintf("%s.%s", mariadbQuoteIdent(database), mariadbQuoteIdent(name))).
+		From(sourceIdentifier).
 		ToSql()
 	if err != nil {
 		return 0, err
@@ -675,4 +660,69 @@ func (c *MariaDBConnector) CountRows(ctx context.Context, table *interfaces.Tabl
 		return 0, fmt.Errorf("invalid negative row count")
 	}
 	return count, nil
+}
+
+// BuildSourceIdentifier 生成源 SQL 表引用，不连接源数据库。
+func (c *MariaDBConnector) BuildSourceIdentifier(meta *interfaces.TableMeta) string {
+	namespace := meta.Database
+	if namespace == "" {
+		namespace = meta.Schema
+	}
+
+	return mariadbQuoteIdent(namespace) + "." + mariadbQuoteIdent(meta.Name)
+}
+
+// BuildOriginalName 生成不含 SQL 引用符的源端名称，不连接源数据库。
+func (c *MariaDBConnector) BuildOriginalName(meta *interfaces.TableMeta) string {
+	namespace := meta.Database
+	if namespace == "" {
+		namespace = meta.Schema
+	}
+	return namespace + "." + meta.Name
+}
+
+// DecodeTableMeta decodes source metadata and restores missing legacy name components.
+// Historical components are assumed not to contain dots or SQL quoting characters.
+func (c *MariaDBConnector) DecodeTableMeta(metadata map[string]any) (*interfaces.TableMeta, error) {
+	data, err := sonic.Marshal(metadata)
+	if err != nil {
+		return nil, fmt.Errorf("serialize table metadata: %w", err)
+	}
+	table := &interfaces.TableMeta{}
+	if err := common.UnmarshalPreciseJSON(data, table); err != nil {
+		return nil, fmt.Errorf("decode table metadata: %w", err)
+	}
+	if _, ok := metadata["description"]; !ok {
+		table.Description, _ = metadata["original_description"].(string)
+	}
+	originalName, _ := metadata["original_name"].(string)
+	if table.Schema == "" {
+		table.Schema = table.Database
+	}
+	if table.Name == "" || table.Schema == "" {
+		namespace, name, qualified := strings.Cut(originalName, ".")
+		if qualified {
+			if namespace == "" || name == "" || strings.Contains(name, ".") {
+				return nil, fmt.Errorf("invalid legacy table name")
+			}
+			if table.Schema == "" {
+				table.Schema = namespace
+			}
+		} else {
+			name = originalName
+		}
+		if table.Name == "" {
+			table.Name = name
+		}
+	}
+	if table.Schema == "" && c.config != nil && len(c.config.Databases) == 1 {
+		table.Schema = c.config.Databases[0]
+	}
+	if table.Database == "" {
+		table.Database = table.Schema
+	}
+	if table.Name == "" || table.Schema == "" {
+		return nil, fmt.Errorf("incomplete table metadata")
+	}
+	return table, nil
 }

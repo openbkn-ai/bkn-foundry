@@ -2,7 +2,7 @@
 # BKN native metric CRUD using the object-type API framework: entries and total_count lists, POST override batch creation and concept retrieval, and validation.
 openapi: 3.0.2
 info:
-  title: BKN Metrics
+  title: BKN 知识网络 · 指标 API
   version: 0.1.0
   description: |
     Modeling CRUD for BKN native metrics: create, list, validate, update, and delete.
@@ -38,6 +38,76 @@ info:
 security:
   - OAuth2: []
 paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics/validate:
+    post:
+      summary: Validate metrics
+      description: 'SDK/CLI compatibility alias of /metrics/validation. Validates dependency existence without
+        persisting data. Its semantics match POST object-types/validation and it is intended for pre-import
+        and pre-batch checks.
+
+        Response: HTTP 200 with valid=true means validation passed. valid=false includes detail.
+
+        '
+      parameters:
+      - name: kn_id
+        description: Business knowledge network ID
+        schema:
+          type: string
+        in: path
+        required: true
+      - name: branch
+        description: Branch. Uses main when omitted.
+        schema:
+          type: string
+        in: query
+      - name: strict_mode
+        description: Whether to strictly validate dependencies. Defaults to true.
+        schema:
+          type: boolean
+          default: true
+        in: query
+      - name: import_mode
+        description: Matches batch creation semantics and validates conflicts with persisted metric IDs
+          or names using normal, ignore, or overwrite.
+        schema:
+          type: string
+          enum:
+          - normal
+          - ignore
+          - overwrite
+          default: normal
+        in: query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entries:
+                  type: array
+                  description: Metrics to validate. Uses the same structure as the creation API.
+                  items:
+                    $ref: '#/components/schemas/CreateMetricRequest'
+      responses:
+        '200':
+          description: Validation result returned. Both pass and fail can return 200.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - valid
+                properties:
+                  valid:
+                    type: boolean
+                  detail:
+                    type: string
+                    description: Explanation when valid is false
+        '400':
+          description: Invalid request parameters and similar errors. A business validation failure is represented
+            by 200 with valid=false and detail.
+      operationId: validateMetricsCompatibilityAlias
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/metrics:
     get:
       summary: List metrics

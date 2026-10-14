@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: MCP 服务
+  title: 上下文加载 · MCP 服务 API
   description: |
     Context Loader 把自己的检索能力同时以 **MCP Server** 形式对外：Cursor、Claude
     Desktop 等 MCP 客户端可以直接接入，不必逐个封装 REST 调用。
@@ -27,6 +27,10 @@ info:
     `/kn/execute_skill` 这条 REST 路由是否注册。业务工具必须显式携带服务自描述 schema 中的 `bkn_context`，
     其中只要求权威返回的 `conversation_id` 和 `interaction_id`；Operation key、租约、
     重试和 closure manifest 由 Context Loader 与 BKN Trace Core 管理；
+    关闭 Trace 采集时，start_interaction 仍创建会话与交互并返回真实 ID；
+    业务工具继续携带这些 ID 执行，但不新增 Operation、回执或证据；
+    finish_interaction 仍结束交互。Trace Core 不可用时，无法创建受管控会话，
+    start_interaction 不返回 ID；调用方先重试 start，不会伪造 ID；
     各工具的语义与参数含义见本目录下对应的 REST 文档。
 
     **接入方式**：Streamable HTTP，端点 `/api/agent-retrieval/v1/mcp`，

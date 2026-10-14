@@ -152,6 +152,7 @@ func documentGetInteraction() {}
 // @Security BearerAuth
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"
+// @Param view query string false "Response view: full (default) or summary" Enums(full,summary)
 // @Success 200 {object} operationCallFactsResponse
 // @Failure 401,403,404,500,503 {object} lifecycleErrorEnvelope
 // @Router /interactions/{interaction_id}/operations [get]

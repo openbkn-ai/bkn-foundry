@@ -32,49 +32,6 @@ func convertValue(v any, preserveBinary bool) any {
 	return v
 }
 
-// mariadbQuoteIdent 引用单个标识符，将内部反引号转义为两个反引号。
-func mariadbQuoteIdent(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
-}
-
-// qualTable converts a resource source identifier into a backtick-qualified table name;
-// it supports "db.table" -> "`db`.`table`".
-func qualTable(sourceIdentifier string) string {
-	return quoteColumnName(sourceIdentifier)
-}
-
-// quotedColumn returns a safely quoted physical source column name.
-func quotedColumn(property *interfaces.Property) string {
-	name := originalName(property)
-	if idx := strings.Index(name, "."); idx >= 0 {
-		alias := strings.TrimSpace(name[:idx])
-		col := strings.TrimSpace(name[idx+1:])
-		return mariadbQuoteIdent(alias) + "." + mariadbQuoteIdent(col)
-	}
-	return mariadbQuoteIdent(strings.TrimSpace(name))
-}
-
-// quoteColumnName converts column names to SQL identifiers; Support "alias.col" -> "alias.col"
-func quoteColumnName(name string) string {
-	if name == "" {
-		return mariadbQuoteIdent(name)
-	}
-	if idx := strings.Index(name, "."); idx >= 0 {
-		alias := strings.TrimSpace(name[:idx])
-		col := strings.TrimSpace(name[idx+1:])
-		return mariadbQuoteIdent(alias) + "." + mariadbQuoteIdent(col)
-	}
-	return mariadbQuoteIdent(strings.TrimSpace(name))
-}
-
-// originalName selects the source column name when one is available.
-func originalName(property *interfaces.Property) string {
-	if property.OriginalName != "" {
-		return property.OriginalName
-	}
-	return property.Name
-}
-
 // BuildPagedSQL applies MariaDB paging syntax to a validated query.
 func (c *MariaDBConnector) BuildPagedSQL(sqlStr string, offset, limit int) string {
 	if offset < 0 {
@@ -156,7 +113,7 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*i
 
 // buildSelectBuilder assembles the SELECT statement for detail and aggregate queries.
 //
-// Every identifier — table, column, alias — must go through quoteColumnName / qualTable.
+// Every identifier — table, column, alias — must go through quoteColumnName.
 // A source column named after a SQL reserved word (say `key`) survives DDL, catalog
 // discover and bkn push untouched, because none of them build a query; concatenating it
 // raw only fails at execution time with a 1064 that names nothing useful.
@@ -186,18 +143,18 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 		column := originalName(groupByItem.Property)
 		// Check whether calendar_interval is needed
 		if groupByItem.CalendarInterval != "" {
-			dateFmt := c.buildDateFormat(groupByItem.Property, quoteColumnName(column), groupByItem.CalendarInterval)
-			selectFields = append(selectFields, dateFmt+" AS "+quoteColumnName(groupByItem.Property))
+			dateFmt := c.buildDateFormat(groupByItem.Property, mariadbQuoteColumnName(column), groupByItem.CalendarInterval)
+			selectFields = append(selectFields, dateFmt+" AS "+mariadbQuoteColumnName(groupByItem.Property))
 		} else {
 			selectFields = append(selectFields,
-				quoteColumnName(column)+" AS "+quoteColumnName(groupByItem.Property))
+				mariadbQuoteColumnName(column)+" AS "+mariadbQuoteColumnName(groupByItem.Property))
 		}
 	}
 
 	// Add the aggregate field (when aggregating queries)
 	var aggAlias string
 	if params.Aggregation != nil {
-		aggField := quoteColumnName(originalName(params.Aggregation.Property))
+		aggField := mariadbQuoteColumnName(originalName(params.Aggregation.Property))
 
 		// Determine the aggregate function
 		aggFunc := params.Aggregation.Aggr
@@ -215,30 +172,30 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 			aggAlias = "__value"
 		}
 
-		selectFields = append(selectFields, aggFunc+" AS "+quoteColumnName(aggAlias))
+		selectFields = append(selectFields, aggFunc+" AS "+mariadbQuoteColumnName(aggAlias))
 	} else if params.Having != nil && params.Having.Field == "count(*)" {
 		// When HAVING uses count(*), add the COUNT(*) aggregate automatically
 		aggAlias = "__value"
-		selectFields = append(selectFields, "COUNT(*) AS "+quoteColumnName(aggAlias))
+		selectFields = append(selectFields, "COUNT(*) AS "+mariadbQuoteColumnName(aggAlias))
 	}
 
 	// Select every field when the query is neither aggregated nor grouped
 	selectField := func(name string) string {
-		column := quoteColumnName(originalName(name))
+		column := mariadbQuoteColumnName(originalName(name))
 		if prop := fieldMap[name]; prop != nil && prop.Type == interfaces.DataType_Binary {
 			if params.BinaryMode == nil {
-				return "NULL AS " + quoteColumnName(name)
+				return "NULL AS " + mariadbQuoteColumnName(name)
 			}
 			switch *params.BinaryMode {
 			case interfaces.BinaryModeMetadata:
-				return "OCTET_LENGTH(" + column + ") AS " + quoteColumnName(name)
+				return "OCTET_LENGTH(" + column + ") AS " + mariadbQuoteColumnName(name)
 			case interfaces.BinaryModeContent:
-				return column + " AS " + quoteColumnName(name)
+				return column + " AS " + mariadbQuoteColumnName(name)
 			default:
-				return "NULL AS " + quoteColumnName(name)
+				return "NULL AS " + mariadbQuoteColumnName(name)
 			}
 		}
-		return column + " AS " + quoteColumnName(name)
+		return column + " AS " + mariadbQuoteColumnName(name)
 	}
 	// output_fields controls detail-query projection only. Aggregate projection is
 	// defined by group_by, aggregation, or count(*) having; appending any other
@@ -259,7 +216,8 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 	}
 
 	// Build the query
-	builder := sq.Select(selectFields...).From(qualTable(resource.SourceIdentifier))
+	builder := sq.Select(selectFields...).
+		From(resource.SourceIdentifier)
 
 	// Add the WHERE condition
 	if condition != nil {
@@ -270,7 +228,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 	if len(params.GroupBy) > 0 {
 		groupByFields := []string{}
 		for _, groupByItem := range params.GroupBy {
-			column := quoteColumnName(originalName(groupByItem.Property))
+			column := mariadbQuoteColumnName(originalName(groupByItem.Property))
 			// Check whether calendar_interval is needed
 			if groupByItem.CalendarInterval != "" {
 				groupByFields = append(groupByFields,
@@ -304,9 +262,9 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 		// property name the caller means the aggregate, but schema resolution would pick
 		// that property's source column instead. The default sql_mode has no
 		// ONLY_FULL_GROUP_BY, so that does not error — it orders by an arbitrary row.
-		sortField := quoteColumnName(originalName(sortItem.Field))
+		sortField := mariadbQuoteColumnName(originalName(sortItem.Field))
 		if aggAlias != "" && sortItem.Field == aggAlias {
-			sortField = quoteColumnName(aggAlias)
+			sortField = mariadbQuoteColumnName(aggAlias)
 		}
 
 		// Check whether this is a GROUP BY field using calendar_interval
@@ -314,7 +272,7 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 			if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
 				// Use the full date_format expression
 				sortField = c.buildDateFormat(groupByItem.Property,
-					quoteColumnName(originalName(groupByItem.Property)), groupByItem.CalendarInterval)
+					mariadbQuoteColumnName(originalName(groupByItem.Property)), groupByItem.CalendarInterval)
 				break
 			}
 		}
@@ -418,7 +376,8 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	// Previously, directly take len(result.Entries) - that is, the number of rows on this page. For tables with more than one page, total is always equal to
 	// LIMIT (The progress bar of the build task shows "20802/1000", which indicates this bug)
 	if params.NeedTotal && !isAggregate {
-		countBuilder := sq.Select("COUNT(1)").From(qualTable(resource.SourceIdentifier))
+		countBuilder := sq.Select("COUNT(1)").
+			From(resource.SourceIdentifier)
 		if condition != nil {
 			countBuilder = countBuilder.Where(condition)
 		}
@@ -460,7 +419,7 @@ func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause,
 	if having.Field == "count(*)" {
 		fieldExpr = "COUNT(*)"
 	} else {
-		fieldExpr = quoteColumnName(aggAlias)
+		fieldExpr = mariadbQuoteColumnName(aggAlias)
 	}
 
 	var op string

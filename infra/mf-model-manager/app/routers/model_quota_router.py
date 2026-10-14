@@ -11,6 +11,7 @@ from app.interfaces import logics
 from app.controller import model_quota_controller
 from fastapi.exceptions import RequestValidationError
 from app.interfaces.logics import GetModelQuotaList
+from app.utils.operation_audit import operation_audit_request
 from app.utils.common import get_user_info
 
 model_quota_router = APIRouter()
@@ -44,7 +45,7 @@ async def get_user_quote_model_list(request: Request, page: int = Query(ge=0), s
 @model_quota_router.post('/user-quota/delete')
 async def delete_user_model_quota_config(request: Request, conf_id_list: logics.ConfIdList):
     userId, language, role = await get_user_info(request)
-    return await model_quota_controller.delete_user_model_quota_config(conf_id_list.conf_id_list, userId)
+    return await model_quota_controller.delete_user_model_quota_config(conf_id_list.conf_id_list, userId, audit_request=operation_audit_request(request))
 
 
 @model_quota_router.post('/model-quota')
@@ -56,13 +57,13 @@ async def add_model_quota(request: logics.AddModelQuota, head_request: Request):
         error_dict["detail"] = "output_tokens " + error_dict["detail"]
         StandLogger.error(error_dict["detail"])
         return JSONResponse(status_code=400, content=error_dict)
-    return await model_quota_controller.add_model_quota_config(request, userId)
+    return await model_quota_controller.add_model_quota_config(request, userId, audit_request=operation_audit_request(head_request))
 
 
 @model_quota_router.post('/model-quota/{conf_id}')
 async def edit_model_quota(conf_id, request: logics.EditModelQuota, head_request: Request):
     userId, language, role = await get_user_info(head_request)
-    return await model_quota_controller.edit_model_quota_config(request, conf_id, userId)
+    return await model_quota_controller.edit_model_quota_config(request, conf_id, userId, audit_request=operation_audit_request(head_request))
 
 
 @model_quota_router.get('/model-quota/list')
@@ -94,7 +95,7 @@ async def get_model_quota(conf_id: str, request: Request):
 @model_quota_router.post('/user-quota')
 async def add_user_model_quota(request: logics.AddUserModelQuotaList, head_request: Request):
     userId, language, role = await get_user_info(head_request)
-    return await model_quota_controller.add_user_model_quota_config(request, userId)
+    return await model_quota_controller.add_user_model_quota_config(request, userId, audit_request=operation_audit_request(head_request))
 
 
 @model_quota_router.get('/user-quota/list')

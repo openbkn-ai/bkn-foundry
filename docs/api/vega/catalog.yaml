@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: Catalog
+  title: VEGA 引擎 · 目录 API
   description: |
     Vega Backend Catalog（数据目录）API。
 

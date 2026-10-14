@@ -149,18 +149,44 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 	require.Contains(t, index.Mapping, "title")
 }
 
-func TestGetIndexMetaByIdentifierRejectsIndexOutsideConfiguredPattern(t *testing.T) {
-	connector := &OpenSearchConnector{
-		Config: &opensearchConfig{IndexPatterns: []string{"catalog-*", "metric-*"}},
+func TestOpenSearchConnectorGetIndexMeta(t *testing.T) {
+	for _, index := range []*interfaces.IndexMeta{nil, {}} {
+		err := (&OpenSearchConnector{}).GetIndexMeta(context.Background(), index)
+		require.ErrorContains(t, err, "invalid index metadata")
 	}
-
-	_, err := connector.GetIndexMetaByIdentifier(context.Background(), "system-audit")
-
-	require.Error(t, err)
-	assert.ErrorContains(t, err, `index "system-audit" is outside the connector scope`)
+	for _, pattern := range []string{"products-alias", "products-a,products-b"} {
+		t.Run("uses resolved index for pattern "+pattern, func(t *testing.T) {
+			calls := map[string]int{}
+			client, err := opensearch.NewClient(opensearch.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					calls[request.URL.Path]++
+					var body string
+					switch request.URL.Path {
+					case "/products/_mapping":
+						body = `{"products":{"mappings":{"properties":{"title":{"type":"keyword"}}}}}`
+					case "/products/_settings":
+						body = `{"products":{"settings":{"index.number_of_shards":"1"}}}`
+					default:
+						t.Fatalf("unexpected request: %s", request.URL.Path)
+					}
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			connector := &OpenSearchConnector{client: client, Config: &opensearchConfig{IndexPatterns: []string{pattern}}}
+			index := &interfaces.IndexMeta{Name: "products", Properties: map[string]any{"docs.count": "3"}, CreationTime: 123}
+			require.NoError(t, connector.GetIndexMeta(context.Background(), index))
+			assert.Equal(t, map[string]int{"/products/_mapping": 1, "/products/_settings": 1}, calls)
+			assert.Equal(t, int64(123), index.CreationTime)
+			assert.Equal(t, "3", index.Properties["docs.count"])
+			assert.Equal(t, "1", index.Properties["index.number_of_shards"])
+			assert.Contains(t, index.Mapping, "title")
+		})
+	}
 }
 
-func TestGetIndexMetaByIdentifierAcceptsAnyConfiguredPattern(t *testing.T) {
+func TestOpenSearchConnectorValidateIndexScope(t *testing.T) {
 	connector := &OpenSearchConnector{
 		Config: &opensearchConfig{IndexPatterns: []string{"catalog-*", "metric-*"}},
 	}

@@ -210,7 +210,6 @@ Once the release branch is created, it enters **code freeze** state:
   - `infra/oss-gateway-backend/charts/Chart.yaml`
   - `infra/mf-model-manager/charts/Chart.yaml`
   - `infra/mf-model-api/charts/Chart.yaml`
-  - `deploy/charts/proton-mariadb/Chart.yaml`
 - Every Python package's `pyproject.toml`, e.g.:
   - `infra/sandbox/sandbox_control_plane/pyproject.toml`
 - Repository-level version entry / `CHANGELOG.md` version section

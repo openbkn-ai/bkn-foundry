@@ -536,8 +536,9 @@ func (r *restHandler) DeleteActionTypes(c *gin.Context) {
 	atIDs := common.StringToStringSlice(atIDsStr)
 
 	// Check that all action type IDs exist.
+	auditNames := []string{}
 	for _, atID := range atIDs {
-		_, exist, err := r.ats.CheckActionTypeExistByID(ctx, knID, branch, atID)
+		name, exist, err := r.ats.CheckActionTypeExistByID(ctx, knID, branch, atID)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 
@@ -556,6 +557,7 @@ func (r *restHandler) DeleteActionTypes(c *gin.Context) {
 			return
 		}
 
+		auditNames = append(auditNames, name)
 	}
 
 	// Delete action types in batch.
@@ -568,6 +570,7 @@ func (r *restHandler) DeleteActionTypes(c *gin.Context) {
 		return
 	}
 
+	c.Set("operation_audit_target_names", auditNames)
 	logger.Debug("Handler DeleteActionTypes Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusNoContent, nil)

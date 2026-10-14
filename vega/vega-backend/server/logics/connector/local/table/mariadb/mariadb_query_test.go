@@ -13,20 +13,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
-func TestMariaDBQuoteIdent(t *testing.T) {
-	for _, tt := range []struct{ name, want string }{
-		{"", "``"},
-		{"orders", "`orders`"},
-		{"ord`ers", "`ord``ers`"},
-		{"orders.part", "`orders.part`"},
-		{" orders ", "` orders `"},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, mariadbQuoteIdent(tt.name))
-		})
-	}
-}
-
 func TestMariaDBConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
@@ -58,7 +44,7 @@ func TestMariaDBConnectorExecuteQueryInvalidParameter(t *testing.T) {
 			require.NoError(t, err)
 			defer func() { _ = db.Close() }()
 			connector := &MariaDBConnector{db: db, connected: true}
-			resource := &interfaces.Resource{SourceIdentifier: "shop.orders", SchemaDefinition: []*interfaces.Property{{Name: "missing"}}}
+			resource := &interfaces.Resource{SourceIdentifier: "`shop`.`orders`", SchemaDefinition: []*interfaces.Property{{Name: "missing"}}}
 			params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}, NeedTotal: tc.needTotal}
 			driverErr := &mysql.MySQLError{Number: 1054, Message: "private source column details"}
 			if tc.needTotal {
@@ -217,7 +203,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 	connector := &MariaDBConnector{}
 	// fact 表带一个名为 key 的列——MySQL 保留字，裸拼进 SELECT 会在执行期报 1064
 	resource := &interfaces.Resource{
-		SourceIdentifier: "yanfeng_kb.fact",
+		SourceIdentifier: "`yanfeng_kb`.`fact`",
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "id", OriginalName: "id", Type: interfaces.DataType_String},
 			{Name: "key", OriginalName: "key", Type: interfaces.DataType_String},
@@ -273,7 +259,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 	// 否则会拼出空标识符 `` 让整条 SQL 报错
 	t.Run("a property without original_name falls back to the property name", func(t *testing.T) {
 		schemaless := &interfaces.Resource{
-			SourceIdentifier: "yanfeng_kb.fact",
+			SourceIdentifier: "`yanfeng_kb`.`fact`",
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "id", OriginalName: "id", Type: interfaces.DataType_String},
 				{Name: "content_vector", Type: interfaces.DataType_Vector},
@@ -301,7 +287,7 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 	// 默认查全字段这条路也要走兜底，否则 original_name 为空的属性会拼出空标识符
 	t.Run("select all falls back for a property without original_name", func(t *testing.T) {
 		schemaless := &interfaces.Resource{
-			SourceIdentifier: "yanfeng_kb.fact",
+			SourceIdentifier: "`yanfeng_kb`.`fact`",
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "id", OriginalName: "id", Type: interfaces.DataType_String},
 				{Name: "content_vector", Type: interfaces.DataType_Vector},

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Execution Factory Authorization Resources
+  title: 执行工厂 · 授权资源目录 API
   version: v1
 paths:
   /api/agent-operator-integration/internal-v1/authorization-resources:

@@ -60,7 +60,9 @@ func (client *Client) Metadata() observabilityvo.SourceStatus {
 }
 
 func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
-	body, err := json.Marshal(buildQuery(query))
+	request := buildQuery(query)
+	limit := request["size"].(int) - 1
+	body, err := json.Marshal(request)
 	if err != nil {
 		return observabilityvo.SourcePage{}, fmt.Errorf("encode OpenSearch log query: %w", err)
 	}
@@ -71,6 +73,11 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	var response searchResponse
 	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return observabilityvo.SourcePage{}, fmt.Errorf("decode OpenSearch log response: %w", err)
+	}
+	nextCursor := ""
+	if len(response.Hits.Hits) > limit {
+		nextCursor = "more"
+		response.Hits.Hits = response.Hits.Hits[:limit]
 	}
 	records := make([]observabilityvo.LogRecord, 0, len(response.Hits.Hits))
 	for _, hit := range response.Hits.Hits {
@@ -90,7 +97,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	if response.Hits.Total.Relation != "" && response.Hits.Total.Relation != "eq" {
 		accuracy = "partial"
 	}
-	return observabilityvo.SourcePage{Records: records, Count: response.Hits.Total.Value, CountAccuracy: accuracy}, nil
+	return observabilityvo.SourcePage{Records: records, NextCursor: nextCursor, Count: response.Hits.Total.Value, CountAccuracy: accuracy}, nil
 }
 
 func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.LogRecord, bool, error) {
@@ -211,7 +218,7 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		boolQuery["must"] = []any{map[string]any{"match_phrase": map[string]any{"attributes.safe_summary": query.Query}}}
 	}
 	result := map[string]any{
-		"size": limit, "track_total_hits": true,
+		"size": limit + 1, "track_total_hits": true,
 		"sort": []any{
 			map[string]any{"@timestamp": map[string]any{"order": "desc"}},
 			map[string]any{"attributes.source_id.keyword": map[string]any{"order": "asc", "unmapped_type": "keyword"}},

@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: 函数
+  title: 执行工厂 · 函数 API
   description: |
     执行工厂（服务名 `agent-operator-integration`）的**函数面**：写一段 Python、
     在沙箱里跑起来、看输出。围绕它还有依赖查询、代码模板与 AI 生成三组辅助接口。

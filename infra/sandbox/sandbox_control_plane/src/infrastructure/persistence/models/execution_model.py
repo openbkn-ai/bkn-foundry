@@ -8,6 +8,7 @@ Naming convention: t_{module}_{entity} for tables, f_{field_name} for columns.
 from datetime import datetime
 
 from sqlalchemy import Column, String, Integer, BigInteger, Text, Index
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import func
 
@@ -39,9 +40,15 @@ class ExecutionModel(Base):
     f_timeout_sec = Column(Integer, nullable=False)
 
     # Results
-    f_return_value = Column(Text, nullable=False, default="")
-    f_stdout = Column(Text, nullable=False, default="")
-    f_stderr = Column(Text, nullable=False, default="")
+    f_return_value = Column(
+        Text().with_variant(MEDIUMTEXT(), "mysql", "mariadb"), nullable=False, default=""
+    )
+    f_stdout = Column(
+        Text().with_variant(MEDIUMTEXT(), "mysql", "mariadb"), nullable=False, default=""
+    )
+    f_stderr = Column(
+        Text().with_variant(MEDIUMTEXT(), "mysql", "mariadb"), nullable=False, default=""
+    )
     f_exit_code = Column(Integer, nullable=False, default=0)
     f_metrics = Column(Text, nullable=False, default="")
     f_error_message = Column(Text, nullable=False, default="")

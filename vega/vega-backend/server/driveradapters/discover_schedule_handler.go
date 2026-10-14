@@ -302,6 +302,8 @@ func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 	}
 
 	logger.Debug("Handler UpdateDiscoverSchedule Success")
+	c.Set("operation_audit_target_names", []string{current.Name})
+
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
@@ -353,6 +355,8 @@ func (r *restHandler) deleteDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		rest.ReplyError(c, httpErr)
 		return
 	}
+
+	c.Set("operation_audit_target_names", []string{current.Name})
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
@@ -422,6 +426,8 @@ func (r *restHandler) setDiscoverScheduleEnabled(c *gin.Context, visitor hydra.V
 		rest.ReplyError(c, httpErr)
 		return
 	}
+
+	c.Set("operation_audit_target_names", []string{current.Name})
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)

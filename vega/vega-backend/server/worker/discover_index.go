@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -180,10 +182,6 @@ func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context,
 		Enabled:          true,
 		Status:           interfaces.ResourceStatusActive,
 		SourceIdentifier: index.Name,
-		SourceMetadata: map[string]any{
-			"original_name":        index.Name,
-			"original_description": index.Description,
-		},
 	}
 	resource, err := dtw.rs.Create(ctx, req)
 	if err != nil {
@@ -302,26 +300,22 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 
 		resource.Description = resolveSourceDescription(resource.Description, sourceOriginalDescription(resource.SourceMetadata), idx.Description)
 
-		sourceMetadata := resource.SourceMetadata
-		if resource.SourceMetadata == nil {
-			sourceMetadata = make(map[string]any)
+		// SourceMetadata stores the complete source IndexMeta without additional fields.
+		data, err := sonic.Marshal(idx)
+		if err != nil {
+			return fmt.Errorf("serialize index metadata: %w", err)
 		}
-		sourceMetadata["original_name"] = idx.Name
-		sourceMetadata["original_description"] = idx.Description
-		observedAt := time.Now().UnixMilli()
-		properties := idx.Properties
-		if properties == nil {
-			properties = map[string]any{}
+		sourceMetadata := make(map[string]any)
+		if err := common.UnmarshalPreciseJSON(data, &sourceMetadata); err != nil {
+			return fmt.Errorf("decode index metadata: %w", err)
 		}
+		resource.SourceMetadata = sourceMetadata
 
+		observedAt := time.Now().UnixMilli()
 		if exactCount != nil {
 			resource.RowCount = exactCount
 			resource.RowCountTime = &observedAt
 		}
-		sourceMetadata["properties"] = properties
-		sourceMetadata["mapping"] = idx.Mapping
-		sourceMetadata["mapping_meta"] = idx.MappingMeta
-		resource.SourceMetadata = sourceMetadata
 
 		discoverStatus := resource.LastDiscoverStatus
 		if item.markAfterEnrich {

@@ -8,6 +8,7 @@ package logsvc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -69,13 +70,14 @@ func (source *filteredCountSource) Search(_ context.Context, query observability
 		return observabilityvo.SourcePage{CountAccuracy: "partial"}, nil
 	}
 	position := source.lastPosition
-	return observabilityvo.SourcePage{Count: 1, CountAccuracy: "partial", LastPosition: &position}, nil
+	return observabilityvo.SourcePage{Count: 1, CountAccuracy: "partial", LastPosition: &position, NextCursor: "more"}, nil
 }
 
 func (source partialCountSource) Search(context.Context, observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	return observabilityvo.SourcePage{
 		Records:       validTestRecords([]observabilityvo.LogRecord{source.record}),
 		Count:         201,
+		NextCursor:    "more",
 		CountAccuracy: "partial",
 	}, nil
 }
@@ -260,8 +262,12 @@ func (source *filteredPageSource) Search(
 		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
 	}
 	records := validTestRecords(source.pages[page])
+	nextCursor := ""
+	if page+1 < len(source.pages) {
+		nextCursor = "more"
+	}
 	return observabilityvo.SourcePage{
-		Records: records, Count: int64(len(records) + boolInt(page+1 < len(source.pages))), CountAccuracy: "exact",
+		Records: records, NextCursor: nextCursor, Count: int64(len(records) + boolInt(page+1 < len(source.pages))), CountAccuracy: "exact",
 	}, nil
 }
 
@@ -800,7 +806,7 @@ func TestOperationAuditListDoesNotQueryOTLPRuntimeSource(t *testing.T) {
 	}
 
 	service := NewWithOptions([]Source{runtimeSource, auditSource}, Options{OperationAuditOnly: true})
-	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
+	result, err := service.List(context.Background(), activeProfile("audit-a", "audit"), observabilityvo.LogQuery{})
 	if err != nil {
 		t.Fatalf("list operation audit: %v", err)
 	}
@@ -1392,5 +1398,75 @@ func BenchmarkListEightSources(b *testing.B) {
 		if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{Limit: 200}); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// Regression for #2118: operation-audit mode must preserve the role matrix,
+// including associated reads and records owned by the caller.
+func TestOperationAuditRoleMatrixListAndDetail(t *testing.T) {
+	for _, mode := range []bool{false, true} {
+		for _, role := range []string{"normal_user", "network_builder", "admin", "security", "audit", "super_admin"} {
+			for _, category := range []string{observabilityvo.CategoryAccessUser, observabilityvo.CategoryAuditAdmin, observabilityvo.CategoryAuditSecurity} {
+				for _, owner := range []string{"caller", "other"} {
+					for _, associated := range []bool{false, true} {
+						t.Run(fmt.Sprintf("mode=%v/%s/%s/%s/associated=%v", mode, role, category, owner, associated), func(t *testing.T) {
+							record := validTestRecord(observabilityvo.LogRecord{LogID: "audit-record", Category: category, EventTimestamp: time.Now().UTC(), ActorID: owner, EffectiveSubjectID: owner, ApplicationID: "app", KnowledgeNetworkIDs: []string{"kn"}})
+							if associated {
+								record.RequestID = "request"
+							}
+							source := fakeDetailSource{fakeSource: fakeSource{id: "audit-ledger", records: []observabilityvo.LogRecord{record}}, record: record}
+							service := NewWithOptions([]Source{source}, Options{OperationAuditOnly: mode})
+							profile := activeProfile("caller", role)
+							profile.ApplicationPrincipalID = "caller-app"
+							profile.ManagedKnowledgeNetworkIDs = []string{"kn"}
+							allowed := role == "audit" || role == "super_admin" || (role == "security" && category != observabilityvo.CategoryAuditAdmin)
+							query := observabilityvo.LogQuery{Categories: []string{category}}
+							if associated {
+								query.RequestID = "request"
+							}
+							list, err := service.List(context.Background(), profile, query)
+							if allowed {
+								if err != nil || len(list.Records) != 1 {
+									t.Fatalf("authorized list: result=%+v err=%v", list, err)
+								}
+							} else if !errors.Is(err, ErrAccessDenied) {
+								t.Fatalf("unauthorized list: result=%+v err=%v", list, err)
+							}
+							_, err = service.Get(context.Background(), profile, record.LogID)
+							if allowed && err != nil {
+								t.Fatalf("authorized detail: %v", err)
+							}
+							if !allowed && !errors.Is(err, ErrNotDisclosed) {
+								t.Fatalf("unauthorized detail: %v", err)
+							}
+						})
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestOperationAuditMissingBusinessProjectionDoesNotReportOutage(t *testing.T) {
+	for _, role := range []string{"admin", "network_builder", "normal_user", "audit"} {
+		t.Run(role, func(t *testing.T) {
+			service := NewWithOptions([]Source{&categorizedSource{id: "otel-runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness}}}, Options{OperationAuditOnly: true})
+			query := observabilityvo.LogQuery{}
+			expected := ErrAccessDenied
+			if role == "normal_user" {
+				query.RequestID = "request"
+			}
+			// An authorized audit caller with no audit source still sees an outage.
+			if role == "audit" {
+				expected = ErrSourcesUnavailable
+			}
+			profile := activeProfile("caller", role)
+			if _, err := service.List(context.Background(), profile, query); !errors.Is(err, expected) {
+				t.Fatalf("list: got %v want %v", err, expected)
+			}
+			if _, err := service.Facets(context.Background(), profile, query, "service_name"); !errors.Is(err, expected) {
+				t.Fatalf("facets: got %v want %v", err, expected)
+			}
+		})
 	}
 }

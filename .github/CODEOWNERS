@@ -37,9 +37,6 @@ infra/sandbox/**                           @guodawn
 # ── BKN Trace (Observability) ────────────────────────────────
 bkn-trace/**                               @guodawn
 
-# ── Deployment ───────────────────────────────────────────────
-deploy/**                                  @sh00tg0a1 @tangkelu
-
 # ── Docs ───────────────────────────────────────────
 help/**                                    @FennyXCHF @sh00tg0a1 @xforce-io
 

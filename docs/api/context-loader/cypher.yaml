@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.3
 info:
-  title: Cypher 查询
+  title: 上下文加载 · Cypher 查询 API
   description: |
     用只读 Cypher 查知识网络：标签是对象类，关系类型是关系类，属性是逻辑属性名。
     本服务不自带查询语言实现——它把请求带着调用方身份转给 bkn-backend，由那边按

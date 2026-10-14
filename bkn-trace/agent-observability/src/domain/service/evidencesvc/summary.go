@@ -1719,7 +1719,7 @@ func (s *Service) ListTraceExecutions(ctx context.Context, options evidencevo.Su
 
 func (s *Service) listTraceIdentityPage(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.TraceSummaryPage, bool, error) {
 	pageStore, ok := s.sessionStore.(isessionstore.SummaryPageStore)
-	if !ok || s.projectionSource == nil || !canUseSummaryIdentityPage(options) {
+	if !ok || s.projectionSource == nil || !canUseTraceSummaryIdentityPage(options) {
 		return evidencevo.TraceSummaryPage{}, false, nil
 	}
 	cursor, hasCursor, err := decodeSummaryCursor(options.Cursor)
@@ -1727,6 +1727,7 @@ func (s *Service) listTraceIdentityPage(ctx context.Context, options evidencevo.
 		return evidencevo.TraceSummaryPage{}, true, err
 	}
 	query := summaryIdentityQuery(options)
+	query.Service = options.Service
 	if hasCursor {
 		query.Offset = 0
 		query.AfterStartedAt, query.AfterID = cursor.StartedAt, cursor.ID
@@ -1966,6 +1967,14 @@ func firstCanonicalInteraction(interactions []sessionvo.Interaction) (sessionvo.
 		}
 	}
 	return first, found
+}
+
+// Service is authoritative in Core CallFacts. Only the Trace identity query
+// supports this filter; conversation paging and other content filters retain
+// their existing compatibility path.
+func canUseTraceSummaryIdentityPage(options evidencevo.SummaryQueryOptions) bool {
+	options.Service = ""
+	return canUseSummaryIdentityPage(options)
 }
 
 func canUseSummaryIdentityPage(options evidencevo.SummaryQueryOptions) bool {

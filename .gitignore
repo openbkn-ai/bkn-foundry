@@ -9,12 +9,6 @@ eggs/
 .eggs/
 lib/
 lib64/
-# Track deploy shell helpers (global `lib/` above would otherwise ignore this tree)
-!deploy/scripts/lib/
-!deploy/scripts/lib/**
-!deploy/dev/lib/
-!deploy/dev/lib/**
-deploy/scripts/lib/__pycache__/
 parts/
 sdist/
 var/
@@ -58,8 +52,9 @@ reports/
 # Local Cursor / agent superpowers docs (not versioned in this repo)
 /docs/superpowers/
 
-# macOS kind dev: local config contains generated passwords (copy from mac-config.yaml.example)
-deploy/dev/conf/mac-config.yaml
+
+# Installer-owned files from existing local checkouts (including generated secrets and backups)
+/deploy/
 
 # Database
 *.db

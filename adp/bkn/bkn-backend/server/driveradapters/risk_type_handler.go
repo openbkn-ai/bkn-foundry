@@ -281,8 +281,9 @@ func (r *restHandler) DeleteRiskTypes(c *gin.Context) {
 	}
 
 	rtIDs := common.StringToStringSlice(rtIDsStr)
+	auditNames := []string{}
 	for _, rtID := range rtIDs {
-		_, exist, e := r.rtsRisk.CheckRiskTypeExistByID(ctx, knID, branch, rtID)
+		name, exist, e := r.rtsRisk.CheckRiskTypeExistByID(ctx, knID, branch, rtID)
 		if e != nil {
 			httpErr := e.(*rest.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -295,6 +296,7 @@ func (r *restHandler) DeleteRiskTypes(c *gin.Context) {
 			rest.ReplyError(c, httpErr)
 			return
 		}
+		auditNames = append(auditNames, name)
 	}
 
 	if err = r.rtsRisk.DeleteRiskTypesByIDs(ctx, nil, knID, branch, rtIDs); err != nil {
@@ -304,6 +306,7 @@ func (r *restHandler) DeleteRiskTypes(c *gin.Context) {
 		return
 	}
 
+	c.Set("operation_audit_target_names", auditNames)
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }

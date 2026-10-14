@@ -4,7 +4,7 @@
 
 openapi: 3.0.3
 info:
-  title: BKN Safe Managed Knowledge Network Proxy Account API
+  title: 身份与授权 · 受管代理账户 API
   version: 0.1.5
   description: |
     Creates and manages a one-to-one proxy app identity for a knowledge network on behalf of

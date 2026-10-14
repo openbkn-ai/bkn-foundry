@@ -948,40 +948,63 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 		assert.JSONEq(t, `{"resource_updated":false,"skipped_fields":["supplier_id: display_name equals technical field name"],"field_details":[{"name":"supplier_id","status":"unchanged","reasons":["display_name equals technical field name"]}]}`, got.DetailJSON)
 	})
 
-	t.Run("fills resource name when it still equals the source identifier", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
+	for _, tc := range []struct {
+		name, current string
+		metadata      map[string]any
+		wantUpdate    bool
+	}{
+		{"source identifier default", "public.v_product_review_summary", nil, true},
+		{"current raw table name", "v_product_review_summary", map[string]any{"name": "v_product_review_summary", "schema": "public"}, true},
+		{"legacy source name", "public.v_product_review_summary", map[string]any{"original_name": "public.v_product_review_summary"}, true},
+		{"legacy name after metadata refresh", "public.v_product_review_summary", map[string]any{"name": "v_product_review_summary", "schema": "public"}, true},
+		{"preserves business name", "Existing Business Name", map[string]any{"name": "v_product_review_summary", "schema": "public"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			t.Cleanup(ctrl.Finish)
 
-		resourceService := vmock.NewMockResourceService(ctrl)
-		worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
-		task := &interfaces.SemanticUnderstandingTask{
-			Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
-			ResourceID:          "resource-1",
-			ApplyMode:           interfaces.SemanticUnderstandingApplyModeFillEmpty,
-			ConfidenceThreshold: 0.75,
-		}
-		resource := &interfaces.Resource{
-			ID:               "resource-1",
-			Name:             "public.v_product_review_summary",
-			SourceIdentifier: "public.v_product_review_summary",
-		}
-		resourceService.EXPECT().
-			GetByID(gomock.Any(), "resource-1").
-			Return(resource, nil)
-		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), gomock.Not(gomock.Nil()), resource, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
-				assert.Equal(t, "商品评价汇总视图", got.Name)
-				return nil
-			})
+			resourceService := vmock.NewMockResourceService(ctrl)
+			worker := &SemanticUnderstandingTaskWorker{rs: resourceService}
+			task := &interfaces.SemanticUnderstandingTask{
+				Scope:               interfaces.SemanticUnderstandingTaskScopeResource,
+				ResourceID:          "resource-1",
+				ApplyMode:           interfaces.SemanticUnderstandingApplyModeFillEmpty,
+				ConfidenceThreshold: 0.75,
+			}
+			resource := &interfaces.Resource{
+				ID:               "resource-1",
+				Name:             tc.current,
+				Category:         interfaces.ResourceCategoryTable,
+				SourceIdentifier: `"public"."v_product_review_summary"`,
+				SourceMetadata:   tc.metadata,
+			}
+			resourceService.EXPECT().
+				GetByID(gomock.Any(), "resource-1").
+				Return(resource, nil)
+			if tc.metadata == nil {
+				resource.SourceIdentifier = tc.current
+			}
+			if tc.wantUpdate {
+				resourceService.EXPECT().
+					InternalUpdateSemanticMetadata(gomock.Any(), gomock.Not(gomock.Nil()), resource, gomock.Any()).
+					DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+						assert.Equal(t, "商品评价汇总视图", got.Name)
+						return nil
+					})
+			}
 
-		got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9,"resource":{"display_name":"商品评价汇总视图","confidence":0.9}}`, 0.9)
+			got, err := worker.applyResult(context.Background(), &sql.Tx{}, task, `{"confidence":0.9,"resource":{"display_name":"商品评价汇总视图","confidence":0.9}}`, 0.9)
 
-		require.NoError(t, err)
-		assert.True(t, got.Applied)
-		assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name"]}`, got.DetailJSON)
-	})
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantUpdate, got.Applied)
+			if tc.wantUpdate {
+				assert.JSONEq(t, `{"resource_updated":true,"updated_resource":["name"]}`, got.DetailJSON)
+			} else {
+				assert.Equal(t, tc.current, resource.Name)
+			}
+		})
 
+	}
 	t.Run("fills descriptions that still equal their source descriptions", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -998,7 +1021,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			ID:          "resource-1",
 			Description: "source resource description",
 			SourceMetadata: map[string]any{
-				"original_description": "source resource description",
+				"description": "source resource description",
 			},
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "product_id", Description: "source field description", OriginalDescription: "source field description", Type: interfaces.DataType_String},

@@ -8,6 +8,7 @@ package postgresql
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"regexp"
 	"testing"
@@ -414,72 +415,212 @@ func TestPostgresqlConnectorMetadataQueryCompatibility(t *testing.T) {
 }
 
 func TestPostgresqlConnectorCountRows(t *testing.T) {
-	for _, scenario := range []string{"quoted name", "empty", "count", "view", "empty view", "view error", "materialized view", "foreign table", "source error", "negative count", "nil metadata", "missing name", "missing schema", "outside scope"} {
-		t.Run(scenario, func(t *testing.T) {
+	for _, tc := range []struct {
+		name, identifier string
+		count            int64
+		sourceErr        error
+		wantErr          string
+	}{
+		{name: "quoted reference preserves component dots", identifier: "\"sales\".\"orders.part\"", count: 42},
+		{name: "escaped quote", identifier: "\"sales\".\"ord\"\"ers\"", count: 3},
+		{name: "empty result", identifier: "\"sales\".\"orders.part\""},
+		{name: "empty identifier", wantErr: "empty source identifier"},
+		{name: "source error", identifier: "\"sales\".\"orders.part\"", sourceErr: errors.New("source failed"), wantErr: "source failed"},
+		{name: "cancelled query", identifier: "\"sales\".\"orders.part\"", sourceErr: context.Canceled, wantErr: "context canceled"},
+		{name: "negative count", identifier: "\"sales\".\"orders.part\"", count: -1, wantErr: "invalid negative row count"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer func() { _ = db.Close() }()
-			connector := &PostgresqlConnector{db: db, connected: true, config: &postgresqlConfig{Database: "appdb", Schemas: []string{"app"}}}
-			table := &interfaces.TableMeta{Schema: "app", Name: "orders"}
-			switch scenario {
-			case "quoted name":
-				table.Name = `ord"ers`
-			case "nil metadata":
-				table = nil
-			case "missing name":
-				table.Name = ""
-			case "missing schema":
-				table.Schema = ""
-			case "outside scope":
-				table.Schema = "other"
-			case "view", "empty view", "view error":
-				table.TableType = interfaces.TableTypeView
-			case "materialized view":
-				table.TableType = interfaces.TableTypeMaterializedView
-			case "foreign table":
-				table.TableType = "foreign_table"
-			}
-			invalid := scenario == "nil metadata" || scenario == "missing name" || scenario == "missing schema"
-			if !invalid && scenario != "outside scope" {
-				query := `SELECT COUNT(*) FROM "app"."orders"`
-				if scenario == "quoted name" {
-					query = `SELECT COUNT(*) FROM "app"."ord""ers"`
-				}
-				expect := mock.ExpectQuery(regexp.QuoteMeta(query))
-				if scenario == "source error" || scenario == "view error" {
-					expect.WillReturnError(errors.New("source failed"))
+			t.Cleanup(func() { _ = db.Close() })
+			connector := &PostgresqlConnector{db: db, connected: true}
+			if tc.identifier != "" {
+				expect := mock.ExpectQuery("^" + regexp.QuoteMeta("SELECT COUNT(*) FROM "+tc.identifier) + "$")
+				if tc.sourceErr != nil {
+					expect.WillReturnError(tc.sourceErr)
 				} else {
-					count := int64(42)
-					if scenario == "empty" || scenario == "empty view" {
-						count = 0
-					}
-					if scenario == "negative count" {
-						count = -1
-					}
-					expect.WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(count))
+					expect.WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tc.count))
 				}
 			}
-			count, err := connector.CountRows(context.Background(), table)
-			switch scenario {
-			case "nil metadata", "missing name", "missing schema":
-				require.ErrorContains(t, err, "invalid table metadata")
-			case "outside scope":
-				require.ErrorContains(t, err, "outside the connector scope")
-			case "negative count":
-				require.ErrorContains(t, err, "invalid negative row count")
-			case "source error", "view error":
-				require.ErrorContains(t, err, "source failed")
-			case "empty", "empty view":
-				require.NoError(t, err)
+			count, err := connector.CountRows(context.Background(), tc.identifier)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
 				assert.Zero(t, count)
-			default:
+			} else {
 				require.NoError(t, err)
-				assert.Equal(t, int64(42), count)
-			}
-			if err != nil {
-				assert.Zero(t, count)
+				assert.Equal(t, tc.count, count)
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+func TestPostgresqlConnectorBuildSourceIdentifier(t *testing.T) {
+	for _, tc := range []struct{ name, namespace, table, want string }{
+		{"ordinary", "sales", "orders", "\"sales\".\"orders\""},
+		{"dot in component", "sales.eu", "orders.part", "\"sales.eu\".\"orders.part\""},
+		{"spaces", " sales ", " orders ", "\" sales \".\" orders \""},
+		{"reserved word", "schema", "select", "\"schema\".\"select\""},
+		{"case", "Sales", "Orders", "\"Sales\".\"Orders\""},
+		{"quote", "sch\"ema", "ord\"ers", "\"sch\"\"ema\".\"ord\"\"ers\""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			meta := &interfaces.TableMeta{Schema: tc.namespace, Name: tc.table}
+			reference := (&PostgresqlConnector{}).BuildSourceIdentifier(meta)
+			assert.Equal(t, tc.want, reference)
+			assert.Equal(t, tc.namespace, meta.Schema)
+			assert.Equal(t, tc.table, meta.Name)
+		})
+	}
+
+	t.Run("does not mutate metadata or connect", func(t *testing.T) {
+		connector := &PostgresqlConnector{}
+		meta := &interfaces.TableMeta{Schema: "sales", Name: "order.items"}
+		before := *meta
+		assert.Equal(t, "\"sales\".\"order.items\"", connector.BuildSourceIdentifier(meta))
+		assert.Equal(t, connector.BuildSourceIdentifier(meta), connector.BuildSourceIdentifier(meta))
+		assert.False(t, connector.connected)
+		assert.Equal(t, before, *meta)
+	})
+}
+
+func TestPostgresqlConnectorBuildOriginalName(t *testing.T) {
+	connector := &PostgresqlConnector{}
+	for _, tc := range []struct {
+		name string
+		meta *interfaces.TableMeta
+		want string
+	}{
+		{"schema qualified", &interfaces.TableMeta{Database: "app", Schema: "sales", Name: "orders"}, "sales.orders"},
+		{"raw components", &interfaces.TableMeta{Schema: "sales space", Name: "order.items"}, "sales space.order.items"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := connector.BuildOriginalName(tc.meta)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestPostgresqlConnectorDecodeTableMeta(t *testing.T) {
+	for _, tc := range []struct {
+		name, original       string
+		meta                 *interfaces.TableMeta
+		wantName, wantSchema string
+		invalid              bool
+	}{
+		{"qualified legacy name", "sales.orders", &interfaces.TableMeta{}, "orders", "sales", false},
+		{"resource schema already known", "orders", &interfaces.TableMeta{Schema: "sales"}, "orders", "sales", false},
+		{"current names preserved", "wrong.legacy.extra", &interfaces.TableMeta{Name: "order.items", Schema: "sales.eu", Database: "existing"}, "order.items", "sales.eu", false},
+		{"missing name", "", &interfaces.TableMeta{Schema: "sales"}, "", "", true},
+		{"invalid legacy name", "sales.orders.extra", &interfaces.TableMeta{}, "", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connector := &PostgresqlConnector{config: &postgresqlConfig{Database: "app"}}
+			metadata := map[string]any{"name": tc.meta.Name, "schema": tc.meta.Schema, "database": tc.meta.Database, "original_name": tc.original}
+			meta, err := connector.DecodeTableMeta(metadata)
+			if tc.invalid {
+				require.Error(t, err)
+				assert.Nil(t, meta)
+				assert.False(t, connector.connected)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantName, meta.Name)
+			assert.Equal(t, tc.wantSchema, meta.Schema)
+			if tc.name == "current names preserved" {
+				assert.Equal(t, "existing", meta.Database)
+			} else {
+				assert.Equal(t, "app", meta.Database)
+			}
+			assert.False(t, connector.connected)
+		})
+	}
+	for _, tc := range []struct {
+		name        string
+		metadata    map[string]any
+		description string
+		invalid     bool
+	}{
+		{"legacy description", map[string]any{"name": "orders", "schema": "sales", "original_description": "source comment", "properties": map[string]any{"row_count": int64(9007199254740993)}}, "source comment", false},
+		{"empty current description takes precedence", map[string]any{"name": "orders", "schema": "sales", "description": "", "original_description": "old"}, "", false},
+		{"invalid name type", map[string]any{"name": 7, "schema": "sales"}, "", true},
+		{"missing metadata", nil, "", true},
+		{"unserializable metadata", map[string]any{"name": "orders", "schema": "sales", "properties": map[string]any{"invalid": make(chan int)}}, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connector := &PostgresqlConnector{config: &postgresqlConfig{Database: "app"}}
+			meta, err := connector.DecodeTableMeta(tc.metadata)
+			assert.False(t, connector.connected)
+			if tc.invalid {
+				require.Error(t, err)
+				assert.Nil(t, meta)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.description, meta.Description)
+			assert.NotContains(t, tc.metadata, "database")
+			if tc.name == "legacy description" {
+				assert.Equal(t, json.Number("9007199254740993"), meta.Properties["row_count"])
+			}
+		})
+	}
+
+}
+
+func TestPostgresqlConnectorFetchTableStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		description  any
+		want         string
+		queryFailure bool
+	}{
+		{"removed source comment", nil, "", false},
+		{"empty source comment", "", "", false},
+		{"changed source comment", "new comment", "new comment", false},
+		{"query failure preserves metadata", nil, "old comment", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				mock.ExpectClose()
+				require.NoError(t, db.Close())
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+			connector := &PostgresqlConnector{db: db, connected: true, config: &postgresqlConfig{Database: "app"}}
+			table, err := connector.DecodeTableMeta(map[string]any{"name": "orders", "schema": "sales", "description": "old comment", "properties": map[string]any{"legacy": "obsolete"}})
+			require.NoError(t, err)
+			query := mock.ExpectQuery("SELECT c.relkind::text").WithArgs("sales", "orders")
+			if tc.queryFailure {
+				query.WillReturnError(errors.New("query failed"))
+			} else {
+				query.WillReturnRows(sqlmock.NewRows([]string{"relkind", "description", "est_rows", "total_bytes", "index_bytes"}).AddRow("r", tc.description, 1, 2, 3))
+			}
+			previous := table.Properties
+			err = connector.fetchTableStatus(context.Background(), table)
+			if tc.queryFailure {
+				require.ErrorContains(t, err, "query failed")
+				assert.Equal(t, "old comment", table.Description)
+				assert.Equal(t, map[string]any{"legacy": "obsolete"}, table.Properties)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, table.Description)
+			assert.Equal(t, map[string]any{"estimated_row_count": int64(1), "data_length": int64(2), "index_length": int64(3)}, table.Properties)
+			assert.Equal(t, map[string]any{"legacy": "obsolete"}, previous)
+			assert.Equal(t, interfaces.TableTypeTable, table.TableType)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
+func TestPostgresqlConnectorGetTableMetaRejectsOutsideScope(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	connector := &PostgresqlConnector{config: &postgresqlConfig{Schemas: []string{"app"}}, connected: true, db: db}
+	table := &interfaces.TableMeta{Database: "other", Schema: "other", Name: "orders"}
+	err = connector.GetTableMeta(context.Background(), table)
+	require.ErrorContains(t, err, "outside")
+	require.NoError(t, mock.ExpectationsWereMet())
 }

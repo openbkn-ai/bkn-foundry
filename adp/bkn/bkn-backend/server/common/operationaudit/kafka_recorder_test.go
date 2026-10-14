@@ -29,7 +29,7 @@ func TestKafkaRecorderPublishesOneBoundedRecord(t *testing.T) {
 	entry := Entry{EventID: "evt-1", EventTime: time.Now().UTC(), KnowledgeNetworkID: "kn-1",
 		ActorID: "user-a", ActorName: "User A", ActorType: "user", AuthMethod: "oauth",
 		RequestID: "req-1", SourceChannel: "api", Method: "PUT", HTTPStatus: 200, Action: "update",
-		TargetType: "knowledge_network", TargetID: "kn-1", Outcome: "success",
+		TargetType: "knowledge_network", TargetID: "kn-1", TargetName: "供应链", Outcome: "success",
 		ChangeSummary: map[string]any{"changed_fields": []string{"name"}},
 	}
 	if err := recorder.Record(context.Background(), entry); err != nil {
@@ -49,7 +49,7 @@ func TestKafkaRecorderReportsQueueDropWithoutBlockingBusiness(t *testing.T) {
 	entry := Entry{EventID: "evt-1", EventTime: time.Now().UTC(), KnowledgeNetworkID: "kn-1",
 		ActorID: "user-a", ActorName: "User A", ActorType: "user", AuthMethod: "oauth",
 		RequestID: "req-1", SourceChannel: "api", Method: "PUT", HTTPStatus: 200, Action: "update",
-		TargetType: "knowledge_network", TargetID: "kn-1", Outcome: "success",
+		TargetType: "knowledge_network", TargetID: "kn-1", TargetName: "供应链", Outcome: "success",
 		ChangeSummary: map[string]any{"changed_fields": []string{}},
 	}
 	if err := recorder.Record(context.Background(), entry); err == nil {

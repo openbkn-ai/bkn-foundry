@@ -245,6 +245,16 @@ def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, mon
     client = TestClient(app)
     try:
         fresh = client.post("/api/bkn-agent/v1/import", json={"package": package}, headers=headers)
+        customized_spec = {**package["items"][0]["spec"], "model": "custom-model"}
+        customized_spec["limits"] = {**customized_spec["limits"], "timeout_s": 180}
+        customized = client.put(
+            "/api/bkn-agent/v1/agents/business_provenance_optimizer",
+            json=customized_spec, headers=headers,
+        )
+        assert customized.status_code == 200
+        assert customized.json()["model"] == "custom-model"
+        assert customized.json()["limits"]["timeout_s"] == 180
+        # Existing upsert semantics overwrite manual settings, not just timeout.
         repeat = client.post("/api/bkn-agent/v1/import", json={"package": package}, headers=headers)
         foreign = client.post(
             "/api/bkn-agent/v1/import",
@@ -268,6 +278,8 @@ def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, mon
         agent, prompt = asyncio.run(verify())
         assert agent.f_create_user == OWNER_ID
         assert agent.f_model == ""
+        assert agent.f_limits == package["items"][0]["spec"]["limits"]
+        assert agent.f_limits["timeout_s"] == 600
         assert agent.f_status == "published"
         assert agent.f_tools == package["items"][0]["spec"]["tools"]
         assert prompt.f_current_version == 1

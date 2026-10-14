@@ -1,4 +1,5 @@
 """Bounded model-management audit facts; inference and model tests stay Trace-only."""
+from app.commons.i18n.audit import _ACTION_NAMES, _TARGET_NAMES, SEPARATOR, BATCH, TRUNCATED
 import json
 import hashlib
 import logging
@@ -57,7 +58,7 @@ def _rule(request):
     return _RULES.get((request.method, path))
 
 def build_kafka_record(entry, environment):
-    """Map a management attempt to Audit v1 without inventing changed state."""
+    """Map a committed management fact to Audit v1."""
     if environment not in {"development", "test", "staging", "production"}:
         raise ValueError("invalid Audit environment")
     if entry["target_type"] not in {"llm_model", "small_model", "model_quota", "user_model_quota"}:
@@ -71,6 +72,11 @@ def build_kafka_record(entry, environment):
     request_id = str(entry["request_id"]).strip()
     if not actor_id or not target_id or not request_id:
         raise ValueError("missing Audit identity or target")
+    for key, limit in (("actor_name", 256), ("target_name", 512)):
+        name = str(entry.get(key) or "").strip()
+        reference = actor_id if key == "actor_name" else target_id
+        if not name or name == reference or len(name) > limit:
+            raise ValueError("missing or invalid readable Audit snapshot")
     occurred_at = entry["event_time"].astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
     actor = {
         "id": actor_id,
@@ -102,7 +108,7 @@ def build_kafka_record(entry, environment):
         },
         "request_context": {"source_channel": "api", "transport": "http", "method": entry["method"]},
         "correlation": {"request_id": _audit_request_id(request_id)},
-        "summary": f"model_manager.operation.observed {entry['action']} {entry['target_type']}",
+        "summary": _ACTION_NAMES[entry["action"]] + _TARGET_NAMES[entry["target_type"]] + "“" + entry["target_name"] + "”",
         "facts": {"action": entry["action"], "decision": "denied" if entry["outcome"] == "denied" else "allowed"},
     }
     if entry["outcome"] != "success":
@@ -117,66 +123,82 @@ def operation_audit_request_id(headers):
         return request_id, False
     return "req_" + secrets.token_hex(16), True
 
-async def _actor_name(actor_id, headers):
-    """Persist the display-name snapshot when the authenticated source can resolve it.
 
-    The identifier remains the authoritative actor key.  A directory lookup failure
-    must not turn a successful management request into a failure, so the stable ID
-    is the explicit fallback rather than a fabricated display name.
-    """
-    explicit = headers.get("x-account-name", "").strip()
-    if explicit:
-        return explicit
+
+def operation_audit_request(request):
+    """Avoid snapshot-only lookups when the publisher is disabled."""
+    return request if _audit_publisher is not None else None
+
+
+def set_operation_audit_target(request, ids, names):
+    """Attach the actual committed IDs and business snapshots at the source."""
+    if request is None:
+        return
     try:
-        return (await get_username_by_ids([actor_id])).get(actor_id, actor_id)
+        ids = [str(value) for value in ids]
+        names = [str(value).strip() for value in names]
+        if not ids or not names or any(not name for name in names):
+            return
+        target_id = ids[0] if len(ids) == 1 else "batch:" + hashlib.sha256(json.dumps(ids).encode()).hexdigest()
+        if len(ids) == 1 and len(names) == 1:
+            target_name = names[0]
+        else:
+            shown = []
+            for name in names:
+                if len(shown) == 5 or len(SEPARATOR.join(shown)) + len(name) > 400:
+                    break
+                shown.append(name)
+            if not shown:
+                return
+            target_name = SEPARATOR.join(shown) + BATCH.format(count=len(ids))
+            if len(shown) < len(names):
+                target_name += TRUNCATED
+        request.state.operation_audit_target = (target_id, target_name)
     except Exception:
-        return actor_id
+        logger.error("operation_audit_snapshot_failed")
+
+
+async def _actor_name(actor_id, headers):
+    """Resolve names from the verified identity, never from client headers."""
+    try:
+        name = (await get_username_by_ids([actor_id])).get(actor_id, "")
+        return name if name and name != actor_id and name != "-" else ""
+    except Exception:
+        return ""
+
 
 async def operation_audit_middleware(request, call_next):
     rule = _rule(request)
-    if not rule:
-        return await call_next(request)
-    body = await request.body()
-
-    async def receive():
-        return {"type": "http.request", "body": body, "more_body": False}
-
-    # The audit middleware consumes the ASGI body before FastAPI parses Body(...).
-    # Replay it so the downstream route can parse the same payload.
-    request._receive = receive
     response = await call_next(request)
-    actor = request.headers.get("x-account-id", "").strip()
-    request_id, generated_request_id = operation_audit_request_id(request.headers)
-    if generated_request_id:
-        response.headers["bkn-request-id"] = request_id
-    # A complete source fact requires the verified actor and request identity.
-    if not actor or not request_id:
+    if not rule:
+        return response
+    # Only a business handler can establish that a management change committed.
+    target = getattr(request.state, "operation_audit_target", None)
+    if target is None:
         return response
     try:
-        payload = json.loads(body.decode() or "{}") if len(body) <= 65536 else {}
-    except (ValueError, UnicodeDecodeError):
-        payload = {}
-    target_id = next((str(payload[key]) for key in ("model_id", "id", "conf_id") if payload.get(key)), "")
-    if not target_id and request.path_params:
-        target_id = next(iter(request.path_params.values()), "")
-    if not target_id:
-        target_id = f"{rule[1]}:{_audit_request_id(request_id)}"
-    target_name = next((str(payload[key]) for key in ("model_name", "name", "display_name") if payload.get(key)), target_id)
-    outcome = "success" if response.status_code < 400 else ("denied" if response.status_code in (401,403) else "failure")
-    now = datetime.now(timezone.utc)
-    entry = {"event_time": now,
-             "actor_id": actor, "actor_name": await _actor_name(actor, request.headers),
-             "actor_type": request.headers.get("x-account-type", "user"), "auth_method": "api_key" if request.headers.get("authorization", "").removeprefix("Bearer ").startswith("bak_") else "oauth",
-             "request_id": request_id, "method": request.method, "action": rule[0], "target_type": rule[1], "target_id": target_id, "target_name": target_name,
-             "outcome": outcome, "http_status": response.status_code,
-             "failure_code": "" if outcome == "success" else f"HTTP_{response.status_code}"}
-    try:
+        actor = request.headers.get("x-account-id", "").strip()
+        actor_name = await _actor_name(actor, request.headers) if actor else ""
+        if not actor_name:
+            logger.error("operation_audit_rejected missing_readable_actor")
+            return response
+        request_id, generated = operation_audit_request_id(request.headers)
+        if generated:
+            response.headers["bkn-request-id"] = request_id
+        outcome = "success" if response.status_code < 400 else "failure"
+        entry = {
+            "event_time": datetime.now(timezone.utc),
+            "actor_id": actor, "actor_name": actor_name,
+            "actor_type": request.headers.get("x-account-type", "user"),
+            "auth_method": "api_key" if request.headers.get("authorization", "").removeprefix("Bearer ").startswith("bak_") else "oauth",
+            "request_id": request_id, "method": request.method,
+            "action": rule[0], "target_type": rule[1], "target_id": target[0], "target_name": target[1],
+            "outcome": outcome, "http_status": response.status_code,
+        }
         if _audit_publisher is None:
             logger.error("operation_audit_not_configured action=%s target_type=%s", rule[0], rule[1])
         else:
-            record = build_kafka_record(entry, _audit_publisher.environment)
-            _audit_publisher.publish(record)
+            _audit_publisher.publish(build_kafka_record(entry, _audit_publisher.environment))
     except Exception as error:
-        logger.error("operation_audit_publish_failed action=%s target_type=%s error_type=%s",
-                     rule[0], rule[1], type(error).__name__)
+        logger.error("operation_audit_publish_failed action=%s target_type=%s error_type=%s", rule[0], rule[1], type(error).__name__)
     return response

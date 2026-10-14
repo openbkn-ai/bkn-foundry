@@ -1,7 +1,7 @@
 ---
 openapi: 3.0.2
 info:
-  title: ontology-query
+  title: 本体查询 · 本体查询 API
   version: 0.2.0
   description: |
     Schema and data-query endpoints resolve trusted dependencies from the published

@@ -1,7 +1,7 @@
 ---
 openapi: 3.1.1
 info:
-  title: Raw Query
+  title: VEGA 引擎 · 原生查询 API
   description: |
     Vega Backend 原生查询端点（`POST /resources/query`）相关 API。
 

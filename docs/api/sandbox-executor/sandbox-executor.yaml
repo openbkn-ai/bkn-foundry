@@ -1,0 +1,415 @@
+openapi: 3.1.0
+info:
+  title: 沙箱执行器 · 执行与依赖同步 API
+  version: 1.0.0
+  description: Cluster-internal executor API. No INTERNAL_API_TOKEN validation is implemented by the REST
+    adapter. POST /execute schedules background work and immediately returns PENDING; final results are
+    reported to the control plane.
+paths:
+  /:
+    get:
+      summary: Root 511
+      description: Root endpoint with API information.
+      operationId: root_511__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  /health:
+    get:
+      tags:
+      - health
+      summary: Health check
+      description: Returns executor health status for readiness probes and load balancers
+      operationId: health_check_532_health_get
+      responses:
+        '200':
+          description: Executor is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Health check failed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail:
+                    type: object
+                    required:
+                    - status
+                    - reason
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                        - unhealthy
+                      reason:
+                        type: string
+  /execute:
+    post:
+      tags:
+      - execution
+      summary: Execute code in sandbox
+      description: Schedules execution in the background and returns an acknowledgement. Final execution
+        results are reported through the control-plane callback.
+      operationId: execute_endpoint_648_execute_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteRequest'
+        required: true
+      responses:
+        '200':
+          description: Execution submitted, not completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - execution_id
+                - status
+                - message
+                properties:
+                  execution_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                    - PENDING
+                  message:
+                    type: string
+                    enum:
+                    - Execution submitted
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: Executor service has not been initialized.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  detail:
+                    type: string
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /internal/session-config/sync:
+    post:
+      tags:
+      - internal
+      summary: Sync session dependency configuration
+      description: Internal endpoint used by control plane to synchronize Python dependencies
+      operationId: sync_session_config_endpoint_710_internal_session_config_sync_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionConfigSyncRequestModel'
+        required: true
+      responses:
+        '200':
+          description: Session config synchronized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionConfigSyncResponseModel'
+        '400':
+          description: Request validation or session dependency synchronization failed. FastAPI request
+            validation uses a detail array; service failures use a detail object containing error_code,
+            description and error_detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: {}
+        '422':
+          description: Request validation or session dependency synchronization failed. FastAPI request
+            validation uses a detail array; service failures use a detail object containing error_code,
+            description and error_detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: {}
+        '500':
+          description: Request validation or session dependency synchronization failed. FastAPI request
+            validation uses a detail array; service failures use a detail object containing error_code,
+            description and error_detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail: {}
+        '503':
+          description: Session config sync service has not been initialized.
+components:
+  schemas:
+    ErrorResponse:
+      properties:
+        error_code:
+          type: string
+          title: Error Code
+        description:
+          type: string
+          title: Description
+        error_detail:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Detail
+        solution:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Solution
+      type: object
+      required:
+      - error_code
+      - description
+      title: ErrorResponse
+      description: Error response model.
+    ExecuteRequest:
+      properties:
+        execution_id:
+          type: string
+          title: Execution Id
+          description: Unique execution identifier
+        session_id:
+          type: string
+          title: Session Id
+          description: Session identifier
+        code:
+          type: string
+          title: Code
+          description: AWS Lambda handler function code
+        language:
+          type: string
+          pattern: ^(python|javascript|shell)$
+          title: Language
+          description: Programming language
+        event:
+          additionalProperties: true
+          type: object
+          title: Event
+          description: Business data passed to handler function
+        timeout:
+          type: integer
+          maximum: 3600.0
+          minimum: 1.0
+          title: Timeout
+          description: Timeout in seconds
+          default: 300
+        env_vars:
+          additionalProperties: true
+          type: object
+          title: Env Vars
+          description: Environment variables
+        working_directory:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Working Directory
+          description: Optional execution directory relative to workspace root
+      type: object
+      required:
+      - execution_id
+      - session_id
+      - code
+      - language
+      title: ExecuteRequest
+      description: Request model for code execution following AWS Lambda handler specification.
+      examples:
+      - code: "def handler(event):\n    name = event.get(\"name\", \"World\")\n    return {\"message\"\
+          : f\"Hello, {name}!\"}"
+        env_vars: {}
+        event:
+          name: World
+        execution_id: exec_20240115_test0001
+        language: python
+        session_id: sess_test_001
+        timeout: 10
+        working_directory: src
+      - code: "def handler(event):\n    name = event.get(\"name\", \"World\")\n    age = event.get(\"\
+          age\", 0)\n    return {\"message\": f\"Hello, {name}!\", \"age_doubled\": age * 2}"
+        env_vars: {}
+        event:
+          age: 25
+          name: Alice
+        execution_id: exec_20240115_abc12345
+        language: python
+        session_id: sess_abc123def4567890
+        timeout: 30
+        working_directory: scripts
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          default: healthy
+        version:
+          type: string
+          title: Version
+          default: 1.0.0
+        uptime_seconds:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Uptime Seconds
+        active_executions:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Active Executions
+      type: object
+      title: HealthResponse
+      description: Health check response.
+    InstalledDependencyModel:
+      properties:
+        name:
+          type: string
+          title: Name
+        version:
+          type: string
+          title: Version
+        install_location:
+          type: string
+          title: Install Location
+        install_time:
+          type: string
+          title: Install Time
+        is_from_template:
+          type: boolean
+          title: Is From Template
+          default: false
+      type: object
+      required:
+      - name
+      - version
+      - install_location
+      - install_time
+      title: InstalledDependencyModel
+      description: Installed dependency response model.
+    SessionConfigSyncRequestModel:
+      properties:
+        session_id:
+          type: string
+          title: Session Id
+          description: Session identifier
+        language_runtime:
+          type: string
+          title: Language Runtime
+          description: Language runtime, e.g. python3.11
+        python_package_index_url:
+          type: string
+          title: Python Package Index Url
+          description: Python package index URL
+        dependencies:
+          items:
+            type: string
+          type: array
+          title: Dependencies
+          description: Final pip spec list
+        sync_mode:
+          type: string
+          pattern: ^(replace|merge)$
+          title: Sync Mode
+          description: replace or merge
+      type: object
+      required:
+      - session_id
+      - language_runtime
+      - python_package_index_url
+      - sync_mode
+      title: SessionConfigSyncRequestModel
+      description: Internal request model for syncing session dependency configuration.
+    SessionConfigSyncResponseModel:
+      properties:
+        status:
+          type: string
+          title: Status
+        installed_dependencies:
+          items:
+            $ref: '#/components/schemas/InstalledDependencyModel'
+          type: array
+          title: Installed Dependencies
+        error:
+          type: string
+          title: Error
+          default: ''
+        started_at:
+          type: string
+          title: Started At
+        completed_at:
+          type: string
+          title: Completed At
+      type: object
+      required:
+      - status
+      - started_at
+      - completed_at
+      title: SessionConfigSyncResponseModel
+      description: Internal response model for session dependency sync.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+servers:
+- url: http://sandbox-executor:8080

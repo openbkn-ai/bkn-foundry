@@ -1,8 +1,6 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 package capability_binding
 
@@ -216,6 +214,10 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_CapabilityBinding_InternalError_CreateBindingsFailed).WithErrorDetails(err.Error())
 		}
+	}
+
+	for _, binding := range toCreate {
+		binding.CreatedByAttach = true
 	}
 
 	span.SetStatus(codes.Ok, "")

@@ -7,6 +7,7 @@ package driveradapters
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,8 +19,11 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -75,6 +79,7 @@ func TestOperationAuditRejectsUnresolvedActorName(t *testing.T) {
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+		c.Set(operationAuditTargetIDKey, "actual-catalog-id")
 		c.Status(http.StatusCreated)
 	})
 	response := httptest.NewRecorder()
@@ -106,6 +111,7 @@ func TestOperationAuditRequestIDFailureDoesNotChangeBusinessResponse(t *testing.
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+		c.Set(operationAuditTargetIDKey, "actual-catalog-id")
 		c.Status(http.StatusCreated)
 	})
 
@@ -126,6 +132,7 @@ func TestOperationAuditRecordsBoundedManagementFact(t *testing.T) {
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+		c.Set(operationAuditTargetIDKey, "actual-catalog-id")
 		c.Status(http.StatusCreated)
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/catalogs", strings.NewReader(`{"name":"供应链数据源","connector_config":{"password":"secret"}}`))
@@ -154,6 +161,7 @@ func TestOperationAuditReusedClientRequestIDCreatesDistinctEvents(t *testing.T) 
 	engine.Use(handler.OperationAudit())
 	engine.POST("/api/vega-backend/v1/catalogs", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+		c.Set(operationAuditTargetIDKey, "actual-catalog-id")
 		c.Status(http.StatusCreated)
 	})
 	for range 2 {
@@ -206,6 +214,7 @@ func TestOperationAuditNormalizesOversizedRequestID(t *testing.T) {
 	engine.Use(handler.TraceContextMiddleware(), handler.OperationAudit())
 	engine.PUT("/api/vega-backend/v1/catalogs/:id", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+		c.Set("operation_audit_target_names", []string{"采购目录"})
 		c.Status(http.StatusNoContent)
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/vega-backend/v1/catalogs/catalog-1", nil)
@@ -225,9 +234,9 @@ func TestOperationAuditPreservesValidRequestIDRegardlessOfContent(t *testing.T) 
 	assert.Equal(t, requestID, alias)
 	assert.Equal(t, alias, operationAuditCorrelationID(requestID))
 	entry := operationaudit.Entry{
-		EventID: uuid.NewString(), EventTime: time.Now().UTC(), ActorID: "user-1",
+		EventID: uuid.NewString(), EventTime: time.Now().UTC(), ActorID: "user-1", ActorName: "Alice",
 		RequestID: alias, SourceChannel: "api", Method: "PUT", HTTPStatus: 204,
-		Action: "update", TargetType: "catalog", TargetID: "catalog-1", TargetName: "catalog-1", Outcome: "success",
+		Action: "update", TargetType: "catalog", TargetID: "catalog-1", TargetName: "采购目录", Outcome: "success",
 	}
 	_, err := operationaudit.BuildKafkaAuditRecord(entry, "test")
 	assert.NoError(t, err)
@@ -241,6 +250,7 @@ func TestOperationAuditRecordsInternalManagementActor(t *testing.T) {
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/vega-backend/in/v1/catalogs/:id", func(c *gin.Context) {
+		c.Set("operation_audit_target_names", []string{"采购目录"})
 		c.Status(http.StatusNoContent)
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", nil)
@@ -260,6 +270,7 @@ func TestOperationAuditTargetUsesBoundedBatchIdentity(t *testing.T) {
 	defer restoreGinMode()
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
 	context.Params = gin.Params{{Key: "ids", Value: strings.Repeat("a", 180) + "," + strings.Repeat("b", 180)}}
+	context.Set("operation_audit_target_names", []string{"采购", "库存"})
 	id, name := operationAuditTarget(context, "index_task", nil, "req-a")
 	assert.LessOrEqual(t, len(id), 256)
 	assert.Contains(t, id, "batch:")
@@ -284,7 +295,7 @@ func TestOperationAuditTargetPreservesValidInputRegardlessOfContent(t *testing.T
 	assert.Equal(t, "bkn_abcdefghijklm", id)
 	assert.Equal(t, "Bearer abcdefghi", name)
 	entry := operationaudit.Entry{
-		EventID: uuid.NewString(), EventTime: time.Now().UTC(), ActorID: "user-1",
+		EventID: uuid.NewString(), EventTime: time.Now().UTC(), ActorID: "user-1", ActorName: "Alice",
 		RequestID: "req-a", SourceChannel: "api", Method: "PUT", HTTPStatus: 204,
 		Action: "update", TargetType: "catalog", TargetID: id, TargetName: name, Outcome: "success",
 	}
@@ -312,6 +323,7 @@ func TestOperationAuditDoesNotFetchDisplayNameDuringBusinessRequest(t *testing.T
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/vega-backend/v1/catalogs/:id", func(c *gin.Context) {
 		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+		c.Set("operation_audit_target_names", []string{"采购目录"})
 		c.Status(http.StatusNoContent)
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/vega-backend/v1/catalogs/catalog-1", nil)
@@ -321,4 +333,271 @@ func TestOperationAuditDoesNotFetchDisplayNameDuringBusinessRequest(t *testing.T
 	require.Equal(t, http.StatusNoContent, response.Code)
 	require.Len(t, recorder.entries, 1)
 	assert.Zero(t, safeCalls.Load(), "Audit metadata must not add an external request to the business path")
+}
+
+func TestOperationAuditSkipsPreviewAndUncommittedRequests(t *testing.T) {
+	for _, status := range []int{200, 400, 401, 403, 409, 422, 500} {
+		recorder := &capturedOperationAuditRecorder{}
+		handler := newOperationAuditTestHandler(recorder)
+		engine := gin.New()
+		engine.Use(handler.OperationAudit())
+		engine.DELETE("/api/vega-backend/v1/catalogs/:id", func(c *gin.Context) {
+			c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")})
+			if status == 200 {
+				c.Set("operation_audit_preview", true)
+			}
+			c.Status(status)
+		})
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/vega-backend/v1/catalogs/a", nil))
+		require.Equal(t, status, response.Code)
+		require.Empty(t, recorder.entries)
+	}
+}
+
+func TestOperationAuditCatalogDeletionUsesRealHandlerSnapshot(t *testing.T) {
+	for _, preview := range []bool{true, false} {
+		controller := gomock.NewController(t)
+		catalogs := vmock.NewMockCatalogService(controller)
+		recorder := &capturedOperationAuditRecorder{}
+		handler := newOperationAuditTestHandler(recorder)
+		handler.cs = catalogs
+		if preview {
+			catalogs.EXPECT().GetDeletionImpact(gomock.Any(), "catalog-a").Return(&interfaces.CatalogDeletionImpact{}, nil)
+		} else {
+			catalogs.EXPECT().GetByID(gomock.Any(), "catalog-a", false).Return(&interfaces.Catalog{ID: "catalog-a", Name: "采购目录"}, nil)
+			catalogs.EXPECT().DeleteByID(gomock.Any(), "catalog-a").Return(nil)
+		}
+		visitor := hydra.Visitor{ID: "user-1", Type: hydra.VisitorType("user")}
+		engine := gin.New()
+		engine.Use(handler.OperationAudit())
+		engine.DELETE("/api/vega-backend/v1/catalogs/:id", func(c *gin.Context) { c.Set(operationAuditVisitorKey, visitor); handler.deleteCatalog(c, visitor) })
+		path := "/api/vega-backend/v1/catalogs/catalog-a"
+		if preview {
+			path += "?dry_run=true"
+		}
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, httptest.NewRequest("DELETE", path, nil))
+		if preview {
+			require.Equal(t, 200, response.Code)
+			require.Empty(t, recorder.entries)
+		} else {
+			require.Equal(t, 204, response.Code)
+			require.Len(t, recorder.entries, 1)
+			require.Equal(t, "采购目录", recorder.entries[0].TargetName)
+			require.Equal(t, "catalog-a", recorder.entries[0].TargetID)
+		}
+		controller.Finish()
+	}
+}
+
+func TestOperationAuditBuildDeletionRealHandler(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	tasks := vmock.NewMockBuildTaskService(ctrl)
+	store := &capturedOperationAuditRecorder{}
+	handler := newOperationAuditTestHandler(store)
+	handler.bts = tasks
+	gomock.InOrder(
+		tasks.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{ID: "task-1", CatalogName: "Sales", ResourceName: "Orders"}, nil),
+		tasks.EXPECT().DeleteByIDs(gomock.Any(), []string{"task-1"}, false).Return(nil),
+	)
+	v := hydra.Visitor{ID: "user-1", Type: "user"}
+	engine := gin.New()
+	engine.Use(handler.OperationAudit())
+	engine.DELETE("/api/vega-backend/v1/build-tasks/:ids", func(c *gin.Context) { c.Set(operationAuditVisitorKey, v); handler.deleteBuildTasks(c, v) })
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/vega-backend/v1/build-tasks/task-1", nil))
+	require.Equal(t, 204, response.Code)
+	require.Len(t, store.entries, 1)
+	require.Equal(t, "Sales / Orders", store.entries[0].TargetName)
+}
+
+func TestOperationAuditHealthScheduleRealHandler(t *testing.T) {
+	for _, lookupFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("lookupFails=%v", lookupFails), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			schedules := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+			catalogs := vmock.NewMockCatalogService(ctrl)
+			store := &capturedOperationAuditRecorder{}
+			handler := newOperationAuditTestHandler(store)
+			handler.hcss = schedules
+			handler.cs = catalogs
+			schedules.EXPECT().Update(gomock.Any(), "catalog-1", gomock.Any()).Return(&interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1"}, nil)
+			if lookupFails {
+				catalogs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(nil, fmt.Errorf("unavailable"))
+			} else {
+				catalogs.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{Name: "Sales"}, nil)
+			}
+			v := hydra.Visitor{ID: "user-1", Type: "user"}
+			engine := gin.New()
+			engine.Use(handler.OperationAudit())
+			engine.PUT("/api/vega-backend/v1/catalogs/:id/health-check-schedule", func(c *gin.Context) {
+				c.Set(operationAuditVisitorKey, v)
+				handler.updateCatalogHealthCheckSchedule(c, v)
+			})
+			response := httptest.NewRecorder()
+			req := httptest.NewRequest("PUT", "/api/vega-backend/v1/catalogs/catalog-1/health-check-schedule", strings.NewReader(`{"mode":"enabled","expected_update_time":1}`))
+			req.Header.Set("Content-Type", "application/json")
+			engine.ServeHTTP(response, req)
+			require.Equal(t, 200, response.Code)
+			if lookupFails {
+				require.Empty(t, store.entries)
+			} else {
+				require.Len(t, store.entries, 1)
+				require.Equal(t, "Sales", store.entries[0].TargetName)
+			}
+		})
+	}
+}
+
+func TestOperationAuditTaskScopeIsOneItem(t *testing.T) {
+	if name := operationAuditNames([]string{operationAuditTaskName("Sales", "Orders")}); name != "Sales / Orders" {
+		t.Fatal(name)
+	}
+	if name := operationAuditNames([]string{operationAuditTaskName("Sales", "Orders"), operationAuditTaskName("Sales", "Invoices")}); !strings.Contains(name, "Sales / Orders") || !strings.Contains(name, "Sales / Invoices") || !strings.Contains(name, "共2个") {
+		t.Fatal(name)
+	}
+}
+
+func TestOperationAuditBuildControlRealHandler(t *testing.T) {
+	for _, action := range []string{"start", "stop"} {
+		for _, tc := range []struct {
+			name                            string
+			disabled, denied, lookupFailure bool
+		}{{name: "committed"}, {name: "disabled", disabled: true}, {name: "denied", denied: true}, {name: "lookup_failure", lookupFailure: true}} {
+			t.Run(action+"/"+tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				tasks := vmock.NewMockBuildTaskService(ctrl)
+				store := &capturedOperationAuditRecorder{}
+				h := newOperationAuditTestHandler(store)
+				h.bts = tasks
+				if tc.disabled {
+					h.auditRecorder = nil
+				}
+				if !tc.disabled {
+					var err error
+					if tc.lookupFailure {
+						err = fmt.Errorf("metadata unavailable")
+					}
+					tasks.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{ID: "task-1", CatalogName: "Sales", ResourceName: "Orders"}, err)
+				}
+				var err error
+				if tc.denied {
+					err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+				}
+				if action == "start" {
+					tasks.EXPECT().Start(gomock.Any(), "task-1", false).Return(err)
+				} else {
+					tasks.EXPECT().Stop(gomock.Any(), "task-1").Return(err)
+				}
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				engine := gin.New()
+				engine.Use(h.OperationAudit())
+				engine.POST("/api/vega-backend/v1/build-tasks/:id/"+action, func(c *gin.Context) {
+					c.Set(operationAuditVisitorKey, v)
+					if action == "start" {
+						h.startBuildTask(c, v)
+					} else {
+						h.stopBuildTask(c, v)
+					}
+				})
+				response := httptest.NewRecorder()
+				engine.ServeHTTP(response, httptest.NewRequest("POST", "/api/vega-backend/v1/build-tasks/task-1/"+action, strings.NewReader(`{"name":"forged name"}`)))
+				status := http.StatusAccepted
+				if tc.denied {
+					status = http.StatusForbidden
+				}
+				require.Equal(t, status, response.Code)
+				if tc.disabled || tc.denied || tc.lookupFailure {
+					require.Empty(t, store.entries)
+					return
+				}
+				require.Len(t, store.entries, 1)
+				require.Equal(t, "Sales / Orders", store.entries[0].TargetName)
+				require.Equal(t, action, store.entries[0].Action)
+			})
+		}
+	}
+}
+
+func TestOperationAuditAcceptedWithoutCommitDoesNotRecord(t *testing.T) {
+	store := &capturedOperationAuditRecorder{}
+	h := newOperationAuditTestHandler(store)
+	engine := gin.New()
+	engine.Use(h.OperationAudit())
+	engine.POST("/api/vega-backend/v1/build-tasks/:id/start", func(c *gin.Context) {
+		c.Set(operationAuditVisitorKey, hydra.Visitor{ID: "user-1", Type: "user"})
+		c.Set("operation_audit_target_names", []string{"Sales / Orders"})
+		c.Status(http.StatusAccepted)
+	})
+	response := httptest.NewRecorder()
+	engine.ServeHTTP(response, httptest.NewRequest("POST", "/api/vega-backend/v1/build-tasks/task-1/start", nil))
+	require.Equal(t, http.StatusAccepted, response.Code)
+	require.Empty(t, store.entries)
+}
+
+func TestOperationAuditRenameRealHandlers(t *testing.T) {
+	for _, kind := range []string{"catalog", "resource"} {
+		for _, tc := range []struct {
+			name             string
+			disabled, denied bool
+		}{{name: "committed"}, {name: "disabled", disabled: true}, {name: "denied", denied: true}} {
+			t.Run(kind+"/"+tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				store := &capturedOperationAuditRecorder{}
+				h := newOperationAuditTestHandler(store)
+				if tc.disabled {
+					h.auditRecorder = nil
+				}
+				var err error
+				if tc.denied {
+					err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+				}
+				body := `{"name":"New Name","expected_update_time":1,"connector_type":"mariadb","connector_config":{}}`
+				if kind == "catalog" {
+					catalogs := vmock.NewMockCatalogService(ctrl)
+					h.cs = catalogs
+
+					catalogs.EXPECT().Update(gomock.Any(), gomock.Any(), false).DoAndReturn(func(_ context.Context, req *interfaces.CatalogRequest, _ bool) error {
+						require.Equal(t, "New Name", req.Name)
+						return err
+					})
+				} else {
+					body = `{"name":"New Name","expected_update_time":1,"category":"dataset","schema_definition":[{"name":"title","type":"string"}]}`
+					resources := vmock.NewMockResourceService(ctrl)
+					h.rs = resources
+
+					resources.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) error {
+						require.Equal(t, "New Name", req.Name)
+						return err
+					})
+				}
+				v := hydra.Visitor{ID: "user-1", Type: "user"}
+				engine := gin.New()
+				engine.Use(h.OperationAudit())
+				engine.PUT("/api/vega-backend/v1/"+kind+"s/:id", func(c *gin.Context) {
+					c.Set(operationAuditVisitorKey, v)
+					if kind == "catalog" {
+						h.updateCatalog(c, v)
+					} else {
+						h.updateResource(c, v)
+					}
+				})
+				response := httptest.NewRecorder()
+				engine.ServeHTTP(response, httptest.NewRequest("PUT", "/api/vega-backend/v1/"+kind+"s/object-1", strings.NewReader(body)))
+				status := http.StatusNoContent
+				if tc.denied {
+					status = http.StatusForbidden
+				}
+				require.Equal(t, status, response.Code)
+				if tc.disabled || tc.denied {
+					require.Empty(t, store.entries)
+					return
+				}
+				require.Len(t, store.entries, 1)
+				require.Equal(t, "New Name", store.entries[0].TargetName)
+				require.Equal(t, "update", store.entries[0].Action)
+			})
+		}
+	}
 }

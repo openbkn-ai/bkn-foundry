@@ -19,7 +19,7 @@ const (
 	// defaultFulltextAnalyzer is the analyzer a new dataset is built with.
 	//
 	// The platform ships OpenSearch with the IK Chinese analyzer baked into its image
-	// (deploy/scripts/lib/common.sh pins that rebuild), so this is part of the baseline rather
+	// (openbkn-deploy/scripts/lib/common.sh pins that rebuild), so this is part of the baseline rather
 	// than an optional plugin. It matters: "standard" splits Chinese one character at a time, so
 	// a description containing 汇总 scores against a query about 汇率 on the shared 汇, while a
 	// query two characters longer has each character's contribution diluted until the right

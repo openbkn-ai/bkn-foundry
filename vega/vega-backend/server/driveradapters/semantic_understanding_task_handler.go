@@ -94,6 +94,15 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 		return
 	}
 	c.Set(operationAuditTargetIDKey, task.ID)
+	name := operationAuditTaskName(task.CatalogName, task.ResourceName)
+	if name == "" && r.auditRecorder != nil && task.ResourceID != "" {
+		if resource, getErr := r.rs.GetByID(ctx, task.ResourceID); getErr == nil && resource != nil {
+			name = resource.Name
+		}
+	}
+	if name != "" {
+		c.Set("operation_audit_target_names", []string{name})
+	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
 	rest.ReplyOK(c, http.StatusCreated, task)
@@ -230,12 +239,26 @@ func (r *restHandler) deleteSemanticUnderstandingTasks(c *gin.Context, visitor h
 	}
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
+	var auditNames []string
+	if r.auditRecorder != nil {
+		auditNames = make([]string, 0, len(ids))
+		for _, id := range ids {
+			if task, getErr := r.suts.GetByID(ctx, id); getErr == nil && task != nil {
+				if name := operationAuditTaskName(task.CatalogName, task.ResourceName); name != "" {
+					auditNames = append(auditNames, name)
+				}
+			}
+		}
+	}
 
 	if err := r.suts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
+	}
+	if len(auditNames) > 0 {
+		c.Set("operation_audit_target_names", auditNames)
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
