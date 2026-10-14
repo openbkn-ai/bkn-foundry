@@ -17,6 +17,12 @@ const (
 	BknBackend_Metric_NotFound                               = "BknBackend.Metric.NotFound"
 	BknBackend_Metric_Duplicated_Name                        = "BknBackend.Metric.Duplicated.Name"
 	BknBackend_Metric_InvalidMetricType                      = "BknBackend.Metric.InvalidMetricType"
+	BknBackend_ObjectMetric_InvalidDefinition                = "BknBackend.ObjectMetric.InvalidDefinition"
+	BknBackend_ObjectMetric_NotFound                         = "BknBackend.ObjectMetric.NotFound"
+	BknBackend_ObjectMetric_DuplicateCode                    = "BknBackend.ObjectMetric.DuplicateCode"
+	BknBackend_ObjectMetric_ImmutableVersion                 = "BknBackend.ObjectMetric.ImmutableVersion"
+	BknBackend_ObjectMetric_DependencyInvalid                = "BknBackend.ObjectMetric.DependencyInvalid"
+	BknBackend_ObjectMetric_InternalError                    = "BknBackend.ObjectMetric.InternalError"
 )
 
 var MetricErrCodeList = []string{
@@ -30,4 +36,10 @@ var MetricErrCodeList = []string{
 	BknBackend_Metric_NotFound,
 	BknBackend_Metric_Duplicated_Name,
 	BknBackend_Metric_InvalidMetricType,
+	BknBackend_ObjectMetric_InvalidDefinition,
+	BknBackend_ObjectMetric_NotFound,
+	BknBackend_ObjectMetric_DuplicateCode,
+	BknBackend_ObjectMetric_ImmutableVersion,
+	BknBackend_ObjectMetric_DependencyInvalid,
+	BknBackend_ObjectMetric_InternalError,
 }
