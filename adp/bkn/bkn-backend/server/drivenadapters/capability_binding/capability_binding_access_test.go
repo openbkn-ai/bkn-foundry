@@ -13,8 +13,8 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	. "github.com/smartystreets/goconvey/convey"
 
-	"bkn-backend/common"
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func mockCapabilityBindingAccess(t *testing.T) (*capabilityBindingAccess, sqlmock.Sqlmock, func()) {

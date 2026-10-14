@@ -14,9 +14,9 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"bkn-backend/common"
-	"bkn-backend/interfaces"
-	"bkn-backend/logics/model_factory"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/model_factory"
 )
 
 func Init(ctx context.Context, appSetting *common.AppSetting, vbs interfaces.VegaBackendService) error {

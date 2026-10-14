@@ -18,8 +18,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
-	"bkn-backend/common/bkntrace"
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 const (

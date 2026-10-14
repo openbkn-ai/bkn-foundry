@@ -16,7 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 
-	"bkn-backend/version"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/version"
 )
 
 const (

@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"bkn-backend/bkn-specification/bkn"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 )
 
 // allExampleDirs returns all example directories that contain a network.bkn file.

@@ -8,7 +8,7 @@ package interfaces
 import (
 	"context"
 
-	cond "bkn-backend/common/condition"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 )
 
 //go:generate mockgen -source ../interfaces/model_factory_service.go -destination ../interfaces/mock/mock_model_factory_service.go

@@ -10,8 +10,8 @@
 package mock_interfaces
 
 import (
-	bkn "bkn-backend/bkn-specification/bkn"
-	interfaces "bkn-backend/interfaces"
+	bkn "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	context "context"
 	sql "database/sql"
 	reflect "reflect"

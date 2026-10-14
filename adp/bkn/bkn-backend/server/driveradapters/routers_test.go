@@ -17,8 +17,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/common"
-	bmock "bkn-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
 // setGinMode sets Gin to test mode and returns a restore function.

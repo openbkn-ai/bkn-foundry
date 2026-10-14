@@ -12,7 +12,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	dtype "bkn-backend/interfaces/data_type"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 )
 
 func TestNewNotEqCond(t *testing.T) {

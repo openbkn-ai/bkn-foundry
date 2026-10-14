@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // A small model that carries the cases the compiler has to get right: columns

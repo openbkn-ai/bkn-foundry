@@ -11,7 +11,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func TestBuildSelectQueryAlwaysReadsExecutionSubject(t *testing.T) {

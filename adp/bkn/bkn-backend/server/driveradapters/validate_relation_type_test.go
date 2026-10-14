@@ -13,8 +13,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func Test_ValidateRelationType(t *testing.T) {

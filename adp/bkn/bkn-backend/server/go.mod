@@ -1,4 +1,4 @@
-module bkn-backend
+module github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server
 
 go 1.25.0
 

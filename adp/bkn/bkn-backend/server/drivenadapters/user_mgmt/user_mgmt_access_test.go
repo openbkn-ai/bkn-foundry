@@ -18,7 +18,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func newTestUserMgmtAccess(baseURL string, httpClient rest.HTTPClient) *userMgmtAccess {

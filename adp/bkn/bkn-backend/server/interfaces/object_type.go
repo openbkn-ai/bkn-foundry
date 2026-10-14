@@ -9,8 +9,8 @@ package interfaces
 import (
 	"encoding/json"
 
-	"bkn-backend/common/maskrule"
-	"bkn-backend/interfaces/data_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 )
 
 const (

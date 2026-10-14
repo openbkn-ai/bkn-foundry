@@ -10,7 +10,7 @@
 package mock_condition
 
 import (
-	condition "bkn-backend/common/condition"
+	condition "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 	context "context"
 	reflect "reflect"
 

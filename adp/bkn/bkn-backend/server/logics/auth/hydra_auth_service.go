@@ -12,9 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 
-	"bkn-backend/common"
-	"bkn-backend/interfaces"
-	"bkn-backend/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 type hydraAuthService struct {

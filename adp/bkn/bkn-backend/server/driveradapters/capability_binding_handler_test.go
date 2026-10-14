@@ -20,9 +20,9 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	"bkn-backend/common"
-	"bkn-backend/interfaces"
-	bmock "bkn-backend/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
 // Test_CapabilityRoutes_AllPrefixes locks the four-prefix registration (#1257). Registering only

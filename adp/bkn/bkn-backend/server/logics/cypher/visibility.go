@@ -9,8 +9,8 @@ package cypher
 import (
 	"context"
 
-	"bkn-backend/interfaces"
-	"bkn-backend/logics/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 // permissionVisibility answers what the caller may query by asking bkn-safe

@@ -17,11 +17,11 @@ import (
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	bknsdk "bkn-backend/bkn-specification/bkn"
-	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
-	"bkn-backend/logics"
-	"bkn-backend/logics/permission"
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
+	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 const importPlanLookupBatchSize = 500

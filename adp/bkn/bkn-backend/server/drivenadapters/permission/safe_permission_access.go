@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // safeClient talks to bkn-safe's clean authz API (/api/safe/v1/authz/*).

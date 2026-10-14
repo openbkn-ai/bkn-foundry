@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"bkn-backend/common/maskrule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
 )
 
 func TestDataPropertyMaskRuleJSONRoundTrip(t *testing.T) {

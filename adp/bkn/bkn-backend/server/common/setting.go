@@ -20,7 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/spf13/viper"
 
-	"bkn-backend/version"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/version"
 )
 
 // ServerSetting contains server configuration.

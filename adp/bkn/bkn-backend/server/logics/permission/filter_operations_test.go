@@ -14,9 +14,9 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"bkn-backend/common"
-	padapter "bkn-backend/drivenadapters/permission"
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
+	padapter "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/permission"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 // Test_PermissionServiceImpl_FilterResources_FullOperationSet wires the service

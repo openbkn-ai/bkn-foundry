@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"bkn-backend/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
 func TestNormalizeImportPlanPreservesExportedPersistentDefinitions(t *testing.T) {
