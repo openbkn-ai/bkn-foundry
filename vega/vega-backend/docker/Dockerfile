@@ -35,6 +35,11 @@ COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/vega-backend
 COPY config/vega-backend-config.yaml /opt/vega-backend/config/
 COPY locale /opt/vega-backend/locale
 
+# 预建滚动日志目录，确保非 root 运行用户可写。
+RUN mkdir -p /opt/vega-backend/logs \
+    && chown $UID:$GID /opt/vega-backend/logs \
+    && chmod 0755 /opt/vega-backend/logs
+
 # 指定工作目录
 WORKDIR /opt/vega-backend/
 
