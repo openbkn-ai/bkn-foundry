@@ -177,7 +177,8 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Conte
 
 	specification := definition.Specification
 	if qualifiers := specification.BusinessQualifiers; qualifiers != nil && qualifiers.RelationPath != nil {
-		pathResources, err := s.objectMetricRelationPathResources(ctx, knID, qualifiers.RelationPath.Steps)
+		pathResources, err := s.objectMetricRelationPathResources(
+			ctx, knID, definition.OwnerObjectTypeID, qualifiers.RelationPath.Steps)
 		if err != nil {
 			return err
 		}
@@ -196,7 +197,8 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Conte
 			return err
 		}
 		resources = append(resources, metricResource)
-		pathResources, err := s.objectMetricRelationPathResources(ctx, knID, dependency.ObjectAlignment.RelationPath)
+		pathResources, err := s.objectMetricRelationPathResources(
+			ctx, knID, definition.OwnerObjectTypeID, dependency.ObjectAlignment.RelationPath)
 		if err != nil {
 			return err
 		}
@@ -206,11 +208,22 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Conte
 }
 
 func (s *queryAuthorizationService) objectMetricRelationPathResources(ctx context.Context,
-	knID string, steps []interfaces.ObjectMetricRelationStepV1) ([]interfaces.PermissionResource, error) {
+	knID, sourceObjectTypeID string,
+	steps []interfaces.ObjectMetricRelationStepV1) ([]interfaces.PermissionResource, error) {
 	resources := make([]interfaces.PermissionResource, 0, len(steps)*2)
-	for _, step := range steps {
+	currentObjectTypeID := sourceObjectTypeID
+	for i, step := range steps {
 		relationType, err := s.loadRelationType(ctx, knID, step.RelationTypeID)
 		if err != nil {
+			return nil, err
+		}
+		edge := interfaces.TypeEdge{
+			RelationTypeId:     step.RelationTypeID,
+			SourceObjectTypeId: currentObjectTypeID,
+			TargetObjectTypeId: step.TargetObjectTypeID,
+			Direction:          step.Direction,
+		}
+		if _, err := logics.ResolveTypeEdgeDirection(ctx, i, edge, relationType); err != nil {
 			return nil, err
 		}
 		targetObjectType, err := s.loadObjectType(ctx, knID, step.TargetObjectTypeID)
@@ -227,6 +240,7 @@ func (s *queryAuthorizationService) objectMetricRelationPathResources(ctx contex
 		}
 		resources = append(resources, relationResources...)
 		resources = append(resources, objectResources...)
+		currentObjectTypeID = step.TargetObjectTypeID
 	}
 	return resources, nil
 }

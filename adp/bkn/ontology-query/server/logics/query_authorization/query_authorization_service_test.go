@@ -173,6 +173,36 @@ func TestAuthorizeObjectMetricTrialRequiresEveryReferencedResource(t *testing.T)
 	}
 }
 
+func TestAuthorizeObjectMetricTrialRejectsRelationPathOutsidePublishedModel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	service := &queryAuthorizationService{models: models}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
+		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
+	models.EXPECT().GetRelationType(gomock.Any(), "kn-a", "main", "order-customer").Return(
+		interfaces.RelationType{
+			RTID: "order-customer", Type: interfaces.RELATION_TYPE_DIRECT,
+			SourceObjectTypeID: "orders", TargetObjectTypeID: "customers",
+		}, true, nil)
+
+	err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", &interfaces.ObjectMetricDefinitionV1{
+		OwnerObjectTypeID: "orders",
+		Specification: interfaces.ObjectMetricSpecificationV1{
+			BusinessQualifiers: &interfaces.ObjectMetricBusinessQualifiersV1{
+				RelationPath: &interfaces.ObjectMetricRelationPathV1{Steps: []interfaces.ObjectMetricRelationStepV1{{
+					RelationTypeID: "order-customer", Direction: interfaces.DIRECTION_FORWARD,
+					TargetObjectTypeID: "restricted-object-type",
+				}}},
+			},
+		},
+	})
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest {
+		t.Fatalf("AuthorizeObjectMetricTrial() error = %v, want 400", err)
+	}
+}
+
 func TestAuthorizeSubgraphBySourceUsesServerResolvedPaths(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
