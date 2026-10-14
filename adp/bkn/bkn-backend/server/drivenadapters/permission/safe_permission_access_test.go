@@ -176,6 +176,40 @@ func TestSafeListAccessibleResourcesWithAnyOperationUsesQuery(t *testing.T) {
 	}
 }
 
+func TestSafeListAccessibleResourcesWithAnyOperationFallsBackForLegacySafe(t *testing.T) {
+	calls := []string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query()
+		if query.Get("any_operation") == "true" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		operation := query.Get("operation")
+		calls = append(calls, operation)
+		if operation == interfaces.OPERATION_TYPE_QUERY_DATA {
+			_, _ = w.Write([]byte(`{"ids":["kn-1/query-only"],"unrestricted":false,"requires_candidate_filter":false}`))
+			return
+		}
+		if operation == interfaces.OPERATION_TYPE_MODIFY {
+			_, _ = w.Write([]byte(`{"ids":["kn-1/query-only","kn-1/modify-only"],"unrestricted":false,"requires_candidate_filter":true}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ids":[],"unrestricted":false,"requires_candidate_filter":false}`))
+	}))
+	defer srv.Close()
+
+	scope, err := NewPermissionAccess(srv.URL).ListAccessibleResourcesWithAnyOperation(
+		context.Background(), interfaces.PermissionAccessor{ID: "u-1", Type: interfaces.ACCESSOR_TYPE_USER},
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE)
+	if err != nil || scope.Unrestricted || !scope.RequiresCandidateFilter ||
+		!reflect.DeepEqual(scope.ResourceIDs, []string{"kn-1/query-only", "kn-1/modify-only"}) {
+		t.Fatalf("legacy fallback scope = %#v, %v", scope, err)
+	}
+	if len(calls) != len(concreteResourceOperations) {
+		t.Fatalf("legacy fallback calls = %v, want %d concrete operations", calls, len(concreteResourceOperations))
+	}
+}
+
 func TestSafeResolvePropertyLevels(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/safe/v1/authz/property-levels" {
