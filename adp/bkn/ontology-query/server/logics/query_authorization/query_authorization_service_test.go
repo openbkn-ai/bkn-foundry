@@ -113,6 +113,66 @@ func TestAuthorizeObjectMetricTrialUsesKnowledgeNetworkAndObjectResources(t *tes
 	}
 }
 
+func TestAuthorizeObjectMetricTrialRequiresEveryReferencedResource(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	permissions := omock.NewMockPermissionService(ctrl)
+	service := &queryAuthorizationService{models: models, permissions: permissions}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
+		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
+	models.EXPECT().GetRelationType(gomock.Any(), "kn-a", "main", "order-customer").Return(
+		interfaces.RelationType{
+			RTID: "order-customer", Type: interfaces.RELATION_TYPE_DIRECT,
+			SourceObjectTypeID: "orders", TargetObjectTypeID: "customers",
+		}, true, nil)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "customers").Return(
+		publishedObjectType("kn-a", "customers", "customers-resource"), true, nil)
+	models.EXPECT().GetRelationType(gomock.Any(), "kn-a", "main", "order-region").Return(
+		interfaces.RelationType{
+			RTID: "order-region", Type: interfaces.RELATION_TYPE_DIRECT,
+			SourceObjectTypeID: "orders", TargetObjectTypeID: "regions",
+		}, true, nil)
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "regions").Return(
+		publishedObjectType("kn-a", "regions", "regions-resource"), true, nil)
+
+	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
+		{Type: "knowledge_network", ID: "kn-a"},
+		{Type: "object_type", ID: "kn-a/orders"},
+		{Type: "relation_type", ID: "kn-a/order-customer"},
+		{Type: "object_type", ID: "kn-a/customers"},
+		{Type: "metric", ID: "kn-a/base-metric"},
+		{Type: "metric", ID: "kn-a/dependency-metric"},
+		{Type: "relation_type", ID: "kn-a/order-region"},
+		{Type: "object_type", ID: "kn-a/regions"},
+	}).Return(nil)
+
+	err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", &interfaces.ObjectMetricDefinitionV1{
+		OwnerObjectTypeID: "orders",
+		Specification: interfaces.ObjectMetricSpecificationV1{
+			BaseMetric: &interfaces.ObjectMetricRefV1{MetricID: "base-metric", Version: 2},
+			BusinessQualifiers: &interfaces.ObjectMetricBusinessQualifiersV1{
+				RelationPath: &interfaces.ObjectMetricRelationPathV1{Steps: []interfaces.ObjectMetricRelationStepV1{{
+					RelationTypeID: "order-customer", Direction: interfaces.DIRECTION_FORWARD,
+					TargetObjectTypeID: "customers",
+				}}},
+			},
+			Dependencies: []interfaces.ObjectMetricDependencyV1{{
+				MetricRef: interfaces.ObjectMetricRefV1{MetricID: "dependency-metric", Version: 3},
+				ObjectAlignment: interfaces.ObjectMetricObjectAlignmentV1{
+					RelationPath: []interfaces.ObjectMetricRelationStepV1{{
+						RelationTypeID: "order-region", Direction: interfaces.DIRECTION_FORWARD,
+						TargetObjectTypeID: "regions",
+					}},
+				},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeObjectMetricTrial() error = %v", err)
+	}
+}
+
 func TestAuthorizeSubgraphBySourceUsesServerResolvedPaths(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)

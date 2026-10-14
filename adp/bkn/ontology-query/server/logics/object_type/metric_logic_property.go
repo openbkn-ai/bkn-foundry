@@ -7,6 +7,7 @@
 package object_type
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -288,12 +289,17 @@ func buildObjectMetricQueryFromLogicProperty(objectType interfaces.ObjectType, f
 }
 
 func objectMetricLiteralType(value any) string {
-	switch value.(type) {
+	switch value := value.(type) {
 	case bool:
 		return "boolean"
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		return "int64"
 	case float32, float64:
+		return "decimal"
+	case json.Number:
+		if _, err := value.Int64(); err == nil {
+			return "int64"
+		}
 		return "decimal"
 	default:
 		return "string"
