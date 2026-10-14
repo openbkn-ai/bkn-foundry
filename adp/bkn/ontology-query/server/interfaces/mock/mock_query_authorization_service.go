@@ -98,17 +98,17 @@ func (mr *MockQueryAuthorizationServiceMockRecorder) AuthorizeObjectMetricQuery(
 }
 
 // AuthorizeObjectMetricTrial mocks base method.
-func (m *MockQueryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Context, knID, branch string, definition *interfaces.ObjectMetricDefinitionV1) error {
+func (m *MockQueryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Context, knID, branch string, definition *interfaces.ObjectMetricDefinitionV1, query *interfaces.ObjectMetricQueryRequestV1) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AuthorizeObjectMetricTrial", ctx, knID, branch, definition)
+	ret := m.ctrl.Call(m, "AuthorizeObjectMetricTrial", ctx, knID, branch, definition, query)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // AuthorizeObjectMetricTrial indicates an expected call of AuthorizeObjectMetricTrial.
-func (mr *MockQueryAuthorizationServiceMockRecorder) AuthorizeObjectMetricTrial(ctx, knID, branch, definition any) *gomock.Call {
+func (mr *MockQueryAuthorizationServiceMockRecorder) AuthorizeObjectMetricTrial(ctx, knID, branch, definition, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeObjectMetricTrial", reflect.TypeOf((*MockQueryAuthorizationService)(nil).AuthorizeObjectMetricTrial), ctx, knID, branch, definition)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeObjectMetricTrial", reflect.TypeOf((*MockQueryAuthorizationService)(nil).AuthorizeObjectMetricTrial), ctx, knID, branch, definition, query)
 }
 
 // AuthorizeObjectTypeQuery mocks base method.

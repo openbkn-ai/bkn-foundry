@@ -79,7 +79,7 @@ func (allowQueryAuthorizationService) AuthorizeObjectMetricQuery(context.Context
 	return nil
 }
 
-func (allowQueryAuthorizationService) AuthorizeObjectMetricTrial(context.Context, string, string, *interfaces.ObjectMetricDefinitionV1) error {
+func (allowQueryAuthorizationService) AuthorizeObjectMetricTrial(context.Context, string, string, *interfaces.ObjectMetricDefinitionV1, *interfaces.ObjectMetricQueryRequestV1) error {
 	return nil
 }
 

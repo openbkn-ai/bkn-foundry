@@ -48,7 +48,7 @@ func TestRegisteredOperationAuditRoutes(t *testing.T) {
 		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/versions", "", "update", "metric", true},
 		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/publish", "", "update", "metric", true},
 		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate", "", "update", "metric", true},
-		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", "", "create", "logic_property", true},
+		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", "", "update", "object_type", true},
 		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/validate", "", "", "", false},
 		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/preview", "", "", "", false},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/risk-types", "", "create", "risk_type", true},
@@ -272,22 +272,22 @@ func TestOperationAuditFactsUseLogicPropertySnapshot(t *testing.T) {
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
 	context.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties", nil)
 	context.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "metric-a"}}
-	context.Set("operation_audit_target_ids", []string{"order/duration"})
+	context.Set("operation_audit_target_ids", []string{"order"})
 	context.Set("operation_audit_target_names", []string{"履约耗时"})
 	facts := operationAuditFacts(
 		context,
-		operationAuditRule{Action: "create", TargetType: "logic_property"},
+		operationAuditRule{Action: "update", TargetType: "object_type"},
 		[]byte(`{"object_type_id":"order","property_name":"duration","display_name":"履约耗时"}`),
 		[]byte(`{"name":"duration","display_name":"履约耗时"}`),
 		"req-test",
 	)
-	if facts.targetID != "order/duration" || facts.targetName != "履约耗时" {
+	if facts.targetID != "order" || facts.targetName != "履约耗时" {
 		t.Fatalf("facts = %#v", facts)
 	}
 	entry := operationaudit.Entry{
 		EventID: "evt-logic-property", EventTime: time.Now().UTC(), ActorID: "user-a", ActorName: "Alice",
-		RequestID: "req-test", Method: http.MethodPost, HTTPStatus: http.StatusCreated, Action: "create",
-		TargetType: "logic_property", TargetID: facts.targetID, TargetName: facts.targetName, Outcome: "success",
+		RequestID: "req-test", Method: http.MethodPost, HTTPStatus: http.StatusCreated, Action: "update",
+		TargetType: "object_type", TargetID: facts.targetID, TargetName: facts.targetName, Outcome: "success",
 		ChangeSummary: facts.changeSummary,
 	}
 	if _, err := operationaudit.BuildKafkaAuditRecord(entry, "test"); err != nil {

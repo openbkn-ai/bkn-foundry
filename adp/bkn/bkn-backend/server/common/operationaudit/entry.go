@@ -16,7 +16,7 @@ var allowedActions = map[string]struct{}{
 var allowedTargetTypes = map[string]struct{}{
 	"knowledge_network": {}, "object_type": {}, "relation_type": {}, "action_type": {},
 	"metric": {}, "risk_type": {}, "concept_group": {}, "action_schedule": {},
-	"kn_capability_binding": {}, "logic_property": {},
+	"kn_capability_binding": {},
 }
 
 var allowedOutcomes = map[string]struct{}{"success": {}, "failure": {}, "denied": {}}

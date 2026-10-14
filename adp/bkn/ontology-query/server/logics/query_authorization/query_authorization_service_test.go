@@ -108,7 +108,7 @@ func TestAuthorizeObjectMetricTrialUsesKnowledgeNetworkAndObjectResources(t *tes
 
 	err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", &interfaces.ObjectMetricDefinitionV1{
 		OwnerObjectTypeID: "orders",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v", err)
 	}
@@ -168,7 +168,7 @@ func TestAuthorizeObjectMetricTrialRequiresEveryReferencedResource(t *testing.T)
 				},
 			}},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v", err)
 	}
@@ -182,7 +182,7 @@ func TestAuthorizeObjectMetricTrialRequiresFullPropertyAccess(t *testing.T) {
 	service := &queryAuthorizationService{models: models, permissions: permissions, properties: properties}
 
 	orders := publishedObjectType("kn-a", "orders", "orders-resource")
-	orders.DataProperties = []cond.DataProperty{{Name: "amount"}}
+	orders.DataProperties = []cond.DataProperty{{Name: "amount"}, {Name: "status"}}
 	customers := publishedObjectType("kn-a", "customers", "customers-resource")
 	customers.DataProperties = []cond.DataProperty{{Name: "region"}}
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(orders, true, nil)
@@ -194,10 +194,13 @@ func TestAuthorizeObjectMetricTrialRequiresFullPropertyAccess(t *testing.T) {
 	}).Return(nil)
 	properties.EXPECT().ResolvePropertyLevels(gomock.Any(), []interfaces.PropertyLevelsRequestItem{
 		{ObjectTypeRef: "kn-a/customers", Properties: []string{"region"}},
-		{ObjectTypeRef: "kn-a/orders", Properties: []string{"amount"}},
+		{ObjectTypeRef: "kn-a/orders", Properties: []string{"amount", "status"}},
 	}).Return([]interfaces.PropertyLevelsDecisionEntry{
 		{ObjectTypeRef: "kn-a/customers", Properties: []interfaces.PropertyAccessDecision{{Name: "region", Level: interfaces.PropertyAccessFull}}},
-		{ObjectTypeRef: "kn-a/orders", Properties: []interfaces.PropertyAccessDecision{{Name: "amount", Level: interfaces.PropertyAccessFull}}},
+		{ObjectTypeRef: "kn-a/orders", Properties: []interfaces.PropertyAccessDecision{
+			{Name: "amount", Level: interfaces.PropertyAccessFull},
+			{Name: "status", Level: interfaces.PropertyAccessFull},
+		}},
 	}, nil)
 
 	err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", &interfaces.ObjectMetricDefinitionV1{
@@ -208,9 +211,13 @@ func TestAuthorizeObjectMetricTrialRequiresFullPropertyAccess(t *testing.T) {
 			}},
 			Alignment: &interfaces.ObjectMetricAlignmentV1{
 				ResultOwnerObjectTypeID: "customers",
-				GroupByDimensions:       []interfaces.ObjectMetricPropertyRefV1{{ObjectTypeID: "customers", PropertyName: "region"}},
 			},
 		},
+	}, &interfaces.ObjectMetricQueryRequestV1{
+		Filter: &interfaces.ObjectMetricConditionV1{Left: &interfaces.ObjectMetricOperandV1{
+			PropertyRef: &interfaces.ObjectMetricPropertyRefV1{ObjectTypeID: "orders", PropertyName: "status"},
+		}},
+		AnalysisDimensions: []interfaces.ObjectMetricPropertyRefV1{{ObjectTypeID: "customers", PropertyName: "region"}},
 	})
 	if err != nil {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v", err)
@@ -245,7 +252,7 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullPropertyAccess(t *testing.T) {
 				ObjectTypeID: "orders", PropertyName: "amount",
 			}},
 		}},
-	})
+	}, nil)
 	var httpErr *rest.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v, want 403", err)
@@ -275,7 +282,7 @@ func TestAuthorizeObjectMetricTrialRejectsRelationPathOutsidePublishedModel(t *t
 				}}},
 			},
 		},
-	})
+	}, nil)
 	var httpErr *rest.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v, want 400", err)

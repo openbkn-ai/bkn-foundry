@@ -391,7 +391,7 @@ func (r *restHandler) bindObjectMetricLogicProperty(c *gin.Context, vis hydra.Vi
 		replyObjectMetricError(c, err)
 		return
 	}
-	c.Set("operation_audit_target_ids", []string{binding.ObjectTypeID + "/" + firstNonEmpty(property.Name, binding.PropertyName)})
+	c.Set("operation_audit_target_ids", []string{binding.ObjectTypeID})
 	c.Set("operation_audit_target_names", []string{firstNonEmpty(property.DisplayName, property.Name)})
 	rest.ReplyOK(c, http.StatusCreated, property)
 }

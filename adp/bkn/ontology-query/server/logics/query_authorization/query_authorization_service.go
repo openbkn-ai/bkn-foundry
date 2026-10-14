@@ -159,7 +159,8 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricQuery(ctx context.Conte
 // read. The paid runtime must not be the first permission boundary for trial
 // definitions because it receives an already accepted execution request.
 func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Context,
-	knID, branch string, definition *interfaces.ObjectMetricDefinitionV1) error {
+	knID, branch string, definition *interfaces.ObjectMetricDefinitionV1,
+	query *interfaces.ObjectMetricQueryRequestV1) error {
 	if err := validateQueryIdentity(ctx, knID, branch, "object-metric-trial"); err != nil {
 		return err
 	}
@@ -209,7 +210,7 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Conte
 		resources = append(resources, pathResources...)
 	}
 
-	propertyRequirements, err := objectMetricPropertyRequirements(definition)
+	propertyRequirements, err := objectMetricPropertyRequirements(definition, query)
 	if err != nil {
 		return invalidQuery(ctx, err.Error())
 	}
@@ -268,7 +269,8 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Conte
 	return nil
 }
 
-func objectMetricPropertyRequirements(definition *interfaces.ObjectMetricDefinitionV1) (map[string][]string, error) {
+func objectMetricPropertyRequirements(definition *interfaces.ObjectMetricDefinitionV1,
+	query *interfaces.ObjectMetricQueryRequestV1) (map[string][]string, error) {
 	requirements := make(map[string][]string)
 	var collectionErr error
 	add := func(ref *interfaces.ObjectMetricPropertyRefV1) {
@@ -342,6 +344,12 @@ func objectMetricPropertyRequirements(definition *interfaces.ObjectMetricDefinit
 	}
 	for index := range definition.QueryCapabilities.TimeDimensions {
 		add(&definition.QueryCapabilities.TimeDimensions[index])
+	}
+	if query != nil {
+		walkCondition(query.Filter)
+		for index := range query.AnalysisDimensions {
+			add(&query.AnalysisDimensions[index])
+		}
 	}
 	for objectTypeID, properties := range requirements {
 		requirements[objectTypeID] = uniqueStrings(properties)

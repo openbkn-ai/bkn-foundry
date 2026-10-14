@@ -75,7 +75,7 @@ var operationAuditRoutes = map[string]operationAuditRule{
 	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/versions":                 {Action: "update", TargetType: "metric"},
 	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/publish":                  {Action: "update", TargetType: "metric"},
 	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate":                {Action: "update", TargetType: "metric"},
-	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties":         {Action: "create", TargetType: "logic_property"},
+	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties":         {Action: "update", TargetType: "object_type"},
 	"POST /knowledge-networks/:kn_id/capabilities":                                       {Action: "attach", TargetType: "kn_capability_binding"},
 	"DELETE /knowledge-networks/:kn_id/capabilities/:binding_ids":                        {Action: "detach", TargetType: "kn_capability_binding"},
 	"POST /knowledge-networks/:kn_id/risk-types":                                         {Action: "create", TargetType: "risk_type"},

@@ -7,6 +7,7 @@ package object_type
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"reflect"
@@ -115,6 +116,26 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 				DataSource: &interfaces.ResourceInfo{ID: "legacy_metric_id"},
 			})
 			So(err, ShouldBeNil)
+		})
+
+		Convey("reports a missing legacy metric separately", func() {
+			metricAccess.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "legacy_metric_id").
+				Return(nil, sql.ErrNoRows)
+			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("legacy_metric_id"))
+			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricNotFound", map[string]any{
+				"objectType": "Order", "property": "duration", "metric": "legacy_metric_id",
+			}))
+		})
+
+		Convey("reports a legacy metric lookup failure separately", func() {
+			metricAccess.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "legacy_metric_id").
+				Return(nil, errors.New("storage unavailable"))
+			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("legacy_metric_id"))
+			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{
+				"objectType": "Order", "property": "duration", "metric": "legacy_metric_id",
+			}))
 		})
 
 		Convey("rejects a legacy metric owned by another object class", func() {

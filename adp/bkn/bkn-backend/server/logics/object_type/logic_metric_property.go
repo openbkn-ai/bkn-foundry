@@ -8,6 +8,8 @@ package object_type
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -44,6 +46,10 @@ func (ots *objectTypeService) validateLogicMetricProperty(ctx context.Context, o
 		// Legacy references remain readable until the explicit migration job has
 		// converted all persisted object types. New bindings never create them.
 		def, err := ots.ma.GetMetricByID(ctx, objectType.KNID, objectType.Branch, lp.DataSource.ID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+				WithErrorDetails(invalidParameterDetail(ctx, "MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
+		}
 		if err != nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))

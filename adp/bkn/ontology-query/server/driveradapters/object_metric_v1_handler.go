@@ -88,7 +88,7 @@ func (r *restHandler) postObjectMetricTrialV1(c *gin.Context, visitorInfo hydra.
 		return
 	}
 	if !r.authorizeQuery(c, ctx, func() error {
-		return r.qas.AuthorizeObjectMetricTrial(ctx, knID, branch, &body.Definition)
+		return r.qas.AuthorizeObjectMetricTrial(ctx, knID, branch, &body.Definition, &body.Query)
 	}) {
 		return
 	}
