@@ -28,3 +28,11 @@ type MetricQueryService interface {
 	QueryMetricData(ctx context.Context, knID string, branch string, metricID string, body *MetricQueryRequest) (MetricData, error)
 	DryRunMetricData(ctx context.Context, knID string, branch string, body *MetricDryRunRequest) (MetricData, error)
 }
+
+// ObjectMetricQueryServiceV1 is the stable runtime contract implemented by
+// the paid object-metric extension. Core query services depend only on this
+// contract and never import the private implementation.
+type ObjectMetricQueryServiceV1 interface {
+	QueryObjectMetricDataV1(ctx context.Context, knID string, branch string, metricID string, version int, body *ObjectMetricQueryRequestV1) (ObjectMetricDataV1, error)
+	TrialObjectMetricDataV1(ctx context.Context, knID string, branch string, body *ObjectMetricTrialRequestV1) (ObjectMetricDataV1, error)
+}
