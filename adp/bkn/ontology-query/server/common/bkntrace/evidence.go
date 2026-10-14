@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 
 	"github.com/bytedance/sonic"
 	"go.opentelemetry.io/otel/trace"

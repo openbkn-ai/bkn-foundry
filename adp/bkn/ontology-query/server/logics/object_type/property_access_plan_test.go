@@ -16,10 +16,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"go.uber.org/mock/gomock"
-	cond "ontology-query/common/condition"
-	"ontology-query/common/maskrule"
-	"ontology-query/interfaces"
-	omock "ontology-query/interfaces/mock"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/maskrule"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
 
 type propertyAccessStub struct {

@@ -7,7 +7,7 @@
 package logics
 
 import (
-	"ontology-query/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 )
 
 var (

@@ -6,7 +6,7 @@
 
 package interfaces
 
-import cond "ontology-query/common/condition"
+import cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 
 // Action query request body.
 type ActionQuery struct {

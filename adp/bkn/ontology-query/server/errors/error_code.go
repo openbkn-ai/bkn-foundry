@@ -10,7 +10,7 @@ package errors
 import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"ontology-query/locale"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 // Public error codes available to all service modules.

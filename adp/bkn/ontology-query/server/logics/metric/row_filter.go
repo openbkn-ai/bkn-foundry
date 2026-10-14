@@ -13,10 +13,10 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	cond "ontology-query/common/condition"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	rowfilter "ontology-query/logics/row_filter"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	rowfilter "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/row_filter"
 )
 
 // resolveRowFilter always resolves against the original caller carried by the

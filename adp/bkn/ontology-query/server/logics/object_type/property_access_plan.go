@@ -12,12 +12,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	cond "ontology-query/common/condition"
-	"ontology-query/common/maskrule"
-	oerrors "ontology-query/errors"
-	"ontology-query/interfaces"
-	"ontology-query/logics"
-	propertyaccess "ontology-query/logics/property_access"
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/maskrule"
+	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
+	propertyaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/property_access"
 )
 
 type propertyAccessPlan struct {
