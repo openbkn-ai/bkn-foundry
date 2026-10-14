@@ -139,7 +139,7 @@ func (c *PostgresqlConnector) fetchDomainMetadata(ctx context.Context,
 			return nil, fmt.Errorf("required PostgreSQL domain metadata contains NULL")
 		}
 		metadata[domainOID.Int64] = postgresqlDomainMetadata{
-			BaseType:        baseType.String,
+			BaseType:        c.normalizeColumnType(baseType.String),
 			BaseTypeKind:    baseTypeKind.String,
 			BaseTypmod:      baseTypmod.Int64,
 			NotNull:         notNull.Bool,
@@ -455,7 +455,7 @@ func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interface
 		typeModifier := raw.typeModifier.Int64
 		column := interfaces.TableColumnMeta{
 			Name:            raw.name.String,
-			Type:            raw.typeName.String,
+			Type:            c.normalizeColumnType(raw.typeName.String),
 			Description:     raw.description.String,
 			Nullable:        !raw.notNull.Bool,
 			DefaultValue:    raw.defaultValue.String,

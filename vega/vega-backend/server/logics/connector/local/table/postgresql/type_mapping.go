@@ -81,9 +81,14 @@ var TypeMapping = map[string]string{
 
 // MapType maps to VEGA type based on data_type of information_schema.
 func (c *PostgresqlConnector) MapType(dataType string) string {
-	d := strings.ToLower(strings.TrimSpace(dataType))
-	if vegaType, ok := TypeMapping[d]; ok {
+	normalizedType := strings.ToLower(dataType)
+	if vegaType, ok := TypeMapping[normalizedType]; ok {
 		return vegaType
 	}
 	return interfaces.DataType_Other
+}
+
+// normalizeColumnType normalizes source type syntax before storing column metadata.
+func (c *PostgresqlConnector) normalizeColumnType(nativeType string) string {
+	return strings.ToLower(strings.TrimSpace(nativeType))
 }

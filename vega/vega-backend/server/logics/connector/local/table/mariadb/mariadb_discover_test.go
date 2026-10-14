@@ -143,7 +143,7 @@ func TestMariaDBConnectorFetchColumns(t *testing.T) {
 	t.Run("empty column metadata fails without replacing existing columns", func(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 		defer cleanup()
-		mock.ExpectQuery("SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"column"})).RowsWillBeClosed()
+		mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"column"})).RowsWillBeClosed()
 		table := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders", Columns: []interfaces.TableColumnMeta{{Name: "old"}}}
 		require.ErrorContains(t, connector.fetchColumns(context.Background(), table), "column metadata is empty")
 		assert.Equal(t, []interfaces.TableColumnMeta{{Name: "old"}}, table.Columns)
@@ -152,17 +152,21 @@ func TestMariaDBConnectorFetchColumns(t *testing.T) {
 
 	connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 	defer cleanup()
-	mock.ExpectQuery("SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE").
+	mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").
 		WithArgs("app", "orders").
 		WillReturnRows(sqlmock.NewRows([]string{
-			"COLUMN_NAME", "DATA_TYPE", "COLUMN_TYPE", "IS_NULLABLE", "COLUMN_DEFAULT", "COLUMN_COMMENT",
+			"COLUMN_NAME", "COLUMN_TYPE", "IS_NULLABLE", "COLUMN_DEFAULT", "COLUMN_COMMENT",
 			"CHARACTER_MAXIMUM_LENGTH", "NUMERIC_PRECISION", "NUMERIC_SCALE", "DATETIME_PRECISION",
 			"CHARACTER_SET_NAME", "COLLATION_NAME", "COLUMN_KEY", "ORDINAL_POSITION",
-		}).AddRow("id", "int", "int(11)", "NO", nil, nil, nil, nil, nil, nil, nil, nil, "PRI", 1))
+		}).AddRow("id", " INT(11) ", "NO", nil, nil, nil, nil, nil, nil, nil, nil, "PRI", 1).
+			AddRow("status", " enum('Active','Inactive') ", "YES", nil, nil, nil, nil, nil, nil, nil, nil, "", 2))
 
 	table := &interfaces.TableMeta{Database: "app", Name: "orders"}
 	require.NoError(t, connector.fetchColumns(context.Background(), table))
-	require.Len(t, table.Columns, 1)
+	require.Len(t, table.Columns, 2)
+	assert.Equal(t, "int(11)", table.Columns[0].Type)
+	assert.Equal(t, "enum('Active','Inactive')", table.Columns[1].Type)
+	assert.Equal(t, interfaces.DataType_String, connector.MapType(table.Columns[1].Type))
 	assert.Equal(t, "", table.Columns[0].DefaultValue)
 	assert.Equal(t, "", table.Columns[0].Description)
 	assert.Equal(t, "", table.Columns[0].Collation)

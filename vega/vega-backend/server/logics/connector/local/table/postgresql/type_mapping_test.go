@@ -24,7 +24,7 @@ func TestPostgresqlMapType(t *testing.T) {
 		// 已知标量类型
 		{"int4", interfaces.DataType_Integer},
 		{"INT4", interfaces.DataType_Integer},
-		{"  text  ", interfaces.DataType_Text},
+		{"text", interfaces.DataType_Text},
 		{"jsonb", interfaces.DataType_Json},
 		{"enum", interfaces.DataType_String},
 		// 数组类型：udt_name 形式（带下划线前缀）—— 不识别
@@ -40,6 +40,19 @@ func TestPostgresqlMapType(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.in, func(t *testing.T) {
 			assert.Equal(t, tc.want, c.MapType(tc.in))
+		})
+	}
+}
+
+func TestPostgresqlConnectorNormalizeColumnType(t *testing.T) {
+	c := &PostgresqlConnector{}
+	for _, tc := range []struct{ native, want string }{
+		{"", ""},
+		{"  INT  ", "int"},
+		{" DECIMAL(10,2) ", "decimal(10,2)"},
+	} {
+		t.Run(tc.native, func(t *testing.T) {
+			assert.Equal(t, tc.want, c.normalizeColumnType(tc.native))
 		})
 	}
 }

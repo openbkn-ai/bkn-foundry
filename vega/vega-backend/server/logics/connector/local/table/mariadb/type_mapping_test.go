@@ -48,8 +48,8 @@ func TestMariaDBConnectorMapType(t *testing.T) {
 			want:       interfaces.DataType_String,
 		},
 		{
-			name:       "normalizes case and whitespace",
-			nativeType: "  DATETIME  ",
+			name:       "normalizes case",
+			nativeType: "DATETIME",
 			want:       interfaces.DataType_Datetime,
 		},
 		{
@@ -72,6 +72,24 @@ func TestMariaDBConnectorMapType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, connector.MapType(tt.nativeType))
+		})
+	}
+}
+
+func TestMariaDBConnectorNormalizeColumnType(t *testing.T) {
+	c := &MariaDBConnector{}
+	for _, tc := range []struct{ native, want string }{
+		{"", ""},
+		{"  INT  ", "int"},
+		{" DECIMAL(10,2) ", "decimal(10,2)"},
+		{" INT(11) UNSIGNED ", "int(11) UNSIGNED"},
+		{` ENUM('Active','Inactive') `, `enum('Active','Inactive')`},
+		{` SET('Read','Write') `, `set('Read','Write')`},
+		{` ENUM('It''S','A\'B','C\\D','尾巴') `, `enum('It''S','A\'B','C\\D','尾巴')`},
+		{` ENUM("Active","A""B") `, `enum("Active","A""B")`},
+	} {
+		t.Run(tc.native, func(t *testing.T) {
+			assert.Equal(t, tc.want, c.normalizeColumnType(tc.native))
 		})
 	}
 }

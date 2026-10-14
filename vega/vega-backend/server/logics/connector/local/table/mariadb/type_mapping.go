@@ -82,15 +82,24 @@ var TypeMapping = map[string]string{
 // MapType returns VEGA type for MariaDB native type.
 // nativeType should use COLUMN_TYPE (such as "int unsigned") to correctly identify unsigned types.
 func (c *MariaDBConnector) MapType(nativeType string) string {
-	t := strings.ToLower(strings.TrimSpace(nativeType))
+	normalizedType := strings.ToLower(nativeType)
 
 	// Check if parentheses are included. If they are, remove the parentheses and their contents
-	if idx := strings.Index(t, "("); idx != -1 {
-		t = strings.TrimSpace(t[:idx])
+	if idx := strings.Index(normalizedType, "("); idx != -1 {
+		normalizedType = strings.TrimSpace(normalizedType[:idx])
 	}
 
-	if vegaType, ok := TypeMapping[t]; ok {
+	if vegaType, ok := TypeMapping[normalizedType]; ok {
 		return vegaType
 	}
 	return interfaces.DataType_Other // default
+}
+
+// normalizeColumnType lowercases the type name and preserves parameters and suffixes.
+func (c *MariaDBConnector) normalizeColumnType(nativeType string) string {
+	normalizedType := strings.TrimSpace(nativeType)
+	if idx := strings.IndexByte(normalizedType, '('); idx >= 0 {
+		return strings.ToLower(normalizedType[:idx]) + normalizedType[idx:]
+	}
+	return strings.ToLower(normalizedType)
 }

@@ -309,7 +309,6 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.TableMeta) error {
 	query, args, err := sq.Select(
 		"COLUMN_NAME",
-		"DATA_TYPE",
 		"COLUMN_TYPE",
 		"IS_NULLABLE",
 		"COLUMN_DEFAULT",
@@ -341,13 +340,12 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 	pkColumns := make([]string, 0)
 
 	for rows.Next() {
-		var name, columnType, dataType, isNullable, columnKey sql.NullString
-		var columnDefault, description, charset, collation sql.NullString
-		var ordinal, charMaxLen, numPrecision, numScale, datetimePrecision sql.NullInt64
+		var columnName, columnType, isNullable, columnDefault sql.NullString
+		var description, charset, collation, columnKey sql.NullString
+		var charMaxLen, numPrecision, numScale, datetimePrecision, ordinal sql.NullInt64
 
 		if err := rows.Scan(
-			&name,
-			&dataType,
+			&columnName,
 			&columnType,
 			&isNullable,
 			&columnDefault,
@@ -363,13 +361,14 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 		); err != nil {
 			return err
 		}
-		if !name.Valid || !columnType.Valid || !isNullable.Valid || !ordinal.Valid {
+		if !columnName.Valid || !columnType.Valid || !isNullable.Valid || !ordinal.Valid {
 			return fmt.Errorf("required column metadata contains NULL")
 		}
 
 		column := interfaces.TableColumnMeta{
-			Name:              name.String,
-			Type:              columnType.String, // Use COLUMN_TYPE to correctly identify unsigned (such as "int unsigned")
+			Name: columnName.String,
+			// Normalize type syntax while preserving ENUM/SET literal casing.
+			Type:              c.normalizeColumnType(columnType.String),
 			Description:       description.String,
 			Nullable:          isNullable.String == "YES",
 			DefaultValue:      columnDefault.String,

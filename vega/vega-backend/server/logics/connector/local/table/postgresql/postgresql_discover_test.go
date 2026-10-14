@@ -274,7 +274,7 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"domain_oid", "base_type", "base_type_kind", "base_typmod", "domain_not_null", "domain_default", "check_constraint",
 		}).
-			AddRow(9100, "int4", "b", -1, true, "42", "CHECK ((VALUE > 0)); CHECK ((VALUE < 1000))").
+			AddRow(9100, " INT4 ", "b", -1, true, "42", "CHECK ((VALUE > 0)); CHECK ((VALUE < 1000))").
 			AddRow(9400, "order_status", "e", -1, false, nil, ""))
 	mock.ExpectQuery("SELECT kcu.column_name").
 		WithArgs("appdb", "public", "orders").
