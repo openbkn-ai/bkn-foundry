@@ -44,7 +44,11 @@ func (ots *objectTypeService) validateLogicMetricProperty(ctx context.Context, o
 		// Legacy references remain readable until the explicit migration job has
 		// converted all persisted object types. New bindings never create them.
 		def, err := ots.ma.GetMetricByID(ctx, objectType.KNID, objectType.Branch, lp.DataSource.ID)
-		if err != nil || def == nil {
+		if err != nil {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+				WithErrorDetails(invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
+		}
+		if def == nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(invalidParameterDetail(ctx, "MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
 		}
@@ -59,14 +63,26 @@ func (ots *objectTypeService) validateLogicMetricProperty(ctx context.Context, o
 			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricExtensionRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
 	}
 	record, err := logics.OMA.GetObjectMetric(ctx, objectType.KNID, objectType.Branch, metricID, version)
-	if err != nil || record == nil {
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails(invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
+	}
+	if record == nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(invalidParameterDetail(ctx, "MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
 	}
 	status := record.Definition.Lifecycle.Status
-	if (status != "published" && status != "deprecated") || record.Definition.CalculationScope != interfaces.ObjectMetricScopeInstance || record.Definition.OwnerObjectTypeID != objectType.OTID {
+	if status != "published" && status != "deprecated" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "MetricScopeMismatch", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "scopeRef": record.Definition.OwnerObjectTypeID, "objectTypeID": objectType.OTID}))
+			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricLifecycleInvalid", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "status": status}))
+	}
+	if record.Definition.CalculationScope != interfaces.ObjectMetricScopeInstance {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricCalculationScopeInvalid", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "scope": record.Definition.CalculationScope}))
+	}
+	if record.Definition.OwnerObjectTypeID != objectType.OTID {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricOwnerMismatch", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "ownerObjectTypeID": record.Definition.OwnerObjectTypeID, "objectTypeID": objectType.OTID}))
 	}
 	return nil
 }

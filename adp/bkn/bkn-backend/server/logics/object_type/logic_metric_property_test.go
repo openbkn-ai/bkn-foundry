@@ -132,34 +132,57 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			So(err.(*rest.HTTPError).HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
 
-		Convey("rejects a missing immutable version", func() {
-			access := &objectMetricAccessStub{err: errors.New("not found")}
+		Convey("reports an immutable-version lookup failure separately", func() {
+			access := &objectMetricAccessStub{err: errors.New("storage unavailable")}
 			logics.OMA = access
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
 			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{
+				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2",
+			}))
 			So(access.lookups, ShouldResemble, []objectMetricLookup{{
 				knID: "kn1", branch: interfaces.MAIN_BRANCH, metricID: "metric1", version: 2,
 			}})
+		})
+
+		Convey("rejects a missing immutable version", func() {
+			logics.OMA = &objectMetricAccessStub{}
+			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
+			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricNotFound", map[string]any{
+				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2",
+			}))
 		})
 
 		Convey("rejects another owner object", func() {
 			logics.OMA = &objectMetricAccessStub{record: publishedInstanceMetric("ot2")}
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
 			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "ObjectMetricOwnerMismatch", map[string]any{
+				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2", "ownerObjectTypeID": "ot2", "objectTypeID": "ot1",
+			}))
 		})
 
 		Convey("rejects a draft version", func() {
 			record := publishedInstanceMetric("ot1")
 			record.Definition.Lifecycle.Status = "draft"
 			logics.OMA = &objectMetricAccessStub{record: record}
-			So(service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2")), ShouldNotBeNil)
+			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
+			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "ObjectMetricLifecycleInvalid", map[string]any{
+				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2", "status": "draft",
+			}))
 		})
 
 		Convey("rejects an object-set metric", func() {
 			record := publishedInstanceMetric("ot1")
 			record.Definition.CalculationScope = interfaces.ObjectMetricScopeSet
 			logics.OMA = &objectMetricAccessStub{record: record}
-			So(service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2")), ShouldNotBeNil)
+			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
+			So(err, ShouldNotBeNil)
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "ObjectMetricCalculationScopeInvalid", map[string]any{
+				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2", "scope": interfaces.ObjectMetricScopeSet,
+			}))
 		})
 
 		Convey("accepts a deprecated pinned object-instance version", func() {

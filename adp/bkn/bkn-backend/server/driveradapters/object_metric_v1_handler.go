@@ -185,14 +185,16 @@ func (r *restHandler) deleteObjectMetricDraft(c *gin.Context, vis hydra.Visitor)
 		return
 	}
 	ctx := objectMetricContext(c, vis)
+	record, err := r.oms.Get(ctx, c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
 	if version == 0 {
-		record, err := r.oms.Get(ctx, c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), 0)
-		if err != nil {
-			replyObjectMetricError(c, err)
-			return
-		}
 		version = record.Definition.Version
 	}
+	c.Set("operation_audit_target_ids", []string{firstNonEmpty(record.Definition.ID, c.Param("metric_id"))})
+	c.Set("operation_audit_target_names", []string{record.Definition.Name})
 	if err := r.oms.DeleteDraft(ctx, c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version); err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -389,5 +391,7 @@ func (r *restHandler) bindObjectMetricLogicProperty(c *gin.Context, vis hydra.Vi
 		replyObjectMetricError(c, err)
 		return
 	}
+	c.Set("operation_audit_target_ids", []string{binding.ObjectTypeID + "/" + firstNonEmpty(property.Name, binding.PropertyName)})
+	c.Set("operation_audit_target_names", []string{firstNonEmpty(property.DisplayName, property.Name)})
 	rest.ReplyOK(c, http.StatusCreated, property)
 }

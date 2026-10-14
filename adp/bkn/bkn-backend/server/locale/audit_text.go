@@ -12,7 +12,7 @@ import (
 // Audit ledger snapshots use the stable business language, independent of the reader locale.
 func AuditSummary(action, target, name string) string {
 	actions := map[string]string{"create": "新建", "update": "修改", "delete": "删除", "import": "导入", "add_members": "添加成员", "remove_members": "移除成员", "enable": "启用", "disable": "停用", "start": "启动", "stop": "停止", "attach": "绑定", "detach": "解绑"}
-	targets := map[string]string{"knowledge_network": "领域知识网络", "object_type": "对象类", "relation_type": "关系类", "action_type": "行动类", "risk_type": "风险类", "metric": "指标", "concept_group": "概念分组", "action_schedule": "行动计划", "kn_capability_binding": "知识网络能力绑定", "catalog": "数据目录", "resource": "数据资源", "discovery_schedule": "发现计划", "build_task": "构建任务", "connector_type": "连接器", "discovery_task": "发现任务", "semantic_understanding_task": "语义理解任务"}
+	targets := map[string]string{"knowledge_network": "领域知识网络", "object_type": "对象类", "relation_type": "关系类", "action_type": "行动类", "risk_type": "风险类", "metric": "指标", "logic_property": "逻辑属性", "concept_group": "概念分组", "action_schedule": "行动计划", "kn_capability_binding": "知识网络能力绑定", "catalog": "数据目录", "resource": "数据资源", "discovery_schedule": "发现计划", "build_task": "构建任务", "connector_type": "连接器", "discovery_task": "发现任务", "semantic_understanding_task": "语义理解任务"}
 	return actions[action] + targets[target] + "“" + name + "”"
 }
 
