@@ -36,8 +36,16 @@ jobs:
       service-path: adp/bkn/bkn-backend
       stack: chart-only
 
+  no-dev-gate:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
+    uses: ./.github/workflows/reusable-no-dev-gate.yml
+    with:
+      service-path: adp/bkn/bkn-backend
+      image-name: bkn-backend
+      binary-path: /opt/bkn-backend/bkn-backend-server
+
   build:
-    needs: [version, verify]
+    needs: [version, verify, no-dev-gate]
     uses: ./.github/workflows/reusable-container-image.yml
     secrets: inherit
     with:

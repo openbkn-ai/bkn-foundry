@@ -1,0 +1,63 @@
+name: reusable-no-dev-gate
+
+on:
+  workflow_call:
+    inputs:
+      service-path:
+        required: true
+        type: string
+      image-name:
+        required: true
+        type: string
+      binary-path:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the release image (native arch only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ inputs.service-path }}/docker/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: ${{ inputs.image-name }}:no-dev-gate-check
+          cache-from: type=gha,scope=${{ inputs.image-name }}-no-dev-gate
+          cache-to: type=gha,mode=max,scope=${{ inputs.image-name }}-no-dev-gate
+
+      - name: Assert the release entitlement build configuration
+        shell: bash
+        run: |
+          cid=$(docker create "${{ inputs.image-name }}:no-dev-gate-check")
+          docker cp "$cid:${{ inputs.binary-path }}" ./release-service.bin
+          docker rm "$cid" >/dev/null
+
+          if ! grep -aqF 'entitlement: SetGate after Freeze' ./release-service.bin; then
+            echo "::error::Entitlement sentinel is absent; the extracted release binary or assertion is invalid."
+            exit 1
+          fi
+
+          if ! grep -aqF 'entitlement: licence hub unusable; running as community' ./release-service.bin; then
+            echo "::error::The release-only entitlement implementation is absent from the release binary."
+            exit 1
+          fi
+
+          if grep -aqF 'OPENBKN_EDITION' ./release-service.bin; then
+            echo "::error::The ee_dev entitlement gate is present in the release binary."
+            exit 1
+          fi
+
+          echo "OK"

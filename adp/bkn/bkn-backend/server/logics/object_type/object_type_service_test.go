@@ -1173,7 +1173,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			expectImportModeOK()
 			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
 				Return(&interfaces.VegaResource{Name: "r1"}, nil)
-			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(nil, nil)
+			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(nil, sql.ErrNoRows)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
 		})

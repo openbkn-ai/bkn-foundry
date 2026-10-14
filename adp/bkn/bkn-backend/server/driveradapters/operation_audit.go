@@ -69,6 +69,13 @@ var operationAuditRoutes = map[string]operationAuditRule{
 	"POST /knowledge-networks/:kn_id/metrics":                                            {Action: "create", TargetType: "metric"},
 	"PUT /knowledge-networks/:kn_id/metrics/:metric_ids":                                 {Action: "update", TargetType: "metric"},
 	"DELETE /knowledge-networks/:kn_id/metrics/:metric_ids":                              {Action: "delete", TargetType: "metric"},
+	"POST /knowledge-networks/:kn_id/object-metrics":                                     {Action: "create", TargetType: "metric"},
+	"PUT /knowledge-networks/:kn_id/object-metrics/:metric_id":                           {Action: "update", TargetType: "metric"},
+	"DELETE /knowledge-networks/:kn_id/object-metrics/:metric_id":                        {Action: "delete", TargetType: "metric"},
+	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/versions":                 {Action: "update", TargetType: "metric"},
+	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/publish":                  {Action: "update", TargetType: "metric"},
+	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate":                {Action: "update", TargetType: "metric"},
+	"POST /knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties":         {Action: "update", TargetType: "object_type"},
 	"POST /knowledge-networks/:kn_id/capabilities":                                       {Action: "attach", TargetType: "kn_capability_binding"},
 	"DELETE /knowledge-networks/:kn_id/capabilities/:binding_ids":                        {Action: "detach", TargetType: "kn_capability_binding"},
 	"POST /knowledge-networks/:kn_id/risk-types":                                         {Action: "create", TargetType: "risk_type"},
@@ -92,7 +99,7 @@ func registeredOperationAudit(method, fullPath, methodOverride string) (operatio
 	}
 	path := strings.TrimSpace(fullPath)
 	for _, prefix := range []string{
-		"/api/bkn-backend/v1", "/api/ontology-manager/v1",
+		"/api/bkn-backend/v1", "/api/bkn-backend/v2", "/api/ontology-manager/v1",
 		"/api/bkn-backend/in/v1", "/api/ontology-manager/in/v1",
 	} {
 		if strings.HasPrefix(path, prefix) {
@@ -353,7 +360,7 @@ func operationAuditPathTarget(c *gin.Context, targetType string) string {
 		"knowledge_network": {"kn_id"}, "object_type": {"ot_id", "ot_ids"},
 		"relation_type": {"rt_id", "rt_ids"}, "action_type": {"at_id", "at_ids"},
 		"risk_type": {"rt_id", "rt_ids"},
-		"metric":    {"metric_ids"}, "concept_group": {"cg_id"}, "action_schedule": {"schedule_id", "schedule_ids"},
+		"metric":    {"metric_id", "metric_ids"}, "concept_group": {"cg_id"}, "action_schedule": {"schedule_id", "schedule_ids"},
 		"kn_capability_binding": {"binding_ids"},
 	}
 	for _, name := range names[targetType] {
@@ -391,7 +398,11 @@ func targetValues(value map[string]any) ([]string, []string) {
 			names = append(names, name)
 		}
 	}
-	appendObject(value)
+	if definition, ok := value["definition"].(map[string]any); ok {
+		appendObject(definition)
+	} else {
+		appendObject(value)
+	}
 	if entries, ok := value["entries"].([]any); ok {
 		for _, item := range entries {
 			if object, ok := item.(map[string]any); ok {
@@ -407,6 +418,10 @@ func changedFields(value map[string]any) map[string]any {
 		"name": {}, "comment": {}, "tags": {}, "icon": {}, "color": {}, "branch": {},
 		"status": {}, "entries": {}, "object_type_ids": {},
 		"cron_expression": {}, "action_type_id": {},
+		"code": {}, "description": {}, "owner_object_type_id": {}, "metric_type": {}, "calculation_scope": {},
+		"result_semantics": {}, "specification": {}, "query_capabilities": {}, "logic_property": {}, "lifecycle": {},
+		"object_type_id": {}, "property_name": {}, "display_name": {}, "metric_ref": {}, "execution": {},
+		"no_data_policy": {}, "on_error": {},
 	}
 	fields := []string{}
 	for key := range value {

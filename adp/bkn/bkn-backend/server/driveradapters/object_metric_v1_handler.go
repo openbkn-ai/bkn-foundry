@@ -20,6 +20,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 )
 
 // RegisterObjectMetricRoutes mounts the public and internal object-metric API
@@ -185,14 +186,16 @@ func (r *restHandler) deleteObjectMetricDraft(c *gin.Context, vis hydra.Visitor)
 		return
 	}
 	ctx := objectMetricContext(c, vis)
+	record, err := r.oms.Get(ctx, c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
 	if version == 0 {
-		record, err := r.oms.Get(ctx, c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), 0)
-		if err != nil {
-			replyObjectMetricError(c, err)
-			return
-		}
 		version = record.Definition.Version
 	}
+	c.Set("operation_audit_target_ids", []string{firstNonEmpty(record.Definition.ID, c.Param("metric_id"))})
+	c.Set("operation_audit_target_names", []string{record.Definition.Name})
 	if err := r.oms.DeleteDraft(ctx, c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version); err != nil {
 		replyObjectMetricError(c, err)
 		return
@@ -384,10 +387,29 @@ func (r *restHandler) bindObjectMetricLogicProperty(c *gin.Context, vis hydra.Vi
 		replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
-	property, err := r.oms.BindLogicProperty(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version, &binding)
+	ctx := objectMetricContext(c, vis)
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	objectTypeService := r.ots
+	if objectTypeService == nil {
+		// The extension handler is assembled separately from the core REST handler,
+		// but both share the process-wide object-type service singleton.
+		objectTypeService = object_type.NewObjectTypeService(r.appSetting)
+	}
+	objectType, err := objectTypeService.GetObjectTypeByID(ctx, nil, c.Param("kn_id"), branch, binding.ObjectTypeID)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
 	}
+	if objectType == nil {
+		replyObjectMetricError(c, errors.New("object type lookup returned no record"))
+		return
+	}
+	property, err := r.oms.BindLogicProperty(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), version, &binding)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
+	c.Set("operation_audit_target_ids", []string{binding.ObjectTypeID})
+	c.Set("operation_audit_target_names", []string{objectType.OTName})
 	rest.ReplyOK(c, http.StatusCreated, property)
 }
