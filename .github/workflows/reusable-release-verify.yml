@@ -64,9 +64,21 @@ jobs:
         if: ${{ inputs.stack == 'python' }}
         working-directory: ${{ inputs.service-path }}
         run: |
-          pip install -r requirements.txt
-          # 单测专用依赖（pytest/httpx 等）不进运行镜像 requirements.txt，放 test-requirements.txt
-          [ -f test-requirements.txt ] && pip install -r test-requirements.txt || true
+          set -euo pipefail
+          # Services that ship a lock must use it in both CI and runtime builds.
+          if [ -f requirements.lock ]; then
+            pip install --require-hashes -r requirements.lock
+            if [ -f test-requirements.txt ]; then
+              test -f test-requirements.lock
+              pip install --require-hashes -r test-requirements.lock
+            fi
+          else
+            # Other Python services retain their existing source requirements.
+            pip install -r requirements.txt
+            if [ -f test-requirements.txt ]; then
+              pip install -r test-requirements.txt
+            fi
+          fi
           pytest
 
       - name: Setup Helm
