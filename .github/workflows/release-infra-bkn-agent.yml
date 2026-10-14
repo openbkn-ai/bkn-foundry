@@ -6,6 +6,8 @@ name: release-infra-bkn-agent
 # 镜像 FROM python:3.12-slim（reusable-container-image 多架构：linux/amd64,linux/arm64）。
 
 on:
+  # A new release branch has no service-path diff; build the complete release set.
+  create:
   push:
     tags:
       - 'v*'
@@ -28,6 +30,7 @@ permissions:
 
 jobs:
   version:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created)
     uses: ./.github/workflows/reusable-version.yml
 
   verify:
@@ -60,7 +63,7 @@ jobs:
       context: '.'
       image-name: bkn-agent
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
     needs: [version, verify, build, chart-contract]
@@ -70,4 +73,4 @@ jobs:
       chart-path: charts
       chart-name: bkn-agent
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

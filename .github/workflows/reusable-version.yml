@@ -82,7 +82,7 @@ jobs:
             VERSION="$BASE_VERSION-$SANITIZED_BRANCH.$COMMIT_DATE.sha$SHORT_SHA"
           fi
 
-          if [[ "$REF_TYPE" == "tag" || "${{ github.event_name }}" == "push" ]]; then
+          if [[ "$REF_TYPE" == "tag" || "${{ github.event_name }}" == "push" || "${{ github.event_name }}" == "create" ]]; then
             PUBLISH=true
           else
             PUBLISH='${{ inputs.publish }}'

@@ -1,6 +1,8 @@
 name: release-adp-bkn-backend
 
 on:
+  # A new release branch has no service-path diff; build the complete release set.
+  create:
   push:
     tags:
       - 'v*'
@@ -24,6 +26,7 @@ permissions:
 
 jobs:
   version:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created)
     uses: ./.github/workflows/reusable-version.yml
 
   verify:
@@ -46,7 +49,7 @@ jobs:
       version: ${{ needs.version.outputs.version }}
       build-args: |
         SERVER_VERSION=${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
     needs: [version, verify, build]
@@ -56,4 +59,4 @@ jobs:
       chart-path: helm/bkn-backend
       chart-name: bkn-backend
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

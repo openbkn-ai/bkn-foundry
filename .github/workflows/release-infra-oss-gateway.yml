@@ -1,6 +1,8 @@
 name: release-infra-oss-gateway
 
 on:
+  # A new release branch has no service-path diff; build the complete release set.
+  create:
   push:
     tags:
       - 'v*'
@@ -23,6 +25,7 @@ permissions:
 
 jobs:
   version:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created)
     uses: ./.github/workflows/reusable-version.yml
 
   verify:
@@ -43,7 +46,7 @@ jobs:
       context: '.'
       image-name: oss-gateway-backend
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       # 内网 swr base 覆盖为公网镜像
       build-args: |
         GO_BUILD_IMAGE=golang:1.25.14
@@ -57,4 +60,4 @@ jobs:
       chart-path: charts
       chart-name: oss-gateway-backend
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
