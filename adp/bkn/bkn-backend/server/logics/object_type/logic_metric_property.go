@@ -55,15 +55,16 @@ func (ots *objectTypeService) validateLogicMetricProperty(ctx context.Context, o
 		return nil
 	}
 	if logics.OMA == nil {
-		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricExtensionRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
 	}
 	record, err := logics.OMA.GetObjectMetric(ctx, objectType.KNID, objectType.Branch, metricID, version)
 	if err != nil || record == nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(invalidParameterDetail(ctx, "MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
 	}
-	if record.Definition.Lifecycle.Status != "published" || record.Definition.CalculationScope != interfaces.ObjectMetricScopeInstance || record.Definition.OwnerObjectTypeID != objectType.OTID {
+	status := record.Definition.Lifecycle.Status
+	if (status != "published" && status != "deprecated") || record.Definition.CalculationScope != interfaces.ObjectMetricScopeInstance || record.Definition.OwnerObjectTypeID != objectType.OTID {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(invalidParameterDetail(ctx, "MetricScopeMismatch", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "scopeRef": record.Definition.OwnerObjectTypeID, "objectTypeID": objectType.OTID}))
 	}

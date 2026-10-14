@@ -179,6 +179,7 @@ ToolLookupFailed = "获取对象类 {{.objectType}} 的逻辑属性 {{.property}
 MetricLookupFailed = "获取对象类 {{.objectType}} 的逻辑属性 {{.property}} 的 KN 指标 {{.metric}} 失败。"
 MetricNotFound = "对象类 {{.objectType}} 的逻辑属性 {{.property}} 的 KN 指标 {{.metric}} 不存在，须绑定 MetricDefinition.id。"
 MetricScopeMismatch = "对象类 {{.objectType}} 的逻辑属性 {{.property}} 引用的指标 scope_ref {{.scopeRef}} 须等于当前对象类 ID {{.objectTypeID}}。"
+ObjectMetricExtensionRequired = "对象类 {{.objectType}} 的逻辑属性 {{.property}} 引用对象指标 {{.metric}} 时需要 object_metrics 扩展。"
 IndexStatusUpdateFailed = "更新对象类索引状态失败。"
 OldDataPropertiesMarshalFailed = "序列化旧数据属性失败。"
 OldDataPropertiesUnmarshalFailed = "反序列化旧数据属性失败。"

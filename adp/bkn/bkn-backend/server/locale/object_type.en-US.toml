@@ -179,6 +179,7 @@ ToolLookupFailed = "Failed to retrieve toolbox {{.box}} tool {{.tool}} for logic
 MetricLookupFailed = "Failed to retrieve KN metric {{.metric}} for logic property {{.property}} on object type {{.objectType}}."
 MetricNotFound = "KN metric {{.metric}} for logic property {{.property}} on object type {{.objectType}} does not exist; bind MetricDefinition.id."
 MetricScopeMismatch = "The scope_ref {{.scopeRef}} of the metric referenced by logic property {{.property}} on object type {{.objectType}} must equal the current object type ID {{.objectTypeID}}."
+ObjectMetricExtensionRequired = "Object metric {{.metric}} referenced by logic property {{.property}} on object type {{.objectType}} requires the object_metrics extension."
 IndexStatusUpdateFailed = "Failed to update the object type index status."
 OldDataPropertiesMarshalFailed = "Failed to serialize the existing data properties."
 OldDataPropertiesUnmarshalFailed = "Failed to deserialize the existing data properties."
