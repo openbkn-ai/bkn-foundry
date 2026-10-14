@@ -1,6 +1,8 @@
 name: release-adp-agent-retrieval
 
 on:
+  # A new release branch has no service-path diff; build the complete release set.
+  create:
   push:
     tags:
       - 'v*'
@@ -24,6 +26,7 @@ permissions:
 
 jobs:
   version:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
     uses: ./.github/workflows/reusable-version.yml
 
   verify:
@@ -36,6 +39,7 @@ jobs:
   # 发布产物的构建配置断言。这类偏差不出现在任何 .go 的 diff 里，源码评审覆盖
   # 不到，所以判据落在产物上。背景与判据依据见内部文档。
   no-dev-gate:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +116,7 @@ jobs:
       context: '../../..'
       image-name: agent-retrieval
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
     needs: [version, verify, build]
@@ -122,4 +126,4 @@ jobs:
       chart-path: helm/agent-retrieval
       chart-name: agent-retrieval
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

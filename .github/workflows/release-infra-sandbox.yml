@@ -6,6 +6,8 @@ name: release-infra-sandbox
 #     避免跨工作流首次推送竞态（base 必须先存在 GHCR，templates 才能 FROM）。
 
 on:
+  # A new release branch has no service-path diff; build the complete release set.
+  create:
   push:
     tags:
       - 'v*'
@@ -31,11 +33,13 @@ permissions:
 
 jobs:
   version:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
     uses: ./.github/workflows/reusable-version.yml
 
   # 沙箱镜像里的 BKN 能力面是签入产物，由 context-loader 的渲染器生成。产物签入
   # 就得有人盯着它别过期：漂了只在调用失败时才暴露，而那时错误里看不出根因。
   bkn-tools:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +67,7 @@ jobs:
       context: '.'
       image-name: sandbox-python-executor-base
       version: v1
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-multi-language-base:
     needs: [version, verify, build-python-base]
@@ -75,7 +79,7 @@ jobs:
       context: '.'
       image-name: sandbox-multi-executor-base
       version: v1
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-python-executor-base:v1
 
@@ -90,7 +94,7 @@ jobs:
       context: '.'
       image-name: sandbox-control-plane
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-web:
     needs: [version, verify]
@@ -102,7 +106,7 @@ jobs:
       context: '.'
       image-name: sandbox-web
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   build-template-python-basic:
     needs: [bkn-tools, version, verify, build-python-base]
@@ -114,7 +118,7 @@ jobs:
       context: '.'
       image-name: sandbox-template-python-basic
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-python-executor-base:v1
         PREINSTALL_COMMON=true
@@ -129,7 +133,7 @@ jobs:
       context: '.'
       image-name: sandbox-template-multi-language
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
       build-args: |
         BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/sandbox-multi-executor-base:v1
 
@@ -142,7 +146,7 @@ jobs:
       chart-path: .
       chart-name: sandbox
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart-sandbox-standalone:
     needs: [version, verify, build-control-plane, build-web, build-template-python-basic, build-template-multi-language]
@@ -152,4 +156,4 @@ jobs:
       chart-path: .
       chart-name: sandbox-standalone
       version: ${{ needs.version.outputs.version }}
-      publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      publish: ${{ github.event_name == 'push' || github.event_name == 'create' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}

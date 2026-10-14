@@ -4,6 +4,8 @@ name: release-bkn-trace-otelcol
 # against the exact release version. Verify-only runs build without pushing.
 
 on:
+  # A new release branch has no service-path diff; build the complete release set.
+  create:
   push:
     tags:
       - 'v*'
@@ -26,6 +28,7 @@ permissions:
 
 jobs:
   version:
+    if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
     uses: ./.github/workflows/reusable-version.yml
 
   verify:
