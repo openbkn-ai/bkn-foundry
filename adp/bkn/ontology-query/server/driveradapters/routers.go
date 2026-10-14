@@ -185,7 +185,7 @@ func (r *restHandler) TraceContextMiddleware() gin.HandlerFunc {
 func (r *restHandler) AccessLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		beginTime := time.Now()
-		ctx, span := otel.Tracer("github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/http").Start(
+		ctx, span := otel.Tracer("ontology-query/http").Start(
 			c.Request.Context(), "HTTP request", trace.WithSpanKind(trace.SpanKindServer),
 		)
 		c.Request = c.Request.WithContext(ctx)
