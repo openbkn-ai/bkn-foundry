@@ -1486,7 +1486,7 @@ func schemaEvidenceRefs(knID string, resp *interfaces.SearchSchemaResp) []map[st
 	refs = append(refs, conceptRefs("object", "object", knID, resp.ObjectTypes)...)
 	refs = append(refs, conceptRefs("relation", "relation", knID, resp.RelationTypes)...)
 	refs = append(refs, conceptRefs("action_type", "action", knID, resp.ActionTypes)...)
-	refs = append(refs, conceptRefs("metric", "metric", knID, resp.MetricTypes)...)
+	refs = append(refs, metricConceptRefs(knID, resp.MetricTypes)...)
 	return refs
 }
 
@@ -1508,6 +1508,32 @@ func conceptRefs(kind, refType, knID string, items []any) []map[string]any {
 			"summary_hash":   HashValue(safeConceptSummary(kind, itemMap)),
 			"validity":       "observed",
 			"version_status": "unversioned",
+			"visibility":     "visible",
+		})
+	}
+	return refs
+}
+
+func metricConceptRefs(knID string, items []any) []map[string]any {
+	refs := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		itemMap, ok := asMap(item)
+		if !ok {
+			continue
+		}
+		id := firstString(itemMap, "concept_id", "id")
+		version := intValue(itemMap["version"], 0)
+		if id == "" || version < 1 {
+			continue
+		}
+		versionStatus := fmt.Sprintf("v%d", version)
+		refs = append(refs, map[string]any{
+			"ref_id":         "metric:" + knID + ":" + id + ":" + versionStatus,
+			"ref_type":       "metric",
+			"source_system":  ModuleName,
+			"summary_hash":   HashValue(safeConceptSummary("metric", itemMap)),
+			"validity":       "observed",
+			"version_status": versionStatus,
 			"visibility":     "visible",
 		})
 	}

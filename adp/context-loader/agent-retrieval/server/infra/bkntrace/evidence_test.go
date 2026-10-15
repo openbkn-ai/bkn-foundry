@@ -500,6 +500,26 @@ func TestBuildSearchSchemaEventsKeepsFactIndependentFromUpstreamClaim(t *testing
 	}
 }
 
+func TestBuildSearchSchemaEventsUsesVersionedMetricRefs(t *testing.T) {
+	maxConcepts := 5
+	events := BuildSearchSchemaEvents(testTraceContext(), &interfaces.SearchSchemaReq{
+		Query: "revenue", KnID: "kn_demo", MaxConcepts: &maxConcepts,
+	}, &interfaces.SearchSchemaResp{MetricTypes: []any{map[string]any{
+		"id": "revenue", "version": 2, "name": "Revenue",
+	}}})
+	if len(events) != 1 {
+		t.Fatalf("len(events)=%d, want one fact", len(events))
+	}
+	refs := events[0]["payload"].(map[string]any)["source_refs"].([]map[string]any)
+	if len(refs) != 2 {
+		t.Fatalf("source_refs=%#v, want network and metric refs", refs)
+	}
+	metricRef := refs[1]
+	if metricRef["ref_id"] != "metric:kn_demo:revenue:v2" || metricRef["version_status"] != "v2" {
+		t.Fatalf("metric ref is not tied to the published version: %#v", metricRef)
+	}
+}
+
 func TestBuildQueryObjectInstanceEventsKeepsQueriedObjectAsZeroResultEvidence(t *testing.T) {
 	events := BuildQueryObjectInstanceEvents(
 		testTraceContext(),

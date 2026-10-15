@@ -668,19 +668,20 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	toolbox, _ := args["toolbox_id"].(string)
 	ot, _ := args["ot_id"].(string)
 	metric, _ := args["metric_id"].(string)
+	metricVersionNumber, _ := args["version"].(float64)
+	metricVersion := int(metricVersionNumber)
 	// Header-resolved network may not be repeated in the raw input. A known
 	// object/metric still requires its canonical target; absence of kn_id is not
 	// evidence that the request was rejected.
-	for _, target := range []struct{ tool, prefix, id string }{{"query_object_instance", "object", ot}, {"query_metric", "metric", metric}} {
+	for _, target := range []struct {
+		tool, prefix, id string
+		version          int
+	}{{"query_object_instance", "object", ot, 0}, {"query_metric", "metric", metric, metricVersion}} {
 		if f.ToolName != target.tool || target.id == "" {
 			continue
 		}
-		if kn != "" {
-			return refs[target.prefix+":"+kn+":"+target.id], nil
-		}
 		for ref := range refs {
-			parts := strings.Split(ref, ":")
-			if len(parts) == 3 && parts[0] == target.prefix && parts[1] != "" && parts[2] == target.id {
+			if matchesRequestedBusinessTarget(ref, target.prefix, kn, target.id, target.version) {
 				return true, nil
 			}
 		}
@@ -734,6 +735,23 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 	}
 
 	return len(refs) > 0, nil
+}
+
+func matchesRequestedBusinessTarget(ref, prefix, kn, id string, version int) bool {
+	parts := strings.Split(ref, ":")
+	if prefix == "metric" {
+		if !sessionvo.BusinessRefMetric.MatchesCanonicalRefID(ref) {
+			return false
+		}
+		// Historical three-segment metric refs remain readable. New versioned
+		// refs must identify the exact immutable version requested by the call.
+		if version > 0 && len(parts) == 4 && parts[3] != fmt.Sprintf("v%d", version) {
+			return false
+		}
+	} else if len(parts) != 3 {
+		return false
+	}
+	return parts[0] == prefix && parts[1] != "" && parts[2] == id && (kn == "" || parts[1] == kn)
 }
 
 // matchesFunctionBusinessRef accepts the current three-segment contract and
