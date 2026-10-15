@@ -443,37 +443,6 @@ func TestSearchMetricTypes_HTTPError(t *testing.T) {
 	})
 }
 
-// TestSearchMetricTypes_NotFound test SearchMetricTypes 404 error.
-func TestSearchMetricTypes_NotFound(t *testing.T) {
-	convey.Convey("TestSearchMetricTypes_NotFound", t, func() {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockLogger := mocks.NewMockLogger(ctrl)
-		mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
-
-		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
-		mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).AnyTimes()
-
-		client := &bknBackendAccess{
-			logger:     mockLogger,
-			baseURL:    "http://localhost:8080/api/bkn-backend",
-			httpClient: mockHTTPClient,
-		}
-
-		ctx := context.Background()
-		req := &interfaces.QueryConceptsReq{
-			KnID: "kn-001",
-		}
-
-		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(404, nil, nil)
-
-		_, err := client.SearchMetricTypes(ctx, req)
-		convey.So(err, convey.ShouldNotBeNil)
-	})
-}
-
 func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -543,17 +512,6 @@ func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 			},
 			call: func(ctx context.Context, client *bknBackendAccess) error {
 				_, err := client.SearchActionTypes(ctx, &interfaces.QueryConceptsReq{KnID: "kn-001"})
-				return err
-			},
-		},
-		{
-			name: "SearchMetricTypes",
-			expectHTTP: func(mockHTTPClient *mocks.MockHTTPClient, respBody []byte) {
-				mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-					Return(http.StatusNotFound, respBody, nil)
-			},
-			call: func(ctx context.Context, client *bknBackendAccess) error {
-				_, err := client.SearchMetricTypes(ctx, &interfaces.QueryConceptsReq{KnID: "kn-001"})
 				return err
 			},
 		},

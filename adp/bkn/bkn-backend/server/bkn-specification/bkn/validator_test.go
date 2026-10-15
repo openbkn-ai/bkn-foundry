@@ -8,26 +8,10 @@ package bkn
 
 import (
 	"fmt"
-	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
-
-func testExamplesDir(t *testing.T) string {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	require.True(t, ok)
-	return filepath.Join(filepath.Dir(file), "..", "examples")
-}
-
-func TestLoadNetwork_RejectsLegacyK8sMetrics(t *testing.T) {
-	dir := filepath.Join(testExamplesDir(t), "k8s-network")
-	_, err := LoadNetwork(dir)
-	require.ErrorContains(t, err, "legacy metrics")
-}
 
 func TestValidateNetwork_MissingID(t *testing.T) {
 	net := &BknNetwork{
@@ -233,12 +217,6 @@ func TestValidateNetwork_LogicPropertyMetricOK(t *testing.T) {
 	}
 	res := ValidateNetwork(net)
 	assert.True(t, res.OK(), "expected valid logic metric property, errors: %+v", res.Errors)
-}
-
-func TestLoadNetwork_RejectsLegacyMockSystemMetrics(t *testing.T) {
-	dir := filepath.Join(testExamplesDir(t), "mock_system")
-	_, err := LoadNetwork(dir)
-	require.ErrorContains(t, err, "legacy metrics")
 }
 
 // networkWithLogicSource builds a minimal valid network whose only logic property carries src.

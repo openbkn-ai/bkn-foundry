@@ -46,11 +46,6 @@ func allExampleDirs(t *testing.T) []string {
 	return dirs
 }
 
-func hasLegacyMetrics(dir string) bool {
-	info, err := os.Stat(filepath.Join(dir, "metrics"))
-	return err == nil && info.IsDir()
-}
-
 // tempDir creates a temporary directory that is removed when the test ends.
 func tempDir(t *testing.T) string {
 	t.Helper()
@@ -162,10 +157,6 @@ func TestLoadFromFile(t *testing.T) {
 	for _, dir := range allExampleDirs(t) {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			doc, err := bkn.LoadNetwork(dir)
-			if hasLegacyMetrics(dir) {
-				require.ErrorContains(t, err, "legacy metrics")
-				return
-			}
 			require.NoError(t, err, "LoadNetwork failed")
 
 			assert.NotEmpty(t, doc.ID, "network id must not be empty")
@@ -185,10 +176,6 @@ func TestLoadFromTar(t *testing.T) {
 	for _, dir := range allExampleDirs(t) {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			tarDoc, err := bkn.LoadNetworkFromTar(buildTarFromDir(t, dir))
-			if hasLegacyMetrics(dir) {
-				require.ErrorContains(t, err, "legacy metrics")
-				return
-			}
 			require.NoError(t, err, "load from tar")
 
 			fileDoc, err := bkn.LoadNetwork(dir)
@@ -221,10 +208,6 @@ func TestRoundTrip_FileContent(t *testing.T) {
 			require.NoError(t, err, "open tar file")
 			doc, err := bkn.LoadNetworkFromTar(f)
 			_ = f.Close()
-			if hasLegacyMetrics(dir) {
-				require.ErrorContains(t, err, "legacy metrics")
-				return
-			}
 			require.NoError(t, err, "LoadNetworkFromTar failed")
 
 			// Step 3: export the model back to a tar.

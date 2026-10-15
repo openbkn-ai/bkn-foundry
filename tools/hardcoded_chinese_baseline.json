@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2501,
+  "violation_count": 2475,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -38,10 +38,7 @@
       "50945c996308d0638140"
     ],
     "adp/bkn/bkn-backend/server/bkn-specification/bkn/parser.go": [
-      "e82a7c280e1e9667c322",
-      "d80f34213b9bc55ef58a",
-      "1c7b74bc2534c14efdb8",
-      "7365ac9e306eb1cd9bb8"
+      "e82a7c280e1e9667c322"
     ],
     "adp/bkn/bkn-backend/server/bkn-specification/bkn/tar_writer.go": [
       "f81488e2b1b6a7cc85c0",
@@ -55,7 +52,6 @@
       "c173b3498ca1c8ca83f7",
       "7b4d1418d7bb9a95aa80",
       "9fd99196dd1bf3bfb8fe",
-      "9d86d9ce9e4d7572e09b",
       "34833ecf481088e53aeb",
       "5c8a05a561e22e350d49",
       "779ce1cdb4a80aa2ba94",
@@ -75,7 +71,6 @@
       "95d9dcc79c7d85f9e6bc",
       "20457a0db3c06c5ae81d",
       "49b5c0a00cfd78ad6c3c",
-      "322c62e31f0a24dde9a5",
       "6501a965366e360a8951",
       "d20bab42e5fee65d84c4",
       "ac5c5568d4d5d3a77e04"
@@ -301,7 +296,6 @@
       "baf787759e8fc264e83a",
       "86b7bd5f1dc49c5817fb",
       "1812eee7bde9dd4eaed7",
-      "f9569c85655dcd79bff0",
       "d39d731f751219dca582",
       "b775fd1aefba59943b61",
       "b32ad3e17d962f64215b",
@@ -313,27 +307,6 @@
       "0ab24c65465d0d0e6309",
       "10961b669f956bd8f431",
       "93a276015d2ed35a4f9b"
-    ],
-    "adp/bkn/bkn-backend/server/logics/metric/metric_service.go": [
-      "0efce0839a6d24c28f9a",
-      "d41236f89e1c02092877",
-      "82ce6bf5060e6bc68dcd",
-      "9f0b9e1c32f25febd3fa",
-      "c82ac4f42c1e6ca3366c",
-      "a73da4b9d063aaec5d22",
-      "b5893165c0e430e2444c",
-      "5569bd4c3d4e177dcc3b",
-      "cfef155db976634e2121",
-      "bb313f9c46d31f9570e4",
-      "57f6a967b814c0739605",
-      "00067ae1ba263361e7dd",
-      "079e8f68e81dfb5755dc",
-      "b021ada2f93d6b1c6f9e",
-      "c033b4e2ba848d9c53e3",
-      "6b56d799da781974d4d0",
-      "abe901ffc1bf06d53c55",
-      "223e0d1045762d631d24",
-      "4b18be2fea33b0902be1"
     ],
     "adp/bkn/bkn-backend/server/logics/object_type/object_type_service.go": [
       "04c37f0877e9d20a6fe3",
@@ -417,7 +390,6 @@
     ],
     "adp/bkn/ontology-query/server/drivenadapters/ontology_manager/ontology_manager_access.go": [
       "49646d83f3e2788626a4",
-      "2e5d52f606551526d4b7",
       "877295fbacb78debaf08",
       "5c6f7db610295fa2e8d8",
       "1825e497b16d9cc26aba",

@@ -1219,16 +1219,21 @@ func TestObservedToolBusinessRefsAddsMetricScopeWithoutDomainKnowledge(t *testin
 	refs := derivedToolBusinessRefs(toolKeyQueryMetric, map[string]any{
 		"kn_id":     "network-any",
 		"metric_id": "metric-any",
+		"version":   3,
 	}, "network-any")
 
 	want := map[string]bool{
-		"knowledge_network\x00kn:network-any":     true,
-		"metric\x00metric:network-any:metric-any": true,
+		"knowledge_network\x00kn:network-any":        true,
+		"metric\x00metric:network-any:metric-any:v3": true,
 	}
 	for _, ref := range refs {
 		delete(want, ref.RefType+"\x00"+ref.RefID)
-		if ref.Version != "unversioned" {
-			t.Fatalf("derived ref version = %q", ref.Version)
+		wantVersion := "unversioned"
+		if ref.RefType == "metric" {
+			wantVersion = "v3"
+		}
+		if ref.Version != wantVersion {
+			t.Fatalf("derived ref %s version = %q, want %q", ref.RefID, ref.Version, wantVersion)
 		}
 	}
 	if len(want) != 0 {

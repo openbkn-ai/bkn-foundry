@@ -27,6 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 var (
@@ -39,6 +40,7 @@ type bknService struct {
 	kns        interfaces.KNService
 	cbs        interfaces.CapabilityBindingService
 	archive    interfaces.ObjectMetricArchiveAccessV1
+	ps         interfaces.PermissionService
 }
 
 // NewBKNService creates the BKN service.
@@ -48,6 +50,7 @@ func NewBKNService(appSetting *common.AppSetting) interfaces.BKNService {
 			appSetting: appSetting,
 			kns:        knowledge_network.NewKNService(appSetting),
 			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
+			ps:         permission.NewPermissionService(appSetting),
 		}
 	})
 	return bService
@@ -127,6 +130,10 @@ func (bs *bknService) buildNetwork(ctx context.Context, knID string, branch stri
 		if err != nil {
 			return nil, err
 		}
+		records, err = bs.filterVisibleObjectMetricArchive(ctx, knID, bknNetwork.ObjectTypes, records)
+		if err != nil {
+			return nil, err
+		}
 		for _, record := range records {
 			data, err := json.Marshal(record)
 			if err != nil {
@@ -137,6 +144,55 @@ func (bs *bknService) buildNetwork(ctx context.Context, knID string, branch stri
 	}
 
 	return bknNetwork, nil
+}
+
+func (bs *bknService) filterVisibleObjectMetricArchive(ctx context.Context, knID string,
+	objectTypes []*bknsdk.BknObjectType, records []*interfaces.ObjectMetricRecordV1) ([]*interfaces.ObjectMetricRecordV1, error) {
+
+	if len(records) == 0 {
+		return records, nil
+	}
+	metricIDs := make([]string, 0, len(records))
+	seenMetricIDs := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if record == nil {
+			continue
+		}
+		metricID := record.Definition.ID
+		if _, seen := seenMetricIDs[metricID]; !seen {
+			seenMetricIDs[metricID] = struct{}{}
+			metricIDs = append(metricIDs, metricID)
+		}
+	}
+	visibleMetricIDs, err := permission.FilterKNChildIDs(ctx, bs.ps, interfaces.RESOURCE_TYPE_METRIC,
+		knID, metricIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return nil, err
+	}
+	visibleMetrics := make(map[string]struct{}, len(visibleMetricIDs))
+	for _, metricID := range visibleMetricIDs {
+		visibleMetrics[metricID] = struct{}{}
+	}
+	visibleOwners := make(map[string]struct{}, len(objectTypes))
+	for _, objectType := range objectTypes {
+		if objectType != nil {
+			visibleOwners[objectType.ID] = struct{}{}
+		}
+	}
+	filtered := make([]*interfaces.ObjectMetricRecordV1, 0, len(records))
+	for _, record := range records {
+		if record == nil {
+			continue
+		}
+		if _, visible := visibleMetrics[record.Definition.ID]; !visible {
+			continue
+		}
+		if _, ownerVisible := visibleOwners[record.Definition.OwnerObjectTypeID]; !ownerVisible {
+			continue
+		}
+		filtered = append(filtered, record)
+	}
+	return filtered, nil
 }
 
 // DiffNetworks compares two knowledge network branches and reports what differs.

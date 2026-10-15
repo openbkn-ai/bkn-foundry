@@ -54,6 +54,7 @@
             "type": "object",
             "required": ["start", "end"],
             "additionalProperties": false,
+            "description": "时间范围，起点与终点均为 Unix 毫秒。",
             "properties": {
               "start": {"type": "integer", "description": "起始时间，Unix 毫秒"},
               "end": {"type": "integer", "description": "结束时间，Unix 毫秒"}
@@ -68,12 +69,13 @@
     "type": "object",
     "required": ["kn_id", "metric_id", "version", "model", "entries", "status", "overall_ms"],
     "properties": {
-      "kn_id": {"type": "string"},
-      "metric_id": {"type": "string"},
-      "version": {"type": "integer"},
-      "model": {"type": "object", "additionalProperties": true},
+      "kn_id": {"type": "string", "description": "知识网络 ID。"},
+      "metric_id": {"type": "string", "description": "对象指标 ID。"},
+      "version": {"type": "integer", "description": "已发布的指标版本。"},
+      "model": {"type": "object", "additionalProperties": true, "description": "已发布指标的结果模型。"},
       "entries": {
         "type": "array",
+        "description": "带状态的指标结果条目。",
         "items": {
           "type": "object",
           "required": ["status"],
@@ -86,9 +88,9 @@
           }
         }
       },
-      "status": {"type": "string", "enum": ["ok", "no_data", "unavailable", "partial"]},
-      "warnings": {"type": "array", "items": {"type": "string"}},
-      "overall_ms": {"type": "integer"}
+      "status": {"type": "string", "enum": ["ok", "no_data", "unavailable", "partial"], "description": "整体查询状态。"},
+      "warnings": {"type": "array", "items": {"type": "string"}, "description": "部分成功或不可用时的警告。"},
+      "overall_ms": {"type": "integer", "description": "查询耗时，单位毫秒。"}
     }
   }
 }

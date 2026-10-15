@@ -69,18 +69,10 @@ branch: main
 |----|------|-----------|-------------|
 | exchange | Exchange邮件恢复概念分组 | `concept_groups/exchange.bkn` | 将Exchange邮件恢复相关的对象类型组织在一起，便于理解和管理。 |
 
-### Metrics
+### Object Metrics V1
 
 | ID | Name | File Path | Description |
 |----|------|-----------|-------------|
-| backup_timepoint_count | 已验证备份点数量（按 Exchange 服务器） | `metrics/backup_timepoint_count.bkn` | 在选定时间范围内，仅统计**已通过可恢复验证**（`is_verified` 为真）的备份时间点；按**来源 Exchange 服务器**分组，对分组结果按数量**降序**排序，并保留**至少 2 个已验证时间点**的服务器，用于优先排查备份薄弱的生产实例（多副本仍集中在少数机器时更可暴露风险）。 |
-| backup_timepoint_total_size_mb | 备份时间点总容量（MB） | `metrics/backup_timepoint_total_size_mb.bkn` | 对备份时间点副本的 `snapshot_size` 求和，反映该范围内备份数据占用规模。 |
-| backup_timepoint_verified_count | 已验证备份时间点数量 | `metrics/backup_timepoint_verified_count.bkn` | 仅统计 `is_verified` 为真的备份时间点副本数量，用于可恢复性治理与合规报告。 |
-| exchange_server_mailbox_sum | Exchange邮箱数量合计 | `metrics/exchange_server_mailbox_sum.bkn` | 对生产 Exchange 服务器上的 `mailbox_count` 求和，用于评估保护范围内的邮箱规模（可按数据域拆分分析）。 |
-| recovery_job_avg_duration_seconds | 恢复作业平均耗时（秒） | `metrics/recovery_job_avg_duration_seconds.bkn` | 对 `duration` 求平均，衡量恢复作业的典型耗时水平（仅当作业具备有效耗时字段时有意义）。 |
-| recovery_job_count | 成功恢复作业次数（按执行用户） | `metrics/recovery_job_count.bkn` | 在指定时间窗口内，仅统计**恢复结果为成功**的作业；按**执行用户**分组计数，按次数**降序**排列，并通过 **having** 剔除低频噪声（例如单次操作），便于运营侧识别主要操作者与活跃恢复行为。 |
-| recovery_task_count | 恢复任务数量 | `metrics/recovery_task_count.bkn` | 统计恢复任务条数，可按任务状态与恢复类型拆分，用于跟踪演练与生产恢复请求量。 |
-| recovery_verification_failure_count | 可用性验证失败次数 | `metrics/recovery_verification_failure_count.bkn` | 统计验证结果为失败的 Exchange 可用性验证记录数，用于恢复质量与演练问题追踪。 |
 
 ## Directory Structure
 
@@ -121,15 +113,6 @@ branch: main
 ├── risk_types/
 │   ├── backup_timepoint_verification_failed.bkn
 │   └── production_data_overwrite.bkn
-├── concept_groups/
-│   └── exchange.bkn
-└── metrics/
-    ├── backup_timepoint_count.bkn
-    ├── backup_timepoint_total_size_mb.bkn
-    ├── backup_timepoint_verified_count.bkn
-    ├── exchange_server_mailbox_sum.bkn
-    ├── recovery_job_avg_duration_seconds.bkn
-    ├── recovery_job_count.bkn
-    ├── recovery_task_count.bkn
-    └── recovery_verification_failure_count.bkn
+└── concept_groups/
+    └── exchange.bkn
 ```

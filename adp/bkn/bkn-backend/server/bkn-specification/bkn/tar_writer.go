@@ -206,7 +206,7 @@ func generateSkillMd(doc *BknNetwork) string {
 
 	// Object metric table
 	if len(doc.ObjectMetrics) > 0 {
-		sb.WriteString("### 对象指标 V1\n\n")
+		sb.WriteString("### Object Metrics V1\n\n")
 		sb.WriteString("| 指标 | 文件路径 | 说明 |\n")
 		sb.WriteString("|------|----------|------|\n")
 		for _, metric := range doc.ObjectMetrics {
@@ -277,7 +277,7 @@ func generateSkillMd(doc *BknNetwork) string {
 		_, _ = fmt.Fprintf(&sb, "- **风险定义**: `risk_types/`\n")
 	}
 	if len(doc.ObjectMetrics) > 0 {
-		_, _ = fmt.Fprintf(&sb, "- **对象指标 V1**: `object_metrics/`\n")
+		_, _ = fmt.Fprintf(&sb, "- **Object Metrics V1**: `object_metrics/`\n")
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 

@@ -69,15 +69,10 @@ tags: [供应链, 采购, 库存, MRP]
 | ID | Name | File Path | Description |
 |----|------|-----------|-------------|
 
-### Metrics
+### Object Metrics V1
 
 | ID | Name | File Path | Description |
 |----|------|-----------|-------------|
-| hd_forecast_consensus_by_product | 各产品共识需求合计 | `metrics/hd_forecast_consensus_by_product.bkn` | 对需求预测中的 `consensus_demand` 按产品编码求和，支撑 S&OP 与 MRP 输入侧的共识口径在多产品上的分布。 |
-| hd_inventory_available_qty_by_org | 各组织可用库存量合计 | `metrics/hd_inventory_available_qty_by_org.bkn` | 按库存所属组织对 `available_inventory_qty` 求和，对应「可用量 = 现存量 − 预留」口径在组织维度的汇聚，用于供需对齐与调拨优先级讨论。 |
-| hd_mrp_net_demand_by_product | 各成品物料净需求合计 | `metrics/hd_mrp_net_demand_by_product.bkn` | 对 MRP 结果中的 `material_demand_quantity` 按成品料号（`finished_product_code`）求和；字段可为负表示缺口、为正表示富余，本指标用于在**产品维度**汇总净需求信号，辅助计划员筛选重点成品。 |
-| hd_purchase_order_count_by_supplier | 各供应商采购订单笔数 | `metrics/hd_purchase_order_count_by_supplier.bkn` | 按供应商维度对采购订单单号计数，观察采购活动集中度与核心供应商依赖（配合 `supplier_name` 展示更清晰）。 |
-| hd_salesorder_signing_qty_by_product | 各产品签约数量合计 | `metrics/hd_salesorder_signing_qty_by_product.bkn` | 对销售订单的 `signing_quantity` 按产品编码求和，用于把需求侧签约节奏与库存、MRP 缺口对照。 |
 
 ## Directory Structure
 
@@ -99,25 +94,19 @@ tags: [供应链, 采购, 库存, MRP]
 │   ├── product.bkn
 │   ├── salesorder.bkn
 │   └── supplier.bkn
-├── relation_types/
-│   ├── bom2material.bkn
-│   ├── demand2pp.bkn
-│   ├── material2inventory.bkn
-│   ├── material2pr.bkn
-│   ├── mrp2material.bkn
-│   ├── po2material.bkn
-│   ├── po2supplier.bkn
-│   ├── pp2mps.bkn
-│   ├── pp2mrp.bkn
-│   ├── pp2product.bkn
-│   ├── pr2po.bkn
-│   ├── product2bom.bkn
-│   ├── product2inventory.bkn
-│   └── salesorder2product.bkn
-└── metrics/
-    ├── hd_forecast_consensus_by_product.bkn
-    ├── hd_inventory_available_qty_by_org.bkn
-    ├── hd_mrp_net_demand_by_product.bkn
-    ├── hd_purchase_order_count_by_supplier.bkn
-    └── hd_salesorder_signing_qty_by_product.bkn
+└── relation_types/
+    ├── bom2material.bkn
+    ├── demand2pp.bkn
+    ├── material2inventory.bkn
+    ├── material2pr.bkn
+    ├── mrp2material.bkn
+    ├── po2material.bkn
+    ├── po2supplier.bkn
+    ├── pp2mps.bkn
+    ├── pp2mrp.bkn
+    ├── pp2product.bkn
+    ├── pr2po.bkn
+    ├── product2bom.bkn
+    ├── product2inventory.bkn
+    └── salesorder2product.bkn
 ```

@@ -52,6 +52,9 @@ func TestMetricTextMatches_NormalizesMetricNames(t *testing.T) {
 	if !metricTextMatches("CPU_usage", "cpu usage") || metricTextMatches("CPU_usage", "memory usage") {
 		t.Fatal("metric token matching failed")
 	}
+	if !metricTextMatches("订单总数", "请查询订单总数") || metricTextMatches("客户满意度", "请查询订单总数") {
+		t.Fatal("metric Chinese sentence recall failed")
+	}
 }
 
 func TestSearchMetricTypes_RestrictsConceptGroups(t *testing.T) {
@@ -148,6 +151,23 @@ func TestListMetricsByObjectTypes_NoRequestWithoutIDs(t *testing.T) {
 		if err != nil || metrics != nil {
 			t.Fatalf("metrics=%+v err=%v", metrics, err)
 		}
+	}
+}
+
+func TestObjectMetricDiscoveryTreatsMissingOptionalCapabilityAsEmpty(t *testing.T) {
+	client, mockHTTP, ctrl := newMetricsTestClient(t)
+	defer ctrl.Finish()
+	mockHTTP.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(http.StatusNotFound, []byte(`{"error_code":"RESOURCE_NOT_FOUND"}`), nil).
+		Times(2)
+
+	searched, err := client.SearchMetricTypes(context.Background(), &interfaces.QueryConceptsReq{KnID: "kn1"})
+	if err != nil || searched == nil || len(searched.Entries) != 0 || searched.TotalCount != 0 {
+		t.Fatalf("searched=%+v err=%v", searched, err)
+	}
+	attached, err := client.ListMetricsByObjectTypes(context.Background(), "kn1", []string{"ot1"})
+	if err != nil || len(attached) != 0 {
+		t.Fatalf("attached=%+v err=%v", attached, err)
 	}
 }
 

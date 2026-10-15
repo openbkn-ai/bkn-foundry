@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/bytedance/sonic"
 
@@ -698,11 +699,26 @@ func metricTextMatches(text, query string) bool {
 	text = strings.ToLower(normalize.Replace(text))
 	query = strings.ToLower(normalize.Replace(query))
 	for _, term := range strings.Fields(query) {
-		if !strings.Contains(text, term) {
+		if !strings.Contains(text, term) && !hasHanPhraseContainedByQuery(text, term) {
 			return false
 		}
 	}
 	return true
+}
+
+func hasHanPhraseContainedByQuery(text, query string) bool {
+	var phrase []rune
+	for _, char := range text + " " {
+		if unicode.Is(unicode.Han, char) {
+			phrase = append(phrase, char)
+			continue
+		}
+		if len(phrase) >= 2 && strings.Contains(query, string(phrase)) {
+			return true
+		}
+		phrase = phrase[:0]
+	}
+	return false
 }
 
 func (b *bknBackendAccess) metricGroupObjectIDs(ctx context.Context, knID string, requested []string) (map[string]struct{}, error) {
@@ -887,6 +903,13 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 			b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes request failed, err: %v", err)
 			return nil, infraErr.DefaultHTTPError(ctx, respCode,
 				fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes request failed, err: %v", err))
+		}
+		// Object Metrics is an optional Enterprise capability. Community
+		// bkn-backend instances do not register this route, and an entitlement
+		// middleware may hide it with the same status. In either case the
+		// caller still needs the rest of the knowledge-network schema.
+		if respCode == http.StatusNotFound {
+			return entries, nil
 		}
 
 		if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {

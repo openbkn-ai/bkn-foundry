@@ -1,6 +1,6 @@
 # BKN Directory Checksum
 # format: 2
-# generated: 2026-09-12T09:28:13+08:00
+# generated: 2026-10-15T16:52:54+08:00
 SKILL.md  sha256:84b912d3c20e2382
 action_type:browse_backup_emails  sha256:b0576f2e5d82bf51
 action_type:execute_recovery_task  sha256:3b4cfd9ab72258b8
@@ -10,15 +10,7 @@ action_type:list_data_domains  sha256:9f5d2b7bcc19cd05
 action_type:list_exchange_servers  sha256:3f385a3dc4cf997c
 action_type:verify_exchange_availability  sha256:51da68d1fba605dc
 concept_group:exchange  sha256:775416c3a8743d45
-metric:backup_timepoint_count  sha256:a5e579d933ba5a10
-metric:backup_timepoint_total_size_mb  sha256:2e3367fe598b437f
-metric:backup_timepoint_verified_count  sha256:c6eda0f879d01d72
-metric:exchange_server_mailbox_sum  sha256:e8bf553679d951ae
-metric:recovery_job_avg_duration_seconds  sha256:fe2c37d9d2f4693b
-metric:recovery_job_count  sha256:1897f5f8cd4c55f6
-metric:recovery_task_count  sha256:29397cfa73e61f05
-metric:recovery_verification_failure_count  sha256:20cdabb2a3716cb0
-network  sha256:f7f9eec9cb203aa4
+network  sha256:134018146159bf8c
 object_type:backup_timepoint  sha256:30b92a3ff09fd7e1
 object_type:data_domain  sha256:b43ee44f58200e63
 object_type:email  sha256:c49ab36e1ff584c9

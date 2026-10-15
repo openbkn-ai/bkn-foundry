@@ -51,15 +51,10 @@ branch: main
 |----|------|-----------|-------------|
 | employee_onboarding | 员工入职流程 | `concept_groups/employee_onboarding.bkn` | 员工入职相关的核心对象类型 |
 
-### Metrics
+### Object Metrics V1
 
 | ID | Name | File Path | Description |
 |----|------|-----------|-------------|
-| mock_department_count | 部门档案数量 | `metrics/mock_department_count.bkn` | 统计部门表记录条数，作为示例网络组织规模的粗粒度仪表盘指标（可与员工、资源类对象联动分析）。 |
-| mock_employee_avg_salary_onboarded | 已入职员工平均薪资 | `metrics/mock_employee_avg_salary_onboarded.bkn` | 在已入职（`status == 1`）子集上对 `salary` 求平均，用于示例网络中的薪酬分布监控（实际币种与单位由数据源约定）。 |
-| mock_employee_onboarded_count | 已入职员工人数 | `metrics/mock_employee_onboarded_count.bkn` | 仅统计 `status` 为 1（已入职）的员工记录数，用于与待入职口径区分，支撑人员编制与流程报表。 |
-| mock_skill_catalog_total_count | 技能库条目总数 | `metrics/mock_skill_catalog_total_count.bkn` | 统计技能类对象总量，与按类目拆解的指标配合，观察技能资产整体规模。 |
-| mock_skill_count_by_category | 各技能分类下技能数量 | `metrics/mock_skill_count_by_category.bkn` | 按 `category` 分组统计技能类条目数，并按数量降序排列，便于识别技能库是否向少数类目过度集中。 |
 
 ## Directory Structure
 
@@ -85,12 +80,6 @@ branch: main
 │   ├── delete_department.bkn
 │   ├── new_employee_resource.bkn
 │   └── new_job.bkn
-├── concept_groups/
-│   └── employee_onboarding.bkn
-└── metrics/
-    ├── mock_department_count.bkn
-    ├── mock_employee_avg_salary_onboarded.bkn
-    ├── mock_employee_onboarded_count.bkn
-    ├── mock_skill_catalog_total_count.bkn
-    └── mock_skill_count_by_category.bkn
+└── concept_groups/
+    └── employee_onboarding.bkn
 ```
