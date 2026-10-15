@@ -69,55 +69,24 @@ agent 定义+prompt 当前版本，保留原 id upsert 幂等，同名不同 id 
 agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执行工厂里留一份工具描述。
 把某个 agent 挂给另一个 agent 用 `tool_refs` 里的 `type: agent`，不经过工厂。
 
-## Studio 默认 Agent 初始化（#2170）
+## 内置 Agent 默认数据（#2170）
 
-`deploy/agents/studio-presets.json` 提供智能问答默认包；图探索适配尚未安装时明确跳过。当前包为 draft，Studio 用户入口与查询范围约束在 #2151 后续任务中实现，初始化完成不代表可以向终端用户开放。
+内置 Agent 使用固定 ID，配置、共享 Prompt 和 Prompt 历史保存在现有数据库表中。默认数据统一由 `core-data-migrator` 安装，不使用 JSON 配置包、额外初始化表或应用启动 Job；`deploy/` 目录已移除。管理员通过既有管理 API 修改共享配置，初始化不覆盖已有 Agent。
 
-智能问答注册完整的 Context Loader MCP，不维护固定工具白名单。端点由部署配置 `runtime.contextLoaderMcpUrl`（环境变量 `CONTEXT_LOADER_MCP_URL`）统一选择：`/api/agent-retrieval/v1/mcp/` 为完整版，`/api/agent-retrieval/v1/mcp-compact/` 为紧凑版。运行时仍管理生命周期工具与 `bkn_context`，业务工具加载所选端点发布的集合；端点选择不是权限或查询范围校验。
+0.2.1 的首装和升级路径：
 
-本包升级为版本 2，保留版本 1 的不可变目录记录。已安装版本 1 时，只登记新候选，不自动改变工具配置；新版需通过 diff/adopt 显式采用。
+- 首次安装执行 `migrations/bkn-agent/mariadb/0.2.1/init.sql`，保留原十张表和语义理解定义，并添加 Studio 智能问答及两个业务溯源 Agent。
+- 从 0.2.0 升级依次执行 `01-seed-studio-smart-qa.sql` 和 `02-seed-business-provenance.sql`，只写缺失的默认数据，不新增或修改表结构。
+- 已有固定 ID 的 Agent 保留模型、工具、限制、状态、Prompt 引用和历史。修改共享 Prompt 使用原版本管理能力；个人覆写表和旧 API 不在本次删除。
+- 新 Agent 最后写入，兼容的未完成默认 Prompt 可在脚本重试时补全；Prompt 冲突或名称冲突报错，不接管客户配置。迁移器按语句提交，不承诺跨表事务回滚，冲突时可能保留尚未引用的默认 Prompt 行。
 
-本功能归属 0.2.1。先由全局迁移流程应用 `migrations/bkn-agent/mariadb/0.2.1/01-agent-preset-bootstrap.sql` 并准备管理主体，再运行初始化命令。命令使用部署环境的 RDS 配置及数据库管理权限；`--owner-id` 是已准备的配置管理主体，`--actor-id` 标识实际管理操作者，不是未来查询工具的用户身份。命令不会创建用户/权限、执行 DDL 或自动探测依赖。
+Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留空继承平台默认，声明完整 Context Loader MCP。`runtime.contextLoaderMcpUrl` / `CONTEXT_LOADER_MCP_URL` 继续选择完整版 `/mcp/` 或紧凑版 `/mcp-compact/`。公共用户入口、网络范围及权限检查由后续迁移交付；不创建基础数据问答或图探索占位 Agent。
 
-Schema 沿用统一 `core-data-migrator`：首次安装选择 0.2.1 的完整 `init.sql`，已有 0.2.0 安装只执行 `01-agent-preset-bootstrap.sql`。Agent 启动和初始化 Job 不负责建表；默认配置内容由迁移完成后的初始化命令独立安装。
+业务溯源两个 Agent 保留原固定 ID、owner、Prompt、工具声明和限制。SQL 登记不创建 EE 管理身份，也不开放许可证控制的 EE 入口。`python -m app.bootstrap.business_provenance` 保留为现有部署脚本的兼容命令，只验证管理主体、Agent 归属及共享 Prompt，不再调用 `/import` 或覆盖管理员修改。原 JSON 文件覆盖环境变量不再支持，显式设置时会报错；共享配置改为通过管理 API 维护。旧手工导入脚本 `scripts/import-business-provenance-optimizer.sh` 一并移除。
 
-```bash
-python -m app.bootstrap.studio initialize --owner-id preset-management-principal --actor-id deployment-operator
-```
+迁移脚本执行、生产配置与部署仍需 Owner 确认。本轮未连接真实数据库执行迁移。若测试环境已经运行旧版 PR 的 0.2.1 三表脚本，不自动 DROP 表或伪造迁移记录；迁移器不会重跑已安装版本的新编号脚本，应单独核对该环境的版本和脚本进度后安排补充迁移。
 
-首次创建每个场景的 Prompt、Agent、默认绑定和归属记录使用一个事务。已有定义、自定义绑定和停用状态保留；资源删除后归属记录仍在，不会自动复活。初始化按场景输出 created/preserved/skipped/failed，任何失败使命令以非零状态退出，成功场景不回滚。配置包同一版本内容不可修改。
-
-Helm 可显式启用 `studioBootstrap.enabled=true` 并设置 `ownerId`、`actorId`，运行 post-install/post-upgrade 初始化 Job；默认关闭，避免在 schema/身份未准备好的升级中写库。失败 Job 保留供排查。发布启用和迁移执行须另行审批。
-
-升级只登记新默认值。先读取当前配置和候选版本对比，之后由管理员明确采用：
-
-```bash
-python -m app.bootstrap.studio diff --owner-id preset-management-principal --package-id studio-smart-qa --version 2
-python -m app.bootstrap.studio adopt --owner-id preset-management-principal --actor-id administrator --package-id studio-smart-qa --version 2 --expected-digest DIGEST_FROM_DIFF
-```
-
-示例版本 2 需要先由新版配置包初始化登记。采用时锁定现有资源并校验比较摘要；并发编辑使旧摘要失效。采用不更改场景绑定、Agent 的 draft/published 状态或个人 Prompt 覆写，不恢复已删除资源。登记过的旧包可用于显式回退，并保留 Prompt 版本历史。
-
-初始化结果中的 dependency 状态来自 `--dependency model=ready` 等部署方观测，未提供时为 unknown。它不是健康探针，也不是许可证检查；本批报告 `executable=false`，不能据此绕过后续的用户入口与授权检查。
-
-完整设计维护于 [bkn-docs 的 #2151 方案](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn-agent/design/issue-2151-studio-agent-migration.md)。
-
-## 语义理解存量接纳
-
-公共管理入口为 `python -m app.bootstrap.agent_presets`，原 `app.bootstrap.studio` 命令继续兼容。资源/目录语义理解包从 0.2.0 首装 SQL 提取，保留固定 ID、原 owner、published 状态、零工具和 Prompt 内容。包不创建 Studio 场景绑定。
-
-数据库升级仍由统一迁移器执行：先完成 0.2.1 的三张管理表迁移，再进行存量接纳。历史 SQL 和 0.2.1 首装快照中的语义理解种子保留；本次不自动切换部署 Job，不为接纳新增表或列。缺失、删除、归属冲突或 Prompt 引用异常均拒绝接纳，不自动补建。
-
-以资源语义理解为例，读取并审阅比较结果后再显式接纳；目录语义理解使用对应的 `catalog-semantic-understanding.preset.json`，分别检查和执行：
-
-```bash
-python -m app.bootstrap.agent_presets inspect-legacy --owner-id 266c6a42-6131-4d62-8f39-853e7093701c --package deploy/agents/resource-semantic-understanding.preset.json
-python -m app.bootstrap.agent_presets enroll --owner-id 266c6a42-6131-4d62-8f39-853e7093701c --actor-id deployment-operator --package deploy/agents/resource-semantic-understanding.preset.json --expected-digest DIGEST_FROM_INSPECTION
-```
-
-接纳只写候选目录和初始化归属，不改 Agent、Prompt、当前 Prompt 版本、历史、状态或绑定。与候选完全一致时登记匹配版本；管理员修改无法匹配时报告 `legacy_modified` 和 `applied_version=null`，数据库的 applied version/digest 用空字符串表示未确认基线，兼容已有非空列，无 ALTER。之后可用同一 diff/adopt 流程明确采用默认值，保留历史 Prompt 版本。
-
-两个包接纳后可用 `initialize --manifest deploy/agents/semantic-presets.json` 登记后续候选；必须使用原 owner 和明确 actor。接纳前 initialize 报告冲突，不隐式认领旧资源。真实 MariaDB 行锁、升级和部署顺序仍需环境验收。
+完整设计维护于 [bkn-docs 的简化方案](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn-agent/design/issue-2151-builtin-agent-registration.md)。
 
 ### Lifecycle owner attribution
 

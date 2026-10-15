@@ -53,9 +53,6 @@ jobs:
       - name: Verify Evidence publisher chart contract
         run: |
           bash infra/bkn-agent/scripts/test_evidence_kafka_chart.sh infra/bkn-agent/charts
-      - name: Verify Studio preset bootstrap chart contract
-        working-directory: infra/bkn-agent
-        run: bash scripts/test_studio_bootstrap_chart.sh charts
 
   build:
     needs: [version, verify]

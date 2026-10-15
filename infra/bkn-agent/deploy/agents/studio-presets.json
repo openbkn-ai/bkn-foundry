@@ -1,7 +1,0 @@
-{
-  "format": "bkn-agent-preset-manifest/v1",
-  "scenarios": [
-    {"scenario": "smart_qa", "package": "studio-smart-qa.json", "required_features": []},
-    {"scenario": "graph_explorer", "package": null, "required_features": ["graph_explorer_adapter"]}
-  ]
-}
