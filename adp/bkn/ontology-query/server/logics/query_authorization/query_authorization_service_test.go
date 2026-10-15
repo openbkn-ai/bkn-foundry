@@ -19,26 +19,6 @@ import (
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 )
 
-func TestAuthorizeMetricQueryUsesOnlyPublishedMetricPermission(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	models := omock.NewMockOntologyManagerAccess(ctrl)
-	permissions := omock.NewMockPermissionService(ctrl)
-	service := &queryAuthorizationService{models: models, permissions: permissions}
-
-	models.EXPECT().GetMetricDefinition(gomock.Any(), "kn-a", "main", "metric-1").Return(
-		&interfaces.MetricDefinition{
-			ID: "metric-1", KnID: "kn-a", Branch: "main",
-			ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "orders",
-		}, true, nil)
-	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
-		{Type: "metric", ID: "kn-a/metric-1"},
-	}).Return(nil)
-
-	if err := service.AuthorizeMetricQuery(context.Background(), "kn-a", "main", "metric-1"); err != nil {
-		t.Fatalf("AuthorizeMetricQuery() error = %v", err)
-	}
-}
-
 func TestAuthorizeObjectMetricQueryDoesNotConsultLegacyMetricCatalog(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	permissions := omock.NewMockPermissionService(ctrl)
@@ -69,27 +49,6 @@ func TestAuthorizeObjectTypeSchemaRequiresViewDetail(t *testing.T) {
 
 	if err := service.AuthorizeObjectTypeSchema(context.Background(), "kn-a", "main", "orders"); err != nil {
 		t.Fatalf("AuthorizeObjectTypeSchema() error = %v", err)
-	}
-}
-
-func TestAuthorizeMetricDryRunDoesNotInventMetricResource(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	models := omock.NewMockOntologyManagerAccess(ctrl)
-	permissions := omock.NewMockPermissionService(ctrl)
-	service := &queryAuthorizationService{models: models, permissions: permissions}
-
-	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
-		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
-	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
-		{Type: "knowledge_network", ID: "kn-a"},
-		{Type: "object_type", ID: "kn-a/orders"},
-	}).Return(nil)
-
-	err := service.AuthorizeMetricDryRun(context.Background(), "kn-a", "main", &interfaces.MetricDefinition{
-		KnID: "kn-a", ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "orders",
-	})
-	if err != nil {
-		t.Fatalf("AuthorizeMetricDryRun() error = %v", err)
 	}
 }
 

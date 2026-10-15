@@ -51,7 +51,6 @@ func newProjectionService(t *testing.T, fixture *projectionFixture, kpa interfac
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
 	ata := bmock.NewMockActionTypeAccess(ctrl)
-	ma := bmock.NewMockMetricAccess(ctrl)
 	cba := bmock.NewMockCapabilityBindingAccess(ctrl)
 	kna.EXPECT().GetKNByID(gomock.Any(), fixture.kn.KNID, interfaces.MAIN_BRANCH).DoAndReturn(
 		func(context.Context, string, string) (*interfaces.KN, error) {
@@ -65,12 +64,11 @@ func newProjectionService(t *testing.T, fixture *projectionFixture, kpa interfac
 		}).AnyTimes()
 	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
-	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	cba.EXPECT().ListBindings(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(context.Context, interfaces.CapabilityBindingsQueryParams) ([]*interfaces.CapabilityBinding, error) {
 			return fixture.bindings, nil
 		}).AnyTimes()
-	return &knowledgeNetworkService{kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma, cba: cba, kpa: kpa, mpa: mpa}
+	return &knowledgeNetworkService{kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, cba: cba, kpa: kpa, mpa: mpa}
 }
 
 func fixtureVersion(t *testing.T, fixture *projectionFixture) string {

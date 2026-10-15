@@ -36,8 +36,8 @@ func RegisterObjectMetricRoutes(
 		oms:        service,
 		qas:        queryauthorization.NewQueryAuthorizationService(appSetting),
 	}
-	public := engine.Group("/api/ontology-query/v2")
-	internal := engine.Group("/api/ontology-query/in/v2")
+	public := engine.Group("/api/ontology-query/v1")
+	internal := engine.Group("/api/ontology-query/in/v1")
 	public.Use(rest.PrivateNoCacheMiddleware())
 	internal.Use(rest.PrivateNoCacheMiddleware())
 	if entitlementMiddleware != nil {

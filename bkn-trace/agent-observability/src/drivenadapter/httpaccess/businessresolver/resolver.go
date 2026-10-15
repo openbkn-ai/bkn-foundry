@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
@@ -41,6 +42,22 @@ type namedEntity struct {
 
 type entriesResponse struct {
 	Entries []namedEntity `json:"entries"`
+}
+
+type objectMetricProvenance struct {
+	Definition struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Version int    `json:"version"`
+	} `json:"definition"`
+}
+
+func validMetricVersionSegment(value string) bool {
+	if len(value) < 2 || value[0] != 'v' {
+		return false
+	}
+	version, err := strconv.Atoi(value[1:])
+	return err == nil && version > 0
 }
 
 func New(bknBaseURL, vegaBaseURL string, client *http.Client) *Resolver {
@@ -86,11 +103,11 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 		path = []string{"api", "bkn-backend", "in", "v1", "knowledge-networks", parts[1]}
 		status, err := r.getJSON(ctx, scope, r.bknBaseURL, path, &entity, cache)
 		return entityResolution(resolution, status, err, entity, []string{entity.Name})
-	case "object", "relation", "action_type", "metric":
+	case "object", "relation", "action_type":
 		if len(parts) != 3 || r.bknBaseURL == "" {
 			return resolution, nil
 		}
-		segment := map[string]string{"object": "object-types", "relation": "relation-types", "action_type": "action-types", "metric": "metrics"}[kind]
+		segment := map[string]string{"object": "object-types", "relation": "relation-types", "action_type": "action-types"}[kind]
 		path = []string{"api", "bkn-backend", "in", "v1", "knowledge-networks", parts[1], segment, parts[2]}
 		var response entriesResponse
 		status, err := r.getJSON(ctx, scope, r.bknBaseURL, path, &response, cache)
@@ -98,6 +115,26 @@ func (r *Resolver) resolveOne(ctx context.Context, scope evidencevo.QueryScope, 
 			entity = response.Entries[0]
 		}
 		return entityResolution(resolution, status, err, entity, []string{entity.Name})
+	case "metric":
+		if len(parts) != 4 || r.bknBaseURL == "" || !validMetricVersionSegment(parts[3]) {
+			return resolution, nil
+		}
+		version, _ := strconv.Atoi(strings.TrimPrefix(parts[3], "v"))
+		path = []string{"api", "bkn-backend", "in", "v1", "knowledge-networks", parts[1], "object-metrics", parts[2], "provenance"}
+		var response objectMetricProvenance
+		query := url.Values{"version": []string{strconv.Itoa(version)}}
+		status, err := r.getJSONWithQuery(ctx, scope, r.bknBaseURL, path, query, &response, cache)
+		if err != nil {
+			return resolution, err
+		}
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			resolution.Visibility = "unauthorized"
+			return resolution, nil
+		}
+		if status != http.StatusOK || response.Definition.ID != parts[2] || response.Definition.Version != version || response.Definition.Name == "" {
+			return resolution, nil
+		}
+		return resolved(resolution, response.Definition.Name, []string{response.Definition.Name}, parts[3]), nil
 	case "property", "logic":
 		if len(parts) != 4 || r.bknBaseURL == "" {
 			return resolution, nil
@@ -235,11 +272,19 @@ func resolved(base ibusinessresolver.Resolution, name string, businessPath []str
 }
 
 func (r *Resolver) getJSON(ctx context.Context, scope evidencevo.QueryScope, baseURL string, path []string, target any, cache map[string]any) (int, error) {
+	return r.getJSONWithQuery(ctx, scope, baseURL, path, nil, target, cache)
+}
+
+func (r *Resolver) getJSONWithQuery(ctx context.Context, scope evidencevo.QueryScope, baseURL string, path []string,
+	query url.Values, target any, cache map[string]any) (int, error) {
 	escaped := make([]string, len(path))
 	for i, part := range path {
 		escaped[i] = url.PathEscape(part)
 	}
 	endpoint := baseURL + "/" + strings.Join(escaped, "/")
+	if len(query) > 0 {
+		endpoint += "?" + query.Encode()
+	}
 	if cached, ok := cache[endpoint]; ok {
 		body, _ := json.Marshal(cached)
 		return http.StatusOK, json.Unmarshal(body, target)

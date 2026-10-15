@@ -22,10 +22,10 @@ The order below matches the card groups on the documentation home page. It is co
 
 | Module | Directory | Coverage |
 |---|---|---|
-| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, metrics, capability bindings and import/export. **Complete** |
+| 🟦 bkn-backend | [`bkn/`](bkn/) | Business knowledge networks: object types, relation types, action types, concept groups, capability bindings, import/export, and [Object Metrics V1](bkn/bkn-object-metrics-v1.yaml). |
 | 🛡️ bkn-safe admin | [`bkn-safe-admin/`](bkn-safe-admin/) | Gateway-exposed, bearer-token-protected Enterprise security-policy management APIs. Internal decision endpoints remain under the unpublished `bkn-safe/` module. |
 | 🟫 context-loader | [`context-loader/`](context-loader/) | Agent context entry points: schema retrieval, instance and subgraph queries, logical properties, action execution, Skill retrieval, direct data access, and MCP. **Complete external surface**; internal `/in/v1` APIs are excluded |
-| 🟩 ontology-query | [`ontology-query/`](ontology-query/) | Ontology queries, semantic retrieval, action execution, and logs. **Complete** |
+| 🟩 ontology-query | [`ontology-query/`](ontology-query/) | Ontology queries, semantic retrieval, action execution, logs, and [Object Metrics V1](ontology-query/object-metrics-v1.yaml). |
 | 🟨 vega-backend | [`vega/`](vega/) | Data observability: catalogs, resources, connectors, build tasks, discovery tasks, and raw queries. **Complete** |
 | 🟩 execution-factory | [`execution-factory/`](execution-factory/) | Execution factory: functions, sandbox observability, import/export, operators, MCP, toolboxes, and Skills. **Complete public surface** (90 documented operations). The principal Ingress-exposed `/v1` APIs are included; the tokenless `internal-v1` surface is intentionally excluded, and the separate `/api/capabilities-lab/v1` group has 35 documented operations |
 | 🟧 mf-model-manager | [`mf-model-manager/`](mf-model-manager/) | Model factory: large/small models, quotas, prompts, defaults and monitoring. All 46 public business route operations are covered; controller responses without a fixed response model use an open JSON schema |

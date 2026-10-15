@@ -6,6 +6,7 @@
 package sessionvo
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
@@ -57,6 +58,18 @@ func (value BusinessRefType) CanonicalRefPrefix() string {
 }
 
 func (value BusinessRefType) MatchesCanonicalRefID(refID string) bool {
+	if value == BusinessRefMetric {
+		parts := strings.Split(refID, ":")
+		if len(parts) != 3 && len(parts) != 4 {
+			return false
+		}
+		if parts[0] != value.CanonicalRefPrefix() || parts[1] == "" || parts[2] == "" {
+			return false
+		}
+		// Three segments are retained for historical evidence. New object-metric
+		// references carry the immutable version as a fourth v<n> segment.
+		return len(parts) == 3 || validMetricVersionSegment(parts[3])
+	}
 	var parts []string
 	if value == BusinessRefObjectInstance || value == BusinessRefActionInstance {
 		parts = strings.SplitN(refID, ":", value.canonicalRefSegmentCount())
@@ -72,6 +85,14 @@ func (value BusinessRefType) MatchesCanonicalRefID(refID string) bool {
 		}
 	}
 	return true
+}
+
+func validMetricVersionSegment(value string) bool {
+	if len(value) < 2 || value[0] != 'v' {
+		return false
+	}
+	version, err := strconv.Atoi(value[1:])
+	return err == nil && version > 0
 }
 
 func (value BusinessRefType) canonicalRefSegmentCount() int {

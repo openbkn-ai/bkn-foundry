@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
@@ -217,7 +216,6 @@ func TestLoadAffectedProxyModelIncludesCurrentAndChangedLogicProperties(t *testi
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
 	rta := bmock.NewMockRelationTypeAccess(ctrl)
-	ma := bmock.NewMockMetricAccess(ctrl)
 	current := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 		OTID: "ot-1", LogicProperties: []*interfaces.LogicProperty{{Name: "old-property"}},
 	}}
@@ -225,11 +223,10 @@ func TestLoadAffectedProxyModelIncludesCurrentAndChangedLogicProperties(t *testi
 		OTID: "ot-1", LogicProperties: []*interfaces.LogicProperty{{Name: "new-property"}},
 	}}
 	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
-	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
 	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH,
 		[]string{"ot-1"}).Return([]*interfaces.ObjectType{current}, nil)
 
-	service := &knowledgeNetworkService{ota: ota, rta: rta, ma: ma}
+	service := &knowledgeNetworkService{ota: ota, rta: rta}
 	_, bindings, err := service.loadAffectedProxyModel(t.Context(), &interfaces.KN{
 		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypes: []*interfaces.ObjectType{changed},
 	})
@@ -285,99 +282,5 @@ func TestDeniedExistingSkillDeltaRemovesOnlyItsMaterializedGrant(t *testing.T) {
 	var httpErr *rest.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("new best-effort skill error = %#v, want HTTP 403", err)
-	}
-}
-
-func TestPublishKNChildMutationQueuesIncrementalPathForReadyMapping(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	ota := bmock.NewMockObjectTypeAccess(ctrl)
-	rta := bmock.NewMockRelationTypeAccess(ctrl)
-	ma := bmock.NewMockMetricAccess(ctrl)
-	db, databaseMock, err := sqlmock.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	oldObject := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-		OTID: "ot-1", OTName: "object",
-		DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-old"},
-	}}
-	changedObject := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-		OTID: "ot-1", OTName: "object",
-		DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-new"},
-	}}
-	rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
-	ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
-	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), nil, "kn-1", interfaces.MAIN_BRANCH,
-		[]string{"ot-1"}).Return([]*interfaces.ObjectType{oldObject}, nil)
-	databaseMock.ExpectBegin()
-	databaseMock.ExpectCommit()
-
-	oldSources, _, err := buildProxyGrantSources(&interfaces.KN{
-		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypes: []*interfaces.ObjectType{oldObject},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	stable := interfaces.ProxyGrantSourceSpec{
-		ResourceType: "resource", ResourceID: "resource-stable", Operation: interfaces.OPERATION_TYPE_QUERY_DATA,
-		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "stable-source", KNID: "kn-1",
-		BindingType: interfaces.MODULE_TYPE_ACTION_TYPE, BindingID: "at-stable",
-	}
-	kpa := &proxyAccessStub{
-		mapping: &interfaces.KNProxyAccount{
-			KNID: "kn-1", ProxyAccountID: "proxy-1", LifecycleStatus: interfaces.KNProxyLifecycleActive,
-			SyncStatus: interfaces.KNProxySyncReady, PublishedModelVersion: "sha256:base",
-			SyncedModelVersion: "sha256:base",
-		},
-		published: append(oldSources, stable),
-	}
-	kpoa := &proxyOutboxAccessStub{planned: append(append([]interfaces.ProxyGrantSourceSpec(nil), oldSources...), stable)}
-	mpa := &managedProxyAccessStub{allowed: true}
-	service := &knowledgeNetworkService{db: db, ota: ota, rta: rta, ma: ma, kpa: kpa, kpoa: kpoa, mpa: mpa}
-	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "editor-1"})
-	mutationCalled := false
-	err = service.PublishKNChildMutation(ctx, &interfaces.KN{
-		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, ObjectTypes: []*interfaces.ObjectType{changedObject},
-	}, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
-		mutationCalled = true
-		if tx == nil {
-			t.Fatal("mutation transaction is nil")
-		}
-		account, ok := interfaces.VerifiedDependencyAccount(
-			interfaces.WithDependencyBindingScope(mutationCtx, "kn-1", interfaces.MODULE_TYPE_OBJECT_TYPE, "ot-1"),
-			"resource", "resource-new", interfaces.OPERATION_TYPE_QUERY_DATA)
-		if !ok || account.ID != "editor-1" {
-			t.Fatalf("verified dependency account = (%+v, %v)", account, ok)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !mutationCalled || mpa.deltaSyncCalls != 0 || mpa.fullSyncCalls != 0 || len(kpoa.events) != 1 {
-		t.Fatalf("publication path: mutation=%t delta=%d full=%d events=%d",
-			mutationCalled, mpa.deltaSyncCalls, mpa.fullSyncCalls, len(kpoa.events))
-	}
-	event := kpoa.events[0]
-	if len(event.Upserts) != 2 || len(event.Removals) != 2 || len(kpoa.planned) != 3 || len(kpa.published) != 3 {
-		t.Fatalf("queued sources: upserts=%#v removals=%#v planned=%#v published=%#v",
-			event.Upserts, event.Removals, kpoa.planned, kpa.published)
-	}
-	stableKept := false
-	for _, source := range kpoa.planned {
-		if source.SourceID == stable.SourceID {
-			stableKept = true
-		}
-		if source.BindingID == "ot-1" && source.ResourceID != "resource-new" {
-			t.Fatalf("stale object source remains: %#v", source)
-		}
-	}
-	if !stableKept {
-		t.Fatal("unaffected published source was replaced")
-	}
-	if err := databaseMock.ExpectationsWereMet(); err != nil {
-		t.Fatal(err)
 	}
 }

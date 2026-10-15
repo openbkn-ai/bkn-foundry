@@ -41,16 +41,15 @@ func TestRegisteredOperationAuditRoutes(t *testing.T) {
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-types", http.MethodGet, "", "", false},
 		{http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/:kn_id/relation-types/:rt_id", "", "update", "relation_type", true},
 		{http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/:kn_id/action-types/:at_ids", "", "delete", "action_type", true},
-		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/metrics", "", "create", "metric", true},
-		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics", "", "create", "metric", true},
-		{http.MethodPut, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id", "", "update", "metric", true},
-		{http.MethodDelete, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id", "", "delete", "metric", true},
-		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/versions", "", "update", "metric", true},
-		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/publish", "", "update", "metric", true},
-		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate", "", "update", "metric", true},
-		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", "", "update", "object_type", true},
-		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/validate", "", "", "", false},
-		{http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics/preview", "", "", "", false},
+		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics", "", "create", "metric", true},
+		{http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id", "", "update", "metric", true},
+		{http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id", "", "delete", "metric", true},
+		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/versions", "", "update", "metric", true},
+		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/publish", "", "update", "metric", true},
+		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate", "", "update", "metric", true},
+		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", "", "update", "object_type", true},
+		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/validate", "", "", "", false},
+		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/preview", "", "", "", false},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/risk-types", "", "create", "risk_type", true},
 		{http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/:kn_id/risk-types/:rt_id", "", "update", "risk_type", true},
 		{http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/:kn_id/risk-types/:rt_ids", "", "delete", "risk_type", true},
@@ -250,7 +249,7 @@ func TestOperationAuditFactsUseImportedKnowledgeNetworkID(t *testing.T) {
 func TestOperationAuditFactsUseObjectMetricDefinitionSnapshot(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
-	context.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/kn-a/object-metrics", nil)
+	context.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics", nil)
 	context.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}}
 	facts := operationAuditFacts(
 		context,
@@ -270,7 +269,7 @@ func TestOperationAuditFactsUseObjectMetricDefinitionSnapshot(t *testing.T) {
 func TestOperationAuditFactsUseLogicPropertySnapshot(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	context, _ := gin.CreateTestContext(httptest.NewRecorder())
-	context.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties", nil)
+	context.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties", nil)
 	context.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "metric-a"}}
 	context.Set("operation_audit_target_ids", []string{"order"})
 	context.Set("operation_audit_target_names", []string{"订单"})
@@ -597,45 +596,6 @@ func TestOperationAuditRejectsPureIDActorAndMissingTargetName(t *testing.T) {
 		if len(store.entries) != 0 {
 			t.Fatalf("invalid snapshots published: %#v", store.entries)
 		}
-	}
-}
-
-func TestOperationAuditMetricDeletionRealHandler(t *testing.T) {
-	for _, enabled := range []bool{false, true} {
-		t.Run(fmt.Sprintf("enabled=%v", enabled), func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			kns := bmock.NewMockKNService(ctrl)
-			metrics := bmock.NewMockMetricService(ctrl)
-			store := &recordingOperationAuditStore{}
-			handler := &restHandler{kns: kns, ms: metrics, auditIdentityResolver: func(_ context.Context, _ string, v hydra.Visitor) operationAuditActor {
-				return operationAuditActor{ActorID: v.ID, ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
-			}}
-			if enabled {
-				handler.auditRecorder = store
-				metrics.EXPECT().CheckMetricExistByID(gomock.Any(), "kn-1", "main", "metric-1").Return("Revenue", true, nil)
-			}
-			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn-1", "main").Return("Sales", true, nil)
-			metrics.EXPECT().DeleteMetricsByIDs(gomock.Any(), gomock.Any(), "kn-1", "main", []string{"metric-1"}).Return(nil)
-			engine := gin.New()
-			engine.Use(handler.OperationAudit())
-			engine.DELETE("/api/bkn-backend/v1/knowledge-networks/:kn_id/metrics/:metric_ids", func(c *gin.Context) {
-				v := hydra.Visitor{ID: "user-1", Type: "user"}
-				c.Set(operationAuditVisitorKey, v)
-				handler.DeleteMetricsByIDs(c, v)
-			})
-			response := httptest.NewRecorder()
-			engine.ServeHTTP(response, httptest.NewRequest("DELETE", "/api/bkn-backend/v1/knowledge-networks/kn-1/metrics/metric-1", nil))
-			if response.Code != 204 {
-				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
-			}
-			if enabled {
-				if len(store.entries) != 1 || store.entries[0].TargetName != "Revenue" {
-					t.Fatalf("entries=%+v", store.entries)
-				}
-			} else if len(store.entries) != 0 {
-				t.Fatal("disabled audit recorded")
-			}
-		})
 	}
 }
 

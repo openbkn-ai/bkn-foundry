@@ -776,15 +776,15 @@ func prepareProxyMutationIDs(ctx context.Context, changes *interfaces.KN) error 
 		}
 		actionType.ATID = id
 	}
-	for _, metric := range changes.Metrics {
-		if metric == nil {
+	for _, record := range changes.ObjectMetrics {
+		if record == nil {
 			continue
 		}
-		id, err := permission.PrepareKNChildResourceID(ctx, strings.TrimSpace(metric.ID))
+		id, err := permission.PrepareKNChildResourceID(ctx, strings.TrimSpace(record.Definition.ID))
 		if err != nil {
 			return err
 		}
-		metric.ID = id
+		record.Definition.ID = id
 	}
 	return nil
 }
@@ -820,12 +820,12 @@ func mergeProxyMutationChanges(current, changes *interfaces.KN, mergeMode string
 			}
 			return item.ATID, true
 		})
-	candidate.Metrics = mergeProxyItems(current.Metrics, changes.Metrics, keepExisting,
-		func(item *interfaces.MetricDefinition) (string, bool) {
+	candidate.ObjectMetrics = mergeProxyItems(current.ObjectMetrics, changes.ObjectMetrics, keepExisting,
+		func(item *interfaces.ObjectMetricRecordV1) (string, bool) {
 			if item == nil {
 				return "", false
 			}
-			return item.ID, true
+			return fmt.Sprintf("%s@%d", item.Definition.ID, item.Definition.Version), true
 		})
 	return &candidate
 }

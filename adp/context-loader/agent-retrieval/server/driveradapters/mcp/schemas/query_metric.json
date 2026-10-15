@@ -4,166 +4,93 @@
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": [
-          "json",
-          "toon"
-        ],
+        "enum": ["json", "toon"],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
       "kn_id": {
         "type": "string",
-        "description": "知识网络 ID，来自 list_knowledge_networks 或 get_kn_detail，不可凭名称猜测。"
+        "description": "知识网络 ID，来自 list_knowledge_networks 或 get_kn_detail。"
       },
       "metric_id": {
         "type": "string",
-        "description": "指标 ID，取自 get_object_types 返回的 related_metrics[].id。不要自己编造。"
+        "description": "对象指标 ID，取自 get_object_types 返回的 related_metrics[].id。"
       },
-      "time": {
+      "version": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "已发布且不可变的对象指标版本，取自 related_metrics[].version；不能省略或猜测最新版本。"
+      },
+      "query": {
         "type": "object",
-        "description": "时间窗。指标无时间维度（related_metrics[].time_dimension 为空）时可整体省略。注意：省略 instant 等同于 instant=false（序列查询），此时必须传 step。start 与 end 要么都传要么都不传。",
+        "additionalProperties": false,
+        "description": "仅包含已发布指标允许的运行时选择；固定业务限定与统计粒度由指标定义决定。",
         "properties": {
-          "instant": {
-            "type": "boolean",
-            "description": "true=取单点（当前值）；false 或省略=取序列，此时必须传 step。"
+          "instance_identities": {
+            "type": "array",
+            "items": {"type": "object", "additionalProperties": true},
+            "description": "可选的对象实例身份列表。"
           },
-          "start": {
-            "type": "integer",
-            "description": "起始时间，unix 秒"
+          "filter": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "符合对象指标 V1 条件 AST 的运行时过滤条件。"
           },
-          "end": {
-            "type": "integer",
-            "description": "结束时间，unix 秒"
-          },
-          "step": {
-            "type": "string",
-            "enum": [
-              "day",
-              "week",
-              "month",
-              "quarter",
-              "year"
-            ],
-            "description": "序列步长（大小写不敏感）。序列查询必传；instant=true 时会被下游忽略。"
-          }
-        }
-      },
-      "condition": {
-        "type": "object",
-        "additionalProperties": true,
-        "description": "过滤条件，结构与 query_object_instance 的 condition 一致（field / operation / value / value_from，可 and/or 嵌套）。"
-      },
-      "analysis_dimensions": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        },
-        "description": "分析维度（按维度拆分结果），取值必须来自 related_metrics[].analysis_dimensions。"
-      },
-      "order_by": {
-        "type": "array",
-        "description": "结果排序",
-        "items": {
-          "type": "object",
-          "properties": {
-            "property": {
-              "type": "string"
+          "analysis_dimensions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["object_type_id", "property_name"],
+              "properties": {
+                "object_type_id": {"type": "string"},
+                "property_name": {"type": "string"},
+                "relation_path_alias": {"type": "string"}
+              },
+              "additionalProperties": false
             },
-            "direction": {
-              "type": "string",
-              "enum": [
-                "asc",
-                "desc"
-              ]
+            "description": "从已发布定义的 query_capabilities.analysis_dimensions 选择属性引用。"
+          },
+          "time": {
+            "type": "object",
+            "required": ["start", "end"],
+            "additionalProperties": false,
+            "description": "时间范围，起点与终点均为 Unix 毫秒。",
+            "properties": {
+              "start": {"type": "integer", "description": "起始时间，Unix 毫秒"},
+              "end": {"type": "integer", "description": "结束时间，Unix 毫秒"}
             }
           }
         }
-      },
-      "having": {
-        "type": "object",
-        "description": "对聚合结果过滤",
-        "properties": {
-          "field": {
-            "type": "string"
-          },
-          "operation": {
-            "type": "string"
-          },
-          "value": {}
-        }
-      },
-      "limit": {
-        "type": "integer",
-        "description": "返回条数上限"
-      },
-      "fill_null": {
-        "type": "boolean",
-        "description": "区间序列查询时，无数据的步长点是否补空，默认 false。仅对序列查询有效，且必须同时给 time.start 与 time.end。"
       }
     },
-    "required": [
-      "kn_id",
-      "metric_id"
-    ]
+    "required": ["kn_id", "metric_id", "version"]
   },
   "output_schema": {
     "type": "object",
+    "required": ["kn_id", "metric_id", "version", "model", "entries", "status", "overall_ms"],
     "properties": {
-      "kn_id": {
-        "type": "string",
-        "description": "知识网络 ID"
-      },
-      "metric_id": {
-        "type": "string",
-        "description": "指标 ID"
-      },
-      "datas": {
+      "kn_id": {"type": "string", "description": "知识网络 ID。"},
+      "metric_id": {"type": "string", "description": "对象指标 ID。"},
+      "version": {"type": "integer", "description": "已发布的指标版本。"},
+      "model": {"type": "object", "additionalProperties": true, "description": "已发布指标的结果模型。"},
+      "entries": {
         "type": "array",
-        "description": "按 labels 分组的结果序列。未传 analysis_dimensions 时通常只有一条，labels 为空。",
+        "description": "带状态的指标结果条目。",
         "items": {
           "type": "object",
+          "required": ["status"],
           "properties": {
-            "labels": {
-              "type": "object",
-              "additionalProperties": true,
-              "description": "该序列对应的维度取值"
-            },
-            "times": {
-              "type": "array",
-              "items": {},
-              "description": "时间点（unix 秒）"
-            },
-            "time_strs": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "时间点的可读形式"
-            },
-            "values": {
-              "type": "array",
-              "items": {},
-              "description": "与 times 一一对应的指标值"
-            },
-            "growth_values": {
-              "type": "array",
-              "items": {}
-            },
-            "growth_rates": {
-              "type": "array",
-              "items": {}
-            },
-            "proportions": {
-              "type": "array",
-              "items": {}
-            }
+            "instance_identity": {"type": "object", "additionalProperties": true},
+            "dimensions": {"type": "object", "additionalProperties": true},
+            "time": {"type": "integer"},
+            "value": {},
+            "status": {"type": "string", "enum": ["ok", "no_data", "unavailable"]}
           }
         }
       },
-      "overall_ms": {
-        "type": "integer",
-        "description": "耗时（毫秒）"
-      }
+      "status": {"type": "string", "enum": ["ok", "no_data", "unavailable", "partial"], "description": "整体查询状态。"},
+      "warnings": {"type": "array", "items": {"type": "string"}, "description": "部分成功或不可用时的警告。"},
+      "overall_ms": {"type": "integer", "description": "查询耗时，单位毫秒。"}
     }
   }
 }

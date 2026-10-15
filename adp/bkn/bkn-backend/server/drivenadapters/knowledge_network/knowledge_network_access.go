@@ -41,7 +41,6 @@ var knChildResourceTables = []struct {
 	{interfaces.RESOURCE_TYPE_OBJECT_TYPE, "t_object_type"},
 	{interfaces.RESOURCE_TYPE_RELATION_TYPE, "t_relation_type"},
 	{interfaces.RESOURCE_TYPE_ACTION_TYPE, "t_action_type"},
-	{interfaces.RESOURCE_TYPE_METRIC, "t_metric_definition"},
 	{interfaces.RESOURCE_TYPE_METRIC, "t_object_metric_definition"},
 	{interfaces.RESOURCE_TYPE_RISK_TYPE, "t_risk_type"},
 }

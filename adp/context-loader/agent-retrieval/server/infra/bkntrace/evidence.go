@@ -512,30 +512,27 @@ func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq,
 		return nil
 	}
 	rows := []map[string]any{}
+	status := ""
 	if resp != nil {
-		for _, series := range resp.Datas {
-			if series == nil {
-				continue
+		status = resp.Status
+		for _, entry := range resp.Entries {
+			row := map[string]any{"dimensions": entry.Dimensions, "value": entry.Value, "status": entry.Status}
+			if entry.Time != nil {
+				row["time"] = *entry.Time
 			}
-			for index, value := range series.Values {
-				row := map[string]any{"dimensions": series.Labels, "value": value}
-				if index < len(series.Times) {
-					row["time"] = series.Times[index]
-				}
-				if index < len(series.TimeStrs) {
-					row["time_text"] = series.TimeStrs[index]
-				}
-				rows = append(rows, row)
+			if entry.InstanceIdentity != nil {
+				row["instance_identity"] = entry.InstanceIdentity
 			}
+			rows = append(rows, row)
 		}
 	}
-	metricRef := "metric:" + strings.TrimSpace(req.KnID) + ":" + strings.TrimSpace(req.MetricID)
+	metricRef := fmt.Sprintf("metric:%s:%s:v%d", strings.TrimSpace(req.KnID), strings.TrimSpace(req.MetricID), req.Version)
 	payload := map[string]any{
 		"metric_ref": metricRef, "network_ref": "kn:" + strings.TrimSpace(req.KnID),
-		"dimensions": append([]string(nil), req.AnalysisDimensions...), "conditions": req.Cond,
-		"time": req.Time, "having": req.Having, "order_by": req.OrderBy,
+		"version": req.Version, "dimensions": req.Query.AnalysisDimensions, "conditions": req.Query.Filter,
+		"time": req.Query.Time, "status": status,
 		"aggregation_definition": "defined_by_metric", "rows": rows, "row_count": len(rows),
-		"complete": resp != nil, "cardinality": "metric_series_rows",
+		"complete": resp != nil, "cardinality": "object_metric_entries",
 		"source_refs": []map[string]any{
 			controlledRef("kn:"+strings.TrimSpace(req.KnID), "knowledge_network"),
 			controlledRef(metricRef, "metric"),
@@ -1489,7 +1486,7 @@ func schemaEvidenceRefs(knID string, resp *interfaces.SearchSchemaResp) []map[st
 	refs = append(refs, conceptRefs("object", "object", knID, resp.ObjectTypes)...)
 	refs = append(refs, conceptRefs("relation", "relation", knID, resp.RelationTypes)...)
 	refs = append(refs, conceptRefs("action_type", "action", knID, resp.ActionTypes)...)
-	refs = append(refs, conceptRefs("metric", "metric", knID, resp.MetricTypes)...)
+	refs = append(refs, metricConceptRefs(knID, resp.MetricTypes)...)
 	return refs
 }
 
@@ -1511,6 +1508,32 @@ func conceptRefs(kind, refType, knID string, items []any) []map[string]any {
 			"summary_hash":   HashValue(safeConceptSummary(kind, itemMap)),
 			"validity":       "observed",
 			"version_status": "unversioned",
+			"visibility":     "visible",
+		})
+	}
+	return refs
+}
+
+func metricConceptRefs(knID string, items []any) []map[string]any {
+	refs := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		itemMap, ok := asMap(item)
+		if !ok {
+			continue
+		}
+		id := firstString(itemMap, "concept_id", "id")
+		version := intValue(itemMap["version"], 0)
+		if id == "" || version < 1 {
+			continue
+		}
+		versionStatus := fmt.Sprintf("v%d", version)
+		refs = append(refs, map[string]any{
+			"ref_id":         "metric:" + knID + ":" + id + ":" + versionStatus,
+			"ref_type":       "metric",
+			"source_system":  ModuleName,
+			"summary_hash":   HashValue(safeConceptSummary("metric", itemMap)),
+			"validity":       "observed",
+			"version_status": versionStatus,
 			"visibility":     "visible",
 		})
 	}

@@ -38,7 +38,7 @@ func RegisterObjectMetricRoutes(
 		as:         auth.NewAuthService(appSetting),
 		oms:        service,
 	}
-	public := engine.Group("/api/bkn-backend/v2")
+	public := engine.Group("/api/bkn-backend/v1")
 	internal := engine.Group("/api/bkn-backend/in/v1")
 	public.Use(rest.PrivateNoCacheMiddleware())
 	internal.Use(rest.PrivateNoCacheMiddleware())
@@ -61,6 +61,8 @@ func RegisterObjectMetricRoutes(
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/publish", handler.PublishObjectMetricByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate", handler.DeprecateObjectMetricByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", handler.verifyJsonContentType(), handler.BindObjectMetricLogicPropertyByEx)
+	internal.GET("/knowledge-networks/:kn_id/object-metrics", handler.ListObjectMetricsByIn)
+	internal.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/provenance", handler.GetObjectMetricProvenanceByIn)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/execution-context", handler.GetObjectMetricExecutionContextByIn)
 }
 
@@ -126,6 +128,16 @@ func (r *restHandler) updateObjectMetricDraft(c *gin.Context, vis hydra.Visitor)
 		replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
+	if c.Query("version") != "" {
+		version, ok := parseObjectMetricVersion(c)
+		if !ok {
+			return
+		}
+		if definition.Version != version {
+			replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("definition.version must match query version"))
+			return
+		}
+	}
 	record, err := r.oms.UpdateDraft(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), &definition)
 	if err != nil {
 		replyObjectMetricError(c, err)
@@ -136,6 +148,34 @@ func (r *restHandler) updateObjectMetricDraft(c *gin.Context, vis hydra.Visitor)
 
 func (r *restHandler) GetObjectMetricByEx(c *gin.Context) {
 	r.objectMetricExternal(c, r.getObjectMetric)
+}
+
+// GetObjectMetricProvenanceByIn resolves an exact immutable version under
+// caller-scoped metric view authorization. Drafts are never returned.
+func (r *restHandler) GetObjectMetricProvenanceByIn(c *gin.Context) {
+	version, ok := parseObjectMetricVersion(c)
+	if !ok || version == 0 {
+		if ok {
+			c.Status(http.StatusBadRequest)
+		}
+		return
+	}
+	vis := visitor.GenerateVisitor(c)
+	metricID := c.Param("metric_id")
+	versions, err := r.oms.ListVersions(objectMetricContext(c, vis), c.Param("kn_id"),
+		c.DefaultQuery("branch", interfaces.MAIN_BRANCH), metricID)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
+	for _, record := range versions {
+		if record != nil && record.Definition.ID == metricID && record.Definition.Version == version &&
+			(record.Definition.Lifecycle.Status == "published" || record.Definition.Lifecycle.Status == "deprecated") {
+			rest.ReplyOK(c, http.StatusOK, record)
+			return
+		}
+	}
+	c.Status(http.StatusNotFound)
 }
 
 func (r *restHandler) getObjectMetric(c *gin.Context, vis hydra.Visitor) {
@@ -153,6 +193,12 @@ func (r *restHandler) getObjectMetric(c *gin.Context, vis hydra.Visitor) {
 
 func (r *restHandler) ListObjectMetricsByEx(c *gin.Context) {
 	r.objectMetricExternal(c, r.listObjectMetrics)
+}
+
+// ListObjectMetricsByIn preserves the caller identity from internal headers;
+// the service applies the same metric view permissions as the public list.
+func (r *restHandler) ListObjectMetricsByIn(c *gin.Context) {
+	r.listObjectMetrics(c, visitor.GenerateVisitor(c))
 }
 
 func (r *restHandler) listObjectMetrics(c *gin.Context, vis hydra.Visitor) {

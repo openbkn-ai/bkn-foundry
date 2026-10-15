@@ -145,6 +145,36 @@ func TestResolverSupportsExistingEvidenceServiceRefTypes(t *testing.T) {
 	}
 }
 
+func TestResolverUsesVersionedObjectMetricProvenance(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/bkn-backend/in/v1/knowledge-networks/supplychain/object-metrics/total/provenance" || r.URL.Query().Get("version") != "2" {
+			t.Fatalf("unexpected provenance request: %s", r.URL.String())
+		}
+		_, _ = w.Write([]byte(`{"definition":{"id":"total","name":"库存总量","version":2}}`))
+	}))
+	defer server.Close()
+
+	result, err := New(server.URL, "", server.Client()).ResolveBusinessRefs(context.Background(), ibusinessresolver.ResolveRequest{
+		Refs: []ibusinessresolver.BusinessRef{
+			{RefID: "metric:supplychain:total:v2", RefType: "metric", SourceSystem: "context-loader"},
+			{RefID: "metric:supplychain:historical", RefType: "metric", SourceSystem: "context-loader"},
+		},
+	})
+	if err != nil || requests != 1 || len(result) != 2 {
+		t.Fatalf("result=%+v requests=%d err=%v", result, requests, err)
+	}
+	if result[0].Visibility != "visible" || result[0].Display == nil || result[0].Display.Name != "库存总量" || result[0].Display.SourceVersion != "v2" {
+		t.Fatalf("versioned metric resolution=%+v", result[0])
+	}
+	if result[1].Visibility != "unresolved" || result[1].Display != nil {
+		t.Fatalf("historical unversioned metric should fail soft: %+v", result[1])
+	}
+}
+
 func TestResolverRecognizesRegisteredProducerSourceAliases(t *testing.T) {
 	t.Parallel()
 
@@ -175,7 +205,7 @@ func TestResolverKindFallsBackToSupportedPrefixWhenRefTypeIsMissing(t *testing.T
 		"kn:supplychain": "kn", "object:supplychain:forecast": "object",
 		"property:supplychain:forecast:qty": "property", "relation:supplychain:contains": "relation",
 		"resource:resource-1": "resource", "field:resource-1:qty": "field",
-		"metric:supplychain:total": "metric", "logic:supplychain:forecast:total": "logic",
+		"metric:supplychain:total:v2": "metric", "logic:supplychain:forecast:total": "logic",
 		"function:supplychain:calculate": "function", "action_type:supplychain:approve": "action_type",
 	}
 	for refID, wantKind := range tests {

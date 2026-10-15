@@ -357,7 +357,7 @@ paths:
           description: >-
             Released. Releasing a binding that is already gone is also a 204: the request states
             that the capability is not mounted, and that is true either way. This matches
-            DELETE .../metrics.
+            deleting an already-absent binding.
         '400':
           description: Empty binding_ids
         '403':

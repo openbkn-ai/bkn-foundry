@@ -237,6 +237,10 @@
               "type": "string",
               "description": "指标 ID，可传给 query_metric"
             },
+            "version": {
+              "type": "integer",
+              "description": "已发布对象指标版本，可传给 query_metric"
+            },
             "name": {
               "type": "string",
               "description": "指标名"

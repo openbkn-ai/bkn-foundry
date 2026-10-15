@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -111,6 +112,10 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		logger.Errorf("Failed to load network from tar: %s", err.Error())
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(commonValidationDetail(ctx, "ArchiveLoadFailed", nil))
+		if strings.Contains(err.Error(), "legacy metrics") {
+			httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+				WithErrorDetails("legacy metrics/*.bkn is unsupported; migrate metrics to object metrics V1 before import")
+		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -119,6 +124,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 
 	// Import the network.
 	kn := logics.ToADPNetWork(bknNetwork)
+	kn.ObjectMetrics = make([]*interfaces.ObjectMetricRecordV1, 0, len(bknNetwork.ObjectMetrics))
 	otMap := make(map[string]*interfaces.ObjectType)
 	for _, bknObj := range bknNetwork.ObjectTypes {
 		ot := logics.ToADPObjectType(kn.KNID, kn.Branch, bknObj)
@@ -147,11 +153,16 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 			}
 		}
 	}
-	for _, bknM := range bknNetwork.Metrics {
-		if bknM == nil {
-			continue
+	for _, rawMetric := range bknNetwork.ObjectMetrics {
+		var metric interfaces.ObjectMetricRecordV1
+		if err := json.Unmarshal(rawMetric, &metric); err != nil {
+			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+				WithErrorDetails(err.Error())
+			rest.ReplyError(c, httpErr)
+			return
 		}
-		kn.Metrics = append(kn.Metrics, logics.ToADPMetricDefinition(kn.KNID, branch, bknM))
+		metric.KNID, metric.Branch = kn.KNID, branch
+		kn.ObjectMetrics = append(kn.ObjectMetrics, &metric)
 	}
 	// Validate required knowledge network creation fields, lengths, and enum values.
 	err = ValidateKN(ctx, kn)
@@ -210,15 +221,6 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	}
 	if len(kn.RiskTypes) > 0 {
 		err = ValidateRiskTypes(ctx, kn.KNID, kn.RiskTypes)
-		if err != nil {
-			httpErr := err.(*rest.HTTPError)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-	}
-	if len(kn.Metrics) > 0 {
-		err = ValidateMetricRequests(ctx, kn.Metrics, strictMode)
 		if err != nil {
 			httpErr := err.(*rest.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)

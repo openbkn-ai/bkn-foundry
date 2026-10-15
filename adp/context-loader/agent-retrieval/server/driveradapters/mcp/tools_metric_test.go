@@ -78,8 +78,8 @@ type stubMetricOntologyQuery struct {
 	gotMetric string
 }
 
-func (s *stubMetricOntologyQuery) QueryMetricData(_ context.Context, _, metricID string, _ bool,
-	_ *interfaces.MetricQueryDownstreamReq) (*interfaces.MetricQueryDownstreamResp, error) {
+func (s *stubMetricOntologyQuery) QueryMetricData(_ context.Context, _, metricID string, _ int,
+	_ *interfaces.ObjectMetricQuery) (*interfaces.MetricQueryDownstreamResp, error) {
 	s.gotMetric = metricID
 	return s.resp, nil
 }
@@ -92,7 +92,7 @@ func TestHandleGetObjectTypes_AdvertisesScopedMetrics(t *testing.T) {
 				ObjectTypes: []*interfaces.ObjectType{{ID: "ot-001", Name: "产品"}},
 			},
 			metrics: []*interfaces.RelatedMetric{
-				{ID: "m-001", Name: "产品总数", ScopeRef: "ot-001", MetricType: "atomic"},
+				{ID: "m-001", Version: 1, Name: "产品总数", OwnerObjectTypeID: "ot-001", MetricType: "atomic"},
 			},
 		}
 		handler := handleGetObjectTypes(bkn, knmetrics.NewKnMetricsServiceWith(nil, bkn, nil), &mcpObjectSchemaAccessStub{})
@@ -112,19 +112,22 @@ func TestHandleGetObjectTypes_AdvertisesScopedMetrics(t *testing.T) {
 		related := first["related_metrics"].([]any)
 		convey.So(len(related), convey.ShouldEqual, 1)
 		convey.So(related[0].(map[string]any)["id"], convey.ShouldEqual, "m-001")
+		convey.So(related[0].(map[string]any)["version"], convey.ShouldEqual, float64(1))
 	})
 }
 
 func TestHandleQueryMetric(t *testing.T) {
 	convey.Convey("query_metric 按 metric_id 取数", t, func() {
 		oq := &stubMetricOntologyQuery{resp: &interfaces.MetricQueryDownstreamResp{
-			Datas: []*interfaces.MetricDataSeries{{Values: []any{431}}},
+			Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Value: 431}},
+			Status:  "ok",
 		}}
 		handler := handleQueryMetric(knmetrics.NewKnMetricsServiceWith(nil, nil, oq))
 
 		result, err := handler(context.Background(), mcpReq(map[string]any{
 			"kn_id":           "kn-001",
 			"metric_id":       "m-001",
+			"version":         1,
 			"response_format": "json",
 		}))
 
@@ -134,7 +137,7 @@ func TestHandleQueryMetric(t *testing.T) {
 
 		m := resultToMap(t, result)
 		convey.So(m["metric_id"], convey.ShouldEqual, "m-001")
-		convey.So(len(m["datas"].([]any)), convey.ShouldEqual, 1)
+		convey.So(len(m["entries"].([]any)), convey.ShouldEqual, 1)
 	})
 
 	convey.Convey("缺 metric_id 回错误而不是打下游", t, func() {

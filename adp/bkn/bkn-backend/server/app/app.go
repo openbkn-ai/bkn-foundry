@@ -47,7 +47,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/concept_group"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/kn_proxy"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/knowledge_network"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/model_factory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/opensearch"
@@ -358,7 +357,6 @@ func Boot(_ Options) *Application {
 		logics.SetKNProxyOutboxAccess(nil)
 	}
 	logics.SetCapabilityBindingAccess(capability_binding.NewCapabilityBindingAccess(appSetting))
-	logics.SetMetricAccess(metric.NewMetricAccess(appSetting))
 	logics.SetModelFactoryAccess(model_factory.NewModelFactoryAccess(appSetting))
 	logics.SetOpenSearchAccess(opensearch.NewOpenSearchAccess(appSetting))
 	logics.SetObjectTypeAccess(object_type.NewObjectTypeAccess(appSetting))

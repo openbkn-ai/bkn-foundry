@@ -139,6 +139,16 @@ func ComputeNetworkChecksums(fsys FileSystem, root string) (map[string]string, e
 		}
 		ext := fsys.Ext(path)
 		if ext != ".bkn" {
+			if ext == ".json" && fsys.Base(fsys.Dir(path)) == "object_metrics" {
+				line, err := computeObjectMetricChecksumWithFS(fsys, path)
+				if err != nil {
+					return err
+				}
+				parts := splitChecksumLine(line)
+				if parts[0] != "" && parts[1] != "" {
+					checksums[parts[0]] = parts[1]
+				}
+			}
 			return nil
 		}
 		lines := computeBknChecksumWithFS(fsys, path, checksumFormatCurrent)

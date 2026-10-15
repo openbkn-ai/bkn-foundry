@@ -9,6 +9,7 @@ package bkn
 import (
 	"archive/tar"
 	"bytes"
+	"encoding/json"
 	"io/fs"
 	"testing"
 	"time"
@@ -536,36 +537,17 @@ func TestRoundTrip_NetworkWithAllTypes(t *testing.T) {
 				BoundObject: "obj1",
 			},
 		},
-		Metrics: []*BknMetric{
-			{
-				BknMetricFrontmatter: BknMetricFrontmatter{
-					Type: "metric",
-					ID:   "met1",
-					Name: "Metric One",
-					Tags: []string{"t"},
-				},
-				Description:                  "roundtrip metric",
-				ScopeType:                    "object_type",
-				ScopeRef:                     "obj1",
-				HasScopeSection:              true,
-				HasCalculationFormulaSection: true,
-				Formula: &MetricFormula{
-					Kind: "atomic",
-					Atomic: &MetricAtomic{
-						Aggregation: &MetricAggregation{Property: "prop1", Aggr: "count"},
-					},
-				},
-			},
-		},
+		ObjectMetrics: []json.RawMessage{json.RawMessage(`{"definition":{"id":"met1","version":1,"code":"metric_one","name":"Metric One","description":"roundtrip metric","owner_object_type_id":"obj1","metric_type":"atomic","lifecycle":{"status":"published"}},"kn_id":"net1","branch":"main"}`)},
 	}
 
 	// Write to tar
 	var buf bytes.Buffer
 	err := WriteNetworkToTar(original, &buf)
 	require.NoError(t, err)
+	archive := buf.Bytes()
 
 	// Load back
-	loaded, err := LoadNetworkFromTar(&buf)
+	loaded, err := LoadNetworkFromTar(bytes.NewReader(archive))
 	require.NoError(t, err)
 
 	// Verify all fields
@@ -584,10 +566,18 @@ func TestRoundTrip_NetworkWithAllTypes(t *testing.T) {
 	require.Len(t, loaded.ActionTypes, 1)
 	assert.Equal(t, original.ActionTypes[0].ID, loaded.ActionTypes[0].ID)
 
-	require.Len(t, loaded.Metrics, 1)
-	assert.Equal(t, original.Metrics[0].ID, loaded.Metrics[0].ID)
-	require.NotNil(t, loaded.Metrics[0].Formula)
-	assert.Equal(t, "atomic", loaded.Metrics[0].Formula.Kind)
+	require.Len(t, loaded.ObjectMetrics, 1)
+	assert.JSONEq(t, string(original.ObjectMetrics[0]), string(loaded.ObjectMetrics[0]))
+	checksums, err := ComputeChecksumFromTar(bytes.NewReader(archive))
+	require.NoError(t, err)
+	assert.Contains(t, checksums, "object_metric_v1:met1@1")
+	valid, errors := VerifyChecksumFromTar(bytes.NewReader(archive))
+	assert.True(t, valid, "checksum errors: %v", errors)
+	mfs, rootDir, err := ExtractTarToMemory(bytes.NewReader(archive))
+	require.NoError(t, err)
+	mfs.AddFile("object_metrics/met1@1.json", []byte(`{"definition":{"id":"met1","version":1,"name":"tampered"}}`))
+	_, err = LoadNetworkWithFS(mfs, rootDir)
+	require.ErrorContains(t, err, "checksum verification failed")
 }
 
 // === Checksum Tests ===

@@ -1,12 +1,14 @@
 openapi: 3.1.0
 info:
   title: OpenBKN Object Metric Query API
-  version: 2.0.0
+  version: 1.0.0
   description: Trials an unpublished definition or executes an immutable, published object-metric version.
 servers:
   - url: /api/ontology-query
+security:
+  - bearerAuth: []
 paths:
-  /v2/knowledge-networks/{kn_id}/object-metrics/trial:
+  /v1/knowledge-networks/{kn_id}/object-metrics/trial:
     post:
       operationId: trialObjectMetricData
       summary: Trial an unpublished object metric against real data without persisting it.
@@ -29,10 +31,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricData" }
-        "400": { description: Invalid definition, runtime input, or time range. }
+        "400": { description: "Invalid definition, runtime input, or time range." }
         "403": { description: The caller cannot read the knowledge network or its mounted data. }
-        "422": { description: The definition is incomplete or cannot be executed with its published, version-pinned dependencies. }
-  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data:
+        "422": { description: "The definition is incomplete or cannot be executed with its published, version-pinned dependencies." }
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data:
     post:
       operationId: queryObjectMetricData
       parameters:
@@ -63,12 +65,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricData" }
-        "400": { description: Invalid runtime filter, dimension, time range, or version. }
+        "400": { description: "Invalid runtime filter, dimension, time range, or version." }
         "403": { description: The caller cannot query this metric. }
         "404": { description: Metric or referenced ontology element not found. }
         "409": { description: The requested version is not published. }
         "422": { description: The immutable definition cannot be executed against current data. }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     PropertyRef:
       type: object

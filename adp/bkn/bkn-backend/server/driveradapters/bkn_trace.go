@@ -175,27 +175,6 @@ func emitActionTypeSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Vis
 	setEvidenceEventHeader(c, eventID)
 }
 
-func emitMetricSchemaRead(ctx context.Context, c *gin.Context, vis hydra.Visitor, operation, knID, branch string, requestedIDs []string, items []*interfaces.MetricDefinition, total int64) {
-	if !bkntrace.EvidenceEnabled() {
-		return
-	}
-	requestContext, err := bknTraceRequestContext(c, vis)
-	if err != nil {
-		logger.Errorf("build BKN trace request context failed: %v", err)
-		return
-	}
-	eventID := bkntrace.EmitSchemaReadEvents(ctx, requestContext, bkntrace.ReadSubject{
-		EntityKind:    bkntrace.EntityKindMetric,
-		Operation:     operation,
-		KNID:          knID,
-		Branch:        branch,
-		RequestedIDs:  requestedIDs,
-		ReturnedCount: len(items),
-		TotalCount:    total,
-	}, bkntrace.MetricRefs(items))
-	setEvidenceEventHeader(c, eventID)
-}
-
 func setEvidenceEventHeader(c *gin.Context, eventID string) {
 	if strings.TrimSpace(eventID) != "" {
 		c.Header(headerBKNEvidenceEventID, eventID)

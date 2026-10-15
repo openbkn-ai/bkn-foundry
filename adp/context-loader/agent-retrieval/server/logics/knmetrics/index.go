@@ -6,18 +6,16 @@
 //
 //	Recall the object type → see the available metrics under the object type → get the number according to the metric's own semantics.
 //
-// Step 2 is AttachRelatedMetrics: put scope_type=object_type and scope_ref=<ot_id>.
-// The metric is attached to the object type. Indicators that are not bound to logical attributes are completely invisible on the object type, so the Agent can only degenerate into.
-// run_sql overrides the semantics itself.
+// Step 2 is AttachRelatedMetrics: expose published versions owned by the
+// object type. Unbound metrics remain discoverable without rebuilding formulas.
 //
-// The third step is QueryMetric: After selecting the metric, it is handed over to ontology-query to calculate according to MetricDefinition.
+// The third step is QueryMetric: pass the selected immutable version to ontology-query.
 // The instance-level branch that has bound logical properties still uses get_logic_properties_values, which is not included in this package.
 package knmetrics
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -31,12 +29,8 @@ import (
 var (
 	ErrKnIDRequired     = errors.New("kn_id is required")
 	ErrMetricIDRequired = errors.New("metric_id is required (from get_object_types related_metrics)")
+	ErrVersionRequired  = errors.New("version must be a positive published object metric version (from get_object_types related_metrics)")
 )
-
-// Step whitelist, consistent with the granularity supported by MetricDefinition.
-var validSteps = map[string]struct{}{
-	"day": {}, "week": {}, "month": {}, "quarter": {}, "year": {},
-}
 
 // KnMetricsService metric visibility and metric access.
 type KnMetricsService interface {
@@ -78,7 +72,7 @@ func NewKnMetricsServiceWith(logger interfaces.Logger, bkn interfaces.BknBackend
 	return &knMetricsService{logger: logger, bknBackend: bkn, ontologyQuery: oq}
 }
 
-// AttachRelatedMetrics distributes metrics to each object type according to scope_ref.
+// AttachRelatedMetrics distributes published metrics by owner object type.
 func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error {
 	byScope, err := s.metricsByScope(ctx, knID, objectTypes)
 	if err != nil {
@@ -109,7 +103,7 @@ func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID s
 	return nil
 }
 
-// metricsByScope retrieves the metrics under this batch of object types and groups them by scope_ref.
+// metricsByScope groups visible metrics by owner object type.
 func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
 	objectTypes []*interfaces.ObjectType) (map[string][]*interfaces.RelatedMetric, error) {
 	ids := make([]string, 0, len(objectTypes))
@@ -129,15 +123,15 @@ func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
 
 	byScope := make(map[string][]*interfaces.RelatedMetric, len(ids))
 	for _, m := range metrics {
-		if m == nil || m.ScopeRef == "" {
+		if m == nil || m.OwnerObjectTypeID == "" {
 			continue
 		}
-		byScope[m.ScopeRef] = append(byScope[m.ScopeRef], m)
+		byScope[m.OwnerObjectTypeID] = append(byScope[m.OwnerObjectTypeID], m)
 	}
 	return byScope, nil
 }
 
-// QueryMetric forwards ontology-query's metric fetching endpoint after verifying the input parameters.
+// QueryMetric forwards only V1 runtime choices to a published, version-pinned object metric.
 func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.QueryMetricReq) (*interfaces.QueryMetricResp, error) {
 	if req == nil {
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
@@ -153,88 +147,30 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, ErrMetricIDRequired
 	}
-	if err := validateTimeWindow(req.Time, req.FillNull); err != nil {
+	if req.Version < 1 {
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
-		return nil, err
+		return nil, ErrVersionRequired
 	}
-
-	downstream := &interfaces.MetricQueryDownstreamReq{
-		Time:               req.Time,
-		Cond:               req.Cond,
-		AnalysisDimensions: req.AnalysisDimensions,
-		OrderBy:            req.OrderBy,
-		Having:             req.Having,
-		Limit:              req.Limit,
+	if req.Query.Time != nil && req.Query.Time.Start > req.Query.Time.End {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
+		return nil, errors.New("query.time.start must be <= query.time.end")
 	}
-	resp, err := s.ontologyQuery.QueryMetricData(ctx, knID, metricID, req.FillNull, downstream)
+	resp, err := s.ontologyQuery.QueryMetricData(ctx, knID, metricID, req.Version, &req.Query)
 	if err != nil {
 		return nil, err
 	}
 
-	out := &interfaces.QueryMetricResp{KnID: knID, MetricID: metricID, Datas: []*interfaces.MetricDataSeries{}}
+	out := &interfaces.QueryMetricResp{KnID: knID, MetricID: metricID, Version: req.Version, Entries: []interfaces.ObjectMetricDataEntry{}}
 	if resp != nil {
-		if len(resp.Datas) > 0 {
-			out.Datas = resp.Datas
+		if len(resp.Entries) > 0 {
+			out.Entries = resp.Entries
 		}
+		out.Model = resp.Model
+		out.Status = resp.Status
+		out.Warnings = resp.Warnings
 		out.OverallMs = resp.OverallMs
 	}
 	return out, nil
-}
-
-// isTrendWindow mirrors ontology-query's metricQueryIsTrendTime: a window is a
-// trend (series) query unless instant is explicitly true. Omitting instant means
-// trend, not instant — getting this backwards is what makes the common
-// {"start":…,"end":…} shape pass here and fail downstream.
-func isTrendWindow(t *interfaces.MetricTimeWindow) bool {
-	return t != nil && (t.Instant == nil || !*t.Instant)
-}
-
-// validateTimeWindow rejects a malformed time window before it costs a round trip.
-//
-// Every rule here mirrors ontology-query's validateMetricQueryRequest exactly —
-// same conditions, same wording — because a local check that is stricter than the
-// downstream one turns a valid call into a false rejection, and a looser one just
-// delays the same error. The point is a faster, identical verdict, not a second
-// opinion.
-func validateTimeWindow(t *interfaces.MetricTimeWindow, fillNull bool) error {
-	if t == nil {
-		if fillNull {
-			return errors.New("fill_null requires a time range (time is required)")
-		}
-		return nil
-	}
-	if (t.Start != nil) != (t.End != nil) {
-		return errors.New("time.start and time.end must both be set when either is set")
-	}
-	if t.Start != nil && t.End != nil && *t.Start > *t.End {
-		return errors.New("time.start must be <= time.end")
-	}
-	if isTrendWindow(t) {
-		if t.Step == nil || strings.TrimSpace(*t.Step) == "" {
-			return errors.New("trend query requires time.step (calendar interval only). " +
-				"Omitting time.instant means a trend query; set time.instant=true for a single point")
-		}
-		if err := validateCalendarStep(*t.Step); err != nil {
-			return err
-		}
-	}
-	if fillNull {
-		if !isTrendWindow(t) {
-			return errors.New("fill_null is only valid for trend (range) queries: set time.instant to false or omit it")
-		}
-		if t.Start == nil || t.End == nil {
-			return errors.New("fill_null requires time.start and time.end")
-		}
-	}
-	return nil
-}
-
-// validateCalendarStep accepts the same steps as ontology-query, case-insensitively.
-func validateCalendarStep(raw string) error {
-	if _, ok := validSteps[strings.ToLower(strings.TrimSpace(raw))]; !ok {
-		return fmt.Errorf("step must be a calendar interval: day, week, month, quarter, year (got %q)", raw)
-	}
-	return nil
 }
 
 //nolint:unused // Retained for metric diagnostics.

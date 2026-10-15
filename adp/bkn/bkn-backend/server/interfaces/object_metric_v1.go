@@ -5,7 +5,13 @@
 
 package interfaces
 
-import "context"
+import (
+	"context"
+	"database/sql"
+	"errors"
+)
+
+var ErrObjectMetricArchiveConflict = errors.New("object metric archive conflict")
 
 const (
 	ObjectMetricTypeAtomic    = "atomic"
@@ -148,6 +154,22 @@ type ObjectMetricAccessV1 interface {
 	DeprecateObjectMetric(ctx context.Context, record *ObjectMetricRecordV1) error
 	NextObjectMetricVersion(ctx context.Context, knID, branch, metricID string) (int, error)
 	ObjectMetricCodeExists(ctx context.Context, knID, branch, code, exceptID string) (bool, error)
+}
+
+// ObjectMetricArchiveAccessV1 is the optional enterprise persistence bridge for
+// whole-network BKN import/export. Import uses the network's transaction; it
+// must never create a separate transaction or rewrite an existing version.
+type ObjectMetricArchiveAccessV1 interface {
+	ListObjectMetricArchive(ctx context.Context, knID, branch string) ([]*ObjectMetricRecordV1, error)
+	ImportObjectMetricArchive(ctx context.Context, tx *sql.Tx, knID, branch string, records []*ObjectMetricRecordV1) error
+	DeleteObjectMetricArchive(ctx context.Context, tx *sql.Tx, knID, branch string) error
+}
+
+// ObjectMetricLifecycleTxAccessV1 lets proxy publication commit the lifecycle
+// transition and its pending authorization snapshot atomically.
+type ObjectMetricLifecycleTxAccessV1 interface {
+	PublishObjectMetricTx(ctx context.Context, tx *sql.Tx, record *ObjectMetricRecordV1) error
+	DeprecateObjectMetricTx(ctx context.Context, tx *sql.Tx, record *ObjectMetricRecordV1) error
 }
 
 // ObjectMetricServiceV1 owns draft, validation, version, and publish semantics.

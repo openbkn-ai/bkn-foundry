@@ -173,7 +173,6 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 	changedObjectIDs := map[string]bool{}
 	relationIDs := map[string]bool{}
 	actionIDs := map[string]bool{}
-	metricIDs := map[string]bool{}
 	for _, item := range changes.ObjectTypes {
 		if item != nil && strings.TrimSpace(item.OTID) != "" {
 			objectIDs[item.OTID] = true
@@ -196,15 +195,6 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 			actionIDs[item.ATID] = true
 		}
 	}
-	for _, item := range changes.Metrics {
-		if item != nil && strings.TrimSpace(item.ID) != "" {
-			metricIDs[item.ID] = true
-			if item.ScopeRef != "" {
-				objectIDs[item.ScopeRef] = true
-			}
-		}
-	}
-
 	var err error
 	currentRelations := []*interfaces.RelationType{}
 	loadedRelationIDs := sortedProxyIDs(relationIDs)
@@ -223,19 +213,6 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 		}
 		if relation.TargetObjectTypeID != "" {
 			objectIDs[relation.TargetObjectTypeID] = true
-		}
-	}
-	currentMetrics := []*interfaces.MetricDefinition{}
-	loadedMetricIDs := sortedProxyIDs(metricIDs)
-	if len(metricIDs) > 0 {
-		currentMetrics, err = kns.ma.GetMetricsByIDs(ctx, knID, branch, loadedMetricIDs)
-		if err != nil {
-			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load changed metric proxy bindings")
-		}
-		for _, metric := range currentMetrics {
-			if metric != nil && metric.ScopeRef != "" {
-				objectIDs[metric.ScopeRef] = true
-			}
 		}
 	}
 	changedObjectIDList := sortedProxyIDs(changedObjectIDs)
@@ -257,18 +234,6 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 			}
 			if relation.TargetObjectTypeID != "" {
 				objectIDs[relation.TargetObjectTypeID] = true
-			}
-		}
-		metrics, err := kns.ma.ListMetrics(ctx, interfaces.MetricsListQueryParams{
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{Limit: -1},
-			KNID:                      knID, Branch: branch, ScopeRefs: changedObjectIDList,
-		})
-		if err != nil {
-			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load metric proxy dependants")
-		}
-		for _, metric := range metrics {
-			if metric != nil {
-				metricIDs[metric.ID] = true
 			}
 		}
 	}
@@ -295,17 +260,9 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load affected action proxy bindings")
 		}
 	}
-	metrics := currentMetrics
-	affectedMetricIDs := sortedProxyIDs(metricIDs)
-	if len(affectedMetricIDs) > 0 && !slices.Equal(loadedMetricIDs, affectedMetricIDs) {
-		metrics, err = kns.ma.GetMetricsByIDs(ctx, knID, branch, affectedMetricIDs)
-		if err != nil {
-			return nil, nil, proxyHTTPError(ctx, http.StatusServiceUnavailable, "load affected metric proxy bindings")
-		}
-	}
 	current := &interfaces.KN{
 		KNID: knID, Branch: branch, ObjectTypes: objects, RelationTypes: relations,
-		ActionTypes: actions, Metrics: metrics,
+		ActionTypes: actions,
 	}
 	logicPropertyIDs := map[string]bool{}
 	for _, objectType := range append(append([]*interfaces.ObjectType(nil), objects...), changes.ObjectTypes...) {
@@ -321,7 +278,7 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 		}
 	}
 	bindings := make([]interfaces.KNProxyBindingRef, 0,
-		len(objectIDs)+len(logicPropertyIDs)+len(relationIDs)+len(actionIDs)+len(metricIDs))
+		len(objectIDs)+len(logicPropertyIDs)+len(relationIDs)+len(actionIDs))
 	appendBindings := func(bindingType string, ids map[string]bool) {
 		for _, id := range sortedProxyIDs(ids) {
 			bindings = append(bindings, interfaces.KNProxyBindingRef{BindingType: bindingType, BindingID: id})
@@ -331,11 +288,13 @@ func (kns *knowledgeNetworkService) loadAffectedProxyModel(ctx context.Context,
 	appendBindings("logic_property", logicPropertyIDs)
 	appendBindings(interfaces.MODULE_TYPE_RELATION_TYPE, relationIDs)
 	appendBindings(interfaces.MODULE_TYPE_ACTION_TYPE, actionIDs)
-	appendBindings(interfaces.MODULE_TYPE_METRIC, metricIDs)
 	return current, bindings, nil
 }
 
 func proxyChangesRequireFullProjection(changes *interfaces.KN, mergeMode string) bool {
+	if changes != nil && (len(changes.ObjectMetrics) > 0 || len(changes.ObjectTypes) > 0) {
+		return true
+	}
 	if changes == nil || mergeMode != interfaces.ImportMode_Overwrite {
 		return false
 	}
@@ -353,11 +312,6 @@ func proxyChangesRequireFullProjection(changes *interfaces.KN, mergeMode string)
 	}
 	for _, item := range changes.ActionTypes {
 		if item != nil && item.ATID != "" && item.ATName == "" && item.ActionSource.Type == "" {
-			return true
-		}
-	}
-	for _, item := range changes.Metrics {
-		if item != nil && item.ID != "" && item.Name == "" && item.ScopeType == "" && item.ScopeRef == "" {
 			return true
 		}
 	}

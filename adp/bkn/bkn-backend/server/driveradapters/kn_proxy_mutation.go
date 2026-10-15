@@ -140,34 +140,3 @@ func (r *restHandler) deleteActionTypes(ctx context.Context, knID, branch string
 		return r.ats.DeleteActionTypesByIDs(mutationCtx, tx, knID, branch, ids)
 	})
 }
-
-func (r *restHandler) createMetrics(ctx context.Context, knID, branch string,
-	entries []*interfaces.MetricDefinition, strictMode bool, mode string) (ids []string, err error) {
-	changes := &interfaces.KN{KNID: knID, Branch: branch, Metrics: entries}
-	err = r.publishKNChildMutation(ctx, changes, mode, func(mutationCtx context.Context, tx *sql.Tx) error {
-		ids, err = r.ms.CreateMetrics(mutationCtx, tx, entries, strictMode, mode)
-		return err
-	})
-	return ids, err
-}
-
-func (r *restHandler) updateMetric(ctx context.Context, metric *interfaces.MetricDefinition,
-	strictMode bool) error {
-	changes := &interfaces.KN{
-		KNID: metric.KnID, Branch: metric.Branch, Metrics: []*interfaces.MetricDefinition{metric},
-	}
-	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
-		return r.ms.UpdateMetric(mutationCtx, tx, metric, strictMode)
-	})
-}
-
-func (r *restHandler) deleteMetrics(ctx context.Context, knID, branch string, ids []string) error {
-	entries := make([]*interfaces.MetricDefinition, 0, len(ids))
-	for _, id := range ids {
-		entries = append(entries, &interfaces.MetricDefinition{ID: id})
-	}
-	changes := &interfaces.KN{KNID: knID, Branch: branch, Metrics: entries}
-	return r.publishKNChildMutation(ctx, changes, interfaces.ImportMode_Overwrite, func(mutationCtx context.Context, tx *sql.Tx) error {
-		return r.ms.DeleteMetricsByIDs(mutationCtx, tx, knID, branch, ids)
-	})
-}

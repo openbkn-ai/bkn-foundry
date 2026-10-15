@@ -6,7 +6,10 @@
 
 package bkntrace
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 var businessRefPrefixes = map[string]string{
 	"knowledge_network": "kn",
@@ -112,10 +115,13 @@ func DeriveToolBusinessRefs(toolName string, input map[string]any, currentKNID s
 		return refs
 	case "query_metric":
 		metricID := businessRefString(input["metric_id"])
-		if metricID == "" {
+		version := intValue(input["version"], 0)
+		if metricID == "" || version < 1 {
 			return nil
 		}
-		return append(refs, BusinessRef{RefType: "metric", RefID: "metric:" + currentKNID + ":" + metricID, Version: "unversioned"})
+		return append(refs, BusinessRef{
+			RefType: "metric", RefID: fmt.Sprintf("metric:%s:%s:v%d", currentKNID, metricID, version), Version: fmt.Sprintf("v%d", version),
+		})
 	default:
 		return nil
 	}

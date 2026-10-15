@@ -46,7 +46,7 @@ func TestBusinessRefTypeRequiresCanonicalRefIDShape(t *testing.T) {
 		{BusinessRefProperty, "property:supplychain:forecast:qty"},
 		{BusinessRefRelationType, "relation:supplychain:contains"},
 		{BusinessRefDataResource, "resource:resource-1"},
-		{BusinessRefMetric, "metric:supplychain:total"},
+		{BusinessRefMetric, "metric:supplychain:total:v2"},
 		{BusinessRefLogic, "logic:supplychain:forecast:total"},
 		{BusinessRefFunction, "function:supplychain:calculate"},
 		{BusinessRefActionType, "action_type:supplychain:approve"},
@@ -68,6 +68,14 @@ func TestBusinessRefTypeRequiresCanonicalRefIDShape(t *testing.T) {
 	if !BusinessRefObjectInstance.MatchesCanonicalRefID("object_instance:supplychain:forecast:bkn://object/row-1") ||
 		!BusinessRefActionInstance.MatchesCanonicalRefID("action_instance:supplychain:approve:workflow:run:1") {
 		t.Fatal("opaque instance ID tails must allow URI and composite identifiers")
+	}
+	if !BusinessRefMetric.MatchesCanonicalRefID("metric:supplychain:total") {
+		t.Fatal("historical unversioned metric reference must remain readable")
+	}
+	for _, invalid := range []string{"metric:supplychain:total:v0", "metric:supplychain:total:2", "metric:supplychain:total:vx"} {
+		if BusinessRefMetric.MatchesCanonicalRefID(invalid) {
+			t.Fatalf("metric accepted invalid version segment %q", invalid)
+		}
 	}
 	if BusinessRefType("unknown").MatchesCanonicalRefID("unknown:value") {
 		t.Fatal("unknown business reference type accepted a ref ID")

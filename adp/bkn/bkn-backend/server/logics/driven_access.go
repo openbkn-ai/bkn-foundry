@@ -24,7 +24,6 @@ var (
 	KNA            interfaces.KNAccess
 	KPA            interfaces.KNProxyAccess
 	KPOA           interfaces.KNProxyOutboxAccess
-	MA             interfaces.MetricAccess
 	OMA            interfaces.ObjectMetricAccessV1
 	MPA            interfaces.ManagedProxyAccess
 	MFA            interfaces.ModelFactoryAccess
@@ -79,10 +78,6 @@ func SetKNProxyOutboxAccess(kpoa interfaces.KNProxyOutboxAccess) {
 
 func SetManagedProxyAccess(mpa interfaces.ManagedProxyAccess) {
 	MPA = mpa
-}
-
-func SetMetricAccess(ma interfaces.MetricAccess) {
-	MA = ma
 }
 
 func SetObjectMetricAccess(oma interfaces.ObjectMetricAccessV1) {

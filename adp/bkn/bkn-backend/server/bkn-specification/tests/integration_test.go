@@ -122,6 +122,7 @@ func compareDirs(t *testing.T, srcDir, dstDir string) {
 		"object_types",
 		"relation_types",
 		"risk_types",
+		"object_metrics",
 	}
 
 	for _, target := range targets {
@@ -162,7 +163,7 @@ func TestLoadFromFile(t *testing.T) {
 			assert.NotEmpty(t, doc.Name, "network name must not be empty")
 
 			total := len(doc.ObjectTypes) + len(doc.RelationTypes) + len(doc.ActionTypes) +
-				len(doc.RiskTypes) + len(doc.ConceptGroups) + len(doc.Metrics)
+				len(doc.RiskTypes) + len(doc.ConceptGroups) + len(doc.ObjectMetrics)
 			assert.Greater(t, total, 0, "expected at least one entity")
 		})
 	}
@@ -186,7 +187,7 @@ func TestLoadFromTar(t *testing.T) {
 			assert.Equal(t, len(fileDoc.ActionTypes), len(tarDoc.ActionTypes), "action count mismatch")
 			assert.Equal(t, len(fileDoc.RiskTypes), len(tarDoc.RiskTypes), "risk type count mismatch")
 			assert.Equal(t, len(fileDoc.ConceptGroups), len(tarDoc.ConceptGroups), "concept group count mismatch")
-			assert.Equal(t, len(fileDoc.Metrics), len(tarDoc.Metrics), "metric count mismatch")
+			assert.Equal(t, len(fileDoc.ObjectMetrics), len(tarDoc.ObjectMetrics), "object metric count mismatch")
 		})
 	}
 }
@@ -249,7 +250,7 @@ version: "1.0"
 	assert.Empty(t, doc.ActionTypes)
 	assert.Empty(t, doc.RiskTypes)
 	assert.Empty(t, doc.ConceptGroups)
-	assert.Empty(t, doc.Metrics)
+	assert.Empty(t, doc.ObjectMetrics)
 }
 
 // TestCircularInclude covers circular-include detection.

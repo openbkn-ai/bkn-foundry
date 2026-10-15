@@ -161,7 +161,7 @@ python3 bkn-trace/agent-observability/scripts/test_failed_call_deployment.py \
 | `property` | `property:<kn_id>:<object_type_id>:<property_id>` |
 | `relation_type` | `relation:<kn_id>:<relation_type_id>` |
 | `data_resource` | `resource:<resource_id>` |
-| `metric` | `metric:<kn_id>:<metric_id>` |
+| `metric` | `metric:<kn_id>:<metric_id>:v<version>`（历史三段引用仍可读取，但不会再向旧接口解析） |
 | `logic` | `logic:<kn_id>:<object_type_id>:<logic_id>` |
 | `function` | `function:<kn_id>:<function_id>` |
 | `action_type` | `action_type:<kn_id>:<action_type_id>` |

@@ -591,30 +591,3 @@ func VerifyConceptGroupsExist(client *testutil.HTTPClient, knID string, t *testi
 	}
 	return entries
 }
-
-// VerifyMetricsCountAtLeast verifies that GET .../metrics returns at least minCount entries for BKN tar import acceptance with metrics.
-func VerifyMetricsCountAtLeast(client *testutil.HTTPClient, knID string, t *testing.T, minCount int) int {
-	resp := client.GET("/api/bkn-backend/v1/knowledge-networks/" + knID + "/metrics?offset=0&limit=500")
-	if resp.StatusCode != 200 {
-		t.Fatalf("查询指标失败: status=%d body=%v", resp.StatusCode, resp.Body)
-	}
-	entries, ok := resp.Body["entries"].([]any)
-	if !ok {
-		t.Fatalf("查询指标返回格式错误: body=%v", resp.Body)
-	}
-	total := len(entries)
-	if tc, ok := resp.Body["total_count"]; ok {
-		switch v := tc.(type) {
-		case float64:
-			total = int(v)
-		case int:
-			total = v
-		case int64:
-			total = int(v)
-		}
-	}
-	if len(entries) < minCount && total < minCount {
-		t.Fatalf("指标数量不足: want>=%d got_entries=%d total_count=%d", minCount, len(entries), total)
-	}
-	return len(entries)
-}

@@ -33,7 +33,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/batchindex"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/concept_group"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/model_factory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
@@ -65,9 +64,7 @@ type knowledgeNetworkService struct {
 	kna        interfaces.KNAccess
 	kpa        interfaces.KNProxyAccess
 	kpoa       interfaces.KNProxyOutboxAccess
-	ma         interfaces.MetricAccess
 	mpa        interfaces.ManagedProxyAccess
-	ms         interfaces.MetricService
 	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
 	ots        interfaces.ObjectTypeService
@@ -95,9 +92,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 			kna:        logics.KNA,
 			kpa:        logics.KPA,
 			kpoa:       logics.KPOA,
-			ma:         logics.MA,
 			mpa:        logics.MPA,
-			ms:         metric.NewMetricService(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ota:        logics.OTA,
 			ots:        object_type.NewObjectTypeService(appSetting),
@@ -242,12 +237,21 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		riskType.KNID = kn.KNID
 		riskType.Branch = kn.Branch
 	}
-	for _, m := range importPlan.Metrics {
-		if m == nil {
-			continue
+	for _, record := range importPlan.ObjectMetrics {
+		if record != nil {
+			record.KNID, record.Branch = kn.KNID, kn.Branch
 		}
-		m.KnID = kn.KNID
-		m.Branch = kn.Branch
+	}
+	if err = validateObjectMetricArchive(importPlan); err != nil {
+		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails(err.Error())
+	}
+	if len(importPlan.ObjectMetrics) > 0 {
+		if _, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1); !ok {
+			return "", rest.NewHTTPError(ctx, http.StatusNotImplemented,
+				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+				WithErrorDetails("object metric V1 archive import requires the enterprise capability")
+		}
 	}
 
 	accountInfo := interfaces.AccountInfo{}
@@ -463,12 +467,6 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 			return err
 		}
 	}
-	if len(plan.Metrics) > 0 {
-		if err := kns.ms.ValidateMetrics(ctx, plan.Metrics, strictMode, mode, batch); err != nil {
-			return err
-		}
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
@@ -573,7 +571,7 @@ func restrictKNToNavigation(kn *interfaces.KN) {
 	kn.RelationTypes = nil
 	kn.ActionTypes = nil
 	kn.RiskTypes = nil
-	kn.Metrics = nil
+	kn.ObjectMetrics = nil
 	kn.Statistics = nil
 	kn.Operations = nil
 	kn.NavigationOnly = true
@@ -787,11 +785,12 @@ func (kns *knowledgeNetworkService) loadKNForDatasetSnapshot(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	metrics, err := kns.ma.ListMetrics(ctx, interfaces.MetricsListQueryParams{PaginationQueryParameters: query, KNID: kn.KNID, Branch: kn.Branch})
-	if err != nil {
-		return nil, err
+	if archive, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1); ok {
+		kn.ObjectMetrics, err = archive.ListObjectMetricArchive(ctx, kn.KNID, kn.Branch)
+		if err != nil {
+			return nil, err
+		}
 	}
-	kn.Metrics = metrics
 	if kns.riskTypeA != nil {
 		kn.RiskTypes, err = kns.riskTypeA.GetAllRiskTypesByKnID(ctx, kn.KNID, kn.Branch)
 		if err != nil {
@@ -872,7 +871,6 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 	var relationTypes []*interfaces.RelationType
 	var actionTypes []*interfaces.ActionType
 	var riskTypes []*interfaces.RiskType
-	var metricsList *interfaces.MetricsList
 
 	loaders := []exportLoader{
 		func(ctx context.Context) error {
@@ -927,18 +925,6 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 			return err
 		})
 	}
-	loaders = append(loaders, func(ctx context.Context) error {
-		var err error
-		metricsList, err = kns.ms.ListMetrics(ctx, interfaces.MetricsListQueryParams{
-			PaginationQueryParameters: interfaces.PaginationQueryParameters{
-				Limit: -1,
-			},
-			KNID:   kn.KNID,
-			Branch: kn.Branch,
-		})
-		return err
-	})
-
 	if err := runExportLoaders(ctx, exportLoaderConcurrency, loaders...); err != nil {
 		return err
 	}
@@ -948,9 +934,6 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 	kn.RelationTypes = relationTypes
 	kn.ActionTypes = actionTypes
 	kn.RiskTypes = riskTypes
-	if metricsList != nil {
-		kn.Metrics = metricsList.Entries
-	}
 	if err := kns.finalizeExportConceptGroups(ctx, kn); err != nil {
 		return err
 	}
@@ -1081,7 +1064,7 @@ func (kns *knowledgeNetworkService) enrichExportObjectReferences(ctx context.Con
 
 func exportAccountInfos(kn *interfaces.KN) []*interfaces.AccountInfo {
 	accountInfos := make([]*interfaces.AccountInfo, 0, 2*(1+len(kn.ConceptGroups)+len(kn.ObjectTypes)+
-		len(kn.RelationTypes)+len(kn.ActionTypes)+len(kn.Metrics)))
+		len(kn.RelationTypes)+len(kn.ActionTypes)+len(kn.ObjectMetrics)))
 	accountInfos = append(accountInfos, &kn.Creator, &kn.Updater)
 	for _, conceptGroup := range kn.ConceptGroups {
 		if conceptGroup != nil {
@@ -1103,7 +1086,7 @@ func exportAccountInfos(kn *interfaces.KN) []*interfaces.AccountInfo {
 			accountInfos = append(accountInfos, &actionType.Creator, &actionType.Updater)
 		}
 	}
-	for _, metric := range kn.Metrics {
+	for _, metric := range kn.ObjectMetrics {
 		if metric != nil {
 			accountInfos = append(accountInfos, &metric.Creator, &metric.Updater)
 		}
@@ -1276,18 +1259,20 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
-	// Metric count.
-	metricsCnt, err := kns.ma.GetMetricsTotal(ctx, interfaces.MetricsListQueryParams{
-		KNID:   kn.KNID,
-		Branch: kn.Branch,
-	})
-	if err != nil {
-		logger.Errorf("GetMetricsTotal in knowledge network[%s] error: %s", kn.KNID, err.Error())
-		span.SetStatus(codes.Error, fmt.Sprintf("GetMetricsTotal in knowledge network[%s], error: %v", kn.KNID, err))
-		span.End()
-
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(err.Error())
+	// Count V1 metric identities, not immutable versions.
+	metricsCnt := 0
+	if logics.OMA != nil {
+		metricIDs, metricErr := logics.OMA.ListObjectMetricIDs(ctx, interfaces.ObjectMetricListQueryV1{
+			KNID: kn.KNID, Branch: kn.Branch,
+		})
+		var hidden *rest.HTTPError
+		if errors.As(metricErr, &hidden) && hidden.HTTPCode == http.StatusNotFound {
+			metricIDs = nil // The enterprise capability is not entitled.
+		} else if metricErr != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(metricErr.Error())
+		}
+		metricsCnt = len(metricIDs)
 	}
 
 	// Capability binding counts. One grouped query covers every stored type; the service also
@@ -1493,14 +1478,12 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 
-	// Delete all metrics under the business knowledge network.
-	err = kns.ms.DeleteMetricsByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteMetricsByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络指标失败")
-		return err
+	// Delete versioned object metrics in the same transaction as the network.
+	if archive, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1); ok {
+		if err := archive.DeleteObjectMetricArchive(ctx, tx, kn.KNID, kn.Branch); err != nil {
+			return err
+		}
 	}
-
 	// Delete all risk types under the business knowledge network.
 	err = kns.riskTypeS.DeleteRiskTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
 	if err != nil {

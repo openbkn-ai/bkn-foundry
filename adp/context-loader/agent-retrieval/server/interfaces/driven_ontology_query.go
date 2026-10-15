@@ -388,8 +388,8 @@ type DrivenOntologyQuery interface {
 	// ExploreSubgraph explores an object subgraph from a source object type, by
 	// direction and hop count, without the caller having to know the topology
 	ExploreSubgraph(ctx context.Context, req *ExploreSubgraphReq) (resp *ExploreSubgraphResp, err error)
-	// QueryMetricData computes one metric by its own definition
-	// (POST .../metrics/{metric_id}/data)
-	QueryMetricData(ctx context.Context, knID, metricID string, fillNull bool,
-		req *MetricQueryDownstreamReq) (resp *MetricQueryDownstreamResp, err error)
+	// QueryMetricData computes one object metric V1 by its own definition
+	// (POST .../object-metrics/{metric_id}/data).
+	QueryMetricData(ctx context.Context, knID, metricID string, version int,
+		req *ObjectMetricQuery) (resp *MetricQueryDownstreamResp, err error)
 }

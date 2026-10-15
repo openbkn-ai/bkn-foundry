@@ -1,18 +1,13 @@
 # BKN Directory Checksum
 # format: 2
-# generated: 2026-09-16T19:44:49+08:00
+# generated: 2026-10-15T16:52:54+08:00
 SKILL.md  sha256:08301dfb5f554f2a
 action_type:assess_department  sha256:a33efa9cb9dd30e2
 action_type:delete_department  sha256:b6608b670c99f09b
 action_type:new_employee_resource  sha256:ff2a52388a438811
 action_type:new_job  sha256:738b27baee59ec68
 concept_group:employee_onboarding  sha256:26c095bc7f2ec043
-metric:mock_department_count  sha256:2dc184c13ec8aa50
-metric:mock_employee_avg_salary_onboarded  sha256:a8f9e34406863700
-metric:mock_employee_onboarded_count  sha256:e5306efaac331a03
-metric:mock_skill_catalog_total_count  sha256:db7ad7d6349d59e5
-metric:mock_skill_count_by_category  sha256:54700ea47c28635f
-network  sha256:2709e20f3fdae40e
+network  sha256:1f649855bbb8a362
 object_type:department  sha256:2d34b07f1fd8ab06
 object_type:department_resource  sha256:1cbb8276cabbc66c
 object_type:employee  sha256:95e6ffa3b7736c68

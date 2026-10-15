@@ -40,9 +40,10 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 	tr := tar.NewReader(reader)
 
 	var (
-		rootDir    string
-		entryCount int
-		totalSize  int64
+		rootDir           string
+		entryCount        int
+		totalSize         int64
+		objectMetricPaths = make(map[string]struct{})
 	)
 
 	for {
@@ -79,6 +80,9 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 		}
 
 		base := path.Base(safePath)
+		if strings.Contains("/"+safePath, "/metrics/") {
+			return nil, "", fmt.Errorf("legacy metrics/*.bkn is unsupported; migrate metrics to object metrics V1 before import")
+		}
 		// Skip macOS AppleDouble extended-attribute files (._*) to avoid parsing empty ObjectTypes.
 		if strings.HasPrefix(base, "._") {
 			continue
@@ -86,7 +90,8 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 
 		// Process only supported file types (.bkn and .md) and the CHECKSUM file.
 		ext := strings.ToLower(path.Ext(safePath))
-		if !SupportedExtensions[ext] && base != ChecksumFileName {
+		if !SupportedExtensions[ext] && base != ChecksumFileName &&
+			(ext != ".json" || !strings.Contains("/"+safePath, "/object_metrics/")) {
 			continue
 		}
 		if header.Size < 0 || header.Size > maxTarFileSize {
@@ -96,6 +101,12 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 			return nil, "", fmt.Errorf("tar contents exceed the %d-byte total limit", maxTarTotalSize)
 		}
 		totalSize += header.Size
+		if ext == ".json" && strings.Contains("/"+safePath, "/object_metrics/") {
+			if _, exists := objectMetricPaths[safePath]; exists {
+				return nil, "", fmt.Errorf("duplicate object metric archive file %q", safePath)
+			}
+			objectMetricPaths[safePath] = struct{}{}
+		}
 
 		// Read file contents.
 		content := make([]byte, int(header.Size))

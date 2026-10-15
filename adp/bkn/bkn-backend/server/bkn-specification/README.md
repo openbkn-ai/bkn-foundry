@@ -2,6 +2,18 @@
 
 Go SDK for parsing, serializing, loading, and diffing BKN networks.
 
+## Object metrics in BKN archives
+
+Object metrics V1 are stored as `object_metrics/<id>@<version>.json`. Each file
+contains the complete versioned object-metric record, including its definition,
+lifecycle status, and persistence metadata. Exports include every version so
+pinned dependencies remain resolvable after import. The `CHECKSUM` file covers
+these JSON files; a mismatch prevents V1 import.
+
+The old `metrics/*.bkn` format is not imported or exported. Archives containing
+it fail with an explicit error. Historical database metrics are migrated through
+the separate deployment upgrade script, not through BKN archive compatibility.
+
 ## Requirements
 
 - **Go 1.25+**

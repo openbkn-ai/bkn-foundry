@@ -274,7 +274,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
 		ps.EXPECT().RequirePermissions(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
-		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ums := bmock.NewMockUserMgmtService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -284,7 +283,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			ota:        ota,
 			ps:         ps,
 			cga:        cga,
-			ma:         ma,
 			ums:        ums,
 		}
 
@@ -446,11 +444,10 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			So(len(result), ShouldEqual, 1)
 		})
 
-		Convey("Ignore dependency error when GetMetricByID returns error\n", func() {
+		Convey("Dangling metric logic-property references do not block object type reads\n", func() {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 			otIDs := []string{"ot1"}
-			ma := bmock.NewMockMetricAccess(mockCtrl)
 			otArr := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -477,9 +474,6 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
-
-			service.ma = ma
-			ma.EXPECT().GetMetricByID(gomock.Any(), knID, branch, "metric1").Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 			So(err, ShouldBeNil)
@@ -1054,7 +1048,6 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
-		ma := bmock.NewMockMetricAccess(mockCtrl)
 		aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
@@ -1065,7 +1058,6 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			ota: ota,
 			vbs: vbs,
 			mfs: mfs,
-			ma:  ma,
 			aoa: aoa,
 			cga: cga,
 		}
@@ -1173,12 +1165,11 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			expectImportModeOK()
 			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
 				Return(&interfaces.VegaResource{Name: "r1"}, nil)
-			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(nil, sql.ErrNoRows)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
 		})
 
-		Convey("Success strict mode when KN metric exists and scope matches\n", func() {
+		Convey("Rejects legacy metric references in strict mode\n", func() {
 			objectTypes := []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -1207,12 +1198,8 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			expectImportModeOK()
 			vbs.EXPECT().GetResourceSchema(gomock.Any(), "res1", interfaces.OPERATION_TYPE_VIEW_DETAIL).
 				Return(&interfaces.VegaResource{Name: "r1"}, nil)
-			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "mid1").Return(&interfaces.MetricDefinition{
-				ID:       "mid1",
-				ScopeRef: "ot1",
-			}, nil)
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
-			So(err, ShouldBeNil)
+			So(err, ShouldNotBeNil)
 		})
 
 		Convey("Fails strict mode when tool does not exist\n", func() {
@@ -2650,7 +2637,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 		}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
-		ma := bmock.NewMockMetricAccess(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
@@ -2662,7 +2648,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			appSetting: appSetting,
 			cga:        cga,
 			vbs:        vbs,
-			ma:         ma,
 			mfs:        mfs,
 			ps:         ps,
 			ota:        ota,
@@ -3079,7 +3064,6 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Entries: []map[string]any{entry},
 			}
 			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
-			ma.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "metric1").Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldBeNil)

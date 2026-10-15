@@ -13,13 +13,13 @@ help:
 	@echo "  bkn-tools-check\t校验产物与当前 schema 一致（CI 用，不写盘）"
 
 bkn-tools:
-	@cd $(CONTEXT_LOADER) && go run ./cmd/ptc-stub > $(CURDIR)/$(BKN_TOOLS)
-	@echo "已生成 $(BKN_TOOLS)：$$(cd $(CONTEXT_LOADER) && go run ./cmd/ptc-stub --version)"
+	@cd $(CONTEXT_LOADER) && GOWORK=off go run ./cmd/ptc-stub > $(CURDIR)/$(BKN_TOOLS)
+	@echo "已生成 $(BKN_TOOLS)：$$(cd $(CONTEXT_LOADER) && GOWORK=off go run ./cmd/ptc-stub --version)"
 
 # 产物签入仓库，就得有人盯着它别过期。漂了只会在调用失败时才暴露，
 # 而那时错误信息里看不出根因，所以在 CI 就拦下。
 bkn-tools-check:
-	@cd $(CONTEXT_LOADER) && go run ./cmd/ptc-stub > /tmp/_bkn_tools.expected.py
+	@cd $(CONTEXT_LOADER) && GOWORK=off go run ./cmd/ptc-stub > /tmp/_bkn_tools.expected.py
 	@diff -u $(BKN_TOOLS) /tmp/_bkn_tools.expected.py > /dev/null || { \
 		echo "✗ $(BKN_TOOLS) 与当前 MCP 工具 schema 不一致。"; \
 		echo "  MCP 工具面改过之后要重新生成：make -C infra/sandbox bkn-tools"; \

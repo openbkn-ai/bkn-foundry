@@ -55,34 +55,6 @@ func (mr *MockQueryAuthorizationServiceMockRecorder) AuthorizeActionTypeQuery(ct
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeActionTypeQuery", reflect.TypeOf((*MockQueryAuthorizationService)(nil).AuthorizeActionTypeQuery), ctx, knID, branch, actionTypeID)
 }
 
-// AuthorizeMetricDryRun mocks base method.
-func (m *MockQueryAuthorizationService) AuthorizeMetricDryRun(ctx context.Context, knID, branch string, definition *interfaces.MetricDefinition) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AuthorizeMetricDryRun", ctx, knID, branch, definition)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AuthorizeMetricDryRun indicates an expected call of AuthorizeMetricDryRun.
-func (mr *MockQueryAuthorizationServiceMockRecorder) AuthorizeMetricDryRun(ctx, knID, branch, definition any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeMetricDryRun", reflect.TypeOf((*MockQueryAuthorizationService)(nil).AuthorizeMetricDryRun), ctx, knID, branch, definition)
-}
-
-// AuthorizeMetricQuery mocks base method.
-func (m *MockQueryAuthorizationService) AuthorizeMetricQuery(ctx context.Context, knID, branch, metricID string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AuthorizeMetricQuery", ctx, knID, branch, metricID)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AuthorizeMetricQuery indicates an expected call of AuthorizeMetricQuery.
-func (mr *MockQueryAuthorizationServiceMockRecorder) AuthorizeMetricQuery(ctx, knID, branch, metricID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizeMetricQuery", reflect.TypeOf((*MockQueryAuthorizationService)(nil).AuthorizeMetricQuery), ctx, knID, branch, metricID)
-}
-
 // AuthorizeObjectMetricQuery mocks base method.
 func (m *MockQueryAuthorizationService) AuthorizeObjectMetricQuery(ctx context.Context, knID, branch, metricID string) error {
 	m.ctrl.T.Helper()

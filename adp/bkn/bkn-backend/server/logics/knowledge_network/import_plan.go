@@ -28,7 +28,7 @@ type NormalizedImportPlan struct {
 	RelationTypes []*interfaces.RelationType
 	ActionTypes   []*interfaces.ActionType
 	RiskTypes     []*interfaces.RiskType
-	Metrics       []*interfaces.MetricDefinition
+	ObjectMetrics []*interfaces.ObjectMetricRecordV1
 
 	GroupMembers map[string][]string
 	groupOrder   []string
@@ -45,7 +45,7 @@ func (plan *NormalizedImportPlan) knowledgeNetworkView(source *interfaces.KN) *i
 	view.RelationTypes = plan.RelationTypes
 	view.ActionTypes = plan.ActionTypes
 	view.RiskTypes = plan.RiskTypes
-	view.Metrics = plan.Metrics
+	view.ObjectMetrics = plan.ObjectMetrics
 	return &view
 }
 
@@ -82,11 +82,11 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Normalize knowledge network import")
 	defer span.End()
 	plan := &NormalizedImportPlan{
-		KNID:         kn.KNID,
-		Branch:       kn.Branch,
-		RiskTypes:    kn.RiskTypes,
-		Metrics:      kn.Metrics,
-		GroupMembers: make(map[string][]string),
+		KNID:          kn.KNID,
+		Branch:        kn.Branch,
+		RiskTypes:     kn.RiskTypes,
+		ObjectMetrics: kn.ObjectMetrics,
+		GroupMembers:  make(map[string][]string),
 	}
 	groups := newNormalizedDefinitionSet[interfaces.ConceptGroup]()
 	objects := newNormalizedDefinitionSet[interfaces.ObjectType]()
@@ -292,7 +292,6 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 		attr.Int("relation_type_count", len(plan.RelationTypes)),
 		attr.Int("action_type_count", len(plan.ActionTypes)),
 		attr.Int("risk_type_count", len(plan.RiskTypes)),
-		attr.Int("metric_count", len(plan.Metrics)),
 		attr.Int("member_reference_count", memberReferences),
 	)
 	span.SetStatus(codes.Ok, "")

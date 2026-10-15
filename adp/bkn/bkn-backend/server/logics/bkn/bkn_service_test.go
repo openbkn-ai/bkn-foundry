@@ -9,6 +9,8 @@ package bkn
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -23,6 +25,36 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
+
+type archiveAccessStub struct {
+	records []*interfaces.ObjectMetricRecordV1
+}
+
+func (stub archiveAccessStub) ListObjectMetricArchive(context.Context, string, string) ([]*interfaces.ObjectMetricRecordV1, error) {
+	return stub.records, nil
+}
+func (archiveAccessStub) ImportObjectMetricArchive(context.Context, *sql.Tx, string, string, []*interfaces.ObjectMetricRecordV1) error {
+	return nil
+}
+func (archiveAccessStub) DeleteObjectMetricArchive(context.Context, *sql.Tx, string, string) error {
+	return nil
+}
+
+type archivePermissionStub struct {
+	interfaces.PermissionService
+	visible map[string]bool
+}
+
+func (stub archivePermissionStub) FilterVisibleResources(_ context.Context, _ string, ids []string,
+	_ []string) (map[string]interfaces.PermissionResourceOps, error) {
+	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
+	for _, id := range ids {
+		if stub.visible == nil || stub.visible[id] {
+			result[id] = interfaces.PermissionResourceOps{ResourceID: id}
+		}
+	}
+	return result, nil
+}
 
 func newTestBKNService(t *testing.T) (*bknService, *gomock.Controller, *bmock.MockKNService) {
 	t.Helper()
@@ -49,6 +81,7 @@ func newTestBKNServiceWithCapabilities(t *testing.T) (*bknService, *gomock.Contr
 		appSetting: &common.AppSetting{},
 		kns:        kns,
 		cbs:        cbs,
+		ps:         archivePermissionStub{},
 	}
 	return svc, mockCtrl, kns, cbs
 }
@@ -113,36 +146,76 @@ func Test_bknService_ExportToTar(t *testing.T) {
 			So(data, ShouldBeNil)
 		})
 
-		Convey("Export tar preserves metrics readable by LoadNetworkFromTar\n", func() {
+		Convey("Export tar preserves object metric V1 versions readable by LoadNetworkFromTar\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn-metrics",
 				KNName: "KN With Metrics",
 				Branch: interfaces.MAIN_BRANCH,
-				Metrics: []*interfaces.MetricDefinition{
-					{
-						ID:         "pod_running_count",
-						Name:       "Running Pods",
-						MetricType: interfaces.MetricTypeAtomic,
-						ScopeRef:   "pod",
-						CalculationFormula: &interfaces.MetricCalculationFormula{
-							Aggregation: interfaces.MetricAggregation{
-								Property: "id",
-								Aggr:     interfaces.MetricAggrCount,
-							},
-						},
-					},
-				},
+				ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "pod", OTName: "Pod",
+				}}},
 			}
+			svc.archive = archiveAccessStub{records: []*interfaces.ObjectMetricRecordV1{{
+				KNID: "kn-metrics", Branch: interfaces.MAIN_BRANCH,
+				Definition: interfaces.ObjectMetricDefinitionV1{
+					ID: "pod_running_count", Version: 2, Code: "running_pods",
+					Name: "Running Pods", OwnerObjectTypeID: "pod",
+					MetricType: interfaces.ObjectMetricTypeAtomic,
+					Lifecycle:  interfaces.ObjectMetricLifecycleV1{Status: "published"},
+				},
+			}}}
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn-metrics", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
 
 			data, err := svc.ExportToTar(context.Background(), "kn-metrics", interfaces.MAIN_BRANCH)
 			So(err, ShouldBeNil)
 			loaded, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
 			So(err, ShouldBeNil)
-			So(len(loaded.Metrics), ShouldEqual, 1)
-			So(loaded.Metrics[0].ID, ShouldEqual, "pod_running_count")
+			So(len(loaded.ObjectMetrics), ShouldEqual, 1)
+			var record interfaces.ObjectMetricRecordV1
+			So(json.Unmarshal(loaded.ObjectMetrics[0], &record), ShouldBeNil)
+			So(record.Definition.ID, ShouldEqual, "pod_running_count")
+			So(record.Definition.Version, ShouldEqual, 2)
+			So(record.Definition.Lifecycle.Status, ShouldEqual, "published")
 		})
 	})
+}
+
+func TestBKNServiceExportFiltersObjectMetricArchiveByMetricAndOwnerVisibility(t *testing.T) {
+	svc, mockCtrl, kns := newTestBKNService(t)
+	defer mockCtrl.Finish()
+	svc.archive = archiveAccessStub{records: []*interfaces.ObjectMetricRecordV1{
+		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "visible", Version: 1, OwnerObjectTypeID: "owner-visible"}},
+		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "visible", Version: 2, OwnerObjectTypeID: "owner-visible"}},
+		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "metric-hidden", Version: 1, OwnerObjectTypeID: "owner-visible"}},
+		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "owner-hidden", Version: 1, OwnerObjectTypeID: "owner-hidden"}},
+	}}
+	svc.ps = archivePermissionStub{visible: map[string]bool{
+		"kn-1/visible":      true,
+		"kn-1/owner-hidden": true,
+	}}
+	kns.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(&interfaces.KN{
+		KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "owner-visible", OTName: "Visible Owner",
+		}}},
+	}, nil)
+
+	network, err := svc.buildNetwork(context.Background(), "kn-1", interfaces.MAIN_BRANCH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(network.ObjectMetrics) != 2 {
+		t.Fatalf("exported object metrics = %d, want both visible versions", len(network.ObjectMetrics))
+	}
+	for index, raw := range network.ObjectMetrics {
+		var record interfaces.ObjectMetricRecordV1
+		if err := json.Unmarshal(raw, &record); err != nil {
+			t.Fatal(err)
+		}
+		if record.Definition.ID != "visible" || record.Definition.Version != index+1 {
+			t.Fatalf("exported metric[%d] = %+v", index, record.Definition)
+		}
+	}
 }
 
 // Test_bknService_ExportCapabilities covers the dependency section riding along with the model.
