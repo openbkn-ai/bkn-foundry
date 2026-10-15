@@ -130,7 +130,8 @@ type KN struct {
 	RelationTypes []*RelationType     `json:"relation_types,omitempty" mapstructure:"relation_types"`
 	ActionTypes   []*ActionType       `json:"action_types,omitempty" mapstructure:"action_types"`
 	RiskTypes     []*RiskType         `json:"risk_types,omitempty" mapstructure:"risk_types"`
-	Metrics       []*MetricDefinition `json:"metrics,omitempty" mapstructure:"metrics"`
+	// ObjectMetrics is an internal BKN archive projection, not a bulk-create API field.
+	ObjectMetrics []*ObjectMetricRecordV1 `json:"-" mapstructure:"-"`
 
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
@@ -392,6 +393,4 @@ type BatchIDIndex struct {
 	RelationTypeIDs map[string]struct{}
 	ActionTypeIDs   map[string]struct{}
 	ConceptGroupIDs map[string]struct{}
-	// Metrics maps metric id -> declaration from the KN payload for duplicate/conflict checks and strict cross-validation against batch.ObjectTypes (same batch OT semantics as relation/action validators).
-	Metrics map[string]*MetricDefinition
 }

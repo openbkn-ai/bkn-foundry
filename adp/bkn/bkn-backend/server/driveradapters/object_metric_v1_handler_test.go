@@ -28,6 +28,130 @@ type objectMetricBindServiceStub struct {
 	bindCalls int
 }
 
+type objectMetricUpdateServiceStub struct {
+	interfaces.ObjectMetricServiceV1
+	updateCalls int
+}
+
+func (s *objectMetricUpdateServiceStub) UpdateDraft(context.Context, string, string, string, *interfaces.ObjectMetricDefinitionV1) (*interfaces.ObjectMetricRecordV1, error) {
+	s.updateCalls++
+	return &interfaces.ObjectMetricRecordV1{}, nil
+}
+
+func TestUpdateObjectMetricDraftRejectsMismatchedVersion(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	service := &objectMetricUpdateServiceStub{}
+	handler := &restHandler{oms: service}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/m-1?version=3", strings.NewReader(`{"id":"m-1","version":2}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "m-1"}}
+
+	handler.updateObjectMetricDraft(c, hydra.Visitor{})
+	if recorder.Code != http.StatusBadRequest || service.updateCalls != 0 {
+		t.Fatalf("status=%d calls=%d body=%s", recorder.Code, service.updateCalls, recorder.Body.String())
+	}
+}
+
+type objectMetricListServiceStub struct {
+	interfaces.ObjectMetricServiceV1
+	account interfaces.AccountInfo
+	query   interfaces.ObjectMetricListQueryV1
+}
+
+type objectMetricVersionsServiceStub struct {
+	interfaces.ObjectMetricServiceV1
+	account  interfaces.AccountInfo
+	knID     string
+	branch   string
+	metricID string
+	versions []*interfaces.ObjectMetricRecordV1
+}
+
+func (s *objectMetricVersionsServiceStub) ListVersions(ctx context.Context, knID, branch, metricID string) ([]*interfaces.ObjectMetricRecordV1, error) {
+	s.account, _ = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	s.knID, s.branch, s.metricID = knID, branch, metricID
+	return s.versions, nil
+}
+
+func TestGetObjectMetricProvenanceByInForwardsCallerIdentityAndExactVersion(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	service := &objectMetricVersionsServiceStub{versions: []*interfaces.ObjectMetricRecordV1{
+		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Version: 1, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"}}},
+		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Version: 3, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "draft"}}},
+		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Version: 2, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"}}},
+	}}
+	handler := &restHandler{oms: service}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/kn-a/object-metrics/m-1/provenance?branch=main&version=2", nil)
+	c.Request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "caller-1")
+	c.Request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+	c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "m-1"}}
+
+	handler.GetObjectMetricProvenanceByIn(c)
+
+	if recorder.Code != http.StatusOK || service.account.ID != "caller-1" || service.account.Type != "user" ||
+		service.knID != "kn-a" || service.branch != "main" || service.metricID != "m-1" ||
+		!strings.Contains(recorder.Body.String(), `"version":2`) || strings.Contains(recorder.Body.String(), `"version":3`) {
+		t.Fatalf("status=%d account=%#v query=%s/%s/%s body=%s", recorder.Code,
+			service.account, service.knID, service.branch, service.metricID, recorder.Body.String())
+	}
+}
+
+func TestGetObjectMetricProvenanceByInHidesDraftVersion(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	service := &objectMetricVersionsServiceStub{versions: []*interfaces.ObjectMetricRecordV1{{
+		Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Version: 1, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "draft"}},
+	}}}
+	handler := &restHandler{oms: service}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/kn-a/object-metrics/m-1/provenance?version=1", nil)
+	c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "m-1"}}
+
+	handler.GetObjectMetricProvenanceByIn(c)
+	c.Writer.WriteHeaderNow()
+	if recorder.Code != http.StatusNotFound || recorder.Body.Len() != 0 {
+		t.Fatalf("status=%d body=%s, want empty 404", recorder.Code, recorder.Body.String())
+	}
+}
+
+func (s *objectMetricListServiceStub) List(ctx context.Context, query interfaces.ObjectMetricListQueryV1) (*interfaces.ObjectMetricListV1, error) {
+	s.account, _ = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	s.query = query
+	return &interfaces.ObjectMetricListV1{Entries: []*interfaces.ObjectMetricRecordV1{}, TotalCount: 0}, nil
+}
+
+func TestListObjectMetricsByInForwardsCallerIdentityAndPublishedFilter(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	service := &objectMetricListServiceStub{}
+	handler := &restHandler{oms: service}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/kn-a/object-metrics?branch=main&status=published&offset=20&limit=500", nil)
+	c.Request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "caller-1")
+	c.Request.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+	c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}}
+
+	handler.ListObjectMetricsByIn(c)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", recorder.Code, recorder.Body.String())
+	}
+	if service.account.ID != "caller-1" || service.account.Type != "user" {
+		t.Fatalf("account = %#v, want caller-1/user", service.account)
+	}
+	if service.query.KNID != "kn-a" || service.query.Branch != "main" || service.query.Status != "published" || service.query.Offset != 20 || service.query.Limit != 500 {
+		t.Fatalf("query = %#v", service.query)
+	}
+}
+
 func (s *objectMetricBindServiceStub) BindLogicProperty(
 	_ context.Context,
 	_, _, _ string,
@@ -41,7 +165,7 @@ func (s *objectMetricBindServiceStub) BindLogicProperty(
 func newBindObjectMetricContext(body string) (*gin.Context, *httptest.ResponseRecorder) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v2/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties?version=2&branch=main", strings.NewReader(body))
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties?version=2&branch=main", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Params = gin.Params{
 		{Key: "kn_id", Value: "kn-a"},

@@ -79,13 +79,30 @@ func TestKnowledgeNetworkProjectionReadRequiresGrantForClaimedNetwork(t *testing
 	engine := gin.New()
 	engine.GET("/api/bkn-backend/in/v1/trace/projection/knowledge-networks/:kn_id", handler.GetKNByProjectionGrant)
 
-	kns.EXPECT().ExportKNForProjection(gomock.Any(), "kn-allowed").Return(&interfaces.KN{KNID: "kn-allowed", KNName: "Allowed"}, nil)
+	kns.EXPECT().ExportKNForProjection(gomock.Any(), "kn-allowed").Return(&interfaces.KN{
+		KNID: "kn-allowed", KNName: "Allowed",
+		ObjectMetrics: []*interfaces.ObjectMetricRecordV1{
+			{Definition: interfaces.ObjectMetricDefinitionV1{ID: "published", Version: 2, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"}}},
+			{Definition: interfaces.ObjectMetricDefinitionV1{ID: "deprecated", Version: 1, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "deprecated"}}},
+			{Definition: interfaces.ObjectMetricDefinitionV1{ID: "draft", Version: 3, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "draft"}}},
+		},
+	}, nil)
 	request := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/trace/projection/knowledge-networks/kn-allowed", nil)
 	request.Header.Set(projectionGrantHeader, token)
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("claimed network response = %d, want 200", response.Code)
+	}
+	var projection struct {
+		ObjectMetrics []interfaces.ObjectMetricRecordV1 `json:"object_metrics"`
+	}
+	if err := sonic.Unmarshal(response.Body.Bytes(), &projection); err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.ObjectMetrics) != 2 || projection.ObjectMetrics[0].Definition.ID != "published" ||
+		projection.ObjectMetrics[0].Definition.Version != 2 || projection.ObjectMetrics[1].Definition.ID != "deprecated" {
+		t.Fatalf("projection object metrics = %#v, want published and deprecated V1 only", projection.ObjectMetrics)
 	}
 
 	for _, request := range []*http.Request{

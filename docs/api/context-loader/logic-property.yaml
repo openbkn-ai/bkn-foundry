@@ -14,7 +14,7 @@ info:
     `logic_properties[].parameters`。
 
     同一份文件里还有 `POST /kn/query_metric`：**类级指标、或没绑到任何逻辑属性的
-    指标**走它，直接按 `metric_id` 与 MetricDefinition 的口径取数。两条路的分工是
+    指标**走它，按 `metric_id` 与不可变的对象指标 V1 版本取数。两条路的分工是
     「实例 + 已绑逻辑属性 → `logic-property-resolver`，其余 → `query_metric`」；
     已建模的指标一律不该用 `run_sql` 重写口径。指标清单来自 `get_object_types`
     返回的 `related_metrics`。
@@ -122,23 +122,17 @@ paths:
       description: |
         按已建模指标自身的口径计算取数，是 OT-first 指标路径的第 3 步：
         `search_schema` / `get_kn_detail` 锁定对象类 → `get_object_types` 从
-        `related_metrics` 里选定 `metric_id` → 本接口计算。
+        `related_metrics` 里选定 `metric_id` 和 `version` → 本接口计算。
 
         与 `logic-property-resolver` 的分工：实例级、且已绑到逻辑属性的指标走那条
         （它会先用大模型推参数）；**类级指标、或未绑逻辑属性的指标走本接口**，参数
         由调用方显式给出，不经大模型。
 
-        `time` 在指标没有时间维度（`related_metrics[].time_dimension` 为空）时可整体
-        省略。给了就要自洽：**省略 `instant` 等同于 `instant=false`（序列查询），
-        必须带 `step`**；`instant=true` 取单点（此时 `step` 被下游忽略）；
-        `start` 与 `end` 要么都给要么都不给。`step` 大小写不敏感。
+        `version` 必填，必须使用已发布、不可变的版本；`query` 只包含定义允许的
+        运行时选择（实例身份、过滤条件、分析维度、毫秒时间范围）。固定口径和统计
+        粒度由指标定义决定，不能通过本请求覆盖。
 
-        这些规则在本服务就地校验并返回 400，规则逐条对齐 ontology-query 的
-        `validateMetricQueryRequest`——本地比下游严会把合法调用误拒，比下游松只是
-        把同一个错误延后。
-
-        请求体与 ontology-query 的 `MetricQueryRequestBody` 同构；响应只保留结果序列，
-        不回带指标定义（`related_metrics` 里已经有了）。
+        响应保留对象指标 V1 的 `model`、`entries`、`status` 和 `warnings`。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
         - $ref: '#/components/parameters/XKnID'
@@ -153,20 +147,22 @@ paths:
                 value:
                   kn_id: kn_supplychain
                   metric_id: metric_product_total
-              按维度拆分的区间序列:
+                  version: 1
+              按维度拆分:
                 value:
                   kn_id: kn_supplychain
                   metric_id: metric_product_total
-                  analysis_dimensions:
-                    - region
-                  time:
-                    instant: false
-                    start: 1735660800
-                    end: 1743436800
-                    step: month
+                  version: 1
+                  query:
+                    analysis_dimensions:
+                      - object_type_id: product
+                        property_name: region
+                    time:
+                      start: 1735660800000
+                      end: 1743436800000
       responses:
         '200':
-          description: 指标结果序列
+          description: 对象指标 V1 查询结果
           content:
             application/json:
               schema:
@@ -177,9 +173,8 @@ paths:
                 description: TOON 编码的同一结构（`response_format=toon` 时）。
         '400':
           description: |
-            缺 `kn_id` / `metric_id`，或时间窗不合法（序列查询缺 `step`、`step` 不是
-            日历粒度、`start`/`end` 未成对、`start` 晚于 `end`、`fill_null` 用在
-            非序列查询上）
+            缺 `kn_id` / `metric_id` / 正整数 `version`，或 `query.time.start`
+            晚于 `query.time.end`。
           content:
             application/json:
               schema:
@@ -236,6 +231,7 @@ components:
       required:
         - kn_id
         - metric_id
+        - version
       properties:
         kn_id:
           type: string
@@ -245,128 +241,110 @@ components:
           description: |
             指标 ID，取自 `get_object_types` 返回的 `related_metrics[].id`，
             或对象类逻辑属性 `data_source` 里引用的指标 ID。
-        time:
-          $ref: '#/components/schemas/MetricTimeWindow'
-        condition:
+        version:
+          type: integer
+          minimum: 1
+          description: 已发布且不可变的对象指标版本，取自 `related_metrics[].version`。
+        query:
           type: object
-          additionalProperties: true
-          description: |
-            过滤条件，结构与 `query_object_instance` 的 `condition` 一致
-            （`field` / `operation` / `value` / `value_from`，可 `and` / `or` 嵌套）。
-        analysis_dimensions:
-          type: array
-          items:
-            type: string
-          description: |
-            分析维度（按维度拆分结果）。取值须来自
-            `related_metrics[].analysis_dimensions`。
-        order_by:
-          type: array
-          description: 结果排序。
-          items:
-            type: object
-            properties:
-              property:
-                type: string
-              direction:
-                type: string
-                enum:
-                  - asc
-                  - desc
-        having:
-          type: object
-          description: 对聚合结果过滤。
+          additionalProperties: false
           properties:
-            field:
-              type: string
-            operation:
-              type: string
-            value: {}
-        limit:
-          type: integer
-          description: 返回条数上限。
-        fill_null:
-          type: boolean
-          default: false
-          description: |
-            区间查询时，无数据的步长点是否补空。仅对序列查询有效，且必须同时给
-            `time.start` 与 `time.end`。
+            instance_identities:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            filter:
+              type: object
+              additionalProperties: true
+              description: 对象指标 V1 条件 AST。
+            analysis_dimensions:
+              type: array
+              items:
+                $ref: '#/components/schemas/ObjectMetricPropertyRef'
+            time:
+              type: object
+              required:
+                - start
+                - end
+              properties:
+                start:
+                  type: integer
+                  format: int64
+                  description: Unix 毫秒。
+                end:
+                  type: integer
+                  format: int64
+                  description: Unix 毫秒。
 
-    MetricTimeWindow:
+    ObjectMetricPropertyRef:
       type: object
-      description: |
-        时间窗。指标没有时间维度时可整体省略；给了就要自洽（见接口说明）。
+      required:
+        - object_type_id
+        - property_name
       properties:
-        instant:
-          type: boolean
-          description: '`true` 取单点（`step` 被忽略）；`false` 或**省略**取序列（必须带 `step`）。'
-        start:
-          type: integer
-          format: int64
-          description: 起始时间，unix 秒。
-        end:
-          type: integer
-          format: int64
-          description: 结束时间，unix 秒。
-        step:
+        object_type_id:
           type: string
-          enum:
-            - day
-            - week
-            - month
-            - quarter
-            - year
-          description: 序列步长（大小写不敏感）。序列查询必传（含省略 `instant` 的情形）。
+        property_name:
+          type: string
+        relation_path_alias:
+          type: string
 
     QueryMetricResponse:
       type: object
+      required:
+        - kn_id
+        - metric_id
+        - version
+        - model
+        - entries
+        - status
+        - overall_ms
       properties:
         kn_id:
           type: string
         metric_id:
           type: string
-        datas:
+        version:
+          type: integer
+        model:
+          type: object
+          additionalProperties: true
+        entries:
           type: array
-          description: |
-            按 `labels` 分组的结果序列。未传 `analysis_dimensions` 时通常只有一条，
-            `labels` 为空。
           items:
-            $ref: '#/components/schemas/MetricDataSeries'
+            $ref: '#/components/schemas/ObjectMetricDataEntry'
+        status:
+          type: string
+          enum: [ok, no_data, unavailable, partial]
+        warnings:
+          type: array
+          items:
+            type: string
         overall_ms:
           type: integer
           format: int64
           description: 耗时（毫秒）。
 
-    MetricDataSeries:
+    ObjectMetricDataEntry:
       type: object
+      required:
+        - status
       properties:
-        labels:
+        instance_identity:
           type: object
-          additionalProperties:
-            type: string
-          description: 该序列对应的维度取值。
-        times:
-          type: array
-          items: {}
-          description: 时间点（unix 秒）。
-        time_strs:
-          type: array
-          items:
-            type: string
-          description: 时间点的可读形式。
-        values:
-          type: array
-          items: {}
-          description: 与 `times` 一一对应的指标值。
-        growth_values:
-          type: array
-          items: {}
-        growth_rates:
-          type: array
-          items: {}
-        proportions:
-          type: array
-          items: {}
+          additionalProperties: true
+        dimensions:
+          type: object
+          additionalProperties: true
+        time:
+          type: integer
+          format: int64
+          description: Unix 毫秒。
+        value: {}
+        status:
+          type: string
+          enum: [ok, no_data, unavailable]
 
     ResolveLogicPropertiesRequest:
       type: object

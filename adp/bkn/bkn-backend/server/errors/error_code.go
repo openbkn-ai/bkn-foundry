@@ -103,7 +103,7 @@ func init() {
 	rest.Register(actionScheduleErrCodeList)
 	rest.Register(ConceptGroupErrCodeList)
 	rest.Register(RiskTypeErrCodeList)
-	rest.Register(MetricErrCodeList)
+	rest.Register(ObjectMetricErrCodeList)
 	rest.Register(CapabilityBindingErrCodeList)
 	rest.Register(CypherErrCodeList)
 	rest.Register(KNDiffErrCodeList)

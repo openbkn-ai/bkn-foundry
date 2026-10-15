@@ -32,7 +32,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/metric"
 	permissionlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
 )
 
@@ -47,7 +46,6 @@ type objectTypeService struct {
 	mfa            interfaces.ModelFactoryAccess
 	omAccess       interfaces.OntologyManagerAccess
 	vba            interfaces.VegaBackendAccess
-	mqs            interfaces.MetricQueryService
 	proxy          interfaces.ProxyContextResolver
 	propertyAccess interfaces.PropertyAccessService
 	rowFilters     interfaces.RowFilterService
@@ -62,7 +60,6 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			mfa:            logics.MFA,
 			omAccess:       logics.OMA,
 			vba:            logics.VBA,
-			mqs:            metric.NewMetricQueryService(appSetting),
 			proxy:          logics.PCR,
 			propertyAccess: permissionlogic.NewPropertyAccessService(appSetting),
 			rowFilters:     permissionlogic.NewRowFilterService(appSetting),
@@ -946,7 +943,7 @@ func (ots *objectTypeService) processLogicProperty(ctx context.Context,
 	}
 }
 
-// handleMetricProperty handles metric-type logical properties using KN MetricDefinition plus the Vega value-computation kernel.
+// handleMetricProperty evaluates a pinned object metric logical property.
 func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	knID, branch, otID string,
 	propName string,
@@ -961,14 +958,11 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 		// time_dimension was then refused for a filter nobody had asked for,
 		// and a metric with one silently answered for half an hour instead of
 		// its own default_range_policy.
-		start     *int64
-		end       *int64
-		isInstant bool
-		step      string
+		start *int64
+		end   *int64
 	)
 
 	metricValue := propValue.(interfaces.MetricProperty)
-	isInstant = true
 
 	var metricParams interfaces.MetricPropertyDynamicParams
 	paramBytes, err := sonic.Marshal(dynamicParams[propName])
@@ -988,12 +982,6 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	}
 
 	start, end = logicMetricTimeWindow(metricParams, time.Now().UnixMilli())
-	if metricParams.Instant != nil {
-		isInstant = *metricParams.Instant
-	}
-	if metricParams.Step != nil {
-		step = *metricParams.Step
-	}
 
 	for paramK := range metricValue.DynamicParams {
 		switch paramK {
@@ -1024,7 +1012,7 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	}
 
 	return ots.queryLogicMetricViaKN(ctx, knID, branch, otID, logicProp,
-		metricValue.Parameters.Filters, metricParams, start, end, isInstant, step)
+		metricValue.Parameters.Filters, metricParams, start, end)
 }
 
 // handleToolProperty handles logic properties backed by ToolBox tools.

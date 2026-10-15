@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -118,7 +119,7 @@ func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
 	handler := &restHandler{appSetting: &common.AppSetting{}}
 	handler.RegisterPublic(engine)
 
-	objectMetricPath := "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics"
+	objectMetricPath := "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics"
 	for _, route := range engine.Routes() {
 		if route.Path == objectMetricPath {
 			t.Fatalf("community handler unexpectedly registered %q", objectMetricPath)
@@ -126,10 +127,49 @@ func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
 	}
 
 	RegisterObjectMetricRoutes(engine, &common.AppSetting{}, nil, nil)
+	found := false
 	for _, route := range engine.Routes() {
+		if route.Path == "/api/bkn-backend/v2/knowledge-networks/:kn_id/object-metrics" {
+			t.Fatalf("obsolete V2 object-metric route remains registered: %q", route.Path)
+		}
 		if route.Method == http.MethodPost && route.Path == objectMetricPath {
-			return
+			found = true
 		}
 	}
-	t.Fatalf("extension registration did not mount POST %q", objectMetricPath)
+	if !found {
+		t.Fatalf("extension registration did not mount POST %q", objectMetricPath)
+	}
+	internalList := "/api/bkn-backend/in/v1/knowledge-networks/:kn_id/object-metrics"
+	found = false
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodGet && route.Path == internalList {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("extension registration did not mount GET %q", internalList)
+	}
+	internalProvenance := "/api/bkn-backend/in/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/provenance"
+	found = false
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodGet && route.Path == internalProvenance {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("extension registration did not mount GET %q", internalProvenance)
+	}
+}
+
+func TestLegacyMetricRoutesAreNotRegistered(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	engine := gin.New()
+	(&restHandler{appSetting: &common.AppSetting{}}).RegisterPublic(engine)
+
+	for _, route := range engine.Routes() {
+		if strings.Contains(route.Path, "/knowledge-networks/:kn_id/metrics") {
+			t.Fatalf("legacy metric route remains registered: %s %s", route.Method, route.Path)
+		}
+	}
 }

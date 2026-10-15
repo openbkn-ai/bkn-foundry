@@ -19,7 +19,7 @@ func TestNormalizeImportPlanPreservesExportedPersistentDefinitions(t *testing.T)
 			"id":"ot-1","name":"object","tags":["object-tag"],"comment":"object comment",
 			"data_source":{"type":"resource","id":"resource-1","name":"source"},
 			"data_properties":[{"name":"code","display_name":"Code","type":"string","comment":"data","mapped_field":{"name":"source_code","type":"string"}}],
-			"logic_properties":[{"name":"amount","display_name":"Amount","type":"metric","comment":"logic","data_source":{"type":"metric","id":"metric-1","name":"Metric"},"parameters":[{"name":"currency","type":"string","value":"CNY"}],"analysis_dimensions":[{"name":"region","type":"string"}]}],
+			"logic_properties":[],
 			"primary_keys":["code"],"display_key":"code","incremental_key":"updated_at"
 		}],
 		"relation_types":[{
@@ -33,13 +33,7 @@ func TestNormalizeImportPlanPreservesExportedPersistentDefinitions(t *testing.T)
 			"action_source":{"type":"tool","box_id":"box-1","tool_id":"tool-1"},
 			"parameters":[{"name":"code","type":"string","required":true}],"schedule":{"type":"immediate"}
 		}],
-		"risk_types":[{"id":"risk-1","name":"risk","tags":["risk-tag"],"comment":"risk comment"}],
-		"metrics":[{
-			"id":"metric-1","name":"metric","metric_type":"atomic","scope_type":"object_type","scope_ref":"ot-1","unit_type":"currency","unit":"CNY",
-			"time_dimension":{"property":"updated_at","default_range_policy":"last_30_days"},
-			"calculation_formula":{"aggregation":{"property":"amount","aggr":"sum"},"group_by":[{"property":"region","description":"Region"}],"order_by":[{"property":"amount","direction":"desc"}]},
-			"analysis_dimensions":[{"name":"region","display_name":"Region"}]
-		}]
+		"risk_types":[{"id":"risk-1","name":"risk","tags":["risk-tag"],"comment":"risk comment"}]
 	}`
 
 	var source interfaces.KN
@@ -56,7 +50,7 @@ func TestNormalizeImportPlanPreservesExportedPersistentDefinitions(t *testing.T)
 		t.Fatalf("normalizeImportPlan() error = %v", err)
 	}
 	if len(plan.ConceptGroups) != 1 || len(plan.ObjectTypes) != 1 || len(plan.RelationTypes) != 1 ||
-		len(plan.ActionTypes) != 1 || len(plan.RiskTypes) != 1 || len(plan.Metrics) != 1 {
+		len(plan.ActionTypes) != 1 || len(plan.RiskTypes) != 1 {
 		t.Fatalf("normalized plan has unexpected counts: %#v", plan)
 	}
 	if !reflect.DeepEqual(plan.ObjectTypes[0].ObjectTypeWithKeyField,
@@ -76,9 +70,6 @@ func TestNormalizeImportPlanPreservesExportedPersistentDefinitions(t *testing.T)
 	}
 	if !reflect.DeepEqual(plan.RiskTypes[0], expected.RiskTypes[0]) {
 		t.Fatalf("risk definition changed:\n got: %#v\nwant: %#v", plan.RiskTypes[0], expected.RiskTypes[0])
-	}
-	if !reflect.DeepEqual(plan.Metrics[0], expected.Metrics[0]) {
-		t.Fatalf("metric definition changed:\n got: %#v\nwant: %#v", plan.Metrics[0], expected.Metrics[0])
 	}
 	if !sameImportIDs(plan.GroupMembers["cg-1"], []string{"ot-1"}) {
 		t.Fatalf("group members = %v, want [ot-1]", plan.GroupMembers["cg-1"])

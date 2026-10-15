@@ -1,12 +1,14 @@
 openapi: 3.1.0
 info:
   title: OpenBKN Object Metrics API
-  version: 2.0.0
+  version: 1.0.0
   description: Versioned, object-centered metric authoring API. Published versions are immutable.
 servers:
   - url: /api/bkn-backend
+security:
+  - bearerAuth: []
 paths:
-  /v2/object-metrics/capabilities:
+  /v1/object-metrics/capabilities:
     get:
       operationId: getObjectMetricCapabilities
       responses:
@@ -15,7 +17,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricCapabilities" }
-  /v2/knowledge-networks/{kn_id}/object-metrics:
+  /v1/knowledge-networks/{kn_id}/object-metrics:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/Branch"
@@ -47,7 +49,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
-  /v2/knowledge-networks/{kn_id}/object-metrics/validate:
+  /v1/knowledge-networks/{kn_id}/object-metrics/validate:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/Branch"
@@ -64,7 +66,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ValidationResult" }
-  /v2/knowledge-networks/{kn_id}/object-metrics/preview:
+  /v1/knowledge-networks/{kn_id}/object-metrics/preview:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/Branch"
@@ -81,7 +83,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricPreview" }
-  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}:
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/MetricId"
@@ -112,7 +114,7 @@ paths:
       operationId: deleteObjectMetricDraft
       responses:
         "204": { description: Draft removed. Published versions cannot be deleted. }
-  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/versions:
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/versions:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/MetricId"
@@ -135,7 +137,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/ObjectMetricRecord" }
-  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/publish:
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/publish:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/MetricId"
@@ -150,7 +152,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
         "422": { description: Definition or referenced ontology is invalid. }
-  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/validate:
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/validate:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/MetricId"
@@ -166,7 +168,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
         "422": { description: Definition or referenced ontology is invalid. }
-  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/logic-properties:
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/logic-properties:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/MetricId"
@@ -189,7 +191,7 @@ paths:
                 comment: { type: string }
       responses:
         "201": { description: The created object-class logical property. }
-  /v2/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deprecate:
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deprecate:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
       - $ref: "#/components/parameters/MetricId"
@@ -204,6 +206,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   parameters:
     KnowledgeNetworkId: { name: kn_id, in: path, required: true, schema: { type: string } }
     MetricId: { name: metric_id, in: path, required: true, schema: { type: string, format: uuid } }

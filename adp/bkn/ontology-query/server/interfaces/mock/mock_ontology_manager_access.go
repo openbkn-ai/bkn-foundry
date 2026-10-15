@@ -58,37 +58,6 @@ func (mr *MockOntologyManagerAccessMockRecorder) GetActionType(ctx, knID, branch
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActionType", reflect.TypeOf((*MockOntologyManagerAccess)(nil).GetActionType), ctx, knID, branch, atId)
 }
 
-// GetMetricDefinition mocks base method.
-func (m *MockOntologyManagerAccess) GetMetricDefinition(ctx context.Context, knID, branch, metricID string) (*interfaces.MetricDefinition, bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMetricDefinition", ctx, knID, branch, metricID)
-	ret0, _ := ret[0].(*interfaces.MetricDefinition)
-	ret1, _ := ret[1].(bool)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// GetMetricDefinition indicates an expected call of GetMetricDefinition.
-func (mr *MockOntologyManagerAccessMockRecorder) GetMetricDefinition(ctx, knID, branch, metricID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetricDefinition", reflect.TypeOf((*MockOntologyManagerAccess)(nil).GetMetricDefinition), ctx, knID, branch, metricID)
-}
-
-// GetMetricExecutionContext mocks base method.
-func (m *MockOntologyManagerAccess) GetMetricExecutionContext(ctx context.Context, knID, branch, metricID string) (*interfaces.MetricExecutionContext, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMetricExecutionContext", ctx, knID, branch, metricID)
-	ret0, _ := ret[0].(*interfaces.MetricExecutionContext)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetMetricExecutionContext indicates an expected call of GetMetricExecutionContext.
-func (mr *MockOntologyManagerAccessMockRecorder) GetMetricExecutionContext(ctx, knID, branch, metricID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetricExecutionContext", reflect.TypeOf((*MockOntologyManagerAccess)(nil).GetMetricExecutionContext), ctx, knID, branch, metricID)
-}
-
 // GetObjectMetricExecutionContext mocks base method.
 func (m *MockOntologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Context, knID, branch, metricID string, version int) (*interfaces.ObjectMetricExecutionContextV1, error) {
 	m.ctrl.T.Helper()

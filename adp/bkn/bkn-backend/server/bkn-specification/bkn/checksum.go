@@ -9,6 +9,7 @@ package bkn
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -175,6 +176,12 @@ func GenerateChecksumFileWithFS(fsys FileSystem, root string) (string, error) {
 		} else if ext == ".bkn" {
 			lines := computeBknChecksumWithFS(fsys, path, checksumFormatCurrent)
 			entries = append(entries, lines...)
+		} else if ext == ".json" && fsys.Base(fsys.Dir(path)) == "object_metrics" {
+			line, err := computeObjectMetricChecksumWithFS(fsys, path)
+			if err != nil {
+				return err
+			}
+			entries = append(entries, line)
 		}
 		return nil
 	})
@@ -321,6 +328,22 @@ func VerifyChecksumFileWithFS(fsys FileSystem, root string) (bool, []string) {
 					}
 				}
 			}
+		} else if ext == ".json" && fsys.Base(fsys.Dir(path)) == "object_metrics" {
+			line, checksumErr := computeObjectMetricChecksumWithFS(fsys, path)
+			if checksumErr != nil {
+				errors = append(errors, checksumErr.Error())
+			} else {
+				parts := strings.SplitN(line, "  ", 2)
+				if len(parts) == 2 {
+					key, actual := parts[0], parts[1]
+					if declaredHash, ok := declared[key]; !ok {
+						errors = append(errors, "Unexpected definition: "+key)
+					} else if declaredHash != actual {
+						errors = append(errors, "Mismatch: "+key)
+					}
+					delete(declared, key)
+				}
+			}
 		}
 		return nil
 	})
@@ -332,6 +355,26 @@ func VerifyChecksumFileWithFS(fsys FileSystem, root string) (bool, []string) {
 	}
 
 	return len(errors) == 0, errors
+}
+
+func computeObjectMetricChecksumWithFS(fsys FileSystem, path string) (string, error) {
+	data, err := fsys.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	id, version, err := objectMetricArchiveIdentity(data)
+	if err != nil {
+		return "", err
+	}
+	var value any
+	if err := json.Unmarshal(data, &value); err != nil {
+		return "", err
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("object_metric_v1:%s@%d  sha256:%s", id, version, hashHex(canonical)), nil
 }
 
 func computeSkillChecksumWithFS(fsys FileSystem, path, rel string) string {

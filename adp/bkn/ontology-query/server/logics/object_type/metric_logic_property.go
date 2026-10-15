@@ -18,10 +18,8 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 )
 
@@ -37,58 +35,6 @@ func parseObjectMetricV1Source(source string) (string, int, bool) {
 	}
 	version, err := strconv.Atoi(rawVersion)
 	return metricID, version, err == nil && version > 0
-}
-
-func filtersToCondition(filters []interfaces.Filter) *cond.CondCfg {
-	if len(filters) == 0 {
-		return nil
-	}
-	leaves := make([]*cond.CondCfg, 0, len(filters))
-	for _, f := range filters {
-		op := strings.TrimSpace(f.Operation)
-		if op == "" || op == "=" {
-			op = cond.OperationEq
-		}
-		leaves = append(leaves, &cond.CondCfg{
-			Operation: op,
-			Name:      f.Name,
-			ValueOptCfg: cond.ValueOptCfg{
-				Value: f.Value,
-			},
-		})
-	}
-	if len(leaves) == 1 {
-		return leaves[0]
-	}
-	return &cond.CondCfg{
-		Operation: cond.OperationAnd,
-		SubConds:  leaves,
-	}
-}
-
-func orderFieldsToMetricOrderBy(fields []interfaces.OrderField) []interfaces.MetricOrderBy {
-	if len(fields) == 0 {
-		return nil
-	}
-	out := make([]interfaces.MetricOrderBy, 0, len(fields))
-	for _, f := range fields {
-		out = append(out, interfaces.MetricOrderBy{
-			Property:  f.Name,
-			Direction: f.Direction,
-		})
-	}
-	return out
-}
-
-func havingToMetricHaving(h *interfaces.HavingCondition) *interfaces.MetricHaving {
-	if h == nil {
-		return nil
-	}
-	return &interfaces.MetricHaving{
-		Field:     h.Field,
-		Operation: h.Operation,
-		Value:     h.Value,
-	}
 }
 
 // logicMetricTimeWindow decides the window one logic property call asks for.
@@ -119,39 +65,6 @@ func logicMetricTimeWindow(params interfaces.MetricPropertyDynamicParams, now in
 	return start, end
 }
 
-// buildMetricQueryRequestFromLogicProperty turns one logic property call into
-// a metric query. start and end are nil when the caller asked for no time
-// range, and stay nil in the query: a metric without a time_dimension has
-// nothing to filter on, and one with a time_dimension applies its own
-// default_range_policy. Passing a fabricated window instead made both cases
-// wrong - the first was refused outright, the second answered for a window
-// nobody chose.
-func buildMetricQueryRequestFromLogicProperty(
-	filters []interfaces.Filter,
-	metricParams interfaces.MetricPropertyDynamicParams,
-	start, end *int64,
-	isInstant bool,
-	step string,
-) *interfaces.MetricQueryRequest {
-	instant := isInstant
-	req := &interfaces.MetricQueryRequest{
-		Time: &interfaces.MetricTimeWindow{
-			Start:   start,
-			End:     end,
-			Instant: &instant,
-		},
-		Condition:          filtersToCondition(filters),
-		AnalysisDimensions: metricParams.AnalysisDimensions,
-		OrderBy:            orderFieldsToMetricOrderBy(metricParams.OrderByFields),
-		Having:             havingToMetricHaving(metricParams.HavingCondition),
-		Metrics:            metricParams.Metrics,
-	}
-	if step != "" {
-		req.Time.Step = &step
-	}
-	return req
-}
-
 func (ots *objectTypeService) queryLogicMetricViaKN(
 	ctx context.Context,
 	knID, branch, otID string,
@@ -159,8 +72,6 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 	filters []interfaces.Filter,
 	metricParams interfaces.MetricPropertyDynamicParams,
 	start, end *int64,
-	isInstant bool,
-	step string,
 ) (interfaces.MetricData, error) {
 
 	objectType, exists, err := ots.omAccess.GetObjectType(ctx, knID, branch, otID)
@@ -179,46 +90,28 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 	if objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 		return interfaces.MetricData{}, logics.UnsupportedObjectTypeDataSourceError(ctx, otID, objectType.DataSource.Type)
 	}
-	if metricID, version, isObjectMetric := parseObjectMetricV1Source(logicProp.DataSource.ID); isObjectMetric {
-		query, err := buildObjectMetricQueryFromLogicProperty(objectType, filters, metricParams, start, end)
-		if err != nil {
-			return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
-				oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(err.Error())
-		}
-		service := logics.ObjectMetricQueryService()
-		if service == nil {
-			return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
-				oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
-				WithErrorDetails("object metric query capability is not assembled")
-		}
-		result, err := service.QueryObjectMetricDataV1(ctx, knID, branch, metricID, version, query)
-		if err != nil {
-			return interfaces.MetricData{}, err
-		}
-		return objectMetricDataToLogicPropertyValue(result, end), nil
-	}
-
-	def, ok, err := ots.omAccess.GetMetricDefinition(ctx, knID, branch, logicProp.DataSource.ID)
-	if err != nil {
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
-			WithErrorDetails(err.Error())
-	}
-	if !ok || def == nil {
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusNotFound,
-			oerrors.OntologyQuery_Metric_NotFound).
-			WithErrorDetails(locale.ValidationDetail(ctx, "KNMetricNotFound", map[string]any{"metricID": logicProp.DataSource.ID}))
-	}
-	if strings.TrimSpace(def.ScopeRef) != strings.TrimSpace(otID) {
+	metricID, version, ok := parseObjectMetricV1Source(logicProp.DataSource.ID)
+	if !ok {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "MetricScopeMismatch", map[string]any{
-				"metricID": logicProp.DataSource.ID, "scopeRef": def.ScopeRef, "objectTypeID": otID,
-			}))
+			WithErrorDetails("logic property must reference a published object metric version")
 	}
-
-	metricQuery := buildMetricQueryRequestFromLogicProperty(filters, metricParams, start, end, isInstant, step)
-	return ots.mqs.QueryMetricData(ctx, knID, branch, logicProp.DataSource.ID, metricQuery)
+	query, err := buildObjectMetricQueryFromLogicProperty(objectType, filters, metricParams, start, end)
+	if err != nil {
+		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(err.Error())
+	}
+	service := logics.ObjectMetricQueryService()
+	if service == nil {
+		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
+			WithErrorDetails("object metric query capability is not assembled")
+	}
+	result, err := service.QueryObjectMetricDataV1(ctx, knID, branch, metricID, version, query)
+	if err != nil {
+		return interfaces.MetricData{}, err
+	}
+	return objectMetricDataToLogicPropertyValue(result, end), nil
 }
 
 func buildObjectMetricQueryFromLogicProperty(objectType interfaces.ObjectType, filters []interfaces.Filter,

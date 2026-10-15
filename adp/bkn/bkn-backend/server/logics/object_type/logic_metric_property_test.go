@@ -7,7 +7,6 @@ package object_type
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"net/http"
 	"reflect"
@@ -15,10 +14,8 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
-	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
@@ -94,9 +91,7 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 		defer func() { logics.OMA = original }()
 
 		ctx := context.Background()
-		mockCtrl := gomock.NewController(t)
-		metricAccess := bmock.NewMockMetricAccess(mockCtrl)
-		service := &objectTypeService{ma: metricAccess}
+		service := &objectTypeService{}
 		objectType := &interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "Order"},
 			KNID:                   "kn1",
@@ -108,42 +103,13 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			So(service.validateLogicMetricProperty(ctx, objectType, &interfaces.LogicProperty{Name: "duration"}), ShouldBeNil)
 		})
 
-		Convey("keeps a legacy metric id readable before migration", func() {
-			metricAccess.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "legacy_metric_id").
-				Return(&interfaces.MetricDefinition{ID: "legacy_metric_id", ScopeRef: "ot1"}, nil)
-			err := service.validateLogicMetricProperty(ctx, objectType, &interfaces.LogicProperty{
-				Name:       "duration",
-				DataSource: &interfaces.ResourceInfo{ID: "legacy_metric_id"},
-			})
-			So(err, ShouldBeNil)
-		})
-
-		Convey("reports a missing legacy metric separately", func() {
-			metricAccess.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "legacy_metric_id").
-				Return(nil, sql.ErrNoRows)
-			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("legacy_metric_id"))
-			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricNotFound", map[string]any{
-				"objectType": "Order", "property": "duration", "metric": "legacy_metric_id",
-			}))
-		})
-
-		Convey("reports a legacy metric lookup failure separately", func() {
-			metricAccess.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "legacy_metric_id").
-				Return(nil, errors.New("storage unavailable"))
-			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("legacy_metric_id"))
-			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{
-				"objectType": "Order", "property": "duration", "metric": "legacy_metric_id",
-			}))
-		})
-
-		Convey("rejects a legacy metric owned by another object class", func() {
-			metricAccess.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "legacy_metric_id").
-				Return(&interfaces.MetricDefinition{ID: "legacy_metric_id", ScopeRef: "ot2"}, nil)
+		Convey("rejects a legacy metric reference", func() {
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("legacy_metric_id"))
 			So(err, ShouldNotBeNil)
 			So(err.(*rest.HTTPError).HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricNotFound", map[string]any{
+				"objectType": "Order", "property": "duration", "metric": "legacy_metric_id",
+			}))
 		})
 
 		Convey("rejects a V1 reference when the object-metric extension is unavailable", func() {
@@ -250,38 +216,4 @@ func TestEnrichLogicMetricPropertyUsesPinnedV1Version(t *testing.T) {
 	}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("object metric lookups = %#v, want %#v", got, want)
 	}
-}
-
-func TestEnrichLegacyLogicMetricProperty(t *testing.T) {
-	Convey("Legacy metric enrichment remains backward compatible", t, func() {
-		ctx := context.Background()
-		mockCtrl := gomock.NewController(t)
-		metricAccess := bmock.NewMockMetricAccess(mockCtrl)
-		service := &objectTypeService{ma: metricAccess}
-		property := &interfaces.LogicProperty{
-			Name:       "risk_score",
-			DataSource: &interfaces.ResourceInfo{ID: "metric1"},
-			Parameters: []interfaces.Parameter{{Name: "region"}, {Name: "instant"}},
-		}
-		objectType := &interfaces.ObjectType{
-			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-				OTID: "ot1", LogicProperties: []*interfaces.LogicProperty{property},
-			},
-			KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
-		}
-		metricAccess.EXPECT().GetMetricByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "metric1").
-			Return(&interfaces.MetricDefinition{
-				ID: "metric1", Name: "Risk Hit Rate", ScopeRef: "ot1",
-				AnalysisDimensions: []interfaces.MetricAnalysisDimension{{Name: "region", DisplayName: "Region"}},
-			}, nil)
-
-		service.enrichLogicMetricProperty(ctx, objectType, property, 0)
-
-		So(property.DataSource.Name, ShouldEqual, "Risk Hit Rate")
-		So(property.AnalysisDims, ShouldResemble, []interfaces.Field{{Name: "region", DisplayName: "Region"}})
-		So(property.Parameters[0].Comment, ShouldNotBeNil)
-		So(*property.Parameters[0].Comment, ShouldEqual, "Region")
-		So(property.Parameters[1].Comment, ShouldNotBeNil)
-		So(*property.Parameters[1].Comment, ShouldContainSubstring, "instant")
-	})
 }

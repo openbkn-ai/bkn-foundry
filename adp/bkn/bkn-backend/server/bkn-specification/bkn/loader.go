@@ -7,9 +7,11 @@
 package bkn
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -34,13 +36,13 @@ var (
 		"action_types":   true,
 		"risk_types":     true,
 		"concept_groups": true,
-		"metrics":        true,
+		"object_metrics": true,
 	}
 )
 
 // LoadNetwork loads a BKN network from a directory.
 // It reads network.bkn and SKILL.md from the root, then traverses
-// object_types/, relation_types/, action_types/, risk_types/, concept_groups/, metrics/
+// object_types/, relation_types/, action_types/, risk_types/, concept_groups/, object_metrics/
 // to build a complete BknNetwork.
 func LoadNetwork(rootPath string) (*BknNetwork, error) {
 	fsys := NewOSFileSystem()
@@ -61,11 +63,13 @@ func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
 
 	// Step 1: Verify CHECKSUM if exists
 	checksumFile := fsys.Join(absRoot, ChecksumFileName)
+	checksumValid := true
 	if _, err := fsys.Stat(checksumFile); err == nil {
 		// CHECKSUM exists, validate it
 		ok, errMsgs := VerifyChecksumFileWithFS(fsys, absRoot)
+		checksumValid = ok
 		if !ok {
-			// Log warnings for checksum mismatches but continue loading
+			// Report mismatches now; object metric V1 archives fail after loading.
 			fmt.Fprintf(os.Stderr, "[WARN] CHECKSUM validation failed for %s:\n", absRoot)
 			for _, msg := range errMsgs {
 				fmt.Fprintf(os.Stderr, "  - %s\n", msg)
@@ -110,6 +114,20 @@ func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
 			return nil, fmt.Errorf("load %s: %w", subdir, err)
 		}
 	}
+	if fsys.IsDir(fsys.Join(absRoot, "metrics")) {
+		return nil, fmt.Errorf("legacy metrics/*.bkn is unsupported; migrate metrics to object metrics V1 before import")
+	}
+	if len(bknDoc.ObjectMetrics) > 0 && !checksumValid {
+		return nil, fmt.Errorf("object metric V1 archive checksum verification failed")
+	}
+	sort.Slice(bknDoc.ObjectMetrics, func(i, j int) bool {
+		leftID, leftVersion, _, _ := objectMetricArchiveMetadata(bknDoc.ObjectMetrics[i])
+		rightID, rightVersion, _, _ := objectMetricArchiveMetadata(bknDoc.ObjectMetrics[j])
+		if leftID != rightID {
+			return leftID < rightID
+		}
+		return leftVersion < rightVersion
+	})
 
 	return bknDoc, nil
 }
@@ -124,11 +142,33 @@ func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *Bk
 
 	for _, entry := range entries {
 		if entry.IsDir() {
+			if subdirName == "object_metrics" {
+				return fmt.Errorf("nested object metric directory %q is unsupported", entry.Name())
+			}
 			continue
 		}
 
 		name := entry.Name()
 		ext := strings.ToLower(filepath.Ext(name))
+		if subdirName == "object_metrics" {
+			if ext != ".json" {
+				return fmt.Errorf("object metric file %q must be JSON", name)
+			}
+			filePath := fsys.Join(subdirPath, name)
+			data, err := fsys.ReadFile(filePath)
+			if err != nil {
+				return err
+			}
+			id, version, err := objectMetricArchiveIdentity(data)
+			if err != nil {
+				return fmt.Errorf("parse %s: %w", name, err)
+			}
+			if name != objectMetricArchiveFileName(id, version) {
+				return fmt.Errorf("object metric file %q does not match its id and version", name)
+			}
+			result.ObjectMetrics = append(result.ObjectMetrics, json.RawMessage(data))
+			continue
+		}
 		if ext != ExtensionBkn {
 			continue
 		}
@@ -176,13 +216,6 @@ func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *Bk
 				return fmt.Errorf("parse %s: %w", name, err)
 			}
 			result.ConceptGroups = append(result.ConceptGroups, grp)
-
-		case "metrics":
-			me, err := ParseMetricFile(string(data), filePath)
-			if err != nil {
-				return fmt.Errorf("parse %s: %w", name, err)
-			}
-			result.Metrics = append(result.Metrics, me)
 
 		default:
 			// Fallback to generic Parse for unknown subdirectories

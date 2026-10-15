@@ -31,7 +31,6 @@ func serializeMaskRule(rule *maskrule.Rule) string {
 	return strings.ReplaceAll(string(data), "|", `\u007c`)
 }
 
-// encodeMetricFormulaYAML encodes a metric formula fenced with Markdown ```yaml code blocks, matching on-disk examples.
 // tableCell makes a value safe inside a Markdown table row. A line break would end the row and
 // a bare pipe would open a new cell; the importer's table reader can recover neither, so the
 // break is written as <br> and the pipe as \|, and splitRow turns them back.
@@ -53,74 +52,6 @@ func hasToolSourceColumns(src *ResourceInfo) bool {
 		return false
 	}
 	return normType(src.Type) == "tool" || src.BoxID != "" || src.ToolID != "" || src.ResultPath != ""
-}
-
-func encodeMetricFormulaYAML(m *MetricFormula) string {
-	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	_ = enc.Encode(m)
-	_ = enc.Close()
-	s := strings.TrimSuffix(buf.String(), "\n")
-	return "```yaml\n" + s + "\n```\n"
-}
-
-// SerializeMetric serializes BknMetric to BKN markdown.
-func SerializeMetric(m *BknMetric) string {
-	var sb strings.Builder
-	sb.WriteString("---\n")
-	sb.WriteString("type: metric\n")
-	fmt.Fprintf(&sb, "id: %s\n", m.ID)
-	fmt.Fprintf(&sb, "name: %s\n", m.Name)
-	fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(m.Tags, ", "))
-	sb.WriteString("---\n\n")
-
-	fmt.Fprintf(&sb, "## Metric: %s\n\n", m.Name)
-	if m.Description != "" {
-		sb.WriteString(m.Description + "\n\n")
-	}
-
-	mtOut := strings.TrimSpace(m.MetricAttributes.MetricType)
-	if mtOut == "" && m.Formula != nil {
-		mtOut = strings.TrimSpace(m.Formula.Kind)
-	}
-	utOut := strings.TrimSpace(m.MetricAttributes.UnitType)
-	uOut := strings.TrimSpace(m.MetricAttributes.Unit)
-	if mtOut != "" || utOut != "" || uOut != "" {
-		sb.WriteString("### Metric attributes\n\n")
-		sb.WriteString("| Metric Type | Unit Type | Unit |\n")
-		sb.WriteString("|-------------|-----------|------|\n")
-		fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", tableCell(mtOut), tableCell(utOut), tableCell(uOut))
-	}
-
-	sb.WriteString("### Scope\n\n")
-	sb.WriteString("| Scope Type | Scope Ref |\n")
-	sb.WriteString("|------------|-----------|\n")
-	fmt.Fprintf(&sb, "| %s | %s |\n\n", tableCell(m.ScopeType), tableCell(m.ScopeRef))
-
-	sb.WriteString("### Calculation Formula\n\n")
-	if m.Formula != nil {
-		sb.WriteString(encodeMetricFormulaYAML(m.Formula))
-		sb.WriteString("\n")
-	}
-
-	sb.WriteString("### Time Dimension\n\n")
-	sb.WriteString("| Property | Default Range Policy |\n")
-	sb.WriteString("|----------|----------------------|\n")
-	for _, row := range m.TimeDimensions {
-		fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(row.Property), tableCell(row.Policy))
-	}
-	sb.WriteString("\n")
-
-	sb.WriteString("### Analysis Dimensions\n\n")
-	sb.WriteString("| Name | Display Name |\n")
-	sb.WriteString("|------|--------------|\n")
-	for _, row := range m.AnalysisDimensions {
-		fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(row.Name), tableCell(row.DisplayName))
-	}
-	sb.WriteString("\n")
-
-	return sb.String()
 }
 
 // encodeYAMLBlock encodes v to YAML and wraps it in a ```yaml code fence.
@@ -211,13 +142,14 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 		}
 	}
 
-	sb.WriteString("\n### Metrics\n\n")
+	sb.WriteString("\n### Object Metrics V1\n\n")
 	sb.WriteString("| ID | Name | File Path | Description |\n")
 	sb.WriteString("|----|------|-----------|-------------|\n")
-	if len(doc.Metrics) > 0 {
-		sort.Slice(doc.Metrics, func(i, j int) bool { return doc.Metrics[i].ID < doc.Metrics[j].ID })
-		for _, met := range doc.Metrics {
-			fmt.Fprintf(&sb, "| %s | %s | `metrics/%s.bkn` | %s |\n", tableCell(met.ID), tableCell(met.Name), tableCell(met.ID), tableCell(met.Summary))
+	if len(doc.ObjectMetrics) > 0 {
+		for _, metric := range doc.ObjectMetrics {
+			id, version, name, description := objectMetricArchiveMetadata(metric)
+			fmt.Fprintf(&sb, "| %s@%d | %s | `object_metrics/%s` | %s |\n",
+				tableCell(id), version, tableCell(name), tableCell(objectMetricArchiveFileName(id, version)), tableCell(description))
 		}
 	}
 
@@ -262,12 +194,13 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 		}
 		dirs = append(dirs, dirEntry{"concept_groups", files})
 	}
-	if len(doc.Metrics) > 0 {
-		files := make([]string, len(doc.Metrics))
-		for i, met := range doc.Metrics {
-			files[i] = met.ID + ".bkn"
+	if len(doc.ObjectMetrics) > 0 {
+		files := make([]string, len(doc.ObjectMetrics))
+		for i, metric := range doc.ObjectMetrics {
+			id, version, _, _ := objectMetricArchiveMetadata(metric)
+			files[i] = objectMetricArchiveFileName(id, version)
 		}
-		dirs = append(dirs, dirEntry{"metrics", files})
+		dirs = append(dirs, dirEntry{"object_metrics", files})
 	}
 
 	_, _ = fmt.Fprintf(&sb, "\n## Directory Structure\n\n```\n.\n├── network.bkn\n├── SKILL.md\n├── CHECKSUM\n")

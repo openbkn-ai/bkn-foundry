@@ -117,7 +117,10 @@ func TestBuildProxyGrantSourcesDerivesCompletePublishedSet(t *testing.T) {
 		RelationTypes: []*interfaces.RelationType{{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 			RTID: "rt-1", SourceObjectTypeID: "ot-a", TargetObjectTypeID: "ot-b",
 		}}},
-		Metrics: []*interfaces.MetricDefinition{{ID: "metric-1", ScopeType: "object_type", ScopeRef: "ot-a"}},
+		ObjectMetrics: []*interfaces.ObjectMetricRecordV1{{Definition: interfaces.ObjectMetricDefinitionV1{
+			ID: "metric-1", Version: 1, OwnerObjectTypeID: "ot-a",
+			Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"},
+		}}},
 		ActionTypes: []*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 			ATID: "action-1", ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-1", ToolID: "tool-1"},
 		}}},
@@ -281,30 +284,33 @@ func TestBuildProxyGrantSourcesIncludesIndirectRelationBackingResource(t *testin
 	}
 }
 
-func TestBuildProxyGrantSourcesSkipsUnscopedMetric(t *testing.T) {
+func TestBuildProxyGrantSourcesSkipsDraftObjectMetric(t *testing.T) {
 	kn := &interfaces.KN{
-		KNID:    "kn-1",
-		Metrics: []*interfaces.MetricDefinition{{ID: "metric-unscoped"}},
+		KNID: "kn-1",
+		ObjectMetrics: []*interfaces.ObjectMetricRecordV1{{Definition: interfaces.ObjectMetricDefinitionV1{
+			ID: "metric-draft", Version: 1, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "draft"},
+		}}},
 	}
 	sources, version, err := buildProxyGrantSources(kn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(sources) != 0 {
-		t.Fatalf("unscoped metric sources = %#v, want none", sources)
+		t.Fatalf("draft metric sources = %#v, want none", sources)
 	}
 	if version == "" {
-		t.Fatal("unscoped metric model version is empty")
+		t.Fatal("draft metric model version is empty")
 	}
 }
 
-func TestBuildProxyGrantSourcesSkipsUnboundMetricScope(t *testing.T) {
+func TestBuildProxyGrantSourcesSkipsUnboundObjectMetricOwner(t *testing.T) {
 	kn := &interfaces.KN{
 		KNID:        "kn-1",
 		ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot-unbound"}}},
-		Metrics: []*interfaces.MetricDefinition{{
-			ID: "metric-draft", ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "ot-unbound",
-		}},
+		ObjectMetrics: []*interfaces.ObjectMetricRecordV1{{Definition: interfaces.ObjectMetricDefinitionV1{
+			ID: "metric-published", Version: 1, OwnerObjectTypeID: "ot-unbound",
+			Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"},
+		}}},
 	}
 	sources, _, err := buildProxyGrantSources(kn)
 	if err != nil {
@@ -460,7 +466,10 @@ func proxyVersionFixture() (*interfaces.KN, []*interfaces.CapabilityBinding) {
 		RelationTypes: []*interfaces.RelationType{{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 			RTID: "rt-placed-by", SourceObjectTypeID: "ot-order", TargetObjectTypeID: "ot-customer",
 		}}},
-		Metrics: []*interfaces.MetricDefinition{{ID: "metric-revenue", ScopeType: "object_type", ScopeRef: "ot-order"}},
+		ObjectMetrics: []*interfaces.ObjectMetricRecordV1{{Definition: interfaces.ObjectMetricDefinitionV1{
+			ID: "metric-revenue", Version: 1, OwnerObjectTypeID: "ot-order",
+			Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"},
+		}}},
 		ActionTypes: []*interfaces.ActionType{
 			{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 				ATID: "at-refund", ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_TOOL, BoxID: "box-2", ToolID: "tool-refund"},
@@ -483,10 +492,9 @@ func proxyVersionFixture() (*interfaces.KN, []*interfaces.CapabilityBinding) {
 	return kn, capabilities
 }
 
-// proxyVersionFixtureDigest is the fixture's model version. It is also what the
-// code before #1550 derived, when Skill mounts produced no source at all:
-// adding Skill sources must not move any network's version.
-const proxyVersionFixtureDigest = "sha256:e151ed59ea68aecf9ba7d0fc2cab3f24e1d0e814ac0eeeae9544d0766296ebbd"
+// proxyVersionFixtureDigest pins the V1 metric grant projection. Skill mounts
+// must not change the network's model version.
+const proxyVersionFixtureDigest = "sha256:8af3579145d25faaee440b7f67f18d69133225156b5c2f9c9a86decc049df61c"
 
 func TestProxyModelVersionMatchesSharedMigrationFixture(t *testing.T) {
 	kn, capabilities := proxyVersionFixture()

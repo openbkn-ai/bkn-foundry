@@ -59,13 +59,13 @@ const (
 	listActionExecutionsURI = "/in/v1/knowledge-networks/%s/action-logs"
 	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/subgraph
 	queryInstanceSubgraphURI = "/in/v1/knowledge-networks/%s/subgraph"
-	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/metrics/:metric_id/data
+	// https://{host}:{port}/api/ontology-query/in/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/data
 	//
 	// Both ids are escaped at call time: metric_id arrives straight from an agent
 	// (the tool schema constrains it to a string and nothing more), and an
 	// unescaped one carrying "?" or "&" would smuggle query parameters — branch
 	// and fill_null among them — into the downstream request.
-	queryMetricDataURI = "/in/v1/knowledge-networks/%s/metrics/%s/data"
+	queryMetricDataURI = "/in/v1/knowledge-networks/%s/object-metrics/%s/data"
 )
 
 // NewOntologyQueryAccess creates an OntologyQueryAccess.
@@ -689,15 +689,18 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 //
 // Take the ontology-query internal route, the same posture as QueryLogicProperties: account information comes with the header.
 // Pass through, authorization is determined downstream.
-func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricID string, fillNull bool,
-	req *interfaces.MetricQueryDownstreamReq) (resp *interfaces.MetricQueryDownstreamResp, err error) {
+func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricID string, version int,
+	req *interfaces.ObjectMetricQuery) (resp *interfaces.MetricQueryDownstreamResp, err error) {
+	if version < 1 {
+		return nil, fmt.Errorf("object metric version must be positive")
+	}
 	uri := fmt.Sprintf(queryMetricDataURI, url.PathEscape(knID), url.PathEscape(metricID))
 	query := url.Values{}
-	query.Set("fill_null", strconv.FormatBool(fillNull))
+	query.Set("version", strconv.Itoa(version))
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
 	if req == nil {
-		req = &interfaces.MetricQueryDownstreamReq{}
+		req = &interfaces.ObjectMetricQuery{}
 	}
 	header := withVerifiedApplicationPrincipal(ctx, common.GetHeaderForChildOperationIdentity(ctx, "ontology.metric.query", ontologyQueryIdentity(uri+"?"+query.Encode(), req)))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON

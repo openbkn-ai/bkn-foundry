@@ -406,39 +406,6 @@ func ActionTypeRefs(items []*interfaces.ActionType) []EvidenceRef {
 	return refs
 }
 
-func MetricRefs(items []*interfaces.MetricDefinition) []EvidenceRef {
-	refs := make([]EvidenceRef, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		knID := strings.TrimSpace(item.KnID)
-		if strings.TrimSpace(item.ID) == "" || knID == "" {
-			continue
-		}
-		refs = append(refs, EvidenceRef{
-			RefID:          "metric:" + knID + ":" + strings.TrimSpace(item.ID),
-			RefType:        RefTypeMetric,
-			PartialReasons: []string{"metric_ref_unversioned"},
-			Summary: map[string]any{
-				"kind":                     EntityKindMetric,
-				"id":                       strings.TrimSpace(item.ID),
-				"kn_id":                    strings.TrimSpace(item.KnID),
-				"branch":                   strings.TrimSpace(item.Branch),
-				"module_type":              strings.TrimSpace(item.ModuleType),
-				"metric_type":              strings.TrimSpace(item.MetricType),
-				"scope_type":               strings.TrimSpace(item.ScopeType),
-				"scope_ref":                strings.TrimSpace(item.ScopeRef),
-				"has_time_dimension":       item.TimeDimension != nil,
-				"has_calculation_formula":  item.CalculationFormula != nil,
-				"analysis_dimension_count": len(item.AnalysisDimensions),
-				"update_time":              item.UpdateTime,
-			},
-		})
-	}
-	return refs
-}
-
 func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContext, bool) {
 	spanContext := trace.SpanContextFromContext(ctx)
 	if !spanContext.IsValid() {

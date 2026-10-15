@@ -512,30 +512,27 @@ func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq,
 		return nil
 	}
 	rows := []map[string]any{}
+	status := ""
 	if resp != nil {
-		for _, series := range resp.Datas {
-			if series == nil {
-				continue
+		status = resp.Status
+		for _, entry := range resp.Entries {
+			row := map[string]any{"dimensions": entry.Dimensions, "value": entry.Value, "status": entry.Status}
+			if entry.Time != nil {
+				row["time"] = *entry.Time
 			}
-			for index, value := range series.Values {
-				row := map[string]any{"dimensions": series.Labels, "value": value}
-				if index < len(series.Times) {
-					row["time"] = series.Times[index]
-				}
-				if index < len(series.TimeStrs) {
-					row["time_text"] = series.TimeStrs[index]
-				}
-				rows = append(rows, row)
+			if entry.InstanceIdentity != nil {
+				row["instance_identity"] = entry.InstanceIdentity
 			}
+			rows = append(rows, row)
 		}
 	}
-	metricRef := "metric:" + strings.TrimSpace(req.KnID) + ":" + strings.TrimSpace(req.MetricID)
+	metricRef := fmt.Sprintf("metric:%s:%s:v%d", strings.TrimSpace(req.KnID), strings.TrimSpace(req.MetricID), req.Version)
 	payload := map[string]any{
 		"metric_ref": metricRef, "network_ref": "kn:" + strings.TrimSpace(req.KnID),
-		"dimensions": append([]string(nil), req.AnalysisDimensions...), "conditions": req.Cond,
-		"time": req.Time, "having": req.Having, "order_by": req.OrderBy,
+		"version": req.Version, "dimensions": req.Query.AnalysisDimensions, "conditions": req.Query.Filter,
+		"time": req.Query.Time, "status": status,
 		"aggregation_definition": "defined_by_metric", "rows": rows, "row_count": len(rows),
-		"complete": resp != nil, "cardinality": "metric_series_rows",
+		"complete": resp != nil, "cardinality": "object_metric_entries",
 		"source_refs": []map[string]any{
 			controlledRef("kn:"+strings.TrimSpace(req.KnID), "knowledge_network"),
 			controlledRef(metricRef, "metric"),

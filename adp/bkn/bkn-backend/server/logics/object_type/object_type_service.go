@@ -49,7 +49,6 @@ type objectTypeService struct {
 	db         *sql.DB
 	aoa        interfaces.AgentOperatorAccess
 	cga        interfaces.ConceptGroupAccess
-	ma         interfaces.MetricAccess
 	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
 	ps         interfaces.PermissionService
@@ -95,7 +94,6 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			db:         logics.DB,
 			aoa:        logics.AOA,
 			cga:        logics.CGA,
-			ma:         logics.MA,
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ota:        logics.OTA,
 			ps:         permission.NewPermissionService(appSetting),

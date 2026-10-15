@@ -33,7 +33,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/concept_group"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
-	metriclogics "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_data_stats"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/relation_type"
@@ -60,7 +59,6 @@ type restHandler struct {
 	ots                     interfaces.ObjectTypeService
 	rts                     interfaces.RelationTypeService
 	rtsRisk                 interfaces.RiskTypeService
-	ms                      interfaces.MetricService
 	oms                     interfaces.ObjectMetricServiceV1
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
@@ -100,7 +98,6 @@ func NewRestHandler(appSetting *common.AppSetting, recorder operationAuditRecord
 		ots:                     object_type.NewObjectTypeService(appSetting),
 		rts:                     relation_type.NewRelationTypeService(appSetting),
 		rtsRisk:                 risk_type.NewRiskTypeService(appSetting),
-		ms:                      metriclogics.NewMetricService(appSetting),
 		bs:                      bkn.NewBKNService(appSetting),
 		projectionGrantVerifier: projectionVerifier,
 		cqs:                     cypher.NewCypherQueryService(appSetting),
@@ -181,17 +178,6 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.PUT("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.UpdateActionTypeByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-types", r.ListActionTypesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-types/:at_ids", r.GetActionTypesByEx)
-
-		// Metrics.
-		apiV1.POST("/knowledge-networks/:kn_id/metrics", r.verifyJsonContentType(), r.HandleMetricGetOverrideByEx)
-		apiV1.POST("/knowledge-networks/:kn_id/metrics/validation", r.verifyJsonContentType(), r.ValidateMetricsByEx)
-		// SDK/CLI compatibility alias (@openbkn/bkn-sdk uses /metrics/validate)
-		apiV1.POST("/knowledge-networks/:kn_id/metrics/validate", r.verifyJsonContentType(), r.ValidateMetricsByEx)
-		apiV1.DELETE("/knowledge-networks/:kn_id/metrics/:metric_ids", r.DeleteMetricsByIDsByEx)
-		apiV1.PUT("/knowledge-networks/:kn_id/metrics/:metric_ids", r.verifyJsonContentType(), r.UpdateMetricByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/metrics/dependency-properties/:ot_id", r.GetMetricDependencyPropertiesByEx)
-		apiV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids", r.GetMetricsByIDsByEx)
 
 		// Capability bindings: which Skills and ToolBox tools belong to this knowledge network.
 		apiV1.POST("/knowledge-networks/:kn_id/capabilities", r.verifyJsonContentType(), r.AttachCapabilitiesByEx)
@@ -290,23 +276,10 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.GET("/knowledge-networks/:kn_id/action-types", r.ListActionTypesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-types/:at_ids", r.GetActionTypesByIn)
 
-		// Metrics (internal).
-		apiInV1.POST("/knowledge-networks/:kn_id/metrics", r.verifyJsonContentType(), r.HandleMetricGetOverrideByIn)
-		apiInV1.POST("/knowledge-networks/:kn_id/metrics/validation", r.verifyJsonContentType(), r.ValidateMetricsByIn)
-		// SDK/CLI compatibility alias (@openbkn/bkn-sdk uses /metrics/validate)
-		apiInV1.POST("/knowledge-networks/:kn_id/metrics/validate", r.verifyJsonContentType(), r.ValidateMetricsByIn)
-		apiInV1.DELETE("/knowledge-networks/:kn_id/metrics/:metric_ids", r.DeleteMetricsByIDsByIn)
-		apiInV1.PUT("/knowledge-networks/:kn_id/metrics/:metric_ids", r.verifyJsonContentType(), r.UpdateMetricByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/metrics", r.ListMetricsByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/metrics/dependency-properties/:ot_id", r.GetMetricDependencyPropertiesByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids/execution-context", r.GetMetricExecutionContextByIn)
-
 		// Capability bindings: Context Loader resolves the references of one branch here.
 		apiInV1.POST("/knowledge-networks/:kn_id/capabilities", r.verifyJsonContentType(), r.AttachCapabilitiesByIn)
 		apiInV1.DELETE("/knowledge-networks/:kn_id/capabilities/:binding_ids", r.DetachCapabilitiesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/capabilities", r.ListCapabilitiesByIn)
-		apiInV1.GET("/knowledge-networks/:kn_id/metrics/:metric_ids", r.GetMetricsByIDsByIn)
-
 		// Risk types (internal); GetRiskTypesByIn supports the risk_type_ids query parameter.
 		apiInV1.POST("/knowledge-networks/:kn_id/risk-types", r.verifyJsonContentType(), r.HandleRiskTypeGetOverrideByIn)
 		apiInV1.PUT("/knowledge-networks/:kn_id/risk-types/:rt_id", r.verifyJsonContentType(), r.UpdateRiskTypeByIn)

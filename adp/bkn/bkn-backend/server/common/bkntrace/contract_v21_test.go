@@ -112,9 +112,8 @@ func TestSchemaRefsAreKnowledgeNetworkQualifiedAndNeverGuessed(t *testing.T) {
 		t.Fatalf("relation ref is not qualified and semantic: %#v", relationRefs)
 	}
 	actionRefs := ActionTypeRefs([]*interfaces.ActionType{{KNID: "kn_a", ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "notify"}}})
-	metricRefs := MetricRefs([]*interfaces.MetricDefinition{{KnID: "kn_a", ID: "risk_score"}})
-	if len(actionRefs) != 1 || actionRefs[0].RefID != "action_type:kn_a:notify" || len(metricRefs) != 1 || metricRefs[0].RefID != "metric:kn_a:risk_score" {
-		t.Fatalf("action/metric refs are not qualified: actions=%#v metrics=%#v", actionRefs, metricRefs)
+	if len(actionRefs) != 1 || actionRefs[0].RefID != "action_type:kn_a:notify" {
+		t.Fatalf("action refs are not qualified: %#v", actionRefs)
 	}
 	events := BuildSchemaReadEvents(testTraceContext(), testRequestContext(), ReadSubject{EntityKind: EntityKindObjectType, KNID: "kn_a"}, []EvidenceRef{{RefID: "object:kn_b:customer", RefType: RefTypeObject}})
 	if refs := events[0]["payload"].(map[string]any)["business_refs"].([]map[string]any); len(refs) != 0 {

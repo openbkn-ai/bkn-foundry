@@ -9,6 +9,8 @@ package bkn
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -36,6 +38,7 @@ type bknService struct {
 	appSetting *common.AppSetting
 	kns        interfaces.KNService
 	cbs        interfaces.CapabilityBindingService
+	archive    interfaces.ObjectMetricArchiveAccessV1
 }
 
 // NewBKNService creates the BKN service.
@@ -115,8 +118,22 @@ func (bs *bknService) buildNetwork(ctx context.Context, knID string, branch stri
 	for _, cg := range kn.ConceptGroups {
 		bknNetwork.ConceptGroups = append(bknNetwork.ConceptGroups, logics.ToBKNConceptGroup(cg))
 	}
-	for _, m := range kn.Metrics {
-		bknNetwork.Metrics = append(bknNetwork.Metrics, logics.ToBKNMetricDefinition(m))
+	archive := bs.archive
+	if archive == nil {
+		archive, _ = logics.OMA.(interfaces.ObjectMetricArchiveAccessV1)
+	}
+	if archive != nil {
+		records, err := archive.ListObjectMetricArchive(ctx, knID, branch)
+		if err != nil {
+			return nil, err
+		}
+		for _, record := range records {
+			data, err := json.Marshal(record)
+			if err != nil {
+				return nil, fmt.Errorf("marshal object metric archive: %w", err)
+			}
+			bknNetwork.ObjectMetrics = append(bknNetwork.ObjectMetrics, data)
+		}
 	}
 
 	return bknNetwork, nil

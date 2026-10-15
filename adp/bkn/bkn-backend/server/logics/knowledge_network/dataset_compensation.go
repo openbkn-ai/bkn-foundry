@@ -54,9 +54,6 @@ func (kns *knowledgeNetworkService) compensateDatasetDocuments(ctx context.Conte
 	for _, risk := range snapshot.RiskTypes {
 		markCommitted(interfaces.MODULE_TYPE_RISK_TYPE, risk.RTID)
 	}
-	for _, metric := range snapshot.Metrics {
-		markCommitted(interfaces.MODULE_TYPE_METRIC, metric.ID)
-	}
 	for _, id := range ids {
 		if _, exists := committed[id]; exists {
 			continue
@@ -123,17 +120,6 @@ func (kns *knowledgeNetworkService) compensateDatasetDocuments(ctx context.Conte
 	if len(risks) > 0 {
 		if err := kns.riskTypeS.InsertDatasetData(ctx, risks); err != nil {
 			return fmt.Errorf("restore risk type index: %w", err)
-		}
-	}
-	var metrics []*interfaces.MetricDefinition
-	for _, metric := range snapshot.Metrics {
-		if contains(interfaces.MODULE_TYPE_METRIC, metric.ID) {
-			metrics = append(metrics, metric)
-		}
-	}
-	if len(metrics) > 0 {
-		if err := kns.ms.InsertDatasetData(ctx, metrics); err != nil {
-			return fmt.Errorf("restore metric index: %w", err)
 		}
 	}
 	if contains(interfaces.MODULE_TYPE_KN, snapshot.KNID) {

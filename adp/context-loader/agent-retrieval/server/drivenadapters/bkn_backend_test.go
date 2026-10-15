@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -389,34 +390,13 @@ func TestSearchMetricTypes_Success(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		respBody := []byte(`{
-			"entries": [
-				{
-					"id": "m_001",
-					"name": "cpu_usage",
-					"comment": "CPU usage metric",
-					"unit_type": "percent",
-					"unit": "%",
-					"metric_type": "atomic",
-					"scope_type": "object_type",
-					"scope_ref": "pod",
-					"time_dimension": {
-						"name": "timestamp"
-					},
-					"calculation_formula": {
-						"op": "avg"
-					},
-					"analysis_dimensions": [
-						{
-							"name": "cluster"
-						}
-					]
-				}
-			],
-			"total_count": 1
-		}`)
-		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, respBody, nil)
+		respBody := []byte(`{"entries":[{"definition":{"id":"m_001","version":2,"name":"cpu_usage","description":"CPU usage metric","metric_type":"atomic","owner_object_type_id":"pod","lifecycle":{"status":"published"}}}],"total_count":1}`)
+		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, src string, values url.Values, _ map[string]string) (int, []byte, error) {
+				convey.So(src, convey.ShouldEndWith, "/kn-001/object-metrics")
+				convey.So(values.Get("status"), convey.ShouldEqual, "published")
+				return 200, respBody, nil
+			})
 
 		resp, err := client.SearchMetricTypes(ctx, req)
 		convey.So(err, convey.ShouldBeNil)
@@ -424,6 +404,7 @@ func TestSearchMetricTypes_Success(t *testing.T) {
 		convey.So(resp.TotalCount, convey.ShouldEqual, 1)
 		convey.So(len(resp.Entries), convey.ShouldEqual, 1)
 		convey.So(resp.Entries[0].ID, convey.ShouldEqual, "m_001")
+		convey.So(resp.Entries[0].Version, convey.ShouldEqual, 2)
 		convey.So(resp.Entries[0].Name, convey.ShouldEqual, "cpu_usage")
 		convey.So(resp.Entries[0].ScopeType, convey.ShouldEqual, "object_type")
 		convey.So(resp.Entries[0].ScopeRef, convey.ShouldEqual, "pod")
@@ -440,6 +421,7 @@ func TestSearchMetricTypes_HTTPError(t *testing.T) {
 		mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
 
 		mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+		mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).AnyTimes()
 		mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
 
 		client := &bknBackendAccess{
@@ -453,7 +435,7 @@ func TestSearchMetricTypes_HTTPError(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
 		_, err := client.SearchMetricTypes(ctx, req)
@@ -484,7 +466,7 @@ func TestSearchMetricTypes_NotFound(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(404, nil, nil)
 
 		_, err := client.SearchMetricTypes(ctx, req)
@@ -567,7 +549,7 @@ func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 		{
 			name: "SearchMetricTypes",
 			expectHTTP: func(mockHTTPClient *mocks.MockHTTPClient, respBody []byte) {
-				mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 					Return(http.StatusNotFound, respBody, nil)
 			},
 			call: func(ctx context.Context, client *bknBackendAccess) error {

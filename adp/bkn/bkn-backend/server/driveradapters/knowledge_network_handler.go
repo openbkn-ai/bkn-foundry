@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -25,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/visitor"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
 const projectionGrantHeader = "X-BKN-Projection-Grant"
@@ -32,7 +34,7 @@ const projectionGrantHeader = "X-BKN-Projection-Grant"
 func knowledgeNetworkMutationSummary(kn *interfaces.KN, mode, bindingPolicy string, requestBytes int64) string {
 	operationKind := "knowledge_network_create"
 	if len(kn.ConceptGroups)+len(kn.ObjectTypes)+len(kn.RelationTypes)+len(kn.ActionTypes)+
-		len(kn.RiskTypes)+len(kn.Metrics) > 0 {
+		len(kn.RiskTypes)+len(kn.ObjectMetrics) > 0 {
 		operationKind = "knowledge_network_import"
 	}
 	branch := kn.Branch
@@ -50,7 +52,7 @@ func knowledgeNetworkMutationSummary(kn *interfaces.KN, mode, bindingPolicy stri
 		"action_types=%d risk_types=%d metrics=%d member_references=%d",
 		operationKind, kn.KNID, branch, requestBytes, mode, bindingPolicy, len(kn.ConceptGroups),
 		len(kn.ObjectTypes), len(kn.RelationTypes), len(kn.ActionTypes), len(kn.RiskTypes),
-		len(kn.Metrics), memberReferences)
+		len(kn.ObjectMetrics), memberReferences)
 }
 
 func exportContentDisposition(name, fallback string) string {
@@ -231,11 +233,22 @@ func (r *restHandler) GetKNByProjectionGrant(c *gin.Context) {
 		return
 	}
 	kn, err := r.kns.ExportKNForProjection(c.Request.Context(), knID)
-	if err != nil {
+	if err != nil || kn == nil {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	rest.ReplyOK(c, http.StatusOK, kn)
+	// Signed projection reads may include V1 definitions, but ordinary knowledge
+	// network JSON must never become an implicit bulk metric export.
+	queryable := make([]*interfaces.ObjectMetricRecordV1, 0, len(kn.ObjectMetrics))
+	for _, record := range kn.ObjectMetrics {
+		if record != nil && (record.Definition.Lifecycle.Status == "published" || record.Definition.Lifecycle.Status == "deprecated") {
+			queryable = append(queryable, record)
+		}
+	}
+	rest.ReplyOK(c, http.StatusOK, struct {
+		*interfaces.KN
+		ObjectMetrics []*interfaces.ObjectMetricRecordV1 `json:"object_metrics"`
+	}{KN: kn, ObjectMetrics: queryable})
 }
 
 // Create knowledge networks (internal).
@@ -343,7 +356,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	}
 	operationKind := "knowledge_network_create"
 	if len(kn.ConceptGroups)+len(kn.ObjectTypes)+len(kn.RelationTypes)+len(kn.ActionTypes)+
-		len(kn.RiskTypes)+len(kn.Metrics) > 0 {
+		len(kn.RiskTypes)+len(kn.ObjectMetrics) > 0 {
 		operationKind = "knowledge_network_import"
 	}
 	otellog.LogInfo(ctx, knowledgeNetworkMutationSummary(&kn, mode, bindingPolicy, requestBytes))
@@ -359,7 +372,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		attr.Int("relation_type_count", len(kn.RelationTypes)),
 		attr.Int("action_type_count", len(kn.ActionTypes)),
 		attr.Int("risk_type_count", len(kn.RiskTypes)),
-		attr.Int("metric_count", len(kn.Metrics)),
+		attr.Int("object_metric_version_count", len(kn.ObjectMetrics)),
 	)
 
 	// Validate that the imported model is a knowledge network.
@@ -880,20 +893,32 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 		}
 		total, err = count, listErr
 	case "metric":
-		items, listErr := r.ms.ListMetrics(ctx, interfaces.MetricsListQueryParams{PaginationQueryParameters: page, NamePattern: name, Branch: interfaces.MAIN_BRANCH, KNID: parentID})
-		if items != nil {
-			total = int(items.TotalCount)
-			for _, item := range items.Entries {
-				entries = append(entries, &interfaces.AuthorizationResource{ID: parentID + "/" + item.ID, Name: item.Name})
+		if logics.OMA != nil {
+			items, count, listErr := logics.OMA.ListObjectMetrics(ctx, interfaces.ObjectMetricListQueryV1{
+				KNID: parentID, Branch: interfaces.MAIN_BRANCH, Keyword: name,
+				Offset: page.Offset, Limit: page.Limit,
+			})
+			total = count
+			var hidden *rest.HTTPError
+			if !errors.As(listErr, &hidden) || hidden.HTTPCode != http.StatusNotFound {
+				err = listErr
+			}
+			for _, item := range items {
+				entries = append(entries, &interfaces.AuthorizationResource{
+					ID: parentID + "/" + item.Definition.ID, Name: item.Definition.Name,
+				})
 			}
 		}
-		err = listErr
 	default:
 		err = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("resource_type is invalid")
 	}
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		var httpErr *rest.HTTPError
+		if !errors.As(err, &httpErr) {
+			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(err.Error())
+		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

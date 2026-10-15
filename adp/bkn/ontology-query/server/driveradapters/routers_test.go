@@ -11,6 +11,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -71,19 +72,11 @@ func (allowQueryAuthorizationService) AuthorizeActionTypeQuery(context.Context, 
 	return nil
 }
 
-func (allowQueryAuthorizationService) AuthorizeMetricQuery(context.Context, string, string, string) error {
-	return nil
-}
-
 func (allowQueryAuthorizationService) AuthorizeObjectMetricQuery(context.Context, string, string, string) error {
 	return nil
 }
 
 func (allowQueryAuthorizationService) AuthorizeObjectMetricTrial(context.Context, string, string, *interfaces.ObjectMetricDefinitionV1, *interfaces.ObjectMetricQueryRequestV1) error {
-	return nil
-}
-
-func (allowQueryAuthorizationService) AuthorizeMetricDryRun(context.Context, string, string, *interfaces.MetricDefinition) error {
 	return nil
 }
 
@@ -162,7 +155,7 @@ func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
 	handler := &restHandler{appSetting: &common.AppSetting{}}
 	handler.RegisterPublic(engine)
 
-	objectMetricPath := "/api/ontology-query/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/data"
+	objectMetricPath := "/api/ontology-query/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/data"
 	for _, route := range engine.Routes() {
 		if route.Path == objectMetricPath {
 			t.Fatalf("community handler unexpectedly registered %q", objectMetricPath)
@@ -170,12 +163,31 @@ func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
 	}
 
 	RegisterObjectMetricRoutes(engine, &common.AppSetting{}, nil, nil)
+	found := false
 	for _, route := range engine.Routes() {
+		if route.Path == "/api/ontology-query/v2/knowledge-networks/:kn_id/object-metrics/:metric_id/data" {
+			t.Fatalf("obsolete V2 object-metric route remains registered: %q", route.Path)
+		}
 		if route.Method == http.MethodPost && route.Path == objectMetricPath {
-			return
+			found = true
 		}
 	}
-	t.Fatalf("extension registration did not mount POST %q", objectMetricPath)
+	if !found {
+		t.Fatalf("extension registration did not mount POST %q", objectMetricPath)
+	}
+}
+
+func TestLegacyMetricRoutesAreNotRegistered(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	engine := gin.New()
+	(&restHandler{appSetting: &common.AppSetting{}}).RegisterPublic(engine)
+
+	for _, route := range engine.Routes() {
+		if strings.Contains(route.Path, "/knowledge-networks/:kn_id/metrics") {
+			t.Fatalf("legacy metric route remains registered: %s %s", route.Method, route.Path)
+		}
+	}
 }
 
 func Test_RestHandler_verifyJsonContentType(t *testing.T) {

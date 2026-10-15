@@ -2,6 +2,10 @@
 
 The integration tests verify the complete interaction between the SDK, file system, and tar archives.
 
+Examples that still contain `metrics/*.bkn` are intentionally negative fixtures:
+directory and tar loading must reject them. Object Metrics V1 round-trip and
+checksum behavior is covered by the BKN package tests.
+
 ## Test Design Principles
 
 - **Less is more**: 6 core workflows + 5 edge cases

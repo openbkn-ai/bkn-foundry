@@ -7,7 +7,10 @@
 package driveradapters
 
 import (
+	"archive/tar"
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"mime/multipart"
@@ -56,6 +59,41 @@ func newValidBKNTar(t *testing.T) []byte {
 	var buf bytes.Buffer
 	if err := bknsdk.WriteNetworkToTar(net, &buf); err != nil {
 		t.Fatalf("failed to create test BKN tar: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func newObjectMetricBKNTar(t *testing.T) []byte {
+	t.Helper()
+	net := &bknsdk.BknNetwork{
+		BknNetworkFrontmatter: bknsdk.BknNetworkFrontmatter{Type: "network", ID: "test-net", Name: "Test Network"},
+		ObjectTypes:           []*bknsdk.BknObjectType{{BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{Type: "object_type", ID: "draft-object", Name: "Draft Object"}}},
+		ObjectMetrics:         []json.RawMessage{json.RawMessage(`{"definition":{"id":"metric-1","version":2,"code":"metric_one","name":"Metric One","owner_object_type_id":"draft-object","metric_type":"atomic","lifecycle":{"status":"draft"}},"kn_id":"source","branch":"old"}`)},
+	}
+	var buf bytes.Buffer
+	if err := bknsdk.WriteNetworkToTar(net, &buf); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func newLegacyMetricBKNTar(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := tar.NewWriter(&buf)
+	for path, content := range map[string]string{
+		"network.bkn":        "---\ntype: network\nid: test-net\nname: Test Network\n---\n",
+		"metrics/legacy.bkn": "---\ntype: metric\nid: legacy\nname: Legacy\n---\n",
+	} {
+		if err := w.WriteHeader(&tar.Header{Name: path, Mode: 0644, Size: int64(len(content))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
 	}
 	return buf.Bytes()
 }
@@ -186,6 +224,29 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Imports object metric V1 records without changing their version", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, false).
+				DoAndReturn(func(_ context.Context, kn *interfaces.KN, _ string, _ bool) (string, error) {
+					if len(kn.ObjectMetrics) != 1 || kn.ObjectMetrics[0].Definition.Version != 2 ||
+						kn.ObjectMetrics[0].KNID != "test-net" || kn.ObjectMetrics[0].Branch != interfaces.MAIN_BRANCH {
+						t.Fatalf("unexpected object metric import: %#v", kn.ObjectMetrics)
+					}
+					return "kn1", nil
+				})
+			req := newMultipartRequest(t, url, "test.tar", newObjectMetricBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Rejects old metric archives with an explicit error", func() {
+			req := newMultipartRequest(t, url, "test.tar", newLegacyMetricBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, "legacy metrics")
 		})
 
 		Convey("Passes ignore mode to CreateKN\n", func() {
@@ -351,7 +412,9 @@ func TestDetachBKNExternalBindingsPreservesTopology(t *testing.T) {
 			}},
 		},
 	}}
-	metric := &interfaces.MetricDefinition{ID: "metric-1", ScopeType: interfaces.ScopeTypeObjectType, ScopeRef: "ot-1"}
+	metric := &interfaces.ObjectMetricRecordV1{Definition: interfaces.ObjectMetricDefinitionV1{
+		ID: "metric-1", Version: 1, OwnerObjectTypeID: "ot-1",
+	}}
 	kn := &interfaces.KN{
 		ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 			OTID: "ot-1", DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
@@ -361,7 +424,7 @@ func TestDetachBKNExternalBindingsPreservesTopology(t *testing.T) {
 			}},
 		}}},
 		RelationTypes: []*interfaces.RelationType{relation},
-		Metrics:       []*interfaces.MetricDefinition{metric},
+		ObjectMetrics: []*interfaces.ObjectMetricRecordV1{metric},
 		ActionTypes: []*interfaces.ActionType{{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 			ATID: "at-1", ObjectTypeID: "ot-1",
 			ActionSource: interfaces.ActionSource{Type: interfaces.ACTION_SOURCE_TYPE_MCP, McpID: "mcp-1", ToolName: "run"},
@@ -383,8 +446,8 @@ func TestDetachBKNExternalBindingsPreservesTopology(t *testing.T) {
 	if !ok || indirect.BackingDataSource != nil || len(indirect.SourceMappingRules) != 1 {
 		t.Fatalf("relation binding was not detached or mapping topology changed: %#v", relation.MappingRules)
 	}
-	if kn.Metrics[0] != metric || metric.ScopeRef != "ot-1" {
-		t.Fatalf("metric topology changed: %#v", kn.Metrics)
+	if kn.ObjectMetrics[0] != metric || metric.Definition.OwnerObjectTypeID != "ot-1" {
+		t.Fatalf("metric topology changed: %#v", kn.ObjectMetrics)
 	}
 	if kn.ActionTypes[0].ObjectTypeID != "ot-1" {
 		t.Fatalf("action object binding changed: %#v", kn.ActionTypes[0])

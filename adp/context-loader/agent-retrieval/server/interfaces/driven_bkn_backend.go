@@ -121,36 +121,31 @@ type ObjectType struct {
 	// object type can be searched by is unknown, not "nothing".
 	DataSourceMetadataUnavailable bool `json:"data_source_metadata_unavailable,omitempty"`
 
-	// RelatedMetrics are the metrics scoped to this object type (scope_type=object_type,
-	// scope_ref=<this id>). It is filled by get_object_types only: a metric that is not
-	// bound to a logic property is invisible from the object type otherwise, which is
-	// what leaves an agent with no way to reach it except run_sql.
+	// RelatedMetrics are published Object Metrics V1 owned by this object type.
+	// get_object_types fills this list for caller-visible definitions.
 	RelatedMetrics []*RelatedMetric `json:"related_metrics,omitempty"`
 	// RelatedMetricCount is the same information one number wide, for the get_kn_detail
 	// summary: enough to decide whether drilling into this object type is worth it.
 	RelatedMetricCount int `json:"related_metric_count,omitempty"`
 }
 
-// RelatedMetric is one metric scoped to an object type, as advertised on that object
-// type by get_object_types.
+// RelatedMetric is one published object-metric version advertised by get_object_types.
 //
 // It carries what an agent needs to *choose* a metric — what it measures, in which
 // unit, sliceable by which dimensions — and stops there. The calculation formula is
 // deliberately absent: the whole point of query_metric is that the agent does not
 // reimplement the formula, it names the metric and lets ontology-query apply it.
 type RelatedMetric struct {
-	ID                 string   `json:"id"`
-	Name               string   `json:"name"`
-	Comment            string   `json:"comment,omitempty"`
-	MetricType         string   `json:"metric_type,omitempty"`
-	Unit               string   `json:"unit,omitempty"`
-	UnitType           string   `json:"unit_type,omitempty"`
-	ScopeRef           string   `json:"scope_ref,omitempty"`
-	AnalysisDimensions []string `json:"analysis_dimensions,omitempty"`
-	// TimeDimension is the property the metric is measured over, empty when the
-	// metric has none. An agent reads it to know whether a range query (instant=false
-	// with a step) is meaningful at all.
-	TimeDimension string `json:"time_dimension,omitempty"`
+	ID                 string                    `json:"id"`
+	Version            int                       `json:"version"`
+	Name               string                    `json:"name"`
+	Comment            string                    `json:"comment,omitempty"`
+	MetricType         string                    `json:"metric_type,omitempty"`
+	Unit               string                    `json:"unit,omitempty"`
+	UnitType           string                    `json:"unit_type,omitempty"`
+	OwnerObjectTypeID  string                    `json:"owner_object_type_id"`
+	AnalysisDimensions []ObjectMetricPropertyRef `json:"analysis_dimensions,omitempty"`
+	TimeDimensions     []ObjectMetricPropertyRef `json:"time_dimensions,omitempty"`
 }
 
 // RelationType Relation type structure definition
@@ -271,6 +266,7 @@ type ActionTypeConcepts struct {
 // MetricType Metric type structure definition
 type MetricType struct {
 	ID                 string `json:"id"`                            // Metric ID
+	Version            int    `json:"version,omitempty"`             // Published object-metric version
 	Name               string `json:"name"`                          // Metric name
 	Comment            string `json:"comment,omitempty"`             // Metric comment
 	UnitType           string `json:"unit_type,omitempty"`           // Unit type
@@ -279,7 +275,7 @@ type MetricType struct {
 	ScopeType          string `json:"scope_type"`                    // Scope type
 	ScopeRef           string `json:"scope_ref"`                     // Scope ref
 	TimeDimension      any    `json:"time_dimension,omitempty"`      // Time dimension
-	CalculationFormula any    `json:"calculation_formula"`           // Calculation formula
+	CalculationFormula any    `json:"calculation_formula,omitempty"` // Legacy calculation formula, absent on V1 metrics
 	AnalysisDimensions any    `json:"analysis_dimensions,omitempty"` // Analysis dimensions
 }
 
@@ -817,16 +813,14 @@ type BknBackendAccess interface {
 	// GetActionTypeDetail Get action type details
 	GetActionTypeDetail(ctx context.Context, knID string, atIDs []string, includeDetail bool) ([]*ActionType, error)
 
-	// SearchMetricTypes Search metric types
+	// SearchMetricTypes searches published Object Metrics V1 definitions.
 	SearchMetricTypes(ctx context.Context, query *QueryConceptsReq) (metricTypes *MetricTypeConcepts, err error)
 
-	// ListMetricsByObjectTypes enumerates the metrics scoped to the given object types.
+	// ListMetricsByObjectTypes enumerates caller-visible published Object Metrics V1
+	// definitions owned by the given object types.
 	//
-	// It is deliberately not SearchMetricTypes: that one is a semantic recall over the
-	// concept index and answers "which metrics look relevant to this question", which
-	// is both ranked and only as fresh as the index. Advertising the metrics of an
-	// object type has to be exhaustive and authoritative, so this reads the metric
-	// registry itself.
+	// SearchMetricTypes performs text recall over the same registry; this operation
+	// returns all visible metrics owned by the requested object types.
 	ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*RelatedMetric, error)
 
 	// ListKNCapabilities returns the Skills and Function tools bound to one knowledge network

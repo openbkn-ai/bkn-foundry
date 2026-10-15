@@ -183,7 +183,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 250,
-    "description": "按已建模指标的口径取数（OT-first 路径第 3 步）。先 search_schema / get_kn_detail 锁定对象类，再 get_object_types 从 related_metrics 里选定 metric_id，最后调本工具计算——口径写在 MetricDefinition 里，别自己重写。分流：实例级且已绑逻辑属性的走 get_logic_properties_values；类级、或未绑逻辑属性的走本工具。可选 condition 过滤、analysis_dimensions 拆维、time 取单点或序列。时间窗规则：省略 instant 等同于序列查询，必须给 step；start 与 end 要么都给要么都不给。"
+    "description": "按已发布对象指标 V1 的固定口径取数。先在 get_object_types 的 related_metrics 中选择 metric_id 与 version，再将二者传给本工具；不能自行重写口径，也不能省略版本号。query 仅允许实例身份、过滤条件、分析维度属性引用及毫秒时间窗，必须符合该版本声明的 query_capabilities。结果通过 entries 和 status 表达数值、无数据、不可用及部分成功。"
   },
   "get_action_info": {
     "name": "get_action_info",
@@ -333,7 +333,7 @@
     "group": "discovery",
     "group_title": "网络与 Schema",
     "order": 140,
-    "description": "按 id 批量取对象类的完整定义（data_properties 含 mapped_field/condition_operations，logic_properties 含 data_source/parameters），并返回该对象类下可用的指标 related_metrics（scope_type=object_type 且 scope_ref=对象类 id，含未绑逻辑属性的指标）。渐进式下钻用：先 get_kn_detail（summary）拿对象 id，再用本工具展开需要的对象。选定指标后：实例级且已绑逻辑属性走 get_logic_properties_values，类级或未绑的走 query_metric。ids 支持多个，一次取回；未匹配的 id 会在 missing 返回。**不传 ids 即按 offset/limit 列举该网络的对象类索引**（只有 id/name/comment/tags/data_source，不含字段与指标；默认 50 条，上限 200，响应带 total_count 与 next_offset）——get_kn_detail 对超限网络只回导航壳，那条路拿不到 id，这里是唯一的枚举入口；挑好再把 id 传回来取完整定义。",
+    "description": "按 id 批量取对象类的完整定义，并返回当前账号可见的已发布对象指标 V1 related_metrics（含 id/version）。查询指标须把 id 和 version 一起传给 query_metric；已绑定的实例级逻辑属性也可用 get_logic_properties_values。ids 支持多个，未匹配的 id 在 missing 返回。不传 ids 时按 offset/limit 列举对象类索引（不含属性和指标，默认 50 条，上限 200）；需要完整定义时再按 id 查询。",
     "gateway": {
       "summary": "按 ID 取对象类的完整定义：字段、可用的查询算子、逻辑属性和相关指标。",
       "use_when": "要知道某个对象类有哪些字段、能怎么过滤，或想按页列举全网络的对象类。",

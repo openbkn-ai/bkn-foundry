@@ -138,19 +138,18 @@ func TestArtifactContentHashUsesCoreCanonicalJSON(t *testing.T) {
 }
 
 func TestBuildQueryMetricEventsRecordsDimensionsValuesConditionsAndCompleteness(t *testing.T) {
-	instant := true
-	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Time: &interfaces.MetricTimeWindow{Instant: &instant}, AnalysisDimensions: []string{"warehouse"}, Cond: &interfaces.KnCondition{Field: "material_id", Operation: "==", Value: "M-1001"}}
-	resp := &interfaces.QueryMetricResp{KnID: "kn-supply", MetricID: "available_inventory", Datas: []*interfaces.MetricDataSeries{{Labels: map[string]string{"warehouse": "WH-01"}, Values: []any{677}}}}
+	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Query: interfaces.ObjectMetricQuery{AnalysisDimensions: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "warehouse", PropertyName: "name"}}, Filter: map[string]any{"field": "material_id", "operation": "eq", "value": "M-1001"}}}
+	resp := &interfaces.QueryMetricResp{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Status: "ok", Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Dimensions: map[string]any{"warehouse": "WH-01"}, Value: 677}}}
 	events := BuildQueryMetricEvents(testTraceContext(), req, resp)
 	if len(events) != 1 {
 		t.Fatalf("metric events = %d", len(events))
 	}
 	payload := events[0]["payload"].(map[string]any)
-	if payload["metric_ref"] != "metric:kn-supply:available_inventory" || payload["complete"] != true || payload["row_count"] != 1 {
+	if payload["metric_ref"] != "metric:kn-supply:available_inventory:v2" || payload["complete"] != true || payload["row_count"] != 1 {
 		t.Fatalf("metric identity/completeness lost: %#v", payload)
 	}
 	rows, ok := payload["rows"].([]map[string]any)
-	if !ok || len(rows) != 1 || rows[0]["value"] != 677 || rows[0]["dimensions"].(map[string]string)["warehouse"] != "WH-01" {
+	if !ok || len(rows) != 1 || rows[0]["value"] != 677 || rows[0]["dimensions"].(map[string]any)["warehouse"] != "WH-01" {
 		t.Fatalf("metric rows lost: %#v", payload["rows"])
 	}
 	if payload["conditions"] == nil {

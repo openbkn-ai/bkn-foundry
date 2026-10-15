@@ -6,6 +6,7 @@
 package bkn
 
 import (
+	"encoding/json"
 	"reflect"
 	"sort"
 )
@@ -337,10 +338,13 @@ func collectDefinitions(net *BknNetwork) []definitionRef {
 			defs = append(defs, definitionRef{"concept_group", item.ID, item.Name, *item})
 		}
 	}
-	for _, item := range net.Metrics {
-		if item != nil {
-			defs = append(defs, definitionRef{"metric", item.ID, item.Name, *item})
+	for _, item := range net.ObjectMetrics {
+		id, version, name, _ := objectMetricArchiveMetadata(item)
+		var value any
+		if err := json.Unmarshal(item, &value); err != nil {
+			value = item
 		}
+		defs = append(defs, definitionRef{"object_metric_v1", objectMetricArchiveFileName(id, version), name, value})
 	}
 	return defs
 }

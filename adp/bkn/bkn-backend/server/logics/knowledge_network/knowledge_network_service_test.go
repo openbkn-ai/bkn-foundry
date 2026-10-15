@@ -31,6 +31,16 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
 )
 
+type objectMetricIDsAccessStub struct {
+	interfaces.ObjectMetricAccessV1
+	ids []string
+	err error
+}
+
+func (stub *objectMetricIDsAccessStub) ListObjectMetricIDs(context.Context, interfaces.ObjectMetricListQueryV1) ([]string, error) {
+	return stub.ids, stub.err
+}
+
 func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	kna := bmock.NewMockKNAccess(ctrl)
@@ -530,7 +540,10 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		rtA := bmock.NewMockRiskTypeAccess(mockCtrl)
-		ma := bmock.NewMockMetricAccess(mockCtrl)
+		access := &objectMetricIDsAccessStub{ids: []string{"m1", "m2", "m3", "m4", "m5", "m6", "m7"}}
+		previousAccess := rootlogics.OMA
+		rootlogics.OMA = access
+		defer func() { rootlogics.OMA = previousAccess }()
 		cba := bmock.NewMockCapabilityBindingAccess(mockCtrl)
 		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
 
@@ -541,7 +554,6 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			ata:        ata,
 			cga:        cga,
 			riskTypeA:  rtA,
-			ma:         ma,
 			cba:        cba,
 			cbs:        cbs,
 		}
@@ -557,7 +569,6 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
 			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(4, nil)
-			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(7, nil)
 			// The counts come from the service now: it splits function bindings into functions
 			// and APIs, which needs the owning tool box's kind.
 			cbs.EXPECT().GetCapabilityTotalsByType(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
@@ -676,7 +687,8 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
 			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(4, nil)
-			ma.EXPECT().GetMetricsTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			access.err = rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
+			defer func() { access.err = nil }()
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -1095,7 +1107,6 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			ots := bmock.NewMockObjectTypeService(mockCtrl)
 			rts := bmock.NewMockRelationTypeService(mockCtrl)
 			ats := bmock.NewMockActionTypeService(mockCtrl)
-			ms := bmock.NewMockMetricService(mockCtrl)
 
 			service := &knowledgeNetworkService{
 				appSetting: appSetting,
@@ -1106,7 +1117,6 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 				ots:        ots,
 				rts:        rts,
 				ats:        ats,
-				ms:         ms,
 			}
 
 			kna.EXPECT().GetKNByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(kn, nil)
@@ -1121,10 +1131,6 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, 0, nil)
 			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
 			ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, 0, nil)
-			ms.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(&interfaces.MetricsList{
-				Entries: []*interfaces.MetricDefinition{},
-			}, nil)
-
 			result, err := service.GetKNByID(ctx, knID, branch, mode)
 			So(err, ShouldBeNil)
 			So(result, ShouldNotBeNil)
@@ -1448,9 +1454,8 @@ func Test_knowledgeNetworkService_ExportKNForProjectionDoesNotUseUserServices(t 
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
-		ma := bmock.NewMockMetricAccess(mockCtrl)
 		service := &knowledgeNetworkService{
-			kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, ma: ma,
+			kna: kna, cga: cga, ota: ota, rta: rta, ata: ata,
 		}
 
 		kn := &interfaces.KN{KNID: "kn-allowed", KNName: "Allowed", Branch: interfaces.MAIN_BRANCH}
@@ -1459,7 +1464,6 @@ func Test_knowledgeNetworkService_ExportKNForProjectionDoesNotUseUserServices(t 
 		ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return([]*interfaces.ObjectType{}, nil)
 		rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, nil)
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, nil)
-		ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return([]*interfaces.MetricDefinition{}, nil)
 
 		result, err := service.ExportKNForProjection(ctx, "kn-allowed")
 		So(err, ShouldBeNil)
@@ -1761,7 +1765,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		rts := bmock.NewMockRelationTypeService(mockCtrl)
 		ats := bmock.NewMockActionTypeService(mockCtrl)
-		ms := bmock.NewMockMetricService(mockCtrl)
 		riskTypeS := bmock.NewMockRiskTypeService(mockCtrl)
 		cgs := bmock.NewMockConceptGroupService(mockCtrl)
 		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
@@ -1776,7 +1779,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ots:        ots,
 			rts:        rts,
 			ats:        ats,
-			ms:         ms,
 			riskTypeS:  riskTypeS,
 			cgs:        cgs,
 			cbs:        cbs,
@@ -1796,7 +1798,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// Deleting a network must clear its capability bindings: a knowledge network ID can
@@ -1908,7 +1909,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
@@ -1930,7 +1930,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// Deleting a network must clear its capability bindings: a knowledge network ID can
@@ -1957,7 +1956,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// Deleting a network must clear its capability bindings: a knowledge network ID can
@@ -1985,7 +1983,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// Deleting a network must clear its capability bindings: a knowledge network ID can
@@ -2014,7 +2011,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -2616,7 +2612,6 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 			rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 			ata := bmock.NewMockActionTypeAccess(mockCtrl)
-			ma := bmock.NewMockMetricAccess(mockCtrl)
 
 			service := &knowledgeNetworkService{
 				appSetting: appSetting,
@@ -2632,7 +2627,6 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				ota:        ota,
 				rta:        rta,
 				ata:        ata,
-				ma:         ma,
 			}
 
 			smock.ExpectBegin()
@@ -2647,7 +2641,6 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(nil, nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
 			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
-			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
 			cgs.EXPECT().ValidateConceptGroups(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
 				kn.ConceptGroups, true, gomock.Any(), interfaces.ImportMode_Overwrite).Return(nil)
 			kna2.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -2689,10 +2682,9 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 			rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 			ata := bmock.NewMockActionTypeAccess(mockCtrl)
-			ma := bmock.NewMockMetricAccess(mockCtrl)
 			serviceWithSnapshot := &knowledgeNetworkService{
 				appSetting: appSetting, kna: kna, ps: ps, vbs: vbs, db: db,
-				cga: cga, ota: ota, rta: rta, ata: ata, ma: ma,
+				cga: cga, ota: ota, rta: rta, ata: ata,
 			}
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
@@ -2703,7 +2695,6 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			ota.EXPECT().ListObjectTypes(gomock.Any(), nil, gomock.Any()).Return(nil, nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
 			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, nil)
-			ma.EXPECT().ListMetrics(gomock.Any(), gomock.Any()).Return(nil, nil)
 			smock.ExpectBegin()
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).
@@ -3172,53 +3163,6 @@ func Test_knowledgeNetworkService_ValidateKN_strictMode_propagation(t *testing.T
 		ats.EXPECT().ValidateActionTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, kn.ActionTypes, false, gomock.Any(), gomock.Any()).Return(nil)
 
 		err := service.ValidateKN(ctx, kn, false, interfaces.ImportMode_Normal)
-		So(err, ShouldBeNil)
-	})
-}
-
-func Test_knowledgeNetworkService_ValidateKN_metricsBatchPreflight(t *testing.T) {
-	Convey("ValidateKN passes BatchIDIndex into ValidateMetrics for payload OT lookup\n", t, func() {
-		ctx := context.Background()
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-
-		appSetting := &common.AppSetting{}
-		kna := bmock.NewMockKNAccess(mockCtrl)
-		ots := bmock.NewMockObjectTypeService(mockCtrl)
-		ms := bmock.NewMockMetricService(mockCtrl)
-
-		kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
-		kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
-
-		service := &knowledgeNetworkService{
-			appSetting: appSetting,
-			kna:        kna,
-			ots:        ots,
-			ms:         ms,
-		}
-
-		kn := &interfaces.KN{
-			KNID:   "kn1",
-			Branch: interfaces.MAIN_BRANCH,
-			ObjectTypes: []*interfaces.ObjectType{
-				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "pod", OTName: "Pod"}},
-			},
-			Metrics: []*interfaces.MetricDefinition{
-				{ID: "m1", ScopeRef: "pod"},
-			},
-		}
-
-		ots.EXPECT().ValidateObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, kn.ObjectTypes, true, gomock.Any(), gomock.Any()).Return(nil)
-
-		ms.EXPECT().ValidateMetrics(gomock.Any(), kn.Metrics, true, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, entries []*interfaces.MetricDefinition, sm bool, mode string, batch *interfaces.BatchIDIndex) error {
-				if batch == nil || batch.ObjectTypes["pod"] == nil {
-					return fmt.Errorf("expected batch to declare pod object type")
-				}
-				return nil
-			})
-
-		err := service.ValidateKN(ctx, kn, true, interfaces.ImportMode_Normal)
 		So(err, ShouldBeNil)
 	})
 }

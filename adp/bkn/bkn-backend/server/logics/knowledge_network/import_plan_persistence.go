@@ -5,6 +5,7 @@ package knowledge_network
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -36,7 +37,7 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 		attr.Int("relation_type_count", len(plan.RelationTypes)),
 		attr.Int("action_type_count", len(plan.ActionTypes)),
 		attr.Int("risk_type_count", len(plan.RiskTypes)),
-		attr.Int("metric_count", len(plan.Metrics)),
+		attr.Int("object_metric_version_count", len(plan.ObjectMetrics)),
 	)
 	if len(plan.ConceptGroups) > 0 {
 		if _, err := kns.cgs.CreateConceptGroups(ctx, tx, plan.ConceptGroups, mode, strictMode); err != nil {
@@ -78,10 +79,38 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
-	if len(plan.Metrics) > 0 {
-		if _, err = kns.ms.CreateMetrics(ctx, tx, plan.Metrics, strictMode, mode); err != nil {
-			logger.Errorf("CreateMetrics error: %s", err.Error())
-			return err
+	if plan.ObjectMetrics != nil && (len(plan.ObjectMetrics) > 0 || logics.OMA != nil) {
+		archive, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1)
+		if !ok {
+			return rest.NewHTTPError(ctx, http.StatusNotImplemented,
+				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+				WithErrorDetails("object metric V1 archive access is unavailable")
+		}
+		if err := archive.ImportObjectMetricArchive(ctx, tx, plan.KNID, plan.Branch, plan.ObjectMetrics); err != nil {
+			logger.Errorf("Import object metric V1 archive failed: %v", err)
+			if errors.Is(err, interfaces.ErrObjectMetricArchiveConflict) {
+				return rest.NewHTTPError(ctx, http.StatusConflict,
+					berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails(err.Error())
+			}
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_KnowledgeNetwork_InternalError).
+				WithErrorDetails("object metric V1 archive import failed")
+		}
+		if len(plan.ObjectMetrics) > 0 {
+			ids := make(map[string]struct{}, len(plan.ObjectMetrics))
+			for _, record := range plan.ObjectMetrics {
+				ids[record.Definition.ID] = struct{}{}
+			}
+			metricIDs := make([]string, 0, len(ids))
+			for id := range ids {
+				metricIDs = append(metricIDs, id)
+			}
+			if err := kns.ps.UpsertResourceParents(ctx, interfaces.RESOURCE_TYPE_METRIC,
+				interfaces.RESOURCE_TYPE_KN, interfaces.KNChildResourceParents(plan.KNID, metricIDs)); err != nil {
+				return err
+			}
+			permission.TrackResourceParents(ctx, interfaces.RESOURCE_TYPE_METRIC,
+				interfaces.RESOURCE_TYPE_KN, interfaces.KNChildResourceParents(plan.KNID, metricIDs))
 		}
 	}
 	if err = kns.restoreImportGroupMembers(ctx, tx, plan, mode, validGroups, plan.validObjects); err != nil {

@@ -43,10 +43,10 @@ Query routing:
 
 Metrics, object type first. Never re-derive a modelled metric yourself — its formula lives in the metric definition:
 1. Recall the object type with search_schema or get_kn_detail. In the get_kn_detail summary, only object types with related_metric_count > 0 have metrics.
-2. Call get_object_types(ids) to see what that object type offers: logic_properties with data_source.type=metric are the instance-level ones; related_metrics lists every metric scoped to the object type, including those not bound to any logic property.
+2. Call get_object_types(ids) to see what that object type offers: logic_properties with data_source.type=metric are the instance-level ones; related_metrics lists the published Object Metrics V1 definitions owned by the object type, including their pinned versions.
 3. Compute the one you picked:
    - instance level, bound to a logic property: get_logic_properties_values
-   - class level, or not bound to a logic property: query_metric with the metric_id, plus optional condition / analysis_dimensions / time
+   - class level, or not bound to a logic property: query_metric with metric_id and version from related_metrics; optional query fields follow that version's query capabilities
    - only when nothing is modelled as a metric: compute it with run_cypher over the object and relation types
 
 Tips:

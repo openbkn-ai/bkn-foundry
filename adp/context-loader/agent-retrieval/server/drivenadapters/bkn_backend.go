@@ -635,56 +635,128 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 	return actionTypes, nil
 }
 
-// SearchMetricTypes searches metric types.
+// SearchMetricTypes searches published object-metric definitions. The old
+// concept-index endpoint was retired with legacy metrics, so recall uses the
+// versioned registry's caller-filtered catalogue.
 func (b *bknBackendAccess) SearchMetricTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (metricTypes *interfaces.MetricTypeConcepts, err error) {
-	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/metrics", b.baseURL, url.PathEscape(query.KnID))
-	header := common.GetHeaderForChildOperation(ctx, "bkn.metric.search", 1)
-	header[rest.ContentTypeKey] = rest.ContentTypeJSON
-	header["x-http-method-override"] = "GET"
-	respCode, respBody, err := b.httpClient.PostNoUnmarshal(ctx, src, header, query)
-
-	metricTypes = &interfaces.MetricTypeConcepts{}
-	if err != nil {
-		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] SearchMetricTypes request failed, err: %v", err)
-		return metricTypes, infraErr.DefaultHTTPError(ctx, respCode,
-			fmt.Sprintf("[BknBackendAccess] SearchMetricTypes request failed, err: %v", err))
-	}
-
-	if respCode == http.StatusNotFound && len(respBody) == 0 {
-		b.logger.WithContext(ctx).Warnf("[BknBackendAccess] request not found, [%s]", src)
-		return metricTypes, infraErr.DefaultHTTPError(ctx, respCode,
-			fmt.Sprintf("[BknBackendAccess] request not found, [%s]", src))
-	}
-
-	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
-		b.logger.Errorf("[BknBackendAccess] SearchMetricTypes get resp failed, [%s], %v\n", src, respBody)
-
-		var baseError interfaces.KnBaseError
-		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
-			return nil, err
-		}
-
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
-	}
-
-	if len(respBody) == 0 {
+	metricTypes = &interfaces.MetricTypeConcepts{Entries: []*interfaces.MetricType{}}
+	if query == nil || strings.TrimSpace(query.KnID) == "" {
 		return metricTypes, nil
 	}
-
-	if err := sonic.Unmarshal(respBody, metricTypes); err != nil {
-		b.logger.Errorf("[BknBackendAccess] SearchMetricTypes unmarshal metricTypes failed: %v\n", err)
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-metrics", b.baseURL, url.PathEscape(query.KnID))
+	header := common.GetHeaderForChildOperation(ctx, "bkn.object_metric.list", 1)
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+	entries, err := b.listMetricsPage(ctx, src, header, query.KnID)
+	if err != nil {
 		return nil, err
 	}
-
+	var groupObjectIDs map[string]struct{}
+	if len(query.ConceptGroups) > 0 {
+		groupObjectIDs, err = b.metricGroupObjectIDs(ctx, query.KnID, query.ConceptGroups)
+		if err != nil {
+			return nil, err
+		}
+	}
+	term, scopeRefs := metricSearchCriteria(query.Cond)
+	term = strings.TrimSpace(term)
+	for _, entry := range entries {
+		definition := entry.Definition
+		if definition.Lifecycle.Status != "published" || definition.Version < 1 {
+			continue
+		}
+		if groupObjectIDs != nil {
+			if _, ok := groupObjectIDs[definition.OwnerObjectTypeID]; !ok {
+				continue
+			}
+		}
+		if len(scopeRefs) > 0 {
+			if _, ok := scopeRefs[definition.OwnerObjectTypeID]; !ok {
+				continue
+			}
+		} else if term != "" && !metricTextMatches(definition.Name+" "+definition.Description+" "+definition.Code+" "+definition.ID, term) {
+			continue
+		}
+		metric := &interfaces.MetricType{
+			ID: definition.ID, Version: definition.Version, Name: definition.Name,
+			Comment: definition.Description, MetricType: definition.MetricType,
+			ScopeType: "object_type", ScopeRef: definition.OwnerObjectTypeID,
+		}
+		if unit := definition.ResultSemantics.Value.Unit; unit != nil {
+			metric.Unit, metric.UnitType = unit.Code, unit.QuantityKind
+		}
+		metricTypes.Entries = append(metricTypes.Entries, metric)
+	}
+	metricTypes.TotalCount = int64(len(metricTypes.Entries))
+	if query.Limit > 0 && len(metricTypes.Entries) > query.Limit {
+		metricTypes.Entries = metricTypes.Entries[:query.Limit]
+	}
 	return metricTypes, nil
+}
+
+func metricTextMatches(text, query string) bool {
+	normalize := strings.NewReplacer("_", " ", "-", " ")
+	text = strings.ToLower(normalize.Replace(text))
+	query = strings.ToLower(normalize.Replace(query))
+	for _, term := range strings.Fields(query) {
+		if !strings.Contains(text, term) {
+			return false
+		}
+	}
+	return true
+}
+
+func (b *bknBackendAccess) metricGroupObjectIDs(ctx context.Context, knID string, requested []string) (map[string]struct{}, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/concept-groups", b.baseURL, url.PathEscape(knID))
+	query := url.Values{}
+	query.Set("limit", "-1")
+	groups := &knListEnvelope[*interfaces.ConceptGroup]{}
+	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.concept_group.list", query, groups); err != nil {
+		return nil, err
+	}
+	wanted := make(map[string]struct{}, len(requested))
+	for _, id := range requested {
+		wanted[id] = struct{}{}
+	}
+	objectIDs := make(map[string]struct{})
+	for _, group := range groups.Entries {
+		if group == nil {
+			continue
+		}
+		if _, ok := wanted[group.ID]; !ok {
+			continue
+		}
+		for _, id := range group.ObjectTypeIDs {
+			objectIDs[id] = struct{}{}
+		}
+	}
+	return objectIDs, nil
+}
+
+func metricSearchCriteria(condition *interfaces.KnCondition) (string, map[string]struct{}) {
+	refs := make(map[string]struct{})
+	var term string
+	var walk func(*interfaces.KnCondition)
+	walk = func(cond *interfaces.KnCondition) {
+		if cond == nil {
+			return
+		}
+		if cond.Field == "scope_ref" && cond.Operation == interfaces.KnOperationTypeIn {
+			if ids, ok := cond.Value.([]string); ok {
+				for _, id := range ids {
+					refs[id] = struct{}{}
+				}
+			}
+		} else if term == "" && cond.Field == "*" {
+			if value, ok := cond.Value.(string); ok {
+				term = value
+			}
+		}
+		for _, child := range cond.SubConditions {
+			walk(child)
+		}
+	}
+	walk(condition)
+	return term, refs
 }
 
 // GetActionTypeDetail gets action type details.
@@ -746,25 +818,43 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 	return response.Entries, nil
 }
 
-// metricsListEntry is one entry of the bkn-backend GET .../metrics response.
+// metricsListEntry is one entry of the bkn-backend Object Metrics V1 list.
 type metricsListEntry struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Comment       string `json:"comment"`
-	Unit          string `json:"unit"`
-	UnitType      string `json:"unit_type"`
-	MetricType    string `json:"metric_type"`
-	ScopeType     string `json:"scope_type"`
-	ScopeRef      string `json:"scope_ref"`
-	TimeDimension *struct {
-		Property string `json:"property"`
-	} `json:"time_dimension"`
-	AnalysisDimensions []struct {
-		Name string `json:"name"`
-	} `json:"analysis_dimensions"`
+	Definition struct {
+		ID                string `json:"id"`
+		Code              string `json:"code"`
+		Version           int    `json:"version"`
+		Name              string `json:"name"`
+		Description       string `json:"description"`
+		MetricType        string `json:"metric_type"`
+		OwnerObjectTypeID string `json:"owner_object_type_id"`
+		ResultSemantics   struct {
+			Value struct {
+				Unit *struct {
+					Code         string `json:"code"`
+					QuantityKind string `json:"quantity_kind"`
+				} `json:"unit"`
+			} `json:"value"`
+		} `json:"result_semantics"`
+		QueryCapabilities struct {
+			AnalysisDimensions []struct {
+				ObjectTypeID      string `json:"object_type_id"`
+				PropertyName      string `json:"property_name"`
+				RelationPathAlias string `json:"relation_path_alias"`
+			} `json:"analysis_dimensions"`
+			TimeDimensions []struct {
+				ObjectTypeID      string `json:"object_type_id"`
+				PropertyName      string `json:"property_name"`
+				RelationPathAlias string `json:"relation_path_alias"`
+			} `json:"time_dimensions"`
+		} `json:"query_capabilities"`
+		Lifecycle struct {
+			Status string `json:"status"`
+		} `json:"lifecycle"`
+	} `json:"definition"`
 }
 
-// metricsListResp is the bkn-backend GET .../metrics response.
+// metricsListResp is the bkn-backend GET .../object-metrics response.
 type metricsListResp struct {
 	Entries    []metricsListEntry `json:"entries"`
 	TotalCount int64              `json:"total_count"`
@@ -772,15 +862,10 @@ type metricsListResp struct {
 
 const (
 	// metricsPageSize is one request's worth of metrics; bkn-backend's own MAX_LIMIT.
-	metricsPageSize = 1000
+	metricsPageSize = 500
 	// maxScopedMetrics bounds the paged walk of one batch. It is a runaway guard for
 	// a knowledge network with an absurd metric count, not the expected ceiling.
 	maxScopedMetrics = 10000
-	// metricsScopeBatch caps how many object-type ids go into one scope_ref value.
-	// get_kn_detail asks about every object type of a network, and those ids are
-	// comma-joined into the query string — a few hundred of them make a request
-	// line large enough to hit a proxy's header buffer (commonly 8 KB).
-	metricsScopeBatch = 100
 )
 
 // ListMetricsPage fetches one batch of metrics for object types, paginates until all are fetched.
@@ -788,13 +873,12 @@ const (
 // Paging instead of truncation: The truncated answer is exactly the same as "This object type has no pointer" in the eyes of the caller.
 // And that is what pushes the Agent back to the run_sql state - the reason for this link's existence is to destroy it.
 func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, header map[string]string,
-	scopeRefs []string, knID string) ([]metricsListEntry, error) {
+	knID string) ([]metricsListEntry, error) {
 	entries := make([]metricsListEntry, 0, metricsPageSize)
 	var total int64
 	for offset := 0; offset < maxScopedMetrics; offset += metricsPageSize {
 		queryValues := url.Values{}
-		queryValues.Set("scope_type", "object_type")
-		queryValues.Set("scope_ref", strings.Join(scopeRefs, ","))
+		queryValues.Set("status", "published")
 		queryValues.Set("limit", strconv.Itoa(metricsPageSize))
 		queryValues.Set("offset", strconv.Itoa(offset))
 
@@ -839,20 +923,16 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 		}
 	}
 
-	// The hard cap is a runaway guard, not a page size. If it ever bites, the
-	// answer is incomplete and has to say so out loud.
+	// A partial catalogue would hide metrics from callers. Fail instead of
+	// advertising an incomplete set as if it were authoritative.
 	if total > int64(len(entries)) {
-		b.logger.WithContext(ctx).Warnf(
-			"[BknBackendAccess] ListMetricsByObjectTypes stopped at %d of %d metrics for kn=%s (%d object types); "+
-				"object types beyond the cap are advertised without their metrics",
-			len(entries), total, knID, len(scopeRefs))
+		return nil, fmt.Errorf("object metric catalogue incomplete for kn=%s: fetched %d of %d", knID, len(entries), total)
 	}
 	return entries, nil
 }
 
-// ListMetricsByObjectTypes enumerates metrics attached to the given object types (scope_type=object_type).
-// Use bkn-backend metric registry (GET .../metrics), not concept index semantic recall: object types must be "visible".
-// Your own metrics must be full and consistent with the library.
+// ListMetricsByObjectTypes enumerates published V1 object metrics visible to the
+// caller and returns only definitions owned by the requested object types.
 func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
 	scopeRefs := make([]string, 0, len(otIDs))
 	seen := make(map[string]struct{}, len(otIDs))
@@ -871,50 +951,44 @@ func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID st
 		return nil, nil
 	}
 
-	// knID is escaped for the same reason metric_id is on the ontology-query side:
-	// the shared HTTP client folds any query string parsed out of the raw URL back
-	// over the caller's values (comm-go/rest generateURL), so an id carrying "?"
-	// would override the scope_type this call depends on.
-	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/metrics", b.baseURL, url.PathEscape(knID))
-	header := common.GetHeaderForChildOperation(ctx, "bkn.metric.list", 1)
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-metrics", b.baseURL, url.PathEscape(knID))
+	header := common.GetHeaderForChildOperation(ctx, "bkn.object_metric.list", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
-	// Batch the ids rather than sending all of them at once: get_kn_detail asks for
-	// every object type of the network, and a few hundred ids comma-joined make a
-	// request line big enough to trip a proxy's header buffer.
-	entries := make([]metricsListEntry, 0, metricsPageSize)
-	for start := 0; start < len(scopeRefs); start += metricsScopeBatch {
-		end := min(start+metricsScopeBatch, len(scopeRefs))
-		batch, err := b.listMetricsPage(ctx, src, header, scopeRefs[start:end], knID)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, batch...)
+	entries, err := b.listMetricsPage(ctx, src, header, knID)
+	if err != nil {
+		return nil, err
 	}
 
 	metrics := make([]*interfaces.RelatedMetric, 0, len(entries))
 	for _, e := range entries {
-		// bkn-backend applies the scope filter, but an older backend that ignores the
-		// query parameter would otherwise hand every metric of the network to every
-		// object type. Cheap to re-check, and wrong-by-default if we do not.
-		if _, ok := seen[e.ScopeRef]; !ok {
+		definition := e.Definition
+		if definition.Lifecycle.Status != "published" || definition.Version < 1 {
+			continue
+		}
+		if _, ok := seen[definition.OwnerObjectTypeID]; !ok {
 			continue
 		}
 		metric := &interfaces.RelatedMetric{
-			ID:         e.ID,
-			Name:       e.Name,
-			Comment:    e.Comment,
-			MetricType: e.MetricType,
-			Unit:       e.Unit,
-			UnitType:   e.UnitType,
-			ScopeRef:   e.ScopeRef,
+			ID:                definition.ID,
+			Version:           definition.Version,
+			Name:              definition.Name,
+			Comment:           definition.Description,
+			MetricType:        definition.MetricType,
+			OwnerObjectTypeID: definition.OwnerObjectTypeID,
 		}
-		if e.TimeDimension != nil {
-			metric.TimeDimension = e.TimeDimension.Property
+		if unit := definition.ResultSemantics.Value.Unit; unit != nil {
+			metric.Unit = unit.Code
+			metric.UnitType = unit.QuantityKind
 		}
-		for _, d := range e.AnalysisDimensions {
-			if strings.TrimSpace(d.Name) != "" {
-				metric.AnalysisDimensions = append(metric.AnalysisDimensions, d.Name)
+		for _, d := range definition.QueryCapabilities.AnalysisDimensions {
+			if d.ObjectTypeID != "" && d.PropertyName != "" {
+				metric.AnalysisDimensions = append(metric.AnalysisDimensions, interfaces.ObjectMetricPropertyRef{ObjectTypeID: d.ObjectTypeID, PropertyName: d.PropertyName, RelationPathAlias: d.RelationPathAlias})
+			}
+		}
+		for _, d := range definition.QueryCapabilities.TimeDimensions {
+			if d.ObjectTypeID != "" && d.PropertyName != "" {
+				metric.TimeDimensions = append(metric.TimeDimensions, interfaces.ObjectMetricPropertyRef{ObjectTypeID: d.ObjectTypeID, PropertyName: d.PropertyName, RelationPathAlias: d.RelationPathAlias})
 			}
 		}
 		metrics = append(metrics, metric)

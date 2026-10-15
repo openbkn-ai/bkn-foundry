@@ -46,6 +46,11 @@ func allExampleDirs(t *testing.T) []string {
 	return dirs
 }
 
+func hasLegacyMetrics(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, "metrics"))
+	return err == nil && info.IsDir()
+}
+
 // tempDir creates a temporary directory that is removed when the test ends.
 func tempDir(t *testing.T) string {
 	t.Helper()
@@ -122,6 +127,7 @@ func compareDirs(t *testing.T, srcDir, dstDir string) {
 		"object_types",
 		"relation_types",
 		"risk_types",
+		"object_metrics",
 	}
 
 	for _, target := range targets {
@@ -156,13 +162,17 @@ func TestLoadFromFile(t *testing.T) {
 	for _, dir := range allExampleDirs(t) {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			doc, err := bkn.LoadNetwork(dir)
+			if hasLegacyMetrics(dir) {
+				require.ErrorContains(t, err, "legacy metrics")
+				return
+			}
 			require.NoError(t, err, "LoadNetwork failed")
 
 			assert.NotEmpty(t, doc.ID, "network id must not be empty")
 			assert.NotEmpty(t, doc.Name, "network name must not be empty")
 
 			total := len(doc.ObjectTypes) + len(doc.RelationTypes) + len(doc.ActionTypes) +
-				len(doc.RiskTypes) + len(doc.ConceptGroups) + len(doc.Metrics)
+				len(doc.RiskTypes) + len(doc.ConceptGroups) + len(doc.ObjectMetrics)
 			assert.Greater(t, total, 0, "expected at least one entity")
 		})
 	}
@@ -175,6 +185,10 @@ func TestLoadFromTar(t *testing.T) {
 	for _, dir := range allExampleDirs(t) {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			tarDoc, err := bkn.LoadNetworkFromTar(buildTarFromDir(t, dir))
+			if hasLegacyMetrics(dir) {
+				require.ErrorContains(t, err, "legacy metrics")
+				return
+			}
 			require.NoError(t, err, "load from tar")
 
 			fileDoc, err := bkn.LoadNetwork(dir)
@@ -186,7 +200,7 @@ func TestLoadFromTar(t *testing.T) {
 			assert.Equal(t, len(fileDoc.ActionTypes), len(tarDoc.ActionTypes), "action count mismatch")
 			assert.Equal(t, len(fileDoc.RiskTypes), len(tarDoc.RiskTypes), "risk type count mismatch")
 			assert.Equal(t, len(fileDoc.ConceptGroups), len(tarDoc.ConceptGroups), "concept group count mismatch")
-			assert.Equal(t, len(fileDoc.Metrics), len(tarDoc.Metrics), "metric count mismatch")
+			assert.Equal(t, len(fileDoc.ObjectMetrics), len(tarDoc.ObjectMetrics), "object metric count mismatch")
 		})
 	}
 }
@@ -207,6 +221,10 @@ func TestRoundTrip_FileContent(t *testing.T) {
 			require.NoError(t, err, "open tar file")
 			doc, err := bkn.LoadNetworkFromTar(f)
 			_ = f.Close()
+			if hasLegacyMetrics(dir) {
+				require.ErrorContains(t, err, "legacy metrics")
+				return
+			}
 			require.NoError(t, err, "LoadNetworkFromTar failed")
 
 			// Step 3: export the model back to a tar.
@@ -249,7 +267,7 @@ version: "1.0"
 	assert.Empty(t, doc.ActionTypes)
 	assert.Empty(t, doc.RiskTypes)
 	assert.Empty(t, doc.ConceptGroups)
-	assert.Empty(t, doc.Metrics)
+	assert.Empty(t, doc.ObjectMetrics)
 }
 
 // TestCircularInclude covers circular-include detection.

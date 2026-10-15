@@ -112,33 +112,6 @@ func (s *queryAuthorizationService) AuthorizeActionTypeQuery(ctx context.Context
 	return s.require(ctx, resources)
 }
 
-func (s *queryAuthorizationService) AuthorizeMetricQuery(ctx context.Context,
-	knID, branch, metricID string) error {
-	if err := validateQueryIdentity(ctx, knID, branch, metricID); err != nil {
-		return err
-	}
-	if s == nil || s.models == nil {
-		return dependencyResolutionFailed(ctx, fmt.Errorf("ontology model access is not configured"))
-	}
-	definition, exists, err := s.models.GetMetricDefinition(ctx, knID, interfaces.MAIN_BRANCH, metricID)
-	if err != nil {
-		return dependencyResolutionFailed(ctx, err)
-	}
-	if !exists || definition == nil {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_Metric_NotFound)
-	}
-	if definition.ID != "" && definition.ID != metricID {
-		return dependencyResolutionFailed(ctx, fmt.Errorf("published metric id does not match the requested metric"))
-	}
-	if err := validateMetricScope(ctx, knID, definition); err != nil {
-		return err
-	}
-	resources := []interfaces.PermissionResource{
-		interfaces.KNChildPermissionResource(interfaces.PermissionResourceTypeMetric, knID, metricID),
-	}
-	return s.require(ctx, resources)
-}
-
 // AuthorizeObjectMetricQuery checks the V1 metric resource directly. The
 // immutable object-metric definition is resolved by bkn-backend's execution
 // context endpoint, so consulting the legacy metric catalog here would reject
@@ -405,30 +378,6 @@ func objectMetricRefResource(ctx context.Context, knID string,
 		return interfaces.PermissionResource{}, invalidQuery(ctx, "object metric reference version must be positive")
 	}
 	return interfaces.KNChildPermissionResource(interfaces.PermissionResourceTypeMetric, knID, ref.MetricID), nil
-}
-
-func (s *queryAuthorizationService) AuthorizeMetricDryRun(ctx context.Context,
-	knID, branch string, definition *interfaces.MetricDefinition) error {
-	if err := validateQueryIdentity(ctx, knID, branch, "dry-run"); err != nil {
-		return err
-	}
-	if err := validateMetricScope(ctx, knID, definition); err != nil {
-		return err
-	}
-	objectType, err := s.loadObjectType(ctx, knID, definition.ScopeRef)
-	if err != nil {
-		return err
-	}
-	// A dry-run definition is caller-supplied and has no persisted metric
-	// resource of its own, so #459 requires the containing KN as its root gate.
-	resources := []interfaces.PermissionResource{
-		{Type: interfaces.PermissionResourceTypeKnowledgeNetwork, ID: knID},
-	}
-	dependencies, err := objectTypeResources(ctx, knID, objectType)
-	if err != nil {
-		return err
-	}
-	return s.require(ctx, append(resources, dependencies...))
 }
 
 func (s *queryAuthorizationService) AuthorizeSubgraphBySource(ctx context.Context,
@@ -822,22 +771,6 @@ func uniquePermissionResources(resources []interfaces.PermissionResource) []inte
 		result = append(result, resource)
 	}
 	return result
-}
-
-func validateMetricScope(ctx context.Context, knID string, definition *interfaces.MetricDefinition) error {
-	if definition == nil {
-		return invalidQuery(ctx, "metric definition is required")
-	}
-	if definition.KnID != "" && definition.KnID != knID {
-		return invalidQuery(ctx, "metric belongs to another knowledge network")
-	}
-	if definition.Branch != "" && definition.Branch != interfaces.MAIN_BRANCH {
-		return invalidQuery(ctx, "metric is not from the published main model")
-	}
-	if definition.ScopeType != interfaces.ScopeTypeObjectType || strings.TrimSpace(definition.ScopeRef) == "" {
-		return invalidQuery(ctx, "metric must reference a published object type")
-	}
-	return nil
 }
 
 func validateQueryIdentity(ctx context.Context, knID, branch, childID string) error {

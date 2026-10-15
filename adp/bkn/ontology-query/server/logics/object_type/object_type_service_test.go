@@ -1223,7 +1223,9 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		osa := omock.NewMockOpenSearchAccess(mockCtrl)
 		vba := omock.NewMockVegaBackendAccess(mockCtrl)
-		mqs := omock.NewMockMetricQueryService(mockCtrl)
+		mqs := omock.NewMockObjectMetricQueryServiceV1(mockCtrl)
+		logics.SetObjectMetricQueryService(mqs)
+		t.Cleanup(func() { logics.SetObjectMetricQueryService(nil) })
 		mfa := omock.NewMockModelFactoryAccess(mockCtrl)
 		aoAccess := omock.NewMockAgentOperatorAccess(mockCtrl)
 		aoAccess.EXPECT().GetBoxMetadataType(gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ProxyTargetTypeToolBox, nil).AnyTimes()
@@ -1238,7 +1240,6 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			appSetting:     appSetting,
 			omAccess:       omAccess,
 			vba:            vba,
-			mqs:            mqs,
 			mfa:            mfa,
 			aoAccess:       aoAccess,
 			proxy:          &objectTypeProxyResolverStub{},
@@ -1458,7 +1459,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 								},
 							},
 							DataSource: &interfaces.ResourceInfo{
-								ID: "metric1",
+								ID: "object_metric_v1:metric1@1",
 							},
 						},
 					},
@@ -1477,7 +1478,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 						"prop1": "value1",
 						"logic_prop1": interfaces.MetricProperty{
 							PropertyType:    interfaces.LOGIC_PROPERTY_TYPE_METRIC,
-							MappingSourceId: "metric1",
+							MappingSourceId: "object_metric_v1:metric1@1",
 							Parameters: interfaces.MetricFilters{
 								Filters: []interfaces.Filter{
 									{
@@ -1493,18 +1494,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 				TotalCount: 1,
 			}, nil)
-			omAccess.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "metric1").Return(&interfaces.MetricDefinition{
-				ID:       "metric1",
-				ScopeRef: "ot1",
-			}, true, nil)
-			mqs.EXPECT().QueryMetricData(gomock.Any(), "kn1", "main", "metric1", gomock.Any()).Return(interfaces.MetricData{
-				Datas: []interfaces.Data{
-					{
-						Labels: map[string]string{"param1": "value1"},
-						Values: []interface{}{100},
-						Times:  []interface{}{1234567890},
-					},
-				},
+			mqs.EXPECT().QueryObjectMetricDataV1(gomock.Any(), "kn1", "main", "metric1", 1, gomock.Any()).Return(interfaces.ObjectMetricDataV1{
+				Entries: []interfaces.ObjectMetricDataEntryV1{{Value: 100, Status: "ok"}},
 			}, nil)
 
 			result, err := service.GetObjectPropertyValue(ctx, query)
@@ -1568,7 +1559,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 								},
 							},
 							DataSource: &interfaces.ResourceInfo{
-								ID: "metric1",
+								ID: "object_metric_v1:metric1@1",
 							},
 						},
 					},
@@ -1586,18 +1577,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 				TotalCount: 1,
 			}, nil)
-			omAccess.EXPECT().GetMetricDefinition(gomock.Any(), "kn1", "main", "metric1").Return(&interfaces.MetricDefinition{
-				ID:       "metric1",
-				ScopeRef: "ot1",
-			}, true, nil)
-			mqs.EXPECT().QueryMetricData(gomock.Any(), "kn1", "main", "metric1", gomock.Any()).Return(interfaces.MetricData{
-				Datas: []interfaces.Data{
-					{
-						Labels: map[string]string{"param1": "123"},
-						Values: []interface{}{100},
-						Times:  []interface{}{1234567890},
-					},
-				},
+			mqs.EXPECT().QueryObjectMetricDataV1(gomock.Any(), "kn1", "main", "metric1", 1, gomock.Any()).Return(interfaces.ObjectMetricDataV1{
+				Entries: []interfaces.ObjectMetricDataEntryV1{{Value: 100, Status: "ok"}},
 			}, nil)
 
 			result, err := service.GetObjectPropertyValue(ctx, query)
