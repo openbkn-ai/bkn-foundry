@@ -76,13 +76,13 @@ agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执�
 0.2.1 的首装和升级路径：
 
 - 首次安装执行 `migrations/bkn-agent/mariadb/0.2.1/init.sql`，保留原十张表和语义理解定义，并添加 Studio 智能问答及两个业务溯源 Agent。
-- 从 0.2.0 升级依次执行 `01-seed-studio-smart-qa.sql` 和 `02-seed-business-provenance.sql`，只写缺失的默认数据，不新增或修改表结构。
-- 已有固定 ID 的 Agent 保留模型、工具、限制、状态、Prompt 引用和历史。修改共享 Prompt 使用原版本管理能力；个人覆写表和旧 API 不在本次删除。
+- 升级依次执行 `01-seed-studio-smart-qa.sql`、`02-seed-business-provenance.sql` 和 `03-upgrade-business-provenance-defaults.sql`。前两条只写缺失默认数据；第三条补齐直接从旧 EE 版本升级时遗漏的官方默认修复，不新增或修改表结构。
+- 已有固定 ID 的 Agent 保留模型、工具、状态、Prompt 引用和历史。业务溯源优化 Agent 仅在原管理主体仍是最后修改者、完整 limits 等于旧默认值时，将 180 秒升级到 600 秒；仅对精确匹配 0.1.4/0.1.5 已发布默认内容、由原主体维护且无自定义变量的 Prompt 追加新版本。管理员编辑、回滚和冲突版本保留。修改共享 Prompt 使用原版本管理能力；个人覆写表和旧 API 不在本次删除。
 - 新 Agent 最后写入，兼容的未完成默认 Prompt 可在脚本重试时补全；Prompt 冲突或名称冲突报错，不接管客户配置。迁移器按语句提交，不承诺跨表事务回滚，冲突时可能保留尚未引用的默认 Prompt 行。
 
 Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留空继承平台默认，声明完整 Context Loader MCP。`runtime.contextLoaderMcpUrl` / `CONTEXT_LOADER_MCP_URL` 继续选择完整版 `/mcp/` 或紧凑版 `/mcp-compact/`。公共用户入口、网络范围及权限检查由后续迁移交付；不创建基础数据问答或图探索占位 Agent。
 
-业务溯源两个 Agent 保留原固定 ID、owner、Prompt、工具声明和限制。SQL 登记不创建 EE 管理身份，也不开放许可证控制的 EE 入口。`python -m app.bootstrap.business_provenance` 保留为现有部署脚本的兼容命令，只验证管理主体、Agent 归属及共享 Prompt，不再调用 `/import` 或覆盖管理员修改。原 JSON 文件覆盖环境变量不再支持，显式设置时会报错；共享配置改为通过管理 API 维护。旧手工导入脚本 `scripts/import-business-provenance-optimizer.sh` 一并移除。
+业务溯源两个 Agent 保留原固定 ID、owner 和工具声明，缺失时安装当前默认 Prompt/限制；旧默认值仅按上述条件修复。SQL 登记不创建 EE 管理身份，也不开放许可证控制的 EE 入口。`python -m app.bootstrap.business_provenance` 保留为现有部署脚本的兼容命令，只验证管理主体、Agent 归属及共享 Prompt，不再调用 `/import` 或覆盖管理员修改。原 JSON 文件覆盖环境变量不再支持，显式设置时会报错；共享配置改为通过管理 API 维护。旧手工导入脚本 `scripts/import-business-provenance-optimizer.sh` 一并移除。
 
 迁移脚本执行、生产配置与部署仍需 Owner 确认。本轮未连接真实数据库执行迁移。若测试环境已经运行旧版 PR 的 0.2.1 三表脚本，不自动 DROP 表或伪造迁移记录；迁移器不会重跑已安装版本的新编号脚本，应单独核对该环境的版本和脚本进度后安排补充迁移。
 
