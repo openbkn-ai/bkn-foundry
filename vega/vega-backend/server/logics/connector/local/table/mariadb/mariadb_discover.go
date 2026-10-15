@@ -43,6 +43,7 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 		"TABLE_SCHEMA",
 		"TABLE_NAME",
 		"TABLE_TYPE",
+		"AUTO_INCREMENT",
 		"ENGINE",
 		"TABLE_COLLATION",
 		"TABLE_ROWS",
@@ -81,13 +82,14 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	for rows.Next() {
 		var schemaName, tableName, tableType sql.NullString
 		var engine, collation, description sql.NullString
-		var tableRows, dataLength, indexLength sql.NullInt64
+		var autoIncrement, tableRows, dataLength, indexLength sql.NullInt64
 		var createTime, updateTime sql.NullTime
 
 		if err := rows.Scan(
 			&schemaName,
 			&tableName,
 			&tableType,
+			&autoIncrement,
 			&engine,
 			&collation,
 			&tableRows,
@@ -120,6 +122,9 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 		}
 
 		// Retain valid properties; omit NULL and negative statistics but preserve zero.
+		if autoIncrement.Valid && autoIncrement.Int64 >= 0 {
+			meta.Properties["auto_increment"] = autoIncrement.Int64
+		}
 		if engine.Valid && engine.String != "" {
 			meta.Properties["engine"] = engine.String
 		}
@@ -129,18 +134,17 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 		if tableRows.Valid && tableRows.Int64 >= 0 {
 			meta.Properties["estimated_row_count"] = tableRows.Int64
 		}
-		if dataLength.Valid && dataLength.Int64 >= 0 {
-			meta.Properties["data_length"] = dataLength.Int64
-		}
-		if indexLength.Valid && indexLength.Int64 >= 0 {
-			meta.Properties["index_length"] = indexLength.Int64
-		}
-
 		if createTime.Valid && !createTime.Time.IsZero() {
 			meta.Properties["create_time"] = createTime.Time.UnixMilli()
 		}
 		if updateTime.Valid && !updateTime.Time.IsZero() {
 			meta.Properties["update_time"] = updateTime.Time.UnixMilli()
+		}
+		if dataLength.Valid && dataLength.Int64 >= 0 {
+			meta.Properties["data_length"] = dataLength.Int64
+		}
+		if indexLength.Valid && indexLength.Int64 >= 0 {
+			meta.Properties["index_length"] = indexLength.Int64
 		}
 
 		// Derive the character set from a collation such as utf8mb4_general_ci.
@@ -186,7 +190,7 @@ func (c *MariaDBConnector) databaseAllowed(database string) bool {
 
 // GetTableMeta refreshes status, columns, indexes, and foreign keys using raw name components.
 // Scope is checked before connecting; each successful stage updates its part of table.
-func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
+func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta, refreshStatus bool) error {
 	if !c.databaseAllowed(table.Database) {
 		return fmt.Errorf("database %q is outside the connector scope", table.Database)
 	}
@@ -194,9 +198,11 @@ func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.T
 		return fmt.Errorf("failed to connect for table metadata: %w", err)
 	}
 
-	// Refresh table type, description, and optional table properties.
-	if err := c.fetchTableStatus(ctx, table); err != nil {
-		return fmt.Errorf("failed to fetch table status: %w", err)
+	// Batch callers reuse the equivalent status snapshot returned by ListTables.
+	if refreshStatus {
+		if err := c.fetchTableStatus(ctx, table); err != nil {
+			return fmt.Errorf("failed to fetch table status: %w", err)
+		}
 	}
 
 	// Read ordered columns and primary key names.
@@ -271,6 +277,9 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 
 	// Replace properties with the current snapshot so obsolete values are removed.
 	properties := make(map[string]any)
+	if autoIncrement.Valid && autoIncrement.Int64 >= 0 {
+		properties["auto_increment"] = autoIncrement.Int64
+	}
 	if engine.Valid && engine.String != "" {
 		properties["engine"] = engine.String
 	}
@@ -280,20 +289,17 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 	if tableRows.Valid && tableRows.Int64 >= 0 {
 		properties["estimated_row_count"] = tableRows.Int64
 	}
-	if dataLength.Valid && dataLength.Int64 >= 0 {
-		properties["data_length"] = dataLength.Int64
-	}
-	if indexLength.Valid && indexLength.Int64 >= 0 {
-		properties["index_length"] = indexLength.Int64
-	}
-	if autoIncrement.Valid && autoIncrement.Int64 >= 0 {
-		properties["auto_increment"] = autoIncrement.Int64
-	}
 	if createTime.Valid && !createTime.Time.IsZero() {
 		properties["create_time"] = createTime.Time.UnixMilli()
 	}
 	if updateTime.Valid && !updateTime.Time.IsZero() {
 		properties["update_time"] = updateTime.Time.UnixMilli()
+	}
+	if dataLength.Valid && dataLength.Int64 >= 0 {
+		properties["data_length"] = dataLength.Int64
+	}
+	if indexLength.Valid && indexLength.Int64 >= 0 {
+		properties["index_length"] = indexLength.Int64
 	}
 	// Derive the character set from a collation such as utf8mb4_general_ci.
 	if coll := collation.String; coll != "" {

@@ -281,7 +281,7 @@ func (c *PostgresqlConnector) mapTableType(relKind string) string {
 
 // GetTableMeta refreshes status, columns, indexes, and foreign keys using raw name components.
 // Scope is checked before connecting; each successful stage updates its part of table.
-func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
+func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta, _ bool) error {
 	if !c.schemaAllowed(table.Schema) {
 		return fmt.Errorf("schema %q is outside the connector scope", table.Schema)
 	}
@@ -289,7 +289,7 @@ func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interface
 		return fmt.Errorf("failed to connect for table metadata: %w", err)
 	}
 
-	// Refresh table type, description, and optional table properties.
+	// ListTables omits row counts and storage sizes, so status must still be read.
 	if err := c.fetchTableStatus(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch table status: %w", err)
 	}

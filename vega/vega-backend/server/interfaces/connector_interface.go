@@ -72,8 +72,11 @@ type TableConnector interface {
 
 	// ListTables lists tables and views within the configured discovery scope, returning basic metadata with raw name components.
 	ListTables(ctx context.Context) ([]*TableMeta, error)
-	// GetTableMeta retrieves detailed metadata using the raw name components in table and updates table in place.
-	GetTableMeta(ctx context.Context, table *TableMeta) error
+	// GetTableMeta retrieves detailed metadata and updates table in place.
+	// Callers pass false after ListTables, or true for an independent table refresh.
+	// Implementations may skip status only when ListTables provides equivalent status metadata;
+	// otherwise they must read status regardless of refreshStatus.
+	GetTableMeta(ctx context.Context, table *TableMeta, refreshStatus bool) error
 	// CountRows counts table or view rows using the generated sourceIdentifier directly, without rebuilding or quoting the table name.
 	CountRows(ctx context.Context, sourceIdentifier string) (int64, error)
 

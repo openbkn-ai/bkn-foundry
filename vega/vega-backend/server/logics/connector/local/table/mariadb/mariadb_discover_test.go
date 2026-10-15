@@ -35,7 +35,7 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 			c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 			defer cleanup()
 			c.connected = true
-			mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").WithArgs("app").WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", "", "", tc.statistic, nil, tc.timestamp, tc.timestamp, tc.statistic, tc.statistic))
+			mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").WithArgs("app").WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", nil, "", "", tc.statistic, nil, tc.timestamp, tc.timestamp, tc.statistic, tc.statistic))
 			tables, err := c.ListTables(context.Background())
 			require.NoError(t, err)
 			require.Len(t, tables, 1)
@@ -93,7 +93,7 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		connector.connected = true
 
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
-			WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil))
+			WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil, nil))
 
 		tables, err := connector.ListTables(context.Background())
 
@@ -110,7 +110,7 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		connector.connected = true
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
 			WithArgs("app").WillReturnRows(
-			mariaDBTableRows().AddRow("app", "orders_view", "VIEW", nil, nil, nil, nil, nil, nil, nil, nil),
+			mariaDBTableRows().AddRow("app", "orders_view", "VIEW", nil, nil, nil, nil, nil, nil, nil, nil, nil),
 		)
 
 		tables, err := connector.ListTables(context.Background())
@@ -127,7 +127,7 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		connector.connected = true
 
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
-			WillReturnRows(mariaDBTableRows().AddRow(nil, "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil))
+			WillReturnRows(mariaDBTableRows().AddRow(nil, "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil, nil))
 
 		tables, err := connector.ListTables(context.Background())
 
@@ -269,7 +269,7 @@ func TestMariaDBConnectorListSchemas(t *testing.T) {
 // mariaDBTableRows defines the exact column order returned by the table discovery query.
 func mariaDBTableRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
-		"TABLE_SCHEMA", "TABLE_NAME", "TABLE_TYPE", "ENGINE", "TABLE_COLLATION",
+		"TABLE_SCHEMA", "TABLE_NAME", "TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION",
 		"TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH",
 	})
 }
@@ -478,7 +478,7 @@ func TestMariaDBConnectorGetTableMetaRejectsOutsideScope(t *testing.T) {
 	})
 	defer patches.Reset()
 	table := &interfaces.TableMeta{Database: "other", Schema: "other", Name: "orders"}
-	err = connector.GetTableMeta(context.Background(), table)
+	err = connector.GetTableMeta(context.Background(), table, true)
 	require.ErrorContains(t, err, "outside")
 	assert.False(t, connected)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -490,7 +490,7 @@ func TestMariaDBConnectorListTablesFiltersOutsideScope(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"Sales"}}, connected: true, db: db}
 	mock.ExpectQuery("SELECT").WithArgs("Sales").WillReturnRows(
-		sqlmock.NewRows([]string{"c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"}).AddRow("sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil).AddRow("Sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil))
+		sqlmock.NewRows([]string{"c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10", "AUTO_INCREMENT"}).AddRow("sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil, nil).AddRow("Sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil, nil))
 	tables, err := connector.listTables(context.Background(), "", "")
 	require.NoError(t, err)
 	require.Len(t, tables, 1)
@@ -535,4 +535,36 @@ func TestMariaDBConnectorFetchForeignKeys(t *testing.T) {
 	assert.ErrorContains(t, err, "failed to execute foreign key metadata query")
 	assert.Equal(t, before, *table)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMariaDBConnectorListAndSingleTableStatusMatch(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		statistic, created driver.Value
+	}{{"positive", int64(42), time.UnixMilli(1000)}, {"zero", int64(0), nil}, {"NULL", nil, nil}, {"negative and zero time", int64(-1), time.Time{}}} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &MariaDBConnector{config: &mariadbConfig{}, connected: true, db: db}
+			mock.ExpectQuery("SELECT.*AUTO_INCREMENT.*FROM information_schema.TABLES").WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", tc.statistic, "InnoDB", "utf8mb4_general_ci", tc.statistic, "listed comment", tc.created, tc.created, tc.statistic, tc.statistic))
+			tables, err := connector.listTables(context.Background(), "app", "orders")
+			require.NoError(t, err)
+			require.Len(t, tables, 1)
+			listed := tables[0]
+			single := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders"}
+			mock.ExpectQuery("SELECT").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION", "TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH"}).AddRow("BASE TABLE", tc.statistic, "InnoDB", "utf8mb4_general_ci", tc.statistic, "listed comment", tc.created, tc.created, tc.statistic, tc.statistic))
+			require.NoError(t, connector.fetchTableStatus(context.Background(), single))
+			assert.Equal(t, single.TableType, listed.TableType)
+			assert.Equal(t, single.Description, listed.Description)
+			assert.Equal(t, single.Properties, listed.Properties)
+			cause := errors.New("column query failed")
+			mock.ExpectQuery("information_schema.COLUMNS").WithArgs("app", "orders").WillReturnError(cause)
+			err = connector.GetTableMeta(context.Background(), listed, false)
+			require.ErrorIs(t, err, cause)
+			require.ErrorContains(t, err, "failed to fetch columns")
+			assert.Equal(t, single.Properties, listed.Properties)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

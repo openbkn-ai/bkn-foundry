@@ -519,17 +519,17 @@ func (mr *MockTableConnectorMockRecorder) GetSensitiveFields() *gomock.Call {
 }
 
 // GetTableMeta mocks base method.
-func (m *MockTableConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
+func (m *MockTableConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta, refreshStatus bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTableMeta", ctx, table)
+	ret := m.ctrl.Call(m, "GetTableMeta", ctx, table, refreshStatus)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // GetTableMeta indicates an expected call of GetTableMeta.
-func (mr *MockTableConnectorMockRecorder) GetTableMeta(ctx, table any) *gomock.Call {
+func (mr *MockTableConnectorMockRecorder) GetTableMeta(ctx, table, refreshStatus any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTableMeta", reflect.TypeOf((*MockTableConnector)(nil).GetTableMeta), ctx, table)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTableMeta", reflect.TypeOf((*MockTableConnector)(nil).GetTableMeta), ctx, table, refreshStatus)
 }
 
 // GetType mocks base method.

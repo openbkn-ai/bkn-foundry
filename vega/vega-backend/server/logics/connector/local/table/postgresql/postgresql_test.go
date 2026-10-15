@@ -360,7 +360,7 @@ func TestPostgresqlConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
 		WithArgs("public", "deleted_orders").
 		WillReturnError(sql.ErrNoRows)
 
-	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Schema: "public", Name: "deleted_orders"})
+	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Schema: "public", Name: "deleted_orders"}, true)
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "table metadata not found or inaccessible: public.deleted_orders")

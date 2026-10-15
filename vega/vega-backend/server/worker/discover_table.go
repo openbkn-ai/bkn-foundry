@@ -240,7 +240,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 		beforeHash := sourceSnapshotHash(resource)
 
 		// Obtain detailed metadata
-		if err := tableConnector.GetTableMeta(ctx, table); err != nil {
+		if err := tableConnector.GetTableMeta(ctx, table, task.ResourceID != ""); err != nil {
 			// 首次探查失败也保留已知源身份，使单资源刷新能够重试。
 			if len(resource.SourceMetadata) == 0 {
 				data, marshalErr := sonic.Marshal(table)

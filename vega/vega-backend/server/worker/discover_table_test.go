@@ -170,11 +170,11 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 		}
 		connector := vmock.NewMockTableConnector(ctrl)
 		connector.EXPECT().
-			GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "no_access", Schema: "public"}).
+			GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "no_access", Schema: "public"}, false).
 			Return(errors.New("permission denied"))
 		connector.EXPECT().
-			GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "erp_material", Schema: "public"}).
-			DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+			GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "erp_material", Schema: "public"}, false).
+			DoAndReturn(func(_ context.Context, table *interfaces.TableMeta, _ bool) error {
 				table.Columns = []interfaces.TableColumnMeta{{Name: "id", Type: "int4"}}
 				return nil
 			})
@@ -247,8 +247,8 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 	}
 	connector := vmock.NewMockTableConnector(ctrl)
 	connector.EXPECT().
-		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}).
-		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}, false).
+		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta, _ bool) error {
 			table.Description = "最新源端表注释"
 			table.Properties = map[string]any{"estimated_row_count": int64(99)}
 			table.Columns = []interfaces.TableColumnMeta{
@@ -314,8 +314,8 @@ func TestEnrichTableMetadataUsesNormalizedEnumType(t *testing.T) {
 	resource := &interfaces.Resource{ID: "r1", SourceIdentifier: "public.orders"}
 	connector := vmock.NewMockTableConnector(ctrl)
 	connector.EXPECT().
-		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "orders", Schema: "public"}).
-		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "orders", Schema: "public"}, false).
+		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta, _ bool) error {
 			table.Columns = []interfaces.TableColumnMeta{{
 				Name: "status", Type: "enum", AliasType: "order_status",
 			}}
@@ -357,8 +357,8 @@ func TestEnrichTableMetadataSynchronizesSourceDescriptions(t *testing.T) {
 	}
 	connector := vmock.NewMockTableConnector(ctrl)
 	connector.EXPECT().
-		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}).
-		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}, false).
+		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta, _ bool) error {
 			table.Description = "最新源端表注释"
 			table.Columns = []interfaces.TableColumnMeta{
 				{Name: "empty_description", Type: "varchar", Description: "最新空字段注释"},
@@ -431,7 +431,7 @@ func TestEnrichTableMetadataCountFailure(t *testing.T) {
 				resource.SourceMetadata = map[string]any{"name": "orders", "schema": "sales", "description": "old comment"}
 			}
 			table := &interfaces.TableMeta{Name: "orders", Schema: "sales", Database: "app"}
-			connector.EXPECT().GetTableMeta(gomock.Any(), table).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+			connector.EXPECT().GetTableMeta(gomock.Any(), table, false).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta, _ bool) error {
 				meta.Description = "new comment"
 				meta.Columns = []interfaces.TableColumnMeta{{Name: "id", Type: "int4"}}
 				return nil
@@ -490,7 +490,7 @@ func TestEnrichTableMetadataDoris(t *testing.T) {
 	reference := "`hive`.`sales.eu`.`order.items`"
 	resource := &interfaces.Resource{ID: "r1", SourceIdentifier: reference, SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true}}}}
 	table := &interfaces.TableMeta{SourceCatalog: "hive", Database: "sales.eu", Schema: "sales.eu", Name: "order.items"}
-	connector.EXPECT().GetTableMeta(gomock.Any(), table).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+	connector.EXPECT().GetTableMeta(gomock.Any(), table, false).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta, _ bool) error {
 		meta.Columns = []interfaces.TableColumnMeta{{Name: "wide", Type: "LARGEINT"}, {Name: "payload", Type: "JSON"}, {Name: "new_payload", Type: "JSON"}}
 		return nil
 	})
@@ -518,7 +518,7 @@ func TestEnrichTableMetadataJSON(t *testing.T) {
 	connector := vmock.NewMockTableConnector(ctrl)
 	resource := &interfaces.Resource{ID: "r1", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true}}}}
 	table := &interfaces.TableMeta{Name: "orders", Schema: "public"}
-	connector.EXPECT().GetTableMeta(gomock.Any(), table).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+	connector.EXPECT().GetTableMeta(gomock.Any(), table, false).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta, _ bool) error {
 		meta.Columns = []interfaces.TableColumnMeta{{Name: "payload", Type: "jsonb"}, {Name: "added", Type: "jsonb"}}
 		return nil
 	})

@@ -382,7 +382,7 @@ func TestMariaDBConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
 		WithArgs("app", "deleted_orders").
 		WillReturnError(sql.ErrNoRows)
 
-	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Database: "app", Name: "deleted_orders"})
+	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Database: "app", Name: "deleted_orders"}, true)
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "table metadata not found or inaccessible: app.deleted_orders")

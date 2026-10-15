@@ -731,7 +731,7 @@ func TestDiscoverTaskWorkerCombinedDiscoveryAndCount(t *testing.T) {
 						}
 						if !countWithoutRefresh {
 
-							metadataCall = c.EXPECT().GetTableMeta(gomock.Any(), table).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+							metadataCall = c.EXPECT().GetTableMeta(gomock.Any(), table, entry == "resource").DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta, _ bool) error {
 								meta.Properties = map[string]any{"estimated_row_count": int64(99)}
 								table.Properties = meta.Properties
 								return metadataErr
@@ -1013,7 +1013,7 @@ func TestDiscoverTaskWorkerDiscoverResource(t *testing.T) {
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		connector.EXPECT().DecodeTableMeta(resource.SourceMetadata).Return(&interfaces.TableMeta{Name: "orders", Database: "app", Schema: "public", Description: "old comment"}, nil)
-		connector.EXPECT().GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "orders", Database: "app", Schema: "public", Description: "old comment"}).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta) error {
+		connector.EXPECT().GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "orders", Database: "app", Schema: "public", Description: "old comment"}, true).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta, _ bool) error {
 			meta.Description = "new comment"
 			return nil
 		})
@@ -1113,7 +1113,7 @@ func TestDiscoverTaskWorkerDiscoverResource(t *testing.T) {
 			if !tc.invalid {
 				meta := &interfaces.TableMeta{Database: "app", Schema: "sales.eu", Name: "order.items", Description: "source comment", Columns: []interfaces.TableColumnMeta{{Name: "id", Type: "int"}}}
 				connector.EXPECT().DecodeTableMeta(tc.metadata).Return(meta, nil)
-				connector.EXPECT().GetTableMeta(gomock.Any(), meta).DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+				connector.EXPECT().GetTableMeta(gomock.Any(), meta, true).DoAndReturn(func(_ context.Context, table *interfaces.TableMeta, _ bool) error {
 					table.Description = "new source comment"
 					return nil
 				})
