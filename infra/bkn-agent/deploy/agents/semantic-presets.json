@@ -1,0 +1,7 @@
+{
+  "format": "bkn-agent-preset-manifest/v1",
+  "scenarios": [
+    {"scenario": "vega_resource_semantic_understanding", "package": "resource-semantic-understanding.preset.json", "required_features": []},
+    {"scenario": "vega_catalog_semantic_understanding", "package": "catalog-semantic-understanding.preset.json", "required_features": []}
+  ]
+}

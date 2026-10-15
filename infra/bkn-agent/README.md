@@ -71,7 +71,11 @@ agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执�
 
 ## Studio 默认 Agent 初始化（#2170）
 
-`deploy/agents/studio-presets.json` 提供智能问答和基础数据问答默认包；图探索适配尚未安装时明确跳过。当前包为 draft，Studio 用户入口与查询范围约束在 #2151 后续任务中实现，初始化完成不代表可以向终端用户开放。
+`deploy/agents/studio-presets.json` 提供智能问答默认包；图探索适配尚未安装时明确跳过。当前包为 draft，Studio 用户入口与查询范围约束在 #2151 后续任务中实现，初始化完成不代表可以向终端用户开放。
+
+智能问答注册完整的 Context Loader MCP，不维护固定工具白名单。端点由部署配置 `runtime.contextLoaderMcpUrl`（环境变量 `CONTEXT_LOADER_MCP_URL`）统一选择：`/api/agent-retrieval/v1/mcp/` 为完整版，`/api/agent-retrieval/v1/mcp-compact/` 为紧凑版。运行时仍管理生命周期工具与 `bkn_context`，业务工具加载所选端点发布的集合；端点选择不是权限或查询范围校验。
+
+本包升级为版本 2，保留版本 1 的不可变目录记录。已安装版本 1 时，只登记新候选，不自动改变工具配置；新版需通过 diff/adopt 显式采用。
 
 本功能归属 0.2.1。先由全局迁移流程应用 `migrations/bkn-agent/mariadb/0.2.1/01-agent-preset-bootstrap.sql` 并准备管理主体，再运行初始化命令。命令使用部署环境的 RDS 配置及数据库管理权限；`--owner-id` 是已准备的配置管理主体，`--actor-id` 标识实际管理操作者，不是未来查询工具的用户身份。命令不会创建用户/权限、执行 DDL 或自动探测依赖。
 
@@ -97,6 +101,23 @@ python -m app.bootstrap.studio adopt --owner-id preset-management-principal --ac
 初始化结果中的 dependency 状态来自 `--dependency model=ready` 等部署方观测，未提供时为 unknown。它不是健康探针，也不是许可证检查；本批报告 `executable=false`，不能据此绕过后续的用户入口与授权检查。
 
 完整设计维护于 [bkn-docs 的 #2151 方案](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn-agent/design/issue-2151-studio-agent-migration.md)。
+
+## 语义理解存量接纳
+
+公共管理入口为 `python -m app.bootstrap.agent_presets`，原 `app.bootstrap.studio` 命令继续兼容。资源/目录语义理解包从 0.2.0 首装 SQL 提取，保留固定 ID、原 owner、published 状态、零工具和 Prompt 内容。包不创建 Studio 场景绑定。
+
+数据库升级仍由统一迁移器执行：先完成 0.2.1 的三张管理表迁移，再进行存量接纳。历史 SQL 和 0.2.1 首装快照中的语义理解种子保留；本次不自动切换部署 Job，不为接纳新增表或列。缺失、删除、归属冲突或 Prompt 引用异常均拒绝接纳，不自动补建。
+
+以资源语义理解为例，读取并审阅比较结果后再显式接纳；目录语义理解使用对应的 `catalog-semantic-understanding.preset.json`，分别检查和执行：
+
+```bash
+python -m app.bootstrap.agent_presets inspect-legacy --owner-id 266c6a42-6131-4d62-8f39-853e7093701c --package deploy/agents/resource-semantic-understanding.preset.json
+python -m app.bootstrap.agent_presets enroll --owner-id 266c6a42-6131-4d62-8f39-853e7093701c --actor-id deployment-operator --package deploy/agents/resource-semantic-understanding.preset.json --expected-digest DIGEST_FROM_INSPECTION
+```
+
+接纳只写候选目录和初始化归属，不改 Agent、Prompt、当前 Prompt 版本、历史、状态或绑定。与候选完全一致时登记匹配版本；管理员修改无法匹配时报告 `legacy_modified` 和 `applied_version=null`，数据库的 applied version/digest 用空字符串表示未确认基线，兼容已有非空列，无 ALTER。之后可用同一 diff/adopt 流程明确采用默认值，保留历史 Prompt 版本。
+
+两个包接纳后可用 `initialize --manifest deploy/agents/semantic-presets.json` 登记后续候选；必须使用原 owner 和明确 actor。接纳前 initialize 报告冲突，不隐式认领旧资源。真实 MariaDB 行锁、升级和部署顺序仍需环境验收。
 
 ### Lifecycle owner attribution
 

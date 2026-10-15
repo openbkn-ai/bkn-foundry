@@ -1,7 +1,7 @@
 {
   "format": "bkn-agent-preset/v1",
   "package_id": "studio-smart-qa",
-  "version": "1",
+  "version": "2",
   "scenario": "smart_qa",
   "required_features": [],
   "required_dependencies": ["model", "context_loader", "studio_interactions"],
@@ -13,8 +13,7 @@
     "model": "",
     "tools": [
       {
-        "type": "context_loader",
-        "allowed_tools": ["get_kn_detail", "get_object_types", "get_relation_types", "search_schema", "query_object_instance", "query_instance_subgraph", "query_metric", "search_instance", "explore_subgraph"]
+        "type": "context_loader"
       }
     ],
     "skills": [],

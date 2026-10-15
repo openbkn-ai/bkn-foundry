@@ -18,7 +18,15 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.bootstrap.presets import PresetError, adopt, initialize, load_package, preview
+from app.bootstrap.presets import (
+    PresetError,
+    adopt,
+    enroll,
+    initialize,
+    inspect_legacy,
+    load_package,
+    preview,
+)
 
 DEFAULT_MANIFEST = (
     Path(__file__).resolve().parents[2] / "deploy/agents/studio-presets.json"
@@ -110,7 +118,9 @@ async def bootstrap_manifest(
 
 def parser():
     cli = argparse.ArgumentParser(description=__doc__)
-    cli.add_argument("command", choices=["initialize", "diff", "adopt"])
+    cli.add_argument(
+        "command", choices=["initialize", "diff", "adopt", "inspect-legacy", "enroll"]
+    )
     cli.add_argument(
         "--owner-id", required=True, help="Provisioned preset management principal"
     )
@@ -126,6 +136,9 @@ def parser():
     cli.add_argument("--package-id")
     cli.add_argument("--version")
     cli.add_argument(
+        "--package", type=Path, help="Preset file for legacy inspection/enrollment"
+    )
+    cli.add_argument(
         "--expected-digest", help="Digest returned by diff; required for adoption"
     )
     return cli
@@ -133,6 +146,23 @@ def parser():
 
 async def execute(args, sessions):
     features = set(args.installed_feature)
+    if args.command in {"inspect-legacy", "enroll"}:
+        if not args.package:
+            raise PresetError("legacy inspection/enrollment requires --package")
+        package = load_package(args.package)
+        if args.command == "inspect-legacy":
+            return await inspect_legacy(sessions, package, owner=args.owner_id)
+        if not args.expected_digest:
+            raise PresetError("enroll requires --expected-digest from inspect-legacy")
+        if set(package.required_features) - features:
+            raise PresetError("required preset feature is not installed")
+        return await enroll(
+            sessions,
+            package,
+            owner=args.owner_id,
+            actor=args.actor_id,
+            expected_digest=args.expected_digest,
+        )
     if args.command == "initialize":
         dependencies = {}
         for entry in args.dependency:
@@ -174,7 +204,7 @@ async def execute(args, sessions):
 def main():
     cli = parser()
     args = cli.parse_args()
-    if args.command != "diff" and not args.actor_id:
+    if args.command not in {"diff", "inspect-legacy"} and not args.actor_id:
         cli.error("--actor-id is required for initialization/adoption")
     # Lazy import: --help and package validation do not open a DB connection.
     from app.db import SessionLocal, engine

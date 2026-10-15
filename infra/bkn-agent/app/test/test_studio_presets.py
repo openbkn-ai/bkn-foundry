@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
@@ -394,11 +393,14 @@ def test_manifest_initializes_available_scenarios_and_skips_uninstalled_graph(se
         )
         assert [r["action"] for r in result["results"]] == [
             "created",
-            "created",
             "skipped",
         ]
+        assert [r["scenario"] for r in result["results"]] == [
+            "smart_qa",
+            "graph_explorer",
+        ]
         assert result["results"][0]["readiness"]["state"] == "unknown"
-        assert await counts(sessions) == [2, 2, 2, 2, 2, 2]
+        assert await counts(sessions) == [1, 1, 1, 1, 1, 1]
         result = await bootstrap_manifest(
             sessions,
             DEFAULT_MANIFEST,
@@ -407,13 +409,40 @@ def test_manifest_initializes_available_scenarios_and_skips_uninstalled_graph(se
             installed_features={"graph_explorer_adapter"},
             dependencies={},
         )
-        assert result["results"][2]["action"] == "failed"
-        assert await counts(sessions) == [2, 2, 2, 2, 2, 2]
+        assert result["results"][1]["action"] == "failed"
+        assert await counts(sessions) == [1, 1, 1, 1, 1, 1]
 
     asyncio.run(run())
 
 
-def test_failed_scenario_does_not_block_other_scenarios(sessions):
+def test_failed_scenario_does_not_block_other_scenarios(sessions, tmp_path):
+    # A synthetic second scenario checks isolation without shipping another product.
+    first = package().model_dump(exclude_none=True)
+    second = package().model_dump(exclude_none=True)
+    second.update(package_id="test-secondary", scenario="test_secondary")
+    second["spec"].update(
+        agent_id="test_secondary",
+        name="Test_secondary",
+        prompt_id="test_secondary_prompt",
+    )
+    second["prompt"].update(
+        prompt_id="test_secondary_prompt", name="Test secondary prompt"
+    )
+    (tmp_path / "first.json").write_text(json.dumps(first))
+    (tmp_path / "second.json").write_text(json.dumps(second))
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "format": "bkn-agent-preset-manifest/v1",
+                "scenarios": [
+                    {"scenario": "smart_qa", "package": "first.json"},
+                    {"scenario": "test_secondary", "package": "second.json"},
+                ],
+            }
+        )
+    )
+
     async def run():
         async with sessions() as session:
             await dao.upsert_agent_with_id(
@@ -421,7 +450,7 @@ def test_failed_scenario_does_not_block_other_scenarios(sessions):
             )
         result = await bootstrap_manifest(
             sessions,
-            DEFAULT_MANIFEST,
+            manifest,
             owner=OWNER,
             actor=ACTOR,
             installed_features=set(),
@@ -430,7 +459,6 @@ def test_failed_scenario_does_not_block_other_scenarios(sessions):
         assert [r["action"] for r in result["results"]] == [
             "failed",
             "created",
-            "skipped",
         ]
 
     asyncio.run(run())
@@ -445,23 +473,16 @@ def test_wrong_management_owner_cannot_preview_or_adopt(sessions):
     asyncio.run(run())
 
 
-def test_builtin_tools_exist_and_packages_have_no_embedded_environment_urls():
-    schemas = (
-        Path(__file__).resolve().parents[4]
-        / "adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas"
-    )
-    for filename in ("studio-smart-qa.json", "studio-base-data-qa.json"):
+def test_builtin_package_loads_complete_mcp_and_has_no_embedded_environment_urls():
+    from app.core.tools import _context_loader_allowed_tools
+
+    for filename in ("studio-smart-qa.json",):
         preset = load_package(DEFAULT_MANIFEST.parent / filename)
         assert preset.spec.model == ""
         assert preset.spec.status == "draft"
         assert "http" not in (DEFAULT_MANIFEST.parent / filename).read_text()
-        for tool_ref in preset.spec.tools:
-            assert tool_ref["type"] == "context_loader"
-            assert tool_ref["allowed_tools"]
-            assert all(
-                (schemas / f"{name}.json").exists()
-                for name in tool_ref["allowed_tools"]
-            )
+        assert preset.spec.tools == [{"type": "context_loader"}]
+        assert _context_loader_allowed_tools(preset.spec.tools) is None
 
 
 def test_cli_rejects_invalid_dependency_before_writing(sessions):
@@ -553,6 +574,11 @@ def test_manifest_validation_finishes_before_any_scenario_is_created(
 ):
     definition = json.loads(DEFAULT_MANIFEST.read_text())
     definition["scenarios"][0]["package"] = "valid.json"
+    # Validate a synthetic installed entry even when graph exploration is absent.
+    definition["scenarios"][1] = {
+        "scenario": "test_secondary",
+        "package": "unused.json",
+    }
     (tmp_path / "valid.json").write_text(PACKAGE.read_text())
     if problem == "duplicate":
         definition["scenarios"][1] = definition["scenarios"][0]

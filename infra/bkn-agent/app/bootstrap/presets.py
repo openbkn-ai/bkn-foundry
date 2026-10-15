@@ -13,6 +13,7 @@ import json
 import time
 from collections.abc import Mapping
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -42,6 +43,10 @@ class PresetPackage(BaseModel):
     scenario: str = Field(min_length=1, max_length=100, pattern=r"^[a-z0-9_]+$")
     required_features: list[str] = Field(default_factory=list)
     required_dependencies: list[str] = Field(default_factory=list)
+    # None preserves the serialized payload/digest of existing v1 packages.
+    bind_scenario: bool | None = None
+    expected_owner: str | None = Field(default=None, min_length=1, max_length=50)
+    installation_policy: Literal["enroll_existing"] | None = None
     spec: AgentSpec
     prompt: PromptSpec
 
@@ -125,6 +130,16 @@ def _check_installation(installation, package: PresetPackage, owner: str):
         )
 
 
+def _check_owner(package, owner):
+    _identity(owner)
+    if package.expected_owner is not None and package.expected_owner != owner:
+        raise PresetError("management owner does not match the preset's existing owner")
+
+
+def _bound(package):
+    return package.bind_scenario is not False
+
+
 async def _current(session, installation) -> dict:
     agent = await session.get(AgentRow, installation.f_agent_id)
     prompt = await session.get(PromptRow, installation.f_prompt_id)
@@ -184,13 +199,14 @@ async def _initialize_once(sessions, package, owner, actor):
             _check_installation(installation, package, owner)
             await _catalog(session, package, actor)
             current = await _current(session, installation)
-            missing = [
-                key for key in ("spec", "prompt", "binding") if current[key] is None
-            ]
+            expected = (
+                ("spec", "prompt", "binding") if _bound(package) else ("spec", "prompt")
+            )
+            missing = [key for key in expected if current[key] is None]
             return {
                 "action": "preserved",
                 "missing_resources": missing,
-                "applied_version": installation.f_applied_version,
+                "applied_version": installation.f_applied_version or None,
                 "candidate_version": package.version,
                 "update_available": installation.f_applied_digest
                 != digest(package.model_dump(exclude_none=True)),
@@ -202,6 +218,10 @@ async def _initialize_once(sessions, package, owner, actor):
         if agent or prompt:
             raise PresetError(
                 "fixed Agent or Prompt ID exists without preset provenance"
+            )
+        if package.installation_policy == "enroll_existing":
+            raise PresetError(
+                "legacy preset requires explicit enrollment; resources are not recreated"
             )
         conflict = await dao.check_import_conflict(
             session,
@@ -242,7 +262,7 @@ async def _initialize_once(sessions, package, owner, actor):
             )
         )
         binding = await session.get(ScenarioBindingRow, package.scenario)
-        if binding is None:
+        if _bound(package) and binding is None:
             session.add(
                 ScenarioBindingRow(
                     f_scenario=package.scenario,
@@ -289,7 +309,7 @@ async def initialize(
     installed_features: set[str],
     dependencies: Mapping[str, str] | None = None,
 ) -> dict:
-    _identity(owner)
+    _check_owner(package, owner)
     _identity(actor)
     missing_features = sorted(set(package.required_features) - installed_features)
     if missing_features:
@@ -335,7 +355,7 @@ async def preview(sessions, package_id: str, version: str, *, owner: str) -> dic
         return {
             "package_id": package_id,
             "version": version,
-            "applied_version": installation.f_applied_version,
+            "applied_version": installation.f_applied_version or None,
             "expected_digest": digest(current),
             "current": current,
             "candidate": {
@@ -343,6 +363,134 @@ async def preview(sessions, package_id: str, version: str, *, owner: str) -> dic
                 "prompt": package.prompt.model_dump(exclude_none=True),
             },
         }
+
+
+async def _legacy_state(session, package, owner, *, lock=False):
+    _check_owner(package, owner)
+    agent = await session.get(AgentRow, package.spec.agent_id, with_for_update=lock)
+    prompt = await session.get(
+        PromptRow, package.prompt.prompt_id, with_for_update=lock
+    )
+    if agent is None or prompt is None:
+        raise PresetError(
+            "legacy resources missing; enrollment does not create or restore them"
+        )
+    if agent.f_create_user != owner or agent.f_prompt_id != prompt.f_prompt_id:
+        raise PresetError("legacy owner or Prompt reference does not match")
+    first_version = (
+        (
+            await session.execute(
+                select(PromptVersionRow)
+                .where(PromptVersionRow.f_prompt_id == prompt.f_prompt_id)
+                .order_by(PromptVersionRow.f_version)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if first_version is None or first_version.f_create_user != owner:
+        raise PresetError("legacy Prompt provenance cannot be confirmed")
+    current = await _current(
+        session,
+        SimpleNamespace(
+            f_agent_id=agent.f_agent_id,
+            f_prompt_id=prompt.f_prompt_id,
+            f_scenario=package.scenario,
+            f_revision=0,
+        ),
+    )
+    if current["prompt"] is None:
+        raise PresetError("legacy current Prompt version missing")
+    current["owner"] = agent.f_create_user
+    exact = current["spec"] == package.spec.model_dump(
+        exclude_none=True
+    ) and PromptSpec.model_validate(current["prompt"]).model_dump(
+        exclude_none=True
+    ) == package.prompt.model_dump(exclude_none=True)
+    return current, exact
+
+
+async def inspect_legacy(sessions, package, *, owner):
+    """Read-only comparison before explicitly accepting legacy provenance."""
+    async with sessions() as session:
+        current, exact = await _legacy_state(session, package, owner)
+        return {
+            "scenario": package.scenario,
+            "baseline": "matched" if exact else "legacy_modified",
+            "expected_digest": digest(current),
+            "current": current,
+            "candidate": package.model_dump(exclude_none=True),
+        }
+
+
+async def _enroll_once(sessions, package, *, owner, actor, expected_digest):
+    """Attach provenance without writing Agent, Prompt, history or bindings.
+
+    Blank applied version/digest means an unrecognized legacy baseline, not a
+    fictitious official version. Existing NOT NULL columns already support this,
+    so enrollment does not add or alter database columns.
+    """
+    _identity(actor)
+    async with sessions() as session, session.begin():
+        installation = (
+            await session.execute(
+                select(PresetInstallationRow)
+                .where(PresetInstallationRow.f_scenario == package.scenario)
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        current, exact = await _legacy_state(session, package, owner, lock=True)
+        if digest(current) != expected_digest:
+            raise PresetError(
+                "configuration changed after preview; refresh the comparison"
+            )
+        if installation is not None:
+            _check_installation(installation, package, owner)
+            return {
+                "action": "preserved",
+                "scenario": package.scenario,
+                "applied_version": installation.f_applied_version or None,
+            }
+        catalog = await _catalog(session, package, actor)
+        session.add(
+            PresetInstallationRow(
+                f_scenario=package.scenario,
+                f_package_id=package.package_id,
+                f_agent_id=package.spec.agent_id,
+                f_prompt_id=package.prompt.prompt_id,
+                f_owner_id=owner,
+                f_applied_version=package.version if exact else "",
+                f_applied_digest=catalog.f_digest if exact else "",
+                f_revision=1,
+                f_update_user=actor,
+                f_update_time=_now(),
+            )
+        )
+        await session.flush()
+        return {
+            "action": "enrolled",
+            "scenario": package.scenario,
+            "baseline": "matched" if exact else "legacy_modified",
+            "applied_version": package.version if exact else None,
+        }
+
+
+async def enroll(sessions, package, *, owner, actor, expected_digest):
+    for attempt in range(3):
+        try:
+            return await _enroll_once(
+                sessions,
+                package,
+                owner=owner,
+                actor=actor,
+                expected_digest=expected_digest,
+            )
+        except (IntegrityError, OperationalError) as error:
+            if not _retryable(error) or attempt == 2:
+                raise PresetError(
+                    "enrollment transaction failed; no partial registration was committed"
+                ) from error
+    raise AssertionError("unreachable")
 
 
 async def adopt(
