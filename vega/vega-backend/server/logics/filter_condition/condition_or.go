@@ -46,7 +46,13 @@ func (c *OrCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 			return nil, err
 		}
 
-		subConds = append(subConds, cond)
+		if cond != nil {
+			subConds = append(subConds, cond)
+		}
+	}
+
+	if len(subConds) == 0 {
+		return nil, fmt.Errorf("condition [or] has no effective child conditions")
 	}
 
 	return &OrCond{

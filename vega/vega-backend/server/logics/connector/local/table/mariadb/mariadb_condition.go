@@ -43,9 +43,6 @@ func (c *MariaDBConnector) ConvertFilterConditionAnd(condition interfaces.Filter
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.AndCond")
 	}
-	if len(cond.SubConds) == 0 {
-		return nil, fmt.Errorf("AND requires child conditions")
-	}
 	convertedConds := sq.And{}
 	for _, subCond := range cond.SubConds {
 		convertedCond, err := c.ConvertFilterCondition(subCond)
@@ -62,9 +59,6 @@ func (c *MariaDBConnector) ConvertFilterConditionOr(condition interfaces.FilterC
 	cond, ok := condition.(*filter_condition.OrCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.OrCond")
-	}
-	if len(cond.SubConds) == 0 {
-		return nil, fmt.Errorf("OR requires child conditions")
 	}
 	convertedConds := sq.Or{}
 	for _, subCond := range cond.SubConds {

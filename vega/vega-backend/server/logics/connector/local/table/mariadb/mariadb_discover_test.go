@@ -11,6 +11,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"testing"
 	"time"
@@ -398,7 +399,7 @@ func TestMariaDBConnectorFetchTableStatus(t *testing.T) {
 			require.NoError(t, c.fetchTableStatus(context.Background(), table))
 			want := map[string]any{}
 			if tc.name == "zero retained" {
-				want = map[string]any{"auto_increment": int64(0), "estimated_row_count": int64(0), "data_length": int64(0), "index_length": int64(0)}
+				want = map[string]any{"auto_increment": uint64(0), "estimated_row_count": int64(0), "data_length": int64(0), "index_length": int64(0)}
 			}
 			assert.Equal(t, want, table.Properties)
 			assert.Equal(t, map[string]any{"legacy": true}, previous)
@@ -452,7 +453,7 @@ func TestMariaDBConnectorFetchTableStatus(t *testing.T) {
 				assert.Equal(t, "kept", previousProperties["custom"])
 			}
 			if tc.valid {
-				assert.Equal(t, int64(24), meta.Properties["auto_increment"])
+				assert.Equal(t, uint64(24), meta.Properties["auto_increment"])
 				assert.Equal(t, int64(1000), meta.Properties["create_time"])
 				assert.Equal(t, int64(2000), meta.Properties["update_time"])
 				assert.Equal(t, "utf8mb4", meta.Properties["charset"])
@@ -538,6 +539,48 @@ func TestMariaDBConnectorFetchForeignKeys(t *testing.T) {
 }
 
 func TestMariaDBConnectorListAndSingleTableStatusMatch(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		raw   driver.Value
+		want  uint64
+		valid bool
+	}{
+		{"NULL auto increment", nil, 0, false},
+		{"negative auto increment", int64(-1), 0, false},
+		{"zero auto increment", int64(0), 0, true},
+		{"maximum signed auto increment", "9223372036854775807", 9223372036854775807, true},
+		{"unsigned auto increment", []byte("9223372036854775808"), 9223372036854775808, true},
+		{"maximum unsigned auto increment", "18446744073709551615", 18446744073709551615, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanup()
+			connector.connected = true
+			mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").WithArgs("app").
+				WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", tc.raw, nil, nil, nil, nil, nil, nil, nil, nil))
+			tables, err := connector.ListTables(context.Background())
+			require.NoError(t, err)
+			require.Len(t, tables, 1)
+			single := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders"}
+			mock.ExpectQuery("SELECT TABLE_TYPE, AUTO_INCREMENT, ENGINE").WithArgs("app", "orders").
+				WillReturnRows(sqlmock.NewRows([]string{"TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION", "TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH"}).
+					AddRow("BASE TABLE", tc.raw, nil, nil, nil, nil, nil, nil, nil, nil))
+			require.NoError(t, connector.fetchTableStatus(context.Background(), single))
+			assert.Equal(t, tables[0].Properties, single.Properties)
+			if tc.valid {
+				assert.Equal(t, tc.want, single.Properties["auto_increment"])
+				decoded, err := connector.DecodeTableMeta(map[string]any{"database": "app", "name": "orders", "properties": single.Properties})
+				require.NoError(t, err)
+				number, ok := decoded.Properties["auto_increment"].(json.Number)
+				require.True(t, ok)
+				assert.Equal(t, fmt.Sprint(tc.want), number.String())
+			} else {
+				assert.NotContains(t, single.Properties, "auto_increment")
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+
 	for _, tc := range []struct {
 		name               string
 		statistic, created driver.Value

@@ -525,7 +525,58 @@ func TestRangeCond(t *testing.T) {
 	})
 }
 
+func TestOrCondNew(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		children []*interfaces.FilterCondCfg
+	}{
+		{"empty object", []*interfaces.FilterCondCfg{{}}},
+		{"nil children", []*interfaces.FilterCondCfg{nil}},
+		{"mixed empty children", []*interfaces.FilterCondCfg{nil, {}}},
+		{"nested empty group", []*interfaces.FilterCondCfg{{Operation: OperationOr, SubConds: []*interfaces.FilterCondCfg{{}}}}},
+	} {
+		t.Run("rejects "+tc.name, func(t *testing.T) {
+			cfg := &interfaces.FilterCondCfg{Operation: OperationOr, SubConds: tc.children}
+			cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+			require.ErrorContains(t, err, "no effective child conditions")
+			assert.Nil(t, cond)
+		})
+	}
+	t.Run("ignores empty children beside valid conditions", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{Operation: OperationOr, SubConds: []*interfaces.FilterCondCfg{nil, {}, constCfg("name", OperationEqual, "alice"), constCfg("age", OperationGt, 18)}}
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.NoError(t, err)
+		children := cond.(*OrCond).SubConds
+		require.Len(t, children, 2)
+		assert.Equal(t, OperationEqual, children[0].GetOperation())
+		assert.Equal(t, OperationGt, children[1].GetOperation())
+	})
+}
+
 func TestAndCond(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		children []*interfaces.FilterCondCfg
+	}{
+		{"empty object", []*interfaces.FilterCondCfg{{}}},
+		{"nil children", []*interfaces.FilterCondCfg{nil}},
+		{"mixed empty children", []*interfaces.FilterCondCfg{nil, {}}},
+		{"nested empty group", []*interfaces.FilterCondCfg{{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{{}}}}},
+	} {
+		t.Run("rejects "+tc.name, func(t *testing.T) {
+			cfg := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: tc.children}
+			cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+			require.ErrorContains(t, err, "no effective child conditions")
+			assert.Nil(t, cond)
+		})
+	}
+	t.Run("ignores empty children beside a valid condition", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{nil, {}, constCfg("name", OperationEqual, "alice")}}
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.NoError(t, err)
+		require.Len(t, cond.(*AndCond).SubConds, 1)
+		assert.Equal(t, OperationEqual, cond.(*AndCond).SubConds[0].GetOperation())
+	})
 	t.Run("and cond valid", func(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Operation: "and",

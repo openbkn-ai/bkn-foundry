@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	sq "github.com/Masterminds/squirrel"
@@ -81,8 +82,8 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 	tables := make([]*interfaces.TableMeta, 0)
 	for rows.Next() {
 		var schemaName, tableName, tableType sql.NullString
-		var engine, collation, description sql.NullString
-		var autoIncrement, tableRows, dataLength, indexLength sql.NullInt64
+		var autoIncrement, engine, collation, description sql.NullString
+		var tableRows, dataLength, indexLength sql.NullInt64
 		var createTime, updateTime sql.NullTime
 
 		if err := rows.Scan(
@@ -122,8 +123,11 @@ func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName s
 		}
 
 		// Retain valid properties; omit NULL and negative statistics but preserve zero.
-		if autoIncrement.Valid && autoIncrement.Int64 >= 0 {
-			meta.Properties["auto_increment"] = autoIncrement.Int64
+		// AUTO_INCREMENT can span the full BIGINT UNSIGNED range.
+		if autoIncrement.Valid {
+			if value, err := strconv.ParseUint(autoIncrement.String, 10, 64); err == nil {
+				meta.Properties["auto_increment"] = value
+			}
 		}
 		if engine.Valid && engine.String != "" {
 			meta.Properties["engine"] = engine.String
@@ -245,8 +249,8 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 		return fmt.Errorf("failed to build table status query: %w", err)
 	}
 
-	var tableType, engine, collation, description sql.NullString
-	var autoIncrement, tableRows, dataLength, indexLength sql.NullInt64
+	var tableType, autoIncrement, engine, collation, description sql.NullString
+	var tableRows, dataLength, indexLength sql.NullInt64
 	var createTime, updateTime sql.NullTime
 
 	row := c.db.QueryRowContext(ctx, sqlStr, args...)
@@ -277,8 +281,11 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 
 	// Replace properties with the current snapshot so obsolete values are removed.
 	properties := make(map[string]any)
-	if autoIncrement.Valid && autoIncrement.Int64 >= 0 {
-		properties["auto_increment"] = autoIncrement.Int64
+	// AUTO_INCREMENT can span the full BIGINT UNSIGNED range.
+	if autoIncrement.Valid {
+		if value, err := strconv.ParseUint(autoIncrement.String, 10, 64); err == nil {
+			properties["auto_increment"] = value
+		}
 	}
 	if engine.Valid && engine.String != "" {
 		properties["engine"] = engine.String

@@ -44,7 +44,7 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 			"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
 			"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
 			"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-			"options":  {Name: "连接参数", Type: "object", Description: "可选；仅支持 sslmode、connect_timeout、application_name、fallback_application_name、client_encoding、statement_timeout、lock_timeout、idle_in_transaction_session_timeout；connect_timeout 为非负整数秒，会话超时为毫秒或带 PostgreSQL 时间单位的字符串，0 表示禁用；sslmode 默认为 disable，不支持 SSL 文件", Required: false, Encrypted: false},
+			"options":  {Name: "连接参数", Type: "object", Description: "可选；仅支持 sslmode、connect_timeout、application_name、fallback_application_name、statement_timeout、lock_timeout、idle_in_transaction_session_timeout；connect_timeout 为非负整数秒，会话超时为毫秒或带 PostgreSQL 时间单位的字符串，0 表示禁用；sslmode 默认为 disable，不支持 SSL 文件；客户端编码使用驱动默认 UTF8，不支持配置", Required: false, Encrypted: false},
 		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)
@@ -165,7 +165,6 @@ func TestPostgresqlConnectorNormalizeOptions(t *testing.T) {
 		{"maximum connection timeout", map[string]any{"connect_timeout": MAX_TIMEOUT_SECONDS}, map[string]any{"sslmode": "disable", "connect_timeout": MAX_TIMEOUT_SECONDS}},
 		{"connection timeout whitespace", map[string]any{"connect_timeout": " 5 "}, map[string]any{"sslmode": "disable", "connect_timeout": "5"}},
 		{"numeric connection timeout", map[string]any{"connect_timeout": float64(1000000)}, map[string]any{"sslmode": "disable", "connect_timeout": float64(1000000)}},
-		{"encoding", map[string]any{"client_encoding": " UTF8 "}, map[string]any{"sslmode": "disable", "client_encoding": "UTF8"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before := make(map[string]any, len(tc.options))
@@ -200,6 +199,8 @@ func TestPostgresqlConnectorNormalizeOptions(t *testing.T) {
 		{"compound duration", map[string]any{"statement_timeout": "1h30m"}, "statement_timeout"},
 		{"numeric application name", map[string]any{"application_name": 1}, "application_name"},
 		{"boolean fallback name", map[string]any{"fallback_application_name": true}, "fallback_application_name"},
+		{"UTF8 encoding override", map[string]any{"client_encoding": "UTF8"}, "unsupported"},
+		{"non-UTF8 encoding override", map[string]any{"client_encoding": "LATIN1"}, "unsupported"},
 		{"empty encoding", map[string]any{"client_encoding": " "}, "client_encoding"},
 		{"numeric encoding", map[string]any{"client_encoding": 1}, "client_encoding"},
 		{"NaN session timeout", map[string]any{"statement_timeout": math.NaN()}, "statement_timeout"},

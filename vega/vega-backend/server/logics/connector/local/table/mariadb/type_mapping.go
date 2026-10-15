@@ -7,6 +7,7 @@
 package mariadb
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -32,16 +33,24 @@ var TypeMapping = map[string]string{
 	"bigint unsigned":    interfaces.DataType_UnsignedInteger,
 
 	// Floating-point types.
-	"float":            interfaces.DataType_Float,
-	"double":           interfaces.DataType_Float,
-	"real":             interfaces.DataType_Float,
-	"double precision": interfaces.DataType_Float,
+	"float":                     interfaces.DataType_Float,
+	"double":                    interfaces.DataType_Float,
+	"real":                      interfaces.DataType_Float,
+	"double precision":          interfaces.DataType_Float,
+	"float unsigned":            interfaces.DataType_Float,
+	"double unsigned":           interfaces.DataType_Float,
+	"real unsigned":             interfaces.DataType_Float,
+	"double precision unsigned": interfaces.DataType_Float,
 
 	// Exact numeric types.
-	"decimal": interfaces.DataType_Decimal,
-	"numeric": interfaces.DataType_Decimal,
-	"fixed":   interfaces.DataType_Decimal,
-	"dec":     interfaces.DataType_Decimal,
+	"decimal":          interfaces.DataType_Decimal,
+	"numeric":          interfaces.DataType_Decimal,
+	"fixed":            interfaces.DataType_Decimal,
+	"dec":              interfaces.DataType_Decimal,
+	"decimal unsigned": interfaces.DataType_Decimal,
+	"numeric unsigned": interfaces.DataType_Decimal,
+	"fixed unsigned":   interfaces.DataType_Decimal,
+	"dec unsigned":     interfaces.DataType_Decimal,
 
 	// String types.
 	"char":    interfaces.DataType_String,
@@ -78,15 +87,26 @@ var TypeMapping = map[string]string{
 	"json": interfaces.DataType_Json,
 }
 
+var columnTypeComments = regexp.MustCompile(`(?s)/\*.*?\*/`)
+
 // MapType maps a source COLUMN_TYPE to a VEGA type, or Other when no mapping exists.
-// Mapping ignores casing and takes the type name before any parameter list.
+// Parameters, comments, and trailing ZEROFILL are removed before looking up the type.
 func (c *MariaDBConnector) MapType(nativeType string) string {
 	normalizedType := strings.ToLower(nativeType)
 
-	// Match the base name before parameters such as varchar(255) or enum('Active').
+	// Remove parameters without losing suffixes: int(11) unsigned becomes int unsigned.
+	// ENUM/SET labels, including words such as 'unsigned', stay inside the removed list.
 	if idx := strings.Index(normalizedType, "("); idx != -1 {
-		normalizedType = strings.TrimSpace(normalizedType[:idx])
+		end := strings.LastIndexByte(normalizedType, ')')
+		if end < idx {
+			return interfaces.DataType_Other
+		}
+		normalizedType = normalizedType[:idx] + normalizedType[end+1:]
 	}
+
+	// MariaDB exposes compression attributes as comments in COLUMN_TYPE.
+	normalizedType = strings.TrimSpace(columnTypeComments.ReplaceAllString(normalizedType, ""))
+	normalizedType = strings.TrimSpace(strings.TrimSuffix(normalizedType, "zerofill"))
 
 	if vegaType, ok := TypeMapping[normalizedType]; ok {
 		return vegaType

@@ -52,6 +52,10 @@ func (c *AndCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 
 	}
 
+	if len(subConds) == 0 {
+		return nil, fmt.Errorf("condition [and] has no effective child conditions")
+	}
+
 	return &AndCond{
 		Cfg:      cfg,
 		SubConds: subConds,

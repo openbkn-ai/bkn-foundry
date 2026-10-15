@@ -238,10 +238,6 @@ func (c *AnyShareConnector) convertFilterConditionOr(ctx context.Context, condit
 		return nil, fmt.Errorf("condition is not *filter_condition.OrCond")
 	}
 
-	if len(condOr.SubConds) == 0 {
-		return &FilterResult{}, nil
-	}
-
 	// Check if all subconditions are valid
 	for _, subCond := range condOr.SubConds {
 		if err := c.validateCustomCondition(subCond, tracker); err != nil {
