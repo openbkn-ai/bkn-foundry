@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,7 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
-func TestMariaDBConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
+func TestMariaDBConnectorExecuteRawSQL(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
@@ -26,18 +28,57 @@ func TestMariaDBConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
 	require.ErrorAs(t, err, &invalid)
 	assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
 	assert.True(t, errors.Is(err, driverErr))
+	assert.ErrorContains(t, err, "failed to execute raw query")
 	require.NoError(t, mock.ExpectationsWereMet())
+	t.Run("raw rows retain column types, NULLs, and returned row count", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+			sqlmock.NewColumn("value").OfType("VARCHAR", ""),
+			sqlmock.NewColumn("optional").OfType("INT", int64(0)),
+		).AddRow([]byte("text"), nil))
+		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT value, optional FROM orders")
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.ColumnInfo{{Name: "value", Type: interfaces.DataType_String}, {Name: "optional", Type: interfaces.DataType_Integer}}, result.Columns)
+		assert.Equal(t, []map[string]any{{"value": "text", "optional": nil}}, result.Entries)
+		require.NotNil(t, result.TotalCount)
+		assert.EqualValues(t, 1, *result.TotalCount)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("raw scan errors retain their cause and classification", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		cause := &mysql.MySQLError{Number: 1054, Message: "source column detail"}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(1).RowError(0, cause))
+		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT value FROM orders")
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.ErrorContains(t, err, "failed to scan raw query rows")
+		assert.ErrorContains(t, err, "failed to iterate result rows")
+		assert.ErrorIs(t, err, cause)
+		var invalid *interfaces.SourceQueryInvalidParameterError
+		require.ErrorAs(t, err, &invalid)
+		assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 }
 
-func TestMariaDBConnectorExecuteQueryInvalidParameter(t *testing.T) {
+func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
+		context   string
 		needTotal bool
 		rowError  bool
 	}{
-		{name: "select references removed column"},
-		{name: "row iteration returns unknown column", rowError: true},
-		{name: "count query returns unknown column", needTotal: true},
+		{name: "select references removed column", context: "failed to execute query"},
+		{name: "row iteration returns unknown column", context: "failed to iterate result rows", rowError: true},
+		{name: "count query returns unknown column", context: "failed to scan total", needTotal: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
@@ -63,9 +104,84 @@ func TestMariaDBConnectorExecuteQueryInvalidParameter(t *testing.T) {
 			require.ErrorAs(t, err, &invalid)
 			assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, invalid.Reason)
 			assert.ErrorIs(t, err, driverErr)
+			assert.ErrorContains(t, err, tc.context)
+			if tc.rowError {
+				assert.ErrorContains(t, err, "failed to scan query rows")
+			}
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+	for _, preserveBinary := range []bool{false, true} {
+		name := "byte values become strings"
+		if preserveBinary {
+			name = "binary content remains bytes"
+		}
+		t.Run(name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &MariaDBConnector{db: db, connected: true}
+			payloadType := interfaces.DataType_String
+			if preserveBinary {
+				payloadType = interfaces.DataType_Binary
+			}
+			resource := &interfaces.Resource{SourceIdentifier: "`shop`.`orders`", SchemaDefinition: []*interfaces.Property{
+				{Name: "payload", Type: payloadType}, {Name: "name", Type: interfaces.DataType_String},
+			}}
+			params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}}
+			var payload any = "data"
+			if preserveBinary {
+				mode := interfaces.BinaryModeContent
+				params.BinaryMode = &mode
+				payload = []byte("data")
+			}
+			mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"payload", "name"}).AddRow([]byte("data"), []byte("text")).AddRow(nil, nil))
+			result, err := connector.ExecuteQuery(context.Background(), resource, params)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"payload", "name"}, result.Columns)
+			assert.Equal(t, []map[string]any{{"payload": payload, "name": "text"}, {"payload": nil, "name": nil}}, result.Entries)
+			assert.Zero(t, result.Total)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+
+	for _, emptyPage := range []bool{false, true} {
+		name := "aggregate total counts all groups"
+		if emptyPage {
+			name = "aggregate total is available beyond last page"
+		}
+		t.Run(name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			db.SetMaxOpenConns(1)
+			connector := &MariaDBConnector{db: db, connected: true}
+			resource := &interfaces.Resource{SourceIdentifier: "`shop`.`orders`", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}}}
+			params := &interfaces.ResourceDataQueryParams{
+				GroupBy:     []*interfaces.GroupByItem{{Property: "id"}},
+				Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count", Alias: "total"},
+				Having:      &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 2},
+				Paging:      interfaces.PagingRequest{Offset: 10, Limit: 1}, NeedTotal: true,
+			}
+			statement := "SELECT `id` AS `id`, COUNT(*) AS `total` FROM `shop`.`orders` GROUP BY `id` HAVING `total` > ?"
+			rows := sqlmock.NewRows([]string{"id", "total"})
+			if !emptyPage {
+				rows.AddRow(3, 4)
+			}
+			mock.ExpectQuery(statement + " LIMIT 1 OFFSET 10").WithArgs(2).WillReturnRows(rows).RowsWillBeClosed()
+			mock.ExpectQuery("SELECT COUNT(*) FROM (" + statement + ") AS _query_groups").WithArgs(2).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(8))
+			result, err := connector.ExecuteQuery(context.Background(), resource, params)
+			require.NoError(t, err)
+			assert.EqualValues(t, 8, result.Total)
+			if emptyPage {
+				assert.Empty(t, result.Entries)
+			} else {
+				assert.Len(t, result.Entries, 1)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+
 }
 
 func TestMariaDBConnectorBuildPagedSQL(t *testing.T) {
@@ -88,91 +204,71 @@ func TestMariaDBConnectorBuildCountSQL(t *testing.T) {
 	)
 }
 
-func TestBuildHavingCondition(t *testing.T) {
+func TestMariaDBConnectorBuildHavingCondition(t *testing.T) {
 	connector := &MariaDBConnector{}
-	tests := []struct {
-		name       string
-		having     *interfaces.HavingClause
-		aggAlias   string
-		want       string
-		errContain string
+	field := &interfaces.Property{Type: interfaces.DataType_Integer}
+	for _, tc := range []struct {
+		name, operation, sql string
+		value                any
+		args                 []any
 	}{
-		{
-			name:     "equal numeric alias",
-			having:   &interfaces.HavingClause{Field: "__value", Operation: "==", Value: 10},
-			aggAlias: "total",
-			want:     "`total` = 10",
-		},
-		{
-			name:     "not equal string alias",
-			having:   &interfaces.HavingClause{Field: "__value", Operation: "!=", Value: "ok"},
-			aggAlias: "status_count",
-			want:     "`status_count` <> 'ok'",
-		},
-		{
-			name:     "reserved word alias is quoted",
-			having:   &interfaces.HavingClause{Field: "__value", Operation: ">=", Value: 3},
-			aggAlias: "key",
-			want:     "`key` >= 3",
-		},
-		{
-			name:   "count star uses count expression",
-			having: &interfaces.HavingClause{Field: "count(*)", Operation: ">=", Value: 3},
-			want:   "COUNT(*) >= 3",
-		},
-		{
-			name:     "in string list quotes values",
-			having:   &interfaces.HavingClause{Field: "__value", Operation: "in", Value: []string{"a", "b"}},
-			aggAlias: "total",
-			want:     "`total` IN ('a', 'b')",
-		},
-		{
-			name:     "range uses placeholders",
-			having:   &interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{1, 3}},
-			aggAlias: "total",
-			want:     "`total` BETWEEN ? AND ?",
-		},
-		{
-			name:       "rejects unsupported field",
-			having:     &interfaces.HavingClause{Field: "name", Operation: "==", Value: 1},
-			errContain: "HAVING field must be",
-		},
-		{
-			name:       "rejects unsupported operation",
-			having:     &interfaces.HavingClause{Field: "__value", Operation: "like", Value: 1},
-			aggAlias:   "total",
-			errContain: "unsupported HAVING operation",
-		},
-		{
-			name:       "rejects invalid range value",
-			having:     &interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{1}},
-			aggAlias:   "total",
-			errContain: "range operation requires",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := connector.buildHavingCondition(tt.having, tt.aggAlias)
-
-			if tt.errContain != "" {
-				require.Error(t, err)
-				assert.ErrorContains(t, err, tt.errContain)
-				assert.Empty(t, got)
-				return
-			}
+		{"equal", "==", "`total` = ?", 10, []any{10}},
+		{"quoted string stays bound", "!=", "`total` <> ?", "a' OR 1=1 --", []any{"a' OR 1=1 --"}},
+		{"greater equal", ">=", "`total` >= ?", 3, []any{3}},
+		{"string list", "in", "`total` IN (?,?)", []string{"a'", "b"}, []any{"a'", "b"}},
+		{"not in", "not_in", "`total` NOT IN (?,?)", []any{1, 2}, []any{1, 2}},
+		{"range", "range", "(`total` >= ? AND `total` <= ?)", []any{1, 3}, []any{1, 3}},
+		{"out range", "out_range", "(`total` < ? OR `total` > ?)", []any{1, 3}, []any{1, 3}},
+		{"empty in", "in", "1=0", []any{}, nil},
+		{"empty not in", "not_in", "1=1", []any{}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expression, err := connector.buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: tc.operation, Value: tc.value}, "`total`", field)
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			sql, args, err := expression.ToSql()
+			require.NoError(t, err)
+			assert.Equal(t, tc.sql, sql)
+			assert.Equal(t, tc.args, args)
 		})
 	}
-}
-
-func TestFormatInValues(t *testing.T) {
-	t.Run("format in values", func(t *testing.T) {
-		assert.Equal(t, "1, 2", formatInValues([]any{1, 2}))
-		assert.Equal(t, "'a', 'b'", formatInValues([]string{"a", "b"}))
-		assert.Equal(t, "single", formatInValues("single"))
+	for _, having := range []*interfaces.HavingClause{
+		{Field: "name", Operation: "==", Value: 1},
+		{Field: "__value", Operation: "like", Value: 1},
+		{Field: "__value", Operation: "range", Value: []any{1}},
+		{Field: "__value", Operation: "in", Value: 1},
+		{Field: "__value", Operation: "=="},
+	} {
+		_, err := connector.buildHavingCondition(having, "`total`", field)
+		require.Error(t, err)
+	}
+	t.Run("date bounds retain date parameter conversion", func(t *testing.T) {
+		timestamp := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+		field := &interfaces.Property{Type: interfaces.DataType_Datetime}
+		expression, err := connector.buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{timestamp, timestamp}}, "MIN(`created`)", field)
+		require.NoError(t, err)
+		sql, args, err := expression.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t, "(MIN(`created`) >= ? AND MIN(`created`) <= ?)", sql)
+		assert.Equal(t, []any{timestamp, timestamp}, args)
 	})
+
+	for _, upper := range []bool{false, true} {
+		name := "invalid date lower bound"
+		bounds := []any{false, int64(0)}
+		context := "failed to convert HAVING lower bound"
+		if upper {
+			name = "invalid date upper bound"
+			bounds = []any{int64(0), false}
+			context = "failed to convert HAVING upper bound"
+		}
+		t.Run(name, func(t *testing.T) {
+			expression, err := connector.buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: "range", Value: bounds}, "MIN(`created`)", &interfaces.Property{Type: interfaces.DataType_Datetime})
+			require.Error(t, err)
+			assert.Nil(t, expression)
+			assert.ErrorContains(t, err, context)
+		})
+	}
+
 }
 
 func TestBuildDateFormat(t *testing.T) {
@@ -366,11 +462,25 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 		}, fieldMap, nil)
 		require.NoError(t, err)
 
-		sql, _, err := builder.ToSql()
+		sql, args, err := builder.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t,
-			"SELECT COUNT(*) AS `__value` FROM `yanfeng_kb`.`fact` HAVING COUNT(*) >= 3 LIMIT 20 OFFSET 0",
+			"SELECT COUNT(*) AS `__value` FROM `yanfeng_kb`.`fact` HAVING COUNT(*) >= ? LIMIT 20 OFFSET 0",
 			sql)
+		assert.Equal(t, []any{3}, args)
+	})
+
+	t.Run("count star and custom alias bind WHERE before HAVING", func(t *testing.T) {
+		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
+			Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count", Alias: "total"},
+			Having:      &interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{2, 4}},
+			Paging:      interfaces.PagingRequest{Limit: 20},
+		}, fieldMap, sq.Expr("`id` > ?", 1))
+		require.NoError(t, err)
+		sql, args, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t, "SELECT COUNT(*) AS `total` FROM `yanfeng_kb`.`fact` WHERE `id` > ? HAVING (`total` >= ? AND `total` <= ?) LIMIT 20 OFFSET 0", sql)
+		assert.Equal(t, []any{1, 2, 4}, args)
 	})
 
 	t.Run("calendar interval keeps the date_format expression over a quoted column", func(t *testing.T) {
