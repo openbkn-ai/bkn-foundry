@@ -198,9 +198,12 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 
 	// Add aggregated fields (when performing aggregated queries)
-	var aggAlias string
+	var aggAlias, aggExpression string
 	if params.Aggregation != nil {
 		aggField := pgQuoteColumnName(originalName(params.Aggregation.Property))
+		if params.Aggregation.Property == "*" && params.Aggregation.Aggr == "count" {
+			aggField = "*"
+		}
 
 		// Determine the aggregation function
 		aggFunc := params.Aggregation.Aggr
@@ -218,7 +221,20 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 			aggAlias = "__value"
 		}
 
-		selectFields = append(selectFields, aggFunc+" AS "+pgQuoteColumnName(aggAlias))
+		aggExpression = aggFunc
+		selectFields = append(selectFields, aggExpression+" AS "+pgQuoteColumnName(aggAlias))
+	} else if params.Having != nil && params.Having.Field == "count(*)" {
+		aggAlias, aggExpression = "__value", "COUNT(*)"
+		selectFields = append(selectFields, aggExpression+" AS "+pgQuoteColumnName(aggAlias))
+	}
+
+	// Aggregate output aliases must not overwrite a grouping dimension.
+	if aggExpression != "" {
+		for _, group := range params.GroupBy {
+			if group.Property == aggAlias {
+				return nil, interfaces.NewConditionBuildError("aggregate alias conflicts with a group field")
+			}
+		}
 	}
 
 	// If it is not an aggregated query and GROUP BY is not specified, add all fields
@@ -239,7 +255,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		}
 		return column + " AS " + pgQuoteColumnName(name)
 	}
-	if len(params.GroupBy) == 0 && params.Aggregation == nil {
+	if len(params.GroupBy) == 0 && params.Aggregation == nil && params.Having == nil {
 		if len(params.OutputFields) > 0 {
 			for _, field := range params.OutputFields {
 				selectFields = append(selectFields, selectField(field))
@@ -275,15 +291,17 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		builder = builder.GroupBy(groupByFields...)
 	}
 
-	// Add a HAVING condition (when aggregating queries)
-	if params.Having != nil && params.Aggregation != nil {
-		havingCond, havingErr := c.buildHavingCondition(params.Having, aggAlias)
-		if havingErr != nil {
-			return nil, fmt.Errorf("failed to build HAVING condition: %w", havingErr)
+	// HAVING references aggregate expressions; PostgreSQL does not resolve result aliases here.
+	if params.Having != nil {
+		expression := aggExpression
+		if params.Having.Field == "count(*)" {
+			expression = "COUNT(*)"
 		}
-		if havingCond != "" {
-			builder = builder.Where(havingCond)
+		having, err := c.buildHavingCondition(params.Having, expression)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build HAVING condition: %w", err)
 		}
+		builder = builder.Having(having)
 	}
 
 	// Add ORDER BY
@@ -367,11 +385,17 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		return nil, fmt.Errorf("failed to iterate result rows: %w", postgresqlQueryError(err))
 	}
 
-	// Total number of processed items (for detailed inquiries only)
-	if params.NeedTotal && !isAggregate {
+	// Release query rows before COUNT, including with a one-connection pool.
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close query rows: %w", postgresqlQueryError(err))
+	}
+	// Count result groups after HAVING and before pagination, or filtered detail rows.
+	if params.NeedTotal {
 		countBuilder := stmtBuilder.Select("COUNT(1)").
 			From(resource.SourceIdentifier)
-		if condition != nil {
+		if isAggregate {
+			countBuilder = stmtBuilder.Select("COUNT(*)").FromSelect(builder.RemoveLimit().RemoveOffset(), "_query_groups")
+		} else if condition != nil {
 			countBuilder = countBuilder.Where(condition)
 		}
 		countQuery, countArgs, countErr := countBuilder.ToSql()
@@ -421,63 +445,64 @@ func (c *PostgresqlConnector) buildDateFormat(dateField, calendarInterval string
 	}
 }
 
-// buildHavingCondition builds a predicate against the aggregation result.
-func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClause, aggAlias string) (string, error) {
-	if having.Field != "__value" {
-		return "", fmt.Errorf("HAVING field must be '__value'")
+// buildHavingCondition binds values to a validated aggregate expression.
+func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClause, expression string) (sq.Sqlizer, error) {
+	if having.Field != "__value" && having.Field != "count(*)" {
+		return nil, fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}
-
-	var op string
 	switch having.Operation {
-	case "==":
-		op = "="
-	case "!=":
-		op = "<>"
-	case ">":
-		op = ">"
-	case ">=":
-		op = ">="
-	case "<":
-		op = "<"
-	case "<=":
-		op = "<="
-	case "in":
-		return fmt.Sprintf("%s IN (%s)", aggAlias, formatInValues(having.Value)), nil
-	case "not_in":
-		return fmt.Sprintf("%s NOT IN (%s)", aggAlias, formatInValues(having.Value)), nil
-	case "range":
-		if values, ok := having.Value.([]any); ok && len(values) == 2 {
-			return fmt.Sprintf("%s BETWEEN ? AND ?", aggAlias), nil
+	case "==", "=", "!=", ">", ">=", "<", "<=":
+		op := having.Operation
+		if op == "==" {
+			op = "="
 		}
-		return "", fmt.Errorf("range operation requires an array with 2 values")
-	case "out_range":
-		if values, ok := having.Value.([]any); ok && len(values) == 2 {
-			return fmt.Sprintf("%s NOT BETWEEN ? AND ?", aggAlias), nil
+		if op == "!=" {
+			op = "<>"
 		}
-		return "", fmt.Errorf("out_range operation requires an array with 2 values")
+		if having.Value == nil {
+			return nil, fmt.Errorf("HAVING comparison requires a value")
+		}
+		return sq.Expr(expression+" "+op+" ?", having.Value), nil
+	case "in", "not_in", "range", "out_range":
+		var values []any
+		switch value := having.Value.(type) {
+		case []any:
+			values = value
+		case []string:
+			values = make([]any, len(value))
+			for i, item := range value {
+				values[i] = item
+			}
+		default:
+			return nil, fmt.Errorf("HAVING operation requires an array")
+		}
+		if having.Operation == "range" || having.Operation == "out_range" {
+			if len(values) != 2 {
+				return nil, fmt.Errorf("HAVING range requires two values")
+			}
+			lowerOp, upperOp := ">=", "<="
+			if having.Operation == "out_range" {
+				lowerOp, upperOp = "<", ">"
+			}
+			lower := sq.Expr(expression+" "+lowerOp+" ?", values[0])
+			upper := sq.Expr(expression+" "+upperOp+" ?", values[1])
+			if having.Operation == "range" {
+				return sq.And{lower, upper}, nil
+			}
+			return sq.Or{lower, upper}, nil
+		}
+		op := "IN"
+		if having.Operation == "not_in" {
+			op = "NOT IN"
+		}
+		if len(values) == 0 {
+			if op == "IN" {
+				return sq.Expr("1=0"), nil
+			}
+			return sq.Expr("1=1"), nil
+		}
+		return sq.Expr(expression+" "+op+" ("+sq.Placeholders(len(values))+")", values...), nil
 	default:
-		return "", fmt.Errorf("unsupported HAVING operation: %s", having.Operation)
-	}
-
-	return fmt.Sprintf("%s %s ?", aggAlias, op), nil
-}
-
-// formatInValues formats scalar or list values for a HAVING IN predicate.
-func formatInValues(value any) string {
-	switch v := value.(type) {
-	case []any:
-		var values []string
-		for _, item := range v {
-			values = append(values, fmt.Sprintf("%v", item))
-		}
-		return strings.Join(values, ", ")
-	case []string:
-		var values []string
-		for _, item := range v {
-			values = append(values, fmt.Sprintf("'%s'", item))
-		}
-		return strings.Join(values, ", ")
-	default:
-		return fmt.Sprintf("%v", value)
+		return nil, fmt.Errorf("unsupported HAVING operation: %s", having.Operation)
 	}
 }

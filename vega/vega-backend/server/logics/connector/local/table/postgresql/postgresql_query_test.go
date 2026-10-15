@@ -2,6 +2,7 @@ package postgresql
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"testing"
 	"time"
@@ -30,7 +31,7 @@ func TestPostgresqlConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestPostgresqlConnectorExecuteQueryInvalidParameter(t *testing.T) {
+func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		needTotal bool
@@ -67,6 +68,65 @@ func TestPostgresqlConnectorExecuteQueryInvalidParameter(t *testing.T) {
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+	for _, tc := range []struct {
+		name        string
+		groups      []*interfaces.GroupByItem
+		aggregation *interfaces.Aggregation
+		having      *interfaces.HavingClause
+		statement   string
+		args        []driver.Value
+		total       int64
+	}{
+		{name: "groups without a metric", groups: []*interfaces.GroupByItem{{Property: "label"}}, statement: `SELECT "label" AS "label" FROM "public"."orders" GROUP BY "label"`, total: 8},
+		{name: "group count after HAVING", groups: []*interfaces.GroupByItem{{Property: "label"}}, aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "total"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 2}, statement: `SELECT "label" AS "label", COUNT("id") AS "total" FROM "public"."orders" GROUP BY "label" HAVING COUNT("id") > $1`, args: []driver.Value{2}, total: 3},
+		{name: "ungrouped aggregate is one result row", aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count"}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders"`, total: 1},
+		{name: "implicit count HAVING without grouping", having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 100}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders" HAVING COUNT(*) > $1`, args: []driver.Value{100}, total: 0},
+	} {
+		for _, needTotal := range []bool{false, true} {
+			name := tc.name + " without total"
+			if needTotal {
+				name = tc.name + " with total"
+			}
+			t.Run(name, func(t *testing.T) {
+				db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+				require.NoError(t, err)
+				defer func() { _ = db.Close() }()
+				db.SetMaxOpenConns(1)
+				connector := &PostgresqlConnector{db: db, connected: true}
+				resource := &interfaces.Resource{SourceIdentifier: `"public"."orders"`, SchemaDefinition: []*interfaces.Property{{Name: "label", Type: interfaces.DataType_String}, {Name: "id", Type: interfaces.DataType_Integer}}}
+				params := &interfaces.ResourceDataQueryParams{GroupBy: tc.groups, Aggregation: tc.aggregation, Having: tc.having, NeedTotal: needTotal, Paging: interfaces.PagingRequest{Offset: 10, Limit: 1}}
+				// An empty page must still return the full aggregate total when requested.
+				mock.ExpectQuery(tc.statement + " LIMIT 1 OFFSET 10").WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"value"})).RowsWillBeClosed()
+				if needTotal {
+					mock.ExpectQuery(`SELECT COUNT(*) FROM (` + tc.statement + `) AS _query_groups`).WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tc.total))
+				}
+				result, err := connector.ExecuteQuery(context.Background(), resource, params)
+				require.NoError(t, err)
+				assert.Empty(t, result.Entries)
+				wantTotal := int64(0)
+				if needTotal {
+					wantTotal = tc.total
+				}
+				assert.Equal(t, wantTotal, result.Total)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	}
+
+	t.Run("implicit count cannot overwrite the grouped __value field", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{{Name: "__value", Type: interfaces.DataType_String}}}
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+			GroupBy: []*interfaces.GroupByItem{{Property: "__value"}}, Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0},
+		})
+		require.ErrorContains(t, err, "aggregate alias conflicts with a group field")
+		assert.Nil(t, result)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 }
 
 func TestPostgresqlConnectorBuildPagedSQL(t *testing.T) {
@@ -184,69 +244,42 @@ func TestPostgresqlConnectorExecuteQueryConvertsAliasedTimezoneField(t *testing.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestPostgresqlBuildHavingCondition(t *testing.T) {
+func TestPostgresqlConnectorBuildHavingCondition(t *testing.T) {
 	connector := &PostgresqlConnector{}
-	tests := []struct {
-		name       string
-		having     *interfaces.HavingClause
-		aggAlias   string
-		want       string
-		errContain string
+	for _, tc := range []struct {
+		name, operation, sql string
+		value                any
+		args                 []any
 	}{
-		{
-			name:     "equal uses placeholder",
-			having:   &interfaces.HavingClause{Field: "__value", Operation: "==", Value: 10},
-			aggAlias: "total",
-			want:     "total = ?",
-		},
-		{
-			name:     "not in formats list",
-			having:   &interfaces.HavingClause{Field: "__value", Operation: "not_in", Value: []string{"a", "b"}},
-			aggAlias: "total",
-			want:     "total NOT IN ('a', 'b')",
-		},
-		{
-			name:     "out range uses placeholders",
-			having:   &interfaces.HavingClause{Field: "__value", Operation: "out_range", Value: []any{1, 3}},
-			aggAlias: "total",
-			want:     "total NOT BETWEEN ? AND ?",
-		},
-		{
-			name:       "rejects unsupported field",
-			having:     &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 1},
-			aggAlias:   "total",
-			errContain: "HAVING field must be",
-		},
-		{
-			name:       "rejects invalid operation",
-			having:     &interfaces.HavingClause{Field: "__value", Operation: "like", Value: 1},
-			aggAlias:   "total",
-			errContain: "unsupported HAVING operation",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := connector.buildHavingCondition(tt.having, tt.aggAlias)
-
-			if tt.errContain != "" {
-				require.Error(t, err)
-				assert.ErrorContains(t, err, tt.errContain)
-				assert.Empty(t, got)
-				return
-			}
+		{"equal", "==", "COUNT(id) = ?", 10, []any{10}},
+		{"quoted string stays bound", "!=", "COUNT(id) <> ?", "a' OR 1=1 --", []any{"a' OR 1=1 --"}},
+		{"greater equal", ">=", "COUNT(id) >= ?", 3, []any{3}},
+		{"string list", "in", "COUNT(id) IN (?,?)", []string{"a'", "b"}, []any{"a'", "b"}},
+		{"not in", "not_in", "COUNT(id) NOT IN (?,?)", []any{1, 2}, []any{1, 2}},
+		{"range", "range", "(COUNT(id) >= ? AND COUNT(id) <= ?)", []any{1, 3}, []any{1, 3}},
+		{"out range", "out_range", "(COUNT(id) < ? OR COUNT(id) > ?)", []any{1, 3}, []any{1, 3}},
+		{"empty in", "in", "1=0", []any{}, nil},
+		{"empty not in", "not_in", "1=1", []any{}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			expression, err := connector.buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: tc.operation, Value: tc.value}, "COUNT(id)")
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
+			sql, args, err := expression.ToSql()
+			require.NoError(t, err)
+			assert.Equal(t, tc.sql, sql)
+			assert.Equal(t, tc.args, args)
 		})
 	}
-}
-
-func TestPostgresqlFormatInValues(t *testing.T) {
-	t.Run("postgresql format in values", func(t *testing.T) {
-		assert.Equal(t, "1, 2", formatInValues([]any{1, 2}))
-		assert.Equal(t, "'a', 'b'", formatInValues([]string{"a", "b"}))
-		assert.Equal(t, "single", formatInValues("single"))
-	})
+	for _, having := range []*interfaces.HavingClause{
+		{Field: "name", Operation: "==", Value: 1},
+		{Field: "__value", Operation: "like", Value: 1},
+		{Field: "__value", Operation: "range", Value: []any{1}},
+		{Field: "__value", Operation: "in", Value: 1},
+		{Field: "__value", Operation: "=="},
+	} {
+		_, err := connector.buildHavingCondition(having, "COUNT(id)")
+		require.Error(t, err)
+	}
 }
 
 func TestPostgresqlConvertValue(t *testing.T) {

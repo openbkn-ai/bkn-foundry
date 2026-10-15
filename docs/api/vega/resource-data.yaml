@@ -392,7 +392,9 @@ components:
       type: object
       required: [property, aggr]
       properties:
-        property: { type: string }
+        property:
+          type: string
+          description: 聚合字段名；`*` 仅支持 aggr=count，表示统计所有行。
         aggr:
           type: string
           enum: [count, count_distinct, sum, max, min, avg]
@@ -436,7 +438,10 @@ components:
           items:
             $ref: "#/components/schemas/Document"
         total_count:
-          description: 总条数（仅 need_total=true 时返回）
+          description: |
+            仅 need_total=true 时返回。SQL 表源查询返回分页前的结果行数：
+            明细查询为匹配行数，聚合查询为 GROUP BY、HAVING 后的结果行数。
+            OpenSearch 查询（包括 local_index 路径）当前仍返回匹配文档数。
           type: integer
           format: int64
         paging:
