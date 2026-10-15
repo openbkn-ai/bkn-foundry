@@ -1,13 +1,11 @@
-"""Idempotently import and verify the Enterprise business-provenance Agent."""
+"""Compatibility entry point: verify SQL-seeded EE Agents without writing configuration."""
 
 import json
 import os
 import sys
 import time
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-
 
 EXPECTED_OWNER_ACCOUNT = "openbkn-business-provenance"
 EXPECTED_OWNER_NAME = "OpenBKN Business Provenance Service"
@@ -33,16 +31,6 @@ class JsonClient:
             retry_statuses=retry_statuses,
         )
 
-    def post_json(self, url: str, body: dict, headers: dict[str, str]):
-        return self._request(
-            Request(
-                url,
-                data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json", **headers},
-                method="POST",
-            )
-        )
-
     def _request(self, request: Request, retry_statuses: set[int] | None = None):
         retry_statuses = retry_statuses or set()
         for attempt in range(1, self.attempts + 1):
@@ -51,11 +39,17 @@ class JsonClient:
                     return json.load(response)
             except HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace")
-                if (exc.code < 500 and exc.code not in retry_statuses) or attempt == self.attempts:
-                    raise BootstrapError(f"HTTP {exc.code} from {request.full_url}: {detail}") from exc
+                if (
+                    exc.code < 500 and exc.code not in retry_statuses
+                ) or attempt == self.attempts:
+                    raise BootstrapError(
+                        f"HTTP {exc.code} from {request.full_url}: {detail}"
+                    ) from exc
             except (URLError, TimeoutError) as exc:
                 if attempt == self.attempts:
-                    raise BootstrapError(f"cannot reach {request.full_url}: {exc}") from exc
+                    raise BootstrapError(
+                        f"cannot reach {request.full_url}: {exc}"
+                    ) from exc
             time.sleep(self.delay_s)
         raise AssertionError("unreachable")
 
@@ -79,100 +73,53 @@ def _validate_owner(owner: dict, owner_id: str) -> None:
             )
 
 
-def _validate_import_result(result: dict, agent_id: str) -> str:
-    entries = result.get("results")
-    if not isinstance(entries, list) or len(entries) != 1:
-        raise BootstrapError("Agent import must return exactly one result")
-    entry = entries[0]
-    if entry.get("agent_id") != agent_id:
-        raise BootstrapError(f"Agent import returned unexpected id {entry.get('agent_id')!r}")
-    if entry.get("action") not in {"created", "updated"}:
-        raise BootstrapError(entry.get("error") or f"Agent import action is {entry.get('action')!r}")
-    if entry.get("prompt_action") not in {"created", "version_published", "unchanged"}:
-        raise BootstrapError(
-            f"Agent import prompt action is {entry.get('prompt_action')!r}"
-        )
-    warnings = result.get("warnings") or []
-    if warnings:
-        raise BootstrapError(f"Agent import returned warnings: {warnings}")
-    return entry["action"]
-
-
-def _validate_agent(actual: dict, package_item: dict, owner_id: str) -> None:
-    expected = package_item["spec"]
-    for field, value in expected.items():
-        if actual.get(field) != value:
-            raise BootstrapError(
-                f"Agent {package_item['agent_id']} {field} is {actual.get(field)!r}, expected {value!r}"
-            )
-    if actual.get("create_user") != owner_id:
-        raise BootstrapError(
-            f"Agent {package_item['agent_id']} owner is {actual.get('create_user')!r}, expected {owner_id!r}"
-        )
-
-
 def bootstrap(
-    client,
-    package_path,
-    bkn_safe_url: str,
-    bkn_agent_url: str,
-    owner_id: str,
-    bootstrap_token: str,
+    client, agent_id, bkn_safe_url, bkn_agent_url, owner_id, bootstrap_token
 ) -> str:
-    package = json.loads(Path(package_path).read_text(encoding="utf-8"))
-    if package.get("format") != "bkn-agent/v1" or len(package.get("items") or []) != 1:
-        raise BootstrapError("business provenance package must contain exactly one bkn-agent/v1 item")
-    item = package["items"][0]
-    agent_id = item["agent_id"]
-
-    # During a rolling upgrade an old bkn-safe Pod can still answer before the
-    # new fixed principal has been seeded. Only that owner-read 404 is transient;
-    # every other 4xx remains a deterministic contract failure.
+    """Keep the deployment command and identity gate; SQL owns default creation."""
     owner = client.get_json(
-        _join(bkn_safe_url, f"directory/users/{owner_id}"),
-        retry_statuses={404},
+        _join(bkn_safe_url, f"directory/users/{owner_id}"), retry_statuses={404}
     )
     _validate_owner(owner, owner_id)
-
-    owner_headers = {
+    headers = {
         "x-account-id": owner_id,
         "x-account-type": "app",
         "x-bkn-provenance-bootstrap-token": bootstrap_token,
     }
-    result = client.post_json(
-        _join(bkn_agent_url, "import"),
-        {"package": package},
-        owner_headers,
-    )
-    action = _validate_import_result(result, agent_id)
-    actual = client.get_json(_join(bkn_agent_url, f"agents/{agent_id}"), owner_headers)
-    _validate_agent(actual, item, owner_id)
-    return action
+    actual = client.get_json(_join(bkn_agent_url, f"agents/{agent_id}"), headers)
+    if actual.get("agent_id") != agent_id or actual.get("create_user") != owner_id:
+        raise BootstrapError(f"Agent {agent_id} identity or owner does not match")
+    prompt_id = actual.get("prompt_id")
+    if not prompt_id:
+        raise BootstrapError(f"Agent {agent_id} has no shared Prompt")
+    prompt = client.get_json(_join(bkn_agent_url, f"prompts/{prompt_id}"), headers)
+    if prompt.get("prompt_id") != prompt_id or not prompt.get("content"):
+        raise BootstrapError(f"Agent {agent_id} shared Prompt is missing or invalid")
+    # Administrator edits and disabled state are intentional; never reset them.
+    return "verified"
 
 
 def main() -> int:
-    service_root = Path(__file__).resolve().parents[2]
     try:
-        package_paths = [
-            os.getenv(
-                "BKN_PROVENANCE_PACKAGE",
-                str(service_root / "deploy" / "agents" / "business-provenance-optimizer.json"),
-            ),
-            os.getenv(
-                "BKN_CLAIM_ATTRIBUTION_PACKAGE",
-                str(service_root / "deploy" / "agents" / "business-provenance-claim-attribution.json"),
-            ),
-        ]
+        if os.getenv("BKN_PROVENANCE_PACKAGE") or os.getenv(
+            "BKN_CLAIM_ATTRIBUTION_PACKAGE"
+        ):
+            raise BootstrapError(
+                "JSON package overrides are no longer supported; manage shared Agent configuration in the database"
+            )
         actions = [
             bootstrap(
                 JsonClient(),
-                package_path,
+                agent_id,
                 os.environ["BKN_SAFE_URL"],
                 os.environ["BKN_AGENT_URL"],
                 os.environ["BKN_PROVENANCE_OWNER_ID"],
                 os.environ["BKN_PROVENANCE_BOOTSTRAP_TOKEN"],
             )
-            for package_path in package_paths
+            for agent_id in (
+                "business_provenance_optimizer",
+                "business_provenance_claim_attribution",
+            )
         ]
     except (BootstrapError, KeyError, OSError, ValueError) as exc:
         print(f"business provenance bootstrap failed: {exc}", file=sys.stderr)

@@ -1,22 +1,12 @@
 """知识网络优化 Agent 的部署合同。"""
 
 import json
-from pathlib import Path
 
-
-PACKAGE = (
-    Path(__file__).resolve().parents[2]
-    / "deploy"
-    / "agents"
-    / "business-provenance-optimizer.json"
-)
+from app.test.test_shared_agent_seeds import seed_package
 
 
 def _agent_package():
-    package = json.loads(PACKAGE.read_text(encoding="utf-8"))
-    assert package["format"] == "bkn-agent/v1"
-    assert len(package["items"]) == 1
-    return package["items"][0]
+    return seed_package()["items"][0]
 
 
 def test_business_provenance_agent_has_only_readonly_schema_tools():
@@ -101,7 +91,5 @@ def test_optimizer_has_a_600_second_budget_without_changing_other_limits():
         "timeout_s": 600,
         "max_output_tokens": 8192,
     }
-    claim_package = json.loads(
-        PACKAGE.with_name("business-provenance-claim-attribution.json").read_text(encoding="utf-8")
-    )
+    claim_package = seed_package("business_provenance_claim_attribution")
     assert claim_package["items"][0]["spec"]["limits"]["timeout_s"] == 75

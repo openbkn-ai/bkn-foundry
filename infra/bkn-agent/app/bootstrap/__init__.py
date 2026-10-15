@@ -1,1 +1,1 @@
-"""Deployment bootstrap commands for built-in Agents."""
+"""Deployment compatibility checks for SQL-initialized built-in Agents."""

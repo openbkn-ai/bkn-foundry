@@ -1,9 +1,7 @@
-"""Enterprise business-provenance Agent bootstrap validation."""
+"""EE compatibility entry verifies SQL defaults without resetting shared configuration."""
 
-import json
 import asyncio
 from io import BytesIO
-from pathlib import Path
 from urllib.error import HTTPError
 
 import pytest
@@ -12,158 +10,100 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
+from app.auth import get_account
 from app.bootstrap import business_provenance
 from app.bootstrap.business_provenance import BootstrapError, JsonClient, bootstrap
-from app.auth import get_account
 from app.config import config
 from app.db import get_session
 from app.main import app
 from app.models import AgentRow, Base, PromptRow
+from app.test.test_shared_agent_seeds import seed_package
 
-
-PACKAGE = (
-    Path(__file__).resolve().parents[2]
-    / "deploy"
-    / "agents"
-    / "business-provenance-optimizer.json"
-)
 OWNER_ID = "bdd59f76-19c3-58b0-bf5f-082c4c3cbddb"
 BOOTSTRAP_TOKEN = "deployment-bootstrap-secret"
+AGENT_ID = "business_provenance_optimizer"
 
 
 class FakeClient:
-    def __init__(self, owner=None, import_result=None, agent=None):
-        self.owner = owner or {
+    def __init__(self):
+        self.owner = {
             "id": OWNER_ID,
             "account": "openbkn-business-provenance",
             "name": "OpenBKN Business Provenance Service",
             "enabled": True,
             "account_type": "app",
         }
-        package_item = json.loads(PACKAGE.read_text(encoding="utf-8"))["items"][0]
-        self.import_result = import_result or {
-            "results": [
-                {
-                    "agent_id": package_item["agent_id"],
-                    "action": "created",
-                    "prompt_action": "created",
-                }
-            ],
-            "warnings": [],
-        }
-        self.agent = agent or {
-            **package_item["spec"],
-            "agent_id": package_item["agent_id"],
-            "create_user": OWNER_ID,
-        }
-        self.import_headers = None
-        self.agent_get_headers = None
+        item = seed_package()["items"][0]
+        self.agent = {**item["spec"], "create_user": OWNER_ID}
+        self.prompt = item["prompt"]
+        self.headers = []
 
     def get_json(self, url, headers=None, retry_statuses=None):
         if "/directory/users/" in url:
             return self.owner
-        self.agent_get_headers = headers
-        return self.agent
+        self.headers.append(headers)
+        return self.prompt if "/prompts/" in url else self.agent
 
-    def post_json(self, url, body, headers):
-        self.import_headers = headers
-        return self.import_result
+    def post_json(self, *args, **kwargs):
+        raise AssertionError("bootstrap must not write shared configuration")
 
 
-def test_bootstrap_imports_and_verifies_the_canonical_agent():
+def verify(client):
+    return bootstrap(
+        client, AGENT_ID, "http://safe", "http://agent", OWNER_ID, BOOTSTRAP_TOKEN
+    )
+
+
+def test_compatibility_entry_only_reads_sql_seeded_configuration():
     client = FakeClient()
-
-    result = bootstrap(
-        client,
-        package_path=PACKAGE,
-        bkn_safe_url="http://bkn-safe:3000/api/safe/v1",
-        bkn_agent_url="http://bkn-agent:30800/api/bkn-agent/v1",
-        owner_id=OWNER_ID,
-        bootstrap_token=BOOTSTRAP_TOKEN,
-    )
-
-    assert result == "created"
-    assert client.import_headers == {
-        "x-account-id": OWNER_ID,
-        "x-account-type": "app",
-        "x-bkn-provenance-bootstrap-token": BOOTSTRAP_TOKEN,
-    }
-    assert client.agent_get_headers == client.import_headers
-
-
-def test_repeated_upgrade_updates_agent_without_new_prompt_version():
-    client = FakeClient()
-    client.import_result["results"][0].update(
-        action="updated",
-        prompt_action="unchanged",
-    )
-
-    result = bootstrap(
-        client, PACKAGE, "http://safe", "http://agent", OWNER_ID, BOOTSTRAP_TOKEN
-    )
-
-    assert result == "updated"
-
-
-def test_bootstrap_does_not_require_a_package_specific_default_model():
-    package = json.loads(PACKAGE.read_text(encoding="utf-8"))
-    assert package["items"][0]["spec"]["model"] == ""
-
+    assert verify(client) == "verified"
     assert (
-        bootstrap(
-            FakeClient(), PACKAGE, "http://safe", "http://agent", OWNER_ID, BOOTSTRAP_TOKEN
-        )
-        == "created"
+        client.headers
+        == [
+            {
+                "x-account-id": OWNER_ID,
+                "x-account-type": "app",
+                "x-bkn-provenance-bootstrap-token": BOOTSTRAP_TOKEN,
+            }
+        ]
+        * 2
     )
+
+
+def test_verification_accepts_administrator_edits_and_disabled_state():
+    client = FakeClient()
+    client.agent.update(model="custom", status="draft")
+    client.prompt["content"] = "shared customer configuration"
+    assert verify(client) == verify(client) == "verified"
+    assert client.agent["model"] == "custom"
+    assert client.prompt["content"] == "shared customer configuration"
 
 
 @pytest.mark.parametrize(
-    "owner_change",
-    [
-        {"enabled": False},
-        {"account_type": "other"},
-        {"account": "wrong-account"},
-    ],
+    "change", [{"enabled": False}, {"account_type": "other"}, {"account": "wrong"}]
 )
-def test_bootstrap_rejects_missing_or_conflicting_owner(owner_change):
+def test_bootstrap_rejects_conflicting_owner(change):
     client = FakeClient()
-    client.owner.update(owner_change)
-
+    client.owner.update(change)
     with pytest.raises(BootstrapError, match="owner"):
-        bootstrap(
-            client, PACKAGE, "http://safe", "http://agent", OWNER_ID, BOOTSTRAP_TOKEN
-        )
+        verify(client)
 
 
-def test_bootstrap_rejects_per_item_import_failure_even_when_http_succeeded():
-    client = FakeClient(
-        import_result={
-            "results": [
-                {
-                    "agent_id": "business_provenance_optimizer",
-                    "action": "failed",
-                    "prompt_action": "none",
-                    "error": "owned by another account",
-                }
-            ],
-            "warnings": [],
-        }
-    )
-
-    with pytest.raises(BootstrapError, match="owned by another account"):
-        bootstrap(
-            client, PACKAGE, "http://safe", "http://agent", OWNER_ID, BOOTSTRAP_TOKEN
-        )
-
-
-def test_bootstrap_rejects_agent_spec_drift_after_import():
+@pytest.mark.parametrize(
+    "change", [{"agent_id": "foreign"}, {"create_user": "foreign"}]
+)
+def test_verification_rejects_foreign_agent_or_owner(change):
     client = FakeClient()
-    client.agent["status"] = "draft"
+    client.agent.update(change)
+    with pytest.raises(BootstrapError, match="identity or owner"):
+        verify(client)
 
-    with pytest.raises(BootstrapError, match="status"):
-        bootstrap(
-            client, PACKAGE, "http://safe", "http://agent", OWNER_ID, BOOTSTRAP_TOKEN
-        )
+
+def test_verification_rejects_missing_shared_prompt():
+    client = FakeClient()
+    client.prompt["content"] = ""
+    with pytest.raises(BootstrapError, match="Prompt"):
+        verify(client)
 
 
 def test_json_client_retries_owner_not_found_during_rolling_upgrade(monkeypatch):
@@ -173,14 +113,14 @@ def test_json_client_retries_owner_not_found_during_rolling_upgrade(monkeypatch)
         nonlocal calls
         calls += 1
         if calls == 1:
-            raise HTTPError(request.full_url, 404, "not found", {}, BytesIO(b"not ready"))
+            raise HTTPError(
+                request.full_url, 404, "not found", {}, BytesIO(b"not ready")
+            )
         return BytesIO(b'{"id":"ready"}')
 
     monkeypatch.setattr(business_provenance, "urlopen", urlopen)
-
     assert JsonClient(attempts=2, delay_s=0).get_json(
-        "http://safe/directory/users/owner",
-        retry_statuses={404},
+        "http://safe/directory/users/owner", retry_statuses={404}
     ) == {"id": "ready"}
     assert calls == 2
 
@@ -191,7 +131,9 @@ def _request(headers: dict[str, str]) -> Request:
             "type": "http",
             "method": "POST",
             "path": "/api/bkn-agent/v1/import",
-            "headers": [(key.lower().encode(), value.encode()) for key, value in headers.items()],
+            "headers": [
+                (key.lower().encode(), value.encode()) for key, value in headers.items()
+            ],
         }
     )
 
@@ -220,7 +162,9 @@ def test_fixed_owner_identity_requires_the_deployment_secret(monkeypatch):
     assert account.account_type == "app"
 
 
-def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, monkeypatch):
+def test_canonical_package_import_is_idempotent_with_real_database(
+    tmp_path, monkeypatch
+):
     database = tmp_path / "bkn-agent.db"
     engine = create_async_engine(f"sqlite+aiosqlite:///{database}")
     sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -236,7 +180,7 @@ def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, mon
     asyncio.run(prepare())
     app.dependency_overrides[get_session] = session_override
     monkeypatch.setattr(config, "PROVENANCE_BOOTSTRAP_TOKEN", BOOTSTRAP_TOKEN)
-    package = json.loads(PACKAGE.read_text(encoding="utf-8"))
+    package = seed_package()
     headers = {
         "x-account-id": OWNER_ID,
         "x-account-type": "app",
@@ -244,18 +188,25 @@ def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, mon
     }
     client = TestClient(app)
     try:
-        fresh = client.post("/api/bkn-agent/v1/import", json={"package": package}, headers=headers)
+        fresh = client.post(
+            "/api/bkn-agent/v1/import", json={"package": package}, headers=headers
+        )
+        assert fresh.status_code == 200, fresh.text
+        assert fresh.json()["results"][0]["action"] == "created", fresh.text
         customized_spec = {**package["items"][0]["spec"], "model": "custom-model"}
         customized_spec["limits"] = {**customized_spec["limits"], "timeout_s": 180}
         customized = client.put(
             "/api/bkn-agent/v1/agents/business_provenance_optimizer",
-            json=customized_spec, headers=headers,
+            json=customized_spec,
+            headers=headers,
         )
         assert customized.status_code == 200
         assert customized.json()["model"] == "custom-model"
         assert customized.json()["limits"]["timeout_s"] == 180
         # Existing upsert semantics overwrite manual settings, not just timeout.
-        repeat = client.post("/api/bkn-agent/v1/import", json={"package": package}, headers=headers)
+        repeat = client.post(
+            "/api/bkn-agent/v1/import", json={"package": package}, headers=headers
+        )
         foreign = client.post(
             "/api/bkn-agent/v1/import",
             json={"package": package},
@@ -272,7 +223,9 @@ def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, mon
         async def verify():
             async with sessions() as session:
                 agent = await session.get(AgentRow, "business_provenance_optimizer")
-                prompt = await session.get(PromptRow, "business_provenance_optimizer_prompt")
+                prompt = await session.get(
+                    PromptRow, "business_provenance_optimizer_prompt"
+                )
                 return agent, prompt
 
         agent, prompt = asyncio.run(verify())
@@ -288,25 +241,40 @@ def test_canonical_package_import_is_idempotent_with_real_database(tmp_path, mon
         asyncio.run(engine.dispose())
 
 
-def test_claim_attribution_package_is_published_without_tools():
-    service_root = Path(__file__).resolve().parents[2]
-    package = json.loads(
-        (
-            service_root
-            / "deploy"
-            / "agents"
-            / "business-provenance-claim-attribution.json"
-        ).read_text(encoding="utf-8")
-    )
-    assert package["format"] == "bkn-agent/v1"
-    assert len(package["items"]) == 1
-    item = package["items"][0]
-    assert item["agent_id"] == "business_provenance_claim_attribution"
+def test_claim_attribution_sql_default_is_published_without_tools():
+    item = seed_package("business_provenance_claim_attribution")["items"][0]
     assert item["spec"]["status"] == "published"
     assert item["spec"]["mode"] == "chat"
     assert item["spec"]["tools"] == []
     assert item["spec"]["limits"]["max_tool_calls"] == 0
     assert "不得把孤立数字" in item["prompt"]["content"]
-    assert "display_text" in item["prompt"]["content"]
-    assert "无需查看表头或上下文也能理解" in item["prompt"]["content"]
     assert "Mario Kempes" in item["prompt"]["content"]
+
+
+def test_main_keeps_the_legacy_deployment_command_and_only_verifies_both_agents(
+    monkeypatch,
+):
+    calls = []
+    for name in ("BKN_PROVENANCE_PACKAGE", "BKN_CLAIM_ATTRIBUTION_PACKAGE"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in {
+        "BKN_SAFE_URL": "http://safe",
+        "BKN_AGENT_URL": "http://agent",
+        "BKN_PROVENANCE_OWNER_ID": OWNER_ID,
+        "BKN_PROVENANCE_BOOTSTRAP_TOKEN": BOOTSTRAP_TOKEN,
+    }.items():
+        monkeypatch.setenv(name, value)
+
+    def verify_only(client, agent_id, *args):
+        calls.append(agent_id)
+        return "verified"
+
+    monkeypatch.setattr(business_provenance, "bootstrap", verify_only)
+    assert business_provenance.main() == 0
+    assert calls == [AGENT_ID, "business_provenance_claim_attribution"]
+
+
+def test_main_does_not_silently_ignore_old_json_overrides(monkeypatch, capsys):
+    monkeypatch.setenv("BKN_PROVENANCE_PACKAGE", "/custom/package.json")
+    assert business_provenance.main() == 1
+    assert "no longer supported" in capsys.readouterr().err
