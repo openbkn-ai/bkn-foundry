@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account
+from app.commons.i18n import build_error_content
 from app.config import config
 from app.core.graph import stream_chat
 from app.core.public_chat import PublicChat
@@ -35,6 +36,15 @@ def _identity(account: Account) -> dict:
     return {"account_id": account.account_id, "account_type": account.account_type}
 
 
+def _failure(code: str | None) -> dict[str, str]:
+    return {
+        "code": code
+        if code and code.startswith("BknAgent.")
+        else "BknAgent.Execution.Failed",
+        "detail": build_error_content("BknAgent.Execution.Failed")["detail"],
+    }
+
+
 def _decode(task) -> ExecutionOut:
     data = json.loads(task.output) if task.output else None
     status = task.status
@@ -46,13 +56,7 @@ def _decode(task) -> ExecutionOut:
         thread_id=task.parent_thread_id,
         status=status,
         result=data if status == "succeeded" else None,
-        error={
-            "code": task.failure_detail
-            if task.failure_detail and task.failure_detail.startswith("BknAgent.")
-            else "BknAgent.Execution.Failed"
-        }
-        if status == "failed"
-        else None,
+        error=_failure(task.failure_detail) if status == "failed" else None,
     )
 
 
@@ -293,7 +297,7 @@ async def execute(
                 if failure == "cancelled"
                 else "failed",
                 **(
-                    {"error": {"code": failure}}
+                    {"error": _failure(failure)}
                     if failure and failure != "cancelled"
                     else {}
                 ),

@@ -4,6 +4,8 @@
 
 """Credential and resource checks for the public execution routes only."""
 
+from dataclasses import replace
+
 import aiohttp
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -38,6 +40,22 @@ async def _post(url: str, **kwargs) -> dict:
         raise err(503, "BknAgent.Execution.Unavailable") from None
 
 
+def _set_subject(request: Request, account: Account | None) -> None:
+    ctx = observability.current_context()
+    if ctx is not None:
+        ctx = replace(
+            ctx,
+            account_id=account.account_id if account else None,
+            account_type=account.account_type if account else None,
+            application_principal_id=None,
+            effective_subject_type=None,
+            effective_subject_id=None,
+            delegation_id=None,
+        )
+        observability.set_context(ctx)
+        request.state.bkn_trace_context = ctx
+
+
 _bearer = HTTPBearer(auto_error=False)
 
 
@@ -45,6 +63,9 @@ async def get_public_account(
     request: Request,
     _credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Account:
+    # Middleware captures headers before authentication. Do not send unverified
+    # caller identity or attribution even to the introspection service.
+    _set_subject(request, None)
     authorization = request.headers.get("authorization", "")
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
@@ -62,7 +83,7 @@ async def get_public_account(
         account_type = "app" if kind == "app" else "user"
     else:
         info = await _post(
-            f"{config.HYDRA_ADMIN_BASE}/oauth2/introspect", data={"token": token}
+            f"{config.HYDRA_ADMIN_BASE}/admin/oauth2/introspect", data={"token": token}
         )
         extension = info.get("ext") or {}
         if not isinstance(extension, dict):
@@ -89,7 +110,16 @@ async def get_public_account(
     headers = [
         (key, value)
         for key, value in request.scope["headers"]
-        if key.lower() not in {b"x-account-id", b"x-account-type", b"user_id"}
+        if key.lower()
+        not in {
+            b"x-account-id",
+            b"x-account-type",
+            b"user_id",
+            b"x-bkn-application-principal-id",
+            b"x-bkn-effective-subject-type",
+            b"x-bkn-effective-subject-id",
+            b"x-bkn-delegation-id",
+        }
     ]
     headers.extend(
         [
@@ -99,7 +129,12 @@ async def get_public_account(
         ]
     )
     request.scope["headers"] = headers
-    return Account(subject, account_type)
+    # Request.headers was already read above; invalidate its cached view too.
+    if hasattr(request, "_headers"):
+        del request._headers
+    account = Account(subject, account_type)
+    _set_subject(request, account)
+    return account
 
 
 async def authorize_execution(account: Account, agent_id: str, kn_id: str) -> None:

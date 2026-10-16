@@ -14,6 +14,18 @@
 # stay literal.
 
 error_messages = {
+    "BknAgent.Execution.ToolScopeUnsupported": {
+        "code": "BknAgent.Execution.ToolScopeUnsupported",
+        "description": "此工具无法保证当前知识网络范围，本次执行不可用。",
+        "detail": "此工具无法保证当前知识网络范围，本次执行不可用。",
+        "solution": "请使用受当前知识网络范围约束的工具。",
+    },
+    "BknAgent.Execution.ToolScopeMismatch": {
+        "code": "BknAgent.Execution.ToolScopeMismatch",
+        "description": "工具请求了其他知识网络，调用已拒绝。",
+        "detail": "工具请求了其他知识网络，调用已拒绝。",
+        "solution": "请仅查询当前知识网络。",
+    },
     "BknAgent.Auth.TokenRequired": {
         "code": "BknAgent.Auth.TokenRequired",
         "description": "需要有效的 Bearer 凭据。",

@@ -13,6 +13,8 @@ from typing import Any
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool, ToolException
 
+from app.commons.i18n import build_error_content
+
 # These dispatch arbitrary code or nested calls; an outer kn_id cannot bind the
 # operations they perform. Register them with MCP, but refuse execution here.
 _INDIRECT_TOOLS = {
@@ -142,11 +144,21 @@ class PublicChat:
                 async def call(**kwargs):
                     if not supports_scope:
                         raise ToolException(
-                            "This tool cannot enforce the selected knowledge network; it is unavailable in this execution."
+                            json.dumps(
+                                build_error_content(
+                                    "BknAgent.Execution.ToolScopeUnsupported"
+                                ),
+                                ensure_ascii=False,
+                            )
                         )
                     if kwargs.get("kn_id", self.kn_id) != self.kn_id:
                         raise ToolException(
-                            "The tool requested a different knowledge network."
+                            json.dumps(
+                                build_error_content(
+                                    "BknAgent.Execution.ToolScopeMismatch"
+                                ),
+                                ensure_ascii=False,
+                            )
                         )
                     kwargs["kn_id"] = self.kn_id
                     return await inner(**kwargs)

@@ -427,11 +427,13 @@ def test_tool_scope_blocks_foreign_network_and_unscoped_code(monkeypatch):
         public = PublicChat("run", "network-1")
         guarded = public.guard_tools([scoped, code, fake])
         assert await guarded[0].ainvoke({"kn_id": "network-1"}) == "ok"
-        assert "different" in await guarded[0].ainvoke({"kn_id": "network-2"})
-        assert "unavailable" in await guarded[1].ainvoke(
+        assert "ToolScopeMismatch" in await guarded[0].ainvoke({"kn_id": "network-2"})
+        assert "ToolScopeUnsupported" in await guarded[1].ainvoke(
             {"code": "query other network"}
         )
-        assert "unavailable" in await guarded[2].ainvoke({"kn_id": "network-1"})
+        assert "ToolScopeUnsupported" in await guarded[2].ainvoke(
+            {"kn_id": "network-1"}
+        )
         assert calls == [{"kn_id": "network-1"}]
 
     asyncio.run(run())
@@ -810,7 +812,9 @@ def test_setup_timeout_is_failed_and_retry_does_not_restart(monkeypatch):
                 await asyncio.Event().wait()
 
             monkeypatch.setattr(executions, "stream_chat", slow)
-            monkeypatch.setattr(config, "DEFAULT_TIMEOUT_S", 0.01)
+            # Leave room for real SQLite commits on a busy CI worker; the
+            # model setup deliberately waits forever, so timeout stays certain.
+            monkeypatch.setattr(config, "DEFAULT_TIMEOUT_S", 1)
             response = await client.post(URL, json=BODY, headers=AUTH)
             events = parse_sse(response.text)
             assert events[-1][1]["status"] == "failed"
@@ -985,7 +989,7 @@ def test_code_cannot_become_scoped_by_advertising_a_network_field(name):
         result = await guarded.ainvoke(
             {"kn_id": "network-1", "code": "anything", "__scoped": True}
         )
-        assert "unavailable" in result
+        assert "ToolScopeUnsupported" in result
 
     asyncio.run(run())
 
@@ -1099,5 +1103,176 @@ def test_appkey_uses_the_same_user_mapping_as_context_loader(monkeypatch, accoun
         assert await public_auth.get_public_account(request) == Account(
             "user-1", "user"
         )
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "extra_headers", [{}, {"x-account-id": "victim", "x-account-type": "app"}]
+)
+@pytest.mark.parametrize("operation_admitted", [False, True])
+def test_verified_http_identity_reaches_actual_model_request(
+    monkeypatch, extra_headers, operation_admitted
+):
+    from langchain_core.messages import AIMessageChunk
+    from langchain_core.outputs import ChatGenerationChunk
+    from langchain_openai import ChatOpenAI
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import graph, llm
+
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, _, _):
+            observed = []
+            monkeypatch.setattr(
+                llm.evidence,
+                "new_operation",
+                lambda: ("op-test", "event-test") if operation_admitted else ("", None),
+            )
+
+            @asynccontextmanager
+            async def checkpoint():
+                yield MemorySaver()
+
+            async def provider(self, *args, **kwargs):
+                observed.append(kwargs.get("extra_headers", {}))
+                yield ChatGenerationChunk(message=AIMessageChunk(content="Answer"))
+
+            monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+            monkeypatch.setattr(ChatOpenAI, "_astream", provider)
+            response = await client.post(
+                URL,
+                json=BODY,
+                headers={
+                    **AUTH,
+                    **extra_headers,
+                    "x-bkn-effective-subject-id": "victim",
+                    "x-bkn-effective-subject-type": "service",
+                    "x-bkn-application-principal-id": "victim-app",
+                    "x-bkn-delegation-id": "untrusted",
+                },
+            )
+            assert parse_sse(response.text)[-1][1]["status"] == "succeeded", (
+                response.text
+            )
+            assert observed
+            assert all(
+                headers.get("x-account-id") == "user-1" for headers in observed
+            ), observed
+            assert all(headers.get("x-account-type") == "user" for headers in observed)
+            assert all(headers.get("bkn-request-id") for headers in observed)
+
+    asyncio.run(run())
+
+
+def test_oauth_introspection_uses_hydra_admin_http_route(monkeypatch):
+    from aiohttp import web
+
+    from app.config import config
+
+    real_post = public_auth._post
+
+    async def run():
+        requests = []
+
+        async def introspect(request):
+            form = await request.post()
+            requests.append(dict(form))
+            assert "x-account-id" not in request.headers
+            return web.json_response(
+                {"active": True, "sub": "user-1", "ext": {"visitor_type": "realname"}}
+            )
+
+        server = web.Application()
+        server.router.add_post("/admin/oauth2/introspect", introspect)
+        runner = web.AppRunner(server)
+        await runner.setup()
+        try:
+            await web.TCPSite(runner, "127.0.0.1", 0).start()
+            monkeypatch.setattr(
+                config, "HYDRA_ADMIN_BASE", f"http://127.0.0.1:{runner.addresses[0][1]}"
+            )
+            async with environment(monkeypatch) as (client, _, _):
+                fake_post = public_auth._post
+
+                async def post(url, **kwargs):
+                    if "/authz/checks" in url:
+                        return await fake_post(url, **kwargs)
+                    return await real_post(url, **kwargs)
+
+                monkeypatch.setattr(public_auth, "_post", post)
+                response = await client.post(
+                    URL,
+                    json=BODY,
+                    headers={**AUTH, "x-account-id": "victim", "x-account-type": "app"},
+                )
+                assert response.status_code == 200, response.text
+                assert parse_sse(response.text)[-1][1]["status"] == "succeeded"
+                assert requests == [{"token": "token-1"}]
+        finally:
+            await runner.cleanup()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("language,chinese", [("en-US", False), ("zh-CN", True)])
+def test_public_tool_error_and_failure_details_follow_request_language(
+    monkeypatch, language, chinese
+):
+    async def run():
+        async with environment(monkeypatch) as (client, _, _):
+
+            async def blocked(session, agent, req, account_id, account_type, *, public):
+                async def unsafe(**kwargs):
+                    pytest.fail("unscoped tool must not run")
+
+                tool = StructuredTool.from_function(
+                    coroutine=unsafe,
+                    name="run_code",
+                    description="Code",
+                    args_schema={"type": "object", "properties": {}},
+                )
+                guarded = public.guard_tools([tool])[0]
+
+                async def events():
+                    result = await guarded.ainvoke({})
+                    message = ToolMessage(
+                        content=result,
+                        tool_call_id="blocked",
+                        name="run_code",
+                        status="error",
+                    )
+                    for event in public.updates({"tools": {"messages": [message]}}):
+                        yield event
+                    yield 'event: error\ndata: {"code":"BknAgent.Execution.Failed"}\n\n'
+
+                return events()
+
+            monkeypatch.setattr(executions, "stream_chat", blocked)
+            response = await client.post(
+                URL, json=BODY, headers={**AUTH, "Accept-Language": language}
+            )
+            events = parse_sse(response.text)
+            detail = next(
+                data["output"] for name, data in events if name == "tool_finished"
+            )
+            assert detail["code"] == "BknAgent.Execution.ToolScopeUnsupported"
+            assert (
+                any("\u4e00" <= char <= "\u9fff" for char in detail["detail"])
+                == chinese
+            )
+            failure = events[-1][1]["error"]
+            assert failure["code"] == "BknAgent.Execution.Failed"
+            assert (
+                any("\u4e00" <= char <= "\u9fff" for char in failure["detail"])
+                == chinese
+            )
+            run_id = events[0][1]["run_id"]
+            read = (
+                await client.get(
+                    f"{URL}/{run_id}", headers={**AUTH, "Accept-Language": language}
+                )
+            ).json()
+            assert read["error"] == failure
 
     asyncio.run(run())
