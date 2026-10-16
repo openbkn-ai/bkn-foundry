@@ -22,4 +22,4 @@
 # Note for mirror-only builds: this is a PEP 508 direct URL, so `USE_MIRROR`
 # does not redirect it -- the build host needs to reach github.com even when pip
 # itself is pointed at a mirror.
-bkn-osdk @ https://github.com/openbkn-ai/bkn-sdk/archive/b43546d50193fd03d1d34ee7cc998fcce3c3088a.zip#subdirectory=python
+bkn-osdk @ https://github.com/openbkn-ai/bkn-sdk/archive/ffb0797e4d8f9562649981c1abe3b4c0aa751d47.zip#subdirectory=python
