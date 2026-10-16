@@ -2,6 +2,18 @@
 
 All new features and capabilities added in this branch (`feature/803264`) are documented below.
 
+## [Unreleased]
+
+### Bug Fixes
+
+- Resolve the sandbox REST origin from an explicit `BKN_BASE_URL` or installer-discovered gateway, without deriving it from the MCP endpoint. Preserve operator overrides on upgrade and allow REST gateway egress independently from the MCP listener.
+
+- Build sandbox templates with the matching reviewed, merged OSDK schema fix.
+  Pin the complete commit SHA; the main and release clients keep their own
+  schema contracts.
+- Fail template builds if the installed OSDK does not match the source pin, is
+  shadowed by another installation, or cannot parse nullable schema lists.
+
 ## [0.4.0]
 
 ### 🚀 New Features

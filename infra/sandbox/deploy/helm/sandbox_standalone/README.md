@@ -84,7 +84,8 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `networkPolicy.enabled` | Apply a default-deny egress policy to dynamic executor pods | `true` |
 | `networkPolicy.publicHttps.enabled` | Allow public HTTPS while excluding cluster, private, link-local, and reserved address space; required by runtime dependency installation | `true` |
 | `networkPolicy.bkn.enabled` | Allow an optional BKN deployment through agent-retrieval port 30780 | `false` |
-| `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from an in-cluster BKN FQDN or uses the Sandbox namespace for a short service name | `""` |
+| `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from the MCP Service FQDN or uses the Sandbox namespace for a short service name | `""` |
+| `networkPolicy.gateway` | Independent REST gateway namespace, Pod selector and target port. Complete installation discovers these from the ingress controller Service; configure them explicitly for a custom gateway. | disabled until configured or discovered |
 | `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
 
 ## Executor Egress Isolation
@@ -99,8 +100,9 @@ DNS name, so this is the portable L3/L4 boundary. Disable
 
 MariaDB is used by the Control Plane, not executors, so it is intentionally not
 allowed. Standalone installs do not include BKN, so BKN access is disabled by
-default. When connecting one, set both BKN URL values to agent-retrieval's
-authenticated-only port 30780 and enable `networkPolicy.bkn`. An empty
+default. When connecting one, set `controlPlane.env.BKN_BASE_URL` to the REST
+gateway and enable/configure `networkPolicy.gateway`. Configure the optional MCP
+endpoint separately on port 30780 and enable `networkPolicy.bkn` only if needed. An empty
 `networkPolicy.bkn.namespace` derives the namespace from an in-cluster service
 FQDN; set it explicitly for any other addressing convention. Never allow the
 main port 30779 because that port also serves trusted `/in` routes.
@@ -114,9 +116,9 @@ after validation. Public HTTPS is allowed by default for runtime package
 installation; private-network and non-HTTPS public calls remain denied.
 
 If this standalone installation connects to BKN, upgrade agent-retrieval and
-verify port 30780 before changing both BKN URLs from 30779 to 30780. When the
-policy and BKN rule are enabled, Helm fails rendering if either non-empty BKN
-URL uses a different port. Applying the policy affects already running executor
+verify port 30780 before changing the MCP URL from 30779 to 30780. When the
+policy and MCP rule are enabled, Helm validates the MCP URL independently from
+the REST gateway URL. Applying the policy affects already running executor
 pods. NodeLocal DNSCache users must also allow its listener address explicitly.
 
 ## Access
@@ -145,3 +147,24 @@ helm template sandbox deploy/helm/sandbox_standalone \
 ## Related Chart
 
 See `deploy/helm/README.md` for the comparison between `sandbox` and `sandbox_standalone`.
+
+## REST gateway resolution
+
+The complete installer preserves an existing explicit `controlPlane.env.BKN_BASE_URL`
+and applies current `-f` / `--set` overrides last. If no REST origin is configured,
+it discovers exactly one ingress-nginx controller Service with an HTTP port. It
+uses the Service name, namespace and Service port (not NodePort), and supplies
+the matching Pod selector and target port to the independent gateway egress rule.
+Discovery never uses `BKN_SANDBOX_MCP_URL`. Missing or ambiguous controllers stop
+the installation before rollout; configure the origin and egress rule explicitly
+for another gateway implementation or a cluster without Service discovery access.
+
+`controlPlane.gateway` stores installer-owned discovery defaults in Helm values,
+not additional environment variables. Standalone Helm installation has no installer
+discovery: set `controlPlane.env.BKN_BASE_URL` and `networkPolicy.gateway` for OSDK.
+A gateway with host-based routing must also accept its configured internal origin.
+Public API authentication remains required; do not expose trusted `/in` routes.
+
+Existing executor Pods retain their old environment. Apply this change with a
+controlled Control Plane restart and executor/session recreation after preserving
+workspaces; editing the ConfigMap alone does not refresh pooled executors.

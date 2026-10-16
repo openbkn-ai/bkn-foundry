@@ -1,6 +1,6 @@
 {{- if and .Values.networkPolicy.enabled .Values.networkPolicy.bkn.enabled }}
 {{- $expectedPort := int .Values.networkPolicy.bkn.port }}
-{{- range $name, $bknURL := dict "controlPlane.env.BKN_BASE_URL" .Values.controlPlane.env.BKN_BASE_URL "controlPlane.env.BKN_SANDBOX_MCP_URL" .Values.controlPlane.env.BKN_SANDBOX_MCP_URL }}
+{{- range $name, $bknURL := dict "controlPlane.env.BKN_SANDBOX_MCP_URL" .Values.controlPlane.env.BKN_SANDBOX_MCP_URL }}
 {{- if $bknURL }}
 {{- $parsedURL := urlParse $bknURL }}
 {{- $urlPort := regexFind ":[0-9]+$" (get $parsedURL "host") }}
@@ -73,6 +73,21 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.networkPolicy.bkn.port }}
+    {{- end }}
+    {{- if .Values.networkPolicy.gateway.enabled }}
+    {{- if not .Values.networkPolicy.gateway.podSelector }}
+    {{- fail "networkPolicy.gateway.podSelector is required when gateway egress is enabled" }}
+    {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gateway.namespace | quote }}
+          podSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.gateway.podSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.networkPolicy.gateway.port }}
     {{- end }}
     {{- if and .Values.networkPolicy.publicHttps.enabled .Values.networkPolicy.publicHttps.ipBlocks }}
     - to:

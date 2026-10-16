@@ -268,7 +268,7 @@ class K8sScheduler(IContainerScheduler):
         # Both BKN faces get their address here. Deployment-level constants, injected once,
         # so a function that calls BKN needs no address in the event and no configure() call.
         #   BKN_SANDBOX_MCP_URL  sandbox_sdk.bkn (deprecated, still supported)
-        #   BKN_BASE_URL         bkn-osdk, derived from the MCP URL when unset
+        #   BKN_BASE_URL         bkn-osdk, resolved independently by deployment configuration
         bkn_mcp_url = get_settings().bkn_sandbox_mcp_url.strip()
         if bkn_mcp_url:
             env_vars.append(V1EnvVar(name="BKN_SANDBOX_MCP_URL", value=bkn_mcp_url))
