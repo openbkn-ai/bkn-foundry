@@ -1,0 +1,213 @@
+{
+  "source": "https://s3.amazonaws.com/artifacts.opencypher.org/M19/tck-M19.zip",
+  "sha256": "93d3ea6dcf386a64754bb561936a7035c3b429f81b9bc091b809061b4ea0d9bd",
+  "copyright": "Copyright (c) 2015-2022 Neo Technology, Network Engine for Objects in Lund AB",
+  "license": "Apache-2.0",
+  "coverage": "Selected UNION and UNWIND scenarios executable without graph fixtures. Not a full TCK run; WITH combinations and graph fixtures are excluded. Negative cases check compile-time rejection and message, not the full TCK error taxonomy.",
+  "cases": [
+    {
+      "source": "tck/features/clauses/union/Union1.feature",
+      "scenario": "[1] Two elements, both unique, distinct",
+      "query": "RETURN 1 AS x\nUNION\nRETURN 2 AS x",
+      "expected": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        }
+      ]
+    },
+    {
+      "source": "tck/features/clauses/union/Union1.feature",
+      "scenario": "[2] Three elements, two unique, distinct",
+      "query": "RETURN 2 AS x\nUNION\nRETURN 1 AS x\nUNION\nRETURN 2 AS x",
+      "expected": [
+        {
+          "x": 2
+        },
+        {
+          "x": 1
+        }
+      ]
+    },
+    {
+      "source": "tck/features/clauses/union/Union1.feature",
+      "scenario": "[3] Two single-column inputs, one with duplicates, distinct",
+      "query": "UNWIND [2, 1, 2, 3] AS x\nRETURN x\nUNION\nUNWIND [3, 4] AS x\nRETURN x",
+      "expected": [
+        {
+          "x": 2
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ]
+    },
+    {
+      "source": "tck/features/clauses/union/Union1.feature",
+      "scenario": "[5] Failing when UNION has different columns",
+      "query": "RETURN 1 AS a\nUNION\nRETURN 2 AS b",
+      "error": "same column names"
+    },
+    {
+      "source": "tck/features/clauses/union/Union2.feature",
+      "scenario": "[1] Two elements, both unique, not distinct",
+      "query": "RETURN 1 AS x\nUNION ALL\nRETURN 2 AS x",
+      "expected": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        }
+      ]
+    },
+    {
+      "source": "tck/features/clauses/union/Union2.feature",
+      "scenario": "[2] Three elements, two unique, not distinct",
+      "query": "RETURN 2 AS x\nUNION ALL\nRETURN 1 AS x\nUNION ALL\nRETURN 2 AS x",
+      "expected": [
+        {
+          "x": 2
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        }
+      ]
+    },
+    {
+      "source": "tck/features/clauses/union/Union2.feature",
+      "scenario": "[3] Two single-column inputs, one with duplicates, not distinct",
+      "query": "UNWIND [2, 1, 2, 3] AS x\nRETURN x\nUNION ALL\nUNWIND [3, 4] AS x\nRETURN x",
+      "expected": [
+        {
+          "x": 2
+        },
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 3
+        },
+        {
+          "x": 4
+        }
+      ]
+    },
+    {
+      "source": "tck/features/clauses/union/Union2.feature",
+      "scenario": "[5] Failing when UNION ALL has different columns",
+      "query": "RETURN 1 AS a\nUNION ALL\nRETURN 2 AS b",
+      "error": "same column names"
+    },
+    {
+      "source": "tck/features/clauses/union/Union3.feature",
+      "scenario": "[1] Failing when mixing UNION and UNION ALL",
+      "query": "RETURN 1 AS a\nUNION\nRETURN 2 AS a\nUNION ALL\nRETURN 3 AS a",
+      "error": "mixed UNION"
+    },
+    {
+      "source": "tck/features/clauses/union/Union3.feature",
+      "scenario": "[2] Failing when mixing UNION ALL and UNION",
+      "query": "RETURN 1 AS a\nUNION ALL\nRETURN 2 AS a\nUNION\nRETURN 3 AS a",
+      "error": "mixed UNION"
+    },
+    {
+      "source": "tck/features/clauses/unwind/Unwind1.feature",
+      "scenario": "[1] Unwinding a list",
+      "query": "UNWIND [1, 2, 3] AS x\nRETURN x",
+      "expected": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        }
+      ]
+    },
+    {
+      "source": "tck/features/clauses/unwind/Unwind1.feature",
+      "scenario": "[2] Unwinding a range",
+      "query": "UNWIND range(1, 3) AS x\nRETURN x",
+      "expected": [
+        {
+          "x": 1
+        },
+        {
+          "x": 2
+        },
+        {
+          "x": 3
+        }
+      ]
+    },
+    {
+      "source": "tck/features/clauses/unwind/Unwind1.feature",
+      "scenario": "[8] Unwinding the empty list",
+      "query": "UNWIND [] AS empty\nRETURN empty",
+      "expected": []
+    },
+    {
+      "source": "tck/features/clauses/unwind/Unwind1.feature",
+      "scenario": "[9] Unwinding null",
+      "query": "UNWIND null AS nil\nRETURN nil",
+      "expected": []
+    },
+    {
+      "source": "tck/features/clauses/unwind/Unwind1.feature",
+      "scenario": "[10] Unwinding list with duplicates",
+      "query": "UNWIND [1, 1, 2, 2, 3, 3, 4, 4, 5, 5] AS duplicate\nRETURN duplicate",
+      "expected": [
+        {
+          "duplicate": 1
+        },
+        {
+          "duplicate": 1
+        },
+        {
+          "duplicate": 2
+        },
+        {
+          "duplicate": 2
+        },
+        {
+          "duplicate": 3
+        },
+        {
+          "duplicate": 3
+        },
+        {
+          "duplicate": 4
+        },
+        {
+          "duplicate": 4
+        },
+        {
+          "duplicate": 5
+        },
+        {
+          "duplicate": 5
+        }
+      ]
+    }
+  ]
+}

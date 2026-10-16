@@ -229,51 +229,21 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"CREATE (a:Order) RETURN a.id", "read-only"},
 		{"MATCH (a:Order) SET a.paid = true RETURN a.id", "read-only"},
 		{"MATCH (a:Order) DETACH DELETE a RETURN a.id", "read-only"},
-		{"MATCH (a:Order) RETURN a.id UNION MATCH (b:Order) RETURN b.id", "UNION"},
-		{"MATCH (a:Order) WITH a RETURN a.id", "WITH"},
-		{"OPTIONAL MATCH (a:Order) RETURN a.id", "OPTIONAL MATCH"},
-		{"UNWIND [1, 2] AS x RETURN x", "UNWIND"},
+		{"MATCH (a:Order) RETURN a.id AS id UNION MATCH (b:Order) RETURN b.id AS id UNION ALL RETURN 1 AS id", "mixed UNION"},
 		{"CALL db.labels() YIELD label RETURN label", "procedure calls"},
 		{"MATCH p = (a:Order) RETURN a.id", "path variables"},
 		{"MATCH (a) RETURN a.id", "a node that names nothing"},
 		{"MATCH (a:Order:Invoice) RETURN a.id", "multiple labels"},
 		{"MATCH (a:Order)<-[:R]->(b:Customer) RETURN a.id", "pointing both ways"},
 		{"MATCH (a:Order)-->(b:Customer) RETURN a.id", "relationships without a type"},
-		{"MATCH (a:Order)-[r:R]->(b:Customer) RETURN a.id", "relationship variables"},
 		{"MATCH (a:Order)-[:R*1..3]->(b:Customer) RETURN a.id", "variable-length"},
 		{"MATCH (a:Order)-[:R|:S]->(b:Customer) RETURN a.id", "alternative relationship types"},
 		{"MATCH (a:Order)-[:R {x: 1}]->(b:Customer) RETURN a.id", "inline property maps"},
-		{"MATCH (a:Order) RETURN *", "RETURN *"},
-		{"MATCH (a:Order) RETURN a", "referring to a node as a value"},
-		{"MATCH (a:Order) RETURN lower(a.id)", "function calls"},
-		{"MATCH (a:Order) WHERE a.x + 1 IN [2] RETURN a.id", "arithmetic here"},
-		{"MATCH (a:Order) RETURN a.x ^ 2", "exponentiation"},
-		{"MATCH (a:Order) RETURN CASE a.x WHEN 1 THEN 2 ELSE 3 END", "CASE"},
 		{"MATCH (a:Order) RETURN [x IN [1, 2] | x]", "list comprehensions"},
 		{"MATCH (a:Order) RETURN [(a)-[:R]->(b:Customer) | b.id]", "pattern comprehensions"},
 		{"MATCH (a:Order) WHERE all(x IN [1] WHERE x = 1) RETURN a.id", "quantified expressions"},
-		{"MATCH (a:Order) RETURN a.x IS NULL", "a condition here"},
-		{"MATCH (a:Order) RETURN a.items[0]", "list indexing"},
-		{"MATCH (a:Order) RETURN a.x.y", "nested property access"},
-		{"MATCH (a:Order) RETURN 1", "only variable.property references"},
-		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
-		{"MATCH (a:Order) WHERE a.x STARTS WITH 1 RETURN a.id", "STARTS WITH against a non-string value"},
-		{"MATCH (a:Order) WHERE a.x ENDS WITH true RETURN a.id", "ENDS WITH against a non-string value"},
-		{"MATCH (a:Order) WHERE a.x CONTAINS null RETURN a.id", "matching against null"},
-		{"MATCH (a:Order) WHERE a.x CONTAINS a.y RETURN a.id", "CONTAINS against a property"},
-		{"MATCH (a:Order) WHERE 'abc' CONTAINS a.x RETURN a.id", "CONTAINS applies to variable.property"},
-		{"MATCH (a:Order) WHERE a.x CONTAINS 'a' + 'b' RETURN a.id", "arithmetic"},
-		{"MATCH (a:Order) WHERE a.x CONTAINS 'a' IS NULL RETURN a.id", "combining string predicates"},
-		{"MATCH (a:Order) RETURN a.x CONTAINS 'a'", "a condition here"},
-		{"MATCH (a:Order) WHERE a.x = a.y RETURN a.id", "against a literal"},
-		{"MATCH (a:Order) WHERE a.x = null RETURN a.id", "comparing against null"},
-		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
-		{"MATCH (a:Order) WHERE a.x < a.y < a.z RETURN a.id", "chained comparisons"},
-		{"MATCH (a:Order) WHERE a.x RETURN a.id", "non-comparison predicate"},
-		{"MATCH (a:Order) WHERE a.x = [1] RETURN a.id", "list and map literals"},
 		{"MATCH (a:Order) WHERE (a)-[:R]->(:Customer) RETURN a.id", "pattern predicates"},
 		{"MATCH (a:Order) WHERE EXISTS { (a)-[:R]->(:Customer) } RETURN a.id", "EXISTS subqueries"},
-		{"MATCH (a:Order) RETURN (1)", "only variable.property references"},
 		{"MATCH (a:Order) RETURN a.id LIMIT 1 + 1", "arithmetic"},
 		{"MATCH (a:Order) RETURN a.id LIMIT 'ten'", "non-integer LIMIT"},
 		{"MATCH (a:Order) RETURN a.id SKIP -1", "negative SKIP"},
@@ -370,7 +340,7 @@ func TestDecodeStringLiteralRefusesMalformedEscapes(t *testing.T) {
 // A rejection has to say where, because a long query has many places the same
 // construct could appear.
 func TestAnalyzeRejectionCarriesPosition(t *testing.T) {
-	_, err := analyze(t, "MATCH (a:Order)\nWHERE a.name STARTS WITH 1\nRETURN a.id")
+	_, err := analyze(t, "MATCH (a:Order)\nWHERE EXISTS { (a)-[:R]->(:Customer) }\nRETURN a.id")
 	unsupported, ok := err.(*Unsupported)
 	if !ok {
 		t.Fatalf("error = %T (%v), want *Unsupported", err, err)
@@ -402,6 +372,42 @@ func TestAnalyzeRejectsEmptyNames(t *testing.T) {
 			_, err := analyze(t, tc.query)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Analyze(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestAnalyzeAcceptsReadOnlyExpressionSyntax(t *testing.T) {
+	for _, query := range []string{
+		"MATCH (a:Order)-[r:R]->(b:Customer) RETURN a.id",
+		"MATCH (a:Order) RETURN a",
+		"MATCH (a:Order) RETURN lower(a.id)",
+		"MATCH (a:Order) RETURN a.id + 1",
+		"MATCH (a:Order) RETURN CASE a.x WHEN 1 THEN 2 ELSE 3 END",
+		"MATCH (a:Order) RETURN a.x IS NULL",
+		"MATCH (a:Order) RETURN a.items[0]",
+		"MATCH (a:Order) RETURN a.x.y",
+		"MATCH (a:Order) RETURN 1",
+		"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id",
+		"MATCH (a:Order) WHERE a.x STARTS WITH 1 RETURN a.id",
+		"MATCH (a:Order) WHERE a.x ENDS WITH true RETURN a.id",
+		"MATCH (a:Order) WHERE a.x CONTAINS null RETURN a.id",
+		"MATCH (a:Order) WHERE a.x CONTAINS a.y RETURN a.id",
+		"MATCH (a:Order) WHERE 'abc' CONTAINS a.x RETURN a.id",
+		"MATCH (a:Order) WHERE a.x CONTAINS 'a' + 'b' RETURN a.id",
+		"MATCH (a:Order) WHERE a.x CONTAINS 'a' IS NULL RETURN a.id",
+		"MATCH (a:Order) RETURN a.x CONTAINS 'a'",
+		"MATCH (a:Order) WHERE a.x = a.y RETURN a.id",
+		"MATCH (a:Order) WHERE a.x = null RETURN a.id",
+		"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id",
+		"MATCH (a:Order) WHERE a.x < a.y < a.z RETURN a.id",
+		"MATCH (a:Order) WHERE a.x RETURN a.id",
+		"MATCH (a:Order) WHERE a.x = [1] RETURN a.id",
+		"MATCH (a:Order) RETURN (a.x)",
+	} {
+		t.Run(query, func(t *testing.T) {
+			if _, err := analyze(t, query); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}

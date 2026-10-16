@@ -6,6 +6,7 @@ package drivenadapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -107,5 +108,30 @@ func TestRunCypherQueryForwardsCallerIdentity(t *testing.T) {
 	client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
 	if _, err := client.RunCypherQuery(ctx, &interfaces.CypherQueryReq{KnID: "kn-1", Query: "MATCH (u:user) RETURN u"}); err != nil {
 		t.Fatalf("RunCypherQuery() error = %v", err)
+	}
+}
+
+func TestRunCypherQueryPreservesGraphMetadataAndNumbers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	logger := mocks.NewMockLogger(ctrl)
+	client := mocks.NewMockHTTPClient(ctrl)
+	client.EXPECT().PostNoUnmarshal(gomock.Any(), "http://bkn/in/v1/knowledge-networks/kn-1/cypher-queries", gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ map[string]string, body any) (int, []byte, error) {
+		request := body.(*interfaces.CypherQueryReq)
+		if request.ResultFormat != "graph_v1" || request.ObjectProperties["p"][0] != "name" {
+			t.Fatalf("graph request lost: %+v", request)
+		}
+		return http.StatusOK, []byte(`{"columns":[{"name":"ids","type":"list"}],"entries":[{"ids":[9007199254740993]}],"result_format":"graph_v1","value_types":{"ids":{"kind":"list","element":{"kind":"integer"}}},"execution":{"match_rows":1,"match_complete":true,"evidence_complete":true,"conclusions_limited":false},"_trace":{"version":"semantic-query-descriptor/v1"}}`), nil
+	})
+	backend := &bknBackendAccess{logger: logger, baseURL: "http://bkn", httpClient: client}
+	response, err := backend.RunCypherQuery(context.Background(), &interfaces.CypherQueryReq{KnID: "kn-1", Query: "MATCH (p:Person) RETURN collect(p.id) AS ids", ResultFormat: "graph_v1", ObjectProperties: map[string][]string{"p": {"name"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.ResultFormat != "graph_v1" || len(response.ValueTypes) == 0 || response.Execution == nil || !response.Execution.EvidenceComplete || response.Execution.MatchRows != 1 || len(response.TraceDescriptor) == 0 {
+		t.Fatalf("metadata lost: %+v", response)
+	}
+	value, ok := response.Entries[0]["ids"].([]any)[0].(json.Number)
+	if !ok || value.String() != "9007199254740993" {
+		t.Fatalf("integer precision lost: %+v", response.Entries)
 	}
 }

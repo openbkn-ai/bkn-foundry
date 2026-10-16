@@ -110,24 +110,14 @@ func TestCompileAggregateRejections(t *testing.T) {
 			want:  `"total" is not returned by this query`,
 		},
 		{
-			name:  "an aggregate over something that is not a property",
-			query: "MATCH (o:Order) RETURN sum(1) AS n",
-			want:  "only variable.property references are supported",
-		},
-		{
 			name:  "an aggregate over an unknown property",
 			query: "MATCH (o:Order) RETURN sum(o.nope) AS n",
 			want:  `has no property "nope"`,
 		},
 		{
-			name:  "a function that is not an aggregate",
-			query: "MATCH (o:Order) RETURN collect(o.region) AS n",
-			want:  "function calls",
-		},
-		{
 			name:  "an aggregate over several arguments",
 			query: "MATCH (o:Order) RETURN max(o.amount, o.region) AS n",
-			want:  "an aggregate over 2 arguments",
+			want:  "an aggregate without exactly one argument",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -121,3 +121,32 @@ func TestRunCypherToolExplainsSuccessfulRowFiltering(t *testing.T) {
 		t.Fatalf("guidance = %+v", body.Guidance)
 	}
 }
+
+type graphCypher struct{ t *testing.T }
+
+func (g graphCypher) RunCypher(_ context.Context, request *kncypher.RunCypherReq) (*interfaces.CypherQueryResp, error) {
+	if request.ResultFormat != "graph_v1" || request.ObjectProperties["p"][0] != "name" {
+		g.t.Fatalf("MCP lost graph options: %+v", request)
+	}
+	return &interfaces.CypherQueryResp{ResultFormat: "graph_v1", Columns: []interfaces.CypherQueryColumn{{Name: "ids", Type: "list"}}, Entries: []map[string]any{{"ids": []any{json.Number("9007199254740993")}}}, ValueTypes: json.RawMessage(`{"ids":{"kind":"list","element":{"kind":"integer"}}}`), Execution: &interfaces.CypherExecution{MatchRows: 1, MatchComplete: true, EvidenceComplete: true}}, nil
+}
+func TestRunCypherToolPreservesGraphResultsInBothFormats(t *testing.T) {
+	for _, format := range []string{"json", "toon"} {
+		t.Run(format, func(t *testing.T) {
+			handler := handleRunCypher(graphCypher{t: t}, nil)
+			result, err := handler(context.Background(), newCallToolRequest(map[string]any{"kn_id": "kn-1", "query": "MATCH (p:Person) RETURN collect(p.id) AS ids", "result_format": "graph_v1", "object_properties": map[string]any{"p": []any{"name"}}, "response_format": format}))
+			if err != nil || result.IsError {
+				t.Fatalf("MCP graph result failed: %+v %v", result, err)
+			}
+			text, ok := mcp.AsTextContent(result.Content[0])
+			if !ok {
+				t.Fatal("missing text content")
+			}
+			for _, want := range []string{"9007199254740993", "value_types", "execution", "evidence_complete", "graph_v1"} {
+				if !strings.Contains(text.Text, want) {
+					t.Fatalf("graph result lost %s: %s", want, text.Text)
+				}
+			}
+		})
+	}
+}

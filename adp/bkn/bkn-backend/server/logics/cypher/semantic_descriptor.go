@@ -37,22 +37,44 @@ var simpleJSONPathField = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // Cypher query has been parsed, authorized and bound. It contains no physical
 // resource or column names.
 type SemanticQueryDescriptor struct {
-	Version         string                    `json:"version"`
-	ProducerProfile string                    `json:"producer_profile"`
-	NetworkID       string                    `json:"network_id"`
-	Branch          string                    `json:"branch"`
-	QueryHash       string                    `json:"query_hash"`
-	Objects         []SemanticQueryObject     `json:"objects"`
-	Relations       []SemanticQueryRelation   `json:"relations,omitempty"`
-	Predicates      []SemanticQueryPredicate  `json:"predicates,omitempty"`
-	Projections     []SemanticQueryProjection `json:"projections"`
-	Grouping        []string                  `json:"grouping,omitempty"`
-	Ordering        []SemanticQueryOrdering   `json:"ordering,omitempty"`
-	Skip            *int64                    `json:"skip,omitempty"`
-	Limit           *int64                    `json:"limit,omitempty"`
-	EffectiveLimit  int64                     `json:"effective_limit"`
-	LimitSource     string                    `json:"limit_source"`
-	ResultPointer   string                    `json:"result_pointer"`
+	Stages            []SemanticQueryStage      `json:"stages,omitempty"`
+	PostPredicate     *SemanticGraphExpression  `json:"post_predicate,omitempty"`
+	Unwinds           []SemanticQueryUnwind     `json:"unwinds,omitempty"`
+	Union             *SemanticQueryUnion       `json:"union,omitempty"`
+	ResidualPredicate *SemanticGraphExpression  `json:"residual_predicate,omitempty"`
+	GraphMatchBudget  int                       `json:"graph_match_budget,omitempty"`
+	Version           string                    `json:"version"`
+	ProducerProfile   string                    `json:"producer_profile"`
+	NetworkID         string                    `json:"network_id"`
+	Branch            string                    `json:"branch"`
+	QueryHash         string                    `json:"query_hash"`
+	Objects           []SemanticQueryObject     `json:"objects"`
+	Relations         []SemanticQueryRelation   `json:"relations,omitempty"`
+	Predicates        []SemanticQueryPredicate  `json:"predicates,omitempty"`
+	Projections       []SemanticQueryProjection `json:"projections"`
+	Grouping          []string                  `json:"grouping,omitempty"`
+	Ordering          []SemanticQueryOrdering   `json:"ordering,omitempty"`
+	Skip              *int64                    `json:"skip,omitempty"`
+	Limit             *int64                    `json:"limit,omitempty"`
+	EffectiveLimit    int64                     `json:"effective_limit"`
+	LimitSource       string                    `json:"limit_source"`
+	ResultPointer     string                    `json:"result_pointer"`
+}
+
+type SemanticQueryStage struct {
+	Kind       string                   `json:"kind"`
+	Optional   bool                     `json:"optional,omitempty"`
+	Descriptor *SemanticQueryDescriptor `json:"descriptor"`
+}
+
+type SemanticQueryUnwind struct {
+	Variable   string                   `json:"variable"`
+	Expression *SemanticGraphExpression `json:"expression"`
+}
+
+type SemanticQueryUnion struct {
+	All      bool                       `json:"all"`
+	Branches []*SemanticQueryDescriptor `json:"branches"`
 }
 
 type SemanticQueryObject struct {
@@ -85,27 +107,21 @@ type SemanticQueryPredicate struct {
 }
 
 type SemanticQueryProjection struct {
-	Alias       string `json:"alias"`
-	PropertyRef string `json:"property_ref,omitempty"`
-	Aggregate   string `json:"aggregate,omitempty"`
-	Distinct    bool   `json:"distinct,omitempty"`
-	// Expression is "arithmetic" for a computed column, or for an aggregate
-	// over a computed value, and PropertyRefs lists every property it reads.
-	// The computation itself is not recorded: it can carry numbers from the
-	// query, which the descriptor otherwise only ever holds as hashes. Both
-	// are omitted when unset, which keeps the bytes of every descriptor
-	// written before arithmetic existed unchanged.
-	Expression    string   `json:"expression,omitempty"`
+	Expression    any      `json:"expression,omitempty"`
 	PropertyRefs  []string `json:"property_refs,omitempty"`
+	Alias         string   `json:"alias"`
+	PropertyRef   string   `json:"property_ref,omitempty"`
+	Aggregate     string   `json:"aggregate,omitempty"`
+	Distinct      bool     `json:"distinct,omitempty"`
 	OutputPointer string   `json:"output_pointer"`
 }
 
 type SemanticQueryOrdering struct {
+	Expression   any      `json:"expression,omitempty"`
+	PropertyRefs []string `json:"property_refs,omitempty"`
 	Alias        string   `json:"alias,omitempty"`
 	PropertyRef  string   `json:"property_ref,omitempty"`
 	Aggregate    string   `json:"aggregate,omitempty"`
-	Expression   string   `json:"expression,omitempty"`
-	PropertyRefs []string `json:"property_refs,omitempty"`
 	Descending   bool     `json:"descending"`
 }
 
@@ -113,7 +129,7 @@ type SemanticQueryOrdering struct {
 const semanticExpression = "arithmetic"
 
 func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescriptor, error) {
-	if plan == nil || strings.TrimSpace(plan.NetworkID) == "" || len(plan.Tables) == 0 || len(plan.Select) == 0 {
+	if plan == nil || strings.TrimSpace(plan.NetworkID) == "" || (len(plan.Union) == 0 && plan.Result == nil && (len(plan.Tables) == 0 || len(plan.Select) == 0)) {
 		return nil, errors.New("semantic query descriptor requires a bound query plan")
 	}
 	descriptor := &SemanticQueryDescriptor{
@@ -125,6 +141,34 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		Relations:   make([]SemanticQueryRelation, 0, len(plan.Joins)),
 		Projections: make([]SemanticQueryProjection, 0, len(plan.Select)),
 		Skip:        cloneInt64(plan.Skip), Limit: cloneInt64(plan.Limit), ResultPointer: "$.entries",
+	}
+	for _, stage := range plan.Stages {
+		child, err := BuildSemanticQueryDescriptor(stage.Plan, query)
+		if err != nil {
+			return nil, err
+		}
+		descriptor.Stages = append(descriptor.Stages, SemanticQueryStage{Kind: stage.Kind, Optional: stage.Optional, Descriptor: child})
+	}
+	if len(plan.Union) > 0 {
+		descriptor.Union = &SemanticQueryUnion{All: plan.UnionAll}
+		for _, branch := range plan.Union {
+			child, err := BuildSemanticQueryDescriptor(branch, query)
+			if err != nil {
+				return nil, err
+			}
+			descriptor.Union.Branches = append(descriptor.Union.Branches, child)
+		}
+		descriptor.GraphMatchBudget = graphMatchBudget
+		descriptor.EffectiveLimit = interfaces.CYPHER_DEFAULT_LIMIT
+		descriptor.LimitSource = "union_result"
+		raw, err := json.Marshal(descriptor)
+		if err != nil {
+			return nil, err
+		}
+		if len(raw) > maxSemanticDescriptorBytes {
+			return nil, ErrSemanticDescriptorTooLarge
+		}
+		return descriptor, nil
 	}
 	if plan.Limit == nil {
 		descriptor.EffectiveLimit = int64(interfaces.CYPHER_DEFAULT_LIMIT)
@@ -167,52 +211,57 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 	if err := appendSemanticPredicates(descriptor, plan, plan.Where, ""); err != nil {
 		return nil, err
 	}
-	// A condition carried by an outer join decides what that join matched
-	// rather than which rows survive. It is recorded under the relationship it
-	// qualifies, so the descriptor says which of the two it was.
-	for index, relation := range plan.Joins {
-		path := semanticPath("", "OPTIONAL", index)
-		for position, condition := range relation.Conditions {
-			if err := appendSemanticPredicates(descriptor, plan, condition, semanticPath(path, "AND", position)); err != nil {
-				return nil, err
+	if plan.Result == nil {
+		// A condition carried by an outer join decides what that join matched
+		// rather than which rows survive. It is recorded under the relationship it
+		// qualifies, so the descriptor says which of the two it was.
+		for index, relation := range plan.Joins {
+			path := semanticPath("", "OPTIONAL", index)
+			for position, condition := range relation.Conditions {
+				if err := appendSemanticPredicates(descriptor, plan, condition, semanticPath(path, "AND", position)); err != nil {
+					return nil, err
+				}
 			}
 		}
-	}
-	for index, column := range plan.Select {
-		projection := SemanticQueryProjection{
-			Alias: column.Alias, OutputPointer: semanticOutputPointer(column.Alias),
-		}
-		switch {
-		case column.Expression != nil:
-			projection.Expression = semanticExpression
-			projection.PropertyRefs = semanticExpressionRefs(plan, column.Expression)
-		case column.Aggregate != nil:
-			projection.Aggregate = strings.ToLower(column.Aggregate.Function)
-			projection.Distinct = column.Aggregate.Distinct
+		for index, column := range plan.Select {
+			projection := SemanticQueryProjection{
+				Alias: column.Alias, OutputPointer: semanticOutputPointer(column.Alias),
+			}
 			switch {
-			case column.Aggregate.Argument != nil:
+			case column.Expression != nil:
 				projection.Expression = semanticExpression
-				projection.PropertyRefs = semanticExpressionRefs(plan, column.Aggregate.Argument)
-			case !column.Aggregate.Star:
-				projection.PropertyRef = semanticPropertyRef(plan, column.Aggregate.Table, column.Aggregate.Property)
+				projection.PropertyRefs = semanticExpressionRefs(plan, column.Expression)
+			case column.Aggregate != nil:
+				projection.Aggregate = strings.ToLower(column.Aggregate.Function)
+				projection.Distinct = column.Aggregate.Distinct
+				switch {
+				case column.Aggregate.Argument != nil:
+					projection.Expression = semanticExpression
+					projection.PropertyRefs = semanticExpressionRefs(plan, column.Aggregate.Argument)
+				case !column.Aggregate.Star:
+					projection.PropertyRef = semanticPropertyRef(plan, column.Aggregate.Table, column.Aggregate.Property)
+				}
+			default:
+				projection.PropertyRef = semanticPropertyRef(plan, column.Table, column.Property)
 			}
-		default:
-			projection.PropertyRef = semanticPropertyRef(plan, column.Table, column.Property)
+			if projection.PropertyRef == "" && projection.Aggregate == "" && projection.Expression == "" {
+				return nil, fmt.Errorf("semantic query projection %d is incomplete", index)
+			}
+			descriptor.Projections = append(descriptor.Projections, projection)
 		}
-		if projection.PropertyRef == "" && projection.Aggregate == "" && projection.Expression == "" {
-			return nil, fmt.Errorf("semantic query projection %d is incomplete", index)
+		for _, column := range plan.GroupBy {
+			if column.Expression != nil {
+				descriptor.Grouping = append(descriptor.Grouping, semanticExpressionRefs(plan, column.Expression)...)
+				continue
+			}
+			if ref := semanticPropertyRef(plan, column.Table, column.Property); ref != "" {
+				descriptor.Grouping = append(descriptor.Grouping, ref)
+			}
 		}
-		descriptor.Projections = append(descriptor.Projections, projection)
+	} else {
+		describeGraphResult(descriptor, plan)
 	}
-	for _, column := range plan.GroupBy {
-		if column.Expression != nil {
-			descriptor.Grouping = append(descriptor.Grouping, semanticExpressionRefs(plan, column.Expression)...)
-			continue
-		}
-		if ref := semanticPropertyRef(plan, column.Table, column.Property); ref != "" {
-			descriptor.Grouping = append(descriptor.Grouping, ref)
-		}
-	}
+
 	for _, order := range plan.OrderBy {
 		item := SemanticQueryOrdering{Alias: order.Alias, Descending: order.Descending}
 		switch {

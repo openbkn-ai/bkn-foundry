@@ -37,13 +37,37 @@ const (
 
 // Query is one accepted read-only query.
 type Query struct {
-	Pattern  Pattern
-	Where    Predicate // nil when the query has no WHERE
-	Return   []Projection
-	Distinct bool
-	OrderBy  []SortKey
-	Skip     *int64
-	Limit    *int64
+	// Union branches have independent variable scopes. All is shared by every
+	// operator because openCypher 9 forbids mixing UNION and UNION ALL.
+	Union           []*Query
+	UnionAll        bool
+	Stages          []QueryStage
+	Star            bool
+	PostWhere       ValueExpression
+	Unwinds         []Unwind
+	ResidualWhere   ValueExpression
+	FullWhere       ValueExpression
+	InlineWhere     Predicate
+	ValueEvaluation bool
+	Pattern         Pattern
+	Where           Predicate // nil when the query has no WHERE
+	Return          []Projection
+	Distinct        bool
+	OrderBy         []SortKey
+	Skip            *int64
+	Limit           *int64
+}
+
+type QueryStage struct {
+	Kind     string
+	Optional bool
+	Query    *Query
+}
+
+type Unwind struct {
+	Expression ValueExpression
+	Variable   string
+	Pos        Position
 }
 
 // Pattern is what one MATCH describes: the nodes it names and the
@@ -76,6 +100,7 @@ type NodeRef struct {
 // pattern's nodes, so a relationship can connect any two of them rather than
 // only neighbours in a list.
 type EdgeRef struct {
+	Variable  string
 	Type      string
 	Direction Direction
 	Left      int
@@ -262,14 +287,12 @@ type ParameterRef struct {
 // column is called in the result; it defaults to the source text of what was
 // projected.
 type Projection struct {
-	Property  *PropertyRef
-	Aggregate *Aggregate
-	// Expression is set only for a computed value. A property or an aggregate
-	// written on its own keeps its own field, so every stage that handled
-	// those before arithmetic existed still sees them the same way.
 	Expression Expression
-	Alias      string
 	Pos        Position
+	Value      ValueExpression
+	Property   *PropertyRef
+	Aggregate  *Aggregate
+	Alias      string
 }
 
 // Aggregate is count, sum, avg, min or max. Property and Argument are both nil
@@ -310,6 +333,7 @@ func (a Aggregate) String() string {
 // again, the name of something the query returns, or a value computed from
 // those.
 type SortKey struct {
+	Value      ValueExpression
 	Property   *PropertyRef
 	Aggregate  *Aggregate
 	Expression Expression

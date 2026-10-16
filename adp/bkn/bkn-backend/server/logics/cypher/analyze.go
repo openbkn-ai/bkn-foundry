@@ -21,8 +21,8 @@ import (
 
 // The parser accepts all of openCypher; this file decides what the compiler
 // will actually run. Everything outside the subset is refused here, by name
-// and with a position, so an author reads "OPTIONAL MATCH is not supported"
-// rather than a syntax error or, worse, silently different results.
+// and with a position, so unsupported language features are distinguishable
+// from syntax errors rather than silently producing different results.
 
 // Unsupported reports a construct that is valid openCypher but outside the
 // subset this compiler implements.
@@ -64,6 +64,15 @@ func unsupportedAt(pos Position, feature, detail string, args ...any) error {
 
 // Analyze reads a parse tree as a query in the supported subset.
 func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
+	return analyzeQuery(tree, false)
+}
+
+// AnalyzeGraph enables the explicitly negotiated graph result subset.
+func AnalyzeGraph(tree parsing.IOC_CypherContext) (*Query, error) {
+	return analyzeQuery(tree, true)
+}
+
+func analyzeQuery(tree parsing.IOC_CypherContext, graph bool) (*Query, error) {
 	statement := tree.OC_Statement()
 	if statement == nil {
 		return nil, &Unsupported{Feature: "empty query"}
@@ -73,11 +82,58 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 		return nil, unsupported(statement.OC_Query(), "procedure calls")
 	}
 	if len(regular.AllOC_Union()) > 0 {
-		return nil, unsupported(regular, "UNION")
+		unions := regular.AllOC_Union()
+		if len(unions) >= 32 {
+			return nil, unsupportedf(regular, "UNION branch budget", "at most 32 branches are allowed")
+		}
+		query := &Query{UnionAll: unions[0].ALL() != nil}
+		singles := []parsing.IOC_SingleQueryContext{regular.OC_SingleQuery()}
+		for _, union := range unions {
+			if (union.ALL() != nil) != query.UnionAll {
+				return nil, unsupportedf(union, "mixed UNION and UNION ALL", "openCypher requires one operator throughout a query")
+			}
+			singles = append(singles, union.OC_SingleQuery())
+		}
+		for _, single := range singles {
+			branch, err := analyzeSingleQuery(single, true)
+			if err != nil {
+				return nil, err
+			}
+			query.Union = append(query.Union, branch)
+		}
+		return query, nil
 	}
-	single := regular.OC_SingleQuery()
+	return analyzeSingleQuery(regular.OC_SingleQuery(), graph)
+}
+
+func analyzeSingleQuery(single parsing.IOC_SingleQueryContext, graph bool) (*Query, error) {
 	if single.OC_MultiPartQuery() != nil {
-		return nil, unsupported(single, "WITH")
+		return analyzePipeline(single)
+	}
+	if returning := single.OC_SinglePartQuery().OC_Return(); returning != nil && projectionHasStar(returning.OC_ProjectionBody()) {
+		return analyzePipeline(single)
+	}
+	if returning := single.OC_SinglePartQuery().OC_Return(); returning != nil && projectionUsesAliasExpression(returning.OC_ProjectionBody()) {
+		return analyzePipeline(single)
+	}
+	for _, reading := range single.OC_SinglePartQuery().AllOC_ReadingClause() {
+		if match := reading.OC_Match(); match != nil && match.OPTIONAL() != nil {
+			if !graph {
+				if legacy, err := analyzeLegacySingleQuery(single); err == nil {
+					return legacy, nil
+				}
+			}
+			return analyzePipeline(single)
+		}
+	}
+	seenUnwind := false
+	for _, reading := range single.OC_SinglePartQuery().AllOC_ReadingClause() {
+		if reading.OC_Unwind() != nil {
+			seenUnwind = true
+		}
+		if seenUnwind && reading.OC_Match() != nil {
+			return analyzePipeline(single)
+		}
 	}
 
 	part := single.OC_SinglePartQuery()
@@ -92,12 +148,10 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	}
 
 	reading := part.AllOC_ReadingClause()
-	if len(reading) == 0 {
-		return nil, unsupportedf(part, "a query without MATCH", "add a MATCH clause")
-	}
 
-	query := &Query{}
+	query := &Query{ValueEvaluation: graph || len(reading) == 0}
 	builder := newPatternBuilder()
+	builder.graph = true
 	var inline []Predicate
 	var lastMatch parsing.IOC_MatchContext
 
@@ -105,11 +159,24 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	// comma-separated paths inside one MATCH do: a variable written in both
 	// is the same node, so they meet at it rather than multiplying.
 	for _, clause := range reading {
+		if unwind := clause.OC_Unwind(); unwind != nil {
+			if len(query.Unwinds) >= 32 {
+				return nil, unsupportedf(unwind, "UNWIND clause budget", "at most 32 expansions are allowed per branch")
+			}
+			value, err := readValueExpression(unwind.OC_Expression(), 0)
+			if err != nil {
+				return nil, err
+			}
+			name, err := namedIdentifier(unwind.OC_Variable(), "variable")
+			if err != nil {
+				return nil, err
+			}
+			query.Unwinds = append(query.Unwinds, Unwind{Expression: value, Variable: name, Pos: positionOf(unwind)})
+			query.ValueEvaluation = true
+			continue
+		}
 		match := clause.OC_Match()
 		if match == nil {
-			if clause.OC_Unwind() != nil {
-				return nil, unsupported(clause, "UNWIND")
-			}
 			return nil, unsupported(clause, "procedure calls")
 		}
 		if match.OPTIONAL() != nil {
@@ -119,26 +186,71 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 			lastMatch = match
 			continue
 		}
+		if len(query.Unwinds) > 0 {
+			return nil, unsupportedf(match, "MATCH after UNWIND", "staged matching is not implemented yet")
+		}
 		if err := builder.addPattern(match.OC_Pattern()); err != nil {
 			return nil, err
 		}
 		if where := match.OC_Where(); where != nil {
+			full, expressionErr := readValueExpression(where.OC_Expression(), 0)
+			if expressionErr != nil {
+				return nil, expressionErr
+			}
+			if query.FullWhere == nil {
+				query.FullWhere = full
+			} else {
+				query.FullWhere = OperationExpression{Operator: "AND", Arguments: []ValueExpression{query.FullWhere, full}}
+			}
+
 			written, err := analyzePredicate(where.OC_Expression())
 			if err != nil {
-				return nil, err
+				expression, expressionErr := readValueExpression(where.OC_Expression(), 0)
+				if expressionErr != nil {
+					return nil, expressionErr
+				}
+				if query.ResidualWhere == nil {
+					query.ResidualWhere = expression
+				} else {
+					query.ResidualWhere = OperationExpression{Operator: "AND", Arguments: []ValueExpression{query.ResidualWhere, expression}}
+				}
+				query.ValueEvaluation = true
+			} else {
+				inline = append(inline, written)
 			}
-			inline = append(inline, written)
 		}
 		lastMatch = match
 	}
 	query.Pattern = builder.pattern
+	for _, edge := range query.Pattern.Edges {
+		if edge.Variable != "" {
+			query.ValueEvaluation = true
+		}
+	}
 	inline = append(builder.inline, inline...)
+	query.InlineWhere = combine("AND", builder.inline, Position{})
 
 	// Conditions from the pattern and from WHERE mean the same thing and are
 	// joined the way Cypher joins them.
-	query.Where = combine("AND", inline, positionOf(lastMatch))
-	if err := refuseRequiredUseOfOptional(query); err != nil {
-		return nil, err
+	wherePos := Position{}
+	if lastMatch != nil {
+		wherePos = positionOf(lastMatch)
+	}
+	query.Where = combine("AND", inline, wherePos)
+	if !query.ValueEvaluation {
+		for _, item := range returning.OC_ProjectionBody().OC_ProjectionItems().AllOC_ProjectionItem() {
+			if _, err := analyzeProjection(item.OC_Expression()); err != nil {
+				query.ValueEvaluation = true
+				break
+			}
+		}
+	}
+	if order := returning.OC_ProjectionBody().OC_Order(); order != nil {
+		for _, item := range order.AllOC_SortItem() {
+			if _, err := analyzeSortKey(item.OC_Expression()); err != nil {
+				query.ValueEvaluation = true
+			}
+		}
 	}
 	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody()); err != nil {
 		return nil, err
@@ -225,10 +337,12 @@ func predicateProperties(predicate Predicate) []PropertyRef {
 // and that is true across comma-separated parts and across MATCH clauses
 // alike.
 type patternBuilder struct {
-	pattern   Pattern
-	inline    []Predicate
-	nodeOf    map[string]int
-	anonymous int
+	allowUnlabeled bool
+	graph          bool
+	pattern        Pattern
+	inline         []Predicate
+	nodeOf         map[string]int
+	anonymous      int
 	// clause counts the MATCH clauses read so far, and stamps the
 	// relationships each one writes. Nodes are deliberately not stamped: a
 	// variable is one node wherever it is written, which is what makes several
@@ -358,7 +472,7 @@ func (b *patternBuilder) addPath(element parsing.IOC_PatternElementContext) erro
 	}
 
 	for _, chain := range element.AllOC_PatternElementChain() {
-		edge, err := analyzeRelationship(chain.OC_RelationshipPattern())
+		edge, err := analyzeRelationshipMode(chain.OC_RelationshipPattern(), b.graph)
 		if err != nil {
 			return err
 		}
@@ -406,7 +520,7 @@ func (b *patternBuilder) addNode(ctx parsing.IOC_NodePatternContext) (int, error
 			return existing, nil
 		}
 	}
-	if node.Label == "" {
+	if node.Label == "" && !b.allowUnlabeled {
 		// A first mention has to say what it is: without a label there is no
 		// object type, and without an object type there is no table to read.
 		return 0, unsupportedf(ctx, "a node that names nothing",
@@ -534,7 +648,7 @@ func analyzeInlineProperties(ctx parsing.IOC_PropertiesContext, variable string)
 	return conditions, nil
 }
 
-func analyzeRelationship(ctx parsing.IOC_RelationshipPatternContext) (*EdgeRef, error) {
+func analyzeRelationshipMode(ctx parsing.IOC_RelationshipPatternContext, graph bool) (*EdgeRef, error) {
 	edge := &EdgeRef{Pos: positionOf(ctx)}
 	left, right := ctx.OC_LeftArrowHead() != nil, ctx.OC_RightArrowHead() != nil
 	switch {
@@ -554,9 +668,16 @@ func analyzeRelationship(ctx parsing.IOC_RelationshipPatternContext) (*EdgeRef, 
 		return nil, unsupportedf(ctx, "relationships without a type",
 			"every relationship must name one relation type, as in -[:RELATION]->")
 	}
-	if detail.OC_Variable() != nil {
+	if detail.OC_Variable() != nil && !graph {
 		return nil, unsupportedf(detail, "relationship variables",
 			"a relationship is a join here and has no properties to project")
+	}
+	if variable := detail.OC_Variable(); graph && variable != nil {
+		name, err := namedIdentifier(variable, "relationship variable")
+		if err != nil {
+			return nil, err
+		}
+		edge.Variable = name
 	}
 	if detail.OC_RangeLiteral() != nil {
 		return nil, unsupported(detail, "variable-length relationships")
@@ -590,12 +711,28 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) 
 	if strings.HasPrefix(strings.TrimSpace(items.GetText()), "*") {
 		// RETURN * would return whole nodes, and a node here is a row of a
 		// table rather than a value the result format can carry.
-		return unsupportedf(items, "RETURN *", "list the properties to return")
+		if !query.ValueEvaluation {
+			return unsupportedf(items, "RETURN *", "list the properties to return")
+		}
+		query.Star = true
 	}
 	for _, item := range items.AllOC_ProjectionItem() {
-		projection, err := analyzeProjection(item.OC_Expression())
+		var projection *Projection
+		var err error
+		if query.ValueEvaluation {
+			projection, err = analyzeGraphProjection(item.OC_Expression())
+		} else {
+			projection, err = analyzeProjection(item.OC_Expression())
+		}
 		if err != nil {
 			return err
+		}
+		if projection.Value == nil {
+			expression, expressionErr := readValueExpression(item.OC_Expression(), 0)
+			if expressionErr != nil {
+				return expressionErr
+			}
+			projection.Value = expression
 		}
 		if variable := item.OC_Variable(); variable != nil {
 			alias, err := namedIdentifier(variable, "column name")
@@ -610,6 +747,11 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) 
 	if order := ctx.OC_Order(); order != nil {
 		for _, item := range order.AllOC_SortItem() {
 			key, err := analyzeSortKey(item.OC_Expression())
+			if err != nil && query.ValueEvaluation {
+				expression, expressionErr := readValueExpression(item.OC_Expression(), 0)
+				key = &SortKey{Value: expression, Pos: positionOf(item)}
+				err = expressionErr
+			}
 			if err != nil {
 				return err
 			}
@@ -2017,4 +2159,75 @@ func codePoint(value uint64, digits string) (rune, error) {
 		return 0, fmt.Errorf("unpaired surrogate in unicode escape sequence \\u%s", digits)
 	}
 	return decoded, nil
+}
+
+func analyzeLegacySingleQuery(single parsing.IOC_SingleQueryContext) (*Query, error) {
+	if single.OC_MultiPartQuery() != nil {
+		return nil, unsupported(single, "WITH")
+	}
+
+	part := single.OC_SinglePartQuery()
+	if updating := part.AllOC_UpdatingClause(); len(updating) > 0 {
+		// The subset is read-only by construction, not by permission check, so
+		// a write clause is refused before anything is bound or generated.
+		return nil, unsupportedf(updating[0], "writing", "this interface only runs read-only queries")
+	}
+	returning := part.OC_Return()
+	if returning == nil {
+		return nil, unsupportedf(part, "a query without RETURN", "add a RETURN clause")
+	}
+
+	reading := part.AllOC_ReadingClause()
+	if len(reading) == 0 {
+		return nil, unsupportedf(part, "a query without MATCH", "add a MATCH clause")
+	}
+
+	query := &Query{}
+	builder := newPatternBuilder()
+	var inline []Predicate
+	var lastMatch parsing.IOC_MatchContext
+
+	// Several MATCH clauses describe one shape, the same way several
+	// comma-separated paths inside one MATCH do: a variable written in both
+	// is the same node, so they meet at it rather than multiplying.
+	for _, clause := range reading {
+		match := clause.OC_Match()
+		if match == nil {
+			if clause.OC_Unwind() != nil {
+				return nil, unsupported(clause, "UNWIND")
+			}
+			return nil, unsupported(clause, "procedure calls")
+		}
+		if match.OPTIONAL() != nil {
+			if err := builder.addOptionalMatch(match); err != nil {
+				return nil, err
+			}
+			lastMatch = match
+			continue
+		}
+		if err := builder.addPattern(match.OC_Pattern()); err != nil {
+			return nil, err
+		}
+		if where := match.OC_Where(); where != nil {
+			written, err := analyzePredicate(where.OC_Expression())
+			if err != nil {
+				return nil, err
+			}
+			inline = append(inline, written)
+		}
+		lastMatch = match
+	}
+	query.Pattern = builder.pattern
+	inline = append(builder.inline, inline...)
+
+	// Conditions from the pattern and from WHERE mean the same thing and are
+	// joined the way Cypher joins them.
+	query.Where = combine("AND", inline, positionOf(lastMatch))
+	if err := refuseRequiredUseOfOptional(query); err != nil {
+		return nil, err
+	}
+	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody()); err != nil {
+		return nil, err
+	}
+	return query, nil
 }

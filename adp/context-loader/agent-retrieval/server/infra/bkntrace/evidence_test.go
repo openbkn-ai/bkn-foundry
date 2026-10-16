@@ -1093,3 +1093,77 @@ func TestSubmitEventsOmitsConversationIDWhenAbsent(t *testing.T) {
 		t.Fatal("legacy evidence envelope must not claim an unsupported interaction field")
 	}
 }
+
+func TestBuildRunCypherEventsSeparatesGraphEvidenceFromConclusionLimit(t *testing.T) {
+	descriptor := json.RawMessage(`{
+ "version":"semantic-query-descriptor/v1","producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5",
+ "limit_source":"graph_result","effective_limit":1,"graph_match_budget":9999,
+ "grouping":["source"],
+ "projections":[{"alias":"evidence","expression":{"element":{"fields":{"company":{"object_ref":"object:kn_demo:company","property_refs":["property:kn_demo:company:id"]}}}}}],
+ "execution":{"match_rows":1001,"match_complete":true,"evidence_complete":true,"conclusions_limited":true}
+ }`)
+	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "MATCH ...", 1, descriptor)
+	payload := events[0]["payload"].(map[string]any)
+	if payload["truncated"] != true || payload["truncation_reason"] != "conclusion_limit_reached" {
+		t.Fatalf("conclusion limit lost: %+v", payload)
+	}
+	execution := payload["execution"].(map[string]any)
+	if execution["match_rows"] != float64(1001) || execution["evidence_complete"] != true {
+		t.Fatalf("evidence completeness lost: %+v", execution)
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"ref_id":"property:kn_demo:company:id"`) || strings.Contains(string(raw), `"ref_id":"source"`) {
+		t.Fatalf("logical refs were lost or invented: %s", raw)
+	}
+}
+
+func TestBuildRunCypherEventsFindsResidualAndOrderingExpressionRefs(t *testing.T) {
+	descriptor := json.RawMessage(`{"version":"semantic-query-descriptor/v1","producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5","projections":[],"residual_predicate":{"operation":"<","arguments":[{"property_refs":["property:kn_demo:item:stock"]},{"property_refs":["property:kn_demo:item:demand"]}]},"ordering":[{"expression":{"operation":"FUNCTION:size","arguments":[{"property_refs":["property:kn_demo:item:name"]}]}}]}`)
+	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "MATCH ...", 1, descriptor)
+	raw, err := json.Marshal(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"stock", "demand", "name"} {
+		if !strings.Contains(string(raw), `"ref_id":"property:kn_demo:item:`+field+`"`) {
+			t.Fatalf("residual/order reference missing: %s", raw)
+		}
+	}
+}
+
+func TestBuildRunCypherEventsFindsAllUnionBranchAndUnwindRefs(t *testing.T) {
+	descriptor := json.RawMessage(`{
+	 "version":"semantic-query-descriptor/v1","producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5",
+	 "objects":[],"projections":[],"union":{"all":true,"branches":[
+	 {"objects":[{"object_ref":"object:kn_demo:person"}],"unwinds":[{"variable":"x","expression":{"arguments":[{"property_refs":["property:kn_demo:person:name"]}]}}]},
+	 {"objects":[{"object_ref":"object:kn_demo:place"}],"projections":[{"expression":{"property_refs":["property:kn_demo:place:id"]}}]}
+	 ]}}`)
+	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "MATCH ... UNION ALL MATCH ...", 2, descriptor)
+	payload := events[0]["payload"].(map[string]any)
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"object:kn_demo:person", "object:kn_demo:place", "property:kn_demo:person:name", "property:kn_demo:place:id"} {
+		if !strings.Contains(string(raw), `"ref_id":"`+ref+`"`) {
+			t.Fatalf("missing branch ref %q: %s", ref, raw)
+		}
+	}
+}
+
+func TestBuildRunCypherEventsFindsStagedMatchAndWithPredicateRefs(t *testing.T) {
+	descriptor := json.RawMessage(`{"version":"semantic-query-descriptor/v1","producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5","stages":[{"kind":"match","optional":true,"descriptor":{"objects":[{"object_ref":"object:kn_demo:person"}],"projections":[{"expression":{"property_refs":["property:kn_demo:person:id"]}}]}},{"kind":"with","descriptor":{"post_predicate":{"arguments":[{"property_refs":["property:kn_demo:person:name"]}]}}}]}`)
+	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "OPTIONAL MATCH ... WITH ...", 1, descriptor)
+	raw, err := json.Marshal(events[0]["payload"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"object:kn_demo:person", "property:kn_demo:person:id", "property:kn_demo:person:name"} {
+		if !strings.Contains(string(raw), `"ref_id":"`+ref+`"`) {
+			t.Fatalf("staged trace lost %q: %s", ref, raw)
+		}
+	}
+}

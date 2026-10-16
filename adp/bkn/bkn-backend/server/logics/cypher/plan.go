@@ -20,9 +20,14 @@ import (
 // only formats -- it never has to look anything up, and cannot invent a column
 // that the model does not have.
 
-// Plan is one SELECT statement, still in terms the generator can format for
-// any dialect.
+// Plan is either a physical SELECT with logical results, or a composition of
+// UNION branches or ordered stages. SQL generation formats physical leaves;
+// the query service executes the composition under one request budget.
 type Plan struct {
+	Stages    []PlanStage
+	Union     []*Plan
+	UnionAll  bool
+	Result    *GraphResultPlan
 	NetworkID string
 	Branch    string
 	Tables    []PlanTable
@@ -42,6 +47,13 @@ type Plan struct {
 	// it; it is what the caller must be allowed to read before the statement
 	// runs.
 	Properties []PlanProperty
+}
+
+type PlanStage struct {
+	Kind     string
+	Optional bool
+	Plan     *Plan
+	Shared   []string
 }
 
 // PlanProperty is one property the query names, on one object type.
@@ -318,6 +330,7 @@ func planErrorf(pos Position, format string, args ...any) error {
 // planner carries the state that resolution needs: the schema, the tables
 // built so far, and which variable names them.
 type planner struct {
+	bindings   map[string]*GraphExpression
 	schema     *Schema
 	parameters map[string]any
 	plan       *Plan
@@ -335,11 +348,25 @@ type planner struct {
 // CompileOptions carries what the query itself does not: the values its
 // parameters stand for.
 type CompileOptions struct {
-	Parameters map[string]any
+	ObjectProperties map[string][]string
+	Parameters       map[string]any
 }
 
 // Compile binds a query to a knowledge network and produces its plan.
 func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
+	if len(query.Union) > 0 {
+		return compileUnion(query, schema, options)
+	}
+	if len(query.Stages) > 0 {
+		return compilePipeline(query, schema, options)
+	}
+	if needsRuntimeParameter(query.FullWhere, options.Parameters, "") {
+		copyQuery := *query
+		query = &copyQuery
+		query.ValueEvaluation = true
+		query.Where = query.InlineWhere
+		query.ResidualWhere = query.FullWhere
+	}
 	p := &planner{
 		schema:     schema,
 		parameters: options.Parameters,
@@ -354,6 +381,12 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	}
 	if err := p.planWhere(query.Where); err != nil {
 		return nil, err
+	}
+	if query.ValueEvaluation {
+		if err := p.planGraphReturn(query, options); err != nil {
+			return nil, err
+		}
+		return p.plan, nil
 	}
 	if err := p.planReturn(query.Return); err != nil {
 		return nil, err

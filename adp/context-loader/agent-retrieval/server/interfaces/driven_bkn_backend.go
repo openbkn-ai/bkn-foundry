@@ -745,9 +745,11 @@ type ListKnResp struct {
 // CypherQueryReq asks bkn-backend to compile one read-only Cypher query
 // against a knowledge network and run it.
 type CypherQueryReq struct {
-	KnID   string `json:"-"`
-	Branch string `json:"-"`
-	Query  string `json:"query"`
+	ResultFormat     string              `json:"result_format,omitempty"`
+	ObjectProperties map[string][]string `json:"object_properties,omitempty"`
+	KnID             string              `json:"-"`
+	Branch           string              `json:"-"`
+	Query            string              `json:"query"`
 	// Parameters supply what the query writes as $name. They are values only:
 	// a parameter changes which rows come back, never which resource or
 	// column is read.
@@ -764,6 +766,9 @@ type CypherQueryColumn struct {
 // is deliberately absent: it names physical tables and columns, which a caller
 // is not entitled to just because they may read the data.
 type CypherQueryResp struct {
+	ResultFormat       string                   `json:"result_format,omitempty"`
+	ValueTypes         json.RawMessage          `json:"value_types,omitempty"`
+	Execution          *CypherExecution         `json:"execution,omitempty"`
 	Columns            []CypherQueryColumn      `json:"columns"`
 	Entries            []map[string]any         `json:"entries"`
 	TraceDescriptor    json.RawMessage          `json:"-"`
@@ -899,3 +904,12 @@ const (
 	// executed through the MCP proxy rather than the toolbox proxy.
 	CapabilityTypeMCPTool = "mcp_tool"
 )
+
+// CypherExecution preserves the backend's separate fact and conclusion bounds.
+type CypherExecution struct {
+	CandidateRows      int  `json:"candidate_rows,omitempty"`
+	MatchRows          int  `json:"match_rows"`
+	MatchComplete      bool `json:"match_complete"`
+	EvidenceComplete   bool `json:"evidence_complete"`
+	ConclusionsLimited bool `json:"conclusions_limited"`
+}

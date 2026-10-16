@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -75,12 +76,14 @@ func NewCypherQueryService(appSetting *common.AppSetting) interfaces.CypherQuery
 // was bound against, which holds the caller's property levels, and the
 // semantic descriptor the internal face returns for tracing.
 type compiledQuery struct {
+	permissionImpacts []interfaces.CypherPermissionImpact
+	stages            []*compiledQuery
+	branches          []*compiledQuery
 	statement         string
 	rowLimit          int
 	plan              *Plan
 	schema            *Schema
 	traceDescriptor   json.RawMessage
-	permissionImpacts []interfaces.CypherPermissionImpact
 }
 
 // Query compiles a Cypher query against one knowledge network and runs the
@@ -119,6 +122,11 @@ type compiledQuery struct {
 // is reported as forbidden, without the statement. Nothing is widened: the
 // knowledge-network checks above apply whichever identity reads the data.
 func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQuery) (*interfaces.CypherQueryResult, error) {
+	{
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(interfaces.CYPHER_DEFAULT_TIMEOUT_SEC)*time.Second)
+		defer cancel()
+	}
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Compile and run Cypher query")
 	defer span.End()
 
@@ -133,24 +141,65 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 		return nil, err
 	}
 
+	result, err := s.runCompiled(ctx, query, compiled)
+	if err == nil {
+		result.PermissionImpacts = compiled.permissionImpacts
+	}
+	return result, err
+}
+
+// runCompiled only receives plans after every branch has been authorized.
+func (s *cypherQueryService) runCompiled(ctx context.Context, query interfaces.CypherQuery, compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	if len(compiled.branches) > 0 {
+		return s.runUnion(ctx, query, compiled)
+	}
+	if len(compiled.stages) > 0 {
+		return s.runPipeline(ctx, query, compiled)
+	}
+	var err error
+
 	// The paging limit repeats the statement's own LIMIT rather than leaving
 	// it unset. vega-backend wraps the statement and applies a page of its
 	// own, defaulting to 20 rows, so a query asking for more would come back
 	// cut down with nothing to say it had been.
-	response, err := s.execute(ctx, query, compiled.plan, interfaces.RawQueryRequest{
-		Query:        compiled.statement,
-		QueryFormat:  interfaces.VEGA_QUERY_FORMAT_SQL,
-		InputDialect: interfaces.VEGA_DIALECT_MYSQL,
-		Paging: interfaces.ResourceDataPagingRequest{
-			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
-			Limit: compiled.rowLimit,
-		},
-		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
-	})
+	response := &interfaces.RawQueryResponse{Entries: []map[string]any{{}}}
+	if len(compiled.plan.Tables) > 0 {
+		response, err = s.execute(ctx, query, compiled.plan, interfaces.RawQueryRequest{
+			Query:        compiled.statement,
+			QueryFormat:  interfaces.VEGA_QUERY_FORMAT_SQL,
+			InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+			Paging: interfaces.ResourceDataPagingRequest{
+				Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
+				Limit: compiled.rowLimit,
+			},
+			QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
+		})
+	}
 	if err != nil {
 		return nil, executionError(ctx, err)
 	}
 
+	if compiled.plan.Result != nil {
+		if response == nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+		}
+		if response.TotalCount > int64(len(response.Entries)) || (response.Paging != nil && response.Paging.NextCursor != nil) {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_LimitExceeded).WithErrorDetails("graph observation is incomplete; no complete result is available")
+		}
+		result, err := assembleGraph(ctx, compiled.plan, response.Entries)
+		if err != nil {
+			if errors.Is(err, errGraphBudget) {
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_LimitExceeded).WithErrorDetails("graph evaluation exceeded its match or payload budget; no complete result is available")
+			}
+			var expressionFailure *expressionError
+			if errors.As(err, &expressionFailure) {
+				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_QueryFailed).WithErrorDetails(map[string]string{"phase": "evaluate", "kind": expressionFailure.Kind, "message": expressionFailure.Message})
+			}
+			return nil, rest.NewHTTPError(ctx, http.StatusBadGateway, berrors.BknBackend_Cypher_QueryFailed).WithErrorDetails("graph observation could not be materialized")
+		}
+		result.TraceDescriptor = compiled.traceDescriptor
+		return result, nil
+	}
 	return &interfaces.CypherQueryResult{
 		Columns:           response.Columns,
 		Entries:           response.Entries,
@@ -175,12 +224,23 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 			WithErrorDetails(err.Error())
 	}
 
-	analyzed, err := Analyze(tree)
+	var analyzed *Query
+	if query.ResultFormat != "" && query.ResultFormat != interfaces.CYPHER_GRAPH_V1 {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidParameter).WithErrorDetails("unknown result_format")
+	}
+	if query.ResultFormat == interfaces.CYPHER_GRAPH_V1 {
+		analyzed, err = AnalyzeGraph(tree)
+	} else if len(query.ObjectProperties) > 0 {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidParameter).WithErrorDetails("object_properties requires graph_v1")
+	}
+	if query.ResultFormat == "" {
+		analyzed, err = Analyze(tree)
+	}
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
 			WithErrorDetails(err.Error())
 	}
-	if analyzed.Limit != nil && *analyzed.Limit > interfaces.CYPHER_MAX_LIMIT {
+	if queryExceedsLimit(analyzed) {
 		// Refused rather than clamped: a caller who asked for more rows than
 		// they will get should be told, not handed a short answer.
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_LimitExceeded).
@@ -191,7 +251,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	if err != nil {
 		return nil, err
 	}
-	if schema.NothingReadable() {
+	if schema.NothingReadable() && queryReadsObjects(analyzed) {
 		// The network holds concepts and this caller may read none of them.
 		// Saying so is better than reporting every label as unknown, and
 		// reveals nothing: they already knew which network they asked about.
@@ -204,7 +264,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, err
 	}
 
-	plan, err := Compile(analyzed, schema, CompileOptions{Parameters: query.Parameters})
+	plan, err := Compile(analyzed, schema, CompileOptions{Parameters: query.Parameters, ObjectProperties: query.ObjectProperties})
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
 			WithErrorDetails(err.Error())
@@ -226,6 +286,39 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
+	compiled, err := s.preparePlan(ctx, query, plan, schema)
+	if err != nil {
+		return nil, err
+	}
+	compiled.traceDescriptor = descriptorJSON
+	return compiled, nil
+}
+
+// preparePlan applies row policies and generates every statement before reads.
+func (s *cypherQueryService) preparePlan(ctx context.Context, query interfaces.CypherQuery, plan *Plan, schema *Schema) (*compiledQuery, error) {
+	compiled := &compiledQuery{plan: plan, schema: schema, rowLimit: pageSize(plan.Limit)}
+	if len(plan.Stages) > 0 {
+		for _, stage := range plan.Stages {
+			child, err := s.preparePlan(ctx, query, stage.Plan, schema)
+			if err != nil {
+				return nil, err
+			}
+			compiled.stages = append(compiled.stages, child)
+			compiled.permissionImpacts = mergePermissionImpacts(compiled.permissionImpacts, child.permissionImpacts)
+		}
+		return compiled, nil
+	}
+	if len(plan.Union) > 0 {
+		for _, branch := range plan.Union {
+			child, err := s.preparePlan(ctx, query, branch, schema)
+			if err != nil {
+				return nil, err
+			}
+			compiled.branches = append(compiled.branches, child)
+			compiled.permissionImpacts = mergePermissionImpacts(compiled.permissionImpacts, child.permissionImpacts)
+		}
+		return compiled, nil
+	}
 	rowFilteredObjectTypes, err := s.applyRowFilters(ctx, query.KNID, plan, schema)
 	if err != nil {
 		var httpErr *rest.HTTPError
@@ -236,20 +329,21 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
-	sql, err := Generate(plan, GenerateOptions{
-		Dialect:      DialectMySQL,
-		DefaultLimit: interfaces.CYPHER_DEFAULT_LIMIT,
-	})
+	sql := ""
+	if len(plan.Tables) > 0 {
+		sql, err = Generate(plan, GenerateOptions{
+			Dialect:      DialectMySQL,
+			DefaultLimit: interfaces.CYPHER_DEFAULT_LIMIT,
+		})
+	}
 	if err != nil {
 		common.LogSafeError(ctx, "Cypher SQL generation failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
-	return &compiledQuery{
-		statement: sql, rowLimit: pageSize(plan.Limit), plan: plan, schema: schema,
-		traceDescriptor:   descriptorJSON,
-		permissionImpacts: rowFilterPermissionImpacts(rowFilteredObjectTypes),
-	}, nil
+	compiled.permissionImpacts = rowFilterPermissionImpacts(rowFilteredObjectTypes)
+	compiled.statement = sql
+	return compiled, nil
 }
 
 // loadPropertyLevels records the caller's property levels for every object
@@ -257,6 +351,16 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 // the compiler to report.
 func (s *cypherQueryService) loadPropertyLevels(ctx context.Context, knID string, schema *Schema,
 	query *Query) error {
+	for _, stage := range query.Stages {
+		if err := s.loadPropertyLevels(ctx, knID, schema, stage.Query); err != nil {
+			return err
+		}
+	}
+	for _, branch := range query.Union {
+		if err := s.loadPropertyLevels(ctx, knID, schema, branch); err != nil {
+			return err
+		}
+	}
 	for _, node := range query.Pattern.Nodes {
 		objectType, err := schema.ResolveLabel(node.Label)
 		if err != nil {
@@ -628,4 +732,18 @@ func validateQueryText(ctx context.Context, query string) error {
 
 func detail(ctx context.Context, name string, templateData map[string]any) string {
 	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail."+name, templateData)
+}
+
+func mergePermissionImpacts(left, right []interfaces.CypherPermissionImpact) []interfaces.CypherPermissionImpact {
+	seen := map[string]bool{}
+	result := []interfaces.CypherPermissionImpact{}
+	for _, items := range [][]interfaces.CypherPermissionImpact{left, right} {
+		for _, item := range items {
+			if !seen[item.ObjectTypeID] {
+				seen[item.ObjectTypeID] = true
+				result = append(result, item)
+			}
+		}
+	}
+	return result
 }

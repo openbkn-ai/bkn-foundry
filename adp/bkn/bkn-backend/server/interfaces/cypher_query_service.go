@@ -35,9 +35,11 @@ const (
 
 // CypherQuery is one read-only query against a knowledge network.
 type CypherQuery struct {
-	KNID   string
-	Branch string
-	Query  string
+	ResultFormat     string
+	ObjectProperties map[string][]string
+	KNID             string
+	Branch           string
+	Query            string
 	// Parameters supply the values the query refers to as $name. They are
 	// values only: a parameter can change which rows come back, never which
 	// resource or column is read.
@@ -48,11 +50,14 @@ type CypherQuery struct {
 // deliberately absent: it names physical tables and columns, which the caller
 // is not entitled to just because they may read the data.
 type CypherQueryResult struct {
-	Columns []RawQueryColumn `json:"columns"`
-	Entries []map[string]any `json:"entries"`
-	// PermissionImpacts is returned only on the internal HTTP face. It lets an
-	// agent explain which object-type access rules narrowed or refused a query.
-	PermissionImpacts []CypherPermissionImpact `json:"-"`
+	// PermissionImpacts is exposed only on the internal HTTP face for access guidance.
+	PermissionImpacts []CypherPermissionImpact    `json:"-"`
+	EvaluationRows    int                         `json:"-"`
+	ResultFormat      string                      `json:"result_format,omitempty"`
+	ValueTypes        map[string]*CypherValueType `json:"value_types,omitempty"`
+	Execution         *CypherExecution            `json:"execution,omitempty"`
+	Columns           []RawQueryColumn            `json:"columns"`
+	Entries           []map[string]any            `json:"entries"`
 	// TraceDescriptor is returned only on the internal HTTP face. The public
 	// REST response keeps its existing shape.
 	TraceDescriptor json.RawMessage `json:"-"`

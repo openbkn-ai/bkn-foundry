@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -641,7 +642,19 @@ func BuildRunCypherEvents(ctx context.Context, knID, query string, rowCount int,
 			truncationReason = "default_limit_reached"
 		}
 	}
+	summary := map[string]any{}
+	if descriptorMap, ok := descriptorPayload.(map[string]any); ok {
+		if execution, ok := descriptorMap["execution"].(map[string]any); ok {
+			summary = execution
+			limited, _ := execution["conclusions_limited"].(bool)
+			if limited {
+				truncated = true
+				truncationReason = "conclusion_limit_reached"
+			}
+		}
+	}
 	return buildRunCypherEvent(ctx, knID, query, map[string]any{
+		"execution": summary,
 		"row_count": rowCount, "truncated": truncated,
 		"semantic_query_descriptor":  descriptorPayload,
 		"semantic_descriptor_status": descriptorStatus(descriptor),
@@ -750,9 +763,75 @@ func semanticDescriptorRefs(descriptor map[string]any) ([]map[string]any, []map[
 			}
 		}
 	}
+	var walkExpression func(map[string]any)
+	walkExpression = func(expression map[string]any) {
+		for _, argument := range objectArray(expression["arguments"]) {
+			walkExpression(argument)
+		}
+		if refs, ok := expression["property_refs"].([]any); ok {
+			for _, ref := range refs {
+				appendRef(&fields, stringValue(ref), "property")
+			}
+		}
+		if child, ok := expression["element"].(map[string]any); ok {
+			walkExpression(child)
+		}
+		if members, ok := expression["fields"].(map[string]any); ok {
+			for _, name := range sortedTraceKeys(members) {
+				if child, ok := members[name].(map[string]any); ok {
+					walkExpression(child)
+				}
+			}
+		}
+	}
+	for _, projection := range objectArray(descriptor["projections"]) {
+		if expression, ok := projection["expression"].(map[string]any); ok {
+			walkExpression(expression)
+		}
+	}
+	if predicate, ok := descriptor["residual_predicate"].(map[string]any); ok {
+		walkExpression(predicate)
+	}
+	if predicate, ok := descriptor["post_predicate"].(map[string]any); ok {
+		walkExpression(predicate)
+	}
+	for _, order := range objectArray(descriptor["ordering"]) {
+		if expression, ok := order["expression"].(map[string]any); ok {
+			walkExpression(expression)
+		}
+	}
+	for _, unwind := range objectArray(descriptor["unwinds"]) {
+		if expression, ok := unwind["expression"].(map[string]any); ok {
+			walkExpression(expression)
+		}
+	}
 	if values, ok := descriptor["grouping"].([]any); ok {
 		for _, value := range values {
-			appendRef(&fields, stringValue(value), "property")
+			if ref := stringValue(value); strings.HasPrefix(ref, "property:") {
+				appendRef(&fields, ref, "property")
+			}
+		}
+	}
+	if union, ok := descriptor["union"].(map[string]any); ok {
+		for _, branch := range objectArray(union["branches"]) {
+			branchResources, branchFields := semanticDescriptorRefs(branch)
+			for _, ref := range branchResources {
+				appendRef(&resources, stringValue(ref["ref_id"]), stringValue(ref["ref_type"]))
+			}
+			for _, ref := range branchFields {
+				appendRef(&fields, stringValue(ref["ref_id"]), stringValue(ref["ref_type"]))
+			}
+		}
+	}
+	for _, stage := range objectArray(descriptor["stages"]) {
+		if child, ok := stage["descriptor"].(map[string]any); ok {
+			childResources, childFields := semanticDescriptorRefs(child)
+			for _, ref := range childResources {
+				appendRef(&resources, stringValue(ref["ref_id"]), stringValue(ref["ref_type"]))
+			}
+			for _, ref := range childFields {
+				appendRef(&fields, stringValue(ref["ref_id"]), stringValue(ref["ref_type"]))
+			}
 		}
 	}
 	return resources, fields
@@ -1859,4 +1938,13 @@ func hashSuffix(value any) string {
 		return hash[:24]
 	}
 	return hash
+}
+
+func sortedTraceKeys(values map[string]any) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

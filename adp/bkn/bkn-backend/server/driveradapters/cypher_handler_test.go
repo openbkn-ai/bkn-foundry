@@ -245,3 +245,34 @@ func TestRunCypherQueryReportsAFailedExistenceCheck(t *testing.T) {
 		t.Fatalf("status = %d, want 500", recorder.Code)
 	}
 }
+
+func TestRunCypherGraphContractOnBothFaces(t *testing.T) {
+	for _, face := range []string{"", "in/"} {
+		t.Run(face, func(t *testing.T) {
+			engine, queries, networks := cypherTestHandler(t)
+			networks.EXPECT().CheckKNExistByID(gomock.Any(), cypherKNID, interfaces.MAIN_BRANCH).Return(cypherKNID, true, nil)
+			queries.EXPECT().Query(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, request interfaces.CypherQuery) (*interfaces.CypherQueryResult, error) {
+				if request.ResultFormat != "graph_v1" || len(request.ObjectProperties["p"]) != 1 || request.ObjectProperties["p"][0] != "name" {
+					t.Fatalf("request lost graph options: %+v", request)
+				}
+				return &interfaces.CypherQueryResult{ResultFormat: "graph_v1", Columns: []interfaces.RawQueryColumn{{Name: "person", Type: "object"}}, Entries: []map[string]any{}, ValueTypes: map[string]*interfaces.CypherValueType{"person": {Kind: "object", ObjectTypeID: "person"}}, Execution: &interfaces.CypherExecution{MatchComplete: true, EvidenceComplete: true}, TraceDescriptor: json.RawMessage(`{"version":"semantic-query-descriptor/v1"}`)}, nil
+			})
+			response := postCypher(engine, cypherURL(face, cypherKNID), `{"query":"MATCH (p:Person) RETURN p AS person","result_format":"graph_v1","object_properties":{"p":["name"]}}`, nil)
+			if response.Code != http.StatusOK {
+				t.Fatalf("status: %d %s", response.Code, response.Body.String())
+			}
+			var wire map[string]json.RawMessage
+			if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"columns", "entries", "result_format", "value_types", "execution"} {
+				if len(wire[name]) == 0 {
+					t.Fatalf("%s missing: %s", name, response.Body.String())
+				}
+			}
+			if (face == "in/") != (len(wire["_trace"]) > 0) {
+				t.Fatal("internal trace visibility changed")
+			}
+		})
+	}
+}

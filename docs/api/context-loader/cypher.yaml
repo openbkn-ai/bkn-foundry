@@ -5,7 +5,7 @@ info:
   description: |
     用只读 Cypher 查知识网络：标签是对象类，关系类型是关系类，属性是逻辑属性名。
     本服务不自带查询语言实现——它把请求带着调用方身份转给 bkn-backend，由那边按
-    知识网络的模型把 Cypher 编译成一条 SQL 下发，再把行返回来。
+    知识网络的模型将各 MATCH 分支编译为 SQL，并完成有界求值和 UNION 合并后返回结果。
 
     与其他查询入口的分工：
 
@@ -16,7 +16,7 @@ info:
     - 本接口：要的是**表**（按路径过滤后投影出的行，可聚合、可排序、可分页），
       路径与条件写在一句 Cypher 里。
     - [data-access.yaml](data-access.yaml) 的 `run_sql`：绕开本体直查物理表。
-      本接口表达不了的口径（CTE、UNION、窗口函数）或资源没建成对象类时才落到那里。
+      本接口表达不了的口径（CTE、窗口函数）或资源没建成对象类时才落到那里。
 
     **不需要 `resource_id`，也不需要物理列名**——名字全部取自
     [schema-search.yaml](schema-search.yaml) 的 `search_schema` 或
@@ -43,7 +43,7 @@ paths:
       summary: 对知识网络执行只读 Cypher
       operationId: runCypher
       description: |
-        编译并执行一条只读 Cypher 语句。**支持的子集**：
+        编译并执行一条只读 Cypher 语句。查询会自动选择 SQL 下推或有界类型化求值，新增表达式能力见 result_format 字段，无需显式解锁；以下描述原有 SQL 子集：
 
         - **MATCH**：一个或多个 MATCH 子句；一个 MATCH 里可以写逗号分隔的多条路径。
           同名变量指同一个节点；不共享变量的两部分是笛卡尔积。
@@ -58,7 +58,7 @@ paths:
           它自带的 `WHERE` 与内联属性决定这条关系匹配到什么，不决定哪些行留下。
           限制：首个子句必须是 `MATCH`；一条 `OPTIONAL MATCH` 只能写一条关系、只能引入一个
           新节点（两端都已匹配或两端都是新节点都会被拒）；它引入的节点不能被后面的 `MATCH`
-          或查询的 `WHERE` 再要求，否则留下来的行会被重新删掉，这类查询一律拒绝而不是照做。
+          或查询的 `WHERE` 再要求，否则留下来的行会被重新删掉，这类查询改用有界阶段执行。
         - **WHERE**：`=` `<>` `<` `>` `<=` `>=`、`IN [...]`、`IS NULL` / `IS NOT NULL`，
           `STARTS WITH` / `ENDS WITH` / `CONTAINS`，用 `AND` / `OR` / `NOT` 组合，可加括号。
           值可写 `$name` 参数；`IN $list` 可把整个列表作为一个参数传入。字符串谓词左侧须为
@@ -82,9 +82,19 @@ paths:
         - **ORDER BY / SKIP / LIMIT**：ORDER BY 可用属性、返回列名或聚合。结果被聚合
           或 DISTINCT 折叠后，只能按返回的值排序。
 
-        **不支持**（会被拒绝，报错指名是哪个语法与位置）：`WITH`、
-        `UNION`、变长路径 `[:R*1..3]`、`XOR`、返回整个节点、函数调用、`^` 乘方、写操作（`CREATE` / `MERGE` / `DELETE` /
-        `SET` / `REMOVE`）。
+        **新增值求值**：支持整个节点/命名定向关系、算术、CASE、XOR、列表/map、
+        常用函数和顶层 collect 等聚合；自动根据查询选用，不要求 result_format 解锁。
+        UNION / UNION ALL 支持独立作用域、去重/保留重复，所有分支先编译并授权；
+        同一查询不能混用两种 UNION。WITH、MATCH、OPTIONAL MATCH、UNWIND 按顺序执行；
+        支持变量别名、聚合后过滤、阶段分页及 WITH */RETURN *。UNWIND 后可继续 MATCH，
+        节点别名及 collect/UNWIND 保留属性来源并提前授权；可选匹配未命中只将新变量设为 null。
+        分阶段匹配要求完整且可读的节点主键；每个 MATCH 当前先有界扫描再关联，
+        最终结果很小也可能因候选扫描过大而失败。
+
+        **仍不支持**：变长路径、推导式、存在子查询、关系属性和任意过程调用。
+        有界值求值路径的聚合须位于投影顶层；原 SQL 路径仍支持上述聚合算术。
+        任意函数/CASE 派生图值的属性来源跟踪仍有限。
+        所有写操作（CREATE / MERGE / DELETE / SET / REMOVE）继续拒绝。
 
         **行数**：不写 `LIMIT` 默认返回 1000 行；`LIMIT` 不得超过 10000。
 
@@ -177,6 +187,59 @@ components:
         - kn_id
         - query
       properties:
+        result_format:
+          type: string
+          enum: [graph_v1]
+          description: |-
+            Optional explicit value-result selection; language features are also inferred
+            from the query without this field. Existing scalar SQL queries retain their
+            execution path. New value evaluation supports arithmetic, CASE, nullable
+            booleans, property comparisons, list/map values and access, registered scalar
+            functions and top-level count/sum/avg/min/max/collect, including DISTINCT and
+            mixed aggregates. RETURN without MATCH is supported. DISTINCT, ORDER BY,
+            SKIP and LIMIT follow grouping/aggregation. Aggregates within scalar expressions
+            remain unsupported. ORDER BY expressions may refer to projected aliases.
+            Paths, comprehensions, existential subqueries,
+            relation properties and procedures are not implemented yet. This is not a full
+            openCypher compatibility claim.
+            UNION and UNION ALL support up to 32 independently scoped branches with identical
+            column names; mixing the two operators is rejected. Every branch is compiled and
+            authorized before any branch reads data. Branch ORDER BY/SKIP/LIMIT is local;
+            the default 1000-row cap applies once after the union. UNWIND supports up to 32
+            expansions, including parameter lists, empty/null inputs and scalar inputs.
+            WITH, MATCH, OPTIONAL MATCH and UNWIND run in clause order, with at most 64 stages.
+            WITH replaces the variable scope and supports aggregation, DISTINCT, ordering,
+            SKIP/LIMIT and a following WHERE. RETURN * and WITH * expand the visible scope.
+            Node aliases and collect-to-UNWIND preserve property origins and authorization;
+            reading an attribute does not implicitly add it to public snapshot properties.
+            OPTIONAL MATCH null-extends only newly introduced variables after its predicate.
+            Staged MATCH requires full, complete node primary keys, even for scalar output.
+            Each MATCH currently scans a bounded authorized observation before correlation;
+            a selective final result may still exceed the candidate budget.
+            Graph origins through arbitrary scalar functions/CASE remain limited.
+            object_properties continues to name MATCH node variables, not WITH aliases.
+            UNION shares a 9999-row work budget (sum of max(candidate rows, expanded rows)
+            per simple branch; staged branches account cumulative intermediate work), an
+            8 MiB assembly budget and the request timeout. Staged work counts the sum of
+            max(stage source/input rows, stage output rows), with a separate cap of 79992
+            correlation comparisons. Overflows or an
+            incomplete branch reject the entire query. Separate reads do not guarantee a
+            shared datasource snapshot.
+            A value evaluation allows 9999 candidate rows plus one probe, an 8 MiB assembly
+            budget and 30-second timeout. Exceeding a budget rejects the whole evaluation.
+        object_properties:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: |-
+            graph_v1 only. Snapshot property names by node variable. Complete primary keys,
+            requested properties and the join-key observations exposed by relation values
+            require full property access, including in nested evidence. Values come from
+            the same observation; no later object lookup is performed.
+          example:
+            p: [name]
         bkn_context:
           $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
         kn_id:
@@ -192,15 +255,24 @@ components:
           type: object
           additionalProperties: true
           description: |
-            语句里 `$name` 的取值。只能是字符串、数字或布尔值——参数是值，不会变成
-            表名或列名，因此不能用来拼标签、关系类型或属性名。`null` 会被拒绝：
-            判空写 `IS NULL`。用在 `IN $name` 右侧的参数须为非空数组，元素为同一类标量
-            （整数与小数都算数字），不能含 `null`，最多 500 个，如 `{"keys": [6, 7, 8]}`。
-            一条查询里多个长列表合计过大时会返回 400，需拆成多次查询。
+            $name 的 JSON 标量、null、列表或 map。嵌套最多 32 层并受载荷预算限制。
+            简单 IN 列表保留 SQL 下推；复杂、空或含 null 的列表使用有界求值。
+            参数永远不会变成模型标识符或物理 SQL 名称。
 
     RunCypherResponse:
       type: object
       properties:
+        result_format:
+          type: string
+          enum: [graph_v1]
+          description: Present for typed value results, whether inferred or explicitly selected.
+        value_types:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CypherValueType'
+          description: Recursive logical types, keyed by result column name.
+        execution:
+          $ref: '#/components/schemas/CypherExecution'
         columns:
           type: array
           description: 输出列，顺序与 `RETURN` 一致。
@@ -219,3 +291,101 @@ components:
           items:
             type: object
             additionalProperties: true
+
+
+    CypherValueType:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          description: Model scalar type, or object, relation, map, list, null, any (dynamic type).
+        object_type_id:
+          type: string
+        relation_type_id:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CypherValueType'
+        element:
+          $ref: '#/components/schemas/CypherValueType'
+    CypherExecution:
+      type: object
+      required: [match_rows, match_complete, evidence_complete, conclusions_limited]
+      properties:
+        candidate_rows:
+          type: integer
+          description: Source candidate rows before residual WHERE and UNWIND; staged queries sum physical MATCH observations, and UNION sums branch candidates.
+        match_rows:
+          type: integer
+          description: Rows entering the final projection after earlier stage operations, before final grouping; UNION sums branch counts before deduplication.
+        match_complete:
+          type: boolean
+        evidence_complete:
+          type: boolean
+          description: Completeness of evidence for returned conclusions.
+        conclusions_limited:
+          type: boolean
+          description: True when SKIP or LIMIT omits otherwise matched conclusions.
+
+    CypherObjectValue:
+      type: object
+      required: [kind, network_id, branch, object_type_id, key]
+      properties:
+        kind:
+          type: string
+          enum: [object]
+        network_id:
+          type: string
+        branch:
+          type: string
+        object_type_id:
+          type: string
+        key:
+          type: object
+          description: Complete primary key, keyed by model property name. Values use exact decimal strings for integers.
+          additionalProperties:
+            type: object
+            required: [type, value]
+            properties:
+              type:
+                type: string
+              value:
+                type: string
+        properties:
+          type: object
+          additionalProperties: true
+          description: Only explicitly requested, authorized snapshot properties.
+    CypherRelationValue:
+      type: object
+      description: A direct join fact observed in this evaluation; it has no persisted edge ID.
+      required: [kind, relation_type_id, source, target, binding_digest, basis]
+      properties:
+        kind:
+          type: string
+          enum: [relation]
+        relation_type_id:
+          type: string
+        source:
+          $ref: '#/components/schemas/CypherObjectValue'
+        target:
+          $ref: '#/components/schemas/CypherObjectValue'
+        binding_digest:
+          type: string
+          description: SHA-256 digest of the relation type, update time and mapping definition; not a data snapshot reference.
+        basis:
+          type: array
+          description: Authorized source/target logical properties and their values from the same matching row.
+          items:
+            type: object
+            required: [source_property, source_value, target_property, target_value]
+            properties:
+              source_property:
+                type: string
+              target_property:
+                type: string
+              source_value:
+                description: Observed source join-key value.
+              target_value:
+                description: Observed target join-key value.

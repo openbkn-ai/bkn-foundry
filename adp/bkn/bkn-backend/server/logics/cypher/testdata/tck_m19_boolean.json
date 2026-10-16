@@ -1,0 +1,258 @@
+{
+  "source": "https://s3.amazonaws.com/artifacts.opencypher.org/M19/tck-M19.zip",
+  "sha256": "93d3ea6dcf386a64754bb561936a7035c3b429f81b9bc091b809061b4ea0d9bd",
+  "copyright": "Copyright (c) 2015-2022 Neo Technology, Network Engine for Objects in Lund AB",
+  "license": "Apache-2.0",
+  "coverage": "Selected tableless boolean success scenarios only. Not a full TCK run; outlines, errors, fixtures and all other features remain outside this selected suite.",
+  "cases": [
+    {
+      "source": "tck/features/expressions/boolean/Boolean1.feature",
+      "scenario": "[1] Conjunction of two truth values",
+      "query": "RETURN true AND true AS tt,\n             true AND false AS tf,\n             true AND null AS tn,\n             false AND true AS ft,\n             false AND false AS ff,\n             false AND null AS fn,\n             null AND true AS nt,\n             null AND false AS nf,\n             null AND null AS nn",
+      "expected": [
+        {
+          "tt": true,
+          "tf": false,
+          "tn": null,
+          "ft": false,
+          "ff": false,
+          "fn": false,
+          "nt": null,
+          "nf": false,
+          "nn": null
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean1.feature",
+      "scenario": "[2] Conjunction of three truth values",
+      "query": "RETURN true AND true AND true AS ttt,\n             true AND true AND false AS ttf,\n             true AND true AND null AS ttn,\n             true AND false AND true AS tft,\n             true AND false AND false AS tff,\n             true AND false AND null AS tfn,\n             true AND null AND true AS tnt,\n             true AND null AND false AS tnf,\n             true AND null AND null AS tnn,\n             false AND true AND true AS ftt,\n             false AND true AND false AS ftf,\n             false AND true AND null AS ftn,\n             false AND false AND true AS fft,\n             false AND false AND false AS fff,\n             false AND false AND null AS ffn,\n             false AND null AND true AS fnt,\n             false AND null AND false AS fnf,\n             false AND null AND null AS fnn,\n             null AND true AND true AS ntt,\n             null AND true AND false AS ntf,\n             null AND true AND null AS ntn,\n             null AND false AND true AS nft,\n             null AND false AND false AS nff,\n             null AND false AND null AS nfn,\n             null AND null AND true AS nnt,\n             null AND null AND false AS nnf,\n             null AND null AND null AS nnn",
+      "expected": [
+        {
+          "ttt": true,
+          "ttf": false,
+          "ttn": null,
+          "tft": false,
+          "tff": false,
+          "tfn": false,
+          "tnt": null,
+          "tnf": false,
+          "tnn": null,
+          "ftt": false,
+          "ftf": false,
+          "ftn": false,
+          "fft": false,
+          "fff": false,
+          "ffn": false,
+          "fnt": false,
+          "fnf": false,
+          "fnn": false,
+          "ntt": null,
+          "ntf": false,
+          "ntn": null,
+          "nft": false,
+          "nff": false,
+          "nfn": false,
+          "nnt": null,
+          "nnf": false,
+          "nnn": null
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean1.feature",
+      "scenario": "[3] Conjunction of many truth values",
+      "query": "RETURN true AND true AND true AND true AND true AND true AND true AND true AND true AND true AND true AS t,\n             true AND true AND true AND false AND true AND true AND true AND true AND true AND true AND true AS tsf,\n             true AND true AND true AND null AND true AND true AND true AND true AND true AND true AND true AS tsn,\n             false AND false AND false AND false AND false AND false AND false AND false AND false AND false AND false AS f,\n             false AND false AND false AND false AND true AND false AND false AND false AND false AND false AND false AS fst,\n             false AND false AND false AND false AND false AND false AND null AND false AND false AND false AND false AS fsn,\n             null AND null AND null AND null AND null AND null AND null AND null AND null AND null AND null AS n,\n             null AND null AND null AND null AND true AND null AND null AND null AND null AND null AND null AS nst,\n             null AND null AND null AND null AND false AND null AND null AND null AND null AND null AND null AS nsf,\n             true AND false AND false AND false AND true AND false AND false AND true AND true AND true AND false AS m1,\n             true AND true AND false AND false AND true AND false AND false AND true AND true AND true AND false AS m2,\n             true AND true AND false AND false AND true AND null AND false AND true AND true AND null AND false AS m3",
+      "expected": [
+        {
+          "t": true,
+          "tsf": false,
+          "tsn": null,
+          "f": false,
+          "fst": false,
+          "fsn": false,
+          "n": null,
+          "nst": null,
+          "nsf": false,
+          "m1": false,
+          "m2": false,
+          "m3": false
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean2.feature",
+      "scenario": "[1] Disjunction of two truth values",
+      "query": "RETURN true OR true AS tt,\n             true OR false AS tf,\n             true OR null AS tn,\n             false OR true AS ft,\n             false OR false AS ff,\n             false OR null AS fn,\n             null OR true AS nt,\n             null OR false AS nf,\n             null OR null AS nn",
+      "expected": [
+        {
+          "tt": true,
+          "tf": true,
+          "tn": true,
+          "ft": true,
+          "ff": false,
+          "fn": null,
+          "nt": true,
+          "nf": null,
+          "nn": null
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean2.feature",
+      "scenario": "[2] Disjunction of three truth values",
+      "query": "RETURN true OR true OR true AS ttt,\n             true OR true OR false AS ttf,\n             true OR true OR null AS ttn,\n             true OR false OR true AS tft,\n             true OR false OR false AS tff,\n             true OR false OR null AS tfn,\n             true OR null OR true AS tnt,\n             true OR null OR false AS tnf,\n             true OR null OR null AS tnn,\n             false OR true OR true AS ftt,\n             false OR true OR false AS ftf,\n             false OR true OR null AS ftn,\n             false OR false OR true AS fft,\n             false OR false OR false AS fff,\n             false OR false OR null AS ffn,\n             false OR null OR true AS fnt,\n             false OR null OR false AS fnf,\n             false OR null OR null AS fnn,\n             null OR true OR true AS ntt,\n             null OR true OR false AS ntf,\n             null OR true OR null AS ntn,\n             null OR false OR true AS nft,\n             null OR false OR false AS nff,\n             null OR false OR null AS nfn,\n             null OR null OR true AS nnt,\n             null OR null OR false AS nnf,\n             null OR null OR null AS nnn",
+      "expected": [
+        {
+          "ttt": true,
+          "ttf": true,
+          "ttn": true,
+          "tft": true,
+          "tff": true,
+          "tfn": true,
+          "tnt": true,
+          "tnf": true,
+          "tnn": true,
+          "ftt": true,
+          "ftf": true,
+          "ftn": true,
+          "fft": true,
+          "fff": false,
+          "ffn": null,
+          "fnt": true,
+          "fnf": null,
+          "fnn": null,
+          "ntt": true,
+          "ntf": true,
+          "ntn": true,
+          "nft": true,
+          "nff": null,
+          "nfn": null,
+          "nnt": true,
+          "nnf": null,
+          "nnn": null
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean2.feature",
+      "scenario": "[3] Disjunction of many truth values",
+      "query": "RETURN true OR true OR true OR true OR true OR true OR true OR true OR true OR true OR true AS t,\n             true OR true OR true OR false OR true OR true OR true OR true OR true OR true OR true AS tsf,\n             true OR true OR true OR null OR true OR true OR true OR true OR true OR true OR true AS tsn,\n             false OR false OR false OR false OR false OR false OR false OR false OR false OR false OR false AS f,\n             false OR false OR false OR false OR true OR false OR false OR false OR false OR false OR false AS fst,\n             false OR false OR false OR false OR false OR false OR null OR false OR false OR false OR false AS fsn,\n             null OR null OR null OR null OR null OR null OR null OR null OR null OR null OR null AS n,\n             null OR null OR null OR null OR true OR null OR null OR null OR null OR null OR null AS nst,\n             null OR null OR null OR null OR false OR null OR null OR null OR null OR null OR null AS nsf,\n             true OR false OR false OR false OR true OR false OR false OR true OR true OR true OR false AS m1,\n             true OR true OR false OR false OR true OR false OR false OR true OR true OR true OR false AS m2,\n             true OR true OR false OR false OR true OR null OR false OR true OR true OR null OR false AS m3",
+      "expected": [
+        {
+          "t": true,
+          "tsf": true,
+          "tsn": true,
+          "f": false,
+          "fst": true,
+          "fsn": null,
+          "n": null,
+          "nst": true,
+          "nsf": null,
+          "m1": true,
+          "m2": true,
+          "m3": true
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean3.feature",
+      "scenario": "[1] Exclusive disjunction of two truth values",
+      "query": "RETURN true XOR true AS tt,\n             true XOR false AS tf,\n             true XOR null AS tn,\n             false XOR true AS ft,\n             false XOR false AS ff,\n             false XOR null AS fn,\n             null XOR true AS nt,\n             null XOR false AS nf,\n             null XOR null AS nn",
+      "expected": [
+        {
+          "tt": false,
+          "tf": true,
+          "tn": null,
+          "ft": true,
+          "ff": false,
+          "fn": null,
+          "nt": null,
+          "nf": null,
+          "nn": null
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean3.feature",
+      "scenario": "[2] Exclusive disjunction of three truth values",
+      "query": "RETURN true XOR true XOR true AS ttt,\n             true XOR true XOR false AS ttf,\n             true XOR true XOR null AS ttn,\n             true XOR false XOR true AS tft,\n             true XOR false XOR false AS tff,\n             true XOR false XOR null AS tfn,\n             true XOR null XOR true AS tnt,\n             true XOR null XOR false AS tnf,\n             true XOR null XOR null AS tnn,\n             false XOR true XOR true AS ftt,\n             false XOR true XOR false AS ftf,\n             false XOR true XOR null AS ftn,\n             false XOR false XOR true AS fft,\n             false XOR false XOR false AS fff,\n             false XOR false XOR null AS ffn,\n             false XOR null XOR true AS fnt,\n             false XOR null XOR false AS fnf,\n             false XOR null XOR null AS fnn,\n             null XOR true XOR true AS ntt,\n             null XOR true XOR false AS ntf,\n             null XOR true XOR null AS ntn,\n             null XOR false XOR true AS nft,\n             null XOR false XOR false AS nff,\n             null XOR false XOR null AS nfn,\n             null XOR null XOR true AS nnt,\n             null XOR null XOR false AS nnf,\n             null XOR null XOR null AS nnn",
+      "expected": [
+        {
+          "ttt": true,
+          "ttf": false,
+          "ttn": null,
+          "tft": false,
+          "tff": true,
+          "tfn": null,
+          "tnt": null,
+          "tnf": null,
+          "tnn": null,
+          "ftt": false,
+          "ftf": true,
+          "ftn": null,
+          "fft": true,
+          "fff": false,
+          "ffn": null,
+          "fnt": null,
+          "fnf": null,
+          "fnn": null,
+          "ntt": null,
+          "ntf": null,
+          "ntn": null,
+          "nft": null,
+          "nff": null,
+          "nfn": null,
+          "nnt": null,
+          "nnf": null,
+          "nnn": null
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean3.feature",
+      "scenario": "[3] Exclusive disjunction of many truth values",
+      "query": "RETURN true XOR true XOR true XOR true XOR true XOR true XOR true XOR true XOR true XOR true XOR true AS t,\n             true XOR true XOR true XOR false XOR true XOR true XOR true XOR true XOR true XOR true XOR true AS tsf,\n             true XOR true XOR true XOR null XOR true XOR true XOR true XOR true XOR true XOR true XOR true AS tsn,\n             false XOR false XOR false XOR false XOR false XOR false XOR false XOR false XOR false XOR false XOR false AS f,\n             false XOR false XOR false XOR false XOR true XOR false XOR false XOR false XOR false XOR false XOR false AS fst,\n             false XOR false XOR false XOR false XOR false XOR false XOR null XOR false XOR false XOR false XOR false AS fsn,\n             null XOR null XOR null XOR null XOR null XOR null XOR null XOR null XOR null XOR null XOR null AS n,\n             null XOR null XOR null XOR null XOR true XOR null XOR null XOR null XOR null XOR null XOR null AS nst,\n             null XOR null XOR null XOR null XOR false XOR null XOR null XOR null XOR null XOR null XOR null AS nsf,\n             true XOR false XOR false XOR false XOR true XOR false XOR false XOR true XOR true XOR true XOR false AS m1,\n             true XOR true XOR false XOR false XOR true XOR false XOR false XOR true XOR true XOR true XOR false AS m2,\n             true XOR true XOR false XOR false XOR true XOR null XOR false XOR true XOR true XOR null XOR false AS m3",
+      "expected": [
+        {
+          "t": true,
+          "tsf": false,
+          "tsn": null,
+          "f": false,
+          "fst": true,
+          "fsn": null,
+          "n": null,
+          "nst": null,
+          "nsf": null,
+          "m1": true,
+          "m2": false,
+          "m3": null
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean4.feature",
+      "scenario": "[1] Logical negation of truth values",
+      "query": "RETURN NOT true AS nt, NOT false AS nf, NOT null AS nn",
+      "expected": [
+        {
+          "nt": false,
+          "nf": true,
+          "nn": null
+        }
+      ]
+    },
+    {
+      "source": "tck/features/expressions/boolean/Boolean4.feature",
+      "scenario": "[2] Double logical negation of truth values",
+      "query": "RETURN NOT NOT true AS nnt, NOT NOT false AS nnf, NOT NOT null AS nnn",
+      "expected": [
+        {
+          "nnt": true,
+          "nnf": false,
+          "nnn": null
+        }
+      ]
+    }
+  ]
+}

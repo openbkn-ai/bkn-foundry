@@ -21,12 +21,29 @@
       },
       "query": {
         "type": "string",
-        "description": "只读 Cypher。标签用对象类的 id 或名称，关系用关系类的 id 或名称，属性用逻辑属性名（不是物理列名）——都来自 search_schema / get_object_types / get_relation_types。支持：一个或多个 MATCH、逗号分隔的多条路径（同名变量=同一个节点，不共享变量=笛卡尔积）；关系 -[:R]->、<-[:R]-、无向 -[:R]-，每条必须指名一个关系类；节点必须指名一个对象类（首次出现带标签），可带内联属性 {prop: value}；WHERE 支持 = <> < > <= >=、IN [...]（或 IN $list：整个列表作为一个参数传入，须为非空、同类标量数组，最多 500 个元素）、IS NULL / IS NOT NULL、STARTS WITH / ENDS WITH / CONTAINS（右侧为字符串字面量或字符串参数，按字面子串匹配，% 和 _ 不是通配符；只能用于字符串属性，大小写是否敏感取决于数据源的排序规则），用 AND / OR / NOT 组合并可加括号；值可用 $name 参数（在 parameters 里传）；RETURN 支持属性、AS 别名、DISTINCT 与 count/sum/avg/min/max（含 count(*)、DISTINCT 形式），聚合时按 RETURN 中其余列自动分组；RETURN 可做 + - * / % 算术，如 count(*) * 2、sum(o.price * o.qty)、count(o.x) * 1.0 / count(*)：操作数是数值属性、聚合、数字或数值参数；两个整数相除会被拒（Cypher 丢余数，各 SQL 库不一致），要小数结果把一边乘 1.0；% 只用于整数；WHERE 比较的两侧（如 o.amount * o.rate > $floor）和 ORDER BY（如 count(g.id) * 0.5 + p.rank * 0.3 DESC）也能写算术，聚合后排序键里聚合外读的属性须同时在 RETURN 返回，DISTINCT 结果要按算出来的值排序请用别名；ORDER BY 支持属性、返回列名或聚合；SKIP / LIMIT 分页。OPTIONAL MATCH 写一条关系，把一个新节点挂到前面子句已经找到的节点上：匹配不到时该行保留、新节点的列为 NULL，所以 count(可选侧的属性) 得 0 而不是整行消失（count(*) 仍然算 1 行）。它自带的 WHERE 与内联属性决定这条关系匹配到什么，不决定哪些行留下。首个子句必须是 MATCH；一条 OPTIONAL MATCH 只能写一条关系、只能引入一个新节点；它引入的节点不能被后面的 MATCH 或查询的 WHERE 再要求（那会把留下来的行又删掉）。不支持：WITH、UNION、变长路径 [:R*1..3]、XOR、RETURN 整个节点、函数调用、乘方 ^、关系变量 -[r:R]->。一条查询最多 8 条关系、9 个节点；不写 LIMIT 默认 1000 行，LIMIT 不得超过 10000；被聚合或 DISTINCT 折叠的结果只能按返回的值排序。示例：MATCH (o:order)-[:rel_order_item_order]->(i:order_item) WHERE o.status IN ['paid','shipped'] AND o.amount > $floor RETURN o.status AS status, count(*) AS orders ORDER BY orders DESC LIMIT 20"
+        "description": "只读 openCypher M19 的当前已实现子集：固定 MATCH 模式与命名定向 direct 关系；WHERE 可用跨属性比较、算术、AND/OR/XOR/NOT、NULL、IN、字符串谓词、CASE、列表/map 及函数表达式；RETURN 可返回标量、参数、节点/关系、列表/map、CASE、常用标量函数和顶层 count/sum/avg/min/max/collect（含 DISTINCT，可混用）；支持 DISTINCT、ORDER BY、SKIP、LIMIT。没有 MATCH 的 RETURN 可直接求值。图值/表达式按查询自动选择有界结果求值路径，无需用 result_format 解锁语法。普通标量查询继续 SQL 下推。新增 UNION/UNION ALL（最多 32 个独立分支、同名列、禁止混用），所有分支先编译授权再读取；默认 1000 行限制在合并后生效。WITH、MATCH、OPTIONAL MATCH、UNWIND 按子句顺序执行（最多 64 个阶段，UNWIND 最多 32 次），包含变量作用域/别名、聚合后 WHERE、阶段排序分页与 WITH */RETURN *。UNWIND 后可继续 MATCH，节点别名及 collect/UNWIND 属性读取保留来源授权，可选匹配仅将未命中的新变量设为 null。分阶段匹配要求完整且可读的节点主键，并先有界扫描再关联；小结果也可能因候选扫描过大而超限。图值经过任意函数或 CASE 后的属性来源跟踪仍有限；object_properties 仍按 MATCH 节点变量声明。全请求共享 9999 行工作预算（分阶段执行累计各阶段输入/输出工作）、8 MiB 组装预算及请求超时，关联比较另限 79992 次，分支超限或不完整则整条失败；不提供跨分支数据源快照。尚不支持路径变量/变长路径、列表/模式推导、存在子查询、关系属性和任意过程调用；聚合暂须位于投影顶层。不是完整 openCypher 兼容声明。"
       },
       "parameters": {
         "type": "object",
         "additionalProperties": true,
-        "description": "查询里 $name 的取值。只能是字符串、数字或布尔值；用在 IN $name 右侧时可以是这类值组成的非空数组（元素同类，整数与小数都算数字，不能含 null，最多 500 个；一条查询里多个长列表合计过大时会返回 400，需拆成多次查询），如 {\"keys\": [6, 7, 8]}——参数是值，永远不会变成表名或列名，因此不能用它拼标签、关系类型或属性名。null 会被拒绝：要判空请在 WHERE 里写 IS NULL。"
+        "description": "查询里的 $name 值，支持 JSON 标量、null、列表和 map；嵌套最多 32 层并受载荷预算约束。简单同类标量 IN 列表保留既有 SQL 下推路径，复杂/空/含 null 的列表通过有界表达式求值。参数永远不会变成标签、关系类型、属性名或物理 SQL 标识符。"
+      },
+      "result_format": {
+        "type": "string",
+        "enum": [
+          "graph_v1"
+        ],
+        "description": "可选显式选择 graph_v1 类型化结果。语法能力不依赖此字段；缺省时根据查询自动选择原表格或类型化结果。需要有界求值的查询最多读取 9999 条候选匹配，再读一行探测是否超预算；8 MiB 组装计费预算，30 秒超时，超预算整体失败。DISTINCT/排序/SKIP/LIMIT 在分组聚合后执行。"
+      },
+      "object_properties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": "仅 graph_v1：按节点变量指定快照属性清单，均须完整读取权限。默认只返回完整类型身份；关系证据另包含获准的连接依据。"
       }
     },
     "required": [
@@ -66,15 +83,27 @@
         "items": {
           "type": "object",
           "properties": {
-            "message": {"type": "string"},
+            "message": {
+              "type": "string"
+            },
             "resource": {
               "type": "object",
               "properties": {
-                "type": {"type": "string"},
-                "id": {"type": "string"},
-                "kn_id": {"type": "string"},
-                "ot_id": {"type": "string"},
-                "name": {"type": "string"}
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kn_id": {
+                  "type": "string"
+                },
+                "ot_id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
               }
             },
             "shortfalls": {
@@ -82,13 +111,64 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "scope": {"type": "string", "enum": ["grant", "row_filter", "property_grants"]},
-                  "operations": {"type": "array", "items": {"type": "string"}},
-                  "properties": {"type": "array", "items": {"type": "string"}},
-                  "request_permission_url": {"type": "string"}
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "grant",
+                      "row_filter",
+                      "property_grants"
+                    ]
+                  },
+                  "operations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "properties": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "request_permission_url": {
+                    "type": "string"
+                  }
                 }
               }
             }
+          }
+        }
+      },
+      "result_format": {
+        "type": "string",
+        "enum": [
+          "graph_v1"
+        ]
+      },
+      "value_types": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "按返回列名提供对象、关系、map、list 及标量的递归类型描述。"
+      },
+      "execution": {
+        "type": "object",
+        "properties": {
+          "match_rows": {
+            "type": "integer"
+          },
+          "match_complete": {
+            "type": "boolean"
+          },
+          "evidence_complete": {
+            "type": "boolean"
+          },
+          "conclusions_limited": {
+            "type": "boolean"
+          },
+          "candidate_rows": {
+            "type": "integer",
+            "description": "源候选行数；分阶段执行累计物理 MATCH 观察行数，UNION 按分支求和。match_rows 为进入最终投影的逻辑行数，统计在最终聚合和 UNION 去重之前。"
           }
         }
       }

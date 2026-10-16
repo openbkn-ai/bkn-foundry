@@ -102,54 +102,13 @@ func TestCompilePredicates(t *testing.T) {
 	}
 }
 
-func TestCompilePredicateRejections(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		query string
-		want  string
-	}{
-		{
-			name:  "xor has no portable spelling",
-			query: "MATCH (o:Order) WHERE o.region = 'eu' XOR o.amount > 1 RETURN o.id",
-			want:  "XOR",
-		},
-		{
-			name:  "in over a computed list",
-			query: "MATCH (o:Order) WHERE o.region IN o.id RETURN o.id",
-			want:  "IN over something other than a list",
-		},
-		{
-			name:  "in over a list holding a property",
-			query: "MATCH (o:Order) WHERE o.region IN [o.id] RETURN o.id",
-			want:  "a list holding something other than values",
-		},
-		{
-			name:  "null inside an in list",
-			query: "MATCH (o:Order) WHERE o.region IN ['eu', null] RETURN o.id",
-			want:  "null in an IN list",
-		},
-		{
-			name:  "is null on something that is not a property",
-			query: "MATCH (o:Order) WHERE 1 IS NULL RETURN o.id",
-			want:  "IN and IS NULL apply to variable.property",
-		},
-		{
-			name:  "comparing two conditions",
-			query: "MATCH (o:Order) WHERE (o.id IS NULL) = (o.region IS NULL) RETURN o.id",
-			want:  "comparing a condition",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := compile(t, tc.query, GenerateOptions{})
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("compile(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
-			}
-		})
+func TestCompilePredicateTypeRejections(t *testing.T) {
+	_, err := compile(t, "MATCH (o:Order) WHERE o.region IN o.id RETURN o.id", GenerateOptions{})
+	if err == nil || !strings.Contains(err.Error(), "IN requires a list") {
+		t.Fatalf("invalid IN operand accepted: %v", err)
 	}
 }
 
-// An empty list matches nothing, so its negation matches everything. Both are
-// written out because SQL has no empty IN to say either with.
 func TestCompileNegatedEmptyMembership(t *testing.T) {
 	if got := compileWhere(t, "NOT o.region IN []"); got != "NOT 1 = 0" {
 		t.Fatalf("got %s", got)

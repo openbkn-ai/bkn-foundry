@@ -10,6 +10,10 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
   - Preserve explicit row-filter and property-masking impacts across BKN Backend and Context Loader boundaries
   - Put localized Studio request links in both structured tool output and the user-facing message so MCP hosts can present them reliably
 
+### Added
+
+- Extend read-only Cypher with inferred typed value results, arithmetic/CASE/nullable booleans, lists/maps, registered scalar functions and mixed top-level aggregates. Carry recursive result types, exact numbers, candidate/match/evidence completeness and result pagination through REST/MCP and Trace. Snapshot fields remain explicit and authorized; evaluation is bounded. Add independently scoped UNION/UNION ALL branches and consecutive UNWIND expansion before RETURN, with shared request budgets and branch-aware trace references. Add ordered WITH/MATCH/OPTIONAL MATCH/UNWIND stages, variable scope and aliases, post-aggregation filtering, stage pagination, wildcard projections, and node-property origins through aliases and collect/UNWIND. Staged MATCH uses bounded authorized scans before correlation and requires complete accessible node keys. Paths and full TCK/integration acceptance remain pending.
+
 ### Removed
 
 - Remove `POST /kn/semantic-search` (both the public path and the `in/v1` internal path). Use `POST /kn/search_schema`

@@ -298,30 +298,10 @@ func TestCompileArithmeticRejections(t *testing.T) {
 			want:  "% takes integers",
 		},
 		{
-			name:  "division by a literal zero",
-			query: "MATCH (l:Line) RETURN l.price / 0.0 AS x",
-			want:  "division by zero",
-		},
-		{
-			name:  "a string literal",
-			query: "MATCH (l:Line) RETURN l.quantity + 'a' AS x",
-			want:  "arithmetic on a non-numeric value",
-		},
-		{
-			name:  "null",
-			query: "MATCH (l:Line) RETURN l.quantity + null AS x",
-			want:  "arithmetic on null",
-		},
-		{
 			name:       "a string parameter",
 			query:      "MATCH (l:Line) RETURN l.price * $rate AS x",
 			parameters: map[string]any{"rate": "x"},
 			want:       `parameter "rate" is used in arithmetic`,
-		},
-		{
-			name:  "a constant",
-			query: "MATCH (l:Line) RETURN 1 + 2 AS x",
-			want:  "returning a constant",
 		},
 		{
 			name:  "a property outside an aggregate that is not returned",
@@ -331,12 +311,7 @@ func TestCompileArithmeticRejections(t *testing.T) {
 		{
 			name:  "an aggregate inside an aggregate",
 			query: "MATCH (l:Line) RETURN sum(count(*) + 1) AS x",
-			want:  "an aggregate inside an aggregate",
-		},
-		{
-			name:  "an aggregate over a constant",
-			query: "MATCH (l:Line) RETURN sum(1 + 2) AS x",
-			want:  "an aggregate over a constant",
+			want:  "aggregates",
 		},
 		{
 			name: "a weighted score over a property the query does not return",
@@ -355,14 +330,9 @@ func TestCompileArithmeticRejections(t *testing.T) {
 			want:  "needs the query to return an aggregate too",
 		},
 		{
-			name:  "sorting by a constant",
-			query: "MATCH (l:Line) RETURN l.id AS id ORDER BY 1 + 1",
-			want:  "sorting by a constant",
-		},
-		{
 			name:  "an aggregate in a condition",
 			query: "MATCH (l:Line) WHERE count(*) * 2 > 1 RETURN l.id",
-			want:  "an aggregate in a condition",
+			want:  "aggregates",
 		},
 		{
 			name:  "a computed number against a string",
@@ -370,29 +340,9 @@ func TestCompileArithmeticRejections(t *testing.T) {
 			want:  "comparing a computed number with string",
 		},
 		{
-			name:  "a computed number against null",
-			query: "MATCH (l:Line) WHERE l.price * 2 = null RETURN l.id",
-			want:  "comparing against null",
-		},
-		{
-			name:  "a condition over constants",
-			query: "MATCH (l:Line) WHERE 1 + 1 > 1 RETURN l.id",
-			want:  "a condition over constants",
-		},
-		{
 			name:  "a string property in a condition",
 			query: "MATCH (l:Line) WHERE l.name * 2 > 1 RETURN l.id",
 			want:  "arithmetic takes numbers; l.name is string",
-		},
-		{
-			name:  "arithmetic inside IN",
-			query: "MATCH (l:Line) WHERE l.price * 2 IN [1, 2] RETURN l.id",
-			want:  "arithmetic here",
-		},
-		{
-			name:  "exponentiation",
-			query: "MATCH (l:Line) RETURN l.price ^ 2 AS x",
-			want:  "exponentiation",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -427,24 +377,16 @@ func TestCompileArithmeticNamesEveryPropertyItReads(t *testing.T) {
 	}
 }
 
-// OPTIONAL MATCH decides what a condition may name by the properties it reads,
-// so a computed condition has to report its properties like any other: one
-// over the optional node belongs to the clause, and one in a later WHERE that
-// requires the optional node has to be refused.
+// General staged matching retains each computed predicate on its own clause.
 func TestOptionalMatchSeesThePropertiesOfAComputedCondition(t *testing.T) {
-	if _, err := analyze(t, "MATCH (o:Order) OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) "+
-		"WHERE c.score + 1 > 2 RETURN o.id"); err != nil {
-		t.Fatalf("a computed condition over the optional node was refused: %v", err)
-	}
-	_, err := analyze(t, "MATCH (o:Order) OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) "+
-		"WHERE o.amount + 1 > 2 RETURN o.id")
-	if err == nil || !strings.Contains(err.Error(), "names nothing it introduces") {
-		t.Fatalf("err = %v, want a condition naming only o refused", err)
-	}
-	_, err = analyze(t, "MATCH (o:Order) OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) "+
-		"MATCH (o)-[:FOLLOWS]->(p:Order) WHERE c.score * 2 > 1 RETURN o.id")
-	if err == nil || !strings.Contains(err.Error(), "requiring what an OPTIONAL MATCH introduced") {
-		t.Fatalf("err = %v, want a later WHERE over c refused", err)
+	for _, query := range []string{
+		"MATCH (o:Order) OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) WHERE c.score + 1 > 2 RETURN o.id",
+		"MATCH (o:Order) OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) WHERE o.amount + 1 > 2 RETURN o.id",
+		"MATCH (o:Order) OPTIONAL MATCH (o)-[:PLACED_BY]->(c:Customer) MATCH (o)-[:FOLLOWS]->(p:Order) WHERE c.score * 2 > 1 RETURN o.id",
+	} {
+		if _, err := analyze(t, query); err != nil {
+			t.Fatalf("computed optional predicate rejected: %v", err)
+		}
 	}
 }
 

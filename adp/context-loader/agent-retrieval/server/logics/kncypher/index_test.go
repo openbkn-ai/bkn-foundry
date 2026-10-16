@@ -194,3 +194,22 @@ func TestRunCypherClassifiesFailureBoundaries(t *testing.T) {
 		})
 	}
 }
+
+func TestRunCypherForwardsGraphOptionsAndCompleteness(t *testing.T) {
+	bkn := &recordingBkn{resp: &interfaces.CypherQueryResp{ResultFormat: "graph_v1", Execution: &interfaces.CypherExecution{MatchRows: 1001, MatchComplete: true, EvidenceComplete: true, ConclusionsLimited: true}, TraceDescriptor: json.RawMessage(`{"version":"semantic-query-descriptor/v1","producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5"}`)}}
+	response, err := NewKnCypherServiceWith(bkn).RunCypher(context.Background(), &RunCypherReq{KnID: "kn-1", Query: "MATCH (p:Person) RETURN p LIMIT 1", ResultFormat: "graph_v1", ObjectProperties: map[string][]string{"p": {"name"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bkn.req.ResultFormat != "graph_v1" || bkn.req.ObjectProperties["p"][0] != "name" || response.Execution.MatchRows != 1001 {
+		t.Fatalf("options or metadata lost: %+v", bkn.req)
+	}
+	var descriptor map[string]json.RawMessage
+	if err := json.Unmarshal(response.TraceDescriptor, &descriptor); err != nil {
+		t.Fatal(err)
+	}
+	var execution interfaces.CypherExecution
+	if err := json.Unmarshal(descriptor["execution"], &execution); err != nil || !execution.ConclusionsLimited || execution.MatchRows != 1001 {
+		t.Fatalf("execution trace lost: %s", response.TraceDescriptor)
+	}
+}

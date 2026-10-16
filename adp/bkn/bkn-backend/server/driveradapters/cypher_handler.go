@@ -28,7 +28,9 @@ import (
 // in the query itself, with SKIP and LIMIT, so there is nothing else to carry
 // beyond the values the query refers to.
 type CypherQueryRequest struct {
-	Query string `json:"query"`
+	ResultFormat     string              `json:"result_format"`
+	ObjectProperties map[string][]string `json:"object_properties"`
+	Query            string              `json:"query"`
 	// Parameters supply what the query writes as $name. They are values only:
 	// a parameter changes which rows come back, never which resource or
 	// column is read.
@@ -85,10 +87,12 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	}
 
 	result, err := r.cqs.Query(ctx, interfaces.CypherQuery{
-		KNID:       knID,
-		Branch:     branch,
-		Query:      body.Query,
-		Parameters: body.Parameters,
+		KNID:             knID,
+		Branch:           branch,
+		Query:            body.Query,
+		Parameters:       body.Parameters,
+		ResultFormat:     body.ResultFormat,
+		ObjectProperties: body.ObjectProperties,
 	})
 	if err != nil {
 		replyHandlerError(c, span, ctx, err)
@@ -98,12 +102,10 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	if includeTraceDescriptor {
 		rest.ReplyOK(c, http.StatusOK, struct {
-			Columns           []interfaces.RawQueryColumn         `json:"columns"`
-			Entries           []map[string]any                    `json:"entries"`
-			Trace             json.RawMessage                     `json:"_trace,omitempty"`
+			*interfaces.CypherQueryResult
 			PermissionImpacts []interfaces.CypherPermissionImpact `json:"permission_impacts,omitempty"`
-		}{Columns: result.Columns, Entries: result.Entries, Trace: result.TraceDescriptor,
-			PermissionImpacts: result.PermissionImpacts})
+			Trace             json.RawMessage                     `json:"_trace"`
+		}{CypherQueryResult: result, PermissionImpacts: result.PermissionImpacts, Trace: result.TraceDescriptor})
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, result)

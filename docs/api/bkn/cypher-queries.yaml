@@ -5,10 +5,11 @@ info:
   version: 0.1.0
   description: |-
     Read-only Cypher queries over the instance data of a knowledge network.
-    A query is compiled into a single SQL statement and executed through vega-backend, so the
-    subset accepted here is what compiles that way: one MATCH over a single path, a WHERE over
-    properties, and a projection of properties and aggregates of them. Everything else is
-    refused by name rather than approximated.
+    Each MATCH branch is compiled into SQL and executed through vega-backend, so the
+    default subset supports bounded MATCH patterns, WHERE over properties, and scalar
+    projections and aggregates. Typed graph values, expressions and ordered stages are
+    inferred when needed; graph_v1 can also be selected explicitly. Evaluation and
+    evidence aggregation are bounded. Unsupported constructs are refused by name.
     Paging is written in the query itself with SKIP and LIMIT; there is no paging parameter.
     Exposed under /api/bkn-backend/v1 (OAuth2) and /api/ontology-manager/v1 (alias), with the
     branch query parameter defaulting to main.
@@ -31,8 +32,8 @@ paths:
         BknBackend.Cypher.InvalidQuery "unknown property", exactly as for a property outside
         the model, and it is never offered as a suggestion. A Column Masking (`masked`) or schema-only property is
         refused with 403 BknBackend.Cypher.PropertyForbidden naming it as
-        object_type_id.property. Join keys that a relation type maps are not checked unless
-        the query names them. Column Masking is not applied to Cypher results.
+        object_type_id.property. Implicit join keys are not public output; returning a relation value also authorizes
+        the join-key observations it exposes as evidence. Column Masking is not applied to Cypher results.
 
         The caller needs no grant on the vega resources behind those object types. The
         compiled statement runs through vega-backend's raw query under the caller's own
@@ -50,7 +51,8 @@ paths:
         A concept the caller may not query is absent from the model the query is compiled
         against, so naming it reads as an unknown label rather than as a refusal: this
         endpoint cannot be used to find out what a model contains. A caller who may read
-        nothing in the network gets 403.
+        nothing in the network gets 403 for queries reading object data. A tableless RETURN
+        does not read network facts.
 
         Labels and relationship types accept either the id or the name of the object type or
         relation type. Properties are addressed by property name; display names and logic
@@ -149,17 +151,67 @@ components:
       required:
         - query
       properties:
+        result_format:
+          type: string
+          enum: [graph_v1]
+          description: |-
+            Optional explicit value-result selection; language features are also inferred
+            from the query without this field. Existing scalar SQL queries retain their
+            execution path. New value evaluation supports arithmetic, CASE, nullable
+            booleans, property comparisons, list/map values and access, registered scalar
+            functions and top-level count/sum/avg/min/max/collect, including DISTINCT and
+            mixed aggregates. RETURN without MATCH is supported. DISTINCT, ORDER BY,
+            SKIP and LIMIT follow grouping/aggregation. Aggregates within scalar expressions
+            remain unsupported. ORDER BY expressions may refer to projected aliases.
+            Paths, comprehensions, existential subqueries,
+            relation properties and procedures are not implemented yet. This is not a full
+            openCypher compatibility claim.
+            UNION and UNION ALL support up to 32 independently scoped branches with identical
+            column names; mixing the two operators is rejected. Every branch is compiled and
+            authorized before any branch reads data. Branch ORDER BY/SKIP/LIMIT is local;
+            the default 1000-row cap applies once after the union. UNWIND supports up to 32
+            expansions, including parameter lists, empty/null inputs and scalar inputs.
+            WITH, MATCH, OPTIONAL MATCH and UNWIND run in clause order, with at most 64 stages.
+            WITH replaces the variable scope and supports aggregation, DISTINCT, ordering,
+            SKIP/LIMIT and a following WHERE. RETURN * and WITH * expand the visible scope.
+            Node aliases and collect-to-UNWIND preserve property origins and authorization;
+            reading an attribute does not implicitly add it to public snapshot properties.
+            OPTIONAL MATCH null-extends only newly introduced variables after its predicate.
+            Staged MATCH requires full, complete node primary keys, even for scalar output.
+            Each MATCH currently scans a bounded authorized observation before correlation;
+            a selective final result may still exceed the candidate budget.
+            Graph origins through arbitrary scalar functions/CASE remain limited.
+            object_properties continues to name MATCH node variables, not WITH aliases.
+            UNION shares a 9999-row work budget (sum of max(candidate rows, expanded rows)
+            per simple branch; staged branches account cumulative intermediate work), an
+            8 MiB assembly budget and the request timeout. Staged work counts the sum of
+            max(stage source/input rows, stage output rows), with a separate cap of 79992
+            correlation comparisons. Overflows or an
+            incomplete branch reject the entire query. Separate reads do not guarantee a
+            shared datasource snapshot.
+            A value evaluation allows 9999 candidate rows plus one probe, an 8 MiB assembly
+            budget and 30-second timeout. Exceeding a budget rejects the whole evaluation.
+        object_properties:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: |-
+            graph_v1 only. Snapshot property names by node variable. Complete primary keys,
+            requested properties and the join-key observations exposed by relation values
+            require full property access, including in nested evidence. Values come from
+            the same observation; no later object lookup is performed.
+          example:
+            p: [name]
         parameters:
           type: object
           additionalProperties: true
           description: |-
-            Values for the $name references in the query. A parameter is a value and never an
-            identifier: it can change which rows come back, never which resource or column is
-            read. Strings, numbers and booleans are accepted; a null is refused, because IS
-            NULL says that and a comparison against null never matches. A parameter used as
-            IN $name takes a non-empty array of scalars of one kind (integers and floats both
-            count as numbers), with no null and at most 500 elements. Several long lists in
-            one query can still be refused with 400 as too large; split them across queries.
+            Values for $name, including JSON scalars, null, lists and maps. Nested values are
+            bounded to 32 levels and by the evaluation payload budget. Existing simple IN
+            lists retain SQL pushdown; complex, empty or nullable lists use bounded value
+            evaluation. Parameters never become schema names or physical SQL identifiers.
           example:
             region: "eu"
             floor: 100
@@ -167,7 +219,7 @@ components:
           type: string
           maxLength: 8192
           description: |-
-            The Cypher query. Supported shape:
+            The Cypher query. Existing scalar SQL shape (the additional value-expression capabilities are described in result_format and do not require explicit negotiation):
             MATCH (a:Label [{property: value, ...}]) [-[:RELATION]-(b:Label) ...]
             [WHERE <condition>]
             RETURN [DISTINCT] a.property | aggregate(a.property) [AS alias], ...
@@ -214,6 +266,17 @@ components:
     CypherQueryResult:
       type: object
       properties:
+        result_format:
+          type: string
+          enum: [graph_v1]
+          description: Present for typed value results, whether inferred or explicitly selected.
+        value_types:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CypherValueType'
+          description: Recursive logical types, keyed by result column name.
+        execution:
+          $ref: '#/components/schemas/CypherExecution'
         columns:
           type: array
           description: Output columns, in RETURN order. The name is the AS alias, or the source text of the property reference when no alias was written.
@@ -232,4 +295,102 @@ components:
           type: string
         type:
           type: string
-          description: Column type as reported by the underlying resource.
+          description: Column type as reported by the underlying resource, or the logical kind in graph_v1.
+
+
+    CypherValueType:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          description: Model scalar type, or object, relation, map, list, null, any (dynamic type).
+        object_type_id:
+          type: string
+        relation_type_id:
+          type: string
+        fields:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CypherValueType'
+        element:
+          $ref: '#/components/schemas/CypherValueType'
+    CypherExecution:
+      type: object
+      required: [match_rows, match_complete, evidence_complete, conclusions_limited]
+      properties:
+        candidate_rows:
+          type: integer
+          description: Source candidate rows before residual WHERE and UNWIND; staged queries sum physical MATCH observations, and UNION sums branch candidates.
+        match_rows:
+          type: integer
+          description: Rows entering the final projection after earlier stage operations, before final grouping; UNION sums branch counts before deduplication.
+        match_complete:
+          type: boolean
+        evidence_complete:
+          type: boolean
+          description: Completeness of evidence for returned conclusions.
+        conclusions_limited:
+          type: boolean
+          description: True when SKIP or LIMIT omits otherwise matched conclusions.
+
+    CypherObjectValue:
+      type: object
+      required: [kind, network_id, branch, object_type_id, key]
+      properties:
+        kind:
+          type: string
+          enum: [object]
+        network_id:
+          type: string
+        branch:
+          type: string
+        object_type_id:
+          type: string
+        key:
+          type: object
+          description: Complete primary key, keyed by model property name. Values use exact decimal strings for integers.
+          additionalProperties:
+            type: object
+            required: [type, value]
+            properties:
+              type:
+                type: string
+              value:
+                type: string
+        properties:
+          type: object
+          additionalProperties: true
+          description: Only explicitly requested, authorized snapshot properties.
+    CypherRelationValue:
+      type: object
+      description: A direct join fact observed in this evaluation; it has no persisted edge ID.
+      required: [kind, relation_type_id, source, target, binding_digest, basis]
+      properties:
+        kind:
+          type: string
+          enum: [relation]
+        relation_type_id:
+          type: string
+        source:
+          $ref: '#/components/schemas/CypherObjectValue'
+        target:
+          $ref: '#/components/schemas/CypherObjectValue'
+        binding_digest:
+          type: string
+          description: SHA-256 digest of the relation type, update time and mapping definition; not a data snapshot reference.
+        basis:
+          type: array
+          description: Authorized source/target logical properties and their values from the same matching row.
+          items:
+            type: object
+            required: [source_property, source_value, target_property, target_value]
+            properties:
+              source_property:
+                type: string
+              target_property:
+                type: string
+              source_value:
+                description: Observed source join-key value.
+              target_value:
+                description: Observed target join-key value.

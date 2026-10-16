@@ -296,17 +296,22 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 		return resp, nil
 	}
 	var wire struct {
+		PermissionImpacts []interfaces.ObjectPermissionImpact `json:"permission_impacts"`
+		ResultFormat      string                              `json:"result_format"`
+		ValueTypes        json.RawMessage                     `json:"value_types"`
+		Execution         *interfaces.CypherExecution         `json:"execution"`
 		Columns           []interfaces.CypherQueryColumn      `json:"columns"`
 		Entries           []map[string]any                    `json:"entries"`
 		Trace             json.RawMessage                     `json:"_trace"`
-		PermissionImpacts []interfaces.ObjectPermissionImpact `json:"permission_impacts"`
 	}
-	if err := sonic.Unmarshal(respBody, &wire); err != nil {
+	unmarshal := (sonic.Config{UseNumber: true}.Froze()).Unmarshal
+	if err := unmarshal(respBody, &wire); err != nil {
 		b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal response failed: %v\n", err)
 		return nil, err
 	}
 	resp.Columns, resp.Entries, resp.TraceDescriptor = wire.Columns, wire.Entries, wire.Trace
 	resp.PermissionImpacts = wire.PermissionImpacts
+	resp.ResultFormat, resp.ValueTypes, resp.Execution = wire.ResultFormat, wire.ValueTypes, wire.Execution
 	return resp, nil
 }
 

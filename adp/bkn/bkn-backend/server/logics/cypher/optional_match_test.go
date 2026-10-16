@@ -138,7 +138,7 @@ func TestCompileOptionalMatchAddsNoDistinctnessCondition(t *testing.T) {
 	}
 }
 
-func TestCompileOptionalMatchRejections(t *testing.T) {
+func TestAnalyzeGeneralOptionalMatchExtensions(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		query string
@@ -208,9 +208,16 @@ func TestCompileOptionalMatchRejections(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compile(t, tc.query, GenerateOptions{})
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("compile(%q) = %v, want a rejection mentioning %q", tc.query, err, tc.want)
+			if tc.name == "the query's WHERE testing what it introduced" {
+				_, err := compile(t, tc.query, GenerateOptions{})
+				if err == nil || !strings.Contains(err.Error(), "is not defined") {
+					t.Fatalf("forward reference accepted: %v", err)
+				}
+				return
+			}
+			query, err := analyze(t, tc.query)
+			if err != nil || len(query.Stages) == 0 {
+				t.Fatalf("ordered OPTIONAL stage rejected: %+v %v", query, err)
 			}
 		})
 	}

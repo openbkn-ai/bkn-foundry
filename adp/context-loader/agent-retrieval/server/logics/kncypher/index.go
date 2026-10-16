@@ -14,6 +14,7 @@ package kncypher
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -37,10 +38,12 @@ var (
 // RunCypherReq is the run_cypher input, shared by the MCP tool and the
 // internal REST endpoint.
 type RunCypherReq struct {
-	KnID       string         `json:"kn_id"`
-	Branch     string         `json:"branch"`
-	Query      string         `json:"query"`
-	Parameters map[string]any `json:"parameters"`
+	ResultFormat     string              `json:"result_format,omitempty"`
+	ObjectProperties map[string][]string `json:"object_properties,omitempty"`
+	KnID             string              `json:"kn_id"`
+	Branch           string              `json:"branch"`
+	Query            string              `json:"query"`
+	Parameters       map[string]any      `json:"parameters"`
 }
 
 // KnCypherService runs one read-only Cypher query against a knowledge network.
@@ -93,10 +96,12 @@ func (s *knCypherService) RunCypher(ctx context.Context, req *RunCypherReq) (*in
 	}
 
 	resp, err := s.bkn.RunCypherQuery(ctx, &interfaces.CypherQueryReq{
-		KnID:       knID,
-		Branch:     strings.TrimSpace(req.Branch),
-		Query:      query,
-		Parameters: req.Parameters,
+		KnID:             knID,
+		Branch:           strings.TrimSpace(req.Branch),
+		Query:            query,
+		Parameters:       req.Parameters,
+		ResultFormat:     req.ResultFormat,
+		ObjectProperties: req.ObjectProperties,
 	})
 	if err != nil {
 		emitRunCypherFailure(ctx, nil, knID, query, classifyRunCypherFailure(err))
@@ -107,7 +112,18 @@ func (s *knCypherService) RunCypher(ctx context.Context, req *RunCypherReq) (*in
 	if resp != nil {
 		rowCount = len(resp.Entries)
 	}
-	emitRunCypherEvents(ctx, nil, knID, query, rowCount, resp.TraceDescriptor)
+	if resp != nil {
+		if resp.Execution != nil && resp.ResultFormat == "graph_v1" {
+			descriptor := map[string]any{}
+			if json.Unmarshal(resp.TraceDescriptor, &descriptor) == nil && descriptor != nil {
+				descriptor["execution"] = resp.Execution
+				if raw, err := json.Marshal(descriptor); err == nil {
+					resp.TraceDescriptor = raw
+				}
+			}
+		}
+		emitRunCypherEvents(ctx, nil, knID, query, rowCount, resp.TraceDescriptor)
+	}
 	return resp, nil
 }
 
