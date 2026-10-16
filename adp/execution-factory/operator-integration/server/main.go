@@ -100,7 +100,11 @@ func (s *Server) Start() {
 
 // startCapabilityReconciler starts the periodic reconcile of Function tools and MCP tools.
 func (s *Server) startCapabilityReconciler() {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.capabilityCancel = cancel
 	if s.config.CapabilityIndexConfig.DisableReconciler || s.capabilityReconciler == nil {
+		// Disabling periodic scans does not disable indexing committed Skill writes.
+		skill.StartCapabilityReconciler(ctx, 0)
 		s.config.Logger.Info("capability index reconciler is disabled")
 		return
 	}
@@ -110,8 +114,6 @@ func (s *Server) startCapabilityReconciler() {
 			s.config.CapabilityIndexConfig.ReconcileInterval, err)
 		interval = 30 * time.Minute
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	s.capabilityCancel = cancel
 	s.capabilityReconciler.Start(ctx, interval)
 	// The other two halves run from their own packages: MCP next to the client that can list a
 	// remote server, Skills next to the rule that decides which snapshot of a Skill counts.

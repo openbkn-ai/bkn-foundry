@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
@@ -129,5 +130,46 @@ func TestSkillCapabilityNotificationsCoalesce(t *testing.T) {
 	}
 	if len(skillCapabilitiesChanged) != 1 {
 		t.Fatal("committed notifications did not coalesce")
+	}
+}
+
+func TestSkillReconcilerDisabledPeriodStillIndexesCommittedNotifications(t *testing.T) {
+	for len(skillCapabilitiesChanged) > 0 {
+		<-skillCapabilitiesChanged
+	}
+	ctrl := gomock.NewController(t)
+	index := mocks.NewMockCapabilityIndexSyncService(ctrl)
+	repo := mocks.NewMockISkillRepository(ctrl)
+	invoked := make(chan struct{}, 1)
+	index.EXPECT().EnsureInitialized(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
+		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > skillIndexOperationTimeout {
+			t.Error("background pass lacks deadline")
+		}
+		invoked <- struct{}{}
+		return nil
+	})
+	repo.EXPECT().SelectSkillBuildPage(gomock.Any(), gomock.Nil(), int64(0), "", skillIndexBuildBatchSize).Return(nil, nil)
+	index.EXPECT().ListIndexed(gomock.Any(), interfaces.CapabilityTypeSkill).Return(nil, nil)
+	syncer := &skillIndexSync{capabilitySync: index, skillRepo: repo, releaseRepo: &stubSkillReleaseRepo{}, logger: logger.DefaultLogger()}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); syncer.runCapabilityReconciler(ctx, 0) }()
+	select {
+	case <-invoked:
+		t.Fatal("disabled periodic worker performed a startup scan")
+	case <-time.After(30 * time.Millisecond):
+	}
+	notifySkillCapabilitiesChanged()
+	select {
+	case <-invoked:
+	case <-time.After(time.Second):
+		t.Fatal("committed notification was ignored")
+	}
+	cancel()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("event-only worker did not stop")
 	}
 }

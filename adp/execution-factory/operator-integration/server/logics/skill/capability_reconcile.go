@@ -34,33 +34,43 @@ func notifySkillCapabilitiesChanged() {
 // says, write the difference. Name and description are the entire embedding input, so comparing
 // those two strings is what keeps a pass from re-vectorising every Skill on the platform.
 
-// StartCapabilityReconciler runs a Skill pass now and then every interval.
+// StartCapabilityReconciler indexes committed writes, with optional periodic passes.
+// A zero interval disables startup/periodic scans while retaining write notifications.
 func StartCapabilityReconciler(ctx context.Context, interval time.Duration) {
-	if interval <= 0 {
-		return
-	}
 	syncer, ok := NewSkillIndexSyncService().(*skillIndexSync)
 	if !ok {
 		return
 	}
-	go func() {
+	go syncer.runCapabilityReconciler(ctx, interval)
+}
+
+func (s *skillIndexSync) runCapabilityReconciler(ctx context.Context, interval time.Duration) {
+	var ticks <-chan time.Time
+	if interval > 0 {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		for {
-			passCtx, cancel := context.WithTimeout(ctx, skillIndexOperationTimeout)
-			err := syncer.reconcileCapabilities(passCtx)
-			cancel()
-			if err != nil {
-				syncer.logger.WithContext(ctx).Warnf("reconcile skill capabilities failed: %v", err)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			case <-skillCapabilitiesChanged:
-			}
+		ticks = ticker.C
+	} else {
+		select {
+		case <-ctx.Done():
+			return
+		case <-skillCapabilitiesChanged:
 		}
-	}()
+	}
+	for {
+		passCtx, cancel := context.WithTimeout(ctx, skillIndexOperationTimeout)
+		err := s.reconcileCapabilities(passCtx)
+		cancel()
+		if err != nil {
+			s.logger.WithContext(ctx).Warnf("reconcile skill capabilities failed: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+		case <-skillCapabilitiesChanged:
+		}
+	}
 }
 
 // reconcileCapabilities makes the Skill half of the capability index match the Skill repository.
