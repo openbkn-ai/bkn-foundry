@@ -20,7 +20,7 @@ func TestSkillRegistryIndexSync(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		Convey("publish updates status then upserts index", func() {
+		Convey("publish commits status without synchronous embedding", func() {
 			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
 			mockDBTx := mocks.NewMockDBTx(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
@@ -48,10 +48,7 @@ func TestSkillRegistryIndexSync(t *testing.T) {
 			mockSkillRepo.EXPECT().SelectSkillByName(gomock.Any(), gomock.Nil(), "demo-skill", []string{interfaces.BizStatusPublished.String()}).Return(false, nil, nil)
 			mockDBTx.EXPECT().GetTx(gomock.Any()).Return(tx, nil)
 			mockSkillRepo.EXPECT().UpdateSkillStatus(gomock.Any(), tx, "skill-publish", interfaces.BizStatusPublished.String(), "user-1").Return(nil)
-			mockIndexSync.EXPECT().UpsertSkill(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, skill *model.SkillRepositoryDB) error {
-				So(skill.SkillID, ShouldEqual, "skill-publish")
-				return nil
-			})
+			mockIndexSync.EXPECT().UpsertSkill(gomock.Any(), gomock.Any()).Times(0)
 
 			resp, err := registry.UpdateSkillStatus(context.Background(), &interfaces.UpdateSkillStatusReq{
 				UserID:  "user-1",
@@ -64,7 +61,7 @@ func TestSkillRegistryIndexSync(t *testing.T) {
 			So(resp.Status, ShouldEqual, interfaces.BizStatusPublished)
 		})
 
-		Convey("publish still succeeds when deferred index sync fails", func() {
+		Convey("publish does not call the embedding index", func() {
 			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
 			mockDBTx := mocks.NewMockDBTx(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
@@ -92,7 +89,7 @@ func TestSkillRegistryIndexSync(t *testing.T) {
 			mockSkillRepo.EXPECT().SelectSkillByName(gomock.Any(), gomock.Nil(), "demo-skill", []string{interfaces.BizStatusPublished.String()}).Return(false, nil, nil)
 			mockDBTx.EXPECT().GetTx(gomock.Any()).Return(tx, nil)
 			mockSkillRepo.EXPECT().UpdateSkillStatus(gomock.Any(), tx, "skill-publish-fail", interfaces.BizStatusPublished.String(), "user-1").Return(nil)
-			mockIndexSync.EXPECT().UpsertSkill(gomock.Any(), gomock.Any()).Return(errors.New("vega write failed"))
+			mockIndexSync.EXPECT().UpsertSkill(gomock.Any(), gomock.Any()).Times(0)
 
 			resp, err := registry.UpdateSkillStatus(context.Background(), &interfaces.UpdateSkillStatusReq{
 				UserID:  "user-1",
