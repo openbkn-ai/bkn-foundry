@@ -63,6 +63,7 @@ ARG PIP_MIRROR=mirrors.ustc.edu.cn
 ARG PREINSTALL_COMMON=false
 COPY images/templates/executor/common-requirements.txt /tmp/common-requirements.txt
 COPY images/templates/executor/bkn-requirements.txt /tmp/bkn-requirements.txt
+COPY images/templates/executor/check-bkn-osdk.py /tmp/check-bkn-osdk.py
 # The BKN SDK goes into every template, opt-in or not: sandbox_sdk (which carries
 # the built-in `bkn` face) is COPY'd unconditionally above, and the scaffolds and
 # generator prompts tell authors the SDK is pre-installed without naming a
@@ -83,7 +84,8 @@ RUN mkdir -p /opt/sandbox-common && \
     else \
       pip install --no-cache-dir --target /opt/sandbox-common $REQS; \
     fi && \
-    rm -f /tmp/common-requirements.txt /tmp/bkn-requirements.txt
+    PYTHONPATH=/opt/sandbox-common python /tmp/check-bkn-osdk.py /tmp/bkn-requirements.txt && \
+    rm -f /tmp/common-requirements.txt /tmp/bkn-requirements.txt /tmp/check-bkn-osdk.py
 
 RUN chown -R sandbox:sandbox /app /workspace /opt/sandbox-venv /opt/sandbox-sdk /opt/sandbox-common
 

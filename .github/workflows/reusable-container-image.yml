@@ -167,14 +167,17 @@ jobs:
           SWR_REPO: ${{ inputs.swr-registry }}/${{ inputs.swr-namespace }}
           VERSION: ${{ inputs.version }}
         run: |
-          # Arch-suffixed tags are the manifest list's children and are left in
-          # the registry on purpose: deleting them breaks the list that
-          # references their digests.
+          # Keep each run's children reachable while other runs overwrite the
+          # compatibility tags. SWR may discard manifests once their last tag
+          # moves; a digest artifact alone does not retain the registry object.
+          retention_tag="build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${ARCH}"
           {
             echo "tags<<EOF"
             echo "ghcr.io/${{ github.repository_owner }}/${IMAGE}:${VERSION}-${ARCH}"
+            echo "ghcr.io/${{ github.repository_owner }}/${IMAGE}:${retention_tag}"
             if [ "${{ needs.setup.outputs.swr }}" = "true" ]; then
               echo "${SWR_REPO}/${IMAGE}:${VERSION}-${ARCH}"
+              echo "${SWR_REPO}/${IMAGE}:${retention_tag}"
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"

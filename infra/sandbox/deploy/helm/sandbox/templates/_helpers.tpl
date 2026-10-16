@@ -98,7 +98,7 @@ namespace.
 {{- if .Values.networkPolicy.bkn.namespace -}}
 {{- .Values.networkPolicy.bkn.namespace -}}
 {{- else -}}
-{{- $bknURL := coalesce .Values.controlPlane.env.BKN_BASE_URL .Values.controlPlane.env.BKN_SANDBOX_MCP_URL -}}
+{{- $bknURL := .Values.controlPlane.env.BKN_SANDBOX_MCP_URL -}}
 {{- if $bknURL -}}
 {{- $parsedURL := urlParse $bknURL -}}
 {{- $host := regexReplaceAll ":[0-9]+$" (get $parsedURL "host") "" -}}
@@ -112,4 +112,9 @@ namespace.
 {{- .Values.namespace -}}
 {{- end -}}
 {{- end -}}
+{{- end }}
+
+{{/* Explicit operator configuration always wins over installer discovery. */}}
+{{- define "sandbox.bknBaseURL" -}}
+{{- coalesce (trim .Values.controlPlane.env.BKN_BASE_URL) (trim .Values.controlPlane.gateway.baseURL) | default "" | trimSuffix "/" -}}
 {{- end }}

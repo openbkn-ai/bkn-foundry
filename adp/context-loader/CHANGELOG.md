@@ -59,3 +59,7 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 ### Documentation
 
 - Update release overview and tool usage documentation for the `search_schema` entry unification and metric schema recall contract
+
+- Allow REST `execute_tool` without lifecycle context, matching `search_schema`;
+  keep permission checks and explicit-context validation, and leave the MCP
+  managed-context requirement unchanged.

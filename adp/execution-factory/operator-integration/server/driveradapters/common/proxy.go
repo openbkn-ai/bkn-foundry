@@ -245,8 +245,8 @@ func buildFunctionProxyExecutionEnv(c *gin.Context, version string) (map[string]
 // invoking user's live token out of its own environment.
 //
 // Whether a credential may be forwarded at all is decided upstream, where the
-// call is known: functionRuntimeHeaders forwards it on a direct Toolbox call
-// only inside a managed Interaction, and on ontology-query's trusted proxy call
+// call is known: functionRuntimeHeaders forwards the authenticated credential on direct Toolbox
+// debug/execute calls without requiring an Interaction, and on ontology-query's trusted proxy call
 // (logic properties and actions, which a Studio trial evaluates outside any
 // Interaction) without one. This route only receives what that gate let through,
 // so a token alone is enough here. The Interaction ids are written only as a
