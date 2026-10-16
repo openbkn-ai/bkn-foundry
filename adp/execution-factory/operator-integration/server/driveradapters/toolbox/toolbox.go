@@ -592,6 +592,7 @@ func (h *toolBoxHandler) DebugTool(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	captureFunctionRuntimeContext(c, req)
 	resp, err := h.ToolService.DebugTool(c.Request.Context(), req)
 	rest.ReplyWithExecutionMode(c, resp, err)
 }
@@ -628,20 +629,7 @@ func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// Read after binding, so a Tool body can never set them: these decide which
-	// principal and which managed Interaction a Function executes under.
-	req.RequestAuthorization = c.GetHeader("Authorization")
-	if req.RequestAuthorization == "" {
-		req.RequestAuthorization = c.GetHeader("X-Authorization")
-	}
-	req.BKNConversationID = c.GetHeader(string(interfaces.HeaderBKNConversationID))
-	req.BKNInteractionID = c.GetHeader(string(interfaces.HeaderBKNInteractionID))
-	req.BKNParentOperationID = c.GetHeader(string(interfaces.HeaderBKNParentOperationID))
-	if _, ok := interfaces.ProxyExecutionContextFromContext(c.Request.Context()); ok {
-		// The proxy boundary already removed Authorization from the headers.
-		req.TrustedProxyCall = true
-		req.RequestAuthorization = interfaces.ProxyCallerAuthorizationFromContext(c.Request.Context())
-	}
+	captureFunctionRuntimeContext(c, req)
 	resp, err := h.ToolService.ExecuteTool(c.Request.Context(), req)
 	rest.ReplyWithExecutionMode(c, resp, err)
 }
@@ -755,4 +743,22 @@ func (h *toolBoxHandler) SearchTools(c *gin.Context) {
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// captureFunctionRuntimeContext is shared by debug and published invocation.
+// Capture only after binding, so business parameters cannot choose the caller.
+func captureFunctionRuntimeContext(c *gin.Context, req *interfaces.ExecuteToolReq) {
+	req.TrustedProxyCall = false
+	req.RequestAuthorization = c.GetHeader("Authorization")
+	if req.RequestAuthorization == "" {
+		req.RequestAuthorization = c.GetHeader("X-Authorization")
+	}
+	req.BKNConversationID = c.GetHeader(string(interfaces.HeaderBKNConversationID))
+	req.BKNInteractionID = c.GetHeader(string(interfaces.HeaderBKNInteractionID))
+	req.BKNParentOperationID = c.GetHeader(string(interfaces.HeaderBKNParentOperationID))
+	if _, ok := interfaces.ProxyExecutionContextFromContext(c.Request.Context()); ok {
+		// The proxy boundary already removed Authorization from the headers.
+		req.TrustedProxyCall = true
+		req.RequestAuthorization = interfaces.ProxyCallerAuthorizationFromContext(c.Request.Context())
+	}
 }

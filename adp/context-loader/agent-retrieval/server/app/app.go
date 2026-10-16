@@ -68,7 +68,6 @@ type Server struct {
 	httpHealthHandler  interfaces.HTTPRouterInterface
 	restPublicHandler  interfaces.HTTPRouterInterface
 	restPrivateHandler interfaces.HTTPRouterInterface
-	schemaReadHandler  interfaces.HTTPRouterInterface
 	config             *config.Config
 }
 
@@ -131,7 +130,6 @@ func (a *App) Run() error {
 		httpHealthHandler:  driveradapters.NewHTTPHealthHandler(),
 		restPublicHandler:  driveradapters.NewRestPublicHandler(a.config.Logger, a.config.Project.SandboxPort),
 		restPrivateHandler: driveradapters.NewRestPrivateHandler(a.config.Logger),
-		schemaReadHandler:  driveradapters.NewRestSchemaHandler(),
 	}
 	s.config.Logger.Info("start agent-retrieval server")
 	if a.config.OTelProviders != nil {
@@ -238,9 +236,6 @@ func (s *Server) platformEngine() *gin.Engine {
 func (s *Server) sandboxEngine() *gin.Engine {
 	engine := s.baseEngine()
 	s.registerPublicRoutes(engine)
-	if s.schemaReadHandler != nil {
-		s.schemaReadHandler.RegisterRouter(engine.Group("/api/bkn-backend/v1"))
-	}
 	return engine
 }
 

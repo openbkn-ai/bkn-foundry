@@ -24,6 +24,10 @@ type debugToolFixture struct {
 }
 
 func newDebugToolFixture(t *testing.T, toolStatus string, sourceTypes ...model.SourceType) *debugToolFixture {
+	return newDebugToolFixtureWithTarget(t, toolStatus, "", sourceTypes...)
+}
+
+func newDebugToolFixtureWithTarget(t *testing.T, toolStatus, overrideURL string, sourceTypes ...model.SourceType) *debugToolFixture {
 	ctrl := gomock.NewController(t)
 	sourceType := model.SourceTypeOpenAPI
 	serverURL := "http://metadata-svc"
@@ -34,6 +38,10 @@ func newDebugToolFixture(t *testing.T, toolStatus string, sourceTypes ...model.S
 	if sourceType == model.SourceTypeFunction {
 		serverURL = interfaces.AOIServerURL
 		path = interfaces.SetAOIFuncExecPath("11111111-1111-4111-8111-111111111111")
+	}
+
+	if overrideURL != "" {
+		serverURL = overrideURL
 	}
 
 	mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
@@ -299,6 +307,71 @@ func TestExecuteToolRechecksManagedProxyImmediatelyBeforeOutbound(t *testing.T) 
 			if len(audit.events) != 1 || audit.events[0].Decision != "deny" ||
 				audit.events[0].ExecutionID != "execution-1" {
 				t.Fatalf("audit events = %+v", audit.events)
+			}
+		})
+	}
+}
+
+func TestFunctionCallsForwardCallerWithoutLifecycle(t *testing.T) {
+	for _, method := range []string{"debug", "execute"} {
+		for _, source := range []model.SourceType{model.SourceTypeFunction, model.SourceTypeOpenAPI} {
+			t.Run(method+"/"+string(source), func(t *testing.T) {
+				fixture := newDebugToolFixture(t, string(interfaces.ToolStatusTypeEnabled), source)
+				req := &interfaces.ExecuteToolReq{
+					UserID: "u1", BoxID: "b1", ToolID: "t1",
+					RequestAuthorization: "Bearer caller-token",
+					HTTPRequestParams:    interfaces.HTTPRequestParams{Headers: map[string]any{"Authorization": "Bearer forged", "X-Api-Key": "tool-key"}},
+				}
+				var err error
+				if method == "debug" {
+					_, err = fixture.service.DebugTool(context.Background(), req)
+				} else {
+					_, err = fixture.service.ExecuteTool(context.Background(), req)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				captured := *fixture.captured
+				if captured == nil {
+					t.Fatal("runtime was not called")
+				}
+				if source == model.SourceTypeFunction {
+					if captured.Headers["Authorization"] != "Bearer caller-token" {
+						t.Fatal("function did not receive caller credential")
+					}
+				} else if captured.Headers["Authorization"] == "Bearer caller-token" {
+					t.Fatal("caller credential reached third-party tool")
+				}
+				for _, key := range []string{"bkn-conversation-id", "bkn-interaction-id", "bkn-parent-operation-id"} {
+					if captured.Headers[key] != nil {
+						t.Fatal("unmanaged call acquired lifecycle context")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestFunctionCallsDoNotForwardCallerToImportedExternalRuntime(t *testing.T) {
+	for _, method := range []string{"debug", "execute"} {
+		t.Run(method, func(t *testing.T) {
+			fixture := newDebugToolFixtureWithTarget(t, string(interfaces.ToolStatusTypeEnabled), "http://third-party.example", model.SourceTypeFunction)
+			req := &interfaces.ExecuteToolReq{UserID: "u1", BoxID: "b1", ToolID: "t1", RequestAuthorization: "Bearer caller-token"}
+			var err error
+			if method == "debug" {
+				_, err = fixture.service.DebugTool(context.Background(), req)
+			} else {
+				_, err = fixture.service.ExecuteTool(context.Background(), req)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			captured := *fixture.captured
+			if captured == nil {
+				t.Fatal("proxy was not called")
+			}
+			if captured.Headers["Authorization"] != nil {
+				t.Fatal("caller credential reached imported external runtime")
 			}
 		})
 	}

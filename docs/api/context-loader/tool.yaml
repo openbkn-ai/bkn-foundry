@@ -200,6 +200,12 @@ paths:
       summary: 执行一个已发布函数工具
       operationId: executeTool
       description: |
+        REST lifecycle context is optional, as for search_schema. Missing or empty
+        bkn_context permits ad-hoc execution without depending on Trace Core or
+        capture policy. Explicit nonempty context remains validated. Authentication,
+        network execute permission and mounted-tool authorization still apply.
+        MCP managed execution continues to require conversation/interaction IDs.
+
         以知识网络托管代理执行工具，返回工具的原始响应；真实调用者仍用于网络级鉴权和审计。
 
         `toolbox_id` 与 `tool_id` 必须取自 `search_capabilities`（`owner_id` / `capability_id`）；`arguments` 按其返回的
