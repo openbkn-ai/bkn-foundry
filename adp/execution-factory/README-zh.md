@@ -24,7 +24,9 @@ Execution Factory 是一个开源的算子与工具管理平台，旨在连接�
 Execution Factory 以单一服务 `operator-integration` 交付，对外暴露两类接口面。
 
 ### Operator Integration (`operator-integration`)
+
 核心集成服务平台，负责算子和工具的全生命周期管理。
+
 - **算子管理**：支持算子的注册、版本控制、发布与下架。
 - **工具箱（Toolbox）**：支持将多个工具组合成工具箱，便于统一管理和调用。
 - **MCP 支持**：作为 MCP Server，向 LLM 提供标准化的工具调用接口。
@@ -49,13 +51,15 @@ Execution Factory 以单一服务 `operator-integration` 交付，对外暴露�
 ## 快速开始
 
 ### 前置要求
-- Go 1.25+
+
+- Go 1.26.0+
 - MySQL / MariaDB / Dameng DB
 - Redis
 
 ### 编译与运行
 
 #### 运行 Operator Integration
+
 ```bash
 cd operator-integration
 # 安装依赖

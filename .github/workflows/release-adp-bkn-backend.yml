@@ -51,7 +51,7 @@ jobs:
     with:
       service-path: adp/bkn/bkn-backend
       dockerfile: docker/Dockerfile
-      # Root context includes comm-go required by the service-local replace.
+      # Root context matches the Dockerfile's repository-relative COPY paths.
       context: '../../..'
       image-name: bkn-backend
       version: ${{ needs.version.outputs.version }}

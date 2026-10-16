@@ -14,7 +14,7 @@ A unified object storage gateway service supporting multiple cloud providers (Al
 
 ## Architecture
 
-```
+``` bash
 ┌─────────────────┐
 │   Client/Frontend    │
 └────────┬────────┘
@@ -45,7 +45,7 @@ A unified object storage gateway service supporting multiple cloud providers (Al
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26.0+
 - MariaDB/MySQL database
 - Redis 6.0+ (for multi-instance deployment)
 - Object storage account (OSS/OBS/Ceph)
@@ -53,11 +53,13 @@ A unified object storage gateway service supporting multiple cloud providers (Al
 ### Installation
 
 1. Clone the repository
+
 ```bash
 cd oss-gateway-backend
 ```
 
 2. Copy environment file
+
 ```bash
 cp .env.example .env
 ```
@@ -65,16 +67,19 @@ cp .env.example .env
 3. Edit `.env` file with your configuration
 
 4. Install dependencies
+
 ```bash
 go mod download
 ```
 
 5. Initialize database
+
 ```bash
 go run main.go initdb
 ```
 
 6. Start server
+
 ```bash
 go run main.go server
 ```
@@ -126,10 +131,12 @@ See the [environment variable configuration document](./ENVIRONMENT_VARIABLES.md
 ### Main Configuration Items
 
 #### Server Configuration
+
 - `PORT`: Server port (default: 8080)
 - `NAME`: Service name (default: oss-gateway)
 
 #### Database Configuration
+
 - `RDSHOST`: Database address
 - `RDSPORT`: Database port
 - `RDSUSER`: Database username
@@ -167,6 +174,7 @@ See the [environment variable configuration document](./ENVIRONMENT_VARIABLES.md
 > unified K8s management.
 
 #### OSS Configuration
+
 - `OSS_DEFAULT_VALID_SECONDS`: Default URL expiration time (default: 3600)
 - `OSS_MIN_PART_SIZE`: Minimum part size for multipart upload (default: 5MB)
 - `OSS_MAX_PART_SIZE`: Maximum part size for multipart upload (default: 5GB)
@@ -181,6 +189,7 @@ For production multi-instance deployment with Redis:
    - **Sentinel mode**: supports high availability and automatic failover
 
 2. **Configure the Redis connection**, with environment-variable names aligned with Python projects:
+
    ```bash
    # Standalone mode
    REDISCLUSTERMODE=standalone
@@ -208,10 +217,12 @@ For the cache architecture, see [REDIS_CACHE_ARCHITECTURE.md](./REDIS_CACHE_ARCH
 ## API Documentation
 
 ### Health Check
+
 - `GET /health/ready` - Readiness probe
 - `GET /health/alive` - Liveness probe
 
 ### Storage Management
+
 - `GET /api/v1/storages` - List all storages
 - `GET /api/v1/storages/:id` - Get storage by ID
 - `POST /api/v1/storages` - Create new storage
@@ -220,6 +231,7 @@ For the cache architecture, see [REDIS_CACHE_ARCHITECTURE.md](./REDIS_CACHE_ARCH
 - `POST /api/v1/storages/:id/check` - Check storage connection
 
 ### Object Operations
+
 - `GET /api/v1/head/:storageId/:key` - Get object metadata URL
 - `POST /api/v1/head/:storageId` - Batch get object metadata URLs
 - `GET /api/v1/upload/:storageId/:key` - Get upload URL
@@ -227,6 +239,7 @@ For the cache architecture, see [REDIS_CACHE_ARCHITECTURE.md](./REDIS_CACHE_ARCH
 - `GET /api/v1/delete/:storageId/:key` - Get delete URL
 
 ### Multipart Upload
+
 - `GET /api/v1/initmultiupload/:storageId/:key` - Initialize multipart upload
 - `POST /api/v1/uploadpart/:storageId/:key` - Get part upload URLs
 - `POST /api/v1/completeupload/:storageId/:key` - Complete multipart upload
@@ -234,9 +247,11 @@ For the cache architecture, see [REDIS_CACHE_ARCHITECTURE.md](./REDIS_CACHE_ARCH
 ## Database Schema
 
 ### storage_config
+
 Stores object storage configuration.
 
 ### multipart_upload_task
+
 Tracks multipart upload tasks.
 
 ### operation_log
@@ -246,7 +261,7 @@ Logs all operations for audit.
 
 ### Project Structure
 
-```
+``` bash
 oss-gateway-backend/
 ├── cmd/
 │   ├── server/         # Server entry point

@@ -13,7 +13,7 @@
 
 ## 目录结构
 
-```
+``` bash
 tests/
 ├── at/                              # AT测试
 │   ├── catalog/                     # Catalog测试模块（独立）
@@ -64,7 +64,6 @@ tests/
     └── http_client.go               # HTTP客户端封装
 ```
 
-
 ## 运行测试前的准备
 
 ### 1. 启动VEGA Manager服务
@@ -96,6 +95,7 @@ docker run -d --name test-mariadb \
 #### 或使用已有MariaDB实例
 
 确保MariaDB可访问，并记录以下信息：
+
 - Host
 - Port
 - Database
@@ -319,7 +319,7 @@ go test -v ./tests/at/catalog/... -timeout 5m
 
 成功运行示例：
 
-```
+``` bash
 === RUN   TestCatalogCreateATSuite
 ✓ AT测试环境就绪，VEGA Manager: http://localhost:8080
 === RUN   TestCatalogCreateATSuite/TestTC001_CreateMariaDBCatalog_BasicScenario
@@ -338,22 +338,24 @@ ok      vega-backend/tests/at/catalog   45.234s
 
 ### 错误: 无法连接到VEGA Manager服务
 
-```
+``` bash
 无法连接到VEGA Manager服务: http://localhost:8080，请确保服务已启动
 ```
 
 **解决方法**:
+
 1. 确认VEGA Manager服务已启动: `ps aux | grep vega-backend`
 2. 检查服务监听端口: `netstat -tuln | grep 8080`
 3. 验证配置文件中的base_url是否正确
 
 ### 错误: 测试配置文件不存在
 
-```
+``` bash
 请确保 tests/at/testdata/test-config.yaml 已配置
 ```
 
 **解决方法**:
+
 ```bash
 cd server/tests/at/testdata
 cp test-config.yaml.example test-config.yaml
@@ -371,11 +373,12 @@ cp test-config.yaml.example test-config.yaml
 
 ### 错误: 测试超时
 
-```
+``` bash
 panic: test timed out after 2m0s
 ```
 
 **解决方法**:
+
 - 增加超时时间: `go test -v ./tests/at/catalog/... -timeout 10m`
 - 检查VEGA Manager服务响应是否正常
 - 检查MariaDB连接是否稳定
@@ -443,7 +446,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24'
+          go-version: '1.26'
 
       - name: Start VEGA Manager
         run: |
@@ -474,6 +477,7 @@ jobs:
 ## 测试框架
 
 测试使用 **GoConvey** 框架，提供：
+
 - 清晰的BDD（行为驱动开发）风格测试
 - 嵌套的Convey结构组织测试场景
 - So断言进行验证

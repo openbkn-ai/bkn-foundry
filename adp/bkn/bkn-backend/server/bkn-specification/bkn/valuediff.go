@@ -217,7 +217,7 @@ func appendChange(out *[]FieldChange, path string, kind DiffAction, oldVal, newV
 // unwrap follows pointers and interfaces, and reports a nil pointer as an absent value so that
 // setting or clearing an optional section reads as a create or a delete.
 func unwrap(v reflect.Value) reflect.Value {
-	for v.IsValid() && (v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface) {
+	for v.IsValid() && (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) {
 		if v.IsNil() {
 			return reflect.Value{}
 		}

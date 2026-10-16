@@ -26,14 +26,16 @@ Agent Retrieval 是 ADP context-loader 中的检索服务组件，面向知识�
 ## 技术架构
 
 ### 技术栈
-- **语言**：Go 1.25
+
+- **语言**：Go 1.26.0
 - **Web 框架**：Gin 1.11
 - **可观测**：OpenTelemetry
 - **缓存**：Redis（可选，支持哨兵模式）
 - **校验**：go-playground/validator
 
 ### 项目结构
-```
+
+``` bash
 server/
 ├── driveradapters/     # HTTP/MCP 适配层
 │   ├── knactionrecall/
@@ -67,12 +69,14 @@ server/
 ## 快速开始
 
 ### 环境要求
-- Go 1.25+
+
+- Go 1.26.0+
 - 可访问的 ontology-query、ontology-manager 等后端（或通过 ktctl 连接远程集群）
 
 ### 本地开发
 
 1. **克隆**
+
    ```bash
    git clone <仓库地址>
    cd context-loader/agent-retrieval
@@ -82,11 +86,13 @@ server/
    编辑 `server/infra/config/agent-retrieval.yaml`（及按需 `agent-retrieval-secret.yaml`）中的服务地址与端口。若本地连远程集群，需先配置 ktctl，再执行 `make build`，以便将配置复制到 `/sysvol/config` 与 `/sysvol/secret`。
 
 3. **依赖**
+
    ```bash
    go mod download
    ```
 
 4. **运行**
+
    ```bash
    # 方式一：配合 ktctl 与 make（推荐开发）
    make build
@@ -94,10 +100,12 @@ server/
    # 方式二：仅启动进程（使用默认配置路径）
    cd server && go run main.go
    ```
+
    默认监听 `http://0.0.0.0:30779`。另在 `30780` 端口仅暴露经过鉴权的
    公共接口，供沙箱负载访问；可信 `/in` 接口仍只在 `30779` 端口提供。
 
 ### Make 目标
+
 - `make help`：查看目标说明
 - `make lint`：执行 golangci-lint
 - `make test`：单元测试
@@ -136,6 +144,7 @@ helm template agent-retrieval ./helm/agent-retrieval -n <命名空间> -f ./helm
 主配置文件：`server/infra/config/agent-retrieval.yaml`。
 
 主要配置项：
+
 - **project**：`host`、`port`（默认 30779）、`sandbox_port`（默认 30780）、`language`、`logger_level`、`debug`
 - **ontology_query**、**ontology_manager**、**data_retrieval**、**operator_integration**：各后端服务地址与端口
 - **oauth**：Hydra OAuth（对外 API）

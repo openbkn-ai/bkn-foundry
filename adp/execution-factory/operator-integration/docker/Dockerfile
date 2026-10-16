@@ -1,6 +1,6 @@
 # Multi-stage: Go is compiled within the builder (the independent compilation stage of the original Azure pipeline has been inlined), leaving only the binary for prod.
 ########################### Stage 0: builder ########################
-ARG BUILD_IMAGE=golang:1.25.14
+ARG BUILD_IMAGE=golang:1.26.9
 ARG baseImage=ubuntu:22.04
 
 FROM ${BUILD_IMAGE} AS builder
@@ -8,7 +8,6 @@ FROM ${BUILD_IMAGE} AS builder
 ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
 
-COPY comm-go /workspace/comm-go
 COPY adp/execution-factory/operator-integration /workspace/adp/execution-factory/operator-integration
 WORKDIR /workspace/adp/execution-factory/operator-integration
 

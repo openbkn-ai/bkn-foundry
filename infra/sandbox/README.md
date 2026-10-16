@@ -78,27 +78,32 @@ flowchart TD
 ### Key Advantages
 
 **Cloud-Native Architecture**
+
 - Stateless Control Plane supporting horizontal scaling with Kubernetes HPA
 - Dual runtime support: Docker (local/dev) and Kubernetes (production)
 - Protocol-driven decoupling for flexible deployment
 
 **Intelligent Scheduling**
+
 - Template affinity scheduling for optimal resource utilization
 - Session lifecycle controlled via API with global idle timeout and lifetime limits
 - Built-in session cleanup with configurable policies
 
 **Multi-Layer Security**
+
 - Container isolation with network restrictions and capability dropping
 - Optional Bubblewrap process-level namespace isolation
 - Resource quotas with CPU/memory limits and process constraints
 
 **Developer Experience**
+
 - AWS Lambda-compatible handler specification for easy migration
 - Web-based management console with real-time monitoring
 - Comprehensive RESTful API with interactive documentation
 - Template-based environment management
 
 **Production Ready**
+
 - State synchronization service for automatic recovery
 - Health probe system for container monitoring
 - S3-compatible storage integration for workspace persistence
@@ -117,7 +122,6 @@ flowchart TD
 | **State Synchronization** | Automatic recovery of orphaned sessions on service restart |
 | **Web Console** | React-based management interface for visual operations and monitoring |
 
-
 ### Design Principles
 
 - **Control Plane Stateless**: Supports horizontal scaling with no local state
@@ -128,6 +132,7 @@ flowchart TD
 ### Component Overview
 
 **Control Plane Components**:
+
 - API Gateway: FastAPI-based RESTful endpoints with automatic validation
 - Scheduler: Intelligent task distribution with template affinity
 - Session Manager: Database-backed session lifecycle management
@@ -137,16 +142,18 @@ flowchart TD
 - State Sync Service: Startup health checks and recovery
 
 **Container Scheduler**:
+
 - Docker Scheduler: Direct Docker socket access via aiodocker
 - K8s Scheduler: Kubernetes API integration for production deployments
 
 **Storage Layer**:
+
 - MariaDB: Session, execution, and template state storage
 - S3-Compatible Storage: Workspace file persistence (MinIO/AWS S3)
 
 ## Quick Start
-### Prerequisites
 
+### Prerequisites
 
 - **Docker**: 20.10+
 - **Docker Compose**: 2.0+
@@ -175,6 +182,7 @@ cd images
 ```
 
 The build script creates:
+
 - `sandbox-template-python-basic:<VERSION>` - Python executor template
 - `sandbox-template-multi-language:<VERSION>` - Python, Go, and Bash executor template
 
@@ -186,8 +194,9 @@ cd images
 ```
 
 This creates:
+
 - `sandbox-python-executor-base:python3.11-v1` - Stable Python runtime base without executor code
-- `sandbox-multi-executor-base:go1.25-python3.11-v1` - Stable Python, Go, and Bash runtime base without executor code
+- `sandbox-multi-executor-base:go1.26-python3.11-v1` - Stable Python, Go, and Bash runtime base without executor code
 
 To push multi-arch base images to Huawei Cloud SWR, install `skopeo` and use Docker Buildx. The script exports `linux/amd64,linux/arm64` OCI archives and copies them to SWR:
 
@@ -218,6 +227,7 @@ docker build --build-arg USE_MIRROR=true -t sandbox-web .
 ```
 
 Available mirror sources:
+
 - **Default**: USTC mirrors (Debian/APT, Alpine/APK, Python/pip)
 - **Python base image**: `--use-mirror` switches `python:3.11-slim` to `docker.m.daocloud.io/library/python:3.11-slim`
 - **Go tarballs**: `--use-mirror` switches Go downloads from `https://go.dev/dl` to `https://mirrors.ustc.edu.cn/golang`
@@ -280,6 +290,7 @@ See [deploy/manifests/README.md](deploy/manifests/README.md) for detailed Kubern
 | **MinIO Console** | http://localhost:9001 | S3-compatible storage management |
 
 **Default Credentials**:
+
 - MinIO: `minioadmin` / `minioadmin`
 
 **Note**: Change default credentials in production environments.
@@ -344,7 +355,7 @@ mypy sandbox_control_plane/
 
 ## Project Structure
 
-```
+``` bash
 sandbox/
 ├── deploy/                   # Deployment configurations
 │   ├── manifests/            # K8s native YAML deployment

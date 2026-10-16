@@ -11,19 +11,25 @@ ADP 是一个智能数据平台，旨在弥合异构数据源与 AI Agent 之间
 ## 核心组件
 
 ### 1. 本体引擎 (Ontology Engine)
+
 本体引擎是一个分布式的业务知识网络管理系统，允许企业对业务世界进行数字化建模。
+
 - **多维建模**：定义对象类型、关系类型和动作类型，以映射现实世界的实体。
 - **可视化配置**：直观的本体管理界面。
 - **智能查询**：支持复杂的多跳关系路径查询和语义搜索。
 
 ### 2. 上下文加载器 (ContextLoader)
+
 ContextLoader 负责为 AI Agent 构建高质量的上下文。
+
 - **精准召回**：基于本体概念而非简单的关键词匹配来检索信息。
 - **动态组装**：根据当前任务需求和用户权限组装上下文片段。
 - **按需加载**：仅加载必要的数据，防止上下文窗口溢出。
 
 ### 3. VEGA 数据虚拟化 (VEGA Data Virtualization)
+
 VEGA 为异构数据源提供统一的 SQL 接口，将应用程序与底层数据库实现解耦。
+
 - **单一访问点**：通过统一接口连接 MariaDB、DM8、REST API 等多种数据源。
 - **跨源查询**：无缝连接不同数据库中的数据进行查询。
 - **标准化语义**：确保所有应用程序的数据定义一致。
@@ -62,7 +68,7 @@ VEGA 为异构数据源提供统一的 SQL 接口，将应用程序与底层数�
 
 ### 前置要求
 
-- **Go**: 1.23+ (用于 Ontology)
+- **Go**: 1.26.0+ (用于 Ontology)
 - **Java**: JDK 1.8+ (用于 VEGA)
 - **Node.js**: 18+ (用于 Web Console)
 - **数据库**: MariaDB 11.4+ 或 DM8
@@ -70,30 +76,34 @@ VEGA 为异构数据源提供统一的 SQL 接口，将应用程序与底层数�
 
 ### 构建与运行设置
 
-1.  **进入 ADP 目录**
+1. **进入 ADP 目录**
+
     ```bash
     cd adp
     ```
 
-2.  **初始化数据库**
+2. **初始化数据库**
     运行 `sql/` 目录下的 SQL 初始化脚本以设置数据库 Schema。
 
-3.  **构建模块**
+3. **构建模块**
 
-    *   **BKN 引擎 (Go)**:
+    - **BKN 引擎 (Go)**:
         详细说明请参考 [bkn/README.zh.md](bkn/README.zh.md)。
+
         ```bash
         cd bkn/bkn-backend
         go run main.go
         ```
 
-    *   **VEGA (Java)**:
+    - **VEGA (Java)**:
+
         ```bash
         cd vega
         mvn clean install
         ```
 
-    *   **Web 控制台 (Node.js)**:
+    - **Web 控制台 (Node.js)**:
+
         ```bash
         cd web
         npm install
