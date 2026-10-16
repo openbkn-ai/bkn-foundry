@@ -4,6 +4,12 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ## Unreleased
 
+### Bug Fixes
+
+- Backport #2105 to release/0.2.0: preserve managed conversation and interaction IDs when Trace/evidence capture is disabled.
+  - Keep `capture_enabled=false` and `trace_recorded=false`; business calls still require managed context, including nested PTC calls.
+  - Release Retrieval and Observability together: both lifecycle admission and MCP response handling must contain the fix.
+
 ### Features & Improvements
 
 - Surface actionable permission-request guidance from `run_cypher`, `search_instance`, and `get_logic_properties_values`
