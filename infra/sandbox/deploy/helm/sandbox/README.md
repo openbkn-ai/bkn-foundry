@@ -78,14 +78,15 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `image.defaultTemplates.multiLanguage.repository` | Multi-language template image repository | `dip/sandbox-template-multi-language` |
 | `image.defaultTemplates.multiLanguage.tag` | Multi-language template image tag; empty uses `/app/VERSION` | `""` |
 | `controlPlane.env.ENVIRONMENT` | Control Plane environment | `staging` |
-| `controlPlane.env.BKN_BASE_URL` | In-cluster platform address written into every sandbox pod, so `bkn-osdk` reaches BKN with no `configure()` call in user code. Host and port only — the SDK appends its own paths (`/api/agent-retrieval/v1/kn/` for REST, `/api/agent-retrieval/v1/mcp` for the MCP face), so no trailing slash and no path. **Defaults to empty on purpose**: the control plane prefers this key, so a shipped default would override the address an existing deployment already set in `BKN_SANDBOX_MCP_URL` — including the FQDN a cross-namespace install needs. Empty lets that derivation run, which is what makes an upgrade need no values change. Set it explicitly on a new install. Both keys empty means functions that call BKN fail with the SDK's "No base URL" error. | `""` |
+| `controlPlane.env.BKN_BASE_URL` | Explicit platform REST gateway origin; overrides installer-discovered `controlPlane.gateway.baseURL`. OSDK appends public `/api/bkn-backend/v1` and `/api/ontology-query/v1` routes. Never derived from the MCP endpoint. | `""` |
 | `controlPlane.env.BKN_SANDBOX_MCP_URL` | In-cluster Context Loader MCP endpoint for the built-in `sandbox_sdk.bkn` face. It must use the authenticated-only sandbox listener on port 30780; port 30779 also carries trusted `/in` routes and must not be reachable from executors. | `http://agent-retrieval:30780/api/agent-retrieval/v1/mcp/` |
 | `depServices.rds` | Core-provided database service configuration | enabled by values |
 | `networkPolicy.enabled` | Apply a default-deny egress policy to dynamic executor pods | `true` |
 | `networkPolicy.publicHttps.enabled` | Allow public HTTPS while excluding cluster, private, link-local, and reserved address space; required by runtime dependency installation | `true` |
 | `networkPolicy.bkn.enabled` | Allow executor access to agent-retrieval's authenticated-only listener | `true` |
-| `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from an in-cluster BKN FQDN or uses the Sandbox namespace for a short service name | `""` |
+| `networkPolicy.bkn.namespace` | Agent-retrieval namespace override; empty derives it from the MCP Service FQDN or uses the Sandbox namespace for a short service name | `""` |
 | `networkPolicy.bkn.port` | Authenticated-only agent-retrieval listener allowed from executors | `30780` |
+| `networkPolicy.gateway` | Independent REST gateway namespace, Pod selector and target port. Complete installation discovers these from the ingress controller Service; configure them explicitly for a custom gateway. | disabled until configured or discovered |
 | `networkPolicy.additionalEgress` | Extra Kubernetes egress rules for explicitly approved dependencies | `[]` |
 
 ## Executor Egress Isolation
@@ -96,7 +97,7 @@ The chart selects only dynamic execution pods carrying all three labels:
 isolated by this policy.
 
 By default, executors can reach DNS, the Sandbox Control Plane, Sandbox MinIO,
-agent-retrieval's authenticated-only port 30780, and public HTTPS destinations.
+the configured REST gateway, agent-retrieval's authenticated-only MCP port 30780, and public HTTPS destinations.
 The HTTPS rule excludes private, cluster, link-local, metadata, multicast, and
 reserved address ranges, so the existing runtime package installation path can
 reach its HTTPS package index without reopening platform services. Standard
@@ -120,10 +121,10 @@ upgrade instead of applying the new default in one step:
 
 1. Upgrade agent-retrieval first and verify that its Service and Pod answer
    `/health/ready` on port 30780.
-2. Change both configured BKN URLs from port 30779 to 30780, then render or
-   upgrade Sandbox with `networkPolicy.enabled=false`. When the policy and BKN
-   rule are enabled, Helm fails rendering if either non-empty BKN URL uses a
-   different port.
+2. Set `BKN_BASE_URL` to the unified gateway origin and `BKN_SANDBOX_MCP_URL`
+   to the dedicated MCP listener on port 30780. Render or upgrade Sandbox with
+   `networkPolicy.enabled=false` during observation. The MCP rule validates only
+   the MCP endpoint; the gateway has its own namespace, selector and target port.
 3. Collect executor traffic with the CNI's flow-observation facility and add
    only verified deployment-specific destinations.
 4. Enable the policy and verify that executor calls to 30779/internal services
@@ -152,3 +153,24 @@ helm template sandbox deploy/helm/sandbox \
 ## Related Chart
 
 See `deploy/helm/README.md` for the comparison between `sandbox` and `sandbox_standalone`.
+
+## REST gateway resolution
+
+The complete installer preserves an existing explicit `controlPlane.env.BKN_BASE_URL`
+and applies current `-f` / `--set` overrides last. If no REST origin is configured,
+it discovers exactly one ingress-nginx controller Service with an HTTP port. It
+uses the Service name, namespace and Service port (not NodePort), and supplies
+the matching Pod selector and target port to the independent gateway egress rule.
+Discovery never uses `BKN_SANDBOX_MCP_URL`. Missing or ambiguous controllers stop
+the installation before rollout; configure the origin and egress rule explicitly
+for another gateway implementation or a cluster without Service discovery access.
+
+`controlPlane.gateway` stores installer-owned discovery defaults in Helm values,
+not additional environment variables. Standalone Helm installation has no installer
+discovery: set `controlPlane.env.BKN_BASE_URL` and `networkPolicy.gateway` for OSDK.
+A gateway with host-based routing must also accept its configured internal origin.
+Public API authentication remains required; do not expose trusted `/in` routes.
+
+Existing executor Pods retain their old environment. Apply this change with a
+controlled Control Plane restart and executor/session recreation after preserving
+workspaces; editing the ConfigMap alone does not refresh pooled executors.

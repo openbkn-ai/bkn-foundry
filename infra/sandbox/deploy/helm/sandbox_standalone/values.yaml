@@ -94,20 +94,21 @@ controlPlane:
     CLEANUP_INTERVAL_SECONDS: "300"
     DISABLE_BWRAP: "true"
     PYTHONUNBUFFERED: "1"
-    # In-cluster Context Loader MCP endpoint. The control plane writes it into
-    # every sandbox pod so sandbox_sdk.bkn can call back into BKN without the
-    # caller passing an address per execution. The sandbox is inside the cluster
-    # and cannot use the gateway address, so only the deployment knows this value.
-    # The trailing slash is required: without it the gateway answers 307 and the
-    # sandbox's urllib does not follow redirects on POST.
-    # Leave empty to ship without the capability surface; functions then have to
-    # pass `mcp` in the event themselves.
-    # Host and port only; bkn-osdk appends its own paths. No trailing slash.
-    # Standalone sandbox ships without BKN, so this is empty by default.
+    # Explicit unified platform REST gateway; takes priority over gateway.baseURL.
+    # The complete installer discovers the in-cluster gateway when this is empty.
+    # Standalone Helm users must configure a gateway explicitly for OSDK access.
+    # Use an origin only, for example http://ingress-nginx-controller.ingress-nginx.svc:80.
     BKN_BASE_URL: ""
     # MCP endpoint for the built-in sandbox_sdk.bkn face (still supported). Standalone
     # sandbox ships without BKN, so this is empty by default. See the sandbox chart values.
     BKN_SANDBOX_MCP_URL: ""
+
+  # Installer-managed fallback, separate from the operator's explicit env override.
+  # This is a Helm value only; executors receive the resolved BKN_BASE_URL.
+  gateway:
+    baseURL: ""
+    # Snapshot used to distinguish discovery output from later operator overrides.
+    networkPolicy: {}
 
   s3:
     endpointUrl: "http://minio.sandbox-system.svc.cluster.local:9000"
@@ -273,16 +274,24 @@ networkPolicy:
     namespace: kube-system
     podSelector:
       k8s-app: kube-dns
-  # Standalone does not install BKN. Enable this only when BKN_BASE_URL and
-  # BKN_SANDBOX_MCP_URL point to agent-retrieval's sandbox-only port (30780).
+  # Optional direct MCP access; independent from the REST gateway.
   bkn:
     enabled: false
-    # Empty derives the namespace from an in-cluster BKN URL, falling back to
+    # Empty derives the namespace from the MCP URL, falling back to
     # the Sandbox namespace for a short service name. Set it to override.
     namespace: ""
     podSelector:
       app.kubernetes.io/name: agent-retrieval
     port: 30780
+  # Authenticated public API gateway only. Configure these selectors/target port
+  # for a custom gateway. Never allow trusted backend /in listeners directly.
+  gateway:
+    # The complete installer enables this with the discovered Service selector.
+    # For an explicit origin, enable/configure this or additionalEgress as needed.
+    enabled: false
+    namespace: ingress-nginx
+    podSelector: {}
+    port: http
   # Session dependencies are installed from an HTTPS package index when an
   # executor starts. Preserve that path without reopening cluster/private
   # destinations. Disable this when all dependencies are prebuilt into images.

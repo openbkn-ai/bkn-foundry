@@ -736,6 +736,53 @@ _openbkn_helm_upgrade_release() {
     shift 2
     local -a helm_args=("$@")
 
+    local gateway_dir=""
+    if [[ "${release_name}" == "sandbox" ]]; then
+        gateway_dir="$(mktemp -d)"
+        local gateway_helper="${SCRIPT_DIR}/scripts/lib/sandbox_gateway.py" gateway_installed
+        if ! gateway_installed="$(helm list --all -q -n "${namespace}" --filter '^sandbox$')"; then
+            rm -rf "${gateway_dir}"
+            log_error "Cannot inspect installed Sandbox gateway configuration"
+            return 1
+        fi
+        printf '{}\n' >"${gateway_dir}/preserved.json"
+        if [[ -n "${gateway_installed}" ]]; then
+            if ! (set -o pipefail; helm get values sandbox -n "${namespace}" -o json |
+                python3 "${gateway_helper}" preserve >"${gateway_dir}/preserved.json"); then
+                rm -rf "${gateway_dir}"
+                log_error "Cannot preserve explicit Sandbox gateway configuration"
+                return 1
+            fi
+        fi
+        # Preserved operator choices precede current -f/--set arguments.
+        helm_args=("${helm_args[@]:0:4}" -f "${gateway_dir}/preserved.json" "${helm_args[@]:4}")
+        if ! helm install "${helm_args[@]:2}" --dry-run=client --hide-secret -o json >"${gateway_dir}/render.json" ||
+            ! python3 "${gateway_helper}" base-url <"${gateway_dir}/render.json" >"${gateway_dir}/base-url"; then
+            rm -rf "${gateway_dir}"
+            log_error "Cannot render Sandbox gateway configuration"
+            return 1
+        fi
+        if [[ ! -s "${gateway_dir}/base-url" ]] || [[ -z "$(cat "${gateway_dir}/base-url")" ]]; then
+            # Discovery runs at installation time, never inside an executor Pod.
+            if ! kubectl get services --all-namespaces \
+                -l app.kubernetes.io/name=ingress-nginx,app.kubernetes.io/component=controller \
+                -o json >"${gateway_dir}/services.json" ||
+                ! python3 "${gateway_helper}" discover <"${gateway_dir}/services.json" >"${gateway_dir}/defaults.json"; then
+                rm -rf "${gateway_dir}"
+                log_error "Cannot discover Sandbox REST gateway; configure controlPlane.env.BKN_BASE_URL explicitly"
+                return 1
+            fi
+            # Discovery is only a default; both preserved and current operator values win.
+            helm_args=("${helm_args[@]:0:4}" -f "${gateway_dir}/defaults.json" "${helm_args[@]:4}")
+        fi
+        if ! helm install "${helm_args[@]:2}" --dry-run=client --hide-secret -o json >"${gateway_dir}/render.json" ||
+            ! python3 "${gateway_helper}" validate <"${gateway_dir}/render.json"; then
+            rm -rf "${gateway_dir}"
+            log_error "Sandbox REST gateway preflight failed"
+            return 1
+        fi
+    fi
+
     local agent_defaults="" agent_values="" agent_render="" installed
     if [[ "${release_name}" == "bkn-agent" ]]; then
         agent_defaults="$(mktemp)"
@@ -839,6 +886,7 @@ _openbkn_helm_upgrade_release() {
         helm_status=${PIPESTATUS[0]}
     fi
     rm -f "${helm_log}"
+    [[ -z "${gateway_dir}" ]] || rm -rf "${gateway_dir}"
     [[ -z "${audit_values}" ]] || rm -f "${audit_values}" "${audit_defaults}" "${audit_current}"
     [[ -z "${agent_defaults}" ]] || rm -f "${agent_defaults}" "${agent_values}"
 
@@ -1484,7 +1532,7 @@ _install_openbkn_release_local() {
     if [[ -z "${target_version}" ]]; then
         target_version="$(get_local_chart_version "${chart_tgz}")"
     fi
-    if [[ "${release_name}" != "agent-observability" ]] && _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+    if [[ "${release_name}" != "agent-observability" && "${release_name}" != "sandbox" ]] && _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 0
     fi
 
@@ -1530,7 +1578,7 @@ _install_openbkn_release_repo() {
         target_version=$(get_repo_chart_latest_version "${helm_repo_name}" "${chart_name}")
     fi
 
-    if [[ "${release_name}" != "agent-observability" ]] && _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+    if [[ "${release_name}" != "agent-observability" && "${release_name}" != "sandbox" ]] && _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 0
     fi
 
