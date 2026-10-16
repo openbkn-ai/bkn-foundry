@@ -176,3 +176,32 @@ func TestSchemaSandboxAppKeyUsesVerifiedOwner(t *testing.T) {
 		t.Fatalf("AppKey did not reach verifier: %d %v", out.Code, called)
 	}
 }
+
+// UseRawPath matches the production sandbox listener: encoded slashes stay
+// inside :kn_id while Gin decodes the parameter passed to the handler.
+func TestSchemaSandboxRejectsEncodedSlashes(t *testing.T) {
+	for _, id := range []string{
+		"kn%2Faction-types", "kn%2fobject-types%2fot", "kn%2Fsample-data",
+		"kn%2Fproxy-account", "kn%2Fmetrics%2Fmetric%2Fexecution-context",
+		"%2Fkn", "kn%2F", "kn%0D", "kn%0A",
+	} {
+		for _, suffix := range []string{"", "/object-types", "/relation-types", "/object-metrics"} {
+			t.Run(id+suffix, func(t *testing.T) {
+				handler := &restSchemaHandler{Hydra: schemaAuth{}, Schema: schemaReadFunc(func(context.Context, string, string, url.Values) (int, []byte, error) {
+					t.Fatal("invalid network id reached schema adapter")
+					return 0, nil, nil
+				})}
+				router := gin.New()
+				router.UseRawPath = true
+				handler.RegisterRouter(router.Group("/api/bkn-backend/v1"))
+				req := httptest.NewRequest("GET", "/api/bkn-backend/v1/knowledge-networks/"+id+suffix, nil)
+				req.Header.Set("Authorization", "Bearer token-a")
+				out := httptest.NewRecorder()
+				router.ServeHTTP(out, req)
+				if out.Code != 400 {
+					t.Fatalf("expected 400, got %d: %s", out.Code, out.Body)
+				}
+			})
+		}
+	}
+}

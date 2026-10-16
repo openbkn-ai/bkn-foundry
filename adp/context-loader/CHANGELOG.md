@@ -69,3 +69,7 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 - Scope aliases to network/object-type/relation-type reads and the paginated V1 metric catalogue. Reject exports and
   writes, bound backend requests/responses, refuse redirects, and cover auth,
   forged identity headers, permission denials and raw field preservation.
+
+- Reject network IDs containing slashes (including encoded slashes), CR or LF at
+  both the sandbox HTTP handler and the backend adapter, preventing alias reads
+  from reaching nested internal routes.

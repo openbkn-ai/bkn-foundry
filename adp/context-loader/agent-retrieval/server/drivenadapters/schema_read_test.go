@@ -29,7 +29,7 @@ func TestSchemaReadUsesConfiguredInternalBackendAndVerifiedIdentity(t *testing.T
 	calls := 0
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		if r.Method != "GET" || r.URL.EscapedPath() != "/api/bkn-backend/in/v1/knowledge-networks/kn%2Fa%20b/object-types" {
+		if r.Method != "GET" || r.URL.EscapedPath() != "/api/bkn-backend/in/v1/knowledge-networks/kn-a%20b/object-types" {
 			t.Errorf("wrong read path: %s %s", r.Method, r.URL.EscapedPath())
 		}
 		if r.URL.Query().Get("branch") != "dev" || r.URL.Query().Get("limit") != "-1" {
@@ -43,7 +43,7 @@ func TestSchemaReadUsesConfiguredInternalBackendAndVerifiedIdentity(t *testing.T
 	}))
 	defer backend.Close()
 	client := newSchemaReadAccess(backend.URL + "/api/bkn-backend")
-	status, body, err := client.ReadSchema(schemaSubject(), "kn/a b", "object-types", url.Values{"branch": {"dev"}, "limit": {"-1"}})
+	status, body, err := client.ReadSchema(schemaSubject(), "kn-a b", "object-types", url.Values{"branch": {"dev"}, "limit": {"-1"}})
 	if err != nil || status != 403 || string(body) != raw || calls != 1 {
 		t.Fatalf("raw response lost: %d %s %v", status, body, err)
 	}
@@ -112,6 +112,24 @@ func TestSchemaReadForwardsV1MetricCataloguePages(t *testing.T) {
 		backend.Close()
 		if status != 200 || err != nil {
 			t.Fatalf("V1 read failed: %d %v", status, err)
+		}
+	}
+}
+
+func TestSchemaReadRejectsPathSeparatorsBeforeTransport(t *testing.T) {
+	for _, id := range []string{"", ".", "..", "kn/action-types", "kn/object-types/ot", "kn/sample-data", "kn/proxy-account", "kn/metrics/metric/execution-context", "/kn", "kn/", "kn\r", "kn\n"} {
+		for _, collection := range []string{"", "object-types", "relation-types", "object-metrics"} {
+			t.Run(id+"/"+collection, func(t *testing.T) {
+				client := newSchemaReadAccess("http://backend")
+				client.client.Transport = schemaRoundTripFunc(func(*http.Request) (*http.Response, error) {
+					t.Fatal("invalid network id reached backend transport")
+					return nil, errors.New("unexpected transport")
+				})
+				status, body, err := client.ReadSchema(schemaSubject(), id, collection, nil)
+				if err == nil || status != 0 || body != nil {
+					t.Fatalf("invalid id accepted: %d %s %v", status, body, err)
+				}
+			})
 		}
 	}
 }

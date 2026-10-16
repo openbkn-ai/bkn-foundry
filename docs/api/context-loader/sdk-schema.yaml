@@ -89,6 +89,7 @@ components:
   parameters:
     KnID:
       name: kn_id
+      description: A single network ID; slashes (including percent-encoded slashes), CR and LF are rejected.
       in: path
       required: true
       schema:
