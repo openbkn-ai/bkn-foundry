@@ -12,6 +12,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
+// A full pass scans all published Skills and may make multiple model calls. Keep
+// its budget aligned with the existing Function capability reconciliation pass;
+// the 30-second operation budget applies only to individual cleanup operations.
+const skillCapabilityReconcileTimeout = 10 * time.Minute
+
 // A notification coalesces committed changes into the existing reconciliation pass.
 // The repository remains the source of truth; this is not a queue of snapshots.
 var skillCapabilitiesChanged = make(chan struct{}, 1)
@@ -58,7 +63,7 @@ func (s *skillIndexSync) runCapabilityReconciler(ctx context.Context, interval t
 		}
 	}
 	for {
-		passCtx, cancel := context.WithTimeout(ctx, skillIndexOperationTimeout)
+		passCtx, cancel := context.WithTimeout(ctx, skillCapabilityReconcileTimeout)
 		err := s.reconcileCapabilities(passCtx)
 		cancel()
 		if err != nil {

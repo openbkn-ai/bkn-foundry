@@ -142,8 +142,17 @@ func TestSkillReconcilerDisabledPeriodStillIndexesCommittedNotifications(t *test
 	repo := mocks.NewMockISkillRepository(ctrl)
 	invoked := make(chan struct{}, 1)
 	index.EXPECT().EnsureInitialized(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
-		if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > skillIndexOperationTimeout {
+		deadline, ok := ctx.Deadline()
+		if !ok {
 			t.Error("background pass lacks deadline")
+		} else {
+			remaining := time.Until(deadline)
+			if remaining <= skillIndexOperationTimeout {
+				t.Errorf("full pass budget %s is only an individual operation budget", remaining)
+			}
+			if remaining > skillCapabilityReconcileTimeout {
+				t.Errorf("full pass budget %s exceeds its bound", remaining)
+			}
 		}
 		invoked <- struct{}{}
 		return nil
