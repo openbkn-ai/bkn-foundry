@@ -22,6 +22,17 @@
 | [data-access.yaml](data-access.yaml) | Direct data access | `POST /kn/list_resources`, `POST /kn/describe_resource`, `POST /kn/run_sql` |
 | [mcp.yaml](mcp.yaml) | MCP service | `GET /mcp/info`, `POST /mcp` |
 
+## Sandbox OSDK schema aliases
+
+[`sdk-schema.yaml`](sdk-schema.yaml) documents four authenticated GET aliases on
+Context Loader's dedicated sandbox listener: the network record, object-type list
+relation-type list, and paginated Object Metric V1 catalogue under `/api/bkn-backend/v1/knowledge-networks/{kn_id}`.
+They preserve complete backend schema JSON for OSDK generation/drift checks while
+keeping the existing single `BKN_BASE_URL`. These aliases are separate from the
+POST `/kn/` agent API below. No additional service URL or sandbox egress rule is
+required. Deploy the updated Context Loader image before verifying them live;
+updating the npm CLI or Python package alone cannot add missing server routes.
+
 ## Typical flow
 
 ```text

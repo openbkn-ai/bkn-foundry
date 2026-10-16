@@ -1,0 +1,149 @@
+openapi: 3.0.3
+info:
+  title: Sandbox OSDK Complete Schema Reads
+  version: 1.0.0
+  description: |
+    Compatibility aliases on Context Loader's authenticated sandbox listener only.
+    OSDK keeps its existing BKN_BASE_URL and bkn-backend REST paths. The service
+    verifies the bearer, derives the internal caller identity, and reads the
+    deployment-configured BKN backend. Backend resource authorization and raw JSON
+    responses are preserved, including unknown fields and large integers.
+    The general platform listener does not register these aliases. No trusted
+    /in routes, writes, export mode, arbitrary proxy targets, or new address
+    environment variables are exposed. Upstream requests time out after 30 seconds,
+    do not follow redirects, and accept responses up to 32 MiB.
+servers:
+  - url: http://agent-retrieval:30780
+    description: Existing authenticated in-cluster sandbox listener; deployment may change the port.
+security:
+  - BearerAuth: []
+paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}:
+    parameters:
+      - $ref: '#/components/parameters/KnID'
+      - $ref: '#/components/parameters/Branch'
+    get:
+      operationId: sandboxReadCompleteNetwork
+      summary: Read the network record used by the ontology generator
+      responses:
+        '200':
+          $ref: '#/components/responses/RawSchema'
+        default:
+          $ref: '#/components/responses/ReadFailure'
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types:
+    parameters:
+      - $ref: '#/components/parameters/KnID'
+      - $ref: '#/components/parameters/Branch'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
+      - $ref: '#/components/parameters/Sort'
+      - $ref: '#/components/parameters/Direction'
+    get:
+      operationId: sandboxReadCompleteObjectTypes
+      summary: Read complete caller-visible object type definitions
+      responses:
+        '200':
+          $ref: '#/components/responses/RawSchema'
+        default:
+          $ref: '#/components/responses/ReadFailure'
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/relation-types:
+    parameters:
+      - $ref: '#/components/parameters/KnID'
+      - $ref: '#/components/parameters/Branch'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
+      - $ref: '#/components/parameters/Sort'
+      - $ref: '#/components/parameters/Direction'
+    get:
+      operationId: sandboxReadCompleteRelationTypes
+      summary: Read complete caller-visible relation type definitions
+      responses:
+        '200':
+          $ref: '#/components/responses/RawSchema'
+        default:
+          $ref: '#/components/responses/ReadFailure'
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-metrics:
+    parameters:
+      - $ref: '#/components/parameters/KnID'
+      - $ref: '#/components/parameters/Branch'
+      - $ref: '#/components/parameters/MetricLimit'
+      - $ref: '#/components/parameters/Offset'
+      - name: status
+        in: query
+        schema:
+          type: string
+    get:
+      operationId: sandboxReadObjectMetricCatalogue
+      summary: Read caller-visible Object Metric V1 catalogue pages
+      responses:
+        '200':
+          $ref: '#/components/responses/RawSchema'
+        default:
+          $ref: '#/components/responses/ReadFailure'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: OAuth access token or AppKey; never supply trusted internal identity headers.
+  parameters:
+    KnID:
+      name: kn_id
+      in: path
+      required: true
+      schema:
+        type: string
+    Branch:
+      name: branch
+      in: query
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      description: Backend page size; -1 requests the complete visible list.
+      schema:
+        type: integer
+    MetricLimit:
+      name: limit
+      in: query
+      description: Object Metric V1 page size; values outside 1-500 use the backend default.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 20
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+    Sort:
+      name: sort
+      in: query
+      schema:
+        type: string
+    Direction:
+      name: direction
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+  responses:
+    RawSchema:
+      description: Unmodified bkn-backend network record or entries/total_count list envelope.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    ReadFailure:
+      description: |
+        401 for authentication failure, 400 for invalid local route parameters,
+        or 502 for upstream transport/size failures. Backend error status and JSON
+        bodies (including 403 and 404) are passed through unchanged.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
