@@ -89,3 +89,25 @@ func TestSandboxEngineOmitsTrustedInternalRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestCompleteSchemaAliasesStayOnAuthenticatedSandboxListener(t *testing.T) {
+	server := &Server{
+		httpHealthHandler: probeRouter{}, restPublicHandler: probeRouter{},
+		restPrivateHandler: probeRouter{}, schemaReadHandler: probeRouter{},
+	}
+	for _, tc := range []struct {
+		router *gin.Engine
+		path   string
+		status int
+	}{
+		{server.sandboxEngine(), "/api/bkn-backend/v1/probe", 204},
+		{server.sandboxEngine(), "/api/bkn-backend/in/v1/probe", 404},
+		{server.platformEngine(), "/api/bkn-backend/v1/probe", 404},
+	} {
+		out := httptest.NewRecorder()
+		tc.router.ServeHTTP(out, httptest.NewRequest("GET", tc.path, nil))
+		if out.Code != tc.status {
+			t.Fatalf("%s: got %d, want %d", tc.path, out.Code, tc.status)
+		}
+	}
+}

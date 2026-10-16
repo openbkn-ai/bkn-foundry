@@ -59,3 +59,13 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 ### Documentation
 
 - Update release overview and tool usage documentation for the `search_schema` entry unification and metric schema recall contract
+
+## Unreleased: sandbox complete-schema reads
+
+- Add the four OSDK schema GET paths to the authenticated sandbox listener.
+  Calls retain the existing BKN_BASE_URL, verified caller identity, branch and
+  raw backend schema/status; internal service routing requires no new URL setting.
+  The general platform listener and sandbox network policy are unchanged.
+- Scope aliases to network/object-type/relation-type reads and the paginated V1 metric catalogue. Reject exports and
+  writes, bound backend requests/responses, refuse redirects, and cover auth,
+  forged identity headers, permission denials and raw field preservation.
