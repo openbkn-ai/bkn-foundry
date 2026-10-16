@@ -502,18 +502,10 @@ func isPlatformFunctionTarget(rawURL string) bool {
 // other address is a third party, and the sanitizer above is what keeps
 // platform identity away from it.
 //
-// On a direct Toolbox call all three values must be present. A partial context
-// means the call did not come through a managed Interaction, and a credential
-// without the lifecycle guard it belongs to is exactly what must not reach a
-// pooled sandbox.
-//
-// A trusted proxy call from ontology-query is different: a logic property or
-// action backed by a Function is evaluated by a Studio trial or a plain property
-// query just as often as inside an Interaction, and without the caller's
-// credential the Function cannot read BKN at all. The execution itself is still
-// authorized as the knowledge network's proxy account; the credential only
-// decides what the Function can read, which is what the caller could read
-// anyway. The Interaction is forwarded when the caller was in one.
+// Debug, direct Toolbox calls and ontology-query proxies may all read BKN as
+// their authenticated caller without a managed Interaction. Capture policy
+// controls recording, not credential availability. A complete lifecycle pair
+// is forwarded when present; partial IDs are never forwarded.
 //
 // Server-captured values win over anything in the body: a Tool that could state
 // them would be stating whose credential it runs under.
@@ -533,9 +525,6 @@ func functionRuntimeHeaders(headers map[string]any, req *interfaces.ExecuteToolR
 		return forwarded
 	}
 	managed := req.BKNConversationID != "" && req.BKNInteractionID != ""
-	if !managed && !req.TrustedProxyCall {
-		return forwarded
-	}
 	forwarded["Authorization"] = req.RequestAuthorization
 	for _, key := range []interfaces.HeaderKey{
 		interfaces.HeaderBKNConversationID, interfaces.HeaderBKNInteractionID, interfaces.HeaderBKNParentOperationID,
