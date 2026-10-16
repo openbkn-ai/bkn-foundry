@@ -29,10 +29,10 @@ func TestFunctionRuntimeHeadersForwardsAManagedCall(t *testing.T) {
 	})
 }
 
-// A credential without the lifecycle guard it belongs to must not reach a
-// pooled sandbox, so a partial context forwards nothing at all.
-func TestFunctionRuntimeHeadersRefusesAPartialContext(t *testing.T) {
-	Convey("An incomplete managed context forwards neither credential nor ids", t, func() {
+// Caller credentials are independent of lifecycle recording. Partial lifecycle
+// IDs are omitted, while the verified caller can still read BKN.
+func TestFunctionRuntimeHeadersKeepsCallerWithPartialContext(t *testing.T) {
+	Convey("An incomplete managed context forwards the caller but no lifecycle ids", t, func() {
 		for _, req := range []*interfaces.ExecuteToolReq{
 			{RequestAuthorization: "Bearer caller-token", BKNConversationID: "conv_1"},
 			{RequestAuthorization: "Bearer caller-token", BKNInteractionID: "int_1"},
@@ -42,7 +42,11 @@ func TestFunctionRuntimeHeadersRefusesAPartialContext(t *testing.T) {
 		} {
 			headers := functionRuntimeHeaders(map[string]any{"X-Api-Key": "tool-own-key"}, req)
 
-			So(headers["Authorization"], ShouldBeNil)
+			if req != nil && req.RequestAuthorization != "" {
+				So(headers["Authorization"], ShouldEqual, "Bearer caller-token")
+			} else {
+				So(headers["Authorization"], ShouldBeNil)
+			}
 			So(headers["bkn-conversation-id"], ShouldBeNil)
 			So(headers["bkn-interaction-id"], ShouldBeNil)
 			So(headers["X-Api-Key"], ShouldEqual, "tool-own-key")
@@ -110,7 +114,7 @@ func TestFunctionRuntimeHeadersDropsBodySuppliedAuthorization(t *testing.T) {
 
 			So(headers["authorization"], ShouldBeNil)
 			So(headers["X-Api-Key"], ShouldEqual, "tool-own-key")
-			if req != nil && req.TrustedProxyCall {
+			if req != nil && req.RequestAuthorization != "" {
 				So(headers["Authorization"], ShouldEqual, "Bearer caller-token")
 			} else {
 				So(headers["Authorization"], ShouldBeNil)
