@@ -137,7 +137,7 @@ func (c *PostgresqlConnector) GetFieldConfig() map[string]interfaces.ConnectorFi
 		"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
 		"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
 		"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-		"options":  {Name: "连接参数", Type: "object", Description: "可选；仅支持 sslmode、connect_timeout、application_name、fallback_application_name、statement_timeout、lock_timeout、idle_in_transaction_session_timeout；connect_timeout 为非负整数秒，会话超时为毫秒或带 PostgreSQL 时间单位的字符串，0 表示禁用；sslmode 默认为 disable，不支持 SSL 文件；客户端编码使用驱动默认 UTF8，不支持配置", Required: false, Encrypted: false},
+		"options":  {Name: "Connection options", Type: "object", Description: "Optional; supports only sslmode, connect_timeout, application_name, fallback_application_name, statement_timeout, lock_timeout, and idle_in_transaction_session_timeout. connect_timeout is a non-negative integer in seconds; session timeouts accept milliseconds or strings with PostgreSQL time units, with 0 disabling the timeout. sslmode defaults to disable; SSL files and configurable client encoding are unsupported (the driver uses UTF8).", Required: false, Encrypted: false},
 	}
 }
 
