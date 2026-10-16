@@ -15,6 +15,7 @@ from app.core.checkpoint import open_checkpointer
 from app.core.llm import build_chat_model
 from app.core.structured import structured_extract_with_path
 from app.core.prompt import resolve_prompt
+from app.core.public_chat import PublicChat
 from app.core.skills import load_skills
 from app.core.tools import apply_tool_call_cap, instrument_tool_calls, load_tools
 from app.commons.i18n import build_error_content
@@ -56,6 +57,8 @@ async def stream_chat(
     req: ChatRequest,
     account_id: str,
     account_type: str,
+    *,
+    public: PublicChat | None = None,
 ) -> AsyncIterator[str]:
     thread_id = req.thread_id or str(uuid.uuid4())
     if thread_id in _busy_threads:
@@ -80,9 +83,18 @@ async def stream_chat(
                 )
         await dao.touch_thread(session, thread_id, agent.agent_id, account_id)
 
+        prompt_options = {"shared_only": True} if public else {}
         system_prompt, prompt_source, prompt_version = await resolve_prompt(
-            session, agent, account_id, req.prompt_override, req.prompt_vars
+            session, agent, account_id, req.prompt_override, req.prompt_vars, **prompt_options
         )
+        if public:
+            public.prompt_version = prompt_version
+            system_prompt += (
+                f"\nThe selected knowledge network is {public.kn_id}. "
+                "Tools may only access this network. Tools without a scope guard, "
+                "including arbitrary code execution, are unavailable. Do not "
+                "claim a tool succeeded when it returned an error."
+            )
         skill_ids = list(dict.fromkeys([*agent.skills, *req.skills]))
         system_prompt += await load_skills(skill_ids, account_id, account_type)
         # Same order as the runner: the Context Loader session opens first, and
@@ -116,6 +128,8 @@ async def stream_chat(
                 # and dies with the request, whereas a cross-context reset (from
                 # the generator or an aclose task) always raises ValueError.
                 context_loader.set_current(cl_session)
+        if public and context_loader.wanted(agent.tools) and cl_session is None:
+            raise err(503, "BknAgent.Execution.Unavailable")
         tools = await load_tools(
             agent.tools,
             account_id,
@@ -124,6 +138,8 @@ async def stream_chat(
             parent_thread_id=thread_id,
             skill_ids=skill_ids,
         )
+        if public:
+            tools = public.guard_tools(tools)
         tools = instrument_tool_calls(tools, account_id, account_type)
         limits = agent.limits or None
         max_turns = (
@@ -207,22 +223,40 @@ async def stream_chat(
                     }
                     try:
                         async with asyncio.timeout(timeout_s):
-                            async for chunk, meta in graph.astream(
-                                {"messages": [("user", req.message)]},
+                            turn_messages = [("user", req.message)]
+                            if public:
+                                state = await graph.aget_state(cfg)
+                                turn_messages = public.interrupted_messages(
+                                    state.values.get("messages", [])
+                                ) + turn_messages
+                            async for item in graph.astream(
+                                {"messages": turn_messages},
                                 cfg,
-                                stream_mode="messages",
+                                stream_mode=["messages", "updates"] if public else "messages",
                             ):
-                                if isinstance(chunk, AIMessageChunk):
-                                    if chunk.content:
-                                        answer_parts.append(
-                                            chunk.content
-                                            if isinstance(chunk.content, str)
-                                            else str(chunk.content)
-                                        )
-                                        yield _sse("token", {"content": chunk.content})
-                                    for tc in chunk.tool_call_chunks or []:
+                                if public:
+                                    mode, payload = item
+                                    if mode == "updates":
+                                        for event in public.updates(payload):
+                                            yield event
+                                        continue
+                                    chunk, meta = payload
+                                else:
+                                    chunk, meta = item
+                                if isinstance(chunk, AIMessageChunk) or (public and isinstance(chunk, AIMessage)):
+                                    content = public.text(chunk.content) if public else chunk.content
+                                    if content:
+                                        answer_parts.append(content if isinstance(content, str) else str(content))
+                                        if public:
+                                            public.answer.append(content)
+                                            yield public.event("token", {"content": content})
+                                        else:
+                                            yield _sse("token", {"content": content})
+                                    for tc in getattr(chunk, "tool_call_chunks", []) or []:
                                         if tc.get("name"):
                                             tool_names.append(tc["name"])
+                                            if public:
+                                                continue
                                             yield _sse(
                                                 "tool_call", {"name": tc["name"]}
                                             )

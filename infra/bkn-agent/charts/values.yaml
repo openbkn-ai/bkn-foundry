@@ -27,9 +27,9 @@ service:
     port: 30800
     targetPort: 30800
 
-# Platform-internal only (a hard constraint from Epic #202): this chart has no
-# ingress template, and the gateway must not expose bkn-agent to end-user
-# traffic. Product backends proxy agent requests with a service identity.
+# No blanket ingress: legacy agent management and service-call routes remain
+# internal. Only the credential-verified /api/bkn-agent/v1/executions surface may
+# be exposed through the unified gateway after deployment review (#2173).
 
 depServices:
   rds:
@@ -40,6 +40,8 @@ depServices:
     database: "openbkn"
 
 runtime:
+  hydraAdminBase: "http://bkn-safe-hydra-admin:4445"
+  bknSafeBase: "http://bkn-safe:3000/api/safe/v1"
   mfModelApiPrivateBase: "http://mf-model-api:9898/api/private/mf-model-api/v1"
   # Both the tool and skill surfaces use this endpoint (#322).
   operatorIntegrationBase: "http://agent-operator-integration:9000/api/agent-operator-integration"

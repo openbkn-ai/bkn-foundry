@@ -191,6 +191,99 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/executions/{run_id}:
+    get:
+      tags:
+      - BknAgentExecution
+      summary: Get Execution
+      operationId: get_execution_api_bkn_agent_v1_executions__run_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/executions/{run_id}/cancel:
+    post:
+      tags:
+      - BknAgentExecution
+      summary: Cancel Execution
+      operationId: cancel_execution_api_bkn_agent_v1_executions__run_id__cancel_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/executions:
+    post:
+      tags:
+      - BknAgentExecution
+      summary: Execute
+      operationId: execute_api_bkn_agent_v1_executions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutionRequest'
+        required: true
+      responses:
+        '200':
+          description: 'SSE: meta, token, tool_started, tool_finished, usage, result,
+            terminal. Each event carries run_id and sequence. Successful result is
+            persisted before result/terminal; terminal.status is succeeded/failed/cancelled.
+            Retries return meta and the existing terminal; an active retry returns
+            409. Disconnect cancels execution.'
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - HTTPBearer: []
   /api/bkn-agent/v1/invoke/{agent_id}:
     post:
       tags:
@@ -1141,6 +1234,96 @@ components:
       - trace_id
       title: ErrorEnvelope
       description: Platform error envelope, used by every non-2xx response.
+    ExecutionOut:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+        agent_id:
+          type: string
+          title: Agent Id
+        thread_id:
+          type: string
+          title: Thread Id
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - succeeded
+          - failed
+          - cancelled
+          title: Status
+        result:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Result
+        error:
+          anyOf:
+          - additionalProperties:
+              type: string
+            type: object
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - run_id
+      - agent_id
+      - thread_id
+      - status
+      title: ExecutionOut
+    ExecutionRequest:
+      properties:
+        agent_id:
+          type: string
+          maxLength: 50
+          minLength: 1
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+        message:
+          type: string
+          maxLength: 100000
+          minLength: 1
+          title: Message
+        client_request_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Client Request Id
+        thread_id:
+          anyOf:
+          - type: string
+            maxLength: 50
+            minLength: 1
+            pattern: ^[0-9A-Za-z_.-]+$
+          - type: 'null'
+          title: Thread Id
+        context:
+          $ref: '#/components/schemas/ExecutionScope'
+      additionalProperties: false
+      type: object
+      required:
+      - agent_id
+      - message
+      - client_request_id
+      - context
+      title: ExecutionRequest
+    ExecutionScope:
+      properties:
+        kn_id:
+          type: string
+          maxLength: 50
+          minLength: 1
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Kn Id
+      additionalProperties: false
+      type: object
+      required:
+      - kn_id
+      title: ExecutionScope
     ExportPackage:
       properties:
         format:
@@ -1673,3 +1856,7 @@ components:
       - type
       - box_id
       title: ToolboxToolRef
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer

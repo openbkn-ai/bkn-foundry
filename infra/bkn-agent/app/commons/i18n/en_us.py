@@ -6,6 +6,42 @@
 # match zh_cn.py exactly; tools/check_i18n_catalogs.py enforces that in CI.
 
 error_messages = {
+    "BknAgent.Auth.TokenRequired": {
+        "code": "BknAgent.Auth.TokenRequired",
+        "description": "A valid bearer token is required.",
+        "detail": "A valid bearer token is required.",
+        "solution": "Supply an active OAuth token or user-issued AppKey.",
+    },
+    "BknAgent.Execution.Unavailable": {
+        "code": "BknAgent.Execution.Unavailable",
+        "description": "Execution dependencies are unavailable or returned an invalid response.",
+        "detail": "Execution dependencies are unavailable or returned an invalid response.",
+        "solution": "Check identity, authorization and Context Loader availability before retrying.",
+    },
+    "BknAgent.Execution.Forbidden": {
+        "code": "BknAgent.Execution.Forbidden",
+        "description": "The caller cannot use this agent or knowledge network.",
+        "detail": "The caller cannot use this agent or knowledge network.",
+        "solution": "Request the required resource permissions.",
+    },
+    "BknAgent.Execution.Unsupported": {
+        "code": "BknAgent.Execution.Unsupported",
+        "description": "This agent requires capabilities not supported by the public execution scope.",
+        "detail": "This agent requires capabilities not supported by the public execution scope.",
+        "solution": "Use the supported built-in Agent configuration.",
+    },
+    "BknAgent.Execution.Conflict": {
+        "code": "BknAgent.Execution.Conflict",
+        "description": "The request conflicts with an existing execution or thread scope.",
+        "detail": "The request conflicts with an existing execution or thread scope.",
+        "solution": "Read the existing execution or start a new request/thread for different input.",
+    },
+    "BknAgent.Execution.Failed": {
+        "code": "BknAgent.Execution.Failed",
+        "description": "The execution failed.",
+        "detail": "The execution failed.",
+        "solution": "Check the trace and retry with a new request ID if appropriate.",
+    },
     "BknAgent.Auth.AccountRequired": {
         "code": "BknAgent.Auth.AccountRequired",
         "description": "Caller identity is missing.",

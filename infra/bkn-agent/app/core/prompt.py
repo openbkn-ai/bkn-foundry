@@ -46,16 +46,18 @@ async def resolve_prompt(
     account_id: str,
     request_override: Optional[str],
     prompt_vars: dict[str, Any],
+    *,
+    shared_only: bool = False,
 ) -> tuple[str, str, Optional[int]]:
     """Resolve across three layers: request level > caller override > the agent
     default version. All three share one vars_schema. An invalid prompt_id must
     raise an explicit error instead of falling back to a built-in default.
     Returns (body, source layer, version of the default layer)."""
     schema = agent.prompt_vars_schema
-    if request_override:
+    if request_override and not shared_only:
         return _fill(request_override, prompt_vars, schema), "request", None
 
-    override = await dao.get_prompt_override(session, agent.agent_id, account_id)
+    override = None if shared_only else await dao.get_prompt_override(session, agent.agent_id, account_id)
     if override is not None:
         return _fill(override, prompt_vars, schema), "override", None
 
