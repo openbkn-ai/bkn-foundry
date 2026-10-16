@@ -28,8 +28,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
 
-// TestRESTExecutionRequiresManagedContext verifies that side-effecting REST calls
-// cannot reach their handlers without an Operation, while reads still run ad hoc.
+// Action and skill REST execution still requires managed context; REST tool
+// execution and reads allow ad-hoc calls with the caller's existing permissions.
 func TestRESTExecutionRequiresManagedContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cases := []struct {
@@ -40,8 +40,8 @@ func TestRESTExecutionRequiresManagedContext(t *testing.T) {
 	}{
 		{"/api/agent-retrieval/v1/kn/execute_action", `{"query":"q"}`, 0, "conversation_required"},
 		{"/api/agent-retrieval/v1/kn/execute_action", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
-		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q"}`, 0, "conversation_required"},
-		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
+		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q"}`, 1, ""},
+		{"/api/agent-retrieval/in/v1/kn/execute_tool", `{"query":"q","bkn_context":{}}`, 1, ""},
 		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q"}`, 0, "conversation_required"},
 		{"/api/agent-retrieval/v1/kn/execute_skill", `{"query":"q","bkn_context":{}}`, 0, "conversation_required"},
 		{"/api/agent-retrieval/v1/kn/run_sql", `{"query":"q"}`, 1, ""},
@@ -152,7 +152,6 @@ func TestRESTExecutionFallsBackWhenTraceCoreUnavailable(t *testing.T) {
 		}))
 		for _, path := range []string{
 			"/api/agent-retrieval/v1/kn/execute_action",
-			"/api/agent-retrieval/in/v1/kn/execute_tool",
 			"/api/agent-retrieval/v1/kn/execute_skill",
 		} {
 			for _, body := range []string{`{"query":"q"}`, `{"query":"q","bkn_context":{}}`} {
@@ -844,4 +843,42 @@ func setRouteLifecycleHeaders(request *http.Request) {
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set(common.HeaderBKNRequestID, "req_route_lifecycle_0001")
 	request.Header.Set(common.HeaderTraceparent, "00-4b3d59daeff5bfbb23d46c47a5051ec9-00f067aa0ba902b7-01")
+}
+
+func TestRESTExecuteToolMatchesSearchSchemaContextOptionality(t *testing.T) {
+	for _, prefix := range []string{"/api/agent-retrieval/v1/kn/", "/api/agent-retrieval/in/v1/kn/"} {
+		for _, tool := range []string{"execute_tool", "search_schema"} {
+			for _, body := range []string{`{"query":"q"}`, `{"query":"q","bkn_context":{}}`} {
+				t.Run(prefix+tool+body, func(t *testing.T) {
+					core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						t.Error("ad-hoc REST execution must not depend on Core")
+						w.WriteHeader(http.StatusServiceUnavailable)
+					}))
+					defer core.Close()
+					called := false
+					router := gin.New()
+					router.Use(trustedLifecycleHTTPContext(), middlewareLifecycle(bkntrace.NewLifecycleClient(core.URL, core.Client())))
+					router.POST("/*path", func(c *gin.Context) {
+						called = true
+						var input map[string]any
+						if err := c.ShouldBindJSON(&input); err != nil || input["query"] != "q" {
+							t.Error("request body was lost")
+						}
+						if c.GetHeader("Authorization") != "Bearer caller-token" {
+							t.Error("caller credential was lost")
+						}
+						c.Status(http.StatusNoContent)
+					})
+					request := httptest.NewRequest(http.MethodPost, prefix+tool, strings.NewReader(body))
+					request.Header.Set("Content-Type", "application/json")
+					request.Header.Set("Authorization", "Bearer caller-token")
+					response := httptest.NewRecorder()
+					router.ServeHTTP(response, request)
+					if !called || response.Code != http.StatusNoContent {
+						t.Fatalf("status=%d called=%v", response.Code, called)
+					}
+				})
+			}
+		}
+	}
 }
