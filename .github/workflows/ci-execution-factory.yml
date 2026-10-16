@@ -3,13 +3,11 @@ name: ci-execution-factory
 on:
   pull_request:
     paths:
-      - 'comm-go/**'
       - 'adp/execution-factory/**'
       - '.github/workflows/ci-execution-factory.yml'
   push:
     branches: [main]
     paths:
-      - 'comm-go/**'
       - 'adp/execution-factory/**'
       - '.github/workflows/ci-execution-factory.yml'
   workflow_dispatch:

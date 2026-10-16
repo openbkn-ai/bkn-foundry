@@ -272,6 +272,31 @@ def _check_json_schema(v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
 ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_schema)]
 
 
+class ExecutionScope(BaseModel):
+    model_config = {"extra": "forbid"}
+    kn_id: str = Field(min_length=1, max_length=50, pattern=_ID_PATTERN)
+
+
+class ExecutionRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    agent_id: str = Field(min_length=1, max_length=50, pattern=_ID_PATTERN)
+    message: str = Field(min_length=1, max_length=100000)
+    client_request_id: str = Field(min_length=1, max_length=100, pattern=_ID_PATTERN)
+    thread_id: Optional[str] = Field(
+        default=None, min_length=1, max_length=50, pattern=_ID_PATTERN
+    )
+    context: ExecutionScope
+
+
+class ExecutionOut(BaseModel):
+    run_id: str
+    agent_id: str
+    thread_id: str
+    status: Literal["pending", "running", "succeeded", "failed", "cancelled"]
+    result: Optional[dict[str, Any]] = None
+    error: Optional[dict[str, str]] = None
+
+
 class ChatRequest(BaseModel):
     agent_id: str
     thread_id: Optional[str] = None

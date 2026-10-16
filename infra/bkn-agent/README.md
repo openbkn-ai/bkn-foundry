@@ -2,7 +2,7 @@
 
 平台内置 Agent 运行时（Epic #202，设计文档：`docs/design/bkn-agent/features/202-bkn-agent.md`）。
 
-**仅面向平台内部**：调用主体为平台模块（服务身份）与内部工程师，终端用户流量不可直达（硬约束）。
+旧管理与服务调用接口继续面向平台内部。0.2.1 新增经过独立凭据校验的用户执行接口；统一网关只可开放这一组路由，不能把整个服务或旧接口公开。Chart 不自动创建 Ingress。
 
 - 引擎：LangGraph（Python）
 - 模型：mf-model-api（OpenAI 兼容，集群内 `/api/private`，model 为空走系统默认）
@@ -80,7 +80,7 @@ agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执�
 - 已有固定 ID 的 Agent 保留模型、工具、状态、Prompt 引用和历史。业务溯源优化 Agent 仅在原管理主体仍是最后修改者、完整 limits 等于旧默认值时，将 180 秒升级到 600 秒；仅对精确匹配 0.1.4/0.1.5 已发布默认内容、由原主体维护且无自定义变量的 Prompt 追加新版本。管理员编辑、回滚和冲突版本保留。修改共享 Prompt 使用原版本管理能力；个人覆写表和旧 API 不在本次删除。
 - 新 Agent 最后写入，兼容的未完成默认 Prompt 可在脚本重试时补全；Prompt 冲突或名称冲突报错，不接管客户配置。迁移器按语句提交，不承诺跨表事务回滚，冲突时可能保留尚未引用的默认 Prompt 行。
 
-Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留空继承平台默认，声明完整 Context Loader MCP。`runtime.contextLoaderMcpUrl` / `CONTEXT_LOADER_MCP_URL` 继续选择完整版 `/mcp/` 或紧凑版 `/mcp-compact/`。公共用户入口、网络范围及权限检查由后续迁移交付；不创建基础数据问答或图探索占位 Agent。
+Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留空继承平台默认，声明完整 Context Loader MCP。`runtime.contextLoaderMcpUrl` / `CONTEXT_LOADER_MCP_URL` 继续选择完整版 `/mcp/` 或紧凑版 `/mcp-compact/`。公共用户入口、网络范围及权限检查见下文 #2173；不创建基础数据问答或图探索占位 Agent。
 
 业务溯源两个 Agent 保留原固定 ID、owner 和工具声明，缺失时安装当前默认 Prompt/限制；旧默认值仅按上述条件修复。SQL 登记不创建 EE 管理身份，也不开放许可证控制的 EE 入口。`python -m app.bootstrap.business_provenance` 保留为现有部署脚本的兼容命令，只验证管理主体、Agent 归属及共享 Prompt，不再调用 `/import` 或覆盖管理员修改。原 JSON 文件覆盖环境变量不再支持，显式设置时会报错；共享配置改为通过管理 API 维护。旧手工导入脚本 `scripts/import-business-provenance-optimizer.sh` 一并移除。
 
@@ -101,3 +101,27 @@ It does not replace caller authentication, tool headers,
 or model-visible parameters. Older Context Loader responses without owner still
 load tools, but log a coverage warning and cannot establish corrected evidence
 attribution. Upgrade Context Loader together with Agent for this contract.
+
+
+## 用户执行接口（#2173）
+
+`POST /api/bkn-agent/v1/executions` 返回 SSE；`GET /api/bkn-agent/v1/executions/{run_id}` 读取运行状态与已提交结果；`POST /api/bkn-agent/v1/executions/{run_id}/cancel` 请求停止。三者均要求 `Authorization: Bearer ...`，OAuth 通过 Hydra 校验，`bak_` 通过 bkn-safe 校验，外部账号头不作为身份依据。依赖地址通过 `runtime.hydraAdminBase` / `HYDRA_ADMIN_BASE` 和 `runtime.bknSafeBase` / `BKN_SAFE_BASE` 配置，向下游继续传递原调用凭据。
+
+首期仅接入 `studio_smart_qa`。调用前须由管理员完成共享配置并发布，且调用者具有该 Agent 的 `use` 和知识网络的 `view_detail` 权限；实际数据与行动权限继续由下游校验。本接口不自动发布、授予权限或修改默认配置。
+
+```json
+{
+  "agent_id": "studio_smart_qa",
+  "message": "分析当前网络中的订单",
+  "client_request_id": "request-unique-01",
+  "context": {"kn_id": "network-01"}
+}
+```
+
+后续轮次附带首轮 `meta` 中的 `thread_id`；切换网络创建新线程。请求不能覆盖模型、工具、Skill 或 Prompt。新入口始终使用共享 Prompt，旧接口的个人覆写和请求覆写保持兼容。
+
+SSE 为 `meta/token/tool_started/tool_finished/usage/result/terminal`，携带 `run_id` 和单调序号。工具事件关联真实调用 ID，参数/结果按大小限制并脱敏。结果先写入原 `t_agent_task` 再发送成功终态；GET 可恢复已提交结果。缺少真实用量时显式返回不可用。接口详情与错误以 [OpenAPI](../../docs/api/bkn-agent/bkn-agent.yaml) 为准。
+
+完整 Context Loader MCP 继续按已有 full/compact 端点注册。执行时校验网络范围；无可信网络约束的工具（例如任意代码执行、跨 Agent 调用或其他未适配类型）明确不可用，不静默放行。此交付不代表图探索工具、画布结果或前端迁移已完成。
+
+相同账号类型、账号 ID 和 `client_request_id` 不重复执行；相同 ID 不同输入或活动运行返回409，终态重试返回已存结果。停止接口返回实际已提交状态，可能需要随后 GET 等待取消完成。断线停止执行，进程中断沿用旧任务恢复机制标记失败；不承诺 SSE 重放、断线后台续跑或多副本协调，Chart 的单副本限制保持原样。不增加数据库表或列。

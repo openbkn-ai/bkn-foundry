@@ -44,7 +44,7 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 			"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
 			"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
 			"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-			"options":  {Name: "Connection options", Type: "object", Description: "Optional; supports only sslmode, connect_timeout, application_name, fallback_application_name, statement_timeout, lock_timeout, and idle_in_transaction_session_timeout. connect_timeout is a non-negative integer in seconds; session timeouts accept milliseconds or strings with PostgreSQL time units, with 0 disabling the timeout. sslmode defaults to disable; SSL files and configurable client encoding are unsupported (the driver uses UTF8).", Required: false, Encrypted: false},
+			"options":  {Name: "i18n:VegaBackend.ConnectorType.PostgreSQL.Options.Name", Type: "object", Description: "i18n:VegaBackend.ConnectorType.PostgreSQL.Options.Description", Required: false, Encrypted: false},
 		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)

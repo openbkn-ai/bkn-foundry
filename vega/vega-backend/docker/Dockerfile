@@ -4,7 +4,7 @@
 # See the LICENSE file in the project root for details.
 
 ########################### Stage 0 ########################
-ARG BUILD_IMAGE=golang:1.25.14
+ARG BUILD_IMAGE=golang:1.26.9
 ARG PYTHON_BASE_IMAGE=ghcr.io/openbkn-ai/vega-python-base:0.2.0
 
 FROM ${BUILD_IMAGE} AS builder

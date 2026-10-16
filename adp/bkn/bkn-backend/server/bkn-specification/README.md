@@ -16,11 +16,11 @@ the separate deployment upgrade script, not through BKN archive compatibility.
 
 ## Requirements
 
-- **Go 1.25+**
+- **Go 1.26.0+**
 
 ## Structure
 
-```
+``` bash
 ├── bkn/
 │   ├── models.go        # Data structures
 │   ├── parser.go        # Parse .bkn files (per type)
@@ -120,7 +120,7 @@ if !result.OK() {
 ### Parser
 
 | Function | Description |
-|------|------|
+| ------ | ------ |
 | `ParseFrontmatter(text)` | Parses YAML frontmatter and returns `map[string]any` |
 | `ParseNetworkFile(text, sourcePath)` | Parses a network file |
 | `ParseObjectTypeFile(text, sourcePath)` | Parses an object_type file |
@@ -132,7 +132,7 @@ if !result.OK() {
 ### Loader
 
 | Function | Description |
-|------|------|
+| ------ | ------ |
 | `LoadNetwork(rootPath)` | Loads a complete network from a directory, automatically discovering network.bkn |
 | `LoadNetworkWithFS(fsys, rootPath)` | Loads a network with a custom FileSystem |
 | `LoadNetworkFromTar(r)` | Loads a network from a tar stream |
@@ -141,7 +141,7 @@ if !result.OK() {
 ### Serializer
 
 | Function | Description |
-|------|------|
+| ------ | ------ |
 | `SerializeBknNetwork(doc)` | Serializes network frontmatter |
 | `SerializeObjectType(ot)` | Serializes object_type |
 | `SerializeRelationType(rt)` | Serializes relation_type |
@@ -151,10 +151,10 @@ if !result.OK() {
 | `WriteNetworkToTar(doc, w)` | Writes a complete network to a tar stream |
 | `PackDirToTar(sourceDir, outputPath, gzip)` | Packs a directory into a tar file; on macOS, sets `COPYFILE_DISABLE=1` automatically |
 
-### Checksum & Diff
+### Checksum & Diff API
 
 | Function | Description |
-|------|------|
+| ------ | ------ |
 | `GenerateChecksumFile(root)` | Generates and writes a CHECKSUM file |
 | `VerifyChecksumFile(root)` | Verifies the directory CHECKSUM and returns `(ok, errors)` |
 | `ComputeChecksumFromTar(r)` | Computes checksums for tar entries |
@@ -167,13 +167,13 @@ if !result.OK() {
 ### Validator
 
 | Function | Description |
-|------|------|
+| ------ | ------ |
 | `ValidateNetwork(doc)` | Validates the network structure and returns `*ValidationResult` |
 
 ### FileSystem
 
 | Function | Description |
-|------|------|
+| ------ | ------ |
 | `NewOSFileSystem()` | OS-backed file system implementation |
 | `NewMemoryFileSystem()` | In-memory file system for tests or tar extraction |
 

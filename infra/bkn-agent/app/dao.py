@@ -597,3 +597,80 @@ async def upsert_prompt_with_id(
         return "unchanged"
     await publish_prompt_version(session, prompt_id, content, vars_schema, account_id, commit=commit)
     return "version_published"
+
+
+async def reserve_execution(
+    session: AsyncSession,
+    run_id: str,
+    agent_id: str,
+    task_input: dict,
+    account_id: str,
+    thread_id: str,
+) -> bool:
+    """The existing primary key is the cross-request idempotency boundary."""
+    from sqlalchemy.exc import IntegrityError
+
+    now = _now_ms()
+    session.add(
+        TaskRow(
+            f_task_id=run_id,
+            f_agent_id=agent_id,
+            f_status="pending",
+            f_input=task_input,
+            f_account_id=account_id,
+            f_parent_thread_id=thread_id,
+            f_create_time=now,
+            f_update_time=now,
+        )
+    )
+    try:
+        await session.commit()
+        return True
+    except IntegrityError:
+        await session.rollback()
+        return False
+
+
+async def execution_thread_input(
+    session: AsyncSession, thread_id: str
+) -> Optional[dict]:
+    result = await session.execute(
+        select(TaskRow.f_input)
+        .where(TaskRow.f_parent_thread_id == thread_id)
+        .order_by(TaskRow.f_create_time, TaskRow.f_task_id)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def finish_execution(
+    session: AsyncSession,
+    run_id: str,
+    status: str,
+    output: Optional[str] = None,
+    failure_detail: Optional[str] = None,
+) -> None:
+    # Stop/completion/restart recovery must never rewrite an existing terminal.
+    await session.execute(
+        update(TaskRow)
+        .where(
+            TaskRow.f_task_id == run_id, TaskRow.f_status.in_(("pending", "running"))
+        )
+        .values(
+            f_status=status,
+            f_output=output,
+            f_failure_detail=failure_detail,
+            f_update_time=_now_ms(),
+        )
+    )
+    await session.commit()
+
+
+async def begin_execution(session: AsyncSession, run_id: str) -> bool:
+    result = await session.execute(
+        update(TaskRow)
+        .where(TaskRow.f_task_id == run_id, TaskRow.f_status == "pending")
+        .values(f_status="running", f_update_time=_now_ms())
+    )
+    await session.commit()
+    return result.rowcount == 1

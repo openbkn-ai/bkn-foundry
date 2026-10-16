@@ -70,6 +70,10 @@ spec:
               value: {{ .Values.depServices.rds.user | quote }}
             - name: RDSPASS
               value: {{ .Values.depServices.rds.password | quote }}
+            - name: HYDRA_ADMIN_BASE
+              value: {{ .Values.runtime.hydraAdminBase | default "http://bkn-safe-hydra-admin:4445" | quote }}
+            - name: BKN_SAFE_BASE
+              value: {{ .Values.runtime.bknSafeBase | default "http://bkn-safe:3000/api/safe/v1" | quote }}
             - name: MF_MODEL_API_PRIVATE_BASE
               value: {{ .Values.runtime.mfModelApiPrivateBase | quote }}
             - name: OPERATOR_INTEGRATION_BASE

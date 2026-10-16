@@ -1,6 +1,6 @@
 # Multi-stage build: compile Go in builder (the original separate Azure pipeline compile stage is now inline); prod keeps only the binary.
 ########################### Stage 0: builder ########################
-ARG BUILD_IMAGE=golang:1.25.14
+ARG BUILD_IMAGE=golang:1.26.9
 ARG baseImage=ubuntu:22.04
 
 FROM ${BUILD_IMAGE} AS builder
@@ -8,7 +8,6 @@ FROM ${BUILD_IMAGE} AS builder
 ARG GOPROXY_URL="https://proxy.golang.org,direct"
 ENV GOPROXY=${GOPROXY_URL}
 
-COPY comm-go /workspace/comm-go
 COPY adp/context-loader/agent-retrieval /workspace/adp/context-loader/agent-retrieval
 
 RUN set -ex; \

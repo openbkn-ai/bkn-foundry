@@ -11,10 +11,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/openbkn-ai/licverify"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -166,7 +169,19 @@ func (cf *connectorFactory) GetConnectorFieldConfig(ctx context.Context, ct *int
 	if err := cf.validateConnectorRegistration(ct.Type, ct, connector); err != nil {
 		return nil, err
 	}
-	return connector.GetFieldConfig(), nil
+	fields := connector.GetFieldConfig()
+	// 只解析显式标记的语言资源，保留其他存量字段和远程连接器的原有语义。
+	lang := string(rest.GetLanguageByCtx(ctx))
+	for name, field := range fields {
+		if key, ok := strings.CutPrefix(field.Name, "i18n:"); ok {
+			field.Name = i18n.Translate(lang, key, nil)
+		}
+		if key, ok := strings.CutPrefix(field.Description, "i18n:"); ok {
+			field.Description = i18n.Translate(lang, key, nil)
+		}
+		fields[name] = field
+	}
+	return fields, nil
 }
 
 // DeleteConnector deletes the connector builder

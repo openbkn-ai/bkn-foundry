@@ -8,7 +8,6 @@ on:
       - 'v*'
     branches: ['**']
     paths:
-      - 'comm-go/**'
       - 'adp/context-loader/agent-retrieval/**'
       - '.github/workflows/release-adp-agent-retrieval.yml'
       - '.github/workflows/reusable-*.yml'
