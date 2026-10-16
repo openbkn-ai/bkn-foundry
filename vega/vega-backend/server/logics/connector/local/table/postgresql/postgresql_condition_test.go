@@ -161,7 +161,7 @@ func TestPostgresqlDateCompareExprUsesSessionTimezoneForTimestampWithoutTimezone
 				OriginalType: originalType,
 			}
 
-			expr, err := dateCompareExpr(field, ">=", float64(1785295334428))
+			expr, err := dateCompareExpr(pgQuoteColumnName(field.OriginalName), field, ">=", float64(1785295334428))
 			require.NoError(t, err)
 			sql, args, err := expr.ToSql()
 			require.NoError(t, err)
@@ -196,7 +196,7 @@ func TestPostgresqlDateExpressionsKeepCursorTimestampsNative(t *testing.T) {
 			"RFC3339":   wantTime.Format(time.RFC3339Nano),
 		} {
 			t.Run(test.originalType+"/"+name, func(t *testing.T) {
-				expr, err := dateCompareExpr(field, ">", value)
+				expr, err := dateCompareExpr(pgQuoteColumnName(field.OriginalName), field, ">", value)
 				require.NoError(t, err)
 				sql, args, err := expr.ToSql()
 				require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 			Type:         interfaces.DataType_Time,
 		}
 
-		expr, err := dateCompareExpr(field, ">=", "14:30:00")
+		expr, err := dateCompareExpr(pgQuoteColumnName(field.OriginalName), field, ">=", "14:30:00")
 		require.NoError(t, err)
 		sql, args, err := expr.ToSql()
 		require.NoError(t, err)
@@ -230,7 +230,7 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 				OriginalType: originalType,
 			}
 
-			expr, err := dateCompareExpr(field, ">=", "14:30:00")
+			expr, err := dateCompareExpr(pgQuoteColumnName(field.OriginalName), field, ">=", "14:30:00")
 			require.NoError(t, err)
 			sql, args, err := expr.ToSql()
 			require.NoError(t, err)

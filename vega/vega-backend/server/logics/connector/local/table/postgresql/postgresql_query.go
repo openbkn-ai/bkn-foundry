@@ -199,6 +199,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	// Add aggregated fields (when performing aggregated queries)
 	var aggAlias, aggExpression string
+	var aggResultField *interfaces.Property
 	if params.Aggregation != nil {
 		aggField := pgQuoteColumnName(originalName(params.Aggregation.Property))
 		if params.Aggregation.Property == "*" && params.Aggregation.Aggr == "count" {
@@ -222,6 +223,9 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		}
 
 		aggExpression = aggFunc
+		if params.Aggregation.Aggr == "min" || params.Aggregation.Aggr == "max" {
+			aggResultField = fieldMap[params.Aggregation.Property]
+		}
 		selectFields = append(selectFields, aggExpression+" AS "+pgQuoteColumnName(aggAlias))
 	} else if params.Having != nil && params.Having.Field == "count(*)" {
 		aggAlias, aggExpression = "__value", "COUNT(*)"
@@ -294,10 +298,12 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	// HAVING references aggregate expressions; PostgreSQL does not resolve result aliases here.
 	if params.Having != nil {
 		expression := aggExpression
+		resultField := aggResultField
 		if params.Having.Field == "count(*)" {
 			expression = "COUNT(*)"
+			resultField = nil
 		}
-		having, err := c.buildHavingCondition(params.Having, expression)
+		having, err := c.buildHavingCondition(params.Having, expression, resultField)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build HAVING condition: %w", err)
 		}
@@ -446,7 +452,7 @@ func (c *PostgresqlConnector) buildDateFormat(dateField, calendarInterval string
 }
 
 // buildHavingCondition binds values to a validated aggregate expression.
-func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClause, expression string) (sq.Sqlizer, error) {
+func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClause, expression string, field *interfaces.Property) (sq.Sqlizer, error) {
 	if having.Field != "__value" && having.Field != "count(*)" {
 		return nil, fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}
@@ -461,6 +467,9 @@ func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClau
 		}
 		if having.Value == nil {
 			return nil, fmt.Errorf("HAVING comparison requires a value")
+		}
+		if field != nil && interfaces.DataType_IsDate(field.Type) {
+			return dateCompareExpr(expression, field, op, having.Value)
 		}
 		return sq.Expr(expression+" "+op+" ?", having.Value), nil
 	case "in", "not_in", "range", "out_range":
@@ -484,8 +493,21 @@ func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClau
 			if having.Operation == "out_range" {
 				lowerOp, upperOp = "<", ">"
 			}
-			lower := sq.Expr(expression+" "+lowerOp+" ?", values[0])
-			upper := sq.Expr(expression+" "+upperOp+" ?", values[1])
+			var lower, upper sq.Sqlizer
+			if field != nil && interfaces.DataType_IsDate(field.Type) {
+				var err error
+				lower, err = dateCompareExpr(expression, field, lowerOp, values[0])
+				if err != nil {
+					return nil, err
+				}
+				upper, err = dateCompareExpr(expression, field, upperOp, values[1])
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				lower = sq.Expr(expression+" "+lowerOp+" ?", values[0])
+				upper = sq.Expr(expression+" "+upperOp+" ?", values[1])
+			}
 			if having.Operation == "range" {
 				return sq.And{lower, upper}, nil
 			}
@@ -500,6 +522,9 @@ func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClau
 				return sq.Expr("1=0"), nil
 			}
 			return sq.Expr("1=1"), nil
+		}
+		if field != nil && interfaces.DataType_IsDate(field.Type) {
+			return dateSetExpr(expression, field, op, values)
 		}
 		return sq.Expr(expression+" "+op+" ("+sq.Placeholders(len(values))+")", values...), nil
 	default:

@@ -3,6 +3,7 @@ package postgresql
 import (
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -81,6 +82,14 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 		{name: "group count after HAVING", groups: []*interfaces.GroupByItem{{Property: "label"}}, aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "total"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 2}, statement: `SELECT "label" AS "label", COUNT("id") AS "total" FROM "public"."orders" GROUP BY "label" HAVING COUNT("id") > $1`, args: []driver.Value{2}, total: 3},
 		{name: "ungrouped aggregate is one result row", aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count"}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders"`, total: 1},
 		{name: "implicit count HAVING without grouping", having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 100}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders" HAVING COUNT(*) > $1`, args: []driver.Value{100}, total: 0},
+		{name: "timestamp max HAVING milliseconds", aggregation: &interfaces.Aggregation{Property: "created", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: json.Number("1767225600000")}, statement: `SELECT MAX("created_at") AS "__value" FROM "public"."orders" HAVING MAX("created_at") > (to_timestamp($1::double precision / 1000.0) AT TIME ZONE current_setting('TimeZone'))`, args: []driver.Value{int64(1767225600000)}, total: 1},
+		{name: "date min HAVING milliseconds", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "==", Value: float64(1767225600000)}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING MIN("day") = to_timestamp($1::double precision / 1000.0)`, args: []driver.Value{int64(1767225600000)}, total: 1},
+		{name: "zoned max HAVING list", aggregation: &interfaces.Aggregation{Property: "zoned", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: "in", Value: []any{int64(1767225600000), "2026-01-02T00:00:00Z"}}, statement: `SELECT MAX("zoned") AS "__value" FROM "public"."orders" HAVING MAX("zoned") IN (to_timestamp($1::double precision / 1000.0), $2)`, args: []driver.Value{int64(1767225600000), time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)}, total: 1},
+		{name: "date min HAVING not in", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "not_in", Value: []any{int64(1767225600000)}}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING MIN("day") NOT IN (to_timestamp($1::double precision / 1000.0))`, args: []driver.Value{int64(1767225600000)}, total: 1},
+		{name: "date min HAVING range", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: "range", Value: []any{int64(1767225600000), int64(1767312000000)}}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING (MIN("day") >= to_timestamp($1::double precision / 1000.0) AND MIN("day") <= to_timestamp($2::double precision / 1000.0))`, args: []driver.Value{int64(1767225600000), int64(1767312000000)}, total: 1},
+		{name: "date max HAVING out range", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "max"}, having: &interfaces.HavingClause{Field: "__value", Operation: "out_range", Value: []any{int64(1767225600000), int64(1767312000000)}}, statement: `SELECT MAX("day") AS "__value" FROM "public"."orders" HAVING (MAX("day") < to_timestamp($1::double precision / 1000.0) OR MAX("day") > to_timestamp($2::double precision / 1000.0))`, args: []driver.Value{int64(1767225600000), int64(1767312000000)}, total: 1},
+		{name: "timestamp min HAVING RFC3339", aggregation: &interfaces.Aggregation{Property: "created", Aggr: "min"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">=", Value: "2026-01-01T00:00:00Z"}, statement: `SELECT MIN("created_at") AS "__value" FROM "public"."orders" HAVING MIN("created_at") >= $1::timestamp`, args: []driver.Value{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, total: 1},
+		{name: "count HAVING beside date aggregate stays numeric", aggregation: &interfaces.Aggregation{Property: "day", Aggr: "min"}, having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 2}, statement: `SELECT MIN("day") AS "__value" FROM "public"."orders" HAVING COUNT(*) > $1`, args: []driver.Value{2}, total: 1},
 	} {
 		for _, needTotal := range []bool{false, true} {
 			name := tc.name + " without total"
@@ -93,7 +102,7 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 				defer func() { _ = db.Close() }()
 				db.SetMaxOpenConns(1)
 				connector := &PostgresqlConnector{db: db, connected: true}
-				resource := &interfaces.Resource{SourceIdentifier: `"public"."orders"`, SchemaDefinition: []*interfaces.Property{{Name: "label", Type: interfaces.DataType_String}, {Name: "id", Type: interfaces.DataType_Integer}}}
+				resource := &interfaces.Resource{SourceIdentifier: `"public"."orders"`, SchemaDefinition: []*interfaces.Property{{Name: "label", Type: interfaces.DataType_String}, {Name: "id", Type: interfaces.DataType_Integer}, {Name: "created", OriginalName: "created_at", Type: interfaces.DataType_Datetime, OriginalType: "timestamp without time zone"}, {Name: "day", Type: interfaces.DataType_Date, OriginalType: "date"}, {Name: "zoned", Type: interfaces.DataType_Datetime, OriginalType: "timestamptz"}}}
 				params := &interfaces.ResourceDataQueryParams{GroupBy: tc.groups, Aggregation: tc.aggregation, Having: tc.having, NeedTotal: needTotal, Paging: interfaces.PagingRequest{Offset: 10, Limit: 1}}
 				// An empty page must still return the full aggregate total when requested.
 				mock.ExpectQuery(tc.statement + " LIMIT 1 OFFSET 10").WithArgs(tc.args...).WillReturnRows(sqlmock.NewRows([]string{"value"})).RowsWillBeClosed()
@@ -262,7 +271,7 @@ func TestPostgresqlConnectorBuildHavingCondition(t *testing.T) {
 		{"empty not in", "not_in", "1=1", []any{}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			expression, err := connector.buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: tc.operation, Value: tc.value}, "COUNT(id)")
+			expression, err := connector.buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: tc.operation, Value: tc.value}, "COUNT(id)", nil)
 			require.NoError(t, err)
 			sql, args, err := expression.ToSql()
 			require.NoError(t, err)
@@ -277,7 +286,7 @@ func TestPostgresqlConnectorBuildHavingCondition(t *testing.T) {
 		{Field: "__value", Operation: "in", Value: 1},
 		{Field: "__value", Operation: "=="},
 	} {
-		_, err := connector.buildHavingCondition(having, "COUNT(id)")
+		_, err := connector.buildHavingCondition(having, "COUNT(id)", nil)
 		require.Error(t, err)
 	}
 }
