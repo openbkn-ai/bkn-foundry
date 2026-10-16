@@ -82,3 +82,7 @@ ErrorLink = ""
 Description = "删除连接器类型失败"
 Solution = "请联系管理员"
 ErrorLink = ""
+
+[VegaBackend.ConnectorType.PostgreSQL.Options]
+Name = "连接参数"
+Description = "可选；仅支持 sslmode、connect_timeout、application_name、fallback_application_name、statement_timeout、lock_timeout、idle_in_transaction_session_timeout；connect_timeout 为非负整数秒，会话超时为毫秒或带 PostgreSQL 时间单位的字符串，0 表示禁用；sslmode 默认为 disable，不支持 SSL 文件；客户端编码使用驱动默认 UTF8，不支持配置"

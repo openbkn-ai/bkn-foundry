@@ -85,6 +85,12 @@ class TraceChatOpenAI(ChatOpenAI):
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
         operation_id, parent_event_id = evidence.new_operation()
+        # Execution identity is required even when Evidence is disabled or its
+        # start event was not admitted. Only causal fact headers are conditional.
+        kwargs["extra_headers"] = {
+            **(kwargs.get("extra_headers") or {}),
+            **observability.outbound_headers(),
+        }
         if operation_id and parent_event_id:
             kwargs["extra_headers"] = {
                 **(kwargs.get("extra_headers") or {}),
@@ -100,6 +106,12 @@ class TraceChatOpenAI(ChatOpenAI):
     async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
         operation_id, parent_event_id = evidence.new_operation()
         messages = args[0] if args else kwargs.get("messages", [])
+        # Execution identity is required even when Evidence is disabled or its
+        # start event was not admitted. Only causal fact headers are conditional.
+        kwargs["extra_headers"] = {
+            **(kwargs.get("extra_headers") or {}),
+            **observability.outbound_headers(),
+        }
         if operation_id and parent_event_id:
             kwargs["extra_headers"] = {
                 **(kwargs.get("extra_headers") or {}),

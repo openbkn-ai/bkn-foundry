@@ -23,6 +23,9 @@ class Config:
         "MF_MODEL_API_PRIVATE_BASE",
         "http://mf-model-api:9898/api/private/mf-model-api/v1",
     )
+    HYDRA_ADMIN_BASE = _env("HYDRA_ADMIN_BASE", "http://bkn-safe-hydra-admin:4445")
+    BKN_SAFE_BASE = _env("BKN_SAFE_BASE", "http://bkn-safe:3000/api/safe/v1")
+
     DEFAULT_MODEL = _env("BKN_AGENT_DEFAULT_MODEL", "")
 
     # Possession proof for the deployment-managed provenance owner. Normal

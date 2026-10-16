@@ -82,3 +82,7 @@ ErrorLink = ""
 Description = "Failed to delete connector type"
 Solution = "Please contact the administrator"
 ErrorLink = ""
+
+[VegaBackend.ConnectorType.PostgreSQL.Options]
+Name = "Connection options"
+Description = "Optional; only sslmode, connect_timeout, application_name, fallback_application_name, statement_timeout, lock_timeout and idle_in_transaction_session_timeout are supported. connect_timeout is a non-negative integer in seconds; session timeouts accept milliseconds or strings with PostgreSQL time units, and 0 disables them. sslmode defaults to disable; SSL files are unsupported. The client encoding uses the driver default UTF8 and cannot be configured."

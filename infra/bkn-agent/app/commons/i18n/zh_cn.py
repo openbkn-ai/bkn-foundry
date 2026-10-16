@@ -14,6 +14,54 @@
 # stay literal.
 
 error_messages = {
+    "BknAgent.Execution.ToolScopeUnsupported": {
+        "code": "BknAgent.Execution.ToolScopeUnsupported",
+        "description": "此工具无法保证当前知识网络范围，本次执行不可用。",
+        "detail": "此工具无法保证当前知识网络范围，本次执行不可用。",
+        "solution": "请使用受当前知识网络范围约束的工具。",
+    },
+    "BknAgent.Execution.ToolScopeMismatch": {
+        "code": "BknAgent.Execution.ToolScopeMismatch",
+        "description": "工具请求了其他知识网络，调用已拒绝。",
+        "detail": "工具请求了其他知识网络，调用已拒绝。",
+        "solution": "请仅查询当前知识网络。",
+    },
+    "BknAgent.Auth.TokenRequired": {
+        "code": "BknAgent.Auth.TokenRequired",
+        "description": "需要有效的 Bearer 凭据。",
+        "detail": "需要有效的 Bearer 凭据。",
+        "solution": "请使用有效的 OAuth token 或用户签发的 AppKey。",
+    },
+    "BknAgent.Execution.Unavailable": {
+        "code": "BknAgent.Execution.Unavailable",
+        "description": "执行依赖不可用或返回无效响应。",
+        "detail": "执行依赖不可用或返回无效响应。",
+        "solution": "请检查身份认证、授权服务和 Context Loader 后重试。",
+    },
+    "BknAgent.Execution.Forbidden": {
+        "code": "BknAgent.Execution.Forbidden",
+        "description": "当前账号没有使用此 Agent 或知识网络的权限。",
+        "detail": "当前账号没有使用此 Agent 或知识网络的权限。",
+        "solution": "请申请对应资源权限。",
+    },
+    "BknAgent.Execution.Unsupported": {
+        "code": "BknAgent.Execution.Unsupported",
+        "description": "此 Agent 使用了公共执行范围尚不支持的能力。",
+        "detail": "此 Agent 使用了公共执行范围尚不支持的能力。",
+        "solution": "请使用已支持的内置 Agent 配置。",
+    },
+    "BknAgent.Execution.Conflict": {
+        "code": "BknAgent.Execution.Conflict",
+        "description": "请求与已有执行或会话范围冲突。",
+        "detail": "请求与已有执行或会话范围冲突。",
+        "solution": "请查询已有执行；更换输入或网络时创建新请求或会话。",
+    },
+    "BknAgent.Execution.Failed": {
+        "code": "BknAgent.Execution.Failed",
+        "description": "执行失败。",
+        "detail": "执行失败。",
+        "solution": "请检查执行记录，必要时使用新的请求 ID 重试。",
+    },
     "BknAgent.Auth.AccountRequired": {
         "code": "BknAgent.Auth.AccountRequired",
         "description": "缺少调用方身份",

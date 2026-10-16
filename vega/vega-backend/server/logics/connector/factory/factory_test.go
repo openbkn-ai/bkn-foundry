@@ -16,8 +16,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 	"github.com/openbkn-ai/licverify"
 )
 
@@ -502,4 +504,32 @@ func TestConnectorFactoryValidateBuildSchema(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"custom": connector}}
 		require.NoError(t, cf.ValidateBuildSchema("custom", resource))
 	})
+}
+
+func TestPostgresqlOptionsFollowRequestLanguage(t *testing.T) {
+	locale.Register()
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+	t.Cleanup(entitlement.ResetForTest)
+	cf := &connectorFactory{connectors: map[string]interfaces.Connector{}, connectorRequiredEditions: map[string]licverify.Edition{}}
+	cf.RegisterCoreLocalConnectors()
+	ct := &interfaces.ConnectorType{Type: interfaces.ConnectorTypePostgreSQL, Mode: interfaces.ConnectorModeLocal, Category: interfaces.ConnectorCategoryTable}
+	for _, test := range []struct {
+		language          rest.Language
+		name, description string
+	}{
+		{rest.SimplifiedChinese, "连接参数", "可选；仅支持"},
+		{rest.AmericanEnglish, "Connection options", "Optional; only"},
+		{rest.SimplifiedChinese, "连接参数", "可选；仅支持"},
+	} {
+		ctx := context.WithValue(context.Background(), rest.LanguageKey, test.language)
+		fields, err := cf.GetConnectorFieldConfig(ctx, ct)
+		require.NoError(t, err)
+		require.Equal(t, test.name, fields["options"].Name)
+		require.Contains(t, fields["options"].Description, test.description)
+		require.Contains(t, fields["options"].Description, "idle_in_transaction_session_timeout")
+		require.Contains(t, fields["options"].Description, "UTF8")
+		require.Equal(t, "object", fields["options"].Type)
+		require.False(t, fields["options"].Required)
+		require.False(t, fields["options"].Encrypted)
+	}
 }
