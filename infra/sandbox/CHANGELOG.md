@@ -2,6 +2,16 @@
 
 All new features and capabilities added in this branch (`feature/803264`) are documented below.
 
+## [Unreleased]
+
+### Bug Fixes
+
+- Build sandbox templates with the matching OSDK schema-fix candidate for CI
+  verification. Replace the candidate pin with its reviewed merged commit before
+  release; the main and release clients keep their own schema contracts.
+- Fail template builds if the installed OSDK does not match the source pin, is
+  shadowed by another installation, or cannot parse nullable schema lists.
+
 ## [0.4.0]
 
 ### 🚀 New Features
