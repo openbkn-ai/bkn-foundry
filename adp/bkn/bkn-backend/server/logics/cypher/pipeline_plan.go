@@ -5,6 +5,8 @@
 package cypher
 
 import (
+	"bytes"
+	"encoding/json"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"reflect"
 )
@@ -35,6 +37,15 @@ func unwindShape(value *GraphExpression) *GraphExpression {
 	}
 	if value.Aggregate == "collect" {
 		return value.Element
+	}
+	if value.Collection != nil && value.Collection.Kind == "list" {
+		return value.Collection.Projection
+	}
+	if value.Subquery != nil && value.Subquery.Kind == "list" {
+		return value.Subquery.Projection
+	}
+	if value.Operation == "SLICE" || value.Operation == "FUNCTION:tail" || value.Operation == "FUNCTION:reverse" {
+		return unwindShape(value.Arguments[0])
 	}
 	if value.Operation == "LIST" {
 		return &GraphExpression{Operation: "SHAPES", Arguments: value.Arguments}
@@ -110,6 +121,23 @@ func scopedProperty(binding *GraphExpression, key string, pos Position) (*GraphE
 		}
 		if value.Object != nil {
 			object := value.Object
+			if object.AllowMissingProperties {
+				found := false
+				ot := object.owner.objectType[object.table]
+				for _, property := range ot.DataProperties {
+					if property.Name == key && !object.owner.schema.hidden(ot, key) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					if result.MissingObjectTypes == nil {
+						result.MissingObjectTypes = map[string]bool{}
+					}
+					result.MissingObjectTypes[object.TypeID] = true
+					return nil
+				}
+			}
 			field, err := object.owner.graphColumn(PropertyRef{Variable: object.owner.plan.Tables[object.table].Variable, Property: key, Pos: pos})
 			if err != nil {
 				return err
@@ -123,7 +151,7 @@ func scopedProperty(binding *GraphExpression, key string, pos Position) (*GraphE
 				recordType(field.Type)
 			}
 		} else if value.Relation != nil {
-			return planErrorf(pos, "relationship properties are not supported")
+			result.EmptyRelationProperty = true
 		}
 		return nil
 	}
@@ -155,12 +183,21 @@ func copyScope(scope map[string]*GraphExpression) map[string]*GraphExpression {
 }
 
 func compilePipeline(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
+	return compilePipelineScope(query, schema, options, map[string]*GraphExpression{})
+}
+
+func compilePipelineScope(query *Query, schema *Schema, options CompileOptions, incoming map[string]*GraphExpression) (*Plan, error) {
 	if err := validateObjectProperties(options); err != nil {
 		return nil, err
 	}
 	root := &Plan{NetworkID: schema.KNID, Branch: schema.Branch}
-	scope := map[string]*GraphExpression{}
+	scope := copyScope(incoming)
 	knownProperties := map[string]bool{}
+	for name, value := range incoming {
+		if value.Type.Kind == "object" {
+			knownProperties[name] = true
+		}
+	}
 	for _, stage := range query.Stages {
 		var plan *Plan
 		var shared []string
@@ -179,7 +216,7 @@ func compilePipeline(query *Query, schema *Schema, options CompileOptions) (*Pla
 			}
 			var value *GraphExpression
 			value, err = p.graphExpression(unwind.Expression, nil, options)
-			if err == nil && value.Element != nil {
+			if err == nil && containsGraphAggregate(value) {
 				return nil, planErrorf(unwind.Pos, "aggregates are not allowed in UNWIND")
 			}
 			if err == nil {
@@ -212,8 +249,19 @@ func compilePipeline(query *Query, schema *Schema, options CompileOptions) (*Pla
 }
 
 func compileMatchStage(query *Query, schema *Schema, incoming map[string]*GraphExpression, options CompileOptions) (*Plan, map[string]*GraphExpression, []string, error) {
+	resolved := *query
+	resolved.Pattern.Nodes = append([]NodeRef(nil), query.Pattern.Nodes...)
+	for i, node := range resolved.Pattern.Nodes {
+		if previous, ok := incoming[node.Variable]; ok && node.Label == "" && previous.Type.Kind == "object" {
+			resolved.Pattern.Nodes[i].Label = previous.Type.ObjectTypeID
+		}
+	}
+	query = &resolved
+	if options.Correlated || patternNeedsRuntime(query.Pattern) {
+		return compileGraphPattern(query, schema, incoming, options)
+	}
 	p := newScopePlanner(schema, copyScope(incoming), options)
-	pattern := Pattern{Nodes: append([]NodeRef(nil), query.Pattern.Nodes...), Edges: query.Pattern.Edges}
+	pattern := Pattern{Nodes: append([]NodeRef(nil), query.Pattern.Nodes...), Edges: query.Pattern.Edges, Paths: query.Pattern.Paths}
 	shared := []string{}
 	for i, node := range pattern.Nodes {
 		if previous, ok := incoming[node.Variable]; ok {
@@ -274,13 +322,17 @@ func compileMatchStage(query *Query, schema *Schema, incoming map[string]*GraphE
 	for _, node := range pattern.Nodes {
 		localOptions.ObjectProperties[node.Variable] = options.ObjectProperties[node.Variable]
 	}
-	for _, node := range pattern.Nodes {
-		value, err := p.graphExpression(VariableExpression{Name: node.Variable, Pos: node.Pos}, relations, localOptions)
+	if err := p.bindPaths(pattern, relations, localOptions); err != nil {
+		return nil, nil, nil, err
+	}
+	for index, node := range pattern.Nodes {
+		name := p.plan.Tables[index].Variable
+		value, err := p.graphExpression(VariableExpression{Name: name, Pos: node.Pos}, relations, localOptions)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		result.Projections = append(result.Projections, GraphProjection{Alias: node.Variable, Value: value})
-		if !node.Anonymous {
+		result.Projections = append(result.Projections, GraphProjection{Alias: name, Value: value})
+		if !node.Anonymous && node.Variable != "" {
 			if _, exists := incoming[node.Variable]; !exists {
 				scope[node.Variable] = scopeBinding(node.Variable, value)
 			}
@@ -296,23 +348,34 @@ func compileMatchStage(query *Query, schema *Schema, incoming map[string]*GraphE
 			scope[name] = scopeBinding(name, value)
 		}
 	}
+	for _, path := range pattern.Paths {
+		value := p.bindings[path.Variable]
+		result.Projections = append(result.Projections, GraphProjection{Alias: path.Variable, Value: value})
+		scope[path.Variable] = scopeBinding(path.Variable, value)
+	}
 	if query.ResidualWhere != nil {
 		value, err := p.graphExpression(query.ResidualWhere, relations, localOptions)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		if value.Element != nil {
+		if containsGraphAggregate(value) {
 			return nil, nil, nil, planErrorf(Position{}, "aggregates are not allowed in WHERE")
 		}
 		result.Where = value
 	}
 	p.plan.Result = result
+	prepareGraphAggregation(result)
 	limit := int64(graphMatchBudget + 1)
 	p.plan.Limit = &limit
 	return p.plan, scope, shared, nil
 }
 
 func compileProjectionStage(query *Query, schema *Schema, incoming map[string]*GraphExpression, options CompileOptions, final bool) (*Plan, map[string]*GraphExpression, error) {
+	bound, err := bindQueryPagination(query, options.Parameters)
+	if err != nil {
+		return nil, nil, err
+	}
+	query = bound
 	p := newScopePlanner(schema, incoming, options)
 	result := &GraphResultPlan{Distinct: query.Distinct, Limit: graphMatchBudget, LimitExplicit: query.Limit != nil}
 	if final {
@@ -344,7 +407,7 @@ func compileProjectionStage(query *Query, schema *Schema, incoming map[string]*G
 		if err != nil {
 			return nil, nil, err
 		}
-		if value.Element != nil {
+		if containsGraphAggregate(value) {
 			result.HasAggregates = true
 		}
 		result.Projections = append(result.Projections, GraphProjection{Alias: projection.Alias, Value: value})
@@ -359,7 +422,7 @@ func compileProjectionStage(query *Query, schema *Schema, incoming map[string]*G
 	}
 	p.bindings = orderScope
 	for _, order := range query.OrderBy {
-		var expression ValueExpression = order.Value
+		expression := order.Value
 		if order.Alias != "" {
 			expression = VariableExpression{Name: order.Alias, Pos: order.Pos}
 		}
@@ -374,7 +437,7 @@ func compileProjectionStage(query *Query, schema *Schema, incoming map[string]*G
 		if err != nil {
 			return nil, nil, err
 		}
-		if value.Element != nil {
+		if containsGraphAggregate(value) {
 			return nil, nil, planErrorf(order.Pos, "ORDER BY an aggregate must use its projected alias")
 		}
 		result.OrderBy = append(result.OrderBy, GraphOrder{Post: true, Value: value, Descending: order.Descending})
@@ -385,12 +448,13 @@ func compileProjectionStage(query *Query, schema *Schema, incoming map[string]*G
 		if err != nil {
 			return nil, nil, err
 		}
-		if value.Element != nil {
+		if containsGraphAggregate(value) {
 			return nil, nil, planErrorf(Position{}, "aggregates are not allowed directly in WHERE")
 		}
 		result.PostWhere = value
 	}
 	p.plan.Result = result
+	prepareGraphAggregation(result)
 	return p.plan, scope, nil
 }
 
@@ -409,13 +473,17 @@ func expressionShape(expression ValueExpression) any {
 	case ParameterExpression:
 		return []any{"parameter", value.Ref.Name}
 	case AggregateExpression:
-		return []any{"aggregate", value.Function, value.Distinct, expressionShape(value.Value)}
+		return []any{"aggregate", value.Function, value.Distinct, expressionShape(value.Value), expressionShape(value.Percentile)}
 	case OperationExpression:
 		items := []any{"operation", value.Operator}
 		for _, argument := range value.Arguments {
 			items = append(items, expressionShape(argument))
 		}
 		return items
+	case PatternExpression:
+		return []any{"pattern", positionlessPatternShape(value)}
+	case CollectionExpression:
+		return []any{"collection", value.Kind, value.Variable, expressionShape(value.Source), expressionShape(value.Predicate), expressionShape(value.Projection)}
 	case MapExpression:
 		items := []any{"map"}
 		for _, field := range value.Fields {
@@ -445,4 +513,35 @@ func rewriteProjectedOrder(expression ValueExpression, projections []Projection,
 		return operation
 	}
 	return expression
+}
+
+// Pattern expressions contain complete nested query trees. Compare their
+// syntax without positions so ORDER BY can reuse an identical projection.
+func positionlessPatternShape(value PatternExpression) any {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+	var result any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if decoder.Decode(&result) != nil {
+		return value
+	}
+	var strip func(any)
+	strip = func(item any) {
+		switch item := item.(type) {
+		case map[string]any:
+			delete(item, "Pos")
+			for _, child := range item {
+				strip(child)
+			}
+		case []any:
+			for _, child := range item {
+				strip(child)
+			}
+		}
+	}
+	strip(result)
+	return result
 }

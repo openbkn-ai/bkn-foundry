@@ -231,20 +231,9 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order) DETACH DELETE a RETURN a.id", "read-only"},
 		{"MATCH (a:Order) RETURN a.id AS id UNION MATCH (b:Order) RETURN b.id AS id UNION ALL RETURN 1 AS id", "mixed UNION"},
 		{"CALL db.labels() YIELD label RETURN label", "procedure calls"},
-		{"MATCH p = (a:Order) RETURN a.id", "path variables"},
-		{"MATCH (a) RETURN a.id", "a node that names nothing"},
 		{"MATCH (a:Order:Invoice) RETURN a.id", "multiple labels"},
 		{"MATCH (a:Order)<-[:R]->(b:Customer) RETURN a.id", "pointing both ways"},
-		{"MATCH (a:Order)-->(b:Customer) RETURN a.id", "relationships without a type"},
-		{"MATCH (a:Order)-[:R*1..3]->(b:Customer) RETURN a.id", "variable-length"},
-		{"MATCH (a:Order)-[:R|:S]->(b:Customer) RETURN a.id", "alternative relationship types"},
 		{"MATCH (a:Order)-[:R {x: 1}]->(b:Customer) RETURN a.id", "inline property maps"},
-		{"MATCH (a:Order) RETURN [x IN [1, 2] | x]", "list comprehensions"},
-		{"MATCH (a:Order) RETURN [(a)-[:R]->(b:Customer) | b.id]", "pattern comprehensions"},
-		{"MATCH (a:Order) WHERE all(x IN [1] WHERE x = 1) RETURN a.id", "quantified expressions"},
-		{"MATCH (a:Order) WHERE (a)-[:R]->(:Customer) RETURN a.id", "pattern predicates"},
-		{"MATCH (a:Order) WHERE EXISTS { (a)-[:R]->(:Customer) } RETURN a.id", "EXISTS subqueries"},
-		{"MATCH (a:Order) RETURN a.id LIMIT 1 + 1", "arithmetic"},
 		{"MATCH (a:Order) RETURN a.id LIMIT 'ten'", "non-integer LIMIT"},
 		{"MATCH (a:Order) RETURN a.id SKIP -1", "negative SKIP"},
 	} {
@@ -340,13 +329,13 @@ func TestDecodeStringLiteralRefusesMalformedEscapes(t *testing.T) {
 // A rejection has to say where, because a long query has many places the same
 // construct could appear.
 func TestAnalyzeRejectionCarriesPosition(t *testing.T) {
-	_, err := analyze(t, "MATCH (a:Order)\nWHERE EXISTS { (a)-[:R]->(:Customer) }\nRETURN a.id")
+	_, err := analyze(t, "MATCH (a:Order)\nWHERE a.id IN [1]\nRETURN a.id LIMIT 'ten'")
 	unsupported, ok := err.(*Unsupported)
 	if !ok {
 		t.Fatalf("error = %T (%v), want *Unsupported", err, err)
 	}
-	if unsupported.Pos.Line != 2 {
-		t.Fatalf("line = %d, want 2", unsupported.Pos.Line)
+	if unsupported.Pos.Line != 3 {
+		t.Fatalf("line = %d, want 3", unsupported.Pos.Line)
 	}
 }
 

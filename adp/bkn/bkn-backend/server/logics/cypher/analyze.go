@@ -81,6 +81,10 @@ func analyzeQuery(tree parsing.IOC_CypherContext, graph bool) (*Query, error) {
 	if regular == nil {
 		return nil, unsupported(statement.OC_Query(), "procedure calls")
 	}
+	return analyzeRegularQuery(regular, graph)
+}
+
+func analyzeRegularQuery(regular parsing.IOC_RegularQueryContext, graph bool) (*Query, error) {
 	if len(regular.AllOC_Union()) > 0 {
 		unions := regular.AllOC_Union()
 		if len(unions) >= 32 {
@@ -152,6 +156,7 @@ func analyzeSingleQuery(single parsing.IOC_SingleQueryContext, graph bool) (*Que
 	query := &Query{ValueEvaluation: graph || len(reading) == 0}
 	builder := newPatternBuilder()
 	builder.graph = true
+	builder.allowUnlabeled = true
 	var inline []Predicate
 	var lastMatch parsing.IOC_MatchContext
 
@@ -222,6 +227,12 @@ func analyzeSingleQuery(single parsing.IOC_SingleQueryContext, graph bool) (*Que
 		lastMatch = match
 	}
 	query.Pattern = builder.pattern
+	if patternNeedsRuntime(query.Pattern) {
+		query.ValueEvaluation = true
+	}
+	if len(query.Pattern.Paths) > 0 {
+		query.ValueEvaluation = true
+	}
 	for _, edge := range query.Pattern.Edges {
 		if edge.Variable != "" {
 			query.ValueEvaluation = true
@@ -359,15 +370,23 @@ func newPatternBuilder() *patternBuilder {
 func (b *patternBuilder) addPattern(ctx parsing.IOC_PatternContext) error {
 	defer func() { b.clause++ }()
 	for _, part := range ctx.AllOC_PatternPart() {
-		if part.OC_Variable() != nil {
+		if part.OC_Variable() != nil && !b.graph {
 			return unsupported(part, "path variables")
+		}
+		name := ""
+		if variable := part.OC_Variable(); variable != nil {
+			var err error
+			name, err = namedIdentifier(variable, "path variable")
+			if err != nil {
+				return err
+			}
 		}
 		element := part.OC_AnonymousPatternPart().OC_PatternElement()
 		// A parenthesized pattern element wraps the real one; unwrap to the node.
 		for element.OC_NodePattern() == nil {
 			element = element.OC_PatternElement()
 		}
-		if err := b.addPath(element); err != nil {
+		if err := b.addPath(element, name); err != nil {
 			return err
 		}
 	}
@@ -465,13 +484,18 @@ func (b *patternBuilder) refuseConditionsThatFilterNothing(match parsing.IOC_Mat
 	return nil
 }
 
-func (b *patternBuilder) addPath(element parsing.IOC_PatternElementContext) error {
-	left, err := b.addNode(element.OC_NodePattern())
+func (b *patternBuilder) addPath(element parsing.IOC_PatternElementContext, name string) error {
+	return b.addPatternPath(element.OC_NodePattern(), element.AllOC_PatternElementChain(), name, positionOf(element))
+}
+
+func (b *patternBuilder) addPatternPath(first parsing.IOC_NodePatternContext, chains []parsing.IOC_PatternElementChainContext, name string, pos Position) error {
+	left, err := b.addNode(first)
 	if err != nil {
 		return err
 	}
+	path := PathRef{Variable: name, Nodes: []int{left}, Pos: pos}
 
-	for _, chain := range element.AllOC_PatternElementChain() {
+	for _, chain := range chains {
 		edge, err := analyzeRelationshipMode(chain.OC_RelationshipPattern(), b.graph)
 		if err != nil {
 			return err
@@ -490,8 +514,13 @@ func (b *patternBuilder) addPath(element parsing.IOC_PatternElementContext) erro
 		}
 		edge.Left, edge.Right = left, right
 		edge.Clause = b.clause
+		path.Edges = append(path.Edges, len(b.pattern.Edges))
+		path.Nodes = append(path.Nodes, right)
 		b.pattern.Edges = append(b.pattern.Edges, *edge)
 		left = right
+	}
+	if name != "" {
+		b.pattern.Paths = append(b.pattern.Paths, path)
 	}
 	return nil
 }
@@ -665,6 +694,9 @@ func analyzeRelationshipMode(ctx parsing.IOC_RelationshipPatternContext, graph b
 
 	detail := ctx.OC_RelationshipDetail()
 	if detail == nil {
+		if graph {
+			return edge, nil
+		}
 		return nil, unsupportedf(ctx, "relationships without a type",
 			"every relationship must name one relation type, as in -[:RELATION]->")
 	}
@@ -680,7 +712,12 @@ func analyzeRelationshipMode(ctx parsing.IOC_RelationshipPatternContext, graph b
 		edge.Variable = name
 	}
 	if detail.OC_RangeLiteral() != nil {
-		return nil, unsupported(detail, "variable-length relationships")
+		if !graph {
+			return nil, unsupported(detail, "variable-length relationships")
+		}
+		if err := readRelationshipRange(edge, detail.OC_RangeLiteral()); err != nil {
+			return nil, err
+		}
 	}
 	if detail.OC_Properties() != nil {
 		return nil, unsupportedf(detail, "inline property maps", "write the condition in WHERE instead")
@@ -688,11 +725,24 @@ func analyzeRelationshipMode(ctx parsing.IOC_RelationshipPatternContext, graph b
 
 	types := detail.OC_RelationshipTypes()
 	if types == nil {
+		if graph {
+			return edge, nil
+		}
 		return nil, unsupportedf(detail, "relationships without a type",
 			"every relationship must name one relation type, as in -[:RELATION]->")
 	}
 	names := types.AllOC_RelTypeName()
 	if len(names) != 1 {
+		if graph {
+			for _, name := range names {
+				typ, err := namedIdentifier(name, "relationship type")
+				if err != nil {
+					return nil, err
+				}
+				edge.Types = append(edge.Types, typ)
+			}
+			return edge, nil
+		}
 		return nil, unsupportedf(detail, "alternative relationship types",
 			"a relationship maps to exactly one relation type, got %d", len(names))
 	}
@@ -760,18 +810,18 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) 
 		}
 	}
 	if skip := ctx.OC_Skip(); skip != nil {
-		value, err := analyzeRowCount(skip.OC_Expression(), "SKIP")
+		value, expression, err := analyzePagination(skip.OC_Expression(), "SKIP")
 		if err != nil {
 			return err
 		}
-		query.Skip = &value
+		query.Skip, query.SkipExpression = value, expression
 	}
 	if limit := ctx.OC_Limit(); limit != nil {
-		value, err := analyzeRowCount(limit.OC_Expression(), "LIMIT")
+		value, expression, err := analyzePagination(limit.OC_Expression(), "LIMIT")
 		if err != nil {
 			return err
 		}
-		query.Limit = &value
+		query.Limit, query.LimitExpression = value, expression
 	}
 	return nil
 }

@@ -37,28 +37,31 @@ var simpleJSONPathField = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // Cypher query has been parsed, authorized and bound. It contains no physical
 // resource or column names.
 type SemanticQueryDescriptor struct {
-	Stages            []SemanticQueryStage      `json:"stages,omitempty"`
-	PostPredicate     *SemanticGraphExpression  `json:"post_predicate,omitempty"`
-	Unwinds           []SemanticQueryUnwind     `json:"unwinds,omitempty"`
-	Union             *SemanticQueryUnion       `json:"union,omitempty"`
-	ResidualPredicate *SemanticGraphExpression  `json:"residual_predicate,omitempty"`
-	GraphMatchBudget  int                       `json:"graph_match_budget,omitempty"`
-	Version           string                    `json:"version"`
-	ProducerProfile   string                    `json:"producer_profile"`
-	NetworkID         string                    `json:"network_id"`
-	Branch            string                    `json:"branch"`
-	QueryHash         string                    `json:"query_hash"`
-	Objects           []SemanticQueryObject     `json:"objects"`
-	Relations         []SemanticQueryRelation   `json:"relations,omitempty"`
-	Predicates        []SemanticQueryPredicate  `json:"predicates,omitempty"`
-	Projections       []SemanticQueryProjection `json:"projections"`
-	Grouping          []string                  `json:"grouping,omitempty"`
-	Ordering          []SemanticQueryOrdering   `json:"ordering,omitempty"`
-	Skip              *int64                    `json:"skip,omitempty"`
-	Limit             *int64                    `json:"limit,omitempty"`
-	EffectiveLimit    int64                     `json:"effective_limit"`
-	LimitSource       string                    `json:"limit_source"`
-	ResultPointer     string                    `json:"result_pointer"`
+	Subqueries        []*SemanticQueryDescriptor `json:"subqueries,omitempty"`
+	Observations      []*SemanticQueryDescriptor `json:"observations,omitempty"`
+	Pattern           *SemanticPattern           `json:"pattern,omitempty"`
+	Stages            []SemanticQueryStage       `json:"stages,omitempty"`
+	PostPredicate     *SemanticGraphExpression   `json:"post_predicate,omitempty"`
+	Unwinds           []SemanticQueryUnwind      `json:"unwinds,omitempty"`
+	Union             *SemanticQueryUnion        `json:"union,omitempty"`
+	ResidualPredicate *SemanticGraphExpression   `json:"residual_predicate,omitempty"`
+	GraphMatchBudget  int                        `json:"graph_match_budget,omitempty"`
+	Version           string                     `json:"version"`
+	ProducerProfile   string                     `json:"producer_profile"`
+	NetworkID         string                     `json:"network_id"`
+	Branch            string                     `json:"branch"`
+	QueryHash         string                     `json:"query_hash"`
+	Objects           []SemanticQueryObject      `json:"objects"`
+	Relations         []SemanticQueryRelation    `json:"relations,omitempty"`
+	Predicates        []SemanticQueryPredicate   `json:"predicates,omitempty"`
+	Projections       []SemanticQueryProjection  `json:"projections"`
+	Grouping          []string                   `json:"grouping,omitempty"`
+	Ordering          []SemanticQueryOrdering    `json:"ordering,omitempty"`
+	Skip              *int64                     `json:"skip,omitempty"`
+	Limit             *int64                     `json:"limit,omitempty"`
+	EffectiveLimit    int64                      `json:"effective_limit"`
+	LimitSource       string                     `json:"limit_source"`
+	ResultPointer     string                     `json:"result_pointer"`
 }
 
 type SemanticQueryStage struct {
@@ -148,6 +151,23 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 			return nil, err
 		}
 		descriptor.Stages = append(descriptor.Stages, SemanticQueryStage{Kind: stage.Kind, Optional: stage.Optional, Descriptor: child})
+	}
+	for _, subquery := range plan.Subqueries {
+		child, err := BuildSemanticQueryDescriptor(subquery, query)
+		if err != nil {
+			return nil, err
+		}
+		descriptor.Subqueries = append(descriptor.Subqueries, child)
+	}
+	if plan.Pattern != nil {
+		descriptor.Pattern = describePattern(plan.Pattern)
+		for _, observation := range plan.Pattern.Observations {
+			child, err := BuildSemanticQueryDescriptor(observation, query)
+			if err != nil {
+				return nil, err
+			}
+			descriptor.Observations = append(descriptor.Observations, child)
+		}
 	}
 	if len(plan.Union) > 0 {
 		descriptor.Union = &SemanticQueryUnion{All: plan.UnionAll}

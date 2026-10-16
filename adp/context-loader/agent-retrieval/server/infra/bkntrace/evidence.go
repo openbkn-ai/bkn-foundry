@@ -823,6 +823,16 @@ func semanticDescriptorRefs(descriptor map[string]any) ([]map[string]any, []map[
 			}
 		}
 	}
+	children := append(objectArray(descriptor["observations"]), objectArray(descriptor["subqueries"])...)
+	for _, child := range children {
+		childResources, childFields := semanticDescriptorRefs(child)
+		for _, ref := range childResources {
+			appendRef(&resources, stringValue(ref["ref_id"]), stringValue(ref["ref_type"]))
+		}
+		for _, ref := range childFields {
+			appendRef(&fields, stringValue(ref["ref_id"]), stringValue(ref["ref_type"]))
+		}
+	}
 	for _, stage := range objectArray(descriptor["stages"]) {
 		if child, ok := stage["descriptor"].(map[string]any); ok {
 			childResources, childFields := semanticDescriptorRefs(child)

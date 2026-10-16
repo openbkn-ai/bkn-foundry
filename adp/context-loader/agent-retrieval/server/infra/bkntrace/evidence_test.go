@@ -1167,3 +1167,17 @@ func TestBuildRunCypherEventsFindsStagedMatchAndWithPredicateRefs(t *testing.T) 
 		}
 	}
 }
+
+func TestBuildRunCypherEventsFindsNestedGraphObservations(t *testing.T) {
+	descriptor := json.RawMessage(`{"version":"semantic-query-descriptor/v1","producer_profile":"openbkn.bkn-backend.run_cypher@0.1.5","observations":[{"objects":[{"object_ref":"object:kn_demo:person"}],"projections":[{"expression":{"operation":"path","fields":{"nodes":{"arguments":[{"property_refs":["property:kn_demo:person:id"]}]}}}}]}],"subqueries":[{"observations":[{"objects":[{"object_ref":"object:kn_demo:place"}],"projections":[{"expression":{"operation":"collection:list","fields":{"projection":{"property_refs":["property:kn_demo:place:name"]}}}}]}]}]}`)
+	events := BuildRunCypherEvents(testTraceContext(), "kn_demo", "MATCH ... WHERE EXISTS ...", 1, descriptor)
+	raw, err := json.Marshal(events[0]["payload"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"object:kn_demo:person", "object:kn_demo:place", "property:kn_demo:person:id", "property:kn_demo:place:name"} {
+		if !strings.Contains(string(raw), `"ref_id":"`+ref+`"`) {
+			t.Fatalf("nested provenance lost %s", ref)
+		}
+	}
+}

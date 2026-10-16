@@ -44,7 +44,7 @@ type recordingSpan struct {
 
 func (s recordingSpan) SetAttributes(attributes ...attribute.KeyValue) {
 	for _, kv := range attributes {
-		s.recorder.attrs[string(kv.Key)] = kv.Value.Emit()
+		s.recorder.attrs[string(kv.Key)] = kv.Value.String()
 	}
 }
 

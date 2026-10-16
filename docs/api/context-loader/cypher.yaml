@@ -43,65 +43,30 @@ paths:
       summary: 对知识网络执行只读 Cypher
       operationId: runCypher
       description: |
-        编译并执行一条只读 Cypher 语句。查询会自动选择 SQL 下推或有界类型化求值，新增表达式能力见 result_format 字段，无需显式解锁；以下描述原有 SQL 子集：
+        按可见 BKN 本体执行只读查询，自动选择 SQL 下推或有界图求值。
 
-        - **MATCH**：一个或多个 MATCH 子句；一个 MATCH 里可以写逗号分隔的多条路径。
-          同名变量指同一个节点；不共享变量的两部分是笛卡尔积。
-        - **节点**：变量首次出现时必须带标签（对象类 id 或名称），可带内联属性
-          `{prop: value}`。
-        - **关系**：`-[:R]->`、`<-[:R]-`、无向 `-[:R]-`，每条必须指名一个关系类；
-          一条查询的模式最多 8 条关系、9 个节点（不与其他节点相连的节点也各算一张表）。
-          关系变量（`-[r:R]->`）不支持。
-        - **OPTIONAL MATCH**：写一条关系，把一个新节点挂到前面子句已经找到的节点上。
-          匹配不到时该行保留，新节点的列为 NULL，所以 `count(可选侧的属性)` 得 0 而不是整行
-          消失（`count(*)` 仍然算 1 行）——按邻居数排序又不丢零度邻居，用的就是这一点。
-          它自带的 `WHERE` 与内联属性决定这条关系匹配到什么，不决定哪些行留下。
-          限制：首个子句必须是 `MATCH`；一条 `OPTIONAL MATCH` 只能写一条关系、只能引入一个
-          新节点（两端都已匹配或两端都是新节点都会被拒）；它引入的节点不能被后面的 `MATCH`
-          或查询的 `WHERE` 再要求，否则留下来的行会被重新删掉，这类查询改用有界阶段执行。
-        - **WHERE**：`=` `<>` `<` `>` `<=` `>=`、`IN [...]`、`IS NULL` / `IS NOT NULL`，
-          `STARTS WITH` / `ENDS WITH` / `CONTAINS`，用 `AND` / `OR` / `NOT` 组合，可加括号。
-          值可写 `$name` 参数；`IN $list` 可把整个列表作为一个参数传入。字符串谓词左侧须为
-          `变量.属性`，右侧须为字符串字面量或取值为字符串的参数；按 openCypher 语义做字面
-          子串匹配（`%`、`_` 等不是通配符），属性为 null 时不匹配；大小写是否敏感取决于
-          数据源列的排序规则（collation）。只能用于字符串属性，用在数值、日期等属性上返回 400。
-        - **RETURN**：属性、`AS` 别名、`DISTINCT`，以及 `count` / `sum` / `avg` /
-          `min` / `max`（含 `count(*)` 与 `DISTINCT` 形式）。有聚合时按 RETURN 中其余
-          列自动分组——这是 Cypher 的隐式 GROUP BY，无需也不能自己写 GROUP BY。
-        - **算术**：`+` `-` `*` `/` `%` 与取负，可加括号，可写在 RETURN（含聚合的参数）、
-          `WHERE` 比较的两侧和 `ORDER BY` 里，如 `count(*) * 2`、`sum(o.price * o.qty)`、
-          `count(o.x) * 1.0 / count(*)`、`WHERE o.amount * o.rate > $floor`、
-          `ORDER BY count(g.id) * 0.5 + p.rank * 0.3 DESC`。操作数是数值属性、聚合、数字或
-          取值为数字的参数；字符串、布尔、null 与非数值属性返回 400。与 openCypher 语义不一致的
-          写法一律拒绝而不是照做：两个整数相除（Cypher 丢余数，各 SQL 库不一致），要小数结果把
-          一边乘 `1.0`；`%` 只用于整数；除以字面量 0；`^` 乘方。聚合只能出现在 RETURN 与
-          ORDER BY 里，不能写在 `WHERE` 中。一个列或排序键既有聚合又在聚合外直接读属性（如
-          `o.x - avg(o.x)`）时，该属性须同时作为单独的列返回，结果按它分组；DISTINCT 结果要按
-          算出来的值排序，请在 RETURN 里给它起别名再按别名排序。没有声明类型的属性交给数据源决定。
-          `IN` 列表、内联属性、`SKIP` / `LIMIT` 里仍不能写算术。
-        - **ORDER BY / SKIP / LIMIT**：ORDER BY 可用属性、返回列名或聚合。结果被聚合
-          或 DISTINCT 折叠后，只能按返回的值排序。
+        支持 MATCH/OPTIONAL MATCH/WITH/UNWIND/RETURN、UNION/UNION ALL、作用域和别名、
+        列表/map/CASE、列表与模式推导式、all/any/none/single、相关及嵌套 EXISTS、
+        一般聚合表达式、统计聚合和已注册的标量/时间函数。分页可使用整数参数与常量表达式。
+        节点标签和关系类型可省略；关系可写多个类型或命名无向模式。
+        支持固定/变长路径值及 nodes/relationships/length；显式范围至多八跳，
+        无界路径若还可能继续超过八跳则整条报超限，不返回截断路径集合。
 
-        **新增值求值**：支持整个节点/命名定向关系、算术、CASE、XOR、列表/map、
-        常用函数和顶层 collect 等聚合；自动根据查询选用，不要求 result_format 解锁。
-        UNION / UNION ALL 支持独立作用域、去重/保留重复，所有分支先编译并授权；
-        同一查询不能混用两种 UNION。WITH、MATCH、OPTIONAL MATCH、UNWIND 按顺序执行；
-        支持变量别名、聚合后过滤、阶段分页及 WITH */RETURN *。UNWIND 后可继续 MATCH，
-        节点别名及 collect/UNWIND 保留属性来源并提前授权；可选匹配未命中只将新变量设为 null。
-        分阶段匹配要求完整且可读的节点主键；每个 MATCH 当前先有界扫描再关联，
-        最终结果很小也可能因候选扫描过大而失败。
+        节点身份是对象类和完整类型主键；一个节点只有一个对象类。
+        direct 关系是端点连接事实，没有独立关系实例或自有属性。
+        properties(r) 为空，r.property 为 null。多独立标签、同类型同端点多条独立边、
+        关系自有属性的原生属性图测试不适用于此契约；写操作和过程调用仍拒绝。
+        同一 MATCH 不重复使用关系；不同 MATCH 的唯一性独立处理。
 
-        **仍不支持**：变长路径、推导式、存在子查询、关系属性和任意过程调用。
-        有界值求值路径的聚合须位于投影顶层；原 SQL 路径仍支持上述聚合算术。
-        任意函数/CASE 派生图值的属性来源跟踪仍有限。
-        所有写操作（CREATE / MERGE / DELETE / SET / REMOVE）继续拒绝。
+        所有阶段、分支及子查询先编译授权，再读数据；内部依赖不扩大显式公开快照。
+        CASE/coalesce/head/last、列表和路径传递保留图属性来源。
+        复杂模式先有界扫描授权的对象类和 direct 关系观察，再与输入关联，
+        因此小结果也可能超扫描预算。全请求共享工作行、载荷和超时预算，
+        任何不完整或超限均整体失败。完整限制见 result_format。
 
-        **行数**：不写 `LIMIT` 默认返回 1000 行；`LIMIT` 不得超过 10000。
-
-        **关系唯一性**：按 openCypher 语义，同一条路径里共用同一关系类的多跳互不相同，
-        编译器会自动补上主键不等的条件，调用方不必自己写。该规则按子句划分，因此
-        `OPTIONAL MATCH` 的那一跳不参与——它补出的条件会落在 `WHERE` 里，正好删掉外连接
-        保住的行。
+        不写 LIMIT 默认返回 1000 行，LIMIT 不得超过 10000；具体工作预算可更早限制求值。
+        SQL 下推字符串匹配遵循数据源排序规则，服务端字符串求值区分大小写。
+        本实现不宣称完整只读 TCK 兼容，时区使用宿主 IANA tzdb。
       parameters:
         - $ref: '#/components/parameters/ResponseFormat'
       requestBody:
@@ -191,42 +156,37 @@ components:
           type: string
           enum: [graph_v1]
           description: |-
-            Optional explicit value-result selection; language features are also inferred
-            from the query without this field. Existing scalar SQL queries retain their
-            execution path. New value evaluation supports arithmetic, CASE, nullable
-            booleans, property comparisons, list/map values and access, registered scalar
-            functions and top-level count/sum/avg/min/max/collect, including DISTINCT and
-            mixed aggregates. RETURN without MATCH is supported. DISTINCT, ORDER BY,
-            SKIP and LIMIT follow grouping/aggregation. Aggregates within scalar expressions
-            remain unsupported. ORDER BY expressions may refer to projected aliases.
-            Paths, comprehensions, existential subqueries,
-            relation properties and procedures are not implemented yet. This is not a full
-            openCypher compatibility claim.
-            UNION and UNION ALL support up to 32 independently scoped branches with identical
-            column names; mixing the two operators is rejected. Every branch is compiled and
-            authorized before any branch reads data. Branch ORDER BY/SKIP/LIMIT is local;
-            the default 1000-row cap applies once after the union. UNWIND supports up to 32
-            expansions, including parameter lists, empty/null inputs and scalar inputs.
-            WITH, MATCH, OPTIONAL MATCH and UNWIND run in clause order, with at most 64 stages.
-            WITH replaces the variable scope and supports aggregation, DISTINCT, ordering,
-            SKIP/LIMIT and a following WHERE. RETURN * and WITH * expand the visible scope.
-            Node aliases and collect-to-UNWIND preserve property origins and authorization;
-            reading an attribute does not implicitly add it to public snapshot properties.
-            OPTIONAL MATCH null-extends only newly introduced variables after its predicate.
-            Staged MATCH requires full, complete node primary keys, even for scalar output.
-            Each MATCH currently scans a bounded authorized observation before correlation;
-            a selective final result may still exceed the candidate budget.
-            Graph origins through arbitrary scalar functions/CASE remain limited.
-            object_properties continues to name MATCH node variables, not WITH aliases.
-            UNION shares a 9999-row work budget (sum of max(candidate rows, expanded rows)
-            per simple branch; staged branches account cumulative intermediate work), an
-            8 MiB assembly budget and the request timeout. Staged work counts the sum of
-            max(stage source/input rows, stage output rows), with a separate cap of 79992
-            correlation comparisons. Overflows or an
-            incomplete branch reject the entire query. Separate reads do not guarantee a
-            shared datasource snapshot.
-            A value evaluation allows 9999 candidate rows plus one probe, an 8 MiB assembly
-            budget and 30-second timeout. Exceeding a budget rejects the whole evaluation.
+            Optional explicit graph_v1 selection; language features are inferred from the query.
+            Existing scalar SQL queries retain their execution path. Bounded evaluation supports
+            CASE/nullable booleans, arithmetic, lists/maps, list comprehensions, all/any/none/single,
+            registered scalar and temporal functions, and aggregates inside scalar/map/list
+            expressions (count/sum/avg/min/max/collect/stdev/stdevp/percentileCont/percentileDisc).
+            Temporal values use ISO text and logical value_types; IANA zone rules use host tzdb.
+            WITH, MATCH, OPTIONAL MATCH and UNWIND execute in order (64 stages, 32 UNWINDs).
+            WITH replaces scope and supports aliases, aggregate filtering and local pagination.
+            UNION/UNION ALL allow 32 independently scoped branches with identical column names;
+            mixing operators is refused. The default 1000-row cap applies after union evaluation.
+            Pagination accepts nonnegative integer parameters or row-independent expressions.
+            Patterns support typed/untyped nodes, direct relationship type alternatives, named
+            undirected relationships, fixed/variable paths, nodes()/relationships()/length(),
+            pattern comprehensions/predicates and correlated EXISTS, including nested queries.
+            Each MATCH enforces relationship uniqueness. Explicit path bounds cannot exceed eight
+            hops; an unbounded traversal that can exceed eight fails instead of truncating.
+            Nodes have one BKN object type. A direct relation is a virtual endpoint join fact,
+            with no independently stored properties or parallel edge identities. properties(r)
+            is empty and r.property is null. Native multi-label/parallel/property-bearing edge
+            fixtures are not applicable to this graph contract. Writes and procedures are refused.
+            Graph-valued CASE/coalesce/head/last/list/path operations preserve property origins.
+            All stages, branches and correlated observations are compiled and authorized before
+            reads, including lazy/empty branches. Query dependencies do not expand public object
+            snapshots. object_properties names MATCH node variables, not WITH aliases.
+            Graph binding requires full readable complete primary keys. Generic patterns scan
+            bounded authorized type/relation observations before correlation and cache them per
+            request; selective output may still exceed the scan budget. No datasource transaction
+            snapshot is guaranteed. The request shares 9999 work rows, 8 MiB assembly, 79992
+            iterations/comparisons and a 30-second timeout. Each pattern allows at most 64 typed
+            observations. Incomplete reads or budget overflow fail the entire query.
+            This is a bounded BKN implementation, not a full read-only TCK certification.
         object_properties:
           type: object
           additionalProperties:

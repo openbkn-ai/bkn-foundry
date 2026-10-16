@@ -24,21 +24,23 @@ import (
 // UNION branches or ordered stages. SQL generation formats physical leaves;
 // the query service executes the composition under one request budget.
 type Plan struct {
-	Stages    []PlanStage
-	Union     []*Plan
-	UnionAll  bool
-	Result    *GraphResultPlan
-	NetworkID string
-	Branch    string
-	Tables    []PlanTable
-	Joins     []PlanJoin
-	Where     PlanPredicate
-	GroupBy   []PlanColumn
-	Select    []PlanColumn
-	Distinct  bool
-	OrderBy   []PlanOrder
-	Skip      *int64
-	Limit     *int64
+	Subqueries []*Plan
+	Pattern    *GraphPatternPlan
+	Stages     []PlanStage
+	Union      []*Plan
+	UnionAll   bool
+	Result     *GraphResultPlan
+	NetworkID  string
+	Branch     string
+	Tables     []PlanTable
+	Joins      []PlanJoin
+	Where      PlanPredicate
+	GroupBy    []PlanColumn
+	Select     []PlanColumn
+	Distinct   bool
+	OrderBy    []PlanOrder
+	Skip       *int64
+	Limit      *int64
 
 	// Properties lists, in the model's own terms, every property the query
 	// names: what it returns, filters on, sorts by or aggregates over. Join
@@ -348,17 +350,26 @@ type planner struct {
 // CompileOptions carries what the query itself does not: the values its
 // parameters stand for.
 type CompileOptions struct {
+	Correlated       bool
 	ObjectProperties map[string][]string
 	Parameters       map[string]any
 }
 
 // Compile binds a query to a knowledge network and produces its plan.
 func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
+	bound, err := bindQueryPagination(query, options.Parameters)
+	if err != nil {
+		return nil, err
+	}
+	query = bound
 	if len(query.Union) > 0 {
 		return compileUnion(query, schema, options)
 	}
 	if len(query.Stages) > 0 {
 		return compilePipeline(query, schema, options)
+	}
+	if patternNeedsRuntime(query.Pattern) {
+		return compilePipeline(patternQueryStages(query), schema, options)
 	}
 	if needsRuntimeParameter(query.FullWhere, options.Parameters, "") {
 		copyQuery := *query
@@ -551,6 +562,9 @@ func (p *planner) addTable(node NodeRef) error {
 	}
 
 	index := len(p.plan.Tables)
+	if node.Variable == "" {
+		node.Variable = anonymousVariable(index)
+	}
 	if node.Variable != "" {
 		if previous, taken := p.tableOf[node.Variable]; taken {
 			// Reusing a variable means the same rows on both sides, which is a

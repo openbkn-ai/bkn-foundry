@@ -42,6 +42,10 @@ func evaluateCondition(plan *Plan, expression *GraphExpression, row map[string]a
 }
 
 func pipelineError(ctx context.Context, err error) error {
+	var httpErr *rest.HTTPError
+	if errors.As(err, &httpErr) {
+		return err
+	}
 	if errors.Is(err, errGraphBudget) {
 		return unionFailure(ctx, "staged evaluation exceeded its shared row or payload budget; no complete result is available")
 	}
@@ -76,9 +80,14 @@ func (b *pipelineBudget) account(rows []map[string]any, candidates int) error {
 }
 
 func (s *cypherQueryService) runPipeline(ctx context.Context, query interfaces.CypherQuery, compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
-	rows := []map[string]any{{}}
-	budget := &pipelineBudget{}
-	objects := map[string]string{}
+	state := requestEvaluationState(ctx)
+	rows := []map[string]any{{evaluationStateKey: state}}
+	if input, ok := ctx.Value(correlatedInputKey{}).(map[string]any); ok {
+		rows = []map[string]any{input}
+	}
+	budget := state.budget
+	startWork, startCandidates := budget.rows, state.subqueryCandidates
+	objects := state.objects
 	candidates := 0
 	limited := false
 	var result *interfaces.CypherQueryResult
@@ -145,20 +154,23 @@ func (s *cypherQueryService) runPipeline(ctx context.Context, query interfaces.C
 			}
 			rows = make([]map[string]any, 0, len(result.Entries))
 			for _, entry := range result.Entries {
-				rows = append(rows, scopeRow(entry))
+				rows = append(rows, evaluationRow(scopeRow(entry), state))
 			}
 		}
 	}
 	result.TraceDescriptor = compiled.traceDescriptor
-	result.Execution.CandidateRows = candidates
+	result.Execution.CandidateRows = candidates + state.subqueryCandidates - startCandidates
 	result.Execution.ConclusionsLimited = limited
-	result.EvaluationRows = budget.rows
+	result.EvaluationRows = budget.rows - startWork
 	return result, nil
 }
 
 func (s *cypherQueryService) runMatchStage(ctx context.Context, query interfaces.CypherQuery, compiled *compiledQuery, stage PlanStage, incoming []map[string]any, budget *pipelineBudget, objects map[string]string) ([]map[string]any, int, error) {
 	if len(incoming) == 0 {
 		return []map[string]any{}, 0, nil
+	}
+	if compiled.plan.Pattern != nil {
+		return s.runGraphPattern(ctx, query, compiled, stage, incoming, budget, objects)
 	}
 	response, err := s.execute(ctx, query, compiled.plan, interfaces.RawQueryRequest{
 		Query: compiled.statement, QueryFormat: interfaces.VEGA_QUERY_FORMAT_SQL, InputDialect: interfaces.VEGA_DIALECT_MYSQL,

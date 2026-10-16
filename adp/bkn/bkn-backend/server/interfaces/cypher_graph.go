@@ -58,3 +58,11 @@ type CypherRelationBasis struct {
 	TargetProperty string `json:"target_property"`
 	TargetValue    any    `json:"target_value"`
 }
+
+// CypherPathValue orders nodes and relationships by traversal. Relationships
+// retain their canonical model direction even during a reverse traversal.
+type CypherPathValue struct {
+	Kind          string                `json:"kind"`
+	Nodes         []CypherObjectValue   `json:"nodes"`
+	Relationships []CypherRelationValue `json:"relationships"`
+}

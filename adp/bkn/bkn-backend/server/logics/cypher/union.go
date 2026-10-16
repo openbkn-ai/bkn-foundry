@@ -17,6 +17,9 @@ import (
 )
 
 func queryReadsObjects(query *Query) bool {
+	if queryHasPatternReads(query) {
+		return true
+	}
 	for _, stage := range query.Stages {
 		if queryReadsObjects(stage.Query) {
 			return true
@@ -51,6 +54,10 @@ func queryExceedsLimit(query *Query) bool {
 }
 
 func compileUnion(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
+	return compileUnionBranches(query, schema, options, Compile)
+}
+
+func compileUnionBranches(query *Query, schema *Schema, options CompileOptions, compileBranch func(*Query, *Schema, CompileOptions) (*Plan, error)) (*Plan, error) {
 	if err := validateObjectProperties(options); err != nil {
 		return nil, err
 	}
@@ -77,7 +84,7 @@ func compileUnion(query *Query, schema *Schema, options CompileOptions) (*Plan, 
 				branchOptions.ObjectProperties[node.Variable] = properties
 			}
 		}
-		child, err := Compile(&copyQuery, schema, branchOptions)
+		child, err := compileBranch(&copyQuery, schema, branchOptions)
 		if err != nil {
 			return nil, err
 		}

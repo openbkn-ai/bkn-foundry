@@ -647,9 +647,9 @@ func TestCompileMultiPatternRejections(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "a first mention without a label",
+			name:  "untyped matching requires complete graph identities",
 			query: "MATCH (o:Order) MATCH (x)-[:PLACED_BY]->(c:Customer) RETURN o.id",
-			want:  "a node that names nothing",
+			want:  "complete primary key",
 		},
 		{
 			name:  "a second mention contradicting the first",

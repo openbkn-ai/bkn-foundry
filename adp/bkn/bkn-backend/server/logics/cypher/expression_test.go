@@ -338,3 +338,31 @@ func TestValueEvaluationPreservesRowFilterGuidance(t *testing.T) {
 		})
 	}
 }
+
+func TestReadOnlyIncomparablePredicatesAndMixedOrdering(t *testing.T) {
+	for _, query := range []string{"RETURN 'a' CONTAINS ['a'] AS value", "RETURN '1' < 1 AS value", "RETURN [1] < true AS value"} {
+		service, _, _ := graphService(t)
+		result, err := service.Query(context.Background(), graphRequest(query))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(result.Entries) != 1 || result.Entries[0]["value"] != nil {
+			t.Fatal("incomparable predicate was not null", query, result)
+		}
+	}
+	service, _, _ := graphService(t)
+	result, err := service.Query(context.Background(), graphRequest("UNWIND [1,'a',null,[1,2],0.2,'b'] AS x RETURN min(x) AS minimum,max(x) AS maximum"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertExpressionRows(t, result.Entries, []map[string]any{{"minimum": []any{int64(1), int64(2)}, "maximum": int64(1)}})
+	result, err = service.Query(context.Background(), graphRequest("RETURN (0.0/0.0)=1 AS equal,(0.0/0.0)<>1 AS unequal,(0.0/0.0)<1 AS less"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertExpressionRows(t, result.Entries, []map[string]any{{"equal": false, "unequal": true, "less": false}})
+	result, err = service.Query(context.Background(), graphRequest("RETURN 0.0/0.0 AS result"))
+	if err == nil || result != nil {
+		t.Fatal("non-finite output was serialized")
+	}
+}

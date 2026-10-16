@@ -37,6 +37,7 @@ const (
 
 // Query is one accepted read-only query.
 type Query struct {
+	SkipExpression, LimitExpression ValueExpression
 	// Union branches have independent variable scopes. All is shared by every
 	// operator because openCypher 9 forbids mixing UNION and UNION ALL.
 	Union           []*Query
@@ -78,6 +79,14 @@ type Unwind struct {
 type Pattern struct {
 	Nodes []NodeRef
 	Edges []EdgeRef
+	Paths []PathRef
+}
+
+// PathRef preserves traversal order independently of the canonical edge direction.
+type PathRef struct {
+	Variable     string
+	Nodes, Edges []int
+	Pos          Position
 }
 
 // NodeRef is one node of the pattern. Variable is empty for an anonymous node,
@@ -100,11 +109,14 @@ type NodeRef struct {
 // pattern's nodes, so a relationship can connect any two of them rather than
 // only neighbours in a list.
 type EdgeRef struct {
-	Variable  string
-	Type      string
-	Direction Direction
-	Left      int
-	Right     int
+	Types            []string
+	VariableLength   bool
+	MinHops, MaxHops int
+	Variable         string
+	Type             string
+	Direction        Direction
+	Left             int
+	Right            int
 	// Optional marks a relationship an OPTIONAL MATCH wrote: a node on the
 	// other end of it may be missing without costing the row it hangs off.
 	Optional bool

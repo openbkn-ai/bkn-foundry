@@ -21,6 +21,7 @@ const graphPayloadBudget = 8 << 20
 // GraphResultPlan separates logical output expressions from the authorized
 // physical columns. Limit applies only after grouping has finished.
 type GraphResultPlan struct {
+	Aggregation   *GraphAggregation
 	PostWhere     *GraphExpression
 	Unwinds       []GraphUnwind
 	Where         *GraphExpression
@@ -41,34 +42,40 @@ type GraphProjection struct {
 	Value *GraphExpression
 }
 type GraphExpression struct {
-	PropertyRefs []string
-	Shape        *GraphExpression
-	Binding      string
-	Operation    string
-	Arguments    []*GraphExpression
-	Aggregate    string
-	Distinct     bool
-	InputPointer string
-	PropertyRef  string
-	Type         *interfaces.CypherValueType
-	Column       string
-	Literal      any
-	Object       *GraphObjectPlan
-	Relation     *GraphRelationPlan
-	Fields       map[string]*GraphExpression
-	Element      *GraphExpression
+	EmptyRelationProperty bool
+	Subquery              *GraphSubquery
+	MissingObjectTypes    map[string]bool
+	Path                  *GraphPathPlan
+	Collection            *GraphCollection
+	PropertyRefs          []string
+	Shape                 *GraphExpression
+	Binding               string
+	Operation             string
+	Arguments             []*GraphExpression
+	Aggregate             string
+	Distinct              bool
+	InputPointer          string
+	PropertyRef           string
+	Type                  *interfaces.CypherValueType
+	Column                string
+	Literal               any
+	Object                *GraphObjectPlan
+	Relation              *GraphRelationPlan
+	Fields                map[string]*GraphExpression
+	Element               *GraphExpression
 }
 type GraphPropertyPlan struct {
 	Column string
 	Type   string
 }
 type GraphObjectPlan struct {
-	owner              *planner
-	table              int
-	InternalProperties map[string]GraphPropertyPlan
-	TypeID             string
-	Keys               map[string]GraphPropertyPlan
-	Properties         map[string]GraphPropertyPlan
+	AllowMissingProperties bool
+	owner                  *planner
+	table                  int
+	InternalProperties     map[string]GraphPropertyPlan
+	TypeID                 string
+	Keys                   map[string]GraphPropertyPlan
+	Properties             map[string]GraphPropertyPlan
 }
 type GraphRelationPlan struct {
 	Basis                 []GraphRelationBasisPlan
@@ -102,6 +109,10 @@ func (p *planner) planGraphReturn(query *Query, options CompileOptions) error {
 			return planErrorf(Position{}, "object_properties names unknown node variable %q", variable)
 		}
 	}
+	p.bindings = map[string]*GraphExpression{}
+	if err := p.bindPaths(query.Pattern, relations, options); err != nil {
+		return err
+	}
 	result := &GraphResultPlan{Limit: interfaces.CYPHER_DEFAULT_LIMIT, LimitExplicit: query.Limit != nil}
 	if query.Limit != nil {
 		result.Limit = *query.Limit
@@ -116,12 +127,11 @@ func (p *planner) planGraphReturn(query *Query, options CompileOptions) error {
 		if err != nil {
 			return err
 		}
-		if where.Element != nil {
+		if containsGraphAggregate(where) {
 			return planErrorf(Position{}, "aggregates are not allowed in WHERE")
 		}
 		result.Where = where
 	}
-	p.bindings = map[string]*GraphExpression{}
 	for _, unwind := range query.Unwinds {
 		if _, ok := p.tableOf[unwind.Variable]; ok {
 			return planErrorf(unwind.Pos, "variable %q is already declared", unwind.Variable)
@@ -136,7 +146,7 @@ func (p *planner) planGraphReturn(query *Query, options CompileOptions) error {
 		if err != nil {
 			return err
 		}
-		if value.Element != nil {
+		if containsGraphAggregate(value) {
 			return planErrorf(unwind.Pos, "aggregates are not allowed in UNWIND")
 		}
 		typ := unwindType(value)
@@ -152,7 +162,7 @@ func (p *planner) planGraphReturn(query *Query, options CompileOptions) error {
 		if err != nil {
 			return err
 		}
-		if value.Element != nil {
+		if containsGraphAggregate(value) {
 			result.HasAggregates = true
 		}
 		result.Projections = append(result.Projections, GraphProjection{Alias: projection.Alias, Value: value})
@@ -176,12 +186,22 @@ func (p *planner) planGraphReturn(query *Query, options CompileOptions) error {
 			if expression == nil {
 				return planErrorf(order.Pos, "this ORDER BY expression is not supported")
 			}
+			// Reuse syntax before compiling another correlated observation.
+			// Equivalent subquery plans have distinct pointers and cannot be
+			// recognized by comparing compiled graph expressions.
+			for _, projection := range query.Return {
+				if reflect.DeepEqual(expressionShape(expression), expressionShape(projection.Value)) {
+					item.Alias = projection.Alias
+					break
+				}
+			}
+			if item.Alias != "" {
+				result.OrderBy = append(result.OrderBy, item)
+				continue
+			}
 			value, err := p.graphExpression(expression, relations, options)
 			if err != nil {
 				return err
-			}
-			if value.Element != nil {
-				return planErrorf(order.Pos, "ORDER BY an aggregate must use its returned alias")
 			}
 			for _, projection := range result.Projections {
 				if reflect.DeepEqual(value, projection.Value) {
@@ -189,7 +209,7 @@ func (p *planner) planGraphReturn(query *Query, options CompileOptions) error {
 					break
 				}
 			}
-			if item.Alias == "" && (result.HasAggregates || result.Distinct) {
+			if item.Alias == "" && (result.HasAggregates || result.Distinct) && graphDependsOnRow(value, nil) {
 				return planErrorf(order.Pos, "grouped or DISTINCT results can only be sorted by returned values")
 			}
 			item.Value = value
@@ -214,6 +234,7 @@ func (p *planner) planGraphReturn(query *Query, options CompileOptions) error {
 	p.plan.Skip = nil
 	p.plan.Distinct = false
 	p.plan.Result = result
+	prepareGraphAggregation(result)
 	return nil
 }
 
@@ -275,6 +296,10 @@ func (p *planner) graphObject(table int, options CompileOptions) (*GraphObjectPl
 func (p *planner) graphExpression(expr ValueExpression, relations map[string]EdgeRef, options CompileOptions) (*GraphExpression, error) {
 	result := &GraphExpression{Type: &interfaces.CypherValueType{}}
 	switch value := expr.(type) {
+	case PatternExpression:
+		return p.graphSubquery(value, relations, options)
+	case CollectionExpression:
+		return p.graphCollection(value, relations, options)
 	case OperationExpression:
 		if err := validateExpressionOperation(value.Operator, len(value.Arguments)); err != nil {
 			return nil, planErrorf(value.Pos, "%v", err)
@@ -286,10 +311,14 @@ func (p *planner) graphExpression(expr ValueExpression, relations map[string]Edg
 			if err != nil {
 				return nil, err
 			}
-			if child.Element != nil {
-				return nil, planErrorf(value.Pos, "aggregates inside scalar expressions are not supported yet")
-			}
 			result.Arguments = append(result.Arguments, child)
+		}
+		if value.Operator == "HAS_LABEL" {
+			if label, ok := result.Arguments[1].Literal.(string); ok {
+				if object, err := p.schema.ResolveLabel(label); err == nil {
+					result.Arguments[1].Literal = object.OTID
+				}
+			}
 		}
 		if value.Operator == "LIST" {
 			result.Type.Element = &interfaces.CypherValueType{Kind: "any"}
@@ -300,6 +329,7 @@ func (p *planner) graphExpression(expr ValueExpression, relations map[string]Edg
 			}
 			result.Shape = unwindShape(result.Arguments[0])
 		}
+		propagateExpressionShape(result)
 	case ParameterExpression:
 		supplied, exists := options.Parameters[value.Ref.Name]
 		if !exists {
@@ -320,8 +350,21 @@ func (p *planner) graphExpression(expr ValueExpression, relations map[string]Edg
 		if err != nil {
 			return nil, err
 		}
-		if child.Element != nil {
+		if containsVolatileExpression(child) {
+			return nil, planErrorf(value.Pos, "aggregate arguments must be deterministic; rand() is not constant")
+		}
+		if containsGraphAggregate(child) {
 			return nil, planErrorf(value.Pos, "nested aggregates are not supported")
+		}
+		if value.Percentile != nil {
+			point, err := p.graphExpression(value.Percentile, relations, options)
+			if err != nil {
+				return nil, err
+			}
+			if containsGraphAggregate(point) || containsVolatileExpression(point) {
+				return nil, planErrorf(value.Pos, "percentile cannot contain aggregates or volatile functions")
+			}
+			result.Arguments = []*GraphExpression{point}
 		}
 		result.Aggregate = value.Function
 		result.Element = child
@@ -332,13 +375,23 @@ func (p *planner) graphExpression(expr ValueExpression, relations map[string]Edg
 			result.Type.Element = child.Type
 		} else if value.Function == "count" {
 			result.Type.Kind = "integer"
-		} else if value.Function == "avg" {
+		} else if value.Function == "avg" || value.Function == "stdev" || value.Function == "stdevp" || value.Percentile != nil {
 			result.Type.Kind = "float"
+		}
+		if (value.Function == "avg" || value.Function == "sum") && child.Type.Kind == "duration" {
+			result.Type.Kind = "duration"
 		}
 
 	case PropertyExpression:
 		if binding, ok := p.bindings[value.Ref.Variable]; ok {
 			return scopedProperty(binding, value.Ref.Property, value.Ref.Pos)
+		}
+		if _, ok := relations[value.Ref.Variable]; ok {
+			relation, err := p.graphExpression(VariableExpression{Name: value.Ref.Variable, Pos: value.Ref.Pos}, relations, options)
+			if err != nil {
+				return nil, err
+			}
+			return scopedProperty(relation, value.Ref.Property, value.Ref.Pos)
 		}
 		field, err := p.graphColumn(value.Ref)
 		if err != nil {

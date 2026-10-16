@@ -149,12 +149,20 @@ func TestUnionUnwindBudgetsAndScope(t *testing.T) {
 // queuedUnionVega supplies one complete observation per SQL branch.
 type queuedUnionVega struct {
 	*recordingVega
-	responses []*interfaces.RawQueryResponse
-	requests  []*interfaces.RawQueryRequest
+	responsesByStatement map[string]*interfaces.RawQueryResponse
+	responses            []*interfaces.RawQueryResponse
+	requests             []*interfaces.RawQueryRequest
 }
 
 func (v *queuedUnionVega) RawQuery(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	v.requests = append(v.requests, req)
+	if v.responsesByStatement != nil {
+		response, ok := v.responsesByStatement[req.Query]
+		if !ok {
+			return nil, fmt.Errorf("unplanned fixture observation")
+		}
+		return response, nil
+	}
 	if len(v.responses) == 0 {
 		return nil, fmt.Errorf("unexpected observation")
 	}

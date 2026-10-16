@@ -28,9 +28,23 @@ func assembleGraph(ctx context.Context, plan *Plan, rows []map[string]any) (*int
 	if len(rows) > graphMatchBudget {
 		return nil, errGraphBudget
 	}
+	state := requestEvaluationState(ctx)
+	if len(rows) > 0 {
+		if shared, ok := rows[0][evaluationStateKey].(*expressionEvaluationState); ok {
+			state = shared
+		}
+	}
+	withState := make([]map[string]any, len(rows))
+	for i, row := range rows {
+		withState[i] = evaluationRow(row, state)
+	}
+	rows = withState
 	logical := plan.Result
 	if len(logical.Unwinds) > 0 {
 		return assembleUnwinds(ctx, plan, rows)
+	}
+	if logical.Aggregation != nil {
+		return assembleAggregateExpressions(ctx, plan, rows)
 	}
 	result := &interfaces.CypherQueryResult{Columns: make([]interfaces.RawQueryColumn, 0, len(logical.Projections)), Entries: []map[string]any{}, ResultFormat: interfaces.CYPHER_GRAPH_V1, ValueTypes: map[string]*interfaces.CypherValueType{}, Execution: &interfaces.CypherExecution{MatchRows: len(rows), MatchComplete: true, EvidenceComplete: true}}
 	for _, projection := range logical.Projections {
@@ -94,6 +108,13 @@ func assembleGraph(ctx context.Context, plan *Plan, rows []map[string]any) (*int
 			if err != nil {
 				return nil, err
 			}
+			if projection.Value.Aggregate == "percentilecont" || projection.Value.Aggregate == "percentiledisc" {
+				point, err := evaluateGraph(plan, projection.Value.Arguments[0], row)
+				if err != nil {
+					return nil, err
+				}
+				value = []any{value, point}
+			}
 			if err := checkGraphObservation(value, objects); err != nil {
 				return nil, err
 			}
@@ -102,7 +123,7 @@ func assembleGraph(ctx context.Context, plan *Plan, rows []map[string]any) (*int
 				identity = append(identity, value)
 			}
 		}
-		encoded, err := json.Marshal(values)
+		encoded, err := marshalExpressionValue(values)
 		if err != nil {
 			return nil, err
 		}
@@ -264,7 +285,7 @@ func assembleGraph(ctx context.Context, plan *Plan, rows []map[string]any) (*int
 		result.Entries = filtered
 	}
 
-	raw, err := json.Marshal(result)
+	raw, err := marshalExpressionValue(result)
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +297,12 @@ func assembleGraph(ctx context.Context, plan *Plan, rows []map[string]any) (*int
 
 func evaluateGraph(plan *Plan, expr *GraphExpression, row map[string]any) (any, error) {
 	switch {
+	case expr.Subquery != nil:
+		return evaluateSubquery(plan, expr.Subquery, row)
+	case expr.Collection != nil:
+		return evaluateCollection(plan, expr.Collection, row)
+	case expr.Path != nil:
+		return materializeGraphPath(plan, expr.Path, row)
 	case expr.Binding != "":
 		value, ok := row["unwind:"+expr.Binding]
 		if !ok {
@@ -424,6 +451,21 @@ func graphKeyValue(typ string, raw any) (interfaces.CypherKeyValue, error) {
 // preserving typed keys, relation orientation and map structure.
 func graphIdentity(value any) any {
 	switch typed := value.(type) {
+	case interfaces.CypherPathValue:
+		copy := interfaces.CypherPathValue{Kind: typed.Kind, Nodes: make([]interfaces.CypherObjectValue, len(typed.Nodes)), Relationships: make([]interfaces.CypherRelationValue, len(typed.Relationships))}
+		for i, node := range typed.Nodes {
+			copy.Nodes[i] = graphIdentity(node).(interfaces.CypherObjectValue)
+		}
+		for i, relation := range typed.Relationships {
+			copy.Relationships[i] = graphIdentity(relation).(interfaces.CypherRelationValue)
+		}
+		return copy
+	case []any:
+		copy := make([]any, len(typed))
+		for i, child := range typed {
+			copy[i] = graphIdentity(child)
+		}
+		return copy
 	case interfaces.CypherObjectValue:
 		typed.Properties = nil
 		typed.EvaluationProperties = nil
@@ -449,6 +491,17 @@ func graphIdentity(value any) any {
 // A single identity must not acquire contradictory snapshots in one result.
 func checkGraphObservation(value any, seen map[string]string) error {
 	switch typed := value.(type) {
+	case interfaces.CypherPathValue:
+		for _, node := range typed.Nodes {
+			if err := checkGraphObservation(node, seen); err != nil {
+				return err
+			}
+		}
+		for _, relation := range typed.Relationships {
+			if err := checkGraphObservation(relation, seen); err != nil {
+				return err
+			}
+		}
 	case interfaces.CypherObjectValue:
 		identity, err := json.Marshal(graphIdentity(typed))
 		if err != nil {

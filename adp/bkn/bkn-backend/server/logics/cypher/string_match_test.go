@@ -108,7 +108,7 @@ func TestCompileStringMatchParameters(t *testing.T) {
 		t.Fatalf("got  %s\nwant suffix %s", got, want)
 	}
 
-	for name, value := range map[string]any{"number": 1, "boolean": true, "list": []any{"a"}} {
+	for name, value := range map[string]any{"number": 1, "boolean": true} {
 		t.Run(name, func(t *testing.T) {
 			_, err := compileWithParameters(t, query, map[string]any{"v": value})
 			if err == nil {

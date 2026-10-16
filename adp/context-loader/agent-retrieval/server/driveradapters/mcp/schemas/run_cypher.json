@@ -21,7 +21,7 @@
       },
       "query": {
         "type": "string",
-        "description": "只读 openCypher M19 的当前已实现子集：固定 MATCH 模式与命名定向 direct 关系；WHERE 可用跨属性比较、算术、AND/OR/XOR/NOT、NULL、IN、字符串谓词、CASE、列表/map 及函数表达式；RETURN 可返回标量、参数、节点/关系、列表/map、CASE、常用标量函数和顶层 count/sum/avg/min/max/collect（含 DISTINCT，可混用）；支持 DISTINCT、ORDER BY、SKIP、LIMIT。没有 MATCH 的 RETURN 可直接求值。图值/表达式按查询自动选择有界结果求值路径，无需用 result_format 解锁语法。普通标量查询继续 SQL 下推。新增 UNION/UNION ALL（最多 32 个独立分支、同名列、禁止混用），所有分支先编译授权再读取；默认 1000 行限制在合并后生效。WITH、MATCH、OPTIONAL MATCH、UNWIND 按子句顺序执行（最多 64 个阶段，UNWIND 最多 32 次），包含变量作用域/别名、聚合后 WHERE、阶段排序分页与 WITH */RETURN *。UNWIND 后可继续 MATCH，节点别名及 collect/UNWIND 属性读取保留来源授权，可选匹配仅将未命中的新变量设为 null。分阶段匹配要求完整且可读的节点主键，并先有界扫描再关联；小结果也可能因候选扫描过大而超限。图值经过任意函数或 CASE 后的属性来源跟踪仍有限；object_properties 仍按 MATCH 节点变量声明。全请求共享 9999 行工作预算（分阶段执行累计各阶段输入/输出工作）、8 MiB 组装预算及请求超时，关联比较另限 79992 次，分支超限或不完整则整条失败；不提供跨分支数据源快照。尚不支持路径变量/变长路径、列表/模式推导、存在子查询、关系属性和任意过程调用；聚合暂须位于投影顶层。不是完整 openCypher 兼容声明。"
+        "description": "只读 M19 的 BKN 有界实现：MATCH/OPTIONAL MATCH/WITH/UNWIND/RETURN 与 UNION；列表/map/CASE、推导式与量词、模式谓词和相关/嵌套 EXISTS；一般与统计聚合、已注册标量和时间函数、整数参数化分页。支持无标签节点、无类型/多类型关系、命名无向关系、固定/变长路径及 nodes/relationships/length。显式路径至多八跳，无界路径若可超过八跳则整条失败。节点仅有一个对象类，direct 关系按类型与端点标识，无独立属性与平行边身份；properties(r) 为空，r.property 为 null。所有分支/阶段/子查询提前授权，图值来源保留，内部依赖不扩大 object_properties 显式快照。复杂模式先有界扫描再关联，小结果也可能超限。全请求共享 9999 工作行、8 MiB、79992 次迭代/比较和 30 秒；每模式至多 64 个类型观察。写操作和过程调用拒绝；不宣称完整 TCK 兼容。"
       },
       "parameters": {
         "type": "object",

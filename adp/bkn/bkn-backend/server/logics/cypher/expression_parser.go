@@ -22,15 +22,25 @@ type OperationExpression struct {
 }
 type ParameterExpression struct{ Ref ParameterRef }
 type AggregateExpression struct {
-	Function string
-	Value    ValueExpression
-	Distinct bool
-	Pos      Position
+	Percentile ValueExpression
+	Function   string
+	Value      ValueExpression
+	Distinct   bool
+	Pos        Position
 }
 
-func (OperationExpression) valueExpression() {}
-func (ParameterExpression) valueExpression() {}
-func (AggregateExpression) valueExpression() {}
+// CollectionExpression binds its iteration variable only within the predicate
+// and projection; the source is evaluated in the enclosing scope.
+type CollectionExpression struct {
+	Kind, Variable                string
+	Source, Predicate, Projection ValueExpression
+	Pos                           Position
+}
+
+func (OperationExpression) valueExpression()  {}
+func (ParameterExpression) valueExpression()  {}
+func (AggregateExpression) valueExpression()  {}
+func (CollectionExpression) valueExpression() {}
 
 func readValueExpression(ctx antlr.ParserRuleContext, depth int) (ValueExpression, error) {
 	if depth > 256 {
@@ -38,7 +48,11 @@ func readValueExpression(ctx antlr.ParserRuleContext, depth int) (ValueExpressio
 	}
 	var err error
 	read := func(child antlr.ParserRuleContext) (ValueExpression, error) {
-		return readValueExpression(child, depth+1)
+		nextDepth := depth
+		if _, nested := ctx.(parsing.IOC_AtomContext); nested {
+			nextDepth++
+		}
+		return readValueExpression(child, nextDepth)
 	}
 	op := func(name string, args ...ValueExpression) ValueExpression {
 		return OperationExpression{Operator: name, Arguments: args, Pos: positionOf(ctx)}
@@ -216,9 +230,6 @@ func readValueExpression(ctx antlr.ParserRuleContext, depth int) (ValueExpressio
 		}
 		return value, nil
 	case parsing.IOC_PropertyOrLabelsExpressionContext:
-		if node.OC_NodeLabels() != nil {
-			return nil, unsupported(node, "label predicates")
-		}
 		value, err := read(node.OC_Atom())
 		if err != nil {
 			return nil, err
@@ -234,9 +245,34 @@ func readValueExpression(ctx antlr.ParserRuleContext, depth int) (ValueExpressio
 				value = op("INDEX", value, LiteralExpression{Value: Literal{Kind: LiteralString, String: name}})
 			}
 		}
+		if labels := node.OC_NodeLabels(); labels != nil {
+			var predicate ValueExpression
+			for _, label := range labels.AllOC_NodeLabel() {
+				name, err := namedIdentifier(label.OC_LabelName(), "label")
+				if err != nil {
+					return nil, err
+				}
+				check := op("HAS_LABEL", value, LiteralExpression{Value: Literal{Kind: LiteralString, String: name}})
+				if predicate == nil {
+					predicate = check
+				} else {
+					predicate = op("AND", predicate, check)
+				}
+			}
+			value = predicate
+		}
 		return value, nil
 	case parsing.IOC_AtomContext:
 		switch {
+		case node.OC_PatternComprehension() != nil || node.OC_PatternPredicate() != nil || node.OC_ExistentialSubquery() != nil:
+			return readPatternExpression(node, depth)
+		case node.OC_ListComprehension() != nil:
+			list := node.OC_ListComprehension()
+			return readCollectionExpression("list", list.OC_FilterExpression(), list.OC_Expression(), depth)
+		case node.OC_Quantifier() != nil:
+			quantifier := node.OC_Quantifier()
+			kind := strings.ToLower(quantifier.GetStart().GetText())
+			return readCollectionExpression(kind, quantifier.OC_FilterExpression(), nil, depth)
 		case node.OC_ParenthesizedExpression() != nil:
 			return read(node.OC_ParenthesizedExpression().OC_Expression())
 		case node.OC_Variable() != nil:
@@ -258,7 +294,13 @@ func readValueExpression(ctx antlr.ParserRuleContext, depth int) (ValueExpressio
 				}
 				args = append(args, value)
 			}
-			if _, aggregate := aggregateFunctions[name]; aggregate || name == "collect" {
+			if _, aggregate := aggregateFunctions[name]; aggregate || valueAggregateFunctions[name] {
+				if name == "percentilecont" || name == "percentiledisc" {
+					if len(args) != 2 {
+						return nil, unsupported(node, "a percentile aggregate without two arguments")
+					}
+					return AggregateExpression{Function: name, Value: args[0], Percentile: args[1], Distinct: call.DISTINCT() != nil, Pos: positionOf(node)}, nil
+				}
 				if len(args) != 1 {
 					return nil, unsupported(node, "an aggregate without exactly one argument")
 				}
@@ -323,6 +365,16 @@ func readValueExpression(ctx antlr.ParserRuleContext, depth int) (ValueExpressio
 					}
 					args = append(args, value)
 				}
+				// The M19 grammar also admits the unfiltered comprehension as a
+				// one-item literal containing `identifier IN expression`. Resolve
+				// that ambiguity without reinterpreting parenthesized predicates.
+				if len(args) == 1 {
+					if membership, ok := args[0].(OperationExpression); ok && membership.Operator == "IN" {
+						if variable, ok := membership.Arguments[0].(VariableExpression); ok && list.OC_Expression(0).GetStart().GetText() == variable.Name {
+							return CollectionExpression{Kind: "list", Variable: variable.Name, Source: membership.Arguments[1], Projection: variable, Pos: positionOf(list)}, nil
+						}
+					}
+				}
 				return op("LIST", args...), nil
 			}
 			if mapping := literal.OC_MapLiteral(); mapping != nil {
@@ -356,4 +408,29 @@ func readValueExpression(ctx antlr.ParserRuleContext, depth int) (ValueExpressio
 	default:
 		return nil, unsupported(ctx, "this value expression")
 	}
+}
+
+func readCollectionExpression(kind string, filter parsing.IOC_FilterExpressionContext, projection parsing.IOC_ExpressionContext, depth int) (ValueExpression, error) {
+	identifier := filter.OC_IdInColl()
+	name, err := namedIdentifier(identifier.OC_Variable(), "iteration variable")
+	if err != nil {
+		return nil, err
+	}
+	result := CollectionExpression{Kind: kind, Variable: name, Pos: positionOf(filter)}
+	result.Source, err = readValueExpression(identifier.OC_Expression(), depth+1)
+	if err != nil {
+		return nil, err
+	}
+	if where := filter.OC_Where(); where != nil {
+		result.Predicate, err = readValueExpression(where.OC_Expression(), depth+1)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if projection != nil {
+		result.Projection, err = readValueExpression(projection, depth+1)
+	} else {
+		result.Projection = VariableExpression{Name: name, Pos: result.Pos}
+	}
+	return result, err
 }

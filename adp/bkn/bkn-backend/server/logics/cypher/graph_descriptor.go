@@ -14,6 +14,8 @@ import (
 // SemanticGraphExpression records logical values without exposing physical
 // column aliases, mapping fields, or literal values in the trace.
 type SemanticGraphExpression struct {
+	Aggregate    string                              `json:"aggregate,omitempty"`
+	Distinct     bool                                `json:"distinct,omitempty"`
 	Binding      string                              `json:"binding,omitempty"`
 	Operation    string                              `json:"operation,omitempty"`
 	Arguments    []*SemanticGraphExpression          `json:"arguments,omitempty"`
@@ -64,7 +66,7 @@ func describeGraphResult(descriptor *SemanticQueryDescriptor, plan *Plan) {
 				item.Aggregate = "collect"
 			}
 			item.Distinct = projection.Value.Distinct
-		} else if plan.Result.HasAggregates {
+		} else if plan.Result.HasAggregates && !containsGraphAggregate(projection.Value) {
 			descriptor.Grouping = append(descriptor.Grouping, projection.Alias)
 		}
 		descriptor.Projections = append(descriptor.Projections, item)
@@ -72,7 +74,32 @@ func describeGraphResult(descriptor *SemanticQueryDescriptor, plan *Plan) {
 }
 
 func describeGraphExpression(plan *Plan, expression *GraphExpression) *SemanticGraphExpression {
-	result := &SemanticGraphExpression{Type: expression.Type, Operation: expression.Operation, InputPointer: expression.InputPointer, Binding: expression.Binding, PropertyRefs: append([]string(nil), expression.PropertyRefs...)}
+	result := &SemanticGraphExpression{Aggregate: expression.Aggregate, Distinct: expression.Distinct, Type: expression.Type, Operation: expression.Operation, InputPointer: expression.InputPointer, Binding: expression.Binding, PropertyRefs: append([]string(nil), expression.PropertyRefs...)}
+	if subquery := expression.Subquery; subquery != nil {
+		result.Operation = "subquery:" + subquery.Kind
+		return result
+	}
+	if collection := expression.Collection; collection != nil {
+		result.Operation = "collection:" + collection.Kind
+		result.Binding = collection.Variable
+		result.Fields = map[string]*SemanticGraphExpression{"source": describeGraphExpression(plan, collection.Source), "projection": describeGraphExpression(plan, collection.Projection)}
+		if collection.Predicate != nil {
+			result.Fields["predicate"] = describeGraphExpression(plan, collection.Predicate)
+		}
+		return result
+	}
+	if path := expression.Path; path != nil {
+		result.Operation = "path"
+		result.Fields = map[string]*SemanticGraphExpression{}
+		for name, values := range map[string][]*GraphExpression{"nodes": path.Nodes, "relationships": path.Relationships} {
+			items := &SemanticGraphExpression{Operation: "LIST", Type: &interfaces.CypherValueType{Kind: "list"}}
+			for _, value := range values {
+				items.Arguments = append(items.Arguments, describeGraphExpression(plan, value))
+			}
+			result.Fields[name] = items
+		}
+		return result
+	}
 	for _, argument := range expression.Arguments {
 		result.Arguments = append(result.Arguments, describeGraphExpression(plan, argument))
 	}

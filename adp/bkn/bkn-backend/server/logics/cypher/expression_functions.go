@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"math/rand/v2"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -22,6 +24,9 @@ type expressionFunction struct {
 }
 
 var expressionFunctions = map[string]expressionFunction{
+	"rand": {0, 0, "float"},
+	"cot":  {1, 1, "float"}, "haversin": {1, 1, "float"},
+	"nodes": {1, 1, "list"}, "relationships": {1, 1, "list"}, "length": {1, 1, "integer"},
 	"coalesce": {1, 128, "any"}, "head": {1, 1, "any"}, "last": {1, 1, "any"}, "tail": {1, 1, "list"}, "size": {1, 1, "integer"}, "keys": {1, 1, "list"}, "properties": {1, 1, "map"}, "labels": {1, 1, "list"}, "type": {1, 1, "string"}, "startnode": {1, 1, "object"}, "endnode": {1, 1, "object"},
 	"range": {2, 3, "list"}, "reverse": {1, 1, "any"}, "tolower": {1, 1, "string"}, "toupper": {1, 1, "string"}, "trim": {1, 1, "string"}, "ltrim": {1, 1, "string"}, "rtrim": {1, 1, "string"}, "replace": {3, 3, "string"}, "split": {2, 2, "list"}, "substring": {2, 3, "string"}, "left": {2, 2, "string"}, "right": {2, 2, "string"},
 	"tostring": {1, 1, "string"}, "tointeger": {1, 1, "integer"}, "tofloat": {1, 1, "float"}, "toboolean": {1, 1, "boolean"}, "exists": {1, 1, "boolean"},
@@ -51,7 +56,7 @@ func validateExpressionOperation(operator string, arity int) error {
 		if arity >= 3 && arity%2 == 1 {
 			return nil
 		}
-	case "INDEX", "+", "-", "*", "/", "%", "^", "=", "<>", "<", ">", "<=", ">=", "AND", "OR", "XOR", "IN", "STARTS WITH", "ENDS WITH", "CONTAINS":
+	case "HAS_LABEL", "INDEX", "+", "-", "*", "/", "%", "^", "=", "<>", "<", ">", "<=", ">=", "AND", "OR", "XOR", "IN", "STARTS WITH", "ENDS WITH", "CONTAINS":
 		if arity == 2 {
 			return nil
 		}
@@ -73,13 +78,19 @@ func operationResultType(operator string) string {
 	switch operator {
 	case "LIST", "SLICE":
 		return "list"
-	case "=", "<>", "<", ">", "<=", ">=", "AND", "OR", "XOR", "NOT", "IN", "IS NULL", "IS NOT NULL", "STARTS WITH", "ENDS WITH", "CONTAINS":
+	case "HAS_LABEL", "=", "<>", "<", ">", "<=", ">=", "AND", "OR", "XOR", "NOT", "IN", "IS NULL", "IS NOT NULL", "STARTS WITH", "ENDS WITH", "CONTAINS":
 		return "boolean"
 	default:
 		return "any"
 	}
 }
 func evaluateScalarFunction(name string, arguments []any) (any, error) {
+	if isTemporalFunction(name) {
+		return evaluateTemporalFunction(name, arguments, time.Now().UTC())
+	}
+	if name == "rand" {
+		return rand.Float64(), nil
+	}
 	if name == "pi" {
 		return math.Pi, nil
 	}
@@ -96,6 +107,25 @@ func evaluateScalarFunction(name string, arguments []any) (any, error) {
 	}
 	value := arguments[0]
 	switch name {
+	case "nodes", "relationships", "length":
+		path, ok := value.(interfaces.CypherPathValue)
+		if !ok {
+			return nil, expressionTypeError()
+		}
+		if name == "length" {
+			return int64(len(path.Relationships)), nil
+		}
+		result := []any{}
+		if name == "nodes" {
+			for _, node := range path.Nodes {
+				result = append(result, node)
+			}
+		} else {
+			for _, relation := range path.Relationships {
+				result = append(result, relation)
+			}
+		}
+		return result, nil
 	case "size":
 		if text, ok := value.(string); ok {
 			return int64(utf8.RuneCountInString(text)), nil
@@ -129,6 +159,8 @@ func evaluateScalarFunction(name string, arguments []any) (any, error) {
 			keys = sortedGraphKeys(typed)
 		case interfaces.CypherObjectValue:
 			keys = sortedGraphKeys(typed.Properties)
+		case interfaces.CypherRelationValue:
+			keys = []string{}
 		default:
 			return nil, expressionTypeError()
 		}
@@ -146,6 +178,8 @@ func evaluateScalarFunction(name string, arguments []any) (any, error) {
 				return map[string]any{}, nil
 			}
 			return typed.Properties, nil
+		case interfaces.CypherRelationValue:
+			return map[string]any{}, nil
 		default:
 			return nil, expressionTypeError()
 		}
@@ -221,11 +255,15 @@ func evaluateScalarFunction(name string, arguments []any) (any, error) {
 		}
 		if text, ok := value.(string); ok {
 			if name == "tointeger" {
-				number, err := strconv.ParseInt(strings.TrimSpace(text), 10, 64)
-				if err != nil {
+				text = strings.TrimSpace(text)
+				if integer, err := strconv.ParseInt(text, 10, 64); err == nil {
+					return integer, nil
+				}
+				number, err := strconv.ParseFloat(text, 64)
+				if err != nil || math.IsNaN(number) || math.IsInf(number, 0) || number >= 9223372036854775808.0 || number < -9223372036854775808.0 {
 					return nil, nil
 				}
-				return number, nil
+				return int64(number), nil
 			}
 			number, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
 			if err != nil || math.IsNaN(number) || math.IsInf(number, 0) {
@@ -251,6 +289,8 @@ func evaluateScalarFunction(name string, arguments []any) (any, error) {
 		return nil, expressionTypeError()
 	case "tostring":
 		switch typed := value.(type) {
+		case temporalValue:
+			return typed.String(), nil
 		case string:
 			return typed, nil
 		case bool:
@@ -265,7 +305,7 @@ func evaluateScalarFunction(name string, arguments []any) (any, error) {
 			}
 			return nil, expressionTypeError()
 		}
-	case "abs", "sign", "ceil", "floor", "round", "sqrt", "log", "log10", "exp", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "degrees", "radians":
+	case "abs", "sign", "ceil", "floor", "round", "sqrt", "log", "log10", "exp", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "degrees", "radians", "cot", "haversin":
 		number, integer, ok := expressionNumber(value)
 		if !ok {
 			return nil, expressionTypeError()
@@ -304,6 +344,10 @@ func evaluateScalarFunction(name string, arguments []any) (any, error) {
 			result = math.Cos(f)
 		case "tan":
 			result = math.Tan(f)
+		case "cot":
+			result = 1 / math.Tan(f)
+		case "haversin":
+			result = (1 - math.Cos(f)) / 2
 		case "asin":
 			result = math.Asin(f)
 		case "acos":
@@ -434,10 +478,6 @@ func validatePlannedExpression(expression *GraphExpression) error {
 	case "IN":
 		if !allowed(1, "list") {
 			return fmt.Errorf("IN requires a list")
-		}
-	case "STARTS WITH", "ENDS WITH", "CONTAINS":
-		if !allowed(0, "string", "text", "keyword") || !allowed(1, "string", "text", "keyword") {
-			return expressionTypeError()
 		}
 	case "CASE":
 		for i := 0; i+1 < len(expression.Arguments); i += 2 {

@@ -155,42 +155,37 @@ components:
           type: string
           enum: [graph_v1]
           description: |-
-            Optional explicit value-result selection; language features are also inferred
-            from the query without this field. Existing scalar SQL queries retain their
-            execution path. New value evaluation supports arithmetic, CASE, nullable
-            booleans, property comparisons, list/map values and access, registered scalar
-            functions and top-level count/sum/avg/min/max/collect, including DISTINCT and
-            mixed aggregates. RETURN without MATCH is supported. DISTINCT, ORDER BY,
-            SKIP and LIMIT follow grouping/aggregation. Aggregates within scalar expressions
-            remain unsupported. ORDER BY expressions may refer to projected aliases.
-            Paths, comprehensions, existential subqueries,
-            relation properties and procedures are not implemented yet. This is not a full
-            openCypher compatibility claim.
-            UNION and UNION ALL support up to 32 independently scoped branches with identical
-            column names; mixing the two operators is rejected. Every branch is compiled and
-            authorized before any branch reads data. Branch ORDER BY/SKIP/LIMIT is local;
-            the default 1000-row cap applies once after the union. UNWIND supports up to 32
-            expansions, including parameter lists, empty/null inputs and scalar inputs.
-            WITH, MATCH, OPTIONAL MATCH and UNWIND run in clause order, with at most 64 stages.
-            WITH replaces the variable scope and supports aggregation, DISTINCT, ordering,
-            SKIP/LIMIT and a following WHERE. RETURN * and WITH * expand the visible scope.
-            Node aliases and collect-to-UNWIND preserve property origins and authorization;
-            reading an attribute does not implicitly add it to public snapshot properties.
-            OPTIONAL MATCH null-extends only newly introduced variables after its predicate.
-            Staged MATCH requires full, complete node primary keys, even for scalar output.
-            Each MATCH currently scans a bounded authorized observation before correlation;
-            a selective final result may still exceed the candidate budget.
-            Graph origins through arbitrary scalar functions/CASE remain limited.
-            object_properties continues to name MATCH node variables, not WITH aliases.
-            UNION shares a 9999-row work budget (sum of max(candidate rows, expanded rows)
-            per simple branch; staged branches account cumulative intermediate work), an
-            8 MiB assembly budget and the request timeout. Staged work counts the sum of
-            max(stage source/input rows, stage output rows), with a separate cap of 79992
-            correlation comparisons. Overflows or an
-            incomplete branch reject the entire query. Separate reads do not guarantee a
-            shared datasource snapshot.
-            A value evaluation allows 9999 candidate rows plus one probe, an 8 MiB assembly
-            budget and 30-second timeout. Exceeding a budget rejects the whole evaluation.
+            Optional explicit graph_v1 selection; language features are inferred from the query.
+            Existing scalar SQL queries retain their execution path. Bounded evaluation supports
+            CASE/nullable booleans, arithmetic, lists/maps, list comprehensions, all/any/none/single,
+            registered scalar and temporal functions, and aggregates inside scalar/map/list
+            expressions (count/sum/avg/min/max/collect/stdev/stdevp/percentileCont/percentileDisc).
+            Temporal values use ISO text and logical value_types; IANA zone rules use host tzdb.
+            WITH, MATCH, OPTIONAL MATCH and UNWIND execute in order (64 stages, 32 UNWINDs).
+            WITH replaces scope and supports aliases, aggregate filtering and local pagination.
+            UNION/UNION ALL allow 32 independently scoped branches with identical column names;
+            mixing operators is refused. The default 1000-row cap applies after union evaluation.
+            Pagination accepts nonnegative integer parameters or row-independent expressions.
+            Patterns support typed/untyped nodes, direct relationship type alternatives, named
+            undirected relationships, fixed/variable paths, nodes()/relationships()/length(),
+            pattern comprehensions/predicates and correlated EXISTS, including nested queries.
+            Each MATCH enforces relationship uniqueness. Explicit path bounds cannot exceed eight
+            hops; an unbounded traversal that can exceed eight fails instead of truncating.
+            Nodes have one BKN object type. A direct relation is a virtual endpoint join fact,
+            with no independently stored properties or parallel edge identities. properties(r)
+            is empty and r.property is null. Native multi-label/parallel/property-bearing edge
+            fixtures are not applicable to this graph contract. Writes and procedures are refused.
+            Graph-valued CASE/coalesce/head/last/list/path operations preserve property origins.
+            All stages, branches and correlated observations are compiled and authorized before
+            reads, including lazy/empty branches. Query dependencies do not expand public object
+            snapshots. object_properties names MATCH node variables, not WITH aliases.
+            Graph binding requires full readable complete primary keys. Generic patterns scan
+            bounded authorized type/relation observations before correlation and cache them per
+            request; selective output may still exceed the scan budget. No datasource transaction
+            snapshot is guaranteed. The request shares 9999 work rows, 8 MiB assembly, 79992
+            iterations/comparisons and a 30-second timeout. Each pattern allows at most 64 typed
+            observations. Incomplete reads or budget overflow fail the entire query.
+            This is a bounded BKN implementation, not a full read-only TCK certification.
         object_properties:
           type: object
           additionalProperties:
@@ -219,49 +214,13 @@ components:
           type: string
           maxLength: 8192
           description: |-
-            The Cypher query. Existing scalar SQL shape (the additional value-expression capabilities are described in result_format and do not require explicit negotiation):
-            MATCH (a:Label [{property: value, ...}]) [-[:RELATION]-(b:Label) ...]
-            [WHERE <condition>]
-            RETURN [DISTINCT] a.property | aggregate(a.property) [AS alias], ...
-            [ORDER BY a.property | alias | aggregate(a.property) [DESC]] [SKIP n] [LIMIT n]
-
-            A condition compares a property with =, <>, <, >, <= or >= against a literal or a
-            parameter, or tests it with IN [ ... ], IN $list (the whole list as one parameter),
-            IS NULL or IS NOT NULL. A string property can also be matched with STARTS WITH,
-            ENDS WITH or CONTAINS against a string literal or parameter: the match is a literal
-            substring match (% and _ are not wildcards), a null property never matches, case
-            sensitivity follows the column collation, and using them on a non-string property
-            is refused with 400. Conditions combine with AND, OR and NOT, and parentheses group
-            them. XOR is not supported.
-
-            Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
-            count(*). Cypher has no GROUP BY: aggregating anything groups by everything else
-            the query returns. A grouped or DISTINCT result can only be sorted by a value it
-            returns.
-
-            A MATCH may contain several comma-separated paths, and a query may contain several
-            MATCH clauses; both mean one shape. A variable written twice is the node it named
-            the first time, which is how two paths meet, and paths that share no variable are
-            a cartesian product. The first mention of a node names its object type; a later
-            one may omit the label but must not contradict it.
-
-            A path may contain several relationships. Each names exactly one relation type and
-            may be written -[:R]->, <-[:R]- or undirected as -[:R]-; each node names exactly
-            one object type and may carry an inline property map, which means the equalities
-            it stands for.
-
-            Cypher forbids one MATCH from traversing the same relationship twice, and that
-            is enforced: within one MATCH, every pair of hops over one relation type must
-            differ in its source row or its target row, which needs those object types to
-            have a primary key. Where one of the hops is undirected the requirement cannot
-            be stated, and the query is refused rather than answered with paths Cypher would
-            not return. Hops in different MATCH clauses are not compared: writing
-            `MATCH (a)-[:R]->(b) MATCH (a)-[:R]->(c)` is how one asks for every pair of
-            things a reaches, b and c being the same included. One query's patterns
-            may hold at most eight relationships and nine nodes, because each relationship is
-            a join and each node is a table -- one that no relationship reaches is joined to
-            the rest by nothing -- and the row limit bounds what comes back rather than what
-            it costs to produce.
+            Read-only query over logical BKN object/relation types and properties. Labels
+            and relationship types accept visible model IDs or names; parameters are values.
+            Supports MATCH/OPTIONAL MATCH/WITH/UNWIND/RETURN and UNION, predicates,
+            aggregation, ordering and pagination. See result_format for the bounded graph
+            execution contract and supported expression/path features; selecting that field
+            is optional. String predicates pushed to SQL follow source collation, while
+            service evaluation uses case-sensitive Unicode strings. Writes are rejected.
           example: "MATCH (o:order)-[:rel_order_item_order]->(i:order_item) WHERE o.status IN ['paid', 'shipped'] AND o.amount > $floor RETURN o.status AS status, count(*) AS orders ORDER BY orders DESC LIMIT 20"
     CypherQueryResult:
       type: object

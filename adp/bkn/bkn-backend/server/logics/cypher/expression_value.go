@@ -7,6 +7,7 @@ package cypher
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"math"
@@ -83,10 +84,41 @@ func normalizeExpressionParameter(value any) (any, error) {
 			return value, nil
 		}
 	}
-	return normalize(decoded, 0)
+	normalized, err := normalize(decoded, 0)
+	if err != nil {
+		return nil, err
+	}
+	return restoreParameterFloats(value, normalized), nil
+}
+
+// JSON encoding drops the decimal marker from integral Go floats. Preserve
+// their input type, including inside lists/maps, rather than changing integer
+// division or making a float usable as an integer pagination parameter.
+func restoreParameterFloats(original, normalized any) any {
+	switch value := original.(type) {
+	case float64:
+		return value
+	case float32:
+		return float64(value)
+	case []any:
+		if items, ok := normalized.([]any); ok {
+			for i, item := range value {
+				items[i] = restoreParameterFloats(item, items[i])
+			}
+		}
+	case map[string]any:
+		if fields, ok := normalized.(map[string]any); ok {
+			for key, item := range value {
+				fields[key] = restoreParameterFloats(item, fields[key])
+			}
+		}
+	}
+	return normalized
 }
 func expressionValueType(value any) string {
-	switch value.(type) {
+	switch typed := value.(type) {
+	case temporalValue:
+		return typed.kind
 	case nil:
 		return "null"
 	case bool:
@@ -155,6 +187,17 @@ func expressionEquality(left, right any) (any, error) {
 	if left == nil || right == nil {
 		return nil, nil
 	}
+	if value, ok := left.(temporalValue); ok {
+		other, ok := right.(temporalValue)
+		return ok && value.kind == other.kind && value.String() == other.String(), nil
+	}
+	if expressionNaN(left) || expressionNaN(right) {
+		return false, nil
+	}
+	if expressionNumeric(left) && expressionNumeric(right) {
+		order, err := expressionNumericOrder(left, right)
+		return order == 0, err
+	}
 	if a, _, ok := expressionNumber(left); ok {
 		b, _, ok := expressionNumber(right)
 		if !ok {
@@ -218,6 +261,29 @@ func expressionEquality(left, right any) (any, error) {
 	}
 }
 func expressionCompare(left, right any) (int, error) {
+	if value, ok := left.(temporalValue); ok {
+		other, ok := right.(temporalValue)
+		if !ok || value.kind != other.kind {
+			return 0, errIncomparable
+		}
+		if value.kind == "duration" {
+			total := func(value temporalValue) *big.Int {
+				seconds := new(big.Int).Mul(big.NewInt(value.months), big.NewInt(2629746))
+				seconds.Add(seconds, new(big.Int).Mul(big.NewInt(value.days), big.NewInt(86400)))
+				seconds.Add(seconds, big.NewInt(value.seconds))
+				seconds.Mul(seconds, big.NewInt(1000000000))
+				return seconds.Add(seconds, big.NewInt(value.nanoseconds))
+			}
+			return total(value).Cmp(total(other)), nil
+		}
+		if value.instant.Before(other.instant) {
+			return -1, nil
+		}
+		if value.instant.After(other.instant) {
+			return 1, nil
+		}
+		return strings.Compare(value.zone, other.zone), nil
+	}
 	if left == nil {
 		if right == nil {
 			return 0, nil
@@ -227,23 +293,21 @@ func expressionCompare(left, right any) (int, error) {
 	if right == nil {
 		return -1, nil
 	}
-	if a, _, ok := expressionNumber(left); ok {
-		if b, _, ok := expressionNumber(right); ok {
-			return a.Cmp(b), nil
-		}
-		return 0, expressionTypeError()
+	if expressionNumeric(left) || expressionNumeric(right) {
+		return expressionNumericOrder(left, right)
 	}
+
 	switch a := left.(type) {
 	case string:
 		b, ok := right.(string)
 		if !ok {
-			return 0, expressionTypeError()
+			return 0, errIncomparable
 		}
 		return strings.Compare(a, b), nil
 	case bool:
 		b, ok := right.(bool)
 		if !ok {
-			return 0, expressionTypeError()
+			return 0, errIncomparable
 		}
 		if a == b {
 			return 0, nil
@@ -255,9 +319,12 @@ func expressionCompare(left, right any) (int, error) {
 	case []any:
 		b, ok := right.([]any)
 		if !ok {
-			return 0, expressionTypeError()
+			return 0, errIncomparable
 		}
 		for i := 0; i < len(a) && i < len(b); i++ {
+			if a[i] == nil || b[i] == nil {
+				return 0, errIncomparable
+			}
 			order, err := expressionCompare(a[i], b[i])
 			if err != nil || order != 0 {
 				return order, err
@@ -271,7 +338,7 @@ func expressionCompare(left, right any) (int, error) {
 		}
 		return 0, nil
 	default:
-		return 0, expressionTypeError()
+		return 0, errIncomparable
 	}
 }
 
@@ -284,6 +351,11 @@ func expressionIdentity(value any) any {
 		}{number.RatString()}
 	}
 	switch typed := graphIdentity(value).(type) {
+	case temporalValue:
+		return struct {
+			Kind  string
+			Value string
+		}{typed.kind, typed.String()}
 	case []any:
 		values := make([]any, len(typed))
 		for i, item := range typed {
@@ -354,6 +426,13 @@ func evaluateOperation(plan *Plan, expression *GraphExpression, row map[string]a
 		values[i] = value
 	}
 	if strings.HasPrefix(operator, "FUNCTION:") {
+		name := strings.TrimPrefix(operator, "FUNCTION:")
+		if isTemporalFunction(name) {
+			state, _ := row[evaluationStateKey].(*expressionEvaluationState)
+			if state != nil {
+				return evaluateTemporalFunction(name, values, state.now)
+			}
+		}
 		return evaluateScalarFunction(strings.TrimPrefix(operator, "FUNCTION:"), values)
 	}
 	switch operator {
@@ -415,6 +494,19 @@ func evaluateOperation(plan *Plan, expression *GraphExpression, row map[string]a
 			return equal, err
 		}
 		return !equal.(bool), nil
+	case "HAS_LABEL":
+		if values[0] == nil {
+			return nil, nil
+		}
+		node, ok := values[0].(interfaces.CypherObjectValue)
+		if !ok {
+			return nil, expressionTypeError()
+		}
+		label, ok := values[1].(string)
+		if !ok {
+			return nil, expressionTypeError()
+		}
+		return node.ObjectTypeID == label, nil
 	case "IN":
 		if values[1] == nil {
 			return nil, nil
@@ -439,6 +531,12 @@ func evaluateOperation(plan *Plan, expression *GraphExpression, row map[string]a
 		}
 		return false, nil
 	case "INDEX", "SLICE":
+		if _, ok := values[0].(interfaces.CypherRelationValue); ok && operator == "INDEX" && expression.EmptyRelationProperty {
+			return nil, nil
+		}
+		if object, ok := values[0].(interfaces.CypherObjectValue); ok && operator == "INDEX" && expression.MissingObjectTypes[object.ObjectTypeID] {
+			return nil, nil
+		}
 		return evaluateListAccess(operator, values)
 	}
 	for _, value := range values {
@@ -446,9 +544,18 @@ func evaluateOperation(plan *Plan, expression *GraphExpression, row map[string]a
 			return nil, nil
 		}
 	}
+	if result, handled, err := evaluateTemporalArithmetic(operator, values); handled {
+		return result, err
+	}
 	switch operator {
 	case "<", ">", "<=", ">=":
+		if expressionNumeric(values[0]) && expressionNumeric(values[1]) && (expressionNaN(values[0]) || expressionNaN(values[1])) {
+			return false, nil
+		}
 		order, err := expressionCompare(values[0], values[1])
+		if errors.Is(err, errIncomparable) {
+			return nil, nil
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -465,11 +572,11 @@ func evaluateOperation(plan *Plan, expression *GraphExpression, row map[string]a
 	case "STARTS WITH", "ENDS WITH", "CONTAINS":
 		a, ok := values[0].(string)
 		if !ok {
-			return nil, expressionTypeError()
+			return nil, nil
 		}
 		b, ok := values[1].(string)
 		if !ok {
-			return nil, expressionTypeError()
+			return nil, nil
 		}
 		if operator == "STARTS WITH" {
 			return strings.HasPrefix(a, b), nil
@@ -508,6 +615,23 @@ func evaluateOperation(plan *Plan, expression *GraphExpression, row map[string]a
 }
 
 func evaluateArithmetic(operator string, values []any) (any, error) {
+	for _, value := range values {
+		if number, ok := value.(float64); ok && (math.IsNaN(number) || math.IsInf(number, 0)) {
+			x, ok := expressionFloat(values[0])
+			if !ok {
+				return nil, expressionTypeError()
+			}
+			y := float64(0)
+			if len(values) > 1 {
+				var ok bool
+				y, ok = expressionFloat(values[1])
+				if !ok {
+					return nil, expressionTypeError()
+				}
+			}
+			return evaluateFloatingArithmetic(operator, x, y)
+		}
+	}
 	a, integerA, ok := expressionNumber(values[0])
 	if !ok {
 		return nil, expressionTypeError()
@@ -557,6 +681,10 @@ func evaluateArithmetic(operator string, values []any) (any, error) {
 	}
 	x, _ := a.Float64()
 	y, _ := b.Float64()
+	return evaluateFloatingArithmetic(operator, x, y)
+}
+
+func evaluateFloatingArithmetic(operator string, x, y float64) (any, error) {
 	var result float64
 	switch operator {
 	case "+":
@@ -578,9 +706,6 @@ func evaluateArithmetic(operator string, values []any) (any, error) {
 	default:
 		return nil, expressionTypeError()
 	}
-	if math.IsInf(result, 0) || math.IsNaN(result) {
-		return nil, expressionArithmeticError("non-finite arithmetic result cannot be serialized")
-	}
 	return result, nil
 }
 func evaluateListAccess(operator string, values []any) (any, error) {
@@ -588,6 +713,13 @@ func evaluateListAccess(operator string, values []any) (any, error) {
 		return nil, nil
 	}
 	if operator == "INDEX" {
+		if value, ok := values[0].(temporalValue); ok {
+			key, ok := values[1].(string)
+			if !ok {
+				return nil, expressionTypeError()
+			}
+			return value.field(key)
+		}
 		if values[1] == nil {
 			return nil, nil
 		}
@@ -661,6 +793,34 @@ func evaluateListAccess(operator string, values []any) (any, error) {
 }
 
 func aggregateExpressionValues(function string, values []any) (any, error) {
+	if function == "percentilecont" || function == "percentiledisc" {
+		return aggregatePercentile(function, values)
+	}
+	if function == "stdev" || function == "stdevp" {
+		return aggregateStandardDeviation(function, values)
+	}
+	if len(values) > 0 && (function == "sum" || function == "avg") {
+		if first, ok := values[0].(temporalValue); ok && first.kind == "duration" {
+			total := temporalValue{kind: "duration"}
+			for _, item := range values {
+				value, ok := item.(temporalValue)
+				if !ok {
+					return nil, expressionTypeError()
+				}
+				var err error
+				total, err = addTemporalDuration(total, value, 1)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if function == "avg" {
+				value, _, err := evaluateTemporalArithmetic("/", []any{total, int64(len(values))})
+				return value, err
+			}
+			return total, nil
+		}
+	}
+
 	if function == "collect" {
 		return values, nil
 	}
@@ -676,7 +836,7 @@ func aggregateExpressionValues(function string, values []any) (any, error) {
 	if function == "min" || function == "max" {
 		best := values[0]
 		for _, value := range values[1:] {
-			comparison, err := expressionCompare(value, best)
+			comparison, err := expressionOrder(value, best)
 			if err != nil {
 				return nil, err
 			}
@@ -721,7 +881,7 @@ func sortExpressionRows(rows []map[string]any, sources []map[string]any, keys []
 	var failure error
 	sort.SliceStable(indices, func(i, j int) bool {
 		for n, order := range orders {
-			comparison, err := expressionCompare(keys[indices[i]][n], keys[indices[j]][n])
+			comparison, err := expressionOrder(keys[indices[i]][n], keys[indices[j]][n])
 			if err != nil {
 				failure = err
 				return false
