@@ -273,7 +273,7 @@ class K8sScheduler(IContainerScheduler):
         if bkn_mcp_url:
             env_vars.append(V1EnvVar(name="BKN_SANDBOX_MCP_URL", value=bkn_mcp_url))
         bkn_base_url = resolve_bkn_base_url()
-        if bkn_base_url:
+        if bkn_base_url and "BKN_BASE_URL" not in config.env_vars:
             env_vars.append(V1EnvVar(name="BKN_BASE_URL", value=bkn_base_url))
 
         # Add PYTHONPATH so dependency imports resolve
