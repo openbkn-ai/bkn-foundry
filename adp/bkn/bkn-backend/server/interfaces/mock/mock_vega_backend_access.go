@@ -10,10 +10,10 @@
 package mock_interfaces
 
 import (
-	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	context "context"
 	reflect "reflect"
 
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -200,6 +200,21 @@ func (m *MockVegaBackendAccess) QueryResourceData(ctx context.Context, resourceI
 func (mr *MockVegaBackendAccessMockRecorder) QueryResourceData(ctx, resourceID, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryResourceData", reflect.TypeOf((*MockVegaBackendAccess)(nil).QueryResourceData), ctx, resourceID, params)
+}
+
+// QueryResourceDataAs mocks base method.
+func (m *MockVegaBackendAccess) QueryResourceDataAs(ctx context.Context, account interfaces.AccountInfo, resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "QueryResourceDataAs", ctx, account, resourceID, params)
+	ret0, _ := ret[0].(*interfaces.DatasetQueryResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryResourceDataAs indicates an expected call of QueryResourceDataAs.
+func (mr *MockVegaBackendAccessMockRecorder) QueryResourceDataAs(ctx, account, resourceID, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryResourceDataAs", reflect.TypeOf((*MockVegaBackendAccess)(nil).QueryResourceDataAs), ctx, account, resourceID, params)
 }
 
 // RawQuery mocks base method.

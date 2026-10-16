@@ -44,6 +44,11 @@ Description = "The query reads a property you may not read in full"
 Solution = "Please remove the listed properties from the query or ask the administrator for full access to them."
 ErrorLink = ""
 
+[BknBackend.Cypher.ReadBudgetExceeded]
+Description = "The query would read more rows than one execution may"
+Solution = "Please add conditions on the nodes the pattern matches so that fewer rows are read."
+ErrorLink = ""
+
 [BknBackend.Cypher.PropertyForbidden.Detail]
 NotFull = "Full access is required to every property the query reads; it is not granted for: {{.properties}}."
 

@@ -44,6 +44,11 @@ Description = "查询读取了当前用户无完整访问权限的属性"
 Solution = "请从查询中移除所列属性，或联系管理员授予这些属性的完整访问权限。"
 ErrorLink = ""
 
+[BknBackend.Cypher.ReadBudgetExceeded]
+Description = "查询需要读取的数据行超过单次执行上限"
+Solution = "请为模式中的节点增加过滤条件，减少需要读取的数据行。"
+ErrorLink = ""
+
 [BknBackend.Cypher.PropertyForbidden.Detail]
 NotFull = "查询读取的每个属性都需要完整访问权限，以下属性未获授权：{{.properties}}。"
 

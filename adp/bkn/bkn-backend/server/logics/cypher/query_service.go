@@ -132,6 +132,10 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	if err := s.authorizeProperties(ctx, query.KNID, compiled); err != nil {
 		return nil, err
 	}
+	if s.executor() == common.CypherExecutorBindJoin {
+		return s.queryBindJoin(ctx, query, compiled)
+	}
+	span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL))
 
 	// The paging limit repeats the statement's own LIMIT rather than leaving
 	// it unset. vega-backend wraps the statement and applies a page of its
@@ -391,6 +395,7 @@ func rowFilterPermissionImpacts(objectTypeIDs []string) []interfaces.CypherPermi
 const (
 	spanAttrExecutionPath  = "cypher.execution_path"
 	spanAttrFallbackReason = "cypher.fallback_reason"
+	spanAttrExecutor       = "cypher.executor"
 
 	executionPathProxy  = "proxy"
 	executionPathCaller = "caller"
@@ -447,6 +452,72 @@ func (s *cypherQueryService) execute(ctx context.Context, query interfaces.Cyphe
 	span.SetAttributes(attribute.String(spanAttrExecutionPath, executionPathProxy))
 	proxyRequest := request
 	return s.vba.RawQueryAs(ctx, proxy.account, &proxyRequest)
+}
+
+// executor is the configured way to run a compiled query.
+func (s *cypherQueryService) executor() string {
+	if s.appSetting != nil && s.appSetting.ServerSetting.CypherExecutor == common.CypherExecutorBindJoin {
+		return common.CypherExecutorBindJoin
+	}
+	return common.CypherExecutorSQL
+}
+
+// queryBindJoin runs a compiled query through the bind-join executor, which
+// reads each table through vega-backend's resource data API. Identity follows
+// the same rule as the SQL path: the caller first, and the knowledge network's
+// proxy account only when vega-backend refused the caller and the proxy can
+// serve every binding the plan reads through. A refusal partway through
+// restarts the whole query under the proxy, so no result mixes identities.
+func (s *cypherQueryService) queryBindJoin(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorBindJoin))
+	readAs := func(account interfaces.AccountInfo) dataReader {
+		return func(ctx context.Context, resourceID string,
+			params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+			return s.vba.QueryResourceDataAs(ctx, account, resourceID, params)
+		}
+	}
+
+	caller, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	columns, entries, err := runBindJoin(ctx, compiled.plan, compiled.schema, readAs(caller),
+		defaultBindJoinLimits, interfaces.CYPHER_DEFAULT_LIMIT)
+	path := executionPathCaller
+	if err != nil && vegaRefused(err) {
+		proxy, reason := s.resolveProxy(ctx, query, compiled.plan)
+		if proxy == nil {
+			span.SetAttributes(
+				attribute.String(spanAttrExecutionPath, executionPathCaller),
+				attribute.String(spanAttrFallbackReason, reason),
+			)
+			return nil, executionError(ctx, err)
+		}
+		logger.Infof("Cypher query on knowledge network %s runs under the knowledge network proxy: "+
+			"caller %s, proxy account %s, resources %s",
+			query.KNID, caller.ID, proxy.account.ID, strings.Join(proxy.resourceIDs, ","))
+		path = executionPathProxy
+		columns, entries, err = runBindJoin(ctx, compiled.plan, compiled.schema, readAs(proxy.account),
+			defaultBindJoinLimits, interfaces.CYPHER_DEFAULT_LIMIT)
+	}
+	span.SetAttributes(attribute.String(spanAttrExecutionPath, path))
+	if err != nil {
+		var budget *ReadBudgetError
+		if errors.As(err, &budget) {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_ReadBudgetExceeded).
+				WithErrorDetails(budget.Error())
+		}
+		if !vegaRefused(err) {
+			common.LogSafeError(ctx, "Cypher bind-join execution failed", err)
+		}
+		return nil, executionError(ctx, err)
+	}
+
+	return &interfaces.CypherQueryResult{
+		Columns:           columns,
+		Entries:           entries,
+		TraceDescriptor:   compiled.traceDescriptor,
+		PermissionImpacts: compiled.permissionImpacts,
+	}, nil
 }
 
 // vegaRefused reports vega-backend refusing a resource the statement reads.
