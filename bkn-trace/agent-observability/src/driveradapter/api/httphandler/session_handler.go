@@ -346,7 +346,7 @@ func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r 
 			RequestHash: request.RequestHash, AgentName: request.AgentName,
 			LeaseDuration: time.Duration(request.LeaseSeconds) * time.Second,
 		})
-		h.writeLifecycleResult(w, r, value, err, http.StatusCreated)
+		h.writeInteractionLifecycleResult(w, r, value, err, http.StatusCreated)
 	case len(parts) == 4 && parts[1] == "interactions" && parts[3] == "operations:ensure" && r.Method == http.MethodPost:
 		var request ensureOperationRequest
 		if err := decodeLifecycleBody(w, r, &request); err != nil {
@@ -486,7 +486,7 @@ func (h *SessionHandler) handleManagedFinish(
 			Claims: request.Claims, CompletionReason: reason, SystemPartialReasons: partialReasons,
 		},
 	})
-	h.writeLifecycleResult(w, r, value, err, http.StatusOK)
+	h.writeInteractionLifecycleResult(w, r, value, err, http.StatusOK)
 }
 
 func managedOutcomeStatus(outcome string) (sessionvo.InteractionStatus, bool) {
@@ -680,6 +680,17 @@ func (h *SessionHandler) writeLifecycleResult(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeJSON(w, r, status, value)
+}
+
+func (h *SessionHandler) writeInteractionLifecycleResult(w http.ResponseWriter, r *http.Request, value sessionvo.Interaction, err error, status int) {
+	if err != nil {
+		writeSessionDomainError(w, r, err)
+		return
+	}
+	writeJSON(w, r, status, struct {
+		sessionvo.Interaction
+		CaptureEnabled bool `json:"capture_enabled"`
+	}{Interaction: value, CaptureEnabled: !h.service.CapturePolicyDisabled()})
 }
 
 func splitLifecyclePath(path string) []string {

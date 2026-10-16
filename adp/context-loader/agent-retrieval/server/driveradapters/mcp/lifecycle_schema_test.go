@@ -18,7 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestBusinessToolSchemasOfferOptionalManagedBKNContext(t *testing.T) {
+func TestBusinessToolSchemasRequireManagedBKNContext(t *testing.T) {
 	rawMeta, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		t.Fatalf("read registered tool metadata: %v", err)
@@ -45,8 +45,8 @@ func TestBusinessToolSchemasOfferOptionalManagedBKNContext(t *testing.T) {
 			if _, ok := schema.Properties["bkn_context"]; !ok {
 				t.Fatalf("%s must advertise bkn_context", toolKey)
 			}
-			if containsString(schema.Required, "bkn_context") {
-				t.Fatalf("%s cannot require Trace for business execution", toolKey)
+			if !containsString(schema.Required, "bkn_context") {
+				t.Fatalf("%s must require managed bkn_context", toolKey)
 			}
 
 			var contextSchema struct {

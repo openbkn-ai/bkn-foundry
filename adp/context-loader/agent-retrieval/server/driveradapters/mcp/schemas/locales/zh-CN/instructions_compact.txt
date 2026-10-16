@@ -8,8 +8,8 @@ ContextLoader：常用查询直接调用，其他工具按需加载。
 
 受管交互流程（每个新的用户问题）：
 1. 调用 bkn_start_interaction，传入完整问题、当前 Agent 名称和 conversation_mode。首个问题用 new，不传 conversation_id；后续问题用 continue，并传入上次返回的 conversation_id。
-2. 有 IDs 时照抄到 bkn_context；trace_recorded=false 时省略并继续业务，不因 Trace 重试。
-3. 回复前 bkn_finish_interaction：completed 带 answer，否则 failed/cancelled/handed_off。将 _meta trace 的 partial_reasons 传入 finish；宿主丢弃 _meta 时读取独立降级诊断块；无 ID 可省略 interaction_id。
+2. 每次业务调用都把 start 返回的两个真实 ID 放入 bkn_context；关闭 Trace 采集时也一样。start 未返回 ID 时先重试 start，不调用业务工具。
+3. 回复前带真实 interaction_id 调用 bkn_finish_interaction：completed 带 answer，否则 failed/cancelled/handed_off。将 _meta trace 的 partial_reasons 传入 finish；宿主丢弃 _meta 时读取独立降级诊断块。
 
 探索与查询：
 - 不知道 kn_id 时先 list_knowledge_networks；get_kn_detail 看概览，search_schema 找类和指标，用返回的真实 ID 查询。

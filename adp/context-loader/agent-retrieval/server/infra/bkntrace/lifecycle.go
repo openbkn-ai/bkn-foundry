@@ -111,6 +111,7 @@ type ClosureManifest struct {
 type Interaction struct {
 	InteractionID   string           `json:"interaction_id"`
 	ConversationID  string           `json:"conversation_id"`
+	CaptureEnabled  *bool            `json:"capture_enabled,omitempty"`
 	Ordinal         uint64           `json:"ordinal"`
 	ExecutionStatus string           `json:"execution_status"`
 	EvidenceStatus  string           `json:"evidence_status"`
