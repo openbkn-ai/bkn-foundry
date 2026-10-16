@@ -73,3 +73,9 @@ func TestRemoteConnectorNewAndLifecycle(t *testing.T) {
 		assert.Nil(t, metadata)
 	})
 }
+
+func TestRemoteConnectorValidateBuildSchema(t *testing.T) {
+	err := (&RemoteConnector{}).ValidateBuildSchema(&interfaces.Resource{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not implemented")
+}

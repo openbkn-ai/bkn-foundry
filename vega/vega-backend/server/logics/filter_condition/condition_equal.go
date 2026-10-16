@@ -46,6 +46,10 @@ func (c *EqualCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("condition [eq] only supports single value")
 	}
 
+	if cfg.Value == nil {
+		return nil, fmt.Errorf("condition [equal] value must not be nil")
+	}
+
 	cond := &EqualCond{
 		Cfg:    cfg,
 		Lfield: field,

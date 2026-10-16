@@ -50,36 +50,36 @@ func TestIndexCapabilitiesUnavailableError(t *testing.T) {
 }
 
 func TestUnsupportedOperationErrorCause(t *testing.T) {
-	cause := errors.New("source operation rejected")
-	err := NewUnsupportedOperationError("regex", "sql")
-	err.Cause = cause
-	if !errors.Is(fmt.Errorf("build query: %w", err), cause) {
-		t.Fatal("unsupported operation error must preserve its optional cause")
+	cause := errors.New("full-text search requires a local index")
+	err := NewUnsupportedOperationError("match", cause)
+	wrapped := fmt.Errorf("build query: %w", err)
+	if !errors.Is(wrapped, cause) {
+		t.Fatal("unsupported operation error must preserve the supplied cause")
+	}
+	var unsupported *UnsupportedOperationError
+	if !errors.As(wrapped, &unsupported) || unsupported.Operation != "match" || !errors.Is(unsupported.Cause, cause) {
+		t.Fatalf("wrapped unsupported operation lost its type, operation, or cause: %v", wrapped)
+	}
+	if reason, ok := RequestSideQueryError(wrapped); !ok || !strings.Contains(reason, cause.Error()) {
+		t.Fatalf("caller explanation was not classified as a request-side error: %q, %t", reason, ok)
 	}
 }
 
 func TestUnsupportedOperationErrorMessage(t *testing.T) {
 	for _, tc := range []struct {
-		operation string
-		channel   string
-		want      string
+		cause error
+		want  string
 	}{
-		{operation: "match", channel: "sql", want: "local index"},
-		{operation: "knn_vector", channel: "sql", want: "vector feature"},
-		{operation: "match", channel: "opensearch", want: "opensearch query channel"},
+		{nil, "operation match is not supported"},
+		{errors.New("full-text search requires a local index"), "operation match is not supported: full-text search requires a local index"},
 	} {
-		msg := NewUnsupportedOperationError(tc.operation, tc.channel).Error()
-		if !strings.Contains(msg, tc.want) {
-			t.Errorf("error %q should contain %q", msg, tc.want)
+		err := NewUnsupportedOperationError("match", tc.cause)
+		if got := err.Error(); got != tc.want {
+			t.Errorf("got %q, want %q", got, tc.want)
 		}
-		if tc.channel != "sql" && strings.Contains(msg, "local index") {
-			t.Errorf("error %q should not suggest building an index", msg)
+		if !errors.Is(err.Unwrap(), tc.cause) {
+			t.Errorf("cause changed: %v", err.Unwrap())
 		}
-	}
-	wrapped := fmt.Errorf("execute query: %w", NewUnsupportedOperationError("match", "sql"))
-	var unsupported *UnsupportedOperationError
-	if !errors.As(wrapped, &unsupported) || unsupported.Operation != "match" {
-		t.Fatalf("wrapped unsupported operation lost its type or operation: %v", wrapped)
 	}
 }
 
@@ -124,7 +124,7 @@ func TestRequestSideQueryError(t *testing.T) {
 	if reason, ok := RequestSideQueryError(build); !ok || reason != "text field body needs keyword" {
 		t.Errorf("wrapped condition build error was not classified: %q, %t", reason, ok)
 	}
-	if reason, ok := RequestSideQueryError(NewUnsupportedOperationError("regex", "sql")); !ok || !strings.Contains(reason, "regex") {
+	if reason, ok := RequestSideQueryError(NewUnsupportedOperationError("regex", errors.New("the sql query channel does not support this operation"))); !ok || !strings.Contains(reason, "regex") {
 		t.Errorf("unsupported operation was not classified: %q, %t", reason, ok)
 	}
 	if reason, ok := RequestSideQueryError(errors.New("opensearch unavailable")); ok || reason != "" {

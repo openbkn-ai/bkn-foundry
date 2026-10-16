@@ -324,6 +324,22 @@ func TestValidateAggregateParams(t *testing.T) {
 		require.NoError(t, validateAggregateParams(ctx, params))
 	})
 
+	t.Run("only count accepts a wildcard property", func(t *testing.T) {
+		for _, aggr := range []string{"count_distinct", "sum", "avg", "min", "max"} {
+			t.Run(aggr, func(t *testing.T) {
+				params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "*", Aggr: aggr}}
+				err := ValidateResourceDataQueryParams(ctx, params)
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+				assert.Equal(t, verrors.VegaBackend_InvalidParameter_Aggregation, httpErr.BaseError.ErrorCode)
+				assert.ErrorContains(t, err, "only supports count")
+			})
+		}
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, &interfaces.ResourceDataQueryParams{
+			Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count"},
+		}))
+	})
 	t.Run("returns errors for invalid aggregate options", func(t *testing.T) {
 		tests := []struct {
 			name   string

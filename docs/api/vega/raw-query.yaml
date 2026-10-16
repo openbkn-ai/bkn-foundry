@@ -251,6 +251,7 @@ components:
             - duckdb
             - tsql
             - oracle
+            - doris
             - generic
             - opensearch
         paging:

@@ -84,7 +84,13 @@ func NewMySQLConnector() interfaces.TableConnector {
 	return &MariaDBConnector{connectorType: interfaces.ConnectorTypeMySQL}
 }
 
-// GetType returns the data source type.
+// ValidateBuildSchema adds no source-specific restrictions to the common build rules.
+// The service validates build keys; this method performs no source I/O.
+func (c *MariaDBConnector) ValidateBuildSchema(_ *interfaces.Resource) error {
+	return nil
+}
+
+// GetType returns the MariaDB or MySQL connector type.
 func (c *MariaDBConnector) GetType() string {
 	if c.connectorType != "" {
 		return c.connectorType
@@ -97,22 +103,22 @@ func (c *MariaDBConnector) GetName() string {
 	return c.GetType()
 }
 
-// GetMode returns the connector mode.
+// GetMode returns the local connector mode.
 func (c *MariaDBConnector) GetMode() string {
 	return interfaces.ConnectorModeLocal
 }
 
-// GetCategory returns the connector category.
+// GetCategory returns the table connector category.
 func (c *MariaDBConnector) GetCategory() string {
 	return interfaces.ConnectorCategoryTable
 }
 
-// GetEnabled returns the enabled status.
+// GetEnabled reports whether the connector builder is enabled.
 func (c *MariaDBConnector) GetEnabled() bool {
 	return c.enabled
 }
 
-// SetEnabled sets the enabled status.
+// SetEnabled updates the connector builder's enabled state.
 func (c *MariaDBConnector) SetEnabled(enabled bool) {
 	c.enabled = enabled
 }
@@ -134,7 +140,8 @@ func (c *MariaDBConnector) GetFieldConfig() map[string]interfaces.ConnectorField
 	}
 }
 
-// New validates MariaDB settings and creates a connector with an optional database scope.
+// New validates configuration and creates an unconnected MariaDB or MySQL instance.
+// Database scope limits discovery and validation; the DSN does not select a database.
 func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var mCfg mariadbConfig
 	if err := mapstructure.Decode(cfg, &mCfg); err != nil {
@@ -147,7 +154,6 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 		return nil, fmt.Errorf("mariadb connector config is incomplete")
 	}
 
-	// Verify the TCP port range.
 	if mCfg.Port < PORT_MIN || mCfg.Port > PORT_MAX {
 		return nil, fmt.Errorf("port %d is out of valid range (%d-%d)", mCfg.Port, PORT_MIN, PORT_MAX)
 	}
@@ -166,7 +172,7 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 		seen[db] = struct{}{}
 		mCfg.Databases[idx] = db
 	}
-	options, err := normalizeOptions(mCfg.Options)
+	options, err := c.normalizeOptions(mCfg.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -178,8 +184,9 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 	}, nil
 }
 
-// normalizeOptions validates supported driver options and converts their values to DSN strings.
-func normalizeOptions(options map[string]any) (map[string]any, error) {
+// normalizeOptions validates driver option names and values for DSN construction.
+// Option names retain driver-required casing; timeout strings retain their units.
+func (c *MariaDBConnector) normalizeOptions(options map[string]any) (map[string]any, error) {
 	normalized := make(map[string]any, len(options))
 	for key, value := range options {
 		name := strings.TrimSpace(key)
@@ -230,7 +237,7 @@ func (c *MariaDBConnector) connectionString() string {
 	values.Set("charset", "utf8mb4")
 	values.Set("parseTime", "true")
 
-	// Apply validated options before setting the server time zone.
+	// Options override defaults; connector-controlled time zone settings are applied last.
 	for k, v := range c.config.Options {
 		values.Set(k, v.(string))
 	}
@@ -244,7 +251,8 @@ func (c *MariaDBConnector) connectionString() string {
 		values.Encode())
 }
 
-// Connect opens an instance-level pool; configured databases scope discovery and validation.
+// Connect opens an instance-level pool and reuses it after a successful ping.
+// A failed ping closes the candidate pool before returning the error.
 func (c *MariaDBConnector) Connect(ctx context.Context) error {
 	if c.connected {
 		return nil
@@ -265,7 +273,7 @@ func (c *MariaDBConnector) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Close releases the database connection pool and clears the connected state.
+// Close releases the connection pool and clears local state, even if closing fails.
 func (c *MariaDBConnector) Close(ctx context.Context) error {
 	if c.db != nil {
 		err := c.db.Close()
@@ -276,7 +284,7 @@ func (c *MariaDBConnector) Close(ctx context.Context) error {
 	return nil
 }
 
-// Ping checks the database connection.
+// Ping establishes a connection if needed and checks it with the caller's context.
 func (c *MariaDBConnector) Ping(ctx context.Context) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
@@ -285,7 +293,8 @@ func (c *MariaDBConnector) Ping(ctx context.Context) error {
 	return c.db.PingContext(ctx)
 }
 
-// TestConnection checks connectivity and the existence of configured databases.
+// TestConnection checks connectivity and visibility of every configured database.
+// Without a configured scope, only connectivity is checked.
 func (c *MariaDBConnector) TestConnection(ctx context.Context) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
@@ -337,7 +346,8 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 		return fmt.Errorf("failed to iterate databases: %w", err)
 	}
 
-	// Report the first configured database missing from the query result.
+	// Match exact source names rather than relying on case-insensitive SQL collation.
+	// Report the first configured name that is missing or inaccessible.
 	for _, db := range c.config.Databases {
 		if _, exists := found[db]; !exists {
 			return fmt.Errorf("database not found: %s", db)

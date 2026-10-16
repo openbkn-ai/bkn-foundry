@@ -8,12 +8,15 @@ package postgresql
 
 import (
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"regexp"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -44,6 +47,20 @@ func TestPostgresqlConnectorTableTypeFromRelKind(t *testing.T) {
 }
 
 func TestPostgresqlConnectorListTables(t *testing.T) {
+	t.Run("rejects scope before connecting", func(t *testing.T) {
+		connector := &PostgresqlConnector{config: &postgresqlConfig{Schemas: []string{"app"}}}
+		connected := false
+		patches := gomonkey.ApplyMethod(connector, "Connect", func(_ *PostgresqlConnector, _ context.Context) error {
+			connected = true
+			return errors.New("unexpected connection attempt")
+		})
+		defer patches.Reset()
+
+		tables, err := connector.listTables(context.Background(), "outside", "")
+		require.ErrorContains(t, err, "scope")
+		assert.Nil(t, tables)
+		assert.False(t, connected)
+	})
 	t.Run("excludes partition children and accepts null optional description", func(t *testing.T) {
 		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 		if err != nil {
@@ -213,6 +230,20 @@ func TestPostgresqlConnectorListSchemas(t *testing.T) {
 }
 
 func TestPostgresqlConnectorFetchColumns(t *testing.T) {
+	t.Run("zero-column tables are supported", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{config: &postgresqlConfig{Database: "appdb"}, connected: true, db: db, compatibility: postgresqlCompatibility{lateral: true, withOrdinality: true}}
+		mock.ExpectQuery("FROM pg_catalog.pg_class").WithArgs("public", "empty_table").WillReturnRows(sqlmock.NewRows([]string{"column"})).RowsWillBeClosed()
+		mock.ExpectQuery("FROM information_schema.table_constraints tc").WithArgs("appdb", "public", "empty_table").WillReturnRows(sqlmock.NewRows([]string{"column_name"})).RowsWillBeClosed()
+		table := &interfaces.TableMeta{Schema: "public", Name: "empty_table", Columns: []interfaces.TableColumnMeta{{Name: "old"}}, PKs: []string{"old"}}
+		require.NoError(t, connector.fetchColumns(context.Background(), table))
+		assert.Empty(t, table.Columns)
+		assert.Empty(t, table.PKs)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New returned error: %v", err)
@@ -244,7 +275,7 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"domain_oid", "base_type", "base_type_kind", "base_typmod", "domain_not_null", "domain_default", "check_constraint",
 		}).
-			AddRow(9100, "int4", "b", -1, true, "42", "CHECK ((VALUE > 0)); CHECK ((VALUE < 1000))").
+			AddRow(9100, " INT4 ", "b", -1, true, "42", "CHECK ((VALUE > 0)); CHECK ((VALUE < 1000))").
 			AddRow(9400, "order_status", "e", -1, false, nil, ""))
 	mock.ExpectQuery("SELECT kcu.column_name").
 		WithArgs("appdb", "public", "orders").
@@ -340,6 +371,21 @@ func TestPostgresqlConnectorFetchDomainMetadataSkipsQueryWithoutDomains(t *testi
 }
 
 func TestPostgresqlConnectorFetchIndexes(t *testing.T) {
+	t.Run("source error retains cause and operation", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		table := &interfaces.TableMeta{Schema: "sales", Name: "orders"}
+		cause := errors.New("source unavailable")
+		mock.ExpectQuery("SELECT").WithArgs("sales", "orders").WillReturnError(cause)
+
+		err = connector.fetchIndexes(context.Background(), table)
+
+		require.ErrorIs(t, err, cause)
+		assert.ErrorContains(t, err, "failed to execute index metadata query")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -365,6 +411,21 @@ func TestPostgresqlConnectorFetchIndexes(t *testing.T) {
 }
 
 func TestPostgresqlConnectorFetchForeignKeys(t *testing.T) {
+	t.Run("source error retains cause and operation", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		table := &interfaces.TableMeta{Schema: "sales", Name: "orders"}
+		cause := errors.New("source unavailable")
+		mock.ExpectQuery("SELECT").WithArgs("sales", "orders").WillReturnError(cause)
+
+		err = connector.fetchForeignKeys(context.Background(), table)
+
+		require.ErrorIs(t, err, cause)
+		assert.ErrorContains(t, err, "failed to execute foreign key metadata query")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -455,52 +516,6 @@ func TestPostgresqlConnectorCountRows(t *testing.T) {
 	}
 }
 
-func TestPostgresqlConnectorBuildSourceIdentifier(t *testing.T) {
-	for _, tc := range []struct{ name, namespace, table, want string }{
-		{"ordinary", "sales", "orders", "\"sales\".\"orders\""},
-		{"dot in component", "sales.eu", "orders.part", "\"sales.eu\".\"orders.part\""},
-		{"spaces", " sales ", " orders ", "\" sales \".\" orders \""},
-		{"reserved word", "schema", "select", "\"schema\".\"select\""},
-		{"case", "Sales", "Orders", "\"Sales\".\"Orders\""},
-		{"quote", "sch\"ema", "ord\"ers", "\"sch\"\"ema\".\"ord\"\"ers\""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			meta := &interfaces.TableMeta{Schema: tc.namespace, Name: tc.table}
-			reference := (&PostgresqlConnector{}).BuildSourceIdentifier(meta)
-			assert.Equal(t, tc.want, reference)
-			assert.Equal(t, tc.namespace, meta.Schema)
-			assert.Equal(t, tc.table, meta.Name)
-		})
-	}
-
-	t.Run("does not mutate metadata or connect", func(t *testing.T) {
-		connector := &PostgresqlConnector{}
-		meta := &interfaces.TableMeta{Schema: "sales", Name: "order.items"}
-		before := *meta
-		assert.Equal(t, "\"sales\".\"order.items\"", connector.BuildSourceIdentifier(meta))
-		assert.Equal(t, connector.BuildSourceIdentifier(meta), connector.BuildSourceIdentifier(meta))
-		assert.False(t, connector.connected)
-		assert.Equal(t, before, *meta)
-	})
-}
-
-func TestPostgresqlConnectorBuildOriginalName(t *testing.T) {
-	connector := &PostgresqlConnector{}
-	for _, tc := range []struct {
-		name string
-		meta *interfaces.TableMeta
-		want string
-	}{
-		{"schema qualified", &interfaces.TableMeta{Database: "app", Schema: "sales", Name: "orders"}, "sales.orders"},
-		{"raw components", &interfaces.TableMeta{Schema: "sales space", Name: "order.items"}, "sales space.order.items"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := connector.BuildOriginalName(tc.meta)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestPostgresqlConnectorDecodeTableMeta(t *testing.T) {
 	for _, tc := range []struct {
 		name, original       string
@@ -568,6 +583,42 @@ func TestPostgresqlConnectorDecodeTableMeta(t *testing.T) {
 }
 
 func TestPostgresqlConnectorFetchTableStatus(t *testing.T) {
+	t.Run("missing table retains source error and metadata", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &PostgresqlConnector{db: db, connected: true}
+		table := &interfaces.TableMeta{Schema: "sales", Name: "orders", Description: "previous", Properties: map[string]any{"legacy": true}}
+		mock.ExpectQuery("SELECT c.relkind::text").WithArgs("sales", "orders").WillReturnError(sql.ErrNoRows)
+
+		err = connector.fetchTableStatus(context.Background(), table)
+
+		require.ErrorIs(t, err, sql.ErrNoRows)
+		assert.ErrorContains(t, err, "table metadata not found or inaccessible")
+		assert.Equal(t, "previous", table.Description)
+		assert.Equal(t, map[string]any{"legacy": true}, table.Properties)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	for _, tc := range []struct {
+		name  string
+		value driver.Value
+	}{{"NULL", nil}, {"negative", int64(-1)}, {"zero retained", int64(0)}} {
+		t.Run("valid properties "+tc.name, func(t *testing.T) {
+			c, mock, cleanup := newPostgresqlConnectorMock(t, nil)
+			defer cleanup()
+			mock.ExpectQuery("SELECT c.relkind::text").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"relkind", "description", "est_rows", "total_bytes", "index_bytes"}).AddRow("r", nil, tc.value, tc.value, tc.value))
+			previous := map[string]any{"legacy": true}
+			table := &interfaces.TableMeta{Name: "orders", Schema: "app", Properties: previous}
+			require.NoError(t, c.fetchTableStatus(context.Background(), table))
+			want := map[string]any{}
+			if tc.name == "zero retained" {
+				want = map[string]any{"estimated_row_count": int64(0), "data_length": int64(0), "index_length": int64(0)}
+			}
+			assert.Equal(t, want, table.Properties)
+			assert.Equal(t, map[string]any{"legacy": true}, previous)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 	for _, tc := range []struct {
 		name         string
 		description  any
@@ -619,8 +670,30 @@ func TestPostgresqlConnectorGetTableMetaRejectsOutsideScope(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	connector := &PostgresqlConnector{config: &postgresqlConfig{Schemas: []string{"app"}}, connected: true, db: db}
+	connector.connected = false
+	connected := false
+	patches := gomonkey.ApplyMethod(connector, "Connect", func(_ *PostgresqlConnector, _ context.Context) error {
+		connected = true
+		return errors.New("unexpected connection attempt")
+	})
+	defer patches.Reset()
 	table := &interfaces.TableMeta{Database: "other", Schema: "other", Name: "orders"}
-	err = connector.GetTableMeta(context.Background(), table)
+	err = connector.GetTableMeta(context.Background(), table, true)
 	require.ErrorContains(t, err, "outside")
+	assert.False(t, connected)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPostgresqlConnectorGetTableMetaRequiresStatusAfterList(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	connector := &PostgresqlConnector{config: &postgresqlConfig{}, connected: true, db: db}
+	table := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders", TableType: interfaces.TableTypeTable, Description: "listed comment"}
+	mock.ExpectQuery("SELECT").WithArgs("app", "orders").WillReturnError(sql.ErrNoRows)
+	err = connector.GetTableMeta(context.Background(), table, false)
+	require.ErrorIs(t, err, sql.ErrNoRows)
+	require.ErrorContains(t, err, "failed to fetch table status")
+	assert.Equal(t, "listed comment", table.Description)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

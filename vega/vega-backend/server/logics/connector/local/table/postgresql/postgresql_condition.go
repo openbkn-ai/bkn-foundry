@@ -136,7 +136,14 @@ func (c *PostgresqlConnector) ConvertFilterConditionWithOpr(condition interfaces
 	case filter_condition.OperationCurrent:
 		return c.ConvertFilterConditionCurrent(condition)
 	default:
-		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), filter_condition.QueryChannelSQL)
+		cause := fmt.Errorf("the sql query channel does not support this operation")
+		switch condition.GetOperation() {
+		case filter_condition.OperationMatch, filter_condition.OperationMatchPhrase, filter_condition.OperationMultiMatch:
+			cause = fmt.Errorf("the sql query channel does not support this operation; full-text operations need a local index on the resource: build one, or use like/not_like/contain/prefix/regex on this channel")
+		case filter_condition.OperationKnnVector:
+			cause = fmt.Errorf("the sql query channel does not support this operation; vector search needs a local index with a vector feature on the field: build one first")
+		}
+		return nil, interfaces.NewUnsupportedOperationError(condition.GetOperation(), cause)
 	}
 }
 
@@ -150,7 +157,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionEqual(condition interfaces.F
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(cond.Lfield, "=", cond.Value)
+			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "=", cond.Value)
 		}
 		return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -170,7 +177,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotEqual(condition interface
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(cond.Lfield, "<>", cond.Value)
+			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<>", cond.Value)
 		}
 		return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -190,7 +197,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionGt(condition interfaces.Filt
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(cond.Lfield, ">", cond.Value)
+			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">", cond.Value)
 		}
 		return sq.Gt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -210,7 +217,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionGte(condition interfaces.Fil
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(cond.Lfield, ">=", cond.Value)
+			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">=", cond.Value)
 		}
 		return sq.GtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -230,7 +237,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionLt(condition interfaces.Filt
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(cond.Lfield, "<", cond.Value)
+			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<", cond.Value)
 		}
 		return sq.Lt{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -250,7 +257,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionLte(condition interfaces.Fil
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
 		if interfaces.DataType_IsDate(cond.Lfield.Type) {
-			return dateCompareExpr(cond.Lfield, "<=", cond.Value)
+			return dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<=", cond.Value)
 		}
 		return sq.LtOrEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
 	case interfaces.ValueFrom_Field:
@@ -267,11 +274,8 @@ func (c *PostgresqlConnector) ConvertFilterConditionIn(condition interfaces.Filt
 		return nil, fmt.Errorf("condition is not *filter_condition.InCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [in] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		return dateSetExpr(cond.Lfield, "IN", cond.Value)
+		return dateSetExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "IN", cond.Value)
 	}
 
 	return sq.Eq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
@@ -284,11 +288,8 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotIn(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.NotInCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [not_in] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		return dateSetExpr(cond.Lfield, "NOT IN", cond.Value)
+		return dateSetExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "NOT IN", cond.Value)
 	}
 
 	return sq.NotEq{pgQuoteColumnName(cond.Lfield.OriginalName): cond.Value}, nil
@@ -299,10 +300,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionLike(condition interfaces.Fi
 	cond, ok := condition.(*filter_condition.LikeCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.LikeCond")
-	}
-
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [like] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
 	vStr := "%" + Special.Replace(cond.Value) + "%"
@@ -316,10 +313,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotLike(condition interfaces
 		return nil, fmt.Errorf("condition is not *filter_condition.NotLikeCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [not_like] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	vStr := "%" + Special.Replace(cond.Value) + "%"
 	return sq.NotLike{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
 }
@@ -331,10 +324,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionRegex(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.RegexCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [regex] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	return sq.Expr(pgQuoteColumnName(cond.Lfield.OriginalName)+" ~ ?", cond.Value), nil
 }
 
@@ -343,10 +332,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionContain(condition interfaces
 	cond, ok := condition.(*filter_condition.ContainCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.ContainCond")
-	}
-
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [contain] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
 	exprs := make(sq.And, 0, len(cond.Value))
@@ -364,10 +349,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotContain(condition interfa
 		return nil, fmt.Errorf("condition is not *filter_condition.NotContainCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [not_contain] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	exprs := make(sq.Or, 0, len(cond.Value))
 	column := pgQuoteColumnName(cond.Lfield.OriginalName)
 	for _, value := range cond.Value {
@@ -383,20 +364,16 @@ func (c *PostgresqlConnector) ConvertFilterConditionRange(condition interfaces.F
 		return nil, fmt.Errorf("condition is not *filter_condition.RangeCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [range] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	if len(cond.Value) != 2 {
 		return nil, fmt.Errorf("range condition requires exactly 2 values")
 	}
 
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		lower, err := dateCompareExpr(cond.Lfield, ">=", cond.Value[0])
+		lower, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">=", cond.Value[0])
 		if err != nil {
 			return nil, err
 		}
-		upper, err := dateCompareExpr(cond.Lfield, "<=", cond.Value[1])
+		upper, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<=", cond.Value[1])
 		if err != nil {
 			return nil, err
 		}
@@ -416,20 +393,16 @@ func (c *PostgresqlConnector) ConvertFilterConditionOutRange(condition interface
 		return nil, fmt.Errorf("condition is not *filter_condition.OutRangeCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [out_range] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	if len(cond.Value) != 2 {
 		return nil, fmt.Errorf("out_range condition requires exactly 2 values")
 	}
 
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		lower, err := dateCompareExpr(cond.Lfield, "<", cond.Value[0])
+		lower, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<", cond.Value[0])
 		if err != nil {
 			return nil, err
 		}
-		upper, err := dateCompareExpr(cond.Lfield, ">", cond.Value[1])
+		upper, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">", cond.Value[1])
 		if err != nil {
 			return nil, err
 		}
@@ -449,21 +422,17 @@ func (c *PostgresqlConnector) ConvertFilterConditionBetween(condition interfaces
 		return nil, fmt.Errorf("condition is not *filter_condition.BetweenCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [between] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	if len(cond.Value) != 2 {
 		return nil, fmt.Errorf("between condition requires exactly 2 values")
 	}
 
 	// Check if the field is of time type. If it is, convert the long type value to a timestamp
 	if interfaces.DataType_IsDate(cond.Lfield.Type) {
-		lower, err := dateCompareExpr(cond.Lfield, ">=", cond.Value[0])
+		lower, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, ">=", cond.Value[0])
 		if err != nil {
 			return nil, err
 		}
-		upper, err := dateCompareExpr(cond.Lfield, "<=", cond.Value[1])
+		upper, err := dateCompareExpr(pgQuoteColumnName(cond.Lfield.OriginalName), cond.Lfield, "<=", cond.Value[1])
 		if err != nil {
 			return nil, err
 		}
@@ -524,10 +493,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionPrefix(condition interfaces.
 		return nil, fmt.Errorf("condition is not *filter_condition.PrefixCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [prefix] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	vStr := Special.Replace(cond.Value) + "%"
 	return sq.Like{pgQuoteColumnName(cond.Lfield.OriginalName): vStr}, nil
 }
@@ -537,10 +502,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionNotPrefix(condition interfac
 	cond, ok := condition.(*filter_condition.NotPrefixCond)
 	if !ok {
 		return nil, fmt.Errorf("condition is not *filter_condition.NotPrefixCond")
-	}
-
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [not_prefix] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
 
 	vStr := Special.Replace(cond.Value) + "%"
@@ -602,10 +563,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionBefore(condition interfaces.
 		return nil, fmt.Errorf("condition is not *filter_condition.BeforeCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [before] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	if len(cond.Value) != 2 {
 		return nil, fmt.Errorf("before condition requires exactly 2 values")
 	}
@@ -633,10 +590,6 @@ func (c *PostgresqlConnector) ConvertFilterConditionCurrent(condition interfaces
 		return nil, fmt.Errorf("condition is not *filter_condition.CurrentCond")
 	}
 
-	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
-		return nil, fmt.Errorf("condition [current] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
-	}
-
 	col := pgQuoteColumnName(cond.Lfield.OriginalName)
 	var trunc string
 	switch cond.Value {
@@ -659,7 +612,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionCurrent(condition interfaces
 	return sq.Expr(fmt.Sprintf("date_trunc('%s', %s::timestamptz) = date_trunc('%s', CURRENT_TIMESTAMP)", trunc, col, trunc)), nil
 }
 
-// intervalUnit maps the MysqL-style INTERVAL unit to the English singular unit name used for PostgreSQL interval multiplication.
+// intervalUnit maps calendar units to PostgreSQL interval unit names.
 func intervalUnit(unit string) (string, error) {
 	u := strings.ToUpper(strings.TrimSpace(unit))
 	switch u {
@@ -777,19 +730,19 @@ func validateDateValue(field *interfaces.Property, value any) error {
 	return nil
 }
 
-// dateCompareExpr compares a date column with epoch milliseconds or a time string.
-func dateCompareExpr(field *interfaces.Property, op string, value any) (sq.Sqlizer, error) {
+// dateCompareExpr compares a date expression with epoch milliseconds or a time string.
+func dateCompareExpr(lhs string, field *interfaces.Property, op string, value any) (sq.Sqlizer, error) {
 	if err := validateDateValue(field, value); err != nil {
 		return nil, err
 	}
 	return sq.Expr(
-		pgQuoteColumnName(field.OriginalName)+" "+op+" "+dateValueExpr(field, value),
+		lhs+" "+op+" "+dateValueExpr(field, value),
 		normalizeTimestampValue(value),
 	), nil
 }
 
 // dateSetExpr builds an IN or NOT IN expression for bound date or time values.
-func dateSetExpr(field *interfaces.Property, op string, values []any) (sq.Sqlizer, error) {
+func dateSetExpr(lhs string, field *interfaces.Property, op string, values []any) (sq.Sqlizer, error) {
 	valueExprs := make([]string, len(values))
 	args := make([]any, len(values))
 	for i, value := range values {
@@ -800,7 +753,7 @@ func dateSetExpr(field *interfaces.Property, op string, values []any) (sq.Sqlize
 		args[i] = normalizeTimestampValue(value)
 	}
 	return sq.Expr(
-		pgQuoteColumnName(field.OriginalName)+" "+op+" ("+strings.Join(valueExprs, ", ")+")",
+		lhs+" "+op+" ("+strings.Join(valueExprs, ", ")+")",
 		args...,
 	), nil
 }

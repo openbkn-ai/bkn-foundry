@@ -8,6 +8,7 @@ package factory
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,6 +40,7 @@ func TestConnectorFactoryRegisterCoreLocalConnectors(t *testing.T) {
 		assert.Contains(t, cf.connectors, interfaces.ConnectorTypeAnyShare)
 		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeSQLServer)
 		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeOracle)
+		assert.NotContains(t, cf.connectors, interfaces.ConnectorTypeDoris)
 		assert.Equal(t, licverify.EditionCommunity, cf.connectorRequiredEditions[interfaces.ConnectorTypeMySQL])
 		assert.NotSame(t, cf.connectors[interfaces.ConnectorTypeMySQL], cf.connectors[interfaces.ConnectorTypeMariaDB])
 		assert.Empty(t, entitlement.Assembled())
@@ -462,4 +464,42 @@ func testConnectorFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 		"host":     {Name: "Host", Type: "string", Required: true},
 		"password": {Name: "Password", Type: "string", Required: true, Encrypted: true},
 	}
+}
+
+func TestConnectorFactoryValidateBuildSchema(t *testing.T) {
+	t.Run("delegates without creating or connecting an instance", func(t *testing.T) {
+		connector := vmock.NewMockTableConnector(gomock.NewController(t))
+		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "price", Type: interfaces.DataType_Decimal}}}
+		want := errors.New("field price is unsupported")
+		connector.EXPECT().GetEnabled().Return(true)
+		connector.EXPECT().ValidateBuildSchema(resource).Return(want)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"custom-table": connector}}
+		err := cf.ValidateBuildSchema("custom-table", resource)
+		assert.ErrorIs(t, err, want)
+	})
+	t.Run("unavailable implementation", func(t *testing.T) {
+		err := (&connectorFactory{}).ValidateBuildSchema("missing", &interfaces.Resource{})
+		assert.ErrorIs(t, err, ErrConnectorUnavailable)
+	})
+	t.Run("disabled implementation", func(t *testing.T) {
+		connector := vmock.NewMockTableConnector(gomock.NewController(t))
+		connector.EXPECT().GetEnabled().Return(false)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"custom-table": connector}}
+		assert.ErrorIs(t, cf.ValidateBuildSchema("custom-table", &interfaces.Resource{}), ErrConnectorDisabled)
+	})
+	t.Run("edition rejected before schema validation", func(t *testing.T) {
+		entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
+		t.Cleanup(entitlement.ResetForTest)
+		connector := vmock.NewMockTableConnector(gomock.NewController(t))
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"custom-table": connector}, connectorRequiredEditions: map[string]licverify.Edition{"custom-table": licverify.EditionEnterprise}}
+		assert.ErrorIs(t, cf.ValidateBuildSchema("custom-table", &interfaces.Resource{}), ErrConnectorEntitlementDenied)
+	})
+	t.Run("delegates through the base connector interface", func(t *testing.T) {
+		connector := vmock.NewMockConnector(gomock.NewController(t))
+		connector.EXPECT().GetEnabled().Return(true)
+		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryFileset}
+		connector.EXPECT().ValidateBuildSchema(resource).Return(nil)
+		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"custom": connector}}
+		require.NoError(t, cf.ValidateBuildSchema("custom", resource))
+	})
 }

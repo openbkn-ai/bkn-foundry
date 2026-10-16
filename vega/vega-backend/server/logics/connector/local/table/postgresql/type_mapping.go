@@ -12,7 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
-// TypeMapping maps PostgreSQL udt_name/common data_type to VEGA types.
+// TypeMapping maps normalized PostgreSQL source type names to VEGA types.
 var TypeMapping = map[string]string{
 	// Integer
 	"int2":        interfaces.DataType_Integer,
@@ -67,7 +67,7 @@ var TypeMapping = map[string]string{
 	"timestamp without time zone": interfaces.DataType_Timestamp,
 	"timestamp with time zone":    interfaces.DataType_Timestamp,
 
-	// Bull
+	// Boolean
 	"bool":    interfaces.DataType_Boolean,
 	"boolean": interfaces.DataType_Boolean,
 
@@ -79,11 +79,16 @@ var TypeMapping = map[string]string{
 	"jsonb": interfaces.DataType_Json,
 }
 
-// MapType maps to VEGA type based on data_type of information_schema.
+// MapType maps a source type name to a VEGA type, falling back to other.
 func (c *PostgresqlConnector) MapType(dataType string) string {
-	d := strings.ToLower(strings.TrimSpace(dataType))
-	if vegaType, ok := TypeMapping[d]; ok {
+	normalizedType := strings.ToLower(dataType)
+	if vegaType, ok := TypeMapping[normalizedType]; ok {
 		return vegaType
 	}
 	return interfaces.DataType_Other
+}
+
+// normalizeColumnType normalizes source type syntax before storing column metadata.
+func (c *PostgresqlConnector) normalizeColumnType(nativeType string) string {
+	return strings.ToLower(strings.TrimSpace(nativeType))
 }

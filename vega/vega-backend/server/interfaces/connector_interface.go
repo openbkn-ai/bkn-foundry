@@ -50,6 +50,9 @@ type Connector interface {
 
 	// GetMetadata retrieves source metadata, such as version and server information.
 	GetMetadata(ctx context.Context) (map[string]any, error)
+
+	// ValidateBuildSchema checks source-specific local-index and build-key restrictions on a valid resource schema without connecting to the source or modifying the resource. It must work on the registered builder and return caller-safe ordinary errors.
+	ValidateBuildSchema(resource *Resource) error
 }
 
 // TableConnector defines the interface for relational database connectors.
@@ -69,19 +72,22 @@ type TableConnector interface {
 
 	// ListTables lists tables and views within the configured discovery scope, returning basic metadata with raw name components.
 	ListTables(ctx context.Context) ([]*TableMeta, error)
-	// GetTableMeta retrieves detailed metadata using the raw name components in table and updates table in place.
-	GetTableMeta(ctx context.Context, table *TableMeta) error
+	// GetTableMeta retrieves detailed metadata and updates table in place.
+	// Callers pass false after ListTables, or true for an independent table refresh.
+	// Implementations may skip status only when ListTables provides equivalent status metadata;
+	// otherwise they must read status regardless of refreshStatus.
+	GetTableMeta(ctx context.Context, table *TableMeta, refreshStatus bool) error
 	// CountRows counts table or view rows using the generated sourceIdentifier directly, without rebuilding or quoting the table name.
 	CountRows(ctx context.Context, sourceIdentifier string) (int64, error)
 
 	// BuildPagedSQL wraps validated read-only SQL with source-specific pagination using offset and limit.
-	BuildPagedSQL(sql string, offset, limit int) string
+	BuildPagedSQL(sqlStr string, offset, limit int) string
 	// BuildCountSQL wraps validated read-only SQL in a query that counts its result rows.
-	BuildCountSQL(sql string) string
+	BuildCountSQL(sqlStr string) string
 	// ExecuteQuery executes a single-table query using resource and params, taking the table reference directly from resource.SourceIdentifier.
 	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
 	// ExecuteRawSQL executes read-only SQL that has passed unified query validation, returning column information, data, and a count.
-	ExecuteRawSQL(ctx context.Context, sql string) (*RawQueryResponse, error)
+	ExecuteRawSQL(ctx context.Context, sqlStr string) (*RawQueryResponse, error)
 }
 
 // FileConnector defines the interface for file/document storage connectors.

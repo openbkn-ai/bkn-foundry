@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -72,7 +73,7 @@ func (c *BeforeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	if len(val) != 2 {
 		return nil, fmt.Errorf("condition [before] right value should be an array of length 2")
 	}
-	if _, ok := val[0].(int); ok {
+	if _, ok := common.NumberAsFloat64(val[0]); !ok {
 		return nil, fmt.Errorf("condition [before]'s interval value should be an number")
 	}
 	if err := NormalizeBeforeInterval(val); err != nil {

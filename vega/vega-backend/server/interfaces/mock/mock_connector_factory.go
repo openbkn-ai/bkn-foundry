@@ -174,6 +174,20 @@ func (mr *MockConnectorFactoryMockRecorder) SetConnectorEnabled(tp, enabled any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetConnectorEnabled", reflect.TypeOf((*MockConnectorFactory)(nil).SetConnectorEnabled), tp, enabled)
 }
 
+// ValidateBuildSchema mocks base method.
+func (m *MockConnectorFactory) ValidateBuildSchema(tp string, resource *interfaces.Resource) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateBuildSchema", tp, resource)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateBuildSchema indicates an expected call of ValidateBuildSchema.
+func (mr *MockConnectorFactoryMockRecorder) ValidateBuildSchema(tp, resource any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateBuildSchema", reflect.TypeOf((*MockConnectorFactory)(nil).ValidateBuildSchema), tp, resource)
+}
+
 // ValidateConnectorTypeRegistration mocks base method.
 func (m *MockConnectorFactory) ValidateConnectorTypeRegistration(ct *interfaces.ConnectorType) error {
 	m.ctrl.T.Helper()

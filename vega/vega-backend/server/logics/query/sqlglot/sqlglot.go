@@ -112,6 +112,8 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 		return "tsql", nil
 	case interfaces.ConnectorTypeOracle:
 		return "oracle", nil
+	case interfaces.ConnectorTypeDoris:
+		return "doris", nil
 	case interfaces.ConnectorTypeHANA, GenericDialect:
 		return GenericDialect, nil
 	default:

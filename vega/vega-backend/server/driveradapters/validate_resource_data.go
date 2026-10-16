@@ -300,6 +300,11 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
 				WithErrorDetails(fmt.Sprintf("Unsupported aggregation function: %s", params.Aggregation.Aggr))
 		}
+		// A wildcard denotes all rows and is valid only for COUNT(*).
+		if params.Aggregation.Property == "*" && params.Aggregation.Aggr != "count" {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
+				WithErrorDetails("Aggregation property '*' only supports count")
+		}
 	}
 
 	// Verify group_by

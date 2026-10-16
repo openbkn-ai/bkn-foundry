@@ -386,21 +386,23 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "non-empty filter")
 	})
 
-	t.Run("delete by query rejects an and condition containing only empty filters", func(t *testing.T) {
-		ds, _ := newDatasetServiceMock(t)
+	for _, operation := range []string{filter_condition.OperationAnd, filter_condition.OperationOr} {
+		t.Run("delete by query rejects an "+operation+" condition containing only empty filters", func(t *testing.T) {
+			ds, _ := newDatasetServiceMock(t)
 
-		err := ds.DeleteDocumentsByQuery(ctx, resource, &interfaces.ResourceDataQueryParams{
-			FilterCondCfg: &interfaces.FilterCondCfg{
-				Operation: filter_condition.OperationAnd,
-				SubConds:  []*interfaces.FilterCondCfg{{}},
-			},
+			err := ds.DeleteDocumentsByQuery(ctx, resource, &interfaces.ResourceDataQueryParams{
+				FilterCondCfg: &interfaces.FilterCondCfg{
+					Operation: operation,
+					SubConds:  []*interfaces.FilterCondCfg{{}},
+				},
+			})
+
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Contains(t, httpErr.BaseError.ErrorDetails, "no effective child conditions")
 		})
-
-		var httpErr *rest.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "non-empty filter")
-	})
+	}
 
 	t.Run("delete by query resolves resource generated fields before local index access", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)

@@ -38,16 +38,9 @@ func (c *BetweenCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	field, ok := fieldsMap[cfg.Name]
 	if !ok {
-		// If the field is not defined in the Schema, create a temporary Property object
-		// The default setting is the datetime type to support timestamp conversion
-		field = &interfaces.Property{
-			Name:         cfg.Name,
-			OriginalName: cfg.Name,
-			Type:         interfaces.DataType_Datetime,
-		}
+		return nil, fmt.Errorf("condition [between] left field '%s' not found in schema", cfg.Name)
 	}
-	// For fields not defined in the Schema, skip type checking
-	if ok && !interfaces.DataType_IsDate(field.Type) && !interfaces.DataType_IsNumber(field.Type) {
+	if !interfaces.DataType_IsDate(field.Type) && !interfaces.DataType_IsNumber(field.Type) {
 		return nil, fmt.Errorf("condition [between] left field is not a date or number field: %s:%s", cfg.Name, field.Type)
 	}
 
@@ -60,6 +53,10 @@ func (c *BetweenCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	if len(val) != 2 {
 		return nil, fmt.Errorf("condition [between] right value should be an array of length 2")
+	}
+
+	if val[0] == nil || val[1] == nil {
+		return nil, fmt.Errorf("condition [between] bounds must not be nil")
 	}
 
 	return &BetweenCond{

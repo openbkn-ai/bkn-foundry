@@ -29,6 +29,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 	model_factory "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/model_factory"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
@@ -46,6 +47,7 @@ const buildTaskDispatchBuffer = 1
 type buildTaskService struct {
 	appSetting *common.AppSetting
 	bta        interfaces.BuildTaskAccess
+	cf         interfaces.ConnectorFactory
 	cs         interfaces.CatalogService
 	lim        interfaces.LocalIndexManager // When deleting a task, drop its local index. Test Injection mock
 	mfs        interfaces.ModelFactoryService
@@ -67,6 +69,7 @@ func NewBuildTaskService(appSetting *common.AppSetting, rs interfaces.ResourceSe
 		btService = &buildTaskService{
 			appSetting: appSetting,
 			bta:        logics.BTA,
+			cf:         factory.NewConnectorFactory(appSetting),
 			cs:         catalog.NewCatalogService(appSetting),
 			lim:        local_index.NewLocalIndexManager(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting),
@@ -167,6 +170,11 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		span.SetStatus(codes.Error, "Catalog is disabled")
 		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
 			WithErrorDetails("catalog is disabled")
+	}
+
+	if err := bts.validateConnectorBuildSchema(ctx, resource, cat.ConnectorType); err != nil {
+		span.SetStatus(codes.Error, "Source build schema rejected")
+		return "", err
 	}
 
 	if err := bts.rejectIfResourceHasActiveTask(ctx, resourceID, ""); err != nil {
@@ -270,6 +278,26 @@ func validateBuildTaskKeyFields(ctx context.Context, resource *interfaces.Resour
 		incrementalKeys[fieldName] = struct{}{}
 	}
 	return nil
+}
+
+// validateConnectorBuildSchema 仅委托源端构建限制，service 不解释数据库原始类型。
+func (bts *buildTaskService) validateConnectorBuildSchema(ctx context.Context, resource *interfaces.Resource, connectorType string) error {
+	err := bts.cf.ValidateBuildSchema(connectorType, resource)
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, factory.ErrConnectorEntitlementDenied):
+		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied)
+	case errors.Is(err, factory.ErrConnectorDisabled):
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled)
+	case errors.Is(err, factory.ErrConnectorUnavailable):
+		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_Resource_InternalError).
+			WithErrorDetails("source connector is unavailable")
+	default:
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields).
+			WithErrorDetails(err.Error())
+	}
 }
 
 func validateBuildTaskDefaultFeatures(ctx context.Context, resource *interfaces.Resource) error {
@@ -870,6 +898,8 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
 			WithErrorDetails("build task has no index config snapshot; create a new build task instead")
 	}
+	// 创建时已通过 connector 校验；指纹覆盖字段原始类型、统一类型和构建配置，
+	// 启动时确认快照一致即可，无需重复调用 connector。
 	taskFingerprint, err := resourcelogic.BuildTaskIndexConfigFingerprint(buildTask.IndexConfig)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).

@@ -38,11 +38,7 @@ func (c *NotInCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	field, ok := fieldsMap[cfg.Name]
 	if !ok {
-		// If the field is not defined in the Schema, create a temporary Property object
-		field = &interfaces.Property{
-			Name:         cfg.Name,
-			OriginalName: cfg.Name,
-		}
+		return nil, fmt.Errorf("condition [not_in] left field '%s' not found in schema", cfg.Name)
 	}
 	if cfg.ValueFrom != interfaces.ValueFrom_Const {
 		return nil, fmt.Errorf("condition [not_in] does not support value_from type '%s'", cfg.ValueFrom)

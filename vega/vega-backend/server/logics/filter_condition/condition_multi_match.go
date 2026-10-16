@@ -45,6 +45,10 @@ func (c *MultiMatchCond) RequiredValueLen() int      { return -1 }
 func (c *MultiMatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
+	if cfg.ValueFrom != interfaces.ValueFrom_Const {
+		return nil, fmt.Errorf("condition [multi_match] does not support value_from type '%s'", cfg.ValueFrom)
+	}
+
 	// Obtain the fields from the ReaminCfg of the cfg. This is the fields field belonging to multi_match, which is an array of strings.
 	// If you want all fields to match, you can either leave it blank or fill in ["*"]. String * is not supported. An array is required
 	var mFields []*interfaces.Property

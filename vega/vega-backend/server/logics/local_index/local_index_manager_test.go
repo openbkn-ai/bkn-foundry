@@ -361,3 +361,32 @@ func TestValidateQueryFieldsAggregationAliases(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateQueryFieldsKnownSchema(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}, {Name: "text", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
+	for _, name := range []string{"missing", "payload", "payload.id"} {
+		for _, params := range []*interfaces.ResourceDataQueryParams{{Sort: []*interfaces.SortField{{Field: name}}}, {GroupBy: []*interfaces.GroupByItem{{Property: name}}}, {Aggregation: &interfaces.Aggregation{Property: name, Aggr: "count"}}} {
+			err := validateQueryFields(resource, params)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "not found")
+		}
+	}
+	for _, name := range []string{"id", "text_vector", "_score"} {
+		require.NoError(t, validateQueryFields(resource, &interfaces.ResourceDataQueryParams{Sort: []*interfaces.SortField{{Field: name}}}))
+	}
+}
+
+func TestResourceForQueryIncludesGeneratedFields(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "title", OriginalName: "source_title", Type: interfaces.DataType_String, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}, {Name: "payload", Type: interfaces.DataType_Json}}}
+	got := resourceForQuery(resource)
+	fields := map[string]*interfaces.Property{}
+	for _, prop := range got.SchemaDefinition {
+		fields[prop.Name] = prop
+	}
+	require.Contains(t, fields, "title_vector")
+	assert.Equal(t, interfaces.DataType_Vector, fields["title_vector"].Type)
+	assert.Equal(t, "title", fields["title"].OriginalName)
+	assert.NotContains(t, fields, "payload")
+	assert.Equal(t, "source_title", resource.SchemaDefinition[0].OriginalName)
+	assert.Len(t, resource.SchemaDefinition, 2)
+}

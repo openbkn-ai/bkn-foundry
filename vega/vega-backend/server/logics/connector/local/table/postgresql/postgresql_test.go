@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"net/url"
 	"strings"
 	"testing"
@@ -43,7 +44,7 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 			"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
 			"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
 			"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-			"options":  {Name: "连接参数", Type: "object", Description: "连接参数（如 sslmode、connect_timeout 等）", Required: false, Encrypted: false},
+			"options":  {Name: "连接参数", Type: "object", Description: "可选；仅支持 sslmode、connect_timeout、application_name、fallback_application_name、statement_timeout、lock_timeout、idle_in_transaction_session_timeout；connect_timeout 为非负整数秒，会话超时为毫秒或带 PostgreSQL 时间单位的字符串，0 表示禁用；sslmode 默认为 disable，不支持 SSL 文件；客户端编码使用驱动默认 UTF8，不支持配置", Required: false, Encrypted: false},
 		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)
@@ -73,6 +74,7 @@ func TestPostgresqlConnectorNew(t *testing.T) {
 		assert.Equal(t, "postgres", got.config.Host)
 		assert.Equal(t, "app", got.config.Database)
 		assert.Equal(t, []string{"public"}, got.config.Schemas)
+		assert.Equal(t, map[string]any{"sslmode": "require"}, got.config.Options)
 	})
 
 	t.Run("rejects incomplete config", func(t *testing.T) {
@@ -84,7 +86,7 @@ func TestPostgresqlConnectorNew(t *testing.T) {
 	})
 
 	t.Run("rejects invalid port", func(t *testing.T) {
-		connector, err := builder.New(validPostgresqlConfig(portMax + 1))
+		connector, err := builder.New(validPostgresqlConfig(PORT_MAX + 1))
 
 		require.Error(t, err)
 		assert.Nil(t, connector)
@@ -93,7 +95,7 @@ func TestPostgresqlConnectorNew(t *testing.T) {
 
 	t.Run("rejects long database name", func(t *testing.T) {
 		cfg := validPostgresqlConfig(5432)
-		cfg["database"] = strings.Repeat("a", databaseNameMaxLength+1)
+		cfg["database"] = strings.Repeat("a", DATABASE_NAME_MAX_LENGTH+1)
 
 		connector, err := builder.New(cfg)
 
@@ -104,7 +106,7 @@ func TestPostgresqlConnectorNew(t *testing.T) {
 
 	t.Run("rejects long schema name", func(t *testing.T) {
 		cfg := validPostgresqlConfig(5432)
-		cfg["schemas"] = []string{strings.Repeat("a", databaseNameMaxLength+1)}
+		cfg["schemas"] = []string{strings.Repeat("a", SCHEMA_NAME_MAX_LENGTH+1)}
 
 		connector, err := builder.New(cfg)
 
@@ -123,6 +125,109 @@ func TestPostgresqlConnectorNew(t *testing.T) {
 		assert.Nil(t, connector)
 		assert.ErrorContains(t, err, "duplicate element")
 	})
+	t.Run("rejects invalid option value", func(t *testing.T) {
+		cfg := validPostgresqlConfig(5432)
+		cfg["options"] = map[string]any{"connect_timeout": -1}
+		connector, err := builder.New(cfg)
+		require.ErrorContains(t, err, "connect_timeout")
+		assert.Nil(t, connector)
+	})
+
+	t.Run("rejects unsupported option", func(t *testing.T) {
+		cfg := validPostgresqlConfig(5432)
+		cfg["options"] = map[string]any{"custom_option": "value"}
+		connector, err := builder.New(cfg)
+		require.ErrorContains(t, err, "unsupported postgresql option")
+		assert.Nil(t, connector)
+	})
+
+}
+
+func TestPostgresqlConnectorNormalizeOptions(t *testing.T) {
+	connector := &PostgresqlConnector{}
+	for _, tc := range []struct {
+		name    string
+		options map[string]any
+		want    map[string]any
+	}{
+		{"omitted", nil, map[string]any{"sslmode": "disable"}},
+		{"empty ssl mode", map[string]any{"sslmode": ""}, map[string]any{"sslmode": "disable"}},
+		{"explicit values", map[string]any{"sslmode": "verify-full", "connect_timeout": 5, "application_name": "vega"}, map[string]any{"sslmode": "verify-full", "connect_timeout": 5, "application_name": "vega"}},
+		{"session options", map[string]any{"statement_timeout": 1000}, map[string]any{"sslmode": "disable", "statement_timeout": 1000}},
+		{"trimmed name", map[string]any{" application_name ": "vega"}, map[string]any{"sslmode": "disable", "application_name": "vega"}},
+		{"trimmed application values", map[string]any{"application_name": "  vega query  ", "fallback_application_name": "\tvega fallback\n"}, map[string]any{"sslmode": "disable", "application_name": "vega query", "fallback_application_name": "vega fallback"}},
+		{"blank application values", map[string]any{"application_name": " \t", "fallback_application_name": ""}, map[string]any{"sslmode": "disable", "application_name": "", "fallback_application_name": ""}},
+		{"zero timeouts", map[string]any{"connect_timeout": 0, "statement_timeout": "0"}, map[string]any{"sslmode": "disable", "connect_timeout": 0, "statement_timeout": "0"}},
+		{"session units", map[string]any{"statement_timeout": " 1min ", "lock_timeout": "1.5s", "idle_in_transaction_session_timeout": "2h"}, map[string]any{"sslmode": "disable", "statement_timeout": "1min", "lock_timeout": "1.5s", "idle_in_transaction_session_timeout": "2h"}},
+		{"unit range validated by source", map[string]any{"idle_in_transaction_session_timeout": "25d"}, map[string]any{"sslmode": "disable", "idle_in_transaction_session_timeout": "25d"}},
+		{"maximum session timeout", map[string]any{"statement_timeout": math.MaxInt32}, map[string]any{"sslmode": "disable", "statement_timeout": math.MaxInt32}},
+		{"string connection timeout", map[string]any{"connect_timeout": "+005"}, map[string]any{"sslmode": "disable", "connect_timeout": "+005"}},
+		{"maximum connection timeout", map[string]any{"connect_timeout": MAX_TIMEOUT_SECONDS}, map[string]any{"sslmode": "disable", "connect_timeout": MAX_TIMEOUT_SECONDS}},
+		{"connection timeout whitespace", map[string]any{"connect_timeout": " 5 "}, map[string]any{"sslmode": "disable", "connect_timeout": "5"}},
+		{"numeric connection timeout", map[string]any{"connect_timeout": float64(1000000)}, map[string]any{"sslmode": "disable", "connect_timeout": float64(1000000)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := make(map[string]any, len(tc.options))
+			for name, value := range tc.options {
+				before[name] = value
+			}
+			got, err := connector.normalizeOptions(tc.options)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+			if tc.options != nil {
+				assert.Equal(t, before, tc.options)
+			}
+		})
+	}
+	for _, tc := range []struct {
+		name    string
+		options map[string]any
+		wantErr string
+	}{
+		{"unknown option", map[string]any{"custom_option": "value"}, "unsupported"},
+		{"invalid SSL mode", map[string]any{"sslmode": "invalid"}, "sslmode"},
+		{"numeric SSL mode", map[string]any{"sslmode": 1}, "sslmode"},
+		{"negative connection timeout", map[string]any{"connect_timeout": -1}, "connect_timeout"},
+		{"fractional connection timeout", map[string]any{"connect_timeout": 1.5}, "connect_timeout"},
+		{"connection timeout duration", map[string]any{"connect_timeout": "5s"}, "connect_timeout"},
+		{"connection timeout overflow", map[string]any{"connect_timeout": uint64(math.MaxUint64)}, "connect_timeout"},
+		{"connection duration overflow", map[string]any{"connect_timeout": MAX_TIMEOUT_SECONDS + 1}, "connect_timeout"},
+		{"negative session timeout", map[string]any{"statement_timeout": "-1s"}, "statement_timeout"},
+		{"session timeout overflow", map[string]any{"lock_timeout": int64(math.MaxInt32) + 1}, "lock_timeout"},
+		{"millisecond string overflow", map[string]any{"statement_timeout": "2147483648ms"}, "statement_timeout"},
+		{"unknown time unit", map[string]any{"statement_timeout": "1week"}, "statement_timeout"},
+		{"compound duration", map[string]any{"statement_timeout": "1h30m"}, "statement_timeout"},
+		{"numeric application name", map[string]any{"application_name": 1}, "application_name"},
+		{"boolean fallback name", map[string]any{"fallback_application_name": true}, "fallback_application_name"},
+		{"UTF8 encoding override", map[string]any{"client_encoding": "UTF8"}, "unsupported"},
+		{"non-UTF8 encoding override", map[string]any{"client_encoding": "LATIN1"}, "unsupported"},
+		{"empty encoding", map[string]any{"client_encoding": " "}, "client_encoding"},
+		{"numeric encoding", map[string]any{"client_encoding": 1}, "client_encoding"},
+		{"NaN session timeout", map[string]any{"statement_timeout": math.NaN()}, "statement_timeout"},
+		{"infinite session timeout", map[string]any{"statement_timeout": math.Inf(1)}, "statement_timeout"},
+		{"nil session timeout", map[string]any{"statement_timeout": nil}, "statement_timeout"},
+		{"SSL certificate file", map[string]any{"sslcert": "client.crt"}, "unsupported"},
+		{"SSL key file", map[string]any{"sslkey": "client.key"}, "unsupported"},
+		{"SSL root certificate file", map[string]any{"sslrootcert": "ca.crt"}, "unsupported"},
+		{"target override", map[string]any{"host": "other"}, "unsupported"},
+		{"time zone override", map[string]any{"timezone": "UTC"}, "unsupported"},
+		{"duplicate option", map[string]any{"sslmode": "require", " sslmode ": "disable"}, "duplicate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := connector.normalizeOptions(tc.options)
+			require.ErrorContains(t, err, tc.wantErr)
+			assert.Nil(t, got)
+		})
+	}
+
+	for _, mode := range []string{"disable", "allow", "prefer", "require", "verify-ca", "verify-full"} {
+		t.Run("SSL mode "+mode, func(t *testing.T) {
+			got, err := connector.normalizeOptions(map[string]any{"sslmode": mode})
+			require.NoError(t, err)
+			assert.Equal(t, mode, got["sslmode"])
+		})
+	}
+
 }
 
 func TestPostgresqlConnectorConnectionStringSupportsIPv6(t *testing.T) {
@@ -136,6 +241,21 @@ func TestPostgresqlConnectorConnectionStringSupportsIPv6(t *testing.T) {
 	assert.Equal(t, "2001:db8::1", connectionURL.Hostname())
 	assert.Equal(t, "5432", connectionURL.Port())
 	assert.Equal(t, "Asia/Shanghai", connectionURL.Query().Get("timezone"))
+
+	t.Run("preserves timeout units when encoding options", func(t *testing.T) {
+		options, err := connector.normalizeOptions(map[string]any{
+			"connect_timeout":   float64(1000000),
+			"statement_timeout": " 1min ",
+			"lock_timeout":      "1.5s",
+		})
+		require.NoError(t, err)
+		configured := &PostgresqlConnector{config: &postgresqlConfig{Host: "localhost", Port: 5432, Database: "app", Options: options}}
+		dsn, err := url.Parse(configured.connectionString())
+		require.NoError(t, err)
+		assert.Equal(t, "1000000", dsn.Query().Get("connect_timeout"))
+		assert.Equal(t, "1min", dsn.Query().Get("statement_timeout"))
+		assert.Equal(t, "1.5s", dsn.Query().Get("lock_timeout"))
+	})
 }
 
 func TestPostgresqlConnectorValidateSchemas(t *testing.T) {
@@ -241,13 +361,14 @@ func TestPostgresqlConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
 		WithArgs("public", "deleted_orders").
 		WillReturnError(sql.ErrNoRows)
 
-	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Schema: "public", Name: "deleted_orders"})
+	err := connector.GetTableMeta(context.Background(), &interfaces.TableMeta{Schema: "public", Name: "deleted_orders"}, true)
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "table metadata not found or inaccessible: public.deleted_orders")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// validPostgresqlConfig provides a valid configuration with the requested port.
 func validPostgresqlConfig(port int) interfaces.ConnectorConfig {
 	return interfaces.ConnectorConfig{
 		"host":     "postgres",
@@ -258,6 +379,7 @@ func validPostgresqlConfig(port int) interfaces.ConnectorConfig {
 	}
 }
 
+// newPostgresqlConnectorMock creates a connected SQL mock with the requested schema scope.
 func newPostgresqlConnectorMock(t *testing.T, schemas []string) (*PostgresqlConnector, sqlmock.Sqlmock, func()) {
 	t.Helper()
 

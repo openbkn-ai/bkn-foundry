@@ -8,13 +8,16 @@ package mariadb
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -22,6 +25,43 @@ import (
 )
 
 func TestMariaDBConnectorListTables(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		statistic driver.Value
+		timestamp driver.Value
+	}{
+		{"NULL", nil, nil}, {"negative and zero time", int64(-1), time.Time{}}, {"zero retained", int64(0), nil},
+	} {
+		t.Run("valid properties "+tc.name, func(t *testing.T) {
+			c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanup()
+			c.connected = true
+			mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").WithArgs("app").WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", nil, "", "", tc.statistic, nil, tc.timestamp, tc.timestamp, tc.statistic, tc.statistic))
+			tables, err := c.ListTables(context.Background())
+			require.NoError(t, err)
+			require.Len(t, tables, 1)
+			want := map[string]any{}
+			if tc.name == "zero retained" {
+				want = map[string]any{"estimated_row_count": int64(0), "data_length": int64(0), "index_length": int64(0)}
+			}
+			assert.Equal(t, want, tables[0].Properties)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+	t.Run("rejects scope before connecting", func(t *testing.T) {
+		connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"app"}}}
+		connected := false
+		patches := gomonkey.ApplyMethod(connector, "Connect", func(_ *MariaDBConnector, _ context.Context) error {
+			connected = true
+			return errors.New("unexpected connection attempt")
+		})
+		defer patches.Reset()
+
+		tables, err := connector.listTables(context.Background(), "outside", "")
+		require.ErrorContains(t, err, "scope")
+		assert.Nil(t, tables)
+		assert.False(t, connected)
+	})
 	t.Run("rejects database outside configured scope before querying", func(t *testing.T) {
 		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 		defer cleanup()
@@ -54,14 +94,14 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		connector.connected = true
 
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
-			WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil))
+			WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil, nil))
 
 		tables, err := connector.ListTables(context.Background())
 
 		require.NoError(t, err)
 		require.Len(t, tables, 1)
 		assert.Equal(t, "", tables[0].Description)
-		assert.Equal(t, "", tables[0].Properties["engine"])
+		assert.Empty(t, tables[0].Properties)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -71,7 +111,7 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		connector.connected = true
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
 			WithArgs("app").WillReturnRows(
-			mariaDBTableRows().AddRow("app", "orders_view", "VIEW", nil, nil, nil, nil, nil, nil, nil, nil),
+			mariaDBTableRows().AddRow("app", "orders_view", "VIEW", nil, nil, nil, nil, nil, nil, nil, nil, nil),
 		)
 
 		tables, err := connector.ListTables(context.Background())
@@ -88,7 +128,7 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 		connector.connected = true
 
 		mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").
-			WillReturnRows(mariaDBTableRows().AddRow(nil, "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil))
+			WillReturnRows(mariaDBTableRows().AddRow(nil, "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil, nil))
 
 		tables, err := connector.ListTables(context.Background())
 
@@ -101,19 +141,47 @@ func TestMariaDBConnectorListTables(t *testing.T) {
 }
 
 func TestMariaDBConnectorFetchColumns(t *testing.T) {
+	t.Run("query failure preserves cause and context", func(t *testing.T) {
+		c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanup()
+		cause := errors.New("source unavailable")
+		mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").WithArgs("app", "orders").WillReturnError(cause)
+		table := &interfaces.TableMeta{Database: "app", Name: "orders", Columns: []interfaces.TableColumnMeta{{Name: "old"}}}
+		before := *table
+		err := c.fetchColumns(context.Background(), table)
+		require.ErrorIs(t, err, cause)
+		assert.ErrorContains(t, err, "failed to execute column metadata query")
+		assert.Equal(t, before, *table)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("empty column metadata fails without replacing existing columns", func(t *testing.T) {
+		connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+		defer cleanup()
+		mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"column"})).RowsWillBeClosed()
+		table := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders", Columns: []interfaces.TableColumnMeta{{Name: "old"}}}
+		require.ErrorContains(t, connector.fetchColumns(context.Background(), table), "column metadata is empty")
+		assert.Equal(t, []interfaces.TableColumnMeta{{Name: "old"}}, table.Columns)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
 	defer cleanup()
-	mock.ExpectQuery("SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE").
+	mock.ExpectQuery("SELECT COLUMN_NAME, COLUMN_TYPE").
 		WithArgs("app", "orders").
 		WillReturnRows(sqlmock.NewRows([]string{
-			"COLUMN_NAME", "DATA_TYPE", "COLUMN_TYPE", "IS_NULLABLE", "COLUMN_DEFAULT", "COLUMN_COMMENT",
+			"COLUMN_NAME", "COLUMN_TYPE", "IS_NULLABLE", "COLUMN_DEFAULT", "COLUMN_COMMENT",
 			"CHARACTER_MAXIMUM_LENGTH", "NUMERIC_PRECISION", "NUMERIC_SCALE", "DATETIME_PRECISION",
-			"CHARACTER_SET_NAME", "COLLATION_NAME", "ORDINAL_POSITION", "COLUMN_KEY",
-		}).AddRow("id", "int", "int(11)", "NO", nil, nil, nil, nil, nil, nil, nil, nil, 1, "PRI"))
+			"CHARACTER_SET_NAME", "COLLATION_NAME", "COLUMN_KEY", "ORDINAL_POSITION",
+		}).AddRow("id", " INT(11) ", "NO", nil, nil, nil, nil, nil, nil, nil, nil, "PRI", 1).
+			AddRow("status", " enum('Active','Inactive') ", "YES", nil, nil, nil, nil, nil, nil, nil, nil, "", 2))
 
 	table := &interfaces.TableMeta{Database: "app", Name: "orders"}
 	require.NoError(t, connector.fetchColumns(context.Background(), table))
-	require.Len(t, table.Columns, 1)
+	require.Len(t, table.Columns, 2)
+	assert.Equal(t, "int(11)", table.Columns[0].Type)
+	assert.Equal(t, "enum('Active','Inactive')", table.Columns[1].Type)
+	assert.Equal(t, interfaces.DataType_String, connector.MapType(table.Columns[1].Type))
 	assert.Equal(t, "", table.Columns[0].DefaultValue)
 	assert.Equal(t, "", table.Columns[0].Description)
 	assert.Equal(t, "", table.Columns[0].Collation)
@@ -199,9 +267,10 @@ func TestMariaDBConnectorListSchemas(t *testing.T) {
 	})
 }
 
+// mariaDBTableRows defines the exact column order returned by the table discovery query.
 func mariaDBTableRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
-		"TABLE_SCHEMA", "TABLE_NAME", "TABLE_TYPE", "ENGINE", "TABLE_COLLATION",
+		"TABLE_SCHEMA", "TABLE_NAME", "TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION",
 		"TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH",
 	})
 }
@@ -243,53 +312,6 @@ func TestMariaDBConnectorCountRows(t *testing.T) {
 				assert.Equal(t, tc.count, count)
 			}
 			require.NoError(t, mock.ExpectationsWereMet())
-		})
-	}
-}
-
-func TestMariaDBConnectorBuildSourceIdentifier(t *testing.T) {
-	for _, tc := range []struct{ name, namespace, table, want string }{
-		{"ordinary", "sales", "orders", "`sales`.`orders`"},
-		{"dot in component", "sales.eu", "orders.part", "`sales.eu`.`orders.part`"},
-		{"spaces", " sales ", " orders ", "` sales `.` orders `"},
-		{"reserved word", "schema", "select", "`schema`.`select`"},
-		{"case", "Sales", "Orders", "`Sales`.`Orders`"},
-		{"quote", "sch`ema", "ord`ers", "`sch``ema`.`ord``ers`"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			meta := &interfaces.TableMeta{Database: tc.namespace, Name: tc.table}
-			reference := (&MariaDBConnector{}).BuildSourceIdentifier(meta)
-			assert.Equal(t, tc.want, reference)
-			assert.Equal(t, tc.namespace, meta.Database)
-			assert.Equal(t, tc.table, meta.Name)
-		})
-	}
-
-	t.Run("does not mutate metadata or connect", func(t *testing.T) {
-		connector := &MariaDBConnector{}
-		meta := &interfaces.TableMeta{Database: "sales", Name: "order.items"}
-		before := *meta
-		assert.Equal(t, "`sales`.`order.items`", connector.BuildSourceIdentifier(meta))
-		assert.Equal(t, connector.BuildSourceIdentifier(meta), connector.BuildSourceIdentifier(meta))
-		assert.False(t, connector.connected)
-		assert.Equal(t, before, *meta)
-	})
-}
-
-func TestMariaDBConnectorBuildOriginalName(t *testing.T) {
-	connector := &MariaDBConnector{}
-	for _, tc := range []struct {
-		name string
-		meta *interfaces.TableMeta
-		want string
-	}{
-		{"database preferred", &interfaces.TableMeta{Database: "app", Schema: "sales", Name: "orders"}, "app.orders"},
-		{"schema fallback", &interfaces.TableMeta{Schema: "app", Name: "orders"}, "app.orders"},
-		{"raw components", &interfaces.TableMeta{Database: "app`db", Name: "order.items"}, "app`db.order.items"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got := connector.BuildOriginalName(tc.meta)
-			assert.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -362,6 +384,29 @@ func TestMariaDBConnectorDecodeTableMeta(t *testing.T) {
 
 func TestMariaDBConnectorFetchTableStatus(t *testing.T) {
 	for _, tc := range []struct {
+		name      string
+		statistic driver.Value
+		timestamp driver.Value
+	}{
+		{"NULL", nil, nil}, {"negative and zero time", int64(-1), time.Time{}}, {"zero retained", int64(0), nil},
+	} {
+		t.Run("valid properties "+tc.name, func(t *testing.T) {
+			c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanup()
+			mock.ExpectQuery("SELECT TABLE_TYPE, AUTO_INCREMENT, ENGINE").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION", "TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH"}).AddRow("BASE TABLE", tc.statistic, "", "", tc.statistic, nil, tc.timestamp, tc.timestamp, tc.statistic, tc.statistic))
+			previous := map[string]any{"legacy": true}
+			table := &interfaces.TableMeta{Name: "orders", Database: "app", Schema: "app", Properties: previous}
+			require.NoError(t, c.fetchTableStatus(context.Background(), table))
+			want := map[string]any{}
+			if tc.name == "zero retained" {
+				want = map[string]any{"auto_increment": uint64(0), "estimated_row_count": int64(0), "data_length": int64(0), "index_length": int64(0)}
+			}
+			assert.Equal(t, want, table.Properties)
+			assert.Equal(t, map[string]any{"legacy": true}, previous)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+	for _, tc := range []struct {
 		name                           string
 		populated, valid, queryFailure bool
 		collation                      any
@@ -408,7 +453,7 @@ func TestMariaDBConnectorFetchTableStatus(t *testing.T) {
 				assert.Equal(t, "kept", previousProperties["custom"])
 			}
 			if tc.valid {
-				assert.Equal(t, int64(24), meta.Properties["auto_increment"])
+				assert.Equal(t, uint64(24), meta.Properties["auto_increment"])
 				assert.Equal(t, int64(1000), meta.Properties["create_time"])
 				assert.Equal(t, int64(2000), meta.Properties["update_time"])
 				assert.Equal(t, "utf8mb4", meta.Properties["charset"])
@@ -426,9 +471,17 @@ func TestMariaDBConnectorGetTableMetaRejectsOutsideScope(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
 	connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"app"}}, connected: true, db: db}
+	connector.connected = false
+	connected := false
+	patches := gomonkey.ApplyMethod(connector, "Connect", func(_ *MariaDBConnector, _ context.Context) error {
+		connected = true
+		return errors.New("unexpected connection attempt")
+	})
+	defer patches.Reset()
 	table := &interfaces.TableMeta{Database: "other", Schema: "other", Name: "orders"}
-	err = connector.GetTableMeta(context.Background(), table)
+	err = connector.GetTableMeta(context.Background(), table, true)
 	require.ErrorContains(t, err, "outside")
+	assert.False(t, connected)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -438,7 +491,7 @@ func TestMariaDBConnectorListTablesFiltersOutsideScope(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	connector := &MariaDBConnector{config: &mariadbConfig{Databases: []string{"Sales"}}, connected: true, db: db}
 	mock.ExpectQuery("SELECT").WithArgs("Sales").WillReturnRows(
-		sqlmock.NewRows([]string{"c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"}).AddRow("sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil).AddRow("Sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil))
+		sqlmock.NewRows([]string{"c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10", "AUTO_INCREMENT"}).AddRow("sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil, nil).AddRow("Sales", "orders", "BASE TABLE", nil, nil, nil, nil, nil, nil, nil, nil, nil))
 	tables, err := connector.listTables(context.Background(), "", "")
 	require.NoError(t, err)
 	require.Len(t, tables, 1)
@@ -455,4 +508,106 @@ func TestMariaDBConnectorListSchemasFiltersOutsideScope(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"Sales"}, schemas)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMariaDBConnectorFetchIndexes(t *testing.T) {
+	c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+	defer cleanup()
+	cause := errors.New("source unavailable")
+	mock.ExpectQuery("SELECT INDEX_NAME, COLUMN_NAME").WithArgs("app", "orders").WillReturnError(cause)
+	table := &interfaces.TableMeta{Database: "app", Name: "orders", Indices: []interfaces.TableIndexMeta{{Name: "old"}}}
+	before := *table
+	err := c.fetchIndexes(context.Background(), table)
+	require.ErrorIs(t, err, cause)
+	assert.ErrorContains(t, err, "failed to execute index metadata query")
+	assert.Equal(t, before, *table)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMariaDBConnectorFetchForeignKeys(t *testing.T) {
+	c, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+	defer cleanup()
+	cause := errors.New("source unavailable")
+	mock.ExpectQuery("SELECT CONSTRAINT_NAME, COLUMN_NAME").WithArgs("app", "orders").WillReturnError(cause)
+	table := &interfaces.TableMeta{Database: "app", Name: "orders", ForeignKeys: []interfaces.TableForeignKeyMeta{{Name: "old"}}}
+	before := *table
+	err := c.fetchForeignKeys(context.Background(), table)
+	require.ErrorIs(t, err, cause)
+	assert.ErrorContains(t, err, "failed to execute foreign key metadata query")
+	assert.Equal(t, before, *table)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMariaDBConnectorListAndSingleTableStatusMatch(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		raw   driver.Value
+		want  uint64
+		valid bool
+	}{
+		{"NULL auto increment", nil, 0, false},
+		{"negative auto increment", int64(-1), 0, false},
+		{"zero auto increment", int64(0), 0, true},
+		{"maximum signed auto increment", "9223372036854775807", 9223372036854775807, true},
+		{"unsigned auto increment", []byte("9223372036854775808"), 9223372036854775808, true},
+		{"maximum unsigned auto increment", "18446744073709551615", 18446744073709551615, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			connector, mock, cleanup := newMariaDBConnectorMock(t, []string{"app"})
+			defer cleanup()
+			connector.connected = true
+			mock.ExpectQuery("SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE").WithArgs("app").
+				WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", tc.raw, nil, nil, nil, nil, nil, nil, nil, nil))
+			tables, err := connector.ListTables(context.Background())
+			require.NoError(t, err)
+			require.Len(t, tables, 1)
+			single := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders"}
+			mock.ExpectQuery("SELECT TABLE_TYPE, AUTO_INCREMENT, ENGINE").WithArgs("app", "orders").
+				WillReturnRows(sqlmock.NewRows([]string{"TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION", "TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH"}).
+					AddRow("BASE TABLE", tc.raw, nil, nil, nil, nil, nil, nil, nil, nil))
+			require.NoError(t, connector.fetchTableStatus(context.Background(), single))
+			assert.Equal(t, tables[0].Properties, single.Properties)
+			if tc.valid {
+				assert.Equal(t, tc.want, single.Properties["auto_increment"])
+				decoded, err := connector.DecodeTableMeta(map[string]any{"database": "app", "name": "orders", "properties": single.Properties})
+				require.NoError(t, err)
+				number, ok := decoded.Properties["auto_increment"].(json.Number)
+				require.True(t, ok)
+				assert.Equal(t, fmt.Sprint(tc.want), number.String())
+			} else {
+				assert.NotContains(t, single.Properties, "auto_increment")
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+
+	for _, tc := range []struct {
+		name               string
+		statistic, created driver.Value
+	}{{"positive", int64(42), time.UnixMilli(1000)}, {"zero", int64(0), nil}, {"NULL", nil, nil}, {"negative and zero time", int64(-1), time.Time{}}} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &MariaDBConnector{config: &mariadbConfig{}, connected: true, db: db}
+			mock.ExpectQuery("SELECT.*AUTO_INCREMENT.*FROM information_schema.TABLES").WillReturnRows(mariaDBTableRows().AddRow("app", "orders", "BASE TABLE", tc.statistic, "InnoDB", "utf8mb4_general_ci", tc.statistic, "listed comment", tc.created, tc.created, tc.statistic, tc.statistic))
+			tables, err := connector.listTables(context.Background(), "app", "orders")
+			require.NoError(t, err)
+			require.Len(t, tables, 1)
+			listed := tables[0]
+			single := &interfaces.TableMeta{Database: "app", Schema: "app", Name: "orders"}
+			mock.ExpectQuery("SELECT").WithArgs("app", "orders").WillReturnRows(sqlmock.NewRows([]string{"TABLE_TYPE", "AUTO_INCREMENT", "ENGINE", "TABLE_COLLATION", "TABLE_ROWS", "TABLE_COMMENT", "CREATE_TIME", "UPDATE_TIME", "DATA_LENGTH", "INDEX_LENGTH"}).AddRow("BASE TABLE", tc.statistic, "InnoDB", "utf8mb4_general_ci", tc.statistic, "listed comment", tc.created, tc.created, tc.statistic, tc.statistic))
+			require.NoError(t, connector.fetchTableStatus(context.Background(), single))
+			assert.Equal(t, single.TableType, listed.TableType)
+			assert.Equal(t, single.Description, listed.Description)
+			assert.Equal(t, single.Properties, listed.Properties)
+			cause := errors.New("column query failed")
+			mock.ExpectQuery("information_schema.COLUMNS").WithArgs("app", "orders").WillReturnError(cause)
+			err = connector.GetTableMeta(context.Background(), listed, false)
+			require.ErrorIs(t, err, cause)
+			require.ErrorContains(t, err, "failed to fetch columns")
+			assert.Equal(t, single.Properties, listed.Properties)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
