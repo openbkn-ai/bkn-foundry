@@ -90,17 +90,17 @@ func TestSandboxEngineOmitsTrustedInternalRoutes(t *testing.T) {
 	}
 }
 
-func TestCompleteSchemaAliasesStayOnAuthenticatedSandboxListener(t *testing.T) {
+func TestSchemaRoutesBelongToPlatformGateway(t *testing.T) {
 	server := &Server{
 		httpHealthHandler: probeRouter{}, restPublicHandler: probeRouter{},
-		restPrivateHandler: probeRouter{}, schemaReadHandler: probeRouter{},
+		restPrivateHandler: probeRouter{},
 	}
 	for _, tc := range []struct {
 		router *gin.Engine
 		path   string
 		status int
 	}{
-		{server.sandboxEngine(), "/api/bkn-backend/v1/probe", 204},
+		{server.sandboxEngine(), "/api/bkn-backend/v1/probe", 404},
 		{server.sandboxEngine(), "/api/bkn-backend/in/v1/probe", 404},
 		{server.platformEngine(), "/api/bkn-backend/v1/probe", 404},
 	} {

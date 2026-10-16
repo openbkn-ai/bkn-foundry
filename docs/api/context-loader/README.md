@@ -22,18 +22,12 @@
 | [data-access.yaml](data-access.yaml) | Direct data access | `POST /kn/list_resources`, `POST /kn/describe_resource`, `POST /kn/run_sql` |
 | [mcp.yaml](mcp.yaml) | MCP service | `GET /mcp/info`, `POST /mcp` |
 
-## Sandbox OSDK schema aliases
+## Sandbox OSDK REST routing
 
-[`sdk-schema.yaml`](sdk-schema.yaml) documents four authenticated GET aliases on
-Context Loader's dedicated sandbox listener: the network record, object-type list
-relation-type list, and paginated Object Metric V1 catalogue under `/api/bkn-backend/v1/knowledge-networks/{kn_id}`.
-The release/0.2.0 backend does not implement Object Metric V1: the object-metrics
-alias returns the backend 404 and is not required by the pinned release OSDK,
-which uses the other three reads. The aliases preserve complete backend schema JSON for OSDK generation/drift checks while
-keeping the existing single `BKN_BASE_URL`. These aliases are separate from the
-POST `/kn/` agent API below. No additional service URL or sandbox egress rule is
-required. Deploy the updated Context Loader image before verifying them live;
-updating the npm CLI or Python package alone cannot add missing server routes.
+OSDK uses the unified platform REST gateway for Schema and instance queries.
+Configure Sandbox `controlPlane.env.BKN_BASE_URL` explicitly, or let the complete
+installer discover its gateway Service. The independent MCP endpoint remains on
+Retrieval's sandbox listener. Retrieval does not proxy BKN Backend Schema routes.
 
 ## Typical flow
 
