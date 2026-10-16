@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The bind-join executor finishes a query in memory: the conditions the data
@@ -340,6 +341,9 @@ func evaluatePredicate(predicate PlanPredicate, s scope) (truth, error) {
 	case PlanNever:
 		return truthFalse, nil
 
+	case dateComparison:
+		return evaluateDateComparison(node.PlanPredicate, s)
+
 	case PlanNegation:
 		operand, err := evaluatePredicate(node.Operand, s)
 		return operand.not(), err
@@ -404,6 +408,11 @@ func compareTruth(left any, operator string, right any) (truth, error) {
 	if !ok {
 		return truthUnknown, nil
 	}
+	return orderTruth(order, operator)
+}
+
+// orderTruth reads a comparison's result off the order of its two sides.
+func orderTruth(order int, operator string) (truth, error) {
 	switch operator {
 	case "=":
 		return truthOf(order == 0), nil
@@ -863,4 +872,80 @@ func sortCompare(a, b any) int {
 		return order
 	}
 	return strings.Compare(canonicalKey(a), canonicalKey(b))
+}
+
+// evaluateDateComparison decides a comparison or IN over a date or time column
+// by wall-clock time, the way the database reads a literal against such a
+// column. A value that is not a recognisable date falls back to comparing as
+// written.
+func evaluateDateComparison(predicate PlanPredicate, s scope) (truth, error) {
+	switch node := predicate.(type) {
+	case PlanCondition:
+		order, ok := compareDates(s.column(node.Table, node.Column), literalValue(node.Value))
+		if !ok {
+			return truthUnknown, nil
+		}
+		return orderTruth(order, node.Operator)
+	case PlanMembership:
+		if len(node.Values) == 0 {
+			return truthOf(node.Negated), nil
+		}
+		value := s.column(node.Table, node.Column)
+		if value == nil {
+			return truthUnknown, nil
+		}
+		result := truthFalse
+		for _, literal := range node.Values {
+			if order, ok := compareDates(value, literalValue(literal)); ok && order == 0 {
+				result = truthTrue
+				break
+			}
+		}
+		if node.Negated {
+			return result.not(), nil
+		}
+		return result, nil
+	default:
+		return evaluatePredicate(predicate, s)
+	}
+}
+
+// wallClockLayouts are the forms a date reaches the executor in: RFC 3339 as
+// vega-backend writes a column value, and the forms a query writes a literal in.
+var wallClockLayouts = []string{
+	time.RFC3339Nano,
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02",
+}
+
+// wallClock reads a date as its wall-clock reading, dropping any offset: a
+// DATETIME column has none, and the driver reports it in its own zone.
+func wallClock(value any) (time.Time, bool) {
+	text, ok := value.(string)
+	if !ok {
+		return time.Time{}, false
+	}
+	text = strings.TrimSpace(text)
+	for _, layout := range wallClockLayouts {
+		if parsed, err := time.Parse(layout, text); err == nil {
+			return time.Date(parsed.Year(), parsed.Month(), parsed.Day(), parsed.Hour(), parsed.Minute(),
+				parsed.Second(), parsed.Nanosecond(), time.UTC), true
+		}
+	}
+	return time.Time{}, false
+}
+
+// compareDates orders two date values by wall-clock time, or compares them as
+// written when either is not a date. ok is false when either is NULL.
+func compareDates(a, b any) (int, bool) {
+	if a == nil || b == nil {
+		return 0, false
+	}
+	at, aOK := wallClock(a)
+	bt, bOK := wallClock(b)
+	if !aOK || !bOK {
+		return compareValues(a, b)
+	}
+	return at.Compare(bt), true
 }

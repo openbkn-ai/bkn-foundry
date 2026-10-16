@@ -136,6 +136,9 @@ func fakeFilter(condition map[string]any, row map[string]any) (bool, error) {
 	switch operation {
 	case "and", "or":
 		subConditions, _ := condition["sub_conditions"].([]map[string]any)
+		if len(subConditions) > maxSubConditions {
+			return false, fmt.Errorf("the number of subConditions exceeds %d", maxSubConditions)
+		}
 		for _, sub := range subConditions {
 			holds, err := fakeFilter(sub, row)
 			if err != nil {
@@ -179,12 +182,37 @@ func fakeFilter(condition map[string]any, row map[string]any) (bool, error) {
 		}
 		return found == (operation == "in"), nil
 	case "like", "not_like":
-		return strings.Contains(fmt.Sprint(value), operand.(string)) == (operation == "like"), nil
+		literal, err := fakeLikeLiteral(operand.(string))
+		if err != nil {
+			return false, err
+		}
+		return strings.Contains(fmt.Sprint(value), literal) == (operation == "like"), nil
 	case "prefix", "not_prefix":
 		return strings.HasPrefix(fmt.Sprint(value), operand.(string)) == (operation == "prefix"), nil
 	default:
 		return false, fmt.Errorf("fake data API does not support %q", operation)
 	}
+}
+
+// fakeLikeLiteral reads a like value the way vega-backend does: a backslash
+// escapes the next character and a bare % is refused.
+func fakeLikeLiteral(value string) (string, error) {
+	var literal strings.Builder
+	escaped := false
+	for _, r := range value {
+		switch {
+		case escaped:
+			literal.WriteRune(r)
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case r == '%':
+			return "", fmt.Errorf("like does not support the wildcard %%")
+		default:
+			literal.WriteRune(r)
+		}
+	}
+	return literal.String(), nil
 }
 
 func reflectList(value any) []any {
@@ -212,6 +240,7 @@ func bindJoinSchema(t *testing.T) *Schema {
 		typed("customer_code", "f_cust", "string"),
 		typed("region", "f_region", "string"),
 		typed("amount", "f_amount", "integer"),
+		typed("placed_at", "f_placed", "datetime"),
 	)
 	order.PrimaryKeys = []string{"id"}
 	customer := objectType("ot_customer", "Customer", resource("res_customer", "customers"),
@@ -250,10 +279,10 @@ func bindJoinSchema(t *testing.T) *Schema {
 func bindJoinData() map[string][]map[string]any {
 	return map[string][]map[string]any{
 		"res_order": {
-			{"f_id": 1, "f_prev": nil, "f_cust": "c1", "f_region": "east", "f_amount": 50},
-			{"f_id": 2, "f_prev": 1, "f_cust": "c1", "f_region": "west", "f_amount": 70},
-			{"f_id": 3, "f_prev": 2, "f_cust": "c2", "f_region": "east", "f_amount": 20},
-			{"f_id": 4, "f_prev": nil, "f_cust": "c2", "f_region": nil, "f_amount": nil},
+			{"f_id": 1, "f_prev": nil, "f_cust": "c1", "f_region": "east", "f_amount": 50, "f_placed": "2024-01-01T00:00:00Z"},
+			{"f_id": 2, "f_prev": 1, "f_cust": "c1", "f_region": "west", "f_amount": 70, "f_placed": "2024-01-31T23:59:59Z"},
+			{"f_id": 3, "f_prev": 2, "f_cust": "c2", "f_region": "east", "f_amount": 20, "f_placed": "2024-02-01T00:00:00Z"},
+			{"f_id": 4, "f_prev": nil, "f_cust": "c2", "f_region": nil, "f_amount": nil, "f_placed": nil},
 		},
 		"res_customer": {
 			{"f_code": "c1", "f_region": "east", "f_name": "Alice"},
@@ -759,5 +788,142 @@ func TestBindJoinColumnsFallBackToTheModelWhenAllNull(t *testing.T) {
 	columns := bindJoinColumns(plan, schema, []map[string]any{{"a": nil, "n": json.Number("1")}})
 	if columns[0].Type != "integer" || columns[1].Type != "integer" {
 		t.Fatalf("columns = %+v", columns)
+	}
+}
+
+// #2203 review: CONTAINS is pushed as like, whose value vega-backend reads with
+// backslash escapes and a bare % refused, so the executor has to escape both
+// to keep the literal match the SQL path makes.
+func TestBindJoinContainsMatchesLiterally(t *testing.T) {
+	data := bindJoinData()
+	data["res_customer"] = append(data["res_customer"],
+		map[string]any{"f_code": "c3", "f_region": "north", "f_name": "50% off"},
+		map[string]any{"f_code": "c4", "f_region": "north", "f_name": `a\_b`},
+		map[string]any{"f_code": "c5", "f_region": "north", "f_name": "a_b"},
+	)
+	for query, want := range map[string][][]any{
+		"MATCH (c:Customer) WHERE c.name CONTAINS '50%' RETURN c.code":   {{"c3"}},
+		`MATCH (c:Customer) WHERE c.name CONTAINS 'a\\_b' RETURN c.code`: {{"c4"}},
+		"MATCH (c:Customer) WHERE c.name CONTAINS 'a_b' RETURN c.code":   {{"c5"}},
+	} {
+		rows, err := runFake(t, newFakeDataAPI(data), defaultBindJoinLimits, query, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		if !reflect.DeepEqual(rows, want) {
+			t.Fatalf("%s: rows = %v, want %v", query, rows, want)
+		}
+	}
+	pushed, _ := pushFilter(PlanStringMatch{Column: "f", Operator: Contains, Value: `50%\x`})
+	if got := pushed.condition["value"]; got != `50\%\\x` {
+		t.Fatalf("like value = %q", got)
+	}
+}
+
+// #2203 review: vega-backend accepts at most 100 operands in one and/or.
+func TestPushFilterNestsLargeJunctions(t *testing.T) {
+	operands := make([]PlanPredicate, 250)
+	for i := range operands {
+		operands[i] = PlanCondition{Column: "f", Operator: "=", Value: Literal{Kind: LiteralInteger, Integer: int64(i)}}
+	}
+	pushed, ok := pushFilter(PlanLogical{Operator: "OR", Operands: operands})
+	if !ok {
+		t.Fatal("not pushed")
+	}
+	var leaves int
+	var walk func(condition map[string]any)
+	walk = func(condition map[string]any) {
+		subs, ok := condition["sub_conditions"].([]map[string]any)
+		if !ok {
+			leaves++
+			return
+		}
+		if len(subs) > maxSubConditions || condition["operation"] != "or" {
+			t.Fatalf("junction of %d %v operands", len(subs), condition["operation"])
+		}
+		for _, sub := range subs {
+			walk(sub)
+		}
+	}
+	walk(pushed.condition)
+	if leaves != 250 {
+		t.Fatalf("%d leaves, want 250", leaves)
+	}
+}
+
+// #2203 review: a date property is compared by wall-clock time in the
+// executor, never pushed, since vega-backend only takes epoch milliseconds or
+// RFC 3339 for one and converts them in its session's zone.
+func TestBindJoinComparesDatesByWallClock(t *testing.T) {
+	rows, api := mustRunFake(t, "MATCH (o:Order) WHERE o.placed_at >= '2024-01-01' AND o.placed_at < '2024-02-01' "+
+		"AND o.region IN ['east', 'west'] RETURN o.id ORDER BY o.id", nil)
+	if !reflect.DeepEqual(rows, [][]any{{1}, {2}}) {
+		t.Fatalf("rows = %v", rows)
+	}
+	read := api.readsOf("res_order")[0].FilterCondition
+	if fmt.Sprint(read) != fmt.Sprint(fieldCondition("f_region", "in", []any{"east", "west"})) {
+		t.Fatalf("pushed %v, want only the region condition", read)
+	}
+	rows, _ = mustRunFake(t, "MATCH (o:Order) WHERE o.placed_at = '2024-01-01 00:00:00' OR o.placed_at IN ['2024-02-01'] "+
+		"RETURN o.id ORDER BY o.id", nil)
+	if !reflect.DeepEqual(rows, [][]any{{1}, {3}}) {
+		t.Fatalf("rows = %v", rows)
+	}
+}
+
+// #2203 review: a key stored as a string on one side and a number on the other
+// joins as SQL joins it, by converting the string; two strings still compare
+// exactly.
+func TestBindJoinJoinsStringKeysToNumberKeys(t *testing.T) {
+	data := bindJoinData()
+	data["res_order"] = []map[string]any{
+		{"f_id": 1, "f_cust": "42", "f_region": "east"},
+		{"f_id": 2, "f_cust": "042", "f_region": "east"},
+		{"f_id": 3, "f_cust": "43", "f_region": "east"},
+	}
+	data["res_customer"] = []map[string]any{{"f_code": 42, "f_region": "east", "f_name": "Num"}}
+	rows, err := runFake(t, newFakeDataAPI(data), defaultBindJoinLimits,
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN o.id, c.name ORDER BY o.id", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rows, [][]any{{1, "Num"}, {2, "Num"}}) {
+		t.Fatalf("rows = %v", rows)
+	}
+
+	data["res_customer"] = []map[string]any{{"f_code": "42", "f_region": "east", "f_name": "Str"}}
+	rows, err = runFake(t, newFakeDataAPI(data), defaultBindJoinLimits,
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN o.id, c.name ORDER BY o.id", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rows, [][]any{{1, "Str"}}) {
+		t.Fatalf("rows = %v, want only the exact string match", rows)
+	}
+}
+
+// #2203 review: once nothing matches, no further table is read.
+func TestBindJoinStopsReadingOnceNothingMatches(t *testing.T) {
+	_, api := mustRunFake(t, "MATCH (i:Item)-[:BELONGS_TO]->(o:Order) WHERE o.region = 'north' RETURN i.id", nil)
+	if items := api.readsOf("res_item"); len(items) != 0 {
+		t.Fatalf("items read %d times after the orders matched nothing", len(items))
+	}
+}
+
+// #2203 review: vega-backend pages a table with an offset, so a table without
+// a primary key is sorted by every column read.
+func TestBindJoinSortsKeylessTablesByEveryColumn(t *testing.T) {
+	plan, schema := compileBindJoin(t, "MATCH (c:Customer) RETURN c.name", nil)
+	schema.objectTypesByID["ot_customer"].PrimaryKeys = nil
+	api := newFakeDataAPI(bindJoinData())
+	if _, _, err := runBindJoin(context.Background(), plan, schema, api.read, defaultBindJoinLimits, 1000); err != nil {
+		t.Fatal(err)
+	}
+	var sorted []string
+	for _, field := range api.readsOf("res_customer")[0].Sort {
+		sorted = append(sorted, field.Field)
+	}
+	if !reflect.DeepEqual(sorted, []string{"f_name"}) {
+		t.Fatalf("sorted by %v, want every column read", sorted)
 	}
 }

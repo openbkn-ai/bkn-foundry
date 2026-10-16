@@ -9,10 +9,12 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
 )
 
 // The bind-join executor runs a compiled plan without SQL. It reads one table
@@ -44,6 +46,13 @@ type bindJoinLimits struct {
 }
 
 var defaultBindJoinLimits = bindJoinLimits{batchSize: 500, pageSize: 5000, maxRows: 100000, workers: 4}
+
+// dateTypes are the property types whose comparisons stay in the executor; see
+// dateComparison.
+var dateTypes = map[string]bool{
+	dtype.DATATYPE_DATE: true, dtype.DATATYPE_DATETIME: true,
+	dtype.DATATYPE_TIMESTAMP: true, dtype.DATATYPE_TIME: true,
+}
 
 // cursorKeepAliveSec is the shortest cursor lifetime vega-backend accepts. A
 // read follows its cursor straight through, so it never needs more.
@@ -134,7 +143,20 @@ func (e *bindJoinExecutor) prepare() error {
 		}
 	}
 
-	terms := conjuncts(e.plan.Where)
+	dateColumns := make([]map[string]bool, len(e.plan.Tables))
+	for i, table := range e.plan.Tables {
+		dateColumns[i] = map[string]bool{}
+		for _, dp := range e.schema.objectTypesByID[table.ObjectTypeID].DataProperties {
+			if dp != nil && dp.MappedField != nil && dateTypes[strings.ToLower(dp.Type)] {
+				dateColumns[i][dp.MappedField.Name] = true
+			}
+		}
+	}
+	isDate := func(table int, column string) bool {
+		return table >= 0 && table < len(dateColumns) && dateColumns[table][column]
+	}
+
+	terms := conjuncts(markDateComparisons(e.plan.Where, isDate))
 	for _, join := range e.plan.Joins {
 		for _, reading := range join.Readings {
 			for _, key := range reading {
@@ -146,7 +168,7 @@ func (e *bindJoinExecutor) prepare() error {
 			// On an inner join a condition in ON and one in WHERE keep the same
 			// rows, so they are handled together.
 			for _, condition := range join.Conditions {
-				terms = append(terms, conjuncts(condition)...)
+				terms = append(terms, conjuncts(markDateComparisons(condition, isDate))...)
 			}
 		}
 	}
@@ -176,7 +198,7 @@ func (e *bindJoinExecutor) prepare() error {
 			continue
 		}
 		for _, condition := range join.Conditions {
-			for _, term := range conjuncts(condition) {
+			for _, term := range conjuncts(markDateComparisons(condition, isDate)) {
 				tables := predicateTables(term)
 				walkPredicateColumns(term, need)
 				// A condition on the attached table alone narrows the rows it
@@ -269,6 +291,11 @@ func (e *bindJoinExecutor) run(ctx context.Context) ([]binding, error) {
 	}
 
 	for {
+		// Nothing left to extend: every further read could only be wasted,
+		// and could fail the budget for a query whose answer is empty.
+		if len(bindings) == 0 {
+			return nil, nil
+		}
 		index, next := e.nextJoin(bound, usedJoin)
 		if index < 0 {
 			next = e.unboundRequiredTable(bound)
@@ -303,6 +330,9 @@ func (e *bindJoinExecutor) run(ctx context.Context) ([]binding, error) {
 	for index, join := range e.plan.Joins {
 		if !join.Optional || usedJoin[index] {
 			continue
+		}
+		if len(bindings) == 0 {
+			return nil, nil
 		}
 		table := join.OptionalTable
 		if bound[table] {
@@ -403,13 +433,16 @@ func (e *bindJoinExecutor) readTable(ctx context.Context, table int, extra map[s
 		if condition == nil {
 			condition = extra
 		} else {
-			condition = map[string]any{"operation": "and", "sub_conditions": []map[string]any{condition, extra}}
+			condition = junction("and", []map[string]any{condition, extra})
 		}
 	}
 
+	// vega-backend pages a table by re-running it with an offset, so the sort
+	// has to be total or a page boundary can repeat or skip rows. A primary key
+	// is; without one, every column read is the closest there is.
 	sortFields := e.primaryKeys[table]
-	if len(sortFields) == 0 && len(e.fields[table]) > 0 {
-		sortFields = e.fields[table][:1]
+	if len(sortFields) == 0 {
+		sortFields = e.fields[table]
 	}
 	sortParams := make([]*interfaces.SortParams, 0, len(sortFields))
 	for _, field := range sortFields {
@@ -459,6 +492,60 @@ func (e *bindJoinExecutor) readTable(ctx context.Context, table int, extra map[s
 type joinSide struct {
 	bound []string
 	next  []string
+	// numeric marks the key pairs that compare as numbers: a string on one
+	// side against a number on the other, which SQL compares by converting
+	// the string. Pairs of the same kind compare exactly, as SQL does.
+	numeric []bool
+}
+
+// settleKeyKinds decides, for each key pair of each side, whether it compares
+// as numbers, from the kinds of value the two sides actually hold.
+func settleKeyKinds(sides []joinSide, boundRows, nextRows func(yield func(map[string]any) bool)) {
+	for s := range sides {
+		sides[s].numeric = make([]bool, len(sides[s].bound))
+		for i := range sides[s].bound {
+			boundKind := firstKind(boundRows, sides[s].bound[i])
+			nextKind := firstKind(nextRows, sides[s].next[i])
+			sides[s].numeric[i] = boundKind != "" && nextKind != "" && boundKind != nextKind
+		}
+	}
+}
+
+// firstKind is "string" or "number" for the first non-null value of a column.
+func firstKind(rows func(yield func(map[string]any) bool), column string) string {
+	kind := ""
+	rows(func(row map[string]any) bool {
+		switch row[column].(type) {
+		case nil:
+			return true
+		case string:
+			kind = "string"
+		default:
+			kind = "number"
+		}
+		return false
+	})
+	return kind
+}
+
+func rowsOf(rows []map[string]any) func(yield func(map[string]any) bool) {
+	return func(yield func(map[string]any) bool) {
+		for _, row := range rows {
+			if row != nil && !yield(row) {
+				return
+			}
+		}
+	}
+}
+
+func tableRowsOf(bindings []binding, table int) func(yield func(map[string]any) bool) {
+	return func(yield func(map[string]any) bool) {
+		for _, b := range bindings {
+			if b[table] != nil && !yield(b[table]) {
+				return
+			}
+		}
+	}
 }
 
 func (e *bindJoinExecutor) joinSides(join PlanJoin, boundTable int) []joinSide {
@@ -497,12 +584,13 @@ func (e *bindJoinExecutor) hop(ctx context.Context, bindings []binding, index, n
 	if err != nil {
 		return nil, err
 	}
+	settleKeyKinds(sides, tableRowsOf(bindings, boundTable), rowsOf(rows))
 
 	indexes := make([]map[string][]int, len(sides))
 	for s, side := range sides {
 		indexes[s] = map[string][]int{}
 		for r, row := range rows {
-			if key, ok := tupleKey(row, side.next); ok {
+			if key, ok := tupleKeyAs(row, side.next, side.numeric); ok {
 				indexes[s][key] = append(indexes[s][key], r)
 			}
 		}
@@ -544,7 +632,7 @@ func (e *bindJoinExecutor) hop(ctx context.Context, bindings []binding, index, n
 // readings is listed once, as an OR in the join condition would.
 func matchingRows(row map[string]any, sides []joinSide, indexes []map[string][]int) []int {
 	if len(sides) == 1 {
-		key, ok := tupleKey(row, sides[0].bound)
+		key, ok := tupleKeyAs(row, sides[0].bound, sides[0].numeric)
 		if !ok {
 			return nil
 		}
@@ -553,7 +641,7 @@ func matchingRows(row map[string]any, sides []joinSide, indexes []map[string][]i
 	seen := map[int]bool{}
 	var matches []int
 	for s, side := range sides {
-		key, ok := tupleKey(row, side.bound)
+		key, ok := tupleKeyAs(row, side.bound, side.numeric)
 		if !ok {
 			continue
 		}
@@ -684,6 +772,7 @@ func (e *bindJoinExecutor) crossJoin(ctx context.Context, bindings []binding, ne
 // keepJoined keeps the bindings whose two bound rows a join connects.
 func (e *bindJoinExecutor) keepJoined(bindings []binding, join PlanJoin) []binding {
 	sides := e.joinSides(join, join.Left)
+	settleKeyKinds(sides, tableRowsOf(bindings, join.Left), tableRowsOf(bindings, join.Right))
 	kept := bindings[:0]
 	for _, b := range bindings {
 		left, right := b[join.Left], b[join.Right]
@@ -691,8 +780,8 @@ func (e *bindJoinExecutor) keepJoined(bindings []binding, join PlanJoin) []bindi
 			continue
 		}
 		for _, side := range sides {
-			leftKey, leftOK := tupleKey(left, side.bound)
-			rightKey, rightOK := tupleKey(right, side.next)
+			leftKey, leftOK := tupleKeyAs(left, side.bound, side.numeric)
+			rightKey, rightOK := tupleKeyAs(right, side.next, side.numeric)
 			if leftOK && rightOK && leftKey == rightKey {
 				kept = append(kept, b)
 				break
@@ -774,9 +863,22 @@ func tupleValues(row map[string]any, columns []string) ([]any, bool) {
 }
 
 func tupleKey(row map[string]any, columns []string) (string, bool) {
+	return tupleKeyAs(row, columns, nil)
+}
+
+// tupleKeyAs is tupleKey with the columns marked numeric read as numbers, a
+// string converting the way SQL converts it.
+func tupleKeyAs(row map[string]any, columns []string, numeric []bool) (string, bool) {
 	values, ok := tupleValues(row, columns)
 	if !ok {
 		return "", false
+	}
+	for i := range values {
+		if i < len(numeric) && numeric[i] {
+			if n, ok := coerceNumber(values[i]); ok {
+				values[i] = n.value()
+			}
+		}
 	}
 	return canonicalTuple(values), true
 }

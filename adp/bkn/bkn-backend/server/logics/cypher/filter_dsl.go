@@ -7,6 +7,7 @@ package cypher
 
 import (
 	"fmt"
+	"strings"
 )
 
 // The bind-join executor reads every table through vega-backend's resource
@@ -104,6 +105,8 @@ func walkPredicateColumns(predicate PlanPredicate, visit func(table int, column 
 		for _, operand := range node.Operands {
 			walkPredicateColumns(operand, visit)
 		}
+	case dateComparison:
+		walkPredicateColumns(node.PlanPredicate, visit)
 	}
 }
 
@@ -197,10 +200,18 @@ func pushFilterNegated(predicate PlanPredicate, negated bool) (pushedFilter, boo
 			// ENDS WITH has no filter operation that writes LIKE '%v'.
 			return pushedFilter{}, false
 		}
+		value := node.Value
+		if operation == "like" {
+			// like matches its value as a literal substring, reading a
+			// backslash as an escape and refusing a bare %; escaping both keeps
+			// the literal match the SQL path makes. prefix takes the value as
+			// it is.
+			value = likeValueEscaper.Replace(value)
+		}
 		if negated {
 			operation = "not_" + operation
 		}
-		return pushedFilter{condition: fieldCondition(node.Column, operation, node.Value)}, true
+		return pushedFilter{condition: fieldCondition(node.Column, operation, value)}, true
 
 	case PlanNever:
 		if negated {
@@ -252,11 +263,40 @@ func pushJunction(operation string, operands []PlanPredicate, negated bool) (pus
 	case 0:
 		result := !deciding
 		return pushedFilter{constant: &result}, true
-	case 1:
-		return pushedFilter{condition: subConditions[0]}, true
 	default:
-		return pushedFilter{condition: map[string]any{"operation": operation, "sub_conditions": subConditions}}, true
+		return pushedFilter{condition: junction(operation, subConditions)}, true
 	}
+}
+
+// likeValueEscaper writes a literal substring in the escaped form vega-backend's
+// like and not_like accept.
+var likeValueEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`)
+
+// maxSubConditions is the most operands vega-backend accepts in one and/or.
+const maxSubConditions = 100
+
+// junction joins conditions under and or or. Past maxSubConditions operands it
+// nests them in groups, which and and or allow.
+func junction(operation string, subConditions []map[string]any) map[string]any {
+	if len(subConditions) == 1 {
+		return subConditions[0]
+	}
+	for len(subConditions) > maxSubConditions {
+		grouped := make([]map[string]any, 0, (len(subConditions)+maxSubConditions-1)/maxSubConditions)
+		for from := 0; from < len(subConditions); from += maxSubConditions {
+			to := min(from+maxSubConditions, len(subConditions))
+			if to-from == 1 {
+				grouped = append(grouped, subConditions[from])
+				continue
+			}
+			grouped = append(grouped, map[string]any{"operation": operation, "sub_conditions": subConditions[from:to]})
+		}
+		subConditions = grouped
+	}
+	if len(subConditions) == 1 {
+		return subConditions[0]
+	}
+	return map[string]any{"operation": operation, "sub_conditions": subConditions}
 }
 
 func fieldCondition(field, operation string, value any) map[string]any {
@@ -276,14 +316,10 @@ func andFilters(filters []pushedFilter) (map[string]any, bool) {
 		}
 		subConditions = append(subConditions, filter.condition)
 	}
-	switch len(subConditions) {
-	case 0:
+	if len(subConditions) == 0 {
 		return nil, true
-	case 1:
-		return subConditions[0], true
-	default:
-		return map[string]any{"operation": "and", "sub_conditions": subConditions}, true
 	}
+	return junction("and", subConditions), true
 }
 
 // literalFilterValue is the JSON value a literal is sent as. ok is false for a
@@ -325,8 +361,38 @@ func keyInCondition(columns []string, tuples [][]any) (map[string]any, error) {
 		}
 		subConditions = append(subConditions, fieldCondition(column, "in", values))
 	}
-	if len(subConditions) == 1 {
-		return subConditions[0], nil
+	return junction("and", subConditions), nil
+}
+
+// dateComparison is a comparison over a date or time property. vega-backend
+// accepts only epoch milliseconds or RFC 3339 for such a field and converts
+// them with the session's time zone, while the SQL path lets the database read
+// the literal as a wall-clock value. It is therefore never pushed; the
+// executor compares the values as wall-clock times, as the database would.
+type dateComparison struct {
+	PlanPredicate
+}
+
+// markDateComparisons wraps every comparison and IN over a date or time
+// column, at any depth, so that pushFilter leaves it to the executor.
+func markDateComparisons(predicate PlanPredicate, isDate func(table int, column string) bool) PlanPredicate {
+	switch node := predicate.(type) {
+	case PlanCondition:
+		if isDate(node.Table, node.Column) {
+			return dateComparison{PlanPredicate: node}
+		}
+	case PlanMembership:
+		if isDate(node.Table, node.Column) {
+			return dateComparison{PlanPredicate: node}
+		}
+	case PlanNegation:
+		return PlanNegation{Operand: markDateComparisons(node.Operand, isDate)}
+	case PlanLogical:
+		operands := make([]PlanPredicate, len(node.Operands))
+		for i, operand := range node.Operands {
+			operands[i] = markDateComparisons(operand, isDate)
+		}
+		return PlanLogical{Operator: node.Operator, Operands: operands}
 	}
-	return map[string]any{"operation": "and", "sub_conditions": subConditions}, nil
+	return predicate
 }
