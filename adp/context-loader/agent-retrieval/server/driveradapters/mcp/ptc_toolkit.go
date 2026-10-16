@@ -152,11 +152,12 @@ func sandboxMCPURL(port int) string {
 }
 
 type ptcParam struct {
-	name     string
-	pyType   string
-	required bool
-	defVal   any
-	desc     string
+	name        string
+	keywordOnly bool
+	pyType      string
+	required    bool
+	defVal      any
+	desc        string
 }
 
 func ptcParams(raw json.RawMessage) []ptcParam {
@@ -165,6 +166,7 @@ func ptcParams(raw json.RawMessage) []ptcParam {
 			Type        string `json:"type"`
 			Default     any    `json:"default"`
 			Description string `json:"description"`
+			KeywordOnly bool   `json:"x-ptc-keyword-only"`
 		} `json:"properties"`
 		Required []string `json:"required"`
 	}
@@ -202,12 +204,17 @@ func ptcParams(raw json.RawMessage) []ptcParam {
 			pyType = "object"
 		}
 		params = append(params, ptcParam{
-			name: name, pyType: pyType, required: required[name],
+			name: name, pyType: pyType, required: required[name], keywordOnly: spec.KeywordOnly,
 			defVal: def, desc: spec.Description,
 		})
 	}
 	// Required first: Python does not allow parameters with default values to be listed before parameters without default values.
-	sort.SliceStable(params, func(i, j int) bool { return params[i].required && !params[j].required })
+	sort.SliceStable(params, func(i, j int) bool {
+		if params[i].keywordOnly != params[j].keywordOnly {
+			return !params[i].keywordOnly
+		}
+		return params[i].required && !params[j].required
+	})
 	return params
 }
 
@@ -238,7 +245,12 @@ func pyLiteral(v any) string {
 
 func ptcSignature(tool MCPToolInfo) string {
 	parts := make([]string, 0, 8)
+	keywordOnly := false
 	for _, p := range ptcParams(tool.InputSchema) {
+		if p.keywordOnly && !keywordOnly {
+			parts = append(parts, "*")
+			keywordOnly = true
+		}
 		if p.required {
 			parts = append(parts, fmt.Sprintf("%s: %s", p.name, p.pyType))
 			continue
@@ -286,6 +298,11 @@ func ptcStubSignature(tool MCPToolInfo) string {
 	separator := ", "
 	if strings.HasSuffix(signature, "()") {
 		separator = ""
+	}
+	// Preserve the existing positional plumbing slot when new optional
+	// arguments are declared keyword-only by a tool's schema.
+	if index := strings.Index(signature, ", *, "); index >= 0 {
+		return signature[:index] + ", " + strings.Join(parts, ", ") + signature[index:]
 	}
 	return strings.TrimSuffix(signature, ")") + separator + strings.Join(parts, ", ") + ")"
 }

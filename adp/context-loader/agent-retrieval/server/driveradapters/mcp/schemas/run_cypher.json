@@ -33,7 +33,8 @@
         "enum": [
           "graph_v1"
         ],
-        "description": "可选显式选择 graph_v1 类型化结果。语法能力不依赖此字段；缺省时根据查询自动选择原表格或类型化结果。需要有界求值的查询最多读取 9999 条候选匹配，再读一行探测是否超预算；8 MiB 组装计费预算，30 秒超时，超预算整体失败。DISTINCT/排序/SKIP/LIMIT 在分组聚合后执行。"
+        "description": "可选显式选择 graph_v1 类型化结果。语法能力不依赖此字段；缺省时根据查询自动选择原表格或类型化结果。需要有界求值的查询最多读取 9999 条候选匹配，再读一行探测是否超预算；8 MiB 组装计费预算，30 秒超时，超预算整体失败。DISTINCT/排序/SKIP/LIMIT 在分组聚合后执行。",
+        "x-ptc-keyword-only": true
       },
       "object_properties": {
         "type": "object",
@@ -43,7 +44,8 @@
             "type": "string"
           }
         },
-        "description": "仅 graph_v1：按节点变量指定快照属性清单，均须完整读取权限。默认只返回完整类型身份；关系证据另包含获准的连接依据。"
+        "description": "仅 graph_v1：按节点变量指定快照属性清单，均须完整读取权限。默认只返回完整类型身份；关系证据另包含获准的连接依据。",
+        "x-ptc-keyword-only": true
       }
     },
     "required": [

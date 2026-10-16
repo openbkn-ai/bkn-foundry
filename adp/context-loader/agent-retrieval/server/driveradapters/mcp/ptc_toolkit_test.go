@@ -748,3 +748,30 @@ func mustJSON(t *testing.T, value string) []byte {
 	}
 	return raw
 }
+
+func TestCypherNewOptionsPreserveExistingPositionalArguments(t *testing.T) {
+	schema, err := os.ReadFile("schemas/run_cypher.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		InputSchema json.RawMessage `json:"input_schema"`
+	}
+	if err := json.Unmarshal(schema, &body); err != nil {
+		t.Fatal(err)
+	}
+	var input map[string]any
+	if err := json.Unmarshal(body.InputSchema, &input); err != nil {
+		t.Fatal(err)
+	}
+	input["properties"].(map[string]any)["bkn_context"] = map[string]any{"type": "object"}
+	raw, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature := ptcStubSignature(MCPToolInfo{Name: "run_cypher", InputSchema: raw})
+	expected := "run_cypher(kn_id: str, query: str, branch: str = None, parameters: dict = None, response_format: str = 'json', bkn_context: dict = None, *, object_properties: dict = None, result_format: str = None)"
+	if signature != expected {
+		t.Fatalf("positional compatibility changed: %s", signature)
+	}
+}

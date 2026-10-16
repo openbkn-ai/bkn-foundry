@@ -27,17 +27,13 @@ import (
 // them. Written out rather than parsed: a list derived from the text it checks
 // agrees with itself by construction.
 var cypherRefusals = map[string][]string{
-	"zh-CN": {"WITH", "UNION", "变长路径", "XOR", "返回整个节点", "函数调用", "乘方", "关系变量"},
-	"en-US": {"WITH", "UNION", "variable-length paths", "XOR", "returning a whole node", "function calls", "exponentiation", "relationship variables"},
+	"zh-CN": {"CREATE", "MERGE", "DELETE", "SET", "REMOVE", "CALL"},
+	"en-US": {"CREATE", "MERGE", "DELETE", "SET", "REMOVE", "CALL"},
 }
 
-// cypherAccepted are constructs the subset accepts that a text might wrongly
-// call refused. OPTIONAL MATCH is the one that went wrong; the others are here
-// so the guard is about the boundary, not about one incident. Arithmetic is
-// named by its example, since exponentiation is still refused.
 var cypherAccepted = map[string][]string{
-	"zh-CN": {"OPTIONAL MATCH", "DISTINCT", "ORDER BY", "count(*) * 2"},
-	"en-US": {"OPTIONAL MATCH", "DISTINCT", "ORDER BY", "count(*) * 2"},
+	"zh-CN": {"OPTIONAL MATCH", "DISTINCT", "ORDER BY", "count(*) * 2", "WITH", "UNION", "EXISTS", "UNWIND", "路径"},
+	"en-US": {"OPTIONAL MATCH", "DISTINCT", "ORDER BY", "count(*) * 2", "WITH", "UNION", "EXISTS", "UNWIND", "paths"},
 }
 
 // refusalClause is the sentence naming what the subset refuses, taken from the
