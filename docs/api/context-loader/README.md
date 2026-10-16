@@ -22,6 +22,13 @@
 | [data-access.yaml](data-access.yaml) | Direct data access | `POST /kn/list_resources`, `POST /kn/describe_resource`, `POST /kn/run_sql` |
 | [mcp.yaml](mcp.yaml) | MCP service | `GET /mcp/info`, `POST /mcp` |
 
+## Sandbox OSDK REST routing
+
+OSDK uses the unified platform REST gateway for Schema and instance queries.
+Configure Sandbox `controlPlane.env.BKN_BASE_URL` explicitly, or let the complete
+installer discover its gateway Service. The independent MCP endpoint remains on
+Retrieval's sandbox listener. Retrieval does not proxy BKN Backend Schema routes.
+
 ## Typical flow
 
 ```text
