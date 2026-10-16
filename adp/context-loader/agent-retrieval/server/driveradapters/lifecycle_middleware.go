@@ -277,7 +277,7 @@ func requiresManagedHTTPContext(request *http.Request) bool {
 		return false
 	}
 	switch path.Base(request.URL.Path) {
-	case "execute_action", "execute_tool", "execute_skill":
+	case "execute_action", "execute_skill":
 		return true
 	default:
 		return false
