@@ -112,7 +112,9 @@ async def cancel_execution(
     responses={
         200: {
             "description": "SSE: meta, token, tool_started, tool_finished, usage, result, terminal. "
-            "Each event carries run_id and sequence. Successful result is persisted before "
+            "Each event carries run_id and sequence. result.content.answer is the last "
+            "assistant message; text streamed before tool calls is progress, not the answer. "
+            "Successful result is persisted before "
             "result/terminal; terminal.status is succeeded/failed/cancelled. Retries return "
             "meta and the existing terminal; an active retry returns 409. Disconnect cancels execution.",
             "content": {"text/event-stream": {"schema": {"type": "string"}}},
@@ -233,7 +235,9 @@ async def execute(
             if status == "succeeded":
                 output = json.dumps(
                     {
-                        "answer": "".join(public.answer),
+                        "answer": public.final
+                        if public.final is not None
+                        else "".join(public.answer),
                         "context": request_data["context"],
                         "prompt_version": public.prompt_version,
                         "usage": public.usage or None,

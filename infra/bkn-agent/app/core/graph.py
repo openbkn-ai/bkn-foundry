@@ -6,6 +6,7 @@ from typing import AsyncIterator
 
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langgraph.errors import GraphRecursionError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao, evidence, observability
@@ -91,9 +92,8 @@ async def stream_chat(
             public.prompt_version = prompt_version
             system_prompt += (
                 f"\nThe selected knowledge network is {public.kn_id}. "
-                "Tools may only access this network. Tools without a scope guard, "
-                "including arbitrary code execution, are unavailable. Do not "
-                "claim a tool succeeded when it returned an error."
+                "Tools may only access this network. Do not claim a tool "
+                "succeeded when it returned an error."
             )
         skill_ids = list(dict.fromkeys([*agent.skills, *req.skills]))
         system_prompt += await load_skills(skill_ids, account_id, account_type)
@@ -229,37 +229,69 @@ async def stream_chat(
                                 turn_messages = public.interrupted_messages(
                                     state.values.get("messages", [])
                                 ) + turn_messages
-                            async for item in graph.astream(
-                                {"messages": turn_messages},
-                                cfg,
-                                stream_mode=["messages", "updates"] if public else "messages",
-                            ):
-                                if public:
-                                    mode, payload = item
-                                    if mode == "updates":
-                                        for event in public.updates(payload):
-                                            yield event
-                                        continue
-                                    chunk, meta = payload
-                                else:
-                                    chunk, meta = item
-                                if isinstance(chunk, AIMessageChunk) or (public and isinstance(chunk, AIMessage)):
-                                    content = public.text(chunk.content) if public else chunk.content
-                                    if content:
-                                        answer_parts.append(content if isinstance(content, str) else str(content))
+                            out_of_steps = False
+                            # The public surface keeps part of the time budget to
+                            # close the turn with an answer; legacy callers never
+                            # hit this inner deadline.
+                            loop_deadline = asyncio.timeout(
+                                timeout_s - min(30, timeout_s * 0.2) if public else None
+                            )
+                            try:
+                                async with loop_deadline:
+                                    async for item in graph.astream(
+                                        {"messages": turn_messages},
+                                        cfg,
+                                        stream_mode=["messages", "updates"] if public else "messages",
+                                    ):
                                         if public:
-                                            public.answer.append(content)
-                                            yield public.event("token", {"content": content})
-                                        else:
-                                            yield _sse("token", {"content": content})
-                                    for tc in getattr(chunk, "tool_call_chunks", []) or []:
-                                        if tc.get("name"):
-                                            tool_names.append(tc["name"])
-                                            if public:
+                                            mode, payload = item
+                                            if mode == "updates":
+                                                for event in public.updates(payload):
+                                                    yield event
                                                 continue
-                                            yield _sse(
-                                                "tool_call", {"name": tc["name"]}
-                                            )
+                                            chunk, meta = payload
+                                        else:
+                                            chunk, meta = item
+                                        if isinstance(chunk, AIMessageChunk) or (public and isinstance(chunk, AIMessage)):
+                                            content = public.text(chunk.content) if public else chunk.content
+                                            if content:
+                                                answer_parts.append(content if isinstance(content, str) else str(content))
+                                                if public:
+                                                    public.answer.append(content)
+                                                    yield public.event("token", {"content": content})
+                                                else:
+                                                    yield _sse("token", {"content": content})
+                                            for tc in getattr(chunk, "tool_call_chunks", []) or []:
+                                                if tc.get("name"):
+                                                    tool_names.append(tc["name"])
+                                                    if public:
+                                                        continue
+                                                    yield _sse(
+                                                        "tool_call", {"name": tc["name"]}
+                                                    )
+                            except GraphRecursionError:
+                                # Legacy callers keep the old failure; the public
+                                # surface closes the turn with an answer instead.
+                                if not public:
+                                    raise
+                                out_of_steps = True
+                            except TimeoutError:
+                                # Only the inner deadline is ours to absorb; the
+                                # overall timeout still fails the turn.
+                                if not (public and loop_deadline.expired()):
+                                    raise
+                                out_of_steps = True
+                            if public and (out_of_steps or not public.final):
+                                async for content in public.finalize(
+                                    graph, cfg, model, system_prompt
+                                ):
+                                    answer_parts.append(content)
+                                    public.answer.append(content)
+                                    yield public.event("token", {"content": content})
+                            if public:
+                                # Evidence and the lifecycle receipt record the
+                                # answer, not the narration streamed before tools.
+                                answer_parts[:] = [public.final] if public.final else []
                             if req.response_format:
                                 # Extract the structure separately after the tool loop (native first,
                                 # then the prompt fallback), under the same timeout.
