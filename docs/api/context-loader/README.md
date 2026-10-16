@@ -27,7 +27,9 @@
 [`sdk-schema.yaml`](sdk-schema.yaml) documents four authenticated GET aliases on
 Context Loader's dedicated sandbox listener: the network record, object-type list
 relation-type list, and paginated Object Metric V1 catalogue under `/api/bkn-backend/v1/knowledge-networks/{kn_id}`.
-They preserve complete backend schema JSON for OSDK generation/drift checks while
+The release/0.2.0 backend does not implement Object Metric V1: the object-metrics
+alias returns the backend 404 and is not required by the pinned release OSDK,
+which uses the other three reads. The aliases preserve complete backend schema JSON for OSDK generation/drift checks while
 keeping the existing single `BKN_BASE_URL`. These aliases are separate from the
 POST `/kn/` agent API below. No additional service URL or sandbox egress rule is
 required. Deploy the updated Context Loader image before verifying them live;

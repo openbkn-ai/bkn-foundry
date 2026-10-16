@@ -7,8 +7,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 ### Bug Fixes
 
 - Backport #2105 to release/0.2.0: preserve managed conversation and interaction IDs when Trace/evidence capture is disabled.
-  - Keep `capture_enabled=false` and `trace_recorded=false`; business calls still require managed context, including nested PTC calls.
-  - Release Retrieval and Observability together: both lifecycle admission and MCP response handling must contain the fix.
+  - Keep `capture_enabled=false` and `trace_recorded=false`. This changes release/0.2.0 behavior: MCP business calls without managed context now fail with `conversation_required` instead of running unrecorded, including nested PTC calls.
+  - Upgrade Observability first, then Retrieval. New Retrieval with old Observability cannot start interactions while capture is disabled. Trace Core infrastructure failures now make start fail with `retry_later` instead of returning success without IDs; new managed business calls cannot proceed until Core recovers.
 
 ### Features & Improvements
 
@@ -72,6 +72,10 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
   Calls retain the existing BKN_BASE_URL, verified caller identity, branch and
   raw backend schema/status; internal service routing requires no new URL setting.
   The general platform listener and sandbox network policy are unchanged.
-- Scope aliases to network/object-type/relation-type reads and the paginated V1 metric catalogue. Reject exports and
+- Scope aliases to network/object-type/relation-type reads and the paginated V1 metric catalogue. The release/0.2.0 backend does not implement Object Metric V1, so that alias returns backend 404; the pinned release OSDK only needs the other three reads. Reject exports and
   writes, bound backend requests/responses, refuse redirects, and cover auth,
   forged identity headers, permission denials and raw field preservation.
+
+- Reject network IDs containing slashes (including encoded slashes), CR or LF at
+  both the sandbox HTTP handler and the backend adapter, preventing alias reads
+  from reaching nested internal routes.

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -39,7 +40,7 @@ func newSchemaReadAccess(baseURL string) *schemaReadAccess {
 }
 
 func (s *schemaReadAccess) ReadSchema(ctx context.Context, knID, collection string, query url.Values) (int, []byte, error) {
-	if knID == "" || knID == "." || knID == ".." {
+	if knID == "" || knID == "." || knID == ".." || strings.ContainsAny(knID, "/\r\n") {
 		return 0, nil, fmt.Errorf("invalid knowledge network id")
 	}
 	auth, ok := common.GetAccountAuthContextFromCtx(ctx)

@@ -45,7 +45,7 @@ func (h *restSchemaHandler) RegisterRouter(group *gin.RouterGroup) {
 func (h *restSchemaHandler) read(collection string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		knID := c.Param("kn_id")
-		if knID == "" || knID == "." || knID == ".." || strings.ContainsAny(knID, "\r\n") {
+		if knID == "" || knID == "." || knID == ".." || strings.ContainsAny(knID, "/\r\n") {
 			rest.ReplyError(c, aerrors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, "invalid knowledge network id"))
 			return
 		}

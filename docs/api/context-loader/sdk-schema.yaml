@@ -74,7 +74,11 @@ paths:
           type: string
     get:
       operationId: sandboxReadObjectMetricCatalogue
-      summary: Read caller-visible Object Metric V1 catalogue pages
+      summary: Forward Object Metric V1 catalogue reads (unavailable on release/0.2.0)
+      description: |
+        The release/0.2.0 backend does not implement this endpoint and returns 404.
+        The pinned release OSDK uses only the other three schema aliases.
+        A successful catalogue read requires a backend supporting Object Metric V1.
       responses:
         '200':
           $ref: '#/components/responses/RawSchema'
@@ -89,6 +93,7 @@ components:
   parameters:
     KnID:
       name: kn_id
+      description: A single network ID; slashes (including percent-encoded slashes), CR and LF are rejected.
       in: path
       required: true
       schema:
