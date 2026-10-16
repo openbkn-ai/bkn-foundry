@@ -444,7 +444,17 @@ func compileProjectionStage(query *Query, schema *Schema, incoming map[string]*G
 	}
 	if query.PostWhere != nil {
 		p.bindings = orderScope
-		value, err := p.graphExpression(query.PostWhere, nil, options)
+		// A repeated volatile call is a fresh evaluation, not the value of
+		// the similarly written projection. Correlated expressions also
+		// keep their own planned observation and evaluation scope.
+		filterProjections := []Projection{}
+		for i, projection := range projections {
+			if !containsVolatileExpression(result.Projections[i].Value) && !queryHasPatternReads(&Query{Return: []Projection{projection}}) {
+				filterProjections = append(filterProjections, projection)
+			}
+		}
+		predicate := rewriteProjectedOrder(query.PostWhere, filterProjections, scope)
+		value, err := p.graphExpression(predicate, nil, options)
 		if err != nil {
 			return nil, nil, err
 		}

@@ -215,7 +215,8 @@ components:
           type: object
           additionalProperties: true
           description: |
-            $name 的 JSON 标量、null、列表或 map。嵌套最多 32 层并受载荷预算限制。
+            $name 的 JSON 标量、null、列表或 map。数字名称如 $0 使用 JSON 键 "0"，不是位置索引。
+            嵌套最多 32 层并受载荷预算限制。
             简单 IN 列表保留 SQL 下推；复杂、空或含 null 的列表使用有界求值。
             参数永远不会变成模型标识符或物理 SQL 名称。
 

@@ -797,9 +797,12 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) 
 	if order := ctx.OC_Order(); order != nil {
 		for _, item := range order.AllOC_SortItem() {
 			key, err := analyzeSortKey(item.OC_Expression())
-			if err != nil && query.ValueEvaluation {
+			if query.ValueEvaluation {
 				expression, expressionErr := readValueExpression(item.OC_Expression(), 0)
-				key = &SortKey{Value: expression, Pos: positionOf(item)}
+				if key == nil {
+					key = &SortKey{Pos: positionOf(item)}
+				}
+				key.Value = expression
 				err = expressionErr
 			}
 			if err != nil {
@@ -2077,13 +2080,16 @@ func describeAtom(ctx parsing.IOC_AtomContext) string {
 	}
 }
 
-// parameterName reads $name. The numeric form ($0) is refused: it is a
-// positional parameter, and the request carries parameters by name.
+// parameterName reads a symbolic or numeric M19 parameter name. Numeric names
+// are JSON object keys ("0"), never positional indexes or SQL identifiers.
 func parameterName(ctx parsing.IOC_ParameterContext) (string, error) {
 	if symbolic := ctx.OC_SymbolicName(); symbolic != nil {
 		return namedIdentifier(symbolic, "parameter name")
 	}
-	return "", unsupportedf(ctx, "positional parameters", "name the parameter, as in $value")
+	if number := ctx.DecimalInteger(); number != nil {
+		return number.GetText(), nil
+	}
+	return "", unsupported(ctx, "an invalid parameter name")
 }
 
 // identifier strips the backticks of an escaped symbolic name, where a literal

@@ -131,7 +131,8 @@ def main():
         "license": "Apache-2.0; Copyright (c) 2015-2022 Neo Technology / openCypher contributors",
         "comparison": "Result values and row multiplicity; not a full TCK error-taxonomy or connector certification.",
     }
-    inventory, fixtures = [], []
+    from generate_m19_graph import graph_fixture
+    inventory, fixtures, graph_fixtures = [], [], []
     declarations = 0
     with zipfile.ZipFile(sys.argv[1]) as archive:
         for source in sorted(archive.namelist()):
@@ -149,7 +150,8 @@ def main():
                 if "Scenario Outline:" not in scenario:
                     examples = [{}]
                 for example_index, example in enumerate(examples):
-                    expanded = block
+                    background = re.search(r"(?ms)^  Background:.*?(?=^  Scenario)", feature)
+                    expanded = (background.group(0) if background else "") + block
                     for key, value in example.items():
                         expanded = expanded.replace("<" + key + ">", value)
                     item = {"source": source, "scenario": scenario, "example": example_index + 1}
@@ -185,12 +187,16 @@ def main():
                     item["contract_applicability"] = contract_applicability(item.get("query", ""), expanded)
                     if item["classification"] == "tableless_fixture":
                         item["contract_applicability"] = {"status": "tableless_fixture"}
+                    graph_case = graph_fixture(item, expanded)
+                    if graph_case is not None:
+                        graph_fixtures.append(graph_case)
                     inventory.append(item)
     out = Path(__file__).parent
     summary = {"scenario_declarations": declarations, "expanded_scenarios": len(inventory), "tableless_fixtures": len(fixtures)}
     (out / "tck_m19_inventory.json").write_text(json.dumps(dict(provenance, summary=summary, cases=inventory), ensure_ascii=False, indent=2) + "\n")
     (out / "tck_m19_tableless.json").write_text(json.dumps(dict(provenance, cases=fixtures), ensure_ascii=False, indent=2) + "\n")
-    print(json.dumps(summary))
+    (out / "tck_m19_graph.json").write_text(json.dumps(dict(provenance, cases=graph_fixtures), ensure_ascii=False, indent=2) + "\n")
+    print(json.dumps(dict(summary, graph_candidates=len(graph_fixtures))))
 
 
 if __name__ == "__main__":

@@ -176,10 +176,13 @@ func compileGraphPattern(query *Query, schema *Schema, incoming map[string]*Grap
 			shapes = append(shapes, &GraphExpression{Object: &object, Type: &interfaces.CypherValueType{Kind: "object", ObjectTypeID: id}})
 		}
 		graph.NodeChoices = append(graph.NodeChoices, templates)
-		if node.Variable != "" && !node.Anonymous {
+		if node.Variable != "" {
 			shape := &GraphExpression{Operation: "SHAPES", Arguments: shapes, Type: graphChoiceType(shapes, "object")}
 			if err := bind(node.Variable, shape, node.Pos); err != nil {
 				return nil, nil, nil, err
+			}
+			if node.Anonymous {
+				delete(scope, node.Variable)
 			}
 		}
 	}
@@ -198,6 +201,14 @@ func compileGraphPattern(query *Query, schema *Schema, incoming map[string]*Grap
 			}
 			if previous, ok := incoming[edge.Variable]; ok && previous.Type.Kind != shape.Type.Kind {
 				return nil, nil, nil, planErrorf(edge.Pos, "variable %q has an incompatible relationship binding", edge.Variable)
+			}
+			if names[edge.Variable] {
+				previous := p.bindings[edge.Variable]
+				if previous.Type.Kind != shape.Type.Kind {
+					return nil, nil, nil, planErrorf(edge.Pos, "variable %q has incompatible pattern bindings", edge.Variable)
+				}
+				previous.Shape.Arguments = append(previous.Shape.Arguments, shape)
+				continue
 			}
 			if err := bind(edge.Variable, shape, edge.Pos); err != nil {
 				return nil, nil, nil, err

@@ -7,6 +7,7 @@ package cypher
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
@@ -176,7 +177,7 @@ func containsVolatileExpression(value *GraphExpression) bool {
 	if value == nil {
 		return false
 	}
-	if value.Operation == "FUNCTION:rand" {
+	if value.Operation == "FUNCTION:rand" || strings.HasSuffix(value.Operation, ".realtime") {
 		return true
 	}
 	for _, argument := range value.Arguments {

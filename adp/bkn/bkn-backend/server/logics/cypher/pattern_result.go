@@ -196,14 +196,14 @@ func (s *cypherQueryService) runGraphPattern(ctx context.Context, query interfac
 			}
 			row := copyPatternBindings(bound)
 			for i, node := range graph.Pattern.Nodes {
-				if node.Variable == "" || node.Anonymous {
+				if node.Variable == "" {
 					continue
 				}
 				value, err := patternNodeValue(*nodes[i], graph.NodeChoices[i][nodes[i].ObjectTypeID])
 				if err != nil {
 					return err
 				}
-				if _, exists := row["unwind:"+node.Variable]; !exists {
+				if _, exists := row["unwind:"+node.Variable]; !exists || node.Anonymous {
 					row["unwind:"+node.Variable] = value
 				}
 				if err := checkGraphObservation(value, seen); err != nil {

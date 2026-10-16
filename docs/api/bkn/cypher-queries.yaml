@@ -203,7 +203,8 @@ components:
           type: object
           additionalProperties: true
           description: |-
-            Values for $name, including JSON scalars, null, lists and maps. Nested values are
+            Values for $name, including JSON scalars, null, lists and maps.
+            Numeric names such as $0 use the JSON object key "0", not an argument index. Nested values are
             bounded to 32 levels and by the evaluation payload budget. Existing simple IN
             lists retain SQL pushdown; complex, empty or nullable lists use bounded value
             evaluation. Parameters never become schema names or physical SQL identifiers.

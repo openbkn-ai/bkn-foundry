@@ -57,7 +57,14 @@ func patternNeedsRuntime(pattern Pattern) bool {
 			return true
 		}
 	}
+	seenRelationships := map[string]bool{}
 	for _, edge := range pattern.Edges {
+		if edge.Variable != "" {
+			if seenRelationships[edge.Variable] {
+				return true
+			}
+			seenRelationships[edge.Variable] = true
+		}
 		if edge.VariableLength || len(edge.Types) > 0 || edge.Type == "" {
 			return true
 		}

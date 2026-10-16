@@ -249,7 +249,7 @@ func TestGraphAuthorizationCoversNestedIdentityAndProperties(t *testing.T) {
 func TestGraphRejectsUnsupportedCombinations(t *testing.T) {
 	queries := []string{
 		"MATCH (p:Person)-[p:WORKS_AT]->(c:Company) RETURN p",
-		"MATCH (p:Person)-[e:WORKS_AT]->(c:Company)-[e:HAS_WORK_LOCATION]->(l:Place) RETURN p",
+		"MATCH (p:Person)-[e:WORKS_AT]->(c:Company)-[e:HAS_WORK_LOCATION*]->(l:Place) RETURN p",
 		"MATCH (p:Person) RETURN missing",
 		"MATCH (p:Person) RETURN {a:p.id,a:p.id}",
 		"MATCH (p:Person) RETURN collect(collect(p.id))",

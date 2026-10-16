@@ -60,3 +60,17 @@ func TestAggregatesCannotEscapeTheirScope(t *testing.T) {
 		}
 	}
 }
+
+func TestWithFilterDoesNotReuseVolatileProjection(t *testing.T) {
+	for _, function := range []string{"rand()", "datetime.realtime()"} {
+		service, _, _ := graphService(t)
+		compiled, err := service.compile(context.Background(), graphRequest("WITH DISTINCT "+function+" AS value WHERE "+function+"=value RETURN value"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		predicate := compiled.stages[0].plan.Result.PostWhere
+		if predicate.Operation != "=" || len(predicate.Arguments) != 2 || !containsVolatileExpression(predicate.Arguments[0]) || predicate.Arguments[0].Binding != "" {
+			t.Fatal("fresh filter call was replaced by the projection")
+		}
+	}
+}

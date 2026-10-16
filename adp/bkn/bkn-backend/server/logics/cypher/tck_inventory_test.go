@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -33,6 +35,8 @@ type m19Result struct {
 	Source, Scenario string
 	Example          int
 	Status, Detail   string
+	ExpectedError    map[string]string `json:",omitempty"`
+	ActualError      map[string]string `json:",omitempty"`
 }
 
 func m19RowKeys(rows []map[string]any, expected, ignoreLists bool) ([]string, error) {
@@ -89,7 +93,12 @@ func TestM19TablelessCompatibilityInventory(t *testing.T) {
 		result, queryError := service.Query(context.Background(), request)
 		switch {
 		case len(test.ExpectedError) > 0 && queryError != nil:
+			entry.ExpectedError = test.ExpectedError
+			entry.ActualError = m19ErrorClassification(queryError)
 			entry.Status = "rejected_error_taxonomy_unverified"
+			if reflect.DeepEqual(entry.ActualError, entry.ExpectedError) {
+				entry.Status = "passed_error_classification"
+			}
 			entry.Detail = queryError.Error()
 		case len(test.ExpectedError) > 0:
 			entry.Status = "failed_expected_error"
@@ -163,6 +172,7 @@ func TestM19TablelessCompatibilityInventory(t *testing.T) {
 	if err := os.WriteFile(output, append(encoded, '\n'), 0600); err != nil {
 		t.Fatal(err)
 	}
+	assertM19VerifiedScenarios(t, "tableless", results)
 	t.Logf("M19 tableless inventory: %+v; report=%s", counts, output)
 	if failures > 0 {
 		t.Errorf("%d semantic failures remain; unsupported/errors without taxonomy are not counted as passing TCK cases", failures)
@@ -267,4 +277,73 @@ func m19HostTimezoneExpectation(actual, expected any) (any, bool) {
 		return result, changed
 	}
 	return expected, false
+}
+
+// Adapt the public parser error category to the TCK taxonomy without consulting
+// the expected result. Other semantic/runtime codes remain unverified until
+// the product exposes enough information to distinguish their exact details.
+func m19ErrorClassification(err error) map[string]string {
+	var failure *rest.HTTPError
+	if !errors.As(err, &failure) {
+		return nil
+	}
+	if failure.BaseError.ErrorCode == "BknBackend.Cypher.SyntaxError" {
+		return map[string]string{"type": "SyntaxError", "phase": "compile time", "detail": "UnexpectedSyntax"}
+	}
+	return nil
+}
+
+func TestM19ErrorAdapterDoesNotInferFromTheExpectedError(t *testing.T) {
+	service, _, _ := graphService(t)
+	_, err := service.Query(context.Background(), graphRequest("RETURN ("))
+	expected := map[string]string{"type": "SyntaxError", "phase": "compile time", "detail": "UnexpectedSyntax"}
+	if !reflect.DeepEqual(m19ErrorClassification(err), expected) {
+		t.Fatal("parser classification missing")
+	}
+	_, err = service.Query(context.Background(), graphRequest("RETURN missing"))
+	if m19ErrorClassification(err) != nil {
+		t.Fatal("unknown semantic error was certified")
+	}
+}
+
+// This capability manifest records only which independent upstream cases are
+// guaranteed. No expected values are computed from the product. A previously
+// verified case becoming unsupported/skipped must fail instead of lowering
+// the compatibility count while leaving CI green.
+func assertM19VerifiedScenarios(t *testing.T, dataset string, results []m19Result) {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/tck_m19_verified.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		SHA256           string
+		Tableless, Graph map[string]string
+	}
+	if err = json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.SHA256 != "93d3ea6dcf386a64754bb561936a7035c3b429f81b9bc091b809061b4ea0d9bd" {
+		t.Fatal("unexpected verified manifest source")
+	}
+	guaranteed := manifest.Tableless
+	if dataset == "graph" {
+		guaranteed = manifest.Graph
+	}
+	if len(guaranteed) == 0 {
+		t.Fatal("verified capability manifest is empty")
+	}
+	actual := map[string]string{}
+	for _, row := range results {
+		actual[fmt.Sprintf("%s#%d#%s", row.Source, row.Example, row.Scenario)] = row.Status
+	}
+	for _, identity := range sortedGraphKeys(guaranteed) {
+		status := guaranteed[identity]
+		if status != "passed_result" && status != "passed_error_classification" {
+			t.Fatal("invalid verified guarantee", identity, status)
+		}
+		if actual[identity] != status {
+			t.Errorf("verified scenario regressed: %s: got %q want %q", identity, actual[identity], status)
+		}
+	}
 }

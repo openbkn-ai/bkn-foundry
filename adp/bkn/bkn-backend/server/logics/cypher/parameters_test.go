@@ -7,6 +7,7 @@
 package cypher
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -135,9 +136,9 @@ func TestCompileParameterRejections(t *testing.T) {
 			want:  "line 1",
 		},
 		{
-			name:  "positional",
+			name:  "numeric name not supplied",
 			query: "MATCH (o:Order) WHERE o.region = $0 RETURN o.id",
-			want:  "positional parameters",
+			want:  `parameter "0" was not supplied`,
 		},
 		{
 			name:  "negated",
@@ -322,5 +323,18 @@ func TestCompileListParameterRejections(t *testing.T) {
 				t.Fatalf("error names a Go type: %v", err)
 			}
 		})
+	}
+}
+
+func TestNumericParameterNamesAreValues(t *testing.T) {
+	for _, query := range []string{"RETURN $0+1 AS answer", "WITH $0 AS x RETURN x+1 AS answer"} {
+		service, _, _ := graphService(t)
+		request := graphRequest(query)
+		request.Parameters = map[string]any{"0": int64(41)}
+		result, err := service.Query(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertExpressionRows(t, result.Entries, []map[string]any{{"answer": int64(42)}})
 	}
 }

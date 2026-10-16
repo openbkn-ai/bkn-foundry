@@ -119,6 +119,10 @@ func TestGeneralPatternSemantics(t *testing.T) {
 		{"MATCH (a:Person)-[r:FRIEND|WORKS_AT]->(b) WHERE a.id='p1' RETURN b.id AS id,type(r) AS type ORDER BY id", []map[string]any{{"id": "c1", "type": "works_at"}, {"id": "p2", "type": "friend"}}},
 		{"MATCH (a:Person)-[r]->(b) WHERE a.id='p1' RETURN b.id AS id,type(r) AS type ORDER BY id", []map[string]any{{"id": "c1", "type": "works_at"}, {"id": "p1", "type": "self"}, {"id": "p2", "type": "friend"}}},
 		{"MATCH (a:Person)-[r:FRIEND]->(b:Person) RETURN DISTINCT labels(a) AS labels,properties(r) AS properties,r.weight AS weight", []map[string]any{{"labels": []any{"person"}, "properties": map[string]any{}, "weight": nil}}},
+		{"MATCH (p:Person)-[r:FRIEND]->(q:Person), (p)-[r:FRIEND]->(q) RETURN count(*) AS count", []map[string]any{{"count": int64(0)}}},
+		{"MATCH (p:Person)-[r:FRIEND]->(q:Person) MATCH (p)-[r:FRIEND]->(q) RETURN count(*) AS count", []map[string]any{{"count": int64(3)}}},
+		{"MATCH ({name:'Alice'})-[:FRIEND]->(q) RETURN q.name AS name", []map[string]any{{"name": "Bob"}}},
+		{"MATCH ({name:'Alice'})-[:FRIEND]->(q) MATCH ({name:'Bob'})-[:FRIEND]->(r) RETURN q.name AS first,r.name AS second", []map[string]any{{"first": "Bob", "second": "Cara"}}},
 		{"MATCH (n) RETURN n.id AS id ORDER BY id", []map[string]any{{"id": "c1"}, {"id": "l1"}, {"id": "p1"}, {"id": "p2"}, {"id": "p3"}}},
 		{"MATCH (n) WHERE n.id='c1' RETURN n.name AS name", []map[string]any{{"name": nil}}},
 		{"UNWIND ['p1'] AS id MATCH route=(a:Person)-[:FRIEND*1..2]->(b) WHERE a.id=id RETURN b.id AS id,length(route) AS n ORDER BY n", []map[string]any{{"id": "p2", "n": int64(1)}, {"id": "p3", "n": int64(2)}}},
@@ -143,6 +147,7 @@ func TestGeneralPatternSemantics(t *testing.T) {
 func TestGeneralPatternAuthorizationAndCompleteness(t *testing.T) {
 	for _, query := range []string{
 		"MATCH (a)-[:FRIEND*1..2]->(b) RETURN b.name AS name",
+		"MATCH ({name:'Alice'})-[:FRIEND]->(q) RETURN q.id AS id",
 		"MATCH route=(a:Person)-[:FRIEND*1..2]->(b:Person) RETURN [n IN nodes(route) | n.name] AS names",
 	} {
 		service, _ := patternTestService(t)
