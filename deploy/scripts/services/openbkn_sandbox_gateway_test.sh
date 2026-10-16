@@ -63,6 +63,14 @@ python3 - "${test_dir}/render.json" <<'PY'
 import json, sys
 assert 'BKN_BASE_URL: "http://saved:80"' in json.load(open(sys.argv[1]))['manifest']
 PY
+# A current values file overrides saved explicit configuration as well.
+printf '{"controlPlane":{"env":{"BKN_BASE_URL":"http://values-file:80"}}}' >"${test_dir}/explicit.json"
+_openbkn_helm_upgrade_release sandbox openbkn "${args[@]}" -f "${test_dir}/explicit.json"
+python3 - "${test_dir}/render.json" <<'PYTEST'
+import json, sys
+assert 'BKN_BASE_URL: "http://values-file:80"' in json.load(open(sys.argv[1]))['manifest']
+PYTEST
+[[ ! -f "${test_dir}/discovery-calls" ]]
 # No gateway, multiple gateways and discovery failure must stop before upgrade;
 # the default MCP URL must never silently become the REST base.
 old_values='{}'
@@ -78,7 +86,7 @@ for bad_url in 'http://gateway/api/agent-retrieval/v1/mcp/' 'http://user:passwor
         exit 1
     fi
 done
-[[ "$(wc -l <"${test_dir}/upgrades")" -eq 5 ]]
+[[ "$(wc -l <"${test_dir}/upgrades")" -eq 6 ]]
 # Both charts render separate REST and MCP rules; a REST gateway never changes
 # the namespace selected for a cross-namespace MCP Service.
 for chart_name in sandbox sandbox_standalone; do
