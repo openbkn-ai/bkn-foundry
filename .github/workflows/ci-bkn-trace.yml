@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - 'bkn-trace/**'
-      - 'comm-go/**'
       - 'infra/bkn-agent/charts/**'
       - 'infra/bkn-agent/scripts/test_evidence_kafka_chart.sh'
       - 'docs/api/agent-observability/**'

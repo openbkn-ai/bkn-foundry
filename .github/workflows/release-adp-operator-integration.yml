@@ -8,7 +8,6 @@ on:
       - 'v*'
     branches: ['**']
     paths:
-      - 'comm-go/**'
       - 'adp/execution-factory/operator-integration/**'
       - '.github/workflows/release-adp-operator-integration.yml'
       - '.github/workflows/reusable-*.yml'

@@ -11,19 +11,25 @@ ADP is an intelligent data platform that bridges the gap between heterogeneous d
 ## Key Components
 
 ### 1. Ontology Engine
+
 The Ontology Engine is a distributed business knowledge network management system. It allows enterprises to model their business world digitally.
+
 - **Multi-dimensional Modeling**: Define object types, relation types, and action types to map real-world entities.
 - **Visual Configuration**: Intuitive interface for ontology management.
 - **Intelligent Query**: Supports complex multi-hop relationship path queries and semantic search.
 
 ### 2. ContextLoader
+
 ContextLoader is responsible for constructing high-quality context for AI agents.
+
 - **Precise Recall**: Retrieves information based on ontology concepts rather than just keyword matching.
 - **Dynamic Assembly**: Assembles context fragments based on the current task needs and user permissions.
 - **On-Demand Loading**: Loads only the necessary data to prevent context window overflow.
 
 ### 3. VEGA Data Virtualization
+
 VEGA provides a unified SQL interface for heterogeneous data sources, decoupling applications from underlying database implementations.
+
 - **Single Access Point**: Connect to MariaDB, DM8, REST APIs, and more through a single interface.
 - **Cross-Source Query**: Join data across different databases seamlessly.
 - **Standardized Semantics**: Ensures consistent data definitions across all applications.
@@ -62,7 +68,7 @@ VEGA provides a unified SQL interface for heterogeneous data sources, decoupling
 
 ### Prerequisites
 
-- **Go**: 1.23+ (for Ontology)
+- **Go**: 1.26.0+ (for Ontology)
 - **Java**: JDK 1.8+ (for VEGA)
 - **Node.js**: 18+ (for Web Console)
 - **Database**: MariaDB 11.4+ or DM8
@@ -70,30 +76,34 @@ VEGA provides a unified SQL interface for heterogeneous data sources, decoupling
 
 ### Build & Run Setup
 
-1.  **Enter the ADP directory**
+1. **Enter the ADP directory**
+
     ```bash
     cd adp
     ```
 
-2.  **Initialize Database**
+2. **Initialize Database**
     Run the SQL initialization scripts located in the `sql/` directory to set up your database schema.
 
-3.  **Build Modules**
+3. **Build Modules**
 
-    *   **BKN (Go)**:
+    - **BKN (Go)**:
         Refer to [bkn/README.md](bkn/README.md) for detailed instructions.
+
         ```bash
         cd bkn/bkn-backend
         go run main.go
         ```
 
-    *   **VEGA (Java)**:
+    - **VEGA (Java)**:
+
         ```bash
         cd vega
         mvn clean install
         ```
 
-    *   **Web Console (Node.js)**:
+    - **Web Console (Node.js)**:
+
         ```bash
         cd web
         npm install

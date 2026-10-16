@@ -9,7 +9,6 @@ on:
     branches: ['**']
     paths:
       - 'adp/bkn/bkn-backend/**'
-      - 'comm-go/**'
       - '.github/workflows/release-adp-bkn-backend.yml'
       - '.github/workflows/reusable-*.yml'
       # 版本冻结提交（release/<x.y.z> 分支）触发全量重建
@@ -51,7 +50,7 @@ jobs:
     with:
       service-path: adp/bkn/bkn-backend
       dockerfile: docker/Dockerfile
-      # Root context includes comm-go required by the service-local replace.
+      # Root context matches the Dockerfile's repository-relative COPY paths.
       context: '../../..'
       image-name: bkn-backend
       version: ${{ needs.version.outputs.version }}

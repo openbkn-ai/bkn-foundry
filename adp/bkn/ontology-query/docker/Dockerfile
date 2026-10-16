@@ -4,12 +4,11 @@
 # See the LICENSE file in the project root for details.
 
 ########################### Stage 0 ########################
-ARG BUILD_IMAGE=golang:1.25.14
+ARG BUILD_IMAGE=golang:1.26.9
 ARG BASE_IMAGE=ubuntu:24.04
 
 FROM ${BUILD_IMAGE} AS builder
 
-COPY comm-go /workspace/comm-go
 COPY adp/bkn/ontology-query/server /workspace/adp/bkn/ontology-query/server
 
 ARG SERVER_VERSION=0.1.0

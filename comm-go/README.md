@@ -6,6 +6,20 @@ openbkn Go 公共依赖库。回迁自独立仓 `openbkn-ai/bkn-comm-go`，modul
 开发、构建和测试需要 Go 1.26.0 或更新版本。CI 从本模块的 `go.mod` 读取 Go
 版本；消费者升级到本模块的新版本时，也需要使用 Go 1.26.0 或更新版本。
 
+## 本地联调
+
+本地联调通过仓库根目录的 `go.work` 使用工作区中的 `comm-go`，不在消费者的
+`go.mod` 中添加本地 `replace`。例如，在仓库根目录执行：
+
+```bash
+go work init ./comm-go ./adp/bkn/bkn-backend/server
+# 已有 go.work 时，用 go work use 添加需要联调的模块
+go work use ./adp/bkn/ontology-query/server
+```
+
+`go.work` 和 `go.work.sum` 按仓库约定不提交。消费者的 `require` 仍需固定到已发布的
+`comm-go` 版本；使用 `GOWORK=off` 验证独立构建，确保 CI 和镜像构建不依赖本地源码。
+
 ## 改完之后：谁负责让消费者用上
 
 comm-go 与各服务是**各自独立的 Go module**，同一个仓也不例外。消费者的 `go.mod`

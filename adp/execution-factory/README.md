@@ -24,7 +24,9 @@ Execution Factory is an open-source platform for managing and executing AI opera
 Execution Factory ships as a single service, `operator-integration`, which exposes two API faces.
 
 ### Operator Integration (`operator-integration`)
+
 The core integration service platform responsible for the full lifecycle management of operators and tools.
+
 - **Operator Management**: Supports registration, versioning, publishing, and deprecation of operators.
 - **Toolbox**: Enables grouping multiple tools into toolboxes for unified management and invocation.
 - **MCP Support**: Acts as an MCP Server, providing standardized tool invocation interfaces for LLMs.
@@ -49,13 +51,15 @@ The core integration service platform responsible for the full lifecycle managem
 ## Quick Start
 
 ### Prerequisites
-- Go 1.25+
+
+- Go 1.26.0+
 - MySQL / MariaDB / Dameng DB
 - Redis
 
 ### Build and Run
 
 #### Run Operator Integration
+
 ```bash
 cd operator-integration
 # Install dependencies

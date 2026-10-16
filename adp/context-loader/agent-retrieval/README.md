@@ -26,14 +26,16 @@ Object surfaces (`search_schema`, `get_kn_detail`, `get_object_types`, object in
 ## Technical Architecture
 
 ### Tech Stack
-- **Language**: Go 1.25
+
+- **Language**: Go 1.26.0
 - **Web framework**: Gin 1.11
 - **Observability**: OpenTelemetry
 - **Cache**: Redis (optional, sentinel mode supported)
 - **Validation**: go-playground/validator
 
 ### Project Structure
-```
+
+``` bash
 server/
 ├── driveradapters/     # HTTP/MCP adapters
 │   ├── knactionrecall/
@@ -67,12 +69,14 @@ server/
 ## Quick Start
 
 ### Requirements
-- Go 1.25+
+
+- Go 1.26.0+
 - Access to ontology-query, ontology-manager, and other configured backends (or use ktctl to connect to a remote cluster)
 
 ### Local Development
 
 1. **Clone**
+
    ```bash
    git clone <repo-url>
    cd context-loader/agent-retrieval
@@ -82,11 +86,13 @@ server/
    Edit `server/infra/config/agent-retrieval.yaml` (and optionally `agent-retrieval-secret.yaml`) with service hosts and ports. For local runs against a remote cluster, use ktctl and then `make build` so configs are copied to `/sysvol/config` and `/sysvol/secret`.
 
 3. **Dependencies**
+
    ```bash
    go mod download
    ```
 
 4. **Run**
+
    ```bash
    # Option A: with ktctl and make (recommended for dev)
    make build
@@ -94,11 +100,13 @@ server/
    # Option B: run from server dir (config from default paths)
    cd server && go run main.go
    ```
+
    The service listens on `http://0.0.0.0:30779` by default. A second listener
    on port `30780` exposes only authenticated public routes for sandbox
    workloads; trusted `/in` routes remain exclusive to port `30779`.
 
 ### Make Targets
+
 - `make help` – List targets
 - `make lint` – Run golangci-lint
 - `make test` – Unit tests
@@ -137,6 +145,7 @@ helm template agent-retrieval ./helm/agent-retrieval -n <namespace> -f ./helm/ag
 Main config file: `server/infra/config/agent-retrieval.yaml`.
 
 Key sections:
+
 - **project**: `host`, `port` (default 30779), `sandbox_port` (default 30780), `language`, `logger_level`, `debug`
 - **ontology_query**, **ontology_manager**, **data_retrieval**, **operator_integration**: backend service URLs/ports
 - **oauth**: Hydra OAuth (for public API)
