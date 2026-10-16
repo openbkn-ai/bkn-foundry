@@ -99,8 +99,8 @@ server/
 
    # Option B: run from server dir (config from default paths)
    cd server && go run main.go
+   ```
 
-   ``` bash
    The service listens on `http://0.0.0.0:30779` by default. A second listener
    on port `30780` exposes only authenticated public routes for sandbox
    workloads; trusted `/in` routes remain exclusive to port `30779`.
