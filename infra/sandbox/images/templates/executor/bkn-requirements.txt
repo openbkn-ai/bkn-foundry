@@ -9,9 +9,9 @@
 #
 # Not on PyPI, so it is pinned by commit through the source archive. The image
 # has no git, so `git+https://` cannot install it.
-# Candidate pin for sandbox-schema CI verification; the companion SDK PR is
-# still open. Before merging/releasing this image, replace this with the reviewed
-# merged commit on the matching SDK main or release branch, then rebuild.
+# Pin a reviewed merged commit on the matching SDK main or release branch.
+# Use a complete commit SHA rather than a mutable branch name or release tag,
+# then rebuild the templates so new sandbox sessions receive the update.
 #
 # Its only runtime dependency is httpx. Where the data-science stack is also
 # installed, common-requirements.txt pins httpx==0.27.2 and both files are
@@ -22,4 +22,4 @@
 # Note for mirror-only builds: this is a PEP 508 direct URL, so `USE_MIRROR`
 # does not redirect it -- the build host needs to reach github.com even when pip
 # itself is pointed at a mirror.
-bkn-osdk @ https://github.com/openbkn-ai/bkn-sdk/archive/0a49aeed41688111b0596de6f6948c4c72473c43.zip#subdirectory=python
+bkn-osdk @ https://github.com/openbkn-ai/bkn-sdk/archive/b43546d50193fd03d1d34ee7cc998fcce3c3088a.zip#subdirectory=python
