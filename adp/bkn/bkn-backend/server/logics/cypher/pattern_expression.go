@@ -6,6 +6,7 @@ package cypher
 
 import (
 	"context"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher/parsing"
@@ -94,8 +95,15 @@ func readPatternExpression(node parsing.IOC_AtomContext, depth int) (ValueExpres
 
 func (p *planner) graphSubquery(value PatternExpression, relations map[string]EdgeRef, options CompileOptions) (*GraphExpression, error) {
 	outer := copyScope(p.bindings)
+	// Anonymous names are local implementation details. Each pattern builder
+	// restarts their numbering, so they must never become correlated variables.
+	for name := range outer {
+		if strings.HasPrefix(name, "`anonymous-") {
+			delete(outer, name)
+		}
+	}
 	for _, name := range sortedGraphKeys(p.tableOf) {
-		if name == "" {
+		if name == "" || strings.HasPrefix(name, "`anonymous-") {
 			continue
 		}
 		expression, err := p.graphExpression(VariableExpression{Name: name, Pos: value.Pos}, relations, options)

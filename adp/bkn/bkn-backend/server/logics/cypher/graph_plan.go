@@ -220,14 +220,16 @@ func (p *planner) planGraphReturn(query *Query, options CompileOptions) error {
 	// number of matching facts. Its value is never exposed to the caller.
 	if len(p.plan.Select) == 0 && len(p.plan.Tables) > 0 {
 		ot := p.objectType[0]
-		if len(ot.DataProperties) == 0 {
+		for _, property := range ot.DataProperties {
+			if p.schema.hidden(ot, property.Name) || property.MappedField == nil || property.MappedField.Name == "" {
+				continue
+			}
+			p.plan.Select = append(p.plan.Select, PlanColumn{Table: 0, Column: property.MappedField.Name, Property: property.Name, Alias: "_g0"})
+			break
+		}
+		if len(p.plan.Select) == 0 {
 			return planErrorf(Position{}, "graph query has no mapped fact column")
 		}
-		column, err := p.schema.Column(ot, ot.DataProperties[0].Name)
-		if err != nil {
-			return err
-		}
-		p.plan.Select = append(p.plan.Select, PlanColumn{Table: 0, Column: column, Alias: "_g0"})
 	}
 	physicalLimit := int64(graphMatchBudget + 1)
 	p.plan.Limit = &physicalLimit

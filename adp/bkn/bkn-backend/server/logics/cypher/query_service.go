@@ -124,6 +124,9 @@ type compiledQuery struct {
 // is reported as forbidden, without the statement. Nothing is widened: the
 // knowledge-network checks above apply whichever identity reads the data.
 func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQuery) (*interfaces.CypherQueryResult, error) {
+	// The request budget intentionally includes schema loading, authorization,
+	// compilation and all reads, including the scalar SQL path. A Vega timeout
+	// is a per-read ceiling and must not reset this shared request deadline.
 	{
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(interfaces.CYPHER_DEFAULT_TIMEOUT_SEC)*time.Second)

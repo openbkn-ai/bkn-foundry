@@ -433,7 +433,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 245,
-    "description": "只读 M19 的 BKN 有界实现：MATCH/OPTIONAL MATCH/WITH/UNWIND/RETURN 与 UNION；列表/map/CASE、推导式与量词、模式谓词和相关/嵌套 EXISTS；一般与统计聚合、已注册标量和时间函数、整数参数化分页。支持无标签节点、无类型/多类型关系、命名无向关系、固定/变长路径及 nodes/relationships/length。显式路径至多八跳，无界路径若可超过八跳则整条失败。节点仅有一个对象类，direct 关系按类型与端点标识，无独立属性与平行边身份；properties(r) 为空，r.property 为 null。所有分支/阶段/子查询提前授权，图值来源保留，内部依赖不扩大 object_properties 显式快照。复杂模式先有界扫描再关联，小结果也可能超限。全请求共享 9999 工作行、8 MiB、79992 次迭代/比较和 30 秒；每模式至多 64 个类型观察。写操作和过程调用拒绝；不宣称完整 TCK 兼容。 可用 DISTINCT、ORDER BY、count(*) * 2；不支持 CREATE/MERGE/DELETE/SET/REMOVE 和 CALL。",
+    "description": "标签用对象类 id/名称，关系用关系类 id/名称，属性用逻辑属性名；不写 LIMIT 默认返回最多 1000 行，LIMIT 上限 10000。只读 M19 的 BKN 有界实现：MATCH/OPTIONAL MATCH/WITH/UNWIND/RETURN 与 UNION；列表/map/CASE、推导式与量词、模式谓词和相关/嵌套 EXISTS；一般与统计聚合、已注册标量和时间函数、整数参数化分页。支持无标签节点、无类型/多类型关系、命名无向关系、固定/变长路径及 nodes/relationships/length。显式路径至多八跳，无界路径若可超过八跳则整条失败。节点仅有一个对象类，direct 关系按类型与端点标识，无独立属性与平行边身份；properties(r) 为空，r.property 为 null。所有分支/阶段/子查询提前授权，图值来源保留，内部依赖不扩大 object_properties 显式快照。复杂模式先有界扫描再关联，小结果也可能超限。全请求共享 9999 工作行、8 MiB、79992 次迭代/比较和 30 秒；每模式至多 64 个类型观察。写操作和过程调用拒绝；不宣称完整 TCK 兼容。 可用 DISTINCT、ORDER BY、count(*) * 2；不支持 CREATE/MERGE/DELETE/SET/REMOVE 和 CALL。",
     "gateway": {
       "summary": "在本体上执行只读 Cypher，自动选择 SQL 下推或有界图求值；适合跨对象多跳、相关查询与聚合统计。",
       "use_when": "统计、排名、跨关系汇总（count/sum/avg/min/max），或路径上带过滤的多跳查询。",

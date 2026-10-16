@@ -139,7 +139,8 @@ func expressionValueType(value any) string {
 }
 
 // expressionNumber keeps integer comparisons exact even when a connector
-// returns json.Number. Floating-point values retain their actual IEEE value.
+// returns json.Number. Decimal/exponent JSON numbers use the same IEEE value
+// as floating-point literals and parameters; integer JSON numbers stay exact.
 func expressionNumber(value any) (*big.Rat, bool, bool) {
 	integer := true
 	var raw string
@@ -147,6 +148,13 @@ func expressionNumber(value any) (*big.Rat, bool, bool) {
 	case json.Number:
 		raw = typed.String()
 		integer = !strings.ContainsAny(raw, ".eE")
+		if !integer {
+			number, err := typed.Float64()
+			if err != nil || math.IsNaN(number) || math.IsInf(number, 0) {
+				return nil, false, false
+			}
+			return new(big.Rat).SetFloat64(number), false, true
+		}
 	case int:
 		raw = strconv.Itoa(typed)
 	case int64:

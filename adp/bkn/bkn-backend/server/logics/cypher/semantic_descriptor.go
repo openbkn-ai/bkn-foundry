@@ -264,7 +264,7 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 			default:
 				projection.PropertyRef = semanticPropertyRef(plan, column.Table, column.Property)
 			}
-			if projection.PropertyRef == "" && projection.Aggregate == "" && projection.Expression == "" {
+			if projection.PropertyRef == "" && projection.Aggregate == "" && projection.Expression == nil {
 				return nil, fmt.Errorf("semantic query projection %d is incomplete", index)
 			}
 			descriptor.Projections = append(descriptor.Projections, projection)

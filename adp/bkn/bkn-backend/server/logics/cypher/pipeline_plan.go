@@ -511,7 +511,7 @@ func rewriteProjectedOrder(expression ValueExpression, projections []Projection,
 		}
 	}
 	for _, projection := range projections {
-		if reflect.DeepEqual(expressionShape(expression), expressionShape(projection.Value)) {
+		if reflect.DeepEqual(expressionShape(expression), expressionShape(projection.Value)) && !referencesReboundProjection(expression, projections, scope) {
 			return VariableExpression{Name: projection.Alias}
 		}
 	}
@@ -523,6 +523,105 @@ func rewriteProjectedOrder(expression ValueExpression, projections []Projection,
 		return operation
 	}
 	return expression
+}
+
+// A repeated expression names the output scope. Reusing its input projection
+// is valid only when its variables still refer to the same values. Consult
+// the complete scope, including projections excluded from reuse (e.g. rand()).
+func referencesReboundProjection(expression ValueExpression, projections []Projection, scope map[string]*GraphExpression) bool {
+	rebound := func(name string) bool {
+		if _, exists := scope[name]; !exists {
+			return false
+		}
+		for _, projection := range projections {
+			if projection.Alias == name {
+				variable, ok := projection.Value.(VariableExpression)
+				return !ok || variable.Name != name
+			}
+		}
+		// A filtered-out projection is not known to be a pass-through.
+		return true
+	}
+	uses := func(value ValueExpression) bool { return referencesReboundProjection(value, projections, scope) }
+	switch value := expression.(type) {
+	case VariableExpression:
+		return rebound(value.Name)
+	case PropertyExpression:
+		return rebound(value.Ref.Variable)
+	case OperationExpression:
+		for _, argument := range value.Arguments {
+			if uses(argument) {
+				return true
+			}
+		}
+	case AggregateExpression:
+		return uses(value.Value) || uses(value.Percentile)
+	case MapExpression:
+		for _, field := range value.Fields {
+			if uses(field.Value) {
+				return true
+			}
+		}
+	case CollectionExpression:
+		return uses(value.Source) || uses(value.Predicate) || uses(value.Projection)
+	case PatternExpression:
+		for _, node := range value.Pattern.Nodes {
+			if !node.Anonymous && rebound(node.Variable) {
+				return true
+			}
+		}
+		for _, edge := range value.Pattern.Edges {
+			if edge.Variable != "" && rebound(edge.Variable) {
+				return true
+			}
+		}
+		for _, path := range value.Pattern.Paths {
+			if path.Variable != "" && rebound(path.Variable) {
+				return true
+			}
+		}
+		return uses(value.Predicate) || uses(value.Projection) || queryReferencesReboundProjection(value.Query, projections, scope)
+	}
+	return false
+}
+
+func queryReferencesReboundProjection(query *Query, projections []Projection, scope map[string]*GraphExpression) bool {
+	if query == nil {
+		return false
+	}
+	uses := func(value ValueExpression) bool { return referencesReboundProjection(value, projections, scope) }
+	if uses(PatternExpression{Pattern: query.Pattern, Predicate: query.FullWhere, Projection: query.PostWhere}) || uses(query.ResidualWhere) || uses(query.SkipExpression) || uses(query.LimitExpression) {
+		return true
+	}
+	for _, projection := range query.Return {
+		if uses(projection.Value) {
+			return true
+		}
+	}
+	for _, order := range query.OrderBy {
+		if uses(order.Value) {
+			return true
+		}
+		if order.Property != nil && uses(PropertyExpression{Ref: *order.Property}) {
+			return true
+		}
+	}
+	for _, unwind := range query.Unwinds {
+		if uses(unwind.Expression) {
+			return true
+		}
+	}
+	for _, stage := range query.Stages {
+		if queryReferencesReboundProjection(stage.Query, projections, scope) {
+			return true
+		}
+	}
+	for _, branch := range query.Union {
+		if queryReferencesReboundProjection(branch, projections, scope) {
+			return true
+		}
+	}
+	return false
 }
 
 // Pattern expressions contain complete nested query trees. Compare their
