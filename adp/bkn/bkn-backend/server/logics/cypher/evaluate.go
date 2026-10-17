@@ -667,8 +667,9 @@ type outputRow struct {
 
 // finishRows turns the matched rows into the result: grouping and aggregation,
 // DISTINCT, ORDER BY, then SKIP and LIMIT. defaultLimit applies when the query
-// wrote no LIMIT, as it does to the generated statement.
-func finishRows(plan *Plan, rows []binding, defaultLimit int64) ([]map[string]any, error) {
+// wrote no LIMIT, as it does to the generated statement. presorted rows came
+// back from the data source in the query's order, which is kept.
+func finishRows(plan *Plan, rows []binding, defaultLimit int64, presorted bool) ([]map[string]any, error) {
 	outputs, err := projectRows(plan, rows)
 	if err != nil {
 		return nil, err
@@ -676,7 +677,7 @@ func finishRows(plan *Plan, rows []binding, defaultLimit int64) ([]map[string]an
 	if plan.Distinct {
 		outputs = distinctRows(outputs)
 	}
-	if len(plan.OrderBy) > 0 {
+	if len(plan.OrderBy) > 0 && !presorted {
 		if err := sortRows(plan, outputs); err != nil {
 			return nil, err
 		}

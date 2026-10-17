@@ -21,10 +21,6 @@ const (
 	// BknBackend_Cypher_PropertyForbidden is a property the query names that
 	// the caller may not read in full.
 	BknBackend_Cypher_PropertyForbidden = "BknBackend.Cypher.PropertyForbidden"
-	// BknBackend_Cypher_ReadBudgetExceeded is a query the bind-join executor
-	// would have to read too many rows for. It is refused rather than answered
-	// from part of the data.
-	BknBackend_Cypher_ReadBudgetExceeded = "BknBackend.Cypher.ReadBudgetExceeded"
 )
 
 var CypherErrCodeList = []string{
@@ -37,5 +33,4 @@ var CypherErrCodeList = []string{
 	BknBackend_Cypher_QueryFailed,
 	BknBackend_Cypher_Forbidden,
 	BknBackend_Cypher_PropertyForbidden,
-	BknBackend_Cypher_ReadBudgetExceeded,
 }

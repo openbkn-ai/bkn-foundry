@@ -95,8 +95,6 @@ paths:
             BknBackend.Cypher.Unsupported (valid openCypher outside the supported subset),
             BknBackend.Cypher.InvalidQuery (does not match the knowledge network model),
             BknBackend.Cypher.LimitExceeded (LIMIT above the ceiling),
-            BknBackend.Cypher.ReadBudgetExceeded (with the bind-join executor, the query would read
-            more rows than one execution may),
             BknBackend.Cypher.InvalidParameter (missing or oversized query).
             error_details carries the compiler's message, with a line and column where the
             construct appears.

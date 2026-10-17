@@ -94,6 +94,10 @@ type bindJoinExecutor struct {
 	joinResiduals map[int][]PlanPredicate
 	// nothing is set when a condition can never hold, so no row can match.
 	nothing bool
+	// window, when set, reads the single table of the plan as one sorted,
+	// limited page: the data source applies ORDER BY, SKIP and LIMIT, as the
+	// SQL path's statement does, so nothing past the page is read.
+	window *readWindow
 
 	rowsRead atomic.Int64
 }
@@ -448,6 +452,13 @@ func (e *bindJoinExecutor) readTable(ctx context.Context, table int, extra map[s
 	for _, field := range sortFields {
 		sortParams = append(sortParams, &interfaces.SortParams{Field: field, Direction: "asc"})
 	}
+	paging := interfaces.ResourceDataPagingRequest{
+		Mode: "cursor", Limit: e.limits.pageSize, KeepAliveSec: cursorKeepAliveSec,
+	}
+	if e.window != nil {
+		sortParams = e.window.sort
+		paging = interfaces.ResourceDataPagingRequest{Mode: interfaces.VEGA_PAGING_MODE_SINGLE, Limit: e.window.limit}
+	}
 	// The SQL path reads the data source itself, so this does too: a local
 	// index may lag it, and may compare and match strings differently.
 	ignoreLocalIndex := true
@@ -456,9 +467,7 @@ func (e *bindJoinExecutor) readTable(ctx context.Context, table int, extra map[s
 		OutputFields:     e.fields[table],
 		Sort:             sortParams,
 		IgnoreLocalIndex: &ignoreLocalIndex,
-		Paging: interfaces.ResourceDataPagingRequest{
-			Mode: "cursor", Limit: e.limits.pageSize, KeepAliveSec: cursorKeepAliveSec,
-		},
+		Paging:           paging,
 	}
 
 	var rows []map[string]any
@@ -475,7 +484,7 @@ func (e *bindJoinExecutor) readTable(ctx context.Context, table int, extra map[s
 			return nil, &ReadBudgetError{Limit: e.limits.maxRows}
 		}
 		rows = append(rows, response.Entries...)
-		if len(response.Entries) == 0 || response.Paging == nil ||
+		if e.window != nil || len(response.Entries) == 0 || response.Paging == nil ||
 			response.Paging.NextCursor == nil || *response.Paging.NextCursor == "" {
 			return rows, nil
 		}
@@ -866,8 +875,10 @@ func tupleKey(row map[string]any, columns []string) (string, bool) {
 	return tupleKeyAs(row, columns, nil)
 }
 
-// tupleKeyAs is tupleKey with the columns marked numeric read as numbers, a
-// string converting the way SQL converts it.
+// tupleKeyAs is tupleKey with the columns marked numeric read as numbers the
+// way SQL compares a string with a number: both sides as doubles. Converting
+// only the string side would keep the number exact, and an id past 2^53 would
+// no longer meet the string that SQL matches it to.
 func tupleKeyAs(row map[string]any, columns []string, numeric []bool) (string, bool) {
 	values, ok := tupleValues(row, columns)
 	if !ok {
@@ -876,7 +887,7 @@ func tupleKeyAs(row map[string]any, columns []string, numeric []bool) (string, b
 	for i := range values {
 		if i < len(numeric) && numeric[i] {
 			if n, ok := coerceNumber(values[i]); ok {
-				values[i] = n.value()
+				values[i] = number{f: n.float()}.value()
 			}
 		}
 	}
@@ -891,15 +902,95 @@ func runBindJoin(ctx context.Context, plan *Plan, schema *Schema, read dataReade
 	if err != nil {
 		return nil, nil, err
 	}
+	executor.window = executor.readWindowFor(defaultLimit)
 	rows, err := executor.run(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	entries, err := finishRows(plan, rows, defaultLimit)
+	entries, err := finishRows(plan, rows, defaultLimit, executor.window != nil)
 	if err != nil {
 		return nil, nil, err
 	}
 	return bindJoinColumns(plan, schema, entries), entries, nil
+}
+
+// readWindow is a single sorted, limited read.
+type readWindow struct {
+	sort  []*interfaces.SortParams
+	limit int
+}
+
+// readWindowFor decides whether the data source can apply ORDER BY, SKIP and
+// LIMIT itself: one table, every condition pushed, no aggregate or DISTINCT,
+// and only plain columns of that table to sort by. Sorting there also keeps
+// the database's collation, which is what the SQL path sorts strings by. The
+// primary key follows the query's own keys so that ties come back in a fixed
+// order. A page larger than one read can return is left to the full read.
+func (e *bindJoinExecutor) readWindowFor(defaultLimit int64) *readWindow {
+	plan := e.plan
+	if len(plan.Tables) != 1 || len(plan.Joins) != 0 || len(e.residuals) != 0 || e.nothing || plan.Distinct {
+		return nil
+	}
+	for _, column := range plan.Select {
+		if column.aggregates() {
+			return nil
+		}
+	}
+	limit := defaultLimit
+	if plan.Limit != nil {
+		limit = *plan.Limit
+	}
+	if plan.Skip != nil {
+		limit += *plan.Skip
+	}
+	if limit <= 0 || limit > interfaces.CYPHER_MAX_LIMIT {
+		return nil
+	}
+
+	var sortParams []*interfaces.SortParams
+	sorted := map[string]bool{}
+	for _, order := range plan.OrderBy {
+		column, ok := plainOrderColumn(plan, order)
+		if !ok {
+			return nil
+		}
+		direction := "asc"
+		if order.Descending {
+			direction = "desc"
+		}
+		if !sorted[column] {
+			sorted[column] = true
+			sortParams = append(sortParams, &interfaces.SortParams{Field: column, Direction: direction})
+		}
+	}
+	for _, key := range e.primaryKeys[0] {
+		if !sorted[key] {
+			sorted[key] = true
+			sortParams = append(sortParams, &interfaces.SortParams{Field: key, Direction: "asc"})
+		}
+	}
+	return &readWindow{sort: sortParams, limit: int(limit)}
+}
+
+// plainOrderColumn is the column of the plan's first table a sort key reads,
+// when it reads exactly one column as it is.
+func plainOrderColumn(plan *Plan, order PlanOrder) (string, bool) {
+	switch {
+	case order.Expression != nil, order.Aggregate != nil:
+		return "", false
+	case order.Alias != "":
+		for _, column := range plan.Select {
+			if column.Alias == order.Alias {
+				if column.Expression != nil || column.Aggregate != nil || column.Table != 0 {
+					return "", false
+				}
+				return column.Column, true
+			}
+		}
+		return "", false
+	default:
+		return order.Column, order.Table == 0 && order.Column != ""
+	}
 }
 
 // bindJoinColumns describes the result columns. No statement reports them, so

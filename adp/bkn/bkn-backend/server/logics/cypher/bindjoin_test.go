@@ -18,10 +18,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
-	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
@@ -81,6 +78,9 @@ func (f *fakeDataAPI) read(_ context.Context, resourceID string,
 	sort.SliceStable(matched, func(i, j int) bool {
 		for _, s := range params.Sort {
 			if c := sortCompare(matched[i][s.Field], matched[j][s.Field]); c != 0 {
+				if s.Direction == "desc" {
+					return c > 0
+				}
 				return c < 0
 			}
 		}
@@ -616,10 +616,12 @@ func TestIntegerArithmeticOverflows(t *testing.T) {
 // refuses, recording who read what.
 type accountDataAPI struct {
 	interfaces.VegaBackendAccess
-	mu      sync.Mutex
-	api     *fakeDataAPI
-	refused map[string]bool
-	readers []string
+	mu          sync.Mutex
+	sqlRequest  *interfaces.RawQueryRequest
+	sqlResponse *interfaces.RawQueryResponse
+	api         *fakeDataAPI
+	refused     map[string]bool
+	readers     []string
 }
 
 func (v *accountDataAPI) QueryResourceDataAs(ctx context.Context, account interfaces.AccountInfo, resourceID string,
@@ -631,6 +633,15 @@ func (v *accountDataAPI) QueryResourceDataAs(ctx context.Context, account interf
 		return nil, interfaces.NewDependencyError("vega", "resource_data", interfaces.DependencyForbidden, http.StatusForbidden)
 	}
 	return v.api.read(ctx, resourceID, params)
+}
+
+// RawQuery serves the SQL fallback.
+func (v *accountDataAPI) RawQuery(_ context.Context, req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	v.sqlRequest = req
+	if v.sqlResponse != nil {
+		return v.sqlResponse, nil
+	}
+	return &interfaces.RawQueryResponse{}, nil
 }
 
 func bindJoinService(vega interfaces.VegaBackendAccess, proxies interfaces.KNProxyBindingResolver) *cypherQueryService {
@@ -716,23 +727,50 @@ func TestBindJoinReportsRefusalWhenProxyUnavailable(t *testing.T) {
 	}
 }
 
-func TestBindJoinReportsTheReadBudgetAsTheCallersToFix(t *testing.T) {
-	withLocale(t)
+func TestBindJoinFallsBackToSQLPastTheReadBudget(t *testing.T) {
+	spans := recordSpans(t)
 	rows := make([]map[string]any, defaultBindJoinLimits.maxRows+1)
 	for i := range rows {
 		rows[i] = map[string]any{"f_id": strconv.Itoa(i)}
 	}
-	vega := &accountDataAPI{api: newFakeDataAPI(map[string][]map[string]any{"res_order": rows})}
+	vega := &accountDataAPI{api: newFakeDataAPI(map[string][]map[string]any{"res_order": rows}),
+		sqlResponse: &interfaces.RawQueryResponse{
+			Columns: []interfaces.RawQueryColumn{{Name: "o.id", Type: "string"}},
+			Entries: []map[string]any{{"o.id": "from-sql"}},
+		}}
+	service := bindJoinService(vega, nil)
+
+	result, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH,
+		Query: "MATCH (o:Order) RETURN count(*) AS n",
+	})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if vega.sqlRequest == nil || !strings.HasPrefix(vega.sqlRequest.Query, "SELECT ") ||
+		vega.sqlRequest.InputDialect != interfaces.VEGA_DIALECT_MYSQL {
+		t.Fatalf("sql request = %+v, want the compiled MySQL statement", vega.sqlRequest)
+	}
+	if !reflect.DeepEqual(result.Entries, vega.sqlResponse.Entries) {
+		t.Fatalf("entries = %v, want the SQL path's", result.Entries)
+	}
+	if spans.attrs["cypher.fallback"] != "sql_read_budget" {
+		t.Fatalf("span attrs = %v", spans.attrs)
+	}
+}
+
+// Only the read budget falls back: any other failure is reported as it is.
+func TestBindJoinDoesNotFallBackOnOtherFailures(t *testing.T) {
+	withLocale(t)
+	caller, _ := callerContext().Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	vega := &accountDataAPI{api: newFakeDataAPI(relationServiceData()), refused: map[string]bool{caller.ID: true}}
 	service := bindJoinService(vega, nil)
 
 	_, err := service.Query(callerContext(), interfaces.CypherQuery{
-		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH,
-		Query: "MATCH (o:Order) RETURN o.id",
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id",
 	})
-	var httpErr *rest.HTTPError
-	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest ||
-		httpErr.BaseError.ErrorCode != berrors.BknBackend_Cypher_ReadBudgetExceeded {
-		t.Fatalf("err = %v, want 400 %s", err, berrors.BknBackend_Cypher_ReadBudgetExceeded)
+	if statusOf(t, err) != http.StatusForbidden || vega.sqlRequest != nil {
+		t.Fatalf("err = %v, sql = %+v; want forbidden and no SQL attempt", err, vega.sqlRequest)
 	}
 }
 
@@ -913,7 +951,8 @@ func TestBindJoinStopsReadingOnceNothingMatches(t *testing.T) {
 // #2203 review: vega-backend pages a table with an offset, so a table without
 // a primary key is sorted by every column read.
 func TestBindJoinSortsKeylessTablesByEveryColumn(t *testing.T) {
-	plan, schema := compileBindJoin(t, "MATCH (c:Customer) RETURN c.name", nil)
+	// DISTINCT keeps the read a full cursor read rather than one sorted page.
+	plan, schema := compileBindJoin(t, "MATCH (c:Customer) RETURN DISTINCT c.name", nil)
 	schema.objectTypesByID["ot_customer"].PrimaryKeys = nil
 	api := newFakeDataAPI(bindJoinData())
 	if _, _, err := runBindJoin(context.Background(), plan, schema, api.read, defaultBindJoinLimits, 1000); err != nil {
@@ -925,5 +964,68 @@ func TestBindJoinSortsKeylessTablesByEveryColumn(t *testing.T) {
 	}
 	if !reflect.DeepEqual(sorted, []string{"f_name"}) {
 		t.Fatalf("sorted by %v, want every column read", sorted)
+	}
+}
+
+// #2203 review: SQL compares a string with a number as doubles on both sides,
+// so an id past 2^53 stored as a string still joins the same id stored as a
+// number.
+func TestBindJoinJoinsLargeStringIDsToNumberIDs(t *testing.T) {
+	data := bindJoinData()
+	data["res_order"] = []map[string]any{{"f_id": 1, "f_cust": "1234567890123456789", "f_region": "east"}}
+	data["res_customer"] = []map[string]any{
+		{"f_code": json.Number("1234567890123456789"), "f_region": "east", "f_name": "Snowflake"},
+	}
+	rows, err := runFake(t, newFakeDataAPI(data), defaultBindJoinLimits,
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN o.id, c.name", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rows, [][]any{{1, "Snowflake"}}) {
+		t.Fatalf("rows = %v, want the large ids joined", rows)
+	}
+}
+
+// A query over one table hands ORDER BY, SKIP and LIMIT to the data source and
+// reads one page, instead of reading the whole table to keep a few rows.
+func TestBindJoinReadsOneSortedPageForASingleTable(t *testing.T) {
+	rows, api := mustRunFake(t, "MATCH (o:Order) WHERE o.amount IS NOT NULL RETURN o.id AS id, o.amount AS a "+
+		"ORDER BY a DESC SKIP 1 LIMIT 1", nil)
+	if !reflect.DeepEqual(rows, [][]any{{1, 50}}) {
+		t.Fatalf("rows = %v", rows)
+	}
+	reads := api.readsOf("res_order")
+	if len(reads) != 1 || reads[0].Paging.Mode != interfaces.VEGA_PAGING_MODE_SINGLE || reads[0].Paging.Limit != 2 {
+		t.Fatalf("reads = %+v, want one single page of skip+limit rows", reads)
+	}
+	var sorted []string
+	for _, field := range reads[0].Sort {
+		sorted = append(sorted, field.Field+" "+field.Direction)
+	}
+	if !reflect.DeepEqual(sorted, []string{"f_amount desc", "f_id asc"}) {
+		t.Fatalf("sort = %v, want the query's key then the primary key", sorted)
+	}
+
+	// The default LIMIT bounds the page when the query wrote none.
+	_, api = mustRunFake(t, "MATCH (o:Order) RETURN o.id", nil)
+	if reads := api.readsOf("res_order"); reads[0].Paging.Limit != interfaces.CYPHER_DEFAULT_LIMIT {
+		t.Fatalf("page = %d, want the default limit", reads[0].Paging.Limit)
+	}
+}
+
+func TestBindJoinReadsEverythingWhenTheDataSourceCannotFinishTheQuery(t *testing.T) {
+	for _, query := range []string{
+		"MATCH (i:Item)-[:BELONGS_TO]->(o:Order) RETURN i.id LIMIT 1",
+		"MATCH (o:Order) RETURN count(*) AS n",
+		"MATCH (o:Order) RETURN DISTINCT o.region LIMIT 1",
+		"MATCH (c:Customer) WHERE c.name ENDS WITH 'e' RETURN c.name LIMIT 1",
+		"MATCH (o:Order) RETURN o.id, o.amount * 2 AS d ORDER BY d LIMIT 1",
+	} {
+		_, api := mustRunFake(t, query, nil)
+		for _, r := range api.reads {
+			if r.params.Paging.Mode == interfaces.VEGA_PAGING_MODE_SINGLE {
+				t.Fatalf("%s: read a single page, but the executor has to finish this query itself", query)
+			}
+		}
 	}
 }
