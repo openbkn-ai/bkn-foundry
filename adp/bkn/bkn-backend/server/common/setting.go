@@ -42,7 +42,18 @@ type ServerSetting struct {
 	ProxySyncLeaseSeconds      int  `mapstructure:"proxySyncLeaseSeconds"`
 	ProxySyncMaxAttempts       int  `mapstructure:"proxySyncMaxAttempts"`
 	ProxyOutboxCleanupInterval int  `mapstructure:"proxyOutboxCleanupInterval"`
+	// CypherExecutor chooses how a compiled Cypher query runs: "sql" sends one
+	// statement to vega-backend's raw query route, "bindjoin" reads each table
+	// through the resource data API and joins in memory. BKN_CYPHER_EXECUTOR
+	// overrides the file.
+	CypherExecutor string `mapstructure:"cypherExecutor"`
 }
+
+// The Cypher executors CypherExecutor selects between.
+const (
+	CypherExecutorSQL      = "sql"
+	CypherExecutorBindJoin = "bindjoin"
+)
 
 // AppSetting contains application configuration.
 type AppSetting struct {
@@ -114,6 +125,8 @@ func initSetting(vp *viper.Viper) {
 	// contain the newly introduced switch. An explicit false still disables it
 	// for the stopped upgrade procedure.
 	vp.SetDefault("server.proxySyncWorkerEnabled", true)
+	vp.SetDefault("server.cypherExecutor", CypherExecutorSQL)
+	_ = vp.BindEnv("server.cypherExecutor", "BKN_CYPHER_EXECUTOR")
 
 	vp.AddConfigPath(configPath)
 	vp.SetConfigName(configName)

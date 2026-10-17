@@ -10,10 +10,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -45,6 +47,9 @@ type cypherQueryService struct {
 	// from the compiled plan.
 	proxies interfaces.KNProxyBindingResolver
 	vba     interfaces.VegaBackendAccess
+	// bindJoinTimeout bounds one bind-join execution; zero means the SQL
+	// path's statement timeout.
+	bindJoinTimeout time.Duration
 }
 
 var (
@@ -132,7 +137,17 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	if err := s.authorizeProperties(ctx, query.KNID, compiled); err != nil {
 		return nil, err
 	}
+	if s.executor() == common.CypherExecutorBindJoin {
+		return s.queryBindJoin(ctx, query, compiled)
+	}
+	span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL))
+	return s.querySQL(ctx, query, compiled)
+}
 
+// querySQL runs the compiled MySQL statement through vega-backend's raw query
+// route.
+func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
 	// The paging limit repeats the statement's own LIMIT rather than leaving
 	// it unset. vega-backend wraps the statement and applies a page of its
 	// own, defaulting to 20 rows, so a query asking for more would come back
@@ -391,6 +406,8 @@ func rowFilterPermissionImpacts(objectTypeIDs []string) []interfaces.CypherPermi
 const (
 	spanAttrExecutionPath  = "cypher.execution_path"
 	spanAttrFallbackReason = "cypher.fallback_reason"
+	spanAttrExecutor       = "cypher.executor"
+	spanAttrFallback       = "cypher.fallback"
 
 	executionPathProxy  = "proxy"
 	executionPathCaller = "caller"
@@ -399,6 +416,13 @@ const (
 	fallbackNonMainBranch       = "non_main_branch"
 	fallbackBindingNotPublished = "binding_not_published"
 	fallbackProxyUnavailable    = "proxy_unavailable"
+
+	// fallbackSQLReadBudget records a bind-join query that ran as SQL because
+	// it would have read past the executor's budget.
+	fallbackSQLReadBudget = "sql_read_budget"
+	// fallbackSQLTimeout records one that ran as SQL because the executor did
+	// not finish within its own timeout.
+	fallbackSQLTimeout = "sql_timeout"
 )
 
 // proxyTargetResource is the target type of a binding to a vega resource.
@@ -448,6 +472,118 @@ func (s *cypherQueryService) execute(ctx context.Context, query interfaces.Cyphe
 	proxyRequest := request
 	return s.vba.RawQueryAs(ctx, proxy.account, &proxyRequest)
 }
+
+// executor is the configured way to run a compiled query.
+func (s *cypherQueryService) executor() string {
+	if s.appSetting != nil && s.appSetting.ServerSetting.CypherExecutor == common.CypherExecutorBindJoin {
+		return common.CypherExecutorBindJoin
+	}
+	return common.CypherExecutorSQL
+}
+
+// queryBindJoin runs a compiled query through the bind-join executor, which
+// reads each table through vega-backend's resource data API. Identity follows
+// the same rule as the SQL path: the caller first, and the knowledge network's
+// proxy account only when vega-backend refused the caller and the proxy can
+// serve every binding the plan reads through. A refusal partway through
+// restarts the whole query under the proxy, so no result mixes identities.
+//
+// What the executor cannot answer -- a query past its read budget, or one it
+// cannot finish within its own timeout -- falls back to the compiled MySQL
+// statement, so the switch never takes away a query the SQL path answers.
+// Nothing else falls back: a refusal is the same under either path, a caller
+// that went away is not served by starting over, and any other failure is
+// reported rather than masked by a second attempt somewhere else.
+func (s *cypherQueryService) queryBindJoin(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorBindJoin))
+
+	columns, entries, err := s.runBindJoin(ctx, query, compiled)
+	var budget *ReadBudgetError
+	if errors.As(err, &budget) {
+		span.SetAttributes(attribute.String(spanAttrFallback, fallbackSQLReadBudget))
+		logger.Infof("Cypher query on knowledge network %s falls back to SQL: %s", query.KNID, budget.Error())
+		return s.querySQL(ctx, query, compiled)
+	}
+	if errors.Is(err, errBindJoinTimeout) {
+		span.SetAttributes(attribute.String(spanAttrFallback, fallbackSQLTimeout))
+		logger.Infof("Cypher query on knowledge network %s falls back to SQL: %v", query.KNID, err)
+		return s.querySQL(ctx, query, compiled)
+	}
+	if err != nil {
+		if !vegaRefused(err) {
+			common.LogSafeError(ctx, "Cypher bind-join execution failed", err)
+		}
+		return nil, executionError(ctx, err)
+	}
+
+	return &interfaces.CypherQueryResult{
+		Columns:           columns,
+		Entries:           entries,
+		TraceDescriptor:   compiled.traceDescriptor,
+		PermissionImpacts: compiled.permissionImpacts,
+	}, nil
+}
+
+// runBindJoin executes under the caller and, after a refusal the proxy can
+// answer, again under the proxy. The whole execution shares the timeout the
+// SQL path gives its one statement.
+func (s *cypherQueryService) runBindJoin(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) ([]interfaces.RawQueryColumn, []map[string]any, error) {
+	span := trace.SpanFromContext(ctx)
+	timeout := s.bindJoinTimeout
+	if timeout <= 0 {
+		timeout = interfaces.CYPHER_DEFAULT_TIMEOUT_SEC * time.Second
+	}
+	parent := ctx
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	// Its own deadline, while the caller still waits, is the executor running
+	// out of time rather than the request ending. A read cut off partway may
+	// report it as a transport failure, so the deadline is read off the
+	// context rather than off the error.
+	timedOut := func(err error) error {
+		if err != nil && ctx.Err() == context.DeadlineExceeded && parent.Err() == nil {
+			return fmt.Errorf("%w after %s", errBindJoinTimeout, timeout)
+		}
+		return err
+	}
+	readAs := func(account interfaces.AccountInfo) dataReader {
+		return func(ctx context.Context, resourceID string,
+			params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+			return s.vba.QueryResourceDataAs(ctx, account, resourceID, params)
+		}
+	}
+
+	caller, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	columns, entries, err := runBindJoin(ctx, compiled.plan, compiled.schema, readAs(caller),
+		defaultBindJoinLimits, interfaces.CYPHER_DEFAULT_LIMIT)
+	if err == nil || !vegaRefused(err) {
+		span.SetAttributes(attribute.String(spanAttrExecutionPath, executionPathCaller))
+		return columns, entries, timedOut(err)
+	}
+
+	proxy, reason := s.resolveProxy(ctx, query, compiled.plan)
+	if proxy == nil {
+		span.SetAttributes(
+			attribute.String(spanAttrExecutionPath, executionPathCaller),
+			attribute.String(spanAttrFallbackReason, reason),
+		)
+		return nil, nil, err
+	}
+	logger.Infof("Cypher query on knowledge network %s runs under the knowledge network proxy: "+
+		"caller %s, proxy account %s, resources %s",
+		query.KNID, caller.ID, proxy.account.ID, strings.Join(proxy.resourceIDs, ","))
+	span.SetAttributes(attribute.String(spanAttrExecutionPath, executionPathProxy))
+	columns, entries, err = runBindJoin(ctx, compiled.plan, compiled.schema, readAs(proxy.account),
+		defaultBindJoinLimits, interfaces.CYPHER_DEFAULT_LIMIT)
+	return columns, entries, timedOut(err)
+}
+
+// errBindJoinTimeout is the bind-join executor running out of its own time
+// while the caller still waits.
+var errBindJoinTimeout = errors.New("the bind-join executor ran out of time")
 
 // vegaRefused reports vega-backend refusing a resource the statement reads.
 func vegaRefused(err error) bool {

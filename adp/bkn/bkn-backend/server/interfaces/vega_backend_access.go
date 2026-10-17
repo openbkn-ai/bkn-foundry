@@ -89,6 +89,13 @@ type VegaBackendAccess interface {
 	// QueryResourceData queries data from a vega Resource (same HTTP contract as dataset resource data API).
 	QueryResourceData(ctx context.Context, resourceID string, params *ResourceDataQueryParams) (*DatasetQueryResponse, error)
 
+	// QueryResourceDataAs is QueryResourceData under the account the caller
+	// names. Like RawQuery it never falls back to the admin account, and a
+	// failure is a DependencyError carrying vega's status, so a refusal can be
+	// told apart from other failures.
+	QueryResourceDataAs(ctx context.Context, account AccountInfo, resourceID string,
+		params *ResourceDataQueryParams) (*DatasetQueryResponse, error)
+
 	// RawQuery runs a read-only SQL statement through vega-backend.
 	//
 	// Unlike the other methods here it never falls back to the admin account:
