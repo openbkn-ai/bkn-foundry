@@ -42,6 +42,7 @@ type ToolServiceImpl struct {
 	ToolDB           model.IToolDB
 	Proxy            interfaces.ProxyHandler
 	ProxyMaxTimeout  time.Duration
+	VegaBackendURL   string
 	CategoryManager  interfaces.CategoryManager
 	Logger           interfaces.Logger
 	UserMgnt         interfaces.UserManagement
@@ -69,11 +70,13 @@ func NewToolServiceImpl() interfaces.IToolService {
 		conf := config.NewConfigLoader()
 		redisClient, _, _ := conf.RedisConfig.GetClient()
 		toolService = &ToolServiceImpl{
-			DBTx:             dbaccess.NewBaseTx(),
-			ToolBoxDB:        dbaccess.NewToolboxDB(),
-			ToolDB:           dbaccess.NewToolDB(),
-			Proxy:            proxy.NewProxyServer(),
-			ProxyMaxTimeout:  time.Duration(conf.ProxyModuleConfig.MaxTimeout) * time.Second,
+			DBTx:            dbaccess.NewBaseTx(),
+			ToolBoxDB:       dbaccess.NewToolboxDB(),
+			ToolDB:          dbaccess.NewToolDB(),
+			Proxy:           proxy.NewProxyServer(),
+			ProxyMaxTimeout: time.Duration(conf.ProxyModuleConfig.MaxTimeout) * time.Second,
+			VegaBackendURL: fmt.Sprintf("%s://%s:%d", conf.VegaBackend.PrivateProtocol,
+				conf.VegaBackend.PrivateHost, conf.VegaBackend.PrivatePort),
 			Logger:           conf.GetLogger(),
 			UserMgnt:         drivenadapters.NewUserManagementClient(),
 			Validator:        validator.NewValidator(),

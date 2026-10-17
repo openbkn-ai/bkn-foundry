@@ -419,6 +419,17 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 		proxyReq.QueryParams = query
 	}
 	proxyReq.Headers = utils.SanitizeThirdPartyHeaders(proxyReq.Headers)
+	if s.isVegaInternalTarget(url) {
+		// The configured Vega service uses header authentication on its internal API.
+		// Rebuild identity from the authenticated context after stripping caller input.
+		if auth, ok := common.GetAccountAuthContextFromCtx(ctx); ok && auth != nil && auth.AccountID != "" && auth.AccountType != "" {
+			if proxyReq.Headers == nil {
+				proxyReq.Headers = make(map[string]any)
+			}
+			proxyReq.Headers[string(interfaces.HeaderXAccountID)] = auth.AccountID
+			proxyReq.Headers[string(interfaces.HeaderXAccountType)] = string(auth.AccountType)
+		}
+	}
 	// After sanitizing, never before: the sanitizer strips exactly this header
 	// family on the way to a third party, and this deployment's own function
 	// runtime is not one.
@@ -434,6 +445,22 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
+}
+
+// isVegaInternalTarget limits header authentication to this deployment's configured
+// Vega origin and internal API. Tool metadata alone does not establish trust.
+func (s *ToolServiceImpl) isVegaInternalTarget(rawURL string) bool {
+	target, err := neturl.Parse(rawURL)
+	if err != nil || target.User != nil {
+		return false
+	}
+	configured, err := neturl.Parse(s.VegaBackendURL)
+	if err != nil || configured.Host == "" || configured.Scheme == "" {
+		return false
+	}
+	return strings.EqualFold(target.Scheme, configured.Scheme) &&
+		strings.EqualFold(target.Host, configured.Host) &&
+		strings.HasPrefix(target.Path, "/api/vega-backend/in/")
 }
 
 // logWithheldManagedContext records the one case an operator cannot otherwise
