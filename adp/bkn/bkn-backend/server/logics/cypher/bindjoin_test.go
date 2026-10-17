@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -759,7 +760,61 @@ func TestBindJoinFallsBackToSQLPastTheReadBudget(t *testing.T) {
 	}
 }
 
-// Only the read budget falls back: any other failure is reported as it is.
+// slowDataAPI holds every read until its context ends, the way a data source
+// that cannot answer in time does.
+type slowDataAPI struct {
+	accountDataAPI
+}
+
+func (v *slowDataAPI) QueryResourceDataAs(ctx context.Context, _ interfaces.AccountInfo, _ string,
+	_ *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	<-ctx.Done()
+	// A read cut off partway reports a transport failure, not the deadline.
+	return nil, interfaces.NewDependencyError("vega", "resource_data", interfaces.DependencyTransportKind(ctx.Err()), 0)
+}
+
+// #2203 review: the executor running out of its own time, while the caller
+// still waits, falls back to SQL like the read budget does.
+func TestBindJoinFallsBackToSQLWhenItRunsOutOfTime(t *testing.T) {
+	spans := recordSpans(t)
+	vega := &slowDataAPI{accountDataAPI{sqlResponse: &interfaces.RawQueryResponse{
+		Entries: []map[string]any{{"o.id": "from-sql"}},
+	}}}
+	service := bindJoinService(vega, nil)
+	service.bindJoinTimeout = 20 * time.Millisecond
+
+	result, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id",
+	})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if vega.sqlRequest == nil || !reflect.DeepEqual(result.Entries, vega.sqlResponse.Entries) {
+		t.Fatalf("entries = %v, sql = %+v; want the SQL path's answer", result.Entries, vega.sqlRequest)
+	}
+	if spans.attrs["cypher.fallback"] != "sql_timeout" {
+		t.Fatalf("span attrs = %v", spans.attrs)
+	}
+}
+
+// A caller that went away is not served by starting the query over as SQL.
+func TestBindJoinDoesNotFallBackWhenTheCallerGoesAway(t *testing.T) {
+	withLocale(t)
+	vega := &slowDataAPI{}
+	service := bindJoinService(vega, nil)
+	ctx, cancel := context.WithTimeout(callerContext(), 20*time.Millisecond)
+	defer cancel()
+
+	_, err := service.Query(ctx, interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id",
+	})
+	if err == nil || vega.sqlRequest != nil {
+		t.Fatalf("err = %v, sql = %+v; want a failure and no SQL attempt", err, vega.sqlRequest)
+	}
+}
+
+// Only the read budget and the executor's own timeout fall back: any other
+// failure is reported as it is.
 func TestBindJoinDoesNotFallBackOnOtherFailures(t *testing.T) {
 	withLocale(t)
 	caller, _ := callerContext().Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
