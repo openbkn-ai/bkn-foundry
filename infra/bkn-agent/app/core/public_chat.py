@@ -10,13 +10,23 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool, ToolException
 
 from app.commons.i18n import build_error_content
 
+# Appended to the system prompt for the closing call when the tool loop ran
+# out of steps or ended without an answer.
+_FINALIZE_INSTRUCTION = (
+    "The tool-step limit was reached or no final answer was produced. Using only "
+    "the information already obtained, answer the user now in the conversation's "
+    "language without calling tools. State plainly what remains unknown."
+)
+
 # These dispatch arbitrary code or nested calls; an outer kn_id cannot bind the
-# operations they perform. Register them with MCP, but refuse execution here.
+# operations they perform. The public surface does not offer them to the model
+# until they can be taken over with an enforced network scope; offering them
+# only produced calls that were refused, wasting steps.
 _INDIRECT_TOOLS = {
     "run_code",
     "run_shell",
@@ -33,6 +43,9 @@ class PublicChat:
     sequence: int = 0
     prompt_version: int | None = None
     answer: list[str] = field(default_factory=list)
+    # The last assistant message without tool calls. Text spoken before a tool
+    # call is progress narration and streams as tokens, but is not the answer.
+    final: str | None = None
     usage: dict = field(default_factory=dict)
     tool_starts: dict[str, float] = field(default_factory=dict)
 
@@ -71,6 +84,40 @@ class PublicChat:
             for call in pending.values()
         ]
 
+    async def finalize(self, graph, cfg: dict, model, system_prompt: str):
+        """Close a turn that has no answer with one tool-free model call.
+
+        The browser loop this replaces did the same when steps ran out. The
+        answer is saved to the thread so the next turn sees it.
+        """
+        state = await graph.aget_state(cfg)
+        messages = state.values.get("messages", [])
+        # A step limit can stop right after the model asked for tools.
+        fills = self.interrupted_messages(messages)
+        final = None
+        async for chunk in model.astream(
+            [
+                SystemMessage(content=f"{system_prompt}\n\n{_FINALIZE_INSTRUCTION}"),
+                *messages,
+                *fills,
+            ]
+        ):
+            final = chunk if final is None else final + chunk
+            content = self.text(chunk.content)
+            if content:
+                yield content
+        if final is not None:
+            if final.usage_metadata:
+                for key in ("input_tokens", "output_tokens", "total_tokens"):
+                    value = final.usage_metadata.get(key)
+                    if isinstance(value, int):
+                        self.usage[key] = self.usage.get(key, 0) + value
+            answer = self.text(final.content)
+            self.final = answer
+            await graph.aupdate_state(
+                cfg, {"messages": [*fills, AIMessage(content=answer)]}
+            )
+
     def updates(self, update: dict):
         for state in update.values():
             if not isinstance(state, dict):
@@ -82,6 +129,9 @@ class PublicChat:
                             value = message.usage_metadata.get(key)
                             if isinstance(value, int):
                                 self.usage[key] = self.usage.get(key, 0) + value
+                    self.final = (
+                        None if message.tool_calls else self.text(message.content)
+                    )
                     for call in message.tool_calls:
                         self.tool_starts[call["id"]] = time.monotonic()
                         yield self.event(
@@ -138,19 +188,12 @@ class PublicChat:
                 is _MCP_RECEIPT_TRUST_TOKEN
                 and "kn_id" in schema.get("properties", {})
             )
+            if not scoped:
+                continue
 
             # Bind closure state outside model-controlled keyword arguments.
-            def bind(inner, supports_scope):
+            def bind(inner):
                 async def call(**kwargs):
-                    if not supports_scope:
-                        raise ToolException(
-                            json.dumps(
-                                build_error_content(
-                                    "BknAgent.Execution.ToolScopeUnsupported"
-                                ),
-                                ensure_ascii=False,
-                            )
-                        )
                     if kwargs.get("kn_id", self.kn_id) != self.kn_id:
                         raise ToolException(
                             json.dumps(
@@ -161,11 +204,19 @@ class PublicChat:
                             )
                         )
                     kwargs["kn_id"] = self.kn_id
-                    return await inner(**kwargs)
+                    try:
+                        return await inner(**kwargs)
+                    except ToolException:
+                        raise
+                    except Exception as exc:
+                        # A malformed tool result (for example one that fails
+                        # its own output schema) is a failed call the model can
+                        # work around, not a reason to fail the whole turn.
+                        raise ToolException(f"{type(exc).__name__}: {exc}") from exc
 
                 return call
 
-            call = bind(tool.coroutine, scoped)
+            call = bind(tool.coroutine)
             guarded.append(
                 StructuredTool.from_function(
                     coroutine=call,
@@ -191,14 +242,18 @@ _SENSITIVE = {
 }
 
 
+_PROJECTION_LIMIT = 16000
+
+
 def project(value: Any) -> Any:
     """Bound the complete display projection; never alter the tool's real result."""
     result = _project(value)
-    return (
-        result
-        if len(json.dumps(result, ensure_ascii=False)) <= 16000
-        else {"truncated": True}
-    )
+    text = json.dumps(result, ensure_ascii=False)
+    if len(text) <= _PROJECTION_LIMIT:
+        return result
+    # Keep a readable prefix: a bare marker left the client nothing to show
+    # for any sizeable query result.
+    return text[:_PROJECTION_LIMIT] + "…[truncated]"
 
 
 def _project(value: Any, depth: int = 0) -> Any:

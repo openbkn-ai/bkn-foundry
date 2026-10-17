@@ -29,6 +29,7 @@ it to "make it work". Without a token no tools are mounted, and a warning is
 logged rather than an empty tool set returned silently, so the failure stays
 where it can be seen."""
 
+import json
 import logging
 from contextvars import ContextVar
 from typing import Any, Optional
@@ -253,7 +254,27 @@ async def open_session(
         args = {"question": question or "(not provided)", "conversation_mode": "new"}
         if agent_name:
             args["agent_name"] = agent_name[:128]
-        raw = await start.coroutine(**args)
+        try:
+            raw = await start.coroutine(**args)
+        except Exception as e:
+            stale = _stale_interaction(e) if host_conversation_key else None
+            finish = by_name.get("bkn_finish_interaction")
+            if stale is None or finish is None:
+                raise
+            # A turn of this thread was cut off (a restart or a disconnect)
+            # before it could finish, and the conversation still holds it
+            # open. The caller owns the thread's only running turn, so close
+            # the leftover as cancelled and start again, once.
+            logger.warning(
+                "[ContextLoader] closing interrupted interaction %s before a new turn",
+                stale,
+            )
+            await finish.coroutine(
+                interaction_id=stale,
+                outcome="cancelled",
+                reason="the previous turn was interrupted before it finished",
+            )
+            raw = await start.coroutine(**args)
     except Exception as e:
         logger.warning(
             "[ContextLoader] bkn_start_interaction failed; skipping tool loading: %s", e
@@ -301,6 +322,23 @@ def _parse_owner(raw: Any) -> dict[str, str] | None:
     if not isinstance(delegation, str):
         return None
     return {**{key: raw[key] for key in fields}, "delegation_id": delegation}
+
+
+def _stale_interaction(error: Exception) -> Optional[str]:
+    """The open interaction id when start failed with interaction_in_progress."""
+    text = str(error)
+    start = text.find("{")
+    if start < 0:
+        return None
+    try:
+        body = json.loads(text[start:])
+    except ValueError:
+        return None
+    detail = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(detail, dict) or detail.get("code") != "interaction_in_progress":
+        return None
+    current = detail.get("current_interaction_id")
+    return current if isinstance(current, str) and current else None
 
 
 def _parse_ids(raw: Any) -> Optional[tuple[str, str]]:

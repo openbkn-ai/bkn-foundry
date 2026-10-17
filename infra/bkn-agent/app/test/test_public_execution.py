@@ -426,14 +426,10 @@ def test_tool_scope_blocks_foreign_network_and_unscoped_code(monkeypatch):
         fake = scoped.model_copy(update={"metadata": {}})
         public = PublicChat("run", "network-1")
         guarded = public.guard_tools([scoped, code, fake])
+        # Tools that cannot enforce the network are never offered to the model.
+        assert [tool.name for tool in guarded] == ["query"]
         assert await guarded[0].ainvoke({"kn_id": "network-1"}) == "ok"
         assert "ToolScopeMismatch" in await guarded[0].ainvoke({"kn_id": "network-2"})
-        assert "ToolScopeUnsupported" in await guarded[1].ainvoke(
-            {"code": "query other network"}
-        )
-        assert "ToolScopeUnsupported" in await guarded[2].ainvoke(
-            {"kn_id": "network-1"}
-        )
         assert calls == [{"kn_id": "network-1"}]
 
     asyncio.run(run())
@@ -985,11 +981,7 @@ def test_code_cannot_become_scoped_by_advertising_a_network_field(name):
             name=name,
             metadata={"bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN},
         )
-        guarded = PublicChat("run", "network-1").guard_tools([tool])[0]
-        result = await guarded.ainvoke(
-            {"kn_id": "network-1", "code": "anything", "__scoped": True}
-        )
-        assert "ToolScopeUnsupported" in result
+        assert PublicChat("run", "network-1").guard_tools([tool]) == []
 
     asyncio.run(run())
 
@@ -1223,23 +1215,29 @@ def test_public_tool_error_and_failure_details_follow_request_language(
         async with environment(monkeypatch) as (client, _, _):
 
             async def blocked(session, agent, req, account_id, account_type, *, public):
-                async def unsafe(**kwargs):
-                    pytest.fail("unscoped tool must not run")
+                async def query(**kwargs):
+                    pytest.fail("a foreign network must not be queried")
 
                 tool = StructuredTool.from_function(
-                    coroutine=unsafe,
-                    name="run_code",
-                    description="Code",
-                    args_schema={"type": "object", "properties": {}},
+                    coroutine=query,
+                    name="query",
+                    description="Query",
+                    args_schema={
+                        "type": "object",
+                        "properties": {"kn_id": {"type": "string"}},
+                    },
+                    metadata={
+                        "bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN
+                    },
                 )
                 guarded = public.guard_tools([tool])[0]
 
                 async def events():
-                    result = await guarded.ainvoke({})
+                    result = await guarded.ainvoke({"kn_id": "network-2"})
                     message = ToolMessage(
                         content=result,
                         tool_call_id="blocked",
-                        name="run_code",
+                        name="query",
                         status="error",
                     )
                     for event in public.updates({"tools": {"messages": [message]}}):
@@ -1256,7 +1254,7 @@ def test_public_tool_error_and_failure_details_follow_request_language(
             detail = next(
                 data["output"] for name, data in events if name == "tool_finished"
             )
-            assert detail["code"] == "BknAgent.Execution.ToolScopeUnsupported"
+            assert detail["code"] == "BknAgent.Execution.ToolScopeMismatch"
             assert (
                 any("\u4e00" <= char <= "\u9fff" for char in detail["detail"])
                 == chinese
@@ -1274,5 +1272,191 @@ def test_public_tool_error_and_failure_details_follow_request_language(
                 )
             ).json()
             assert read["error"] == failure
+
+    asyncio.run(run())
+
+
+def test_large_tool_projection_keeps_a_readable_prefix():
+    rows = [{"id": index, "name": f"row-{index}" * 40} for index in range(100)]
+    projected = project(json.dumps(rows))
+    assert isinstance(projected, str)
+    assert projected.startswith('[{"id": 0')
+    assert projected.endswith("…[truncated]")
+    assert len(projected) <= 16000 + len("…[truncated]")
+    # Small results keep their structure.
+    assert project('{"value": 7}') == {"value": 7}
+
+
+def _closing_model(responses):
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, *args, **kwargs):
+            # The closing call must not leave tool calls unanswered either.
+            pending = set()
+            for message in messages:
+                if isinstance(message, AIMessage):
+                    pending.update(call["id"] for call in message.tool_calls)
+                if isinstance(message, ToolMessage):
+                    pending.discard(message.tool_call_id)
+            assert not pending or self.i < len(self.responses) - 1, (
+                "closing call saw unanswered tool calls"
+            )
+            return super()._generate(messages, *args, **kwargs)
+
+    return Model(responses=responses)
+
+
+async def _run_closing_turn(monkeypatch, model, limits, tool_delay=0):
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import graph
+
+    async with environment(monkeypatch, stream=False) as (client, factory, _):
+        async with factory() as session:
+            agent = await session.get(AgentRow, "studio_smart_qa")
+            agent.f_limits = limits
+            await session.commit()
+
+        async def query(kn_id: str) -> str:
+            """Read the selected network."""
+            await asyncio.sleep(tool_delay)
+            return "partial data"
+
+        tool = StructuredTool.from_function(
+            coroutine=query,
+            name="query",
+            metadata={"bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN},
+        )
+
+        async def tools(*args, **kwargs):
+            return [tool]
+
+        saver = MemorySaver()
+
+        @asynccontextmanager
+        async def checkpoint():
+            yield saver
+
+        monkeypatch.setattr(graph, "load_tools", tools)
+        monkeypatch.setattr(graph, "build_chat_model", lambda *args, **kwargs: model)
+        monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+        response = await client.post(URL, json=BODY, headers=AUTH)
+        events = parse_sse(response.text)
+        thread_id = events[0][1]["thread_id"]
+        state = saver.get_tuple({"configurable": {"thread_id": thread_id}})
+        return events, state.checkpoint["channel_values"]["messages"]
+
+
+def test_step_limit_closes_with_an_answer_instead_of_failing(monkeypatch):
+    def call(call_id):
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "query", "args": {"kn_id": "network-1"}, "id": call_id}
+            ],
+        )
+
+    model = _closing_model(
+        [call("first"), call("second"), AIMessage(content="Closing answer")]
+    )
+
+    events, messages = asyncio.run(
+        _run_closing_turn(monkeypatch, model, {"max_turns": 1})
+    )
+
+    assert events[-1][1]["status"] == "succeeded", events
+    result = next(data for event, data in events if event == "result")
+    assert result["content"]["answer"] == "Closing answer"
+    # The step that asked for a tool is answered, and the closing answer is
+    # saved so the next turn continues from it.
+    tool_results = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
+    assert {"first", "second"} <= tool_results
+    assert messages[-1].content == "Closing answer"
+
+
+def test_empty_final_message_gets_a_closing_answer(monkeypatch):
+    model = _closing_model(
+        [AIMessage(content=""), AIMessage(content="Recovered answer")]
+    )
+
+    events, _ = asyncio.run(_run_closing_turn(monkeypatch, model, None))
+
+    assert events[-1][1]["status"] == "succeeded", events
+    result = next(data for event, data in events if event == "result")
+    assert result["content"]["answer"] == "Recovered answer"
+
+
+def test_answer_excludes_narration_spoken_before_tool_calls(monkeypatch):
+    model = _closing_model(
+        [
+            AIMessage(
+                content="Let me look that up first.",
+                tool_calls=[
+                    {"name": "query", "args": {"kn_id": "network-1"}, "id": "call"}
+                ],
+            ),
+            AIMessage(content="Final answer"),
+        ]
+    )
+
+    events, _ = asyncio.run(_run_closing_turn(monkeypatch, model, None))
+
+    tokens = "".join(data["content"] for event, data in events if event == "token")
+    result = next(data for event, data in events if event == "result")
+    # Progress still streams, but the committed answer is the last message only.
+    assert "Let me look that up first." in tokens
+    assert result["content"]["answer"] == "Final answer"
+
+
+def test_time_budget_keeps_room_to_close_with_an_answer(monkeypatch):
+    model = _closing_model(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "query", "args": {"kn_id": "network-1"}, "id": "slow"}
+                ],
+            ),
+            AIMessage(content="Answer from what was found"),
+        ]
+    )
+
+    # timeout_s=1 leaves 0.2s after the loop; the tool alone would take 3s.
+    events, messages = asyncio.run(
+        _run_closing_turn(monkeypatch, model, {"timeout_s": 1}, tool_delay=3)
+    )
+
+    assert events[-1][1]["status"] == "succeeded", events
+    result = next(data for event, data in events if event == "result")
+    assert result["content"]["answer"] == "Answer from what was found"
+    # The interrupted call is answered as unknown, never replayed as success.
+    assert any(
+        isinstance(m, ToolMessage) and m.tool_call_id == "slow" and m.status == "error"
+        for m in messages
+    )
+
+
+def test_malformed_tool_result_is_a_failed_call_not_a_failed_turn():
+    async def run():
+        async def query(kn_id: str) -> str:
+            """Read the network."""
+            raise RuntimeError(
+                "Invalid structured content returned by tool query: None is not of type 'array'"
+            )
+
+        tool = StructuredTool.from_function(
+            coroutine=query,
+            name="query",
+            metadata={"bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN},
+        )
+        guarded = PublicChat("run", "network-1").guard_tools([tool])[0]
+        result = await guarded.ainvoke({"kn_id": "network-1"})
+        assert "Invalid structured content" in result
 
     asyncio.run(run())
