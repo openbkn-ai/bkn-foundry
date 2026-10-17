@@ -26,7 +26,15 @@ import (
 type objectMetricBindServiceStub struct {
 	interfaces.ObjectMetricServiceV1
 	bindCalls    int
+	getCalls     int
 	upgradeCalls int
+}
+
+func (s *objectMetricBindServiceStub) Get(_ context.Context, _, _, _ string, version int) (*interfaces.ObjectMetricRecordV1, error) {
+	s.getCalls++
+	return &interfaces.ObjectMetricRecordV1{Definition: interfaces.ObjectMetricDefinitionV1{
+		Version: version, OwnerObjectTypeID: "orders",
+	}}, nil
 }
 
 func (s *objectMetricBindServiceStub) UpgradeLogicProperty(_ context.Context, _, _, _, _ string, version int) (*interfaces.LogicProperty, error) {
@@ -236,8 +244,13 @@ func TestBindObjectMetricLogicPropertyStopsWhenObjectTypeLookupFails(t *testing.
 func TestUpgradeObjectMetricLogicPropertyRequiresVersionAndForwardsTarget(t *testing.T) {
 	restoreGin := setGinMode()
 	defer restoreGin()
+	ctrl := gomock.NewController(t)
+	objectTypes := bmock.NewMockObjectTypeService(ctrl)
+	objectTypes.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-a", interfaces.MAIN_BRANCH, "orders").Return(&interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders", OTName: "订单"},
+	}, nil)
 	metrics := &objectMetricBindServiceStub{}
-	handler := &restHandler{oms: metrics}
+	handler := &restHandler{oms: metrics, ots: objectTypes}
 	for _, test := range []struct {
 		query  string
 		status int
@@ -258,6 +271,18 @@ func TestUpgradeObjectMetricLogicPropertyRequiresVersionAndForwardsTarget(t *tes
 			if !strings.Contains(recorder.Body.String(), `"version":3`) {
 				t.Fatalf("updated version missing from response: %s", recorder.Body.String())
 			}
+			for key, want := range map[string][]string{
+				"operation_audit_target_ids":   {"orders"},
+				"operation_audit_target_names": {"订单"},
+			} {
+				got, exists := c.Get(key)
+				if !exists || !reflect.DeepEqual(got, want) {
+					t.Fatalf("%s = %#v, want %#v", key, got, want)
+				}
+			}
 		}
+	}
+	if metrics.getCalls != 1 {
+		t.Fatalf("Get calls = %d, want 1", metrics.getCalls)
 	}
 }

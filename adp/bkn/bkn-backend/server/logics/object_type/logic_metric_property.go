@@ -45,7 +45,9 @@ func validateObjectMetricV1PropertyUniqueness(ctx context.Context, objectType *i
 		}
 		if previous, exists := seen[metricID]; exists {
 			return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails("object metric " + metricID + " is already bound to logical property " + previous)
+				WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricPropertyAlreadyBound", map[string]any{
+					"objectType": objectType.OTName, "metric": metricID, "property": previous,
+				}))
 		}
 		seen[metricID] = property.Name
 	}

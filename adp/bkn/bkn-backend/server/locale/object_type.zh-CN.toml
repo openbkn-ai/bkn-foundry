@@ -183,6 +183,7 @@ ObjectMetricExtensionRequired = "对象类 {{.objectType}} 的逻辑属性 {{.pr
 ObjectMetricLifecycleInvalid = "对象类 {{.objectType}} 的逻辑属性 {{.property}} 引用的对象指标 {{.metric}} 生命周期状态为 {{.status}}；仅可绑定 published 或 deprecated 版本。"
 ObjectMetricCalculationScopeInvalid = "对象类 {{.objectType}} 的逻辑属性 {{.property}} 引用的对象指标 {{.metric}} calculation_scope 为 {{.scope}}；逻辑属性仅支持 object_instance。"
 ObjectMetricOwnerMismatch = "对象类 {{.objectType}} 的逻辑属性 {{.property}} 引用的对象指标 {{.metric}} 归属对象类 {{.ownerObjectTypeID}}；必须归属当前对象类 {{.objectTypeID}}。"
+ObjectMetricPropertyAlreadyBound = "对象类 {{.objectType}} 的指标 {{.metric}} 已绑定逻辑属性 {{.property}}，不能重复绑定。"
 IndexStatusUpdateFailed = "更新对象类索引状态失败。"
 OldDataPropertiesMarshalFailed = "序列化旧数据属性失败。"
 OldDataPropertiesUnmarshalFailed = "反序列化旧数据属性失败。"

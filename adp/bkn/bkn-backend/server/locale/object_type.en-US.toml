@@ -183,6 +183,7 @@ ObjectMetricExtensionRequired = "Object metric {{.metric}} referenced by logic p
 ObjectMetricLifecycleInvalid = "Object metric {{.metric}} referenced by logic property {{.property}} on object type {{.objectType}} has lifecycle status {{.status}}; only published or deprecated versions can be bound."
 ObjectMetricCalculationScopeInvalid = "Object metric {{.metric}} referenced by logic property {{.property}} on object type {{.objectType}} has calculation_scope {{.scope}}; logic properties require object_instance."
 ObjectMetricOwnerMismatch = "Object metric {{.metric}} referenced by logic property {{.property}} on object type {{.objectType}} is owned by object type {{.ownerObjectTypeID}}; it must be owned by the current object type {{.objectTypeID}}."
+ObjectMetricPropertyAlreadyBound = "Object metric {{.metric}} on object type {{.objectType}} is already bound to logical property {{.property}}."
 IndexStatusUpdateFailed = "Failed to update the object type index status."
 OldDataPropertiesMarshalFailed = "Failed to serialize the existing data properties."
 OldDataPropertiesUnmarshalFailed = "Failed to deserialize the existing data properties."

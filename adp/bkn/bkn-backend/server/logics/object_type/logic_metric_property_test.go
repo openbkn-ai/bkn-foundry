@@ -10,12 +10,15 @@ import (
 	"errors"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
+	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
@@ -33,6 +36,87 @@ func TestObjectMetricV1PropertyUniquenessAcrossVersions(t *testing.T) {
 	if err := validateObjectMetricV1PropertyUniqueness(context.Background(), objectType); err != nil {
 		t.Fatalf("distinct metric bindings must be accepted: %v", err)
 	}
+}
+
+func TestObjectMetricV1PropertyUniquenessUsesRequestedLanguage(t *testing.T) {
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTName: "Orders",
+		LogicProperties: []*interfaces.LogicProperty{
+			{Name: "first", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC, DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric1@1"}},
+			{Name: "second", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC, DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric1@2"}},
+		},
+	}}
+	for _, test := range []struct {
+		name     string
+		language rest.Language
+		fragment string
+	}{
+		{name: "English", language: rest.AmericanEnglish, fragment: "already bound to logical property"},
+		{name: "Chinese", language: rest.SimplifiedChinese, fragment: "已绑定逻辑属性"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateObjectMetricV1PropertyUniqueness(rest.WithLanguage(context.Background(), test.language), objectType)
+			var httpErr *rest.HTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("error = %v, want an HTTP error", err)
+			}
+			details, ok := httpErr.BaseError.ErrorDetails.(string)
+			if !ok || !strings.Contains(details, test.fragment) {
+				t.Fatalf("error details = %v, want %q", err, test.fragment)
+			}
+		})
+	}
+}
+
+func TestObjectMetricV1PropertyUniquenessAppliesWithoutStrictMode(t *testing.T) {
+	newObjectType := func() *interfaces.ObjectType {
+		return &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "orders", OTName: "Orders",
+			LogicProperties: []*interfaces.LogicProperty{
+				{Name: "first", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC, DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric1@1"}},
+				{Name: "second", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC, DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric1@2"}},
+			},
+		}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH}
+	}
+	assertConflict := func(t *testing.T, err error) {
+		t.Helper()
+		var httpErr *rest.HTTPError
+		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusConflict {
+			t.Fatalf("error = %v, want 409 for duplicate metric binding", err)
+		}
+		want := invalidParameterDetail(context.Background(), "ObjectMetricPropertyAlreadyBound", map[string]any{
+			"objectType": "Orders", "metric": "metric1", "property": "first",
+		})
+		if httpErr.BaseError.ErrorDetails != want {
+			t.Fatalf("error details = %#v, want %q", httpErr.BaseError.ErrorDetails, want)
+		}
+	}
+
+	t.Run("create", func(t *testing.T) {
+		service := &objectTypeService{}
+		_, err := service.CreateObjectTypes(context.Background(), nil, []*interfaces.ObjectType{newObjectType()}, interfaces.ImportMode_Normal, false, false)
+		assertConflict(t, err)
+	})
+	t.Run("validate", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := bmock.NewMockPermissionService(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ota := bmock.NewMockObjectTypeAccess(ctrl)
+		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "orders").Return("", false, nil)
+		ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "Orders").Return("", false, nil)
+		service := &objectTypeService{ps: ps, ota: ota}
+		err := service.ValidateObjectTypes(context.Background(), "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{newObjectType()}, false, nil, interfaces.ImportMode_Normal)
+		assertConflict(t, err)
+	})
+	t.Run("update", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := bmock.NewMockPermissionService(ctrl)
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ota := bmock.NewMockObjectTypeAccess(ctrl)
+		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "orders").Return("Orders", true, nil)
+		service := &objectTypeService{ps: ps, ota: ota}
+		assertConflict(t, service.UpdateObjectType(context.Background(), nil, newObjectType(), false))
+	})
 }
 
 type objectMetricAccessStub struct {
