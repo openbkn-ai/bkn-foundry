@@ -61,6 +61,7 @@ func RegisterObjectMetricRoutes(
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/publish", handler.PublishObjectMetricByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate", handler.DeprecateObjectMetricByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", handler.verifyJsonContentType(), handler.BindObjectMetricLogicPropertyByEx)
+	public.PUT("/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties/:property_name/metric-ref", handler.UpgradeObjectMetricLogicPropertyByEx)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics", handler.ListObjectMetricsByIn)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/provenance", handler.GetObjectMetricProvenanceByIn)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/execution-context", handler.GetObjectMetricExecutionContextByIn)
@@ -417,6 +418,61 @@ func (r *restHandler) deprecateObjectMetric(c *gin.Context, vis hydra.Visitor) {
 
 func (r *restHandler) BindObjectMetricLogicPropertyByEx(c *gin.Context) {
 	r.objectMetricExternal(c, r.bindObjectMetricLogicProperty)
+}
+
+func (r *restHandler) UpgradeObjectMetricLogicPropertyByEx(c *gin.Context) {
+	r.objectMetricExternal(c, r.upgradeObjectMetricLogicProperty)
+}
+
+func (r *restHandler) upgradeObjectMetricLogicProperty(c *gin.Context, vis hydra.Visitor) {
+	version, ok := parseObjectMetricVersion(c)
+	if !ok {
+		return
+	}
+	if version == 0 {
+		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		return
+	}
+	upgrader, ok := r.oms.(interfaces.ObjectMetricLogicPropertyUpgradeV1)
+	if !ok {
+		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusNotImplemented, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("logical-property upgrade is unavailable"))
+		return
+	}
+	ctx := objectMetricContext(c, vis)
+	knID := c.Param("kn_id")
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	metricID := c.Param("metric_id")
+	record, err := r.oms.Get(ctx, knID, branch, metricID, version)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
+	if record == nil {
+		replyObjectMetricError(c, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectMetric_NotFound))
+		return
+	}
+	ownerID := record.Definition.OwnerObjectTypeID
+	objectTypeService := r.ots
+	if objectTypeService == nil {
+		objectTypeService = object_type.NewObjectTypeService(r.appSetting)
+	}
+	objectType, err := objectTypeService.GetObjectTypeByID(ctx, nil, knID, branch, ownerID)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
+	if objectType == nil {
+		replyObjectMetricError(c, errors.New("object type lookup returned no record"))
+		return
+	}
+	property, err := upgrader.UpgradeLogicProperty(ctx, knID, branch, metricID, c.Param("property_name"), version)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
+	c.Set("operation_audit_target_ids", []string{ownerID})
+	c.Set("operation_audit_target_names", []string{objectType.OTName})
+	rest.ReplyOK(c, http.StatusOK, property)
 }
 
 func (r *restHandler) bindObjectMetricLogicProperty(c *gin.Context, vis hydra.Visitor) {

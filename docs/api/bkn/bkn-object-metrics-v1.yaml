@@ -26,6 +26,8 @@ paths:
     $ref: ../../../adp/bkn/bkn-backend/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}~1validate
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/logic-properties:
     $ref: ../../../adp/bkn/bkn-backend/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}~1logic-properties
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/logic-properties/{property_name}/metric-ref:
+    $ref: ../../../adp/bkn/bkn-backend/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}~1logic-properties~1{property_name}~1metric-ref
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deprecate:
     $ref: ../../../adp/bkn/bkn-backend/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}~1deprecate
 components:

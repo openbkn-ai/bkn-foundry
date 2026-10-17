@@ -191,6 +191,12 @@ type ObjectMetricServiceV1 interface {
 	Capabilities() ObjectMetricCapabilitiesV1
 }
 
+// ObjectMetricLogicPropertyUpgradeV1 is implemented by metric services that
+// support explicitly moving an existing logical property to a newer release.
+type ObjectMetricLogicPropertyUpgradeV1 interface {
+	UpgradeLogicProperty(ctx context.Context, knID, branch, metricID, propertyName string, version int) (*LogicProperty, error)
+}
+
 type ObjectMetricSpecificationV1 struct {
 	Kind               string                            `json:"kind"`
 	Measure            *ObjectMetricMeasureV1            `json:"measure,omitempty"`

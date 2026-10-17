@@ -230,6 +230,9 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		objectType.CreateTime = currentTime
 		objectType.UpdateTime = currentTime
 
+		if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
+			return []string{}, err
+		}
 		if strictMode {
 			if err := ots.validateObjectTypeStrictExternalDeps(ctx, objectType); err != nil {
 				return []string{}, err
@@ -440,6 +443,9 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 	for _, objectType := range objectTypes {
 		objectType.KNID = knID
 		objectType.Branch = branch
+		if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
+			return err
+		}
 		if strictMode {
 			if err := ots.validateObjectTypeStrictExternalDeps(ctx, objectType); err != nil {
 				return err
@@ -1119,6 +1125,9 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		return err
 	}
 
+	if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
+		return err
+	}
 	if strictMode {
 		if err := ots.validateObjectTypeStrictExternalDeps(ctx, objectType); err != nil {
 			return err
