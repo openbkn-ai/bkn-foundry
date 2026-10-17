@@ -19,6 +19,22 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
 
+func TestObjectMetricV1PropertyUniquenessAcrossVersions(t *testing.T) {
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		LogicProperties: []*interfaces.LogicProperty{
+			{Name: "first", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC, DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric1@1"}},
+			{Name: "second", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC, DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric1@2"}},
+		},
+	}}
+	if err := validateObjectMetricV1PropertyUniqueness(context.Background(), objectType); err == nil {
+		t.Fatal("expected duplicate logical properties across metric versions to be rejected")
+	}
+	objectType.LogicProperties[1].DataSource.ID = "object_metric_v1:metric2@1"
+	if err := validateObjectMetricV1PropertyUniqueness(context.Background(), objectType); err != nil {
+		t.Fatalf("distinct metric bindings must be accepted: %v", err)
+	}
+}
+
 type objectMetricAccessStub struct {
 	record  *interfaces.ObjectMetricRecordV1
 	err     error

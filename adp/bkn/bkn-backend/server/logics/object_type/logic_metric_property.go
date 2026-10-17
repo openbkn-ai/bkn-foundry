@@ -33,6 +33,25 @@ func parseObjectMetricV1SourceID(sourceID string) (string, int, bool) {
 	return metricID, version, err == nil && version > 0
 }
 
+func validateObjectMetricV1PropertyUniqueness(ctx context.Context, objectType *interfaces.ObjectType) error {
+	seen := make(map[string]string)
+	for _, property := range objectType.LogicProperties {
+		if property == nil || property.Type != interfaces.LOGIC_PROPERTY_TYPE_METRIC || property.DataSource == nil {
+			continue
+		}
+		metricID, _, ok := parseObjectMetricV1SourceID(property.DataSource.ID)
+		if !ok {
+			continue
+		}
+		if previous, exists := seen[metricID]; exists {
+			return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_InvalidParameter).
+				WithErrorDetails("object metric " + metricID + " is already bound to logical property " + previous)
+		}
+		seen[metricID] = property.Name
+	}
+	return nil
+}
+
 func (ots *objectTypeService) validateLogicMetricProperty(ctx context.Context, objectType *interfaces.ObjectType, lp *interfaces.LogicProperty) error {
 	if lp == nil || lp.DataSource == nil || strings.TrimSpace(lp.DataSource.ID) == "" {
 		return nil

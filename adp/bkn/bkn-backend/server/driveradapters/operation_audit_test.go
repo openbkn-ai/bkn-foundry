@@ -48,6 +48,7 @@ func TestRegisteredOperationAuditRoutes(t *testing.T) {
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/publish", "", "update", "metric", true},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate", "", "update", "metric", true},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", "", "update", "object_type", true},
+		{http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties/:property_name/metric-ref", "", "update", "object_type", true},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/validate", "", "", "", false},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/object-metrics/preview", "", "", "", false},
 		{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/risk-types", "", "create", "risk_type", true},

@@ -61,6 +61,7 @@ func RegisterObjectMetricRoutes(
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/publish", handler.PublishObjectMetricByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/deprecate", handler.DeprecateObjectMetricByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties", handler.verifyJsonContentType(), handler.BindObjectMetricLogicPropertyByEx)
+	public.PUT("/knowledge-networks/:kn_id/object-metrics/:metric_id/logic-properties/:property_name/metric-ref", handler.UpgradeObjectMetricLogicPropertyByEx)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics", handler.ListObjectMetricsByIn)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/provenance", handler.GetObjectMetricProvenanceByIn)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/execution-context", handler.GetObjectMetricExecutionContextByIn)
@@ -417,6 +418,33 @@ func (r *restHandler) deprecateObjectMetric(c *gin.Context, vis hydra.Visitor) {
 
 func (r *restHandler) BindObjectMetricLogicPropertyByEx(c *gin.Context) {
 	r.objectMetricExternal(c, r.bindObjectMetricLogicProperty)
+}
+
+func (r *restHandler) UpgradeObjectMetricLogicPropertyByEx(c *gin.Context) {
+	r.objectMetricExternal(c, r.upgradeObjectMetricLogicProperty)
+}
+
+func (r *restHandler) upgradeObjectMetricLogicProperty(c *gin.Context, vis hydra.Visitor) {
+	version, ok := parseObjectMetricVersion(c)
+	if !ok {
+		return
+	}
+	if version == 0 {
+		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		return
+	}
+	upgrader, ok := r.oms.(interfaces.ObjectMetricLogicPropertyUpgradeV1)
+	if !ok {
+		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusNotImplemented, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("logical-property upgrade is unavailable"))
+		return
+	}
+	property, err := upgrader.UpgradeLogicProperty(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), c.Param("property_name"), version)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
+	c.Set("operation_audit_target_ids", []string{property.MetricBinding.ObjectTypeID})
+	rest.ReplyOK(c, http.StatusOK, property)
 }
 
 func (r *restHandler) bindObjectMetricLogicProperty(c *gin.Context, vis hydra.Visitor) {

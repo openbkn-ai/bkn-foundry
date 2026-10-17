@@ -137,6 +137,9 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 		}
 	}
 	// Schema for logic properties (type, data_source) is validated in driveradapters.ValidateObjectType.
+	if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
+		return err
+	}
 	for _, lp := range objectType.LogicProperties {
 		switch lp.Type {
 		case interfaces.LOGIC_PROPERTY_TYPE_METRIC:

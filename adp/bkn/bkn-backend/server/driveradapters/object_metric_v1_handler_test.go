@@ -25,7 +25,19 @@ import (
 
 type objectMetricBindServiceStub struct {
 	interfaces.ObjectMetricServiceV1
-	bindCalls int
+	bindCalls    int
+	upgradeCalls int
+}
+
+func (s *objectMetricBindServiceStub) UpgradeLogicProperty(_ context.Context, _, _, _, _ string, version int) (*interfaces.LogicProperty, error) {
+	s.upgradeCalls++
+	return &interfaces.LogicProperty{
+		Name: "duration",
+		MetricBinding: &interfaces.MetricPropertyBindingV1{
+			ObjectTypeID: "orders",
+			MetricRef:    interfaces.ObjectMetricRefV1{MetricID: "metric-a", Version: version},
+		},
+	}, nil
 }
 
 type objectMetricUpdateServiceStub struct {
@@ -218,5 +230,34 @@ func TestBindObjectMetricLogicPropertyStopsWhenObjectTypeLookupFails(t *testing.
 	}
 	if metrics.bindCalls != 0 {
 		t.Fatalf("BindLogicProperty calls = %d, want 0", metrics.bindCalls)
+	}
+}
+
+func TestUpgradeObjectMetricLogicPropertyRequiresVersionAndForwardsTarget(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	metrics := &objectMetricBindServiceStub{}
+	handler := &restHandler{oms: metrics}
+	for _, test := range []struct {
+		query  string
+		status int
+		calls  int
+	}{
+		{query: "", status: http.StatusBadRequest, calls: 0},
+		{query: "?version=3", status: http.StatusOK, calls: 1},
+	} {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/metric-a/logic-properties/duration/metric-ref"+test.query, nil)
+		c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "metric-a"}, {Key: "property_name", Value: "duration"}}
+		handler.upgradeObjectMetricLogicProperty(c, hydra.Visitor{})
+		if recorder.Code != test.status || metrics.upgradeCalls != test.calls {
+			t.Fatalf("query=%q status=%d calls=%d body=%s", test.query, recorder.Code, metrics.upgradeCalls, recorder.Body.String())
+		}
+		if test.status == http.StatusOK {
+			if !strings.Contains(recorder.Body.String(), `"version":3`) {
+				t.Fatalf("updated version missing from response: %s", recorder.Body.String())
+			}
+		}
 	}
 }
