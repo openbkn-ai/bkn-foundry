@@ -544,12 +544,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 					return nil
 				},
 			)
-			mockIndexSync.EXPECT().UpdateSkill(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, skill *model.SkillRepositoryDB) error {
-				So(skill.SkillID, ShouldEqual, "skill-pkg-1")
-				So(skill.Version, ShouldNotEqual, "old-v")
-				So(skill.Status, ShouldEqual, interfaces.BizStatusEditing.String())
-				return nil
-			})
+			mockIndexSync.EXPECT().UpdateSkill(gomock.Any(), gomock.Any()).Times(0)
 
 			resp, err := registry.UpdateSkillPackage(context.Background(), &interfaces.UpdateSkillPackageReq{
 				UserID:   "user-1",
@@ -682,11 +677,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 					return nil
 				},
 			)
-			mockIndexSync.EXPECT().UpsertSkill(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, skill *model.SkillRepositoryDB) error {
-				callOrder = append(callOrder, "index-sync")
-				So(skill.Version, ShouldEqual, "hist-v1")
-				return nil
-			})
+			mockIndexSync.EXPECT().UpsertSkill(gomock.Any(), gomock.Any()).Times(0)
 
 			resp, err := registry.PublishSkillHistory(context.Background(), &interfaces.PublishSkillHistoryReq{
 				UserID:  "user-1",
@@ -699,7 +690,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(resp.SkillID, ShouldEqual, "skill-publish-h1")
 			So(resp.Version, ShouldEqual, "hist-v1")
 			So(resp.Status, ShouldEqual, interfaces.BizStatusPublished)
-			So(callOrder, ShouldResemble, []string{"update-skill", "insert-release", "index-sync", "commit"})
+			So(callOrder, ShouldResemble, []string{"update-skill", "insert-release", "commit"})
 		})
 
 		Convey("QuerySkillList omits instructions and files from list payload", func() {

@@ -40,6 +40,7 @@ type skillRegistry struct {
 	releaseHistoryRepo model.ISkillReleaseHistoryDB
 	assetStore         skillAssetStore
 	indexSync          interfaces.SkillIndexSyncService
+	notifyIndexSync    func()
 	sandboxClient      interfaces.SandBoxControlPlane
 	sessionPool        sandbox.SessionPool
 	dbTx               model.DBTx
@@ -68,6 +69,7 @@ func NewSkillRegistry() interfaces.SkillRegistry {
 			releaseHistoryRepo: dbaccess.NewSkillReleaseHistoryDB(),
 			assetStore:         newOSSGatewaySkillAssetStore(),
 			indexSync:          NewSkillIndexSyncService(),
+			notifyIndexSync:    notifySkillCapabilitiesChanged,
 			sandboxClient:      drivenadapters.NewSandBoxControlPlaneClient(),
 			sessionPool:        sandbox.GetSessionPool(),
 			dbTx:               dbaccess.NewBaseTx(),
@@ -288,18 +290,7 @@ func (r *skillRegistry) UpdateSkillPackage(ctx context.Context, req *interfaces.
 	if err != nil {
 		return nil, fmt.Errorf("get tx failed: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				r.Logger.WithContext(ctx).Errorf("rollback skill package update failed, skill_id=%s, err=%v", req.SkillID, rollbackErr)
-			}
-		} else {
-			commitErr := tx.Commit()
-			if commitErr != nil {
-				r.Logger.WithContext(ctx).Errorf("commit skill package update failed, skill_id=%s, err=%v", req.SkillID, commitErr)
-			}
-		}
-	}()
+	defer r.finishIndexedSkillWrite(ctx, tx, &err, req.SkillID, false)
 
 	skill.Name = parsedSkill.Name
 	skill.Description = parsedSkill.Description
@@ -346,11 +337,7 @@ func (r *skillRegistry) UpdateSkillPackage(ctx context.Context, req *interfaces.
 		Version: skill.Version,
 		Status:  interfaces.BizStatus(skill.Status),
 	}
-	if r.indexSync != nil {
-		if syncErr := r.indexSync.UpdateSkill(ctx, skill); syncErr != nil {
-			r.Logger.WithContext(ctx).Errorf("update skill index failed after package update, skill_id=%s, err=%v", req.SkillID, syncErr)
-		}
-	}
+
 	return resp, nil
 }
 
@@ -476,18 +463,7 @@ func (r *skillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces
 	if err != nil {
 		return nil, fmt.Errorf("get tx failed: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				r.Logger.WithContext(ctx).Errorf("rollback skill history publish failed, skill_id=%s, version=%s, err=%v", req.SkillID, req.Version, rollbackErr)
-			}
-		} else {
-			commitErr := tx.Commit()
-			if commitErr != nil {
-				r.Logger.WithContext(ctx).Errorf("commit skill history publish failed, skill_id=%s, version=%s, err=%v", req.SkillID, req.Version, commitErr)
-			}
-		}
-	}()
+	defer r.finishIndexedSkillWrite(ctx, tx, &err, req.SkillID, false)
 
 	skill.Name = release.Name
 	skill.Description = release.Description
@@ -506,11 +482,7 @@ func (r *skillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces
 	if err = r.publishSkillSnapshot(ctx, tx, skill, req.UserID); err != nil {
 		return nil, err
 	}
-	if r.indexSync != nil {
-		if syncErr := r.indexSync.UpsertSkill(ctx, skill); syncErr != nil {
-			r.Logger.WithContext(ctx).Errorf("sync published historical skill index failed, skill_id=%s, version=%s, err=%v", req.SkillID, req.Version, syncErr)
-		}
-	}
+
 	return &interfaces.PublishSkillHistoryResp{
 		SkillID: skill.SkillID,
 		Version: skill.Version,
@@ -555,19 +527,7 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 	if err != nil {
 		return fmt.Errorf("get tx failed: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				r.Logger.WithContext(ctx).Errorf("rollback skill delete failed, skill_id=%s, err=%v", req.SkillID, rollbackErr)
-				return
-			}
-		} else {
-			if commitErr := tx.Commit(); commitErr != nil {
-				r.Logger.WithContext(ctx).Errorf("commit skill delete failed, skill_id=%s, err=%v", req.SkillID, commitErr)
-				return
-			}
-		}
-	}()
+	defer r.finishIndexedSkillWrite(ctx, tx, &err, req.SkillID, true)
 
 	// Mark the skill as being deleted, TODO: You need to design a separate coroutine to handle the deletion interruption strategy.
 	if err = r.skillRepo.UpdateSkillDeleted(ctx, tx, req.SkillID, true, req.UserID); err != nil {
@@ -608,11 +568,7 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 	if err = r.AuthService.DeletePolicy(ctx, []string{req.SkillID}, interfaces.AuthResourceTypeSkill); err != nil {
 		return err
 	}
-	if r.indexSync != nil {
-		if syncErr := r.indexSync.DeleteSkill(ctx, req.SkillID); syncErr != nil {
-			r.Logger.WithContext(ctx).Errorf("delete skill index failed after skill delete, skill_id=%s, err=%v", req.SkillID, syncErr)
-		}
-	}
+
 	return nil
 }
 
@@ -670,18 +626,7 @@ func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.U
 	if err != nil {
 		return nil, fmt.Errorf("get tx failed: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				r.Logger.WithContext(ctx).Errorf("rollback skill status update failed, skill_id=%s, err=%v", req.SkillID, rollbackErr)
-			}
-		} else {
-			if commitErr := tx.Commit(); commitErr != nil {
-				r.Logger.WithContext(ctx).Errorf("commit skill status update failed, skill_id=%s, err=%v", req.SkillID, commitErr)
-				return
-			}
-		}
-	}()
+	defer r.finishIndexedSkillWrite(ctx, tx, &err, req.SkillID, req.Status == interfaces.BizStatusOffline)
 	// Update skill status.
 	if err = r.skillRepo.UpdateSkillStatus(ctx, tx, req.SkillID, string(req.Status), req.UserID); err != nil {
 		return nil, err
@@ -700,21 +645,7 @@ func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.U
 		SkillID: req.SkillID,
 		Status:  req.Status,
 	}
-	// Write skill data to dataset without blocking the main process.
-	switch req.Status {
-	case interfaces.BizStatusPublished:
-		if r.indexSync != nil {
-			if syncErr := r.indexSync.UpsertSkill(ctx, skill); syncErr != nil {
-				r.Logger.WithContext(ctx).Errorf("sync published skill index failed, skill_id=%s, err=%v", req.SkillID, syncErr)
-			}
-		}
-	case interfaces.BizStatusOffline:
-		if r.indexSync != nil {
-			if syncErr := r.indexSync.DeleteSkill(ctx, req.SkillID); syncErr != nil {
-				r.Logger.WithContext(ctx).Errorf("delete skill index failed after status update, skill_id=%s, err=%v", req.SkillID, syncErr)
-			}
-		}
-	}
+
 	return resp, nil
 }
 

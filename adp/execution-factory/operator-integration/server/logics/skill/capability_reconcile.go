@@ -12,8 +12,25 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// The Skill half of the capability index is written at every Skill write (see mirrorCapability).
-// This pass is the safety net underneath that, and it is not optional: the capability dataset can
+// A full pass scans all published Skills and may make multiple model calls. Keep
+// its budget aligned with the existing Function capability reconciliation pass;
+// the 30-second operation budget applies only to individual cleanup operations.
+const skillCapabilityReconcileTimeout = 10 * time.Minute
+
+// A notification coalesces committed changes into the existing reconciliation pass.
+// The repository remains the source of truth; this is not a queue of snapshots.
+var skillCapabilitiesChanged = make(chan struct{}, 1)
+
+func notifySkillCapabilitiesChanged() {
+	select {
+	case skillCapabilitiesChanged <- struct{}{}:
+	default:
+	}
+}
+
+// Committed Skill writes wake this existing worker; semantic indexing never holds
+// the source transaction open. Periodic passes also recover missed notifications:
+// the capability dataset can
 // be recreated — a changed embedding model rebuilds it — and a recreated dataset comes back empty.
 // Without a pass that puts Skills back, they would stay missing from search until somebody happened
 // to edit one.
@@ -22,29 +39,43 @@ import (
 // says, write the difference. Name and description are the entire embedding input, so comparing
 // those two strings is what keeps a pass from re-vectorising every Skill on the platform.
 
-// StartCapabilityReconciler runs a Skill pass now and then every interval.
+// StartCapabilityReconciler indexes committed writes, with optional periodic passes.
+// A zero interval disables startup/periodic scans while retaining write notifications.
 func StartCapabilityReconciler(ctx context.Context, interval time.Duration) {
-	if interval <= 0 {
-		return
-	}
 	syncer, ok := NewSkillIndexSyncService().(*skillIndexSync)
 	if !ok {
 		return
 	}
-	go func() {
+	go syncer.runCapabilityReconciler(ctx, interval)
+}
+
+func (s *skillIndexSync) runCapabilityReconciler(ctx context.Context, interval time.Duration) {
+	var ticks <-chan time.Time
+	if interval > 0 {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		for {
-			if err := syncer.reconcileCapabilities(ctx); err != nil {
-				syncer.logger.WithContext(ctx).Warnf("reconcile skill capabilities failed: %v", err)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
+		ticks = ticker.C
+	} else {
+		select {
+		case <-ctx.Done():
+			return
+		case <-skillCapabilitiesChanged:
 		}
-	}()
+	}
+	for {
+		passCtx, cancel := context.WithTimeout(ctx, skillCapabilityReconcileTimeout)
+		err := s.reconcileCapabilities(passCtx)
+		cancel()
+		if err != nil {
+			s.logger.WithContext(ctx).Warnf("reconcile skill capabilities failed: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticks:
+		case <-skillCapabilitiesChanged:
+		}
+	}
 }
 
 // reconcileCapabilities makes the Skill half of the capability index match the Skill repository.
@@ -79,7 +110,7 @@ func (s *skillIndexSync) reconcileCapabilities(ctx context.Context) error {
 		if ok && existing.Name == doc.Name && existing.Description == doc.Description {
 			continue
 		}
-		if err := s.capabilitySync.UpsertCapability(ctx, doc); err != nil {
+		if err := s.upsertReconciledSkill(ctx, doc); err != nil {
 			errs = append(errs, err)
 			continue
 		}
@@ -98,6 +129,36 @@ func (s *skillIndexSync) reconcileCapabilities(ctx context.Context) error {
 	s.logger.WithContext(ctx).Infof("skill capabilities reconciled, desired=%d, indexed=%d, written=%d, deleted=%d, errors=%d",
 		len(desired), len(current), written, deleted, len(errs))
 	return errors.Join(errs...)
+}
+
+// upsertReconciledSkill rechecks the committed source after the slow model call.
+// A delete/offline operation may have purged the index while the upsert was in
+// flight. In that case remove the stale document rather than resurrecting it.
+func (s *skillIndexSync) upsertReconciledSkill(ctx context.Context, doc *interfaces.CapabilityDocument) error {
+	if err := s.capabilitySync.UpsertCapability(ctx, doc); err != nil {
+		return err
+	}
+	checkCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), skillIndexOperationTimeout)
+	defer cancel()
+	current, err := s.skillRepo.SelectSkillByID(checkCtx, nil, doc.CapabilityID)
+	if err != nil {
+		return err
+	}
+	if current == nil || current.IsDeleted {
+		return s.capabilitySync.DeleteCapability(checkCtx, doc.CapabilityRef)
+	}
+	payload, err := s.skillIndexPayload(checkCtx, current)
+	if err != nil {
+		return err
+	}
+	if payload == nil {
+		return s.capabilitySync.DeleteCapability(checkCtx, doc.CapabilityRef)
+	}
+	// A later committed edit is handled by the coalesced follow-up pass.
+	if payload.Name != doc.Name || payload.Description != doc.Description {
+		notifySkillCapabilitiesChanged()
+	}
+	return nil
 }
 
 // desiredSkillCapabilities walks the Skill repository and returns what the index should hold.
