@@ -93,6 +93,11 @@ var compactProfileTools = []string{
 	toolKeyQueryObjectInstance,
 	toolKeyQueryMetric,
 	toolKeyDrillThroughMetric,
+	// Aggregation, ranking and multi-hop questions are the common case; behind
+	// the gateway they cost three calls each, and hosts that only pass
+	// network-scoped tools cannot reach them at all.
+	toolKeyRunCypher,
+	toolKeyQueryInstanceSubgraph,
 }
 
 // compactProfile is /mcp-compact: a small fixed tool list for hosts that load

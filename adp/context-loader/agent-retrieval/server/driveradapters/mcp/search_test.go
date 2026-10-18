@@ -282,16 +282,16 @@ func TestSearchNormalizationAndKeywordWeight(t *testing.T) {
 func TestSearchIsReadyOnAnUnambiguousHit(t *testing.T) {
 	for _, locale := range []string{"zh-CN", "en-US"} {
 		catalog := catalogForLocale(t, locale)
-		result := catalog.search(context.Background(), "用 run_cypher 查一下", searchDefaultLimit)
+		result := catalog.search(context.Background(), "用 explore_subgraph 查一下", searchDefaultLimit)
 		if result.Ready == nil {
 			t.Fatalf("%s: naming one tool must come back ready, got %v", locale, candidateNames(result))
 		}
-		if result.Ready.Name != toolKeyRunCypher {
+		if result.Ready.Name != toolKeyExploreSubgraph {
 			t.Fatalf("%s: ready on %s", locale, result.Ready.Name)
 		}
 		// Byte-identical to describe_native_tool, or a caller that trusts the
 		// shortcut builds a call the executor then judges by another schema.
-		described, err := catalog.describe(context.Background(), toolKeyRunCypher, false)
+		described, err := catalog.describe(context.Background(), toolKeyExploreSubgraph, false)
 		if err != nil {
 			t.Fatal(err)
 		}

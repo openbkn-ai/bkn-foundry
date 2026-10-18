@@ -116,10 +116,9 @@ func TestExecutorGuardsTheTargetOnceUnderItsOwnName(t *testing.T) {
 
 func TestExecutorPassesWideIntegersThroughUnrounded(t *testing.T) {
 	h := newExecutorHarness(t)
-	h.call(t, `{"name":"query_instance_subgraph","bkn_context":`+testBKNContext+`,"arguments":{"kn_id":"kn_demo","relation_type_paths":[{
-		"object_types":[{"id":"ot_order","condition":{"operation":"==","field":"order_no","value_from":"const","value":9007199254740993},"limit":10},
-		                {"id":"ot_item","condition":{"operation":"and","sub_conditions":[]},"limit":10}],
-		"relation_types":[{"relation_type_id":"rt_order_item"}]}]}}`)
+	h.call(t, `{"name":"explore_subgraph","bkn_context":`+testBKNContext+`,"arguments":{"kn_id":"kn_demo",
+		"source_object_type_id":"ot_order","direction":"forward","path_length":1,
+		"condition":{"operation":"==","field":"order_no","value_from":"const","value":9007199254740993}}}`)
 	if len(h.calls) != 1 {
 		t.Fatal("target did not run")
 	}

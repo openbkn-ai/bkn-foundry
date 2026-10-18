@@ -74,7 +74,8 @@ func TestCompactProfilePublishesExactlyItsToolList(t *testing.T) {
 		"describe_native_tool", "drill_through_metric",
 		"execute_native_tool",
 		"get_kn_detail", "list_knowledge_networks",
-		"query_metric", "query_object_instance",
+		"query_instance_subgraph", "query_metric", "query_object_instance",
+		"run_cypher",
 		"search_instance", "search_native_tools", "search_schema",
 	}
 	for _, locale := range []string{"zh-CN", "en-US"} {
