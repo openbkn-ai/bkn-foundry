@@ -562,6 +562,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents:
+    get:
+      tags:
+      - BknAgentExecution
+      summary: List Shared Agents
+      operationId: list_shared_agents_api_bkn_agent_v1_admin_agents_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/SharedOut'
+                type: array
+                title: Response List Shared Agents Api Bkn Agent V1 Admin Agents Get
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - HTTPBearer: []
   /api/bkn-agent/v1/admin/agents/{agent_id}:
     get:
       tags:
@@ -2377,6 +2403,9 @@ components:
         agent_id:
           type: string
           title: Agent Id
+        name:
+          type: string
+          title: Name
         model:
           anyOf:
           - type: string
@@ -2392,11 +2421,37 @@ components:
           - type: string
           - type: 'null'
           title: Mcp Profile
+        uses_context_loader:
+          type: boolean
+          title: Uses Context Loader
+        layered:
+          type: boolean
+          title: Layered
+        can_edit:
+          type: boolean
+          title: Can Edit
+        prompt_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Prompt Version
+        update_user:
+          type: string
+          title: Update User
+        update_time:
+          type: integer
+          title: Update Time
       type: object
       required:
       - agent_id
+      - name
       - status
       - limits
+      - uses_context_loader
+      - layered
+      - can_edit
+      - update_user
+      - update_time
       title: SharedOut
     SharedPromptOut:
       properties:
