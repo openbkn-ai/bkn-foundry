@@ -175,6 +175,23 @@ func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
 	if !found {
 		t.Fatalf("extension registration did not mount POST %q", objectMetricPath)
 	}
+	for _, path := range []string{
+		"/api/ontology-query/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/data/drill-through",
+		"/api/ontology-query/v1/knowledge-networks/:kn_id/object-metrics/trial/drill-through",
+		"/api/ontology-query/in/v1/knowledge-networks/:kn_id/object-metrics/:metric_id/data/drill-through",
+		"/api/ontology-query/in/v1/knowledge-networks/:kn_id/object-metrics/trial/drill-through",
+	} {
+		registered := false
+		for _, route := range engine.Routes() {
+			if route.Method == http.MethodPost && route.Path == path {
+				registered = true
+				break
+			}
+		}
+		if !registered {
+			t.Fatalf("extension registration did not mount POST %q", path)
+		}
+	}
 }
 
 func TestLegacyMetricRoutesAreNotRegistered(t *testing.T) {

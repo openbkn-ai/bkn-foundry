@@ -78,6 +78,7 @@ var toolAnnotations = map[string]func() mcp.ToolAnnotation{
 	toolKeyRunSQL:                   readOnlyTool,
 	toolKeyRunCypher:                readOnlyTool,
 	toolKeyQueryMetric:              readOnlyTool,
+	toolKeyDrillThroughMetric:       readOnlyTool,
 	toolKeyListResources:            readOnlyTool,
 	toolKeyDescribeResource:         readOnlyTool,
 

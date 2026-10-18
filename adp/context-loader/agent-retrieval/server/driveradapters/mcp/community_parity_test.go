@@ -46,6 +46,7 @@ var communityTools = []string{
 	"bkn_finish_interaction",
 	"bkn_start_interaction",
 	// knowledge network tools.
+	"drill_through_metric",
 	"execute_action",
 	"execute_tool",
 	"explore_subgraph",

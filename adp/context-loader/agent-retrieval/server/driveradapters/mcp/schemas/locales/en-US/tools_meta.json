@@ -73,7 +73,12 @@
   "query_metric": {
     "title": "Query Metrics",
     "group_title": "Instance Queries",
-    "description": "Query an immutable published Object Metric V1 definition. Select metric_id and version from get_object_types.related_metrics; never infer the latest version or reimplement the metric formula. The query object may contain instance identities, a typed filter, property-reference analysis dimensions, and a Unix-millisecond time range, subject to the published query capabilities. Read entries and status together to distinguish values, no data, unavailability, and partial results."
+    "description": "Query an immutable published Object Metric V1 definition. Select metric_id and version from get_object_types.related_metrics. To drill down, pass the prior complete query and returned bucket_key as bucket_selection, appending at most one allowed analysis dimension. Follow available_actions; use drill_through_metric to page through participants. Read entries and status together."
+  },
+  "drill_through_metric": {
+    "title": "Metric Participants",
+    "group_title": "Instance Queries",
+    "description": "Page through authorized participants of a query_metric result bucket when available_actions contains participants. Pass the same published version, complete query and server-issued bucket_key. This reads current data, not a historical snapshot."
   },
   "get_action_info": {
     "title": "Action Info",

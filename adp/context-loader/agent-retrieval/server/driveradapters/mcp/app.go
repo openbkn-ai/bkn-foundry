@@ -48,6 +48,7 @@ const (
 	toolKeyExploreSubgraph          = "explore_subgraph"
 	toolKeyGetLogicPropertiesValues = "get_logic_properties_values"
 	toolKeyQueryMetric              = "query_metric"
+	toolKeyDrillThroughMetric       = "drill_through_metric"
 	toolKeyGetActionInfo            = "get_action_info"
 	toolKeyExecuteAction            = "execute_action"
 	toolKeyGetActionExecution       = "get_action_execution"
@@ -203,6 +204,7 @@ func newMCPServerForProfile(
 
 	metricsService := knmetrics.NewKnMetricsService()
 	b.add(toolKeyQueryMetric, handleQueryMetric(metricsService))
+	b.add(toolKeyDrillThroughMetric, handleDrillThroughMetric(metricsService))
 
 	b.add(toolKeyListKnowledgeNetworks, handleListKnowledgeNetworks(bknBackend))
 	b.add(toolKeyGetKnDetail, handleGetKnDetail(bknBackend, metricsService, schemaAccess,

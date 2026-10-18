@@ -65,7 +65,8 @@ const (
 	// (the tool schema constrains it to a string and nothing more), and an
 	// unescaped one carrying "?" or "&" would smuggle query parameters — branch
 	// and fill_null among them — into the downstream request.
-	queryMetricDataURI = "/in/v1/knowledge-networks/%s/object-metrics/%s/data"
+	queryMetricDataURI        = "/in/v1/knowledge-networks/%s/object-metrics/%s/data"
+	drillThroughMetricDataURI = "/in/v1/knowledge-networks/%s/object-metrics/%s/data/drill-through"
 )
 
 // NewOntologyQueryAccess creates an OntologyQueryAccess.
@@ -714,6 +715,38 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 	resp = &interfaces.MetricQueryDownstreamResp{}
 	if err = unmarshalPrecise(respBody, resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryMetricData] invalid response: %v", err)
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	return resp, nil
+}
+
+// DrillThroughMetricData resolves a server-issued bucket to authorized source objects.
+func (o *ontologyQueryClient) DrillThroughMetricData(ctx context.Context, knID, metricID string, version int,
+	req *interfaces.MetricDrillThroughReq) (resp *interfaces.MetricDrillThroughResp, err error) {
+	if version < 1 || req == nil {
+		return nil, fmt.Errorf("a published metric version and drill-through request are required")
+	}
+	uri := fmt.Sprintf(drillThroughMetricDataURI, url.PathEscape(knID), url.PathEscape(metricID))
+	query := url.Values{}
+	query.Set("version", strconv.Itoa(version))
+	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
+	body := struct {
+		Query     interfaces.ObjectMetricQuery `json:"query"`
+		BucketKey string                       `json:"bucket_key"`
+		PageSize  int                          `json:"page_size,omitempty"`
+		Cursor    string                       `json:"cursor,omitempty"`
+	}{Query: req.Query, BucketKey: req.BucketKey, PageSize: req.PageSize, Cursor: req.Cursor}
+	header := withVerifiedApplicationPrincipal(ctx, common.GetHeaderForChildOperationIdentity(ctx,
+		"ontology.metric.drill-through", ontologyQueryIdentity(uri+"?"+query.Encode(), body)))
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
+	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, body)
+	if err != nil {
+		o.logger.WithContext(ctx).Warnf("[OntologyQuery#DrillThroughMetricData] kn=%s metric=%s failed: %v", knID, metricID, err)
+		return nil, classifyQueryError(ctx, err)
+	}
+	resp = &interfaces.MetricDrillThroughResp{}
+	if err = unmarshalPrecise(respBody, resp); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#DrillThroughMetricData] invalid response: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return resp, nil

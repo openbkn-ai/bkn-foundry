@@ -9,15 +9,31 @@ package interfaces
 // qualifiers and fixed statistical grain always come from the published metric
 // version and cannot be overridden by a caller.
 type ObjectMetricQueryRequestV1 struct {
-	InstanceIdentities []map[string]any              `json:"instance_identities,omitempty"`
-	Filter             *ObjectMetricConditionV1      `json:"filter,omitempty"`
-	AnalysisDimensions []ObjectMetricPropertyRefV1   `json:"analysis_dimensions,omitempty"`
-	Time               *ObjectMetricQueryTimeRangeV1 `json:"time,omitempty"`
+	InstanceIdentities []map[string]any               `json:"instance_identities,omitempty"`
+	Filter             *ObjectMetricConditionV1       `json:"filter,omitempty"`
+	AnalysisDimensions []ObjectMetricPropertyRefV1    `json:"analysis_dimensions,omitempty"`
+	Time               *ObjectMetricQueryTimeRangeV1  `json:"time,omitempty"`
+	BucketSelection    *ObjectMetricBucketSelectionV1 `json:"bucket_selection,omitempty"`
 	// RuntimeAnchor and WindowOverride are execution-plan fields. They are never
 	// accepted from an HTTP request and are only populated while evaluating a
 	// version-pinned composite dependency.
-	RuntimeAnchor  *int64                    `json:"-"`
-	WindowOverride *ObjectMetricTimeWindowV1 `json:"-"`
+	RuntimeAnchor   *int64                           `json:"-"`
+	WindowOverride  *ObjectMetricTimeWindowV1        `json:"-"`
+	SelectedBuckets []ObjectMetricBucketDescriptorV1 `json:"-"`
+}
+
+// A selection is resolved against a freshly re-evaluated parent query. The key
+// is an opaque result locator, never a substitute for query authorization.
+type ObjectMetricBucketSelectionV1 struct {
+	ParentQuery ObjectMetricQueryRequestV1 `json:"parent_query"`
+	BucketKey   string                     `json:"bucket_key"`
+}
+
+type ObjectMetricBucketDescriptorV1 struct {
+	InstanceIdentity map[string]any                `json:"instance_identity,omitempty"`
+	DimensionCells   []ObjectMetricDimensionCellV1 `json:"dimension_cells,omitempty"`
+	Time             *int64                        `json:"time,omitempty"`
+	TimeBucket       *ObjectMetricQueryTimeRangeV1 `json:"time_bucket,omitempty"`
 }
 
 // ObjectMetricTrialRequestV1 evaluates a caller-supplied definition against
@@ -34,11 +50,13 @@ type ObjectMetricQueryTimeRangeV1 struct {
 }
 
 type ObjectMetricDataV1 struct {
-	Model     ObjectMetricResultModelV1 `json:"model"`
-	Entries   []ObjectMetricDataEntryV1 `json:"entries"`
-	Status    string                    `json:"status"`
-	Warnings  []string                  `json:"warnings,omitempty"`
-	OverallMs int64                     `json:"overall_ms"`
+	Model           ObjectMetricResultModelV1     `json:"model"`
+	Entries         []ObjectMetricDataEntryV1     `json:"entries"`
+	Status          string                        `json:"status"`
+	Warnings        []string                      `json:"warnings,omitempty"`
+	OverallMs       int64                         `json:"overall_ms"`
+	EvaluatedAt     int64                         `json:"evaluated_at"`
+	EffectiveWindow *ObjectMetricQueryTimeRangeV1 `json:"effective_window,omitempty"`
 }
 
 type ObjectMetricResultModelV1 struct {
@@ -51,11 +69,49 @@ type ObjectMetricResultModelV1 struct {
 }
 
 type ObjectMetricDataEntryV1 struct {
-	InstanceIdentity map[string]any `json:"instance_identity,omitempty"`
-	Dimensions       map[string]any `json:"dimensions,omitempty"`
-	Time             *int64         `json:"time,omitempty"`
-	Value            any            `json:"value,omitempty"`
-	Status           string         `json:"status"`
+	InstanceIdentity map[string]any                `json:"instance_identity,omitempty"`
+	Dimensions       map[string]any                `json:"dimensions,omitempty"`
+	DimensionCells   []ObjectMetricDimensionCellV1 `json:"dimension_cells,omitempty"`
+	Time             *int64                        `json:"time,omitempty"`
+	TimeBucket       *ObjectMetricQueryTimeRangeV1 `json:"time_bucket,omitempty"`
+	Value            any                           `json:"value,omitempty"`
+	Status           string                        `json:"status"`
+	BucketKey        string                        `json:"bucket_key,omitempty"`
+	AvailableActions []string                      `json:"available_actions,omitempty"`
+}
+
+// ObjectMetricDimensionCellV1 preserves the relation path of each dimension.
+// The legacy dimensions map cannot distinguish equal property names reached
+// through different relation paths.
+type ObjectMetricDimensionCellV1 struct {
+	Ref   ObjectMetricPropertyRefV1 `json:"ref"`
+	Value any                       `json:"value"`
+}
+
+type ObjectMetricDrillThroughRequestV1 struct {
+	Query     ObjectMetricQueryRequestV1 `json:"query"`
+	BucketKey string                     `json:"bucket_key"`
+	PageSize  int                        `json:"page_size,omitempty"`
+	Cursor    string                     `json:"cursor,omitempty"`
+}
+
+type ObjectMetricTrialDrillThroughRequestV1 struct {
+	Definition ObjectMetricDefinitionV1 `json:"definition"`
+	ObjectMetricDrillThroughRequestV1
+}
+
+type ObjectMetricParticipantV1 struct {
+	InstanceIdentity map[string]any `json:"instance_identity"`
+	Role             string         `json:"role"`
+}
+
+type ObjectMetricDrillThroughV1 struct {
+	Participants []ObjectMetricParticipantV1 `json:"participants"`
+	NextCursor   string                      `json:"next_cursor,omitempty"`
+	BucketValue  any                         `json:"bucket_value,omitempty"`
+	EvaluatedAt  int64                       `json:"evaluated_at"`
+	Status       string                      `json:"status"`
+	Warnings     []string                    `json:"warnings,omitempty"`
 }
 
 // ObjectMetricExecutionContextV1 is the immutable, version-pinned metric graph
