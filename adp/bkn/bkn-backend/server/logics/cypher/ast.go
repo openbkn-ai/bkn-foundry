@@ -126,6 +126,17 @@ type Comparison struct {
 
 func (c Comparison) predicatePosition() Position { return c.Pos }
 
+// PropertyComparison is one property against another, as in
+// o.shipped < o.ordered or a.code = b.code.
+type PropertyComparison struct {
+	Left     PropertyRef
+	Operator string
+	Right    PropertyRef
+	Pos      Position
+}
+
+func (c PropertyComparison) predicatePosition() Position { return c.Pos }
+
 // ExpressionComparison is a comparison where at least one side is computed,
 // as in o.amount * o.rate > $floor. A property against a value stays a
 // Comparison, so every stage that reads those keeps seeing the same shape.
@@ -224,7 +235,11 @@ type Literal struct {
 	Integer int64
 	Float   float64
 	Boolean bool
-	Pos     Position
+	// Temporal names the function a date was written with, as in
+	// date('2026-08-13'). The value stays the text it was written as, and is
+	// compared only with a date or time property.
+	Temporal string
+	Pos      Position
 }
 
 func (l Literal) describe() string {
@@ -254,7 +269,9 @@ type Operand struct {
 // statement is generated.
 type ParameterRef struct {
 	Name string
-	Pos  Position
+	// Temporal is set for date($name) and its kin; see Literal.Temporal.
+	Temporal string
+	Pos      Position
 }
 
 // Projection is one RETURN item: a property, an aggregate over one, or a value
@@ -282,6 +299,9 @@ type Aggregate struct {
 	Name     string
 	Distinct bool
 	Property *PropertyRef
+	// Variable is set for count(n) and count(DISTINCT n), which count the
+	// node n rather than a value of it.
+	Variable string
 	// Argument is set instead of Property when the aggregate is over a
 	// computed value, as in sum(o.price * o.quantity). ArgumentText is that
 	// value as it was written, for naming the column.
@@ -299,6 +319,8 @@ func (a Aggregate) String() string {
 		inner = a.Property.String()
 	case a.Argument != nil:
 		inner = a.ArgumentText
+	case a.Variable != "":
+		inner = a.Variable
 	}
 	if a.Distinct {
 		inner = "DISTINCT " + inner

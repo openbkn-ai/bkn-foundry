@@ -49,19 +49,46 @@ func (e SyntaxErrors) Error() string {
 // let a failed parse look successful.
 type collector struct {
 	*antlr.DefaultErrorListener
-	errs SyntaxErrors
+	lines []string
+	errs  SyntaxErrors
 }
 
 func (c *collector) SyntaxError(_ antlr.Recognizer, _ any, line, column int,
 	msg string, _ antlr.RecognitionException) {
+	if hint := c.hintAt(line, column); hint != "" {
+		msg += "; " + hint
+	}
 	c.errs = append(c.errs, SyntaxError{Line: line, Column: column, Msg: msg})
+}
+
+// hintAt names the standard spelling of what is written at an error, for
+// spellings a query author brings from SQL. They stay errors: openCypher has
+// neither, and the hint says what to write instead.
+func (c *collector) hintAt(line, column int) string {
+	if line < 1 || line > len(c.lines) {
+		return ""
+	}
+	runes := []rune(c.lines[line-1])
+	if column < 0 || column > len(runes) {
+		return ""
+	}
+	rest := strings.TrimLeft(string(runes[column:]), " \t")
+	switch {
+	case strings.HasPrefix(rest, "!="):
+		return "openCypher writes not-equal as <>, as in n.property <> 'value'; != is not supported"
+	case len(rest) >= 5 && strings.EqualFold(rest[:5], "GROUP"):
+		return "openCypher has no GROUP BY: aggregating in RETURN groups by the other columns RETURN lists, " +
+			"as in RETURN n.property, count(*)"
+	default:
+		return ""
+	}
 }
 
 // Parse turns query text into a parse tree. A non-nil error is always of type
 // SyntaxErrors and carries every position the parser complained about, so a
 // caller can report them all rather than only the first.
 func Parse(query string) (parsing.IOC_CypherContext, error) {
-	c := &collector{}
+	c := &collector{lines: strings.Split(query, "\n")}
 
 	lexer := parsing.NewCypherLexer(antlr.NewInputStream(query))
 	lexer.RemoveErrorListeners()

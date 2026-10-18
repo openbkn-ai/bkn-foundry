@@ -59,15 +59,18 @@ paths:
           限制：首个子句必须是 `MATCH`；一条 `OPTIONAL MATCH` 只能写一条关系、只能引入一个
           新节点（两端都已匹配或两端都是新节点都会被拒）；它引入的节点不能被后面的 `MATCH`
           或查询的 `WHERE` 再要求，否则留下来的行会被重新删掉，这类查询一律拒绝而不是照做。
-        - **WHERE**：`=` `<>` `<` `>` `<=` `>=`、`IN [...]`、`IS NULL` / `IS NOT NULL`，
+        - **WHERE**：`=` `<>` `<` `>` `<=` `>=`（不等于写 `<>`，`!=` 不是 openCypher 写法，会报语法错误并提示），
+          两边可以都是属性（`o.shipped < o.ordered`、`a.code = b.code`；模型声明为字符串和数字的属性不能互比），
+          日期写 `date('2026-08-13')` / `datetime(...)`，只能和日期类属性比较；`IN [...]`、`IS NULL` / `IS NOT NULL`，
           `STARTS WITH` / `ENDS WITH` / `CONTAINS`，用 `AND` / `OR` / `NOT` 组合，可加括号。
           值可写 `$name` 参数；`IN $list` 可把整个列表作为一个参数传入。字符串谓词左侧须为
           `变量.属性`，右侧须为字符串字面量或取值为字符串的参数；按 openCypher 语义做字面
           子串匹配（`%`、`_` 等不是通配符），属性为 null 时不匹配；大小写是否敏感取决于
           数据源列的排序规则（collation）。只能用于字符串属性，用在数值、日期等属性上返回 400。
         - **RETURN**：属性、`AS` 别名、`DISTINCT`，以及 `count` / `sum` / `avg` /
-          `min` / `max`（含 `count(*)` 与 `DISTINCT` 形式）。有聚合时按 RETURN 中其余
-          列自动分组——这是 Cypher 的隐式 GROUP BY，无需也不能自己写 GROUP BY。
+          `min` / `max`（含 `count(*)` 与 `DISTINCT` 形式）。`count(n)` 统计节点 n 存在的行，
+          `count(DISTINCT n)` 按主键统计不同对象（要求对象类恰有一个主键属性）。有聚合时按 RETURN 中其余
+          列自动分组——这是 Cypher 的隐式 GROUP BY，无需也不能自己写 GROUP BY（写了会报语法错误并提示）。
           RETURN 也可以返回条件，写法与 `WHERE` 相同，如 `g.tournament_name CONTAINS 'Men' AS mens`：
           值为 `true` / `false`，无法判定时（属性为 null，或 OPTIONAL MATCH 没匹配到节点）为
           `null`；它和其他返回值一样参与分组。要按条件排序，请先起别名再按别名排序。

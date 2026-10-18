@@ -273,15 +273,19 @@ type PlanExpressionComparison struct {
 
 func (PlanExpressionComparison) planPredicate() {}
 
-// PlanColumnComparison compares two columns. The analyzer does not produce one
-// -- a query comparing two properties is refused -- but the planner needs it
-// to say that two hops of a pattern did not traverse the same relationship.
+// PlanColumnComparison compares two columns: one property against another as
+// the query wrote it, or two hops the planner requires to differ so that a
+// pattern does not traverse the same relationship twice.
 type PlanColumnComparison struct {
 	LeftTable   int
 	LeftColumn  string
 	Operator    string
 	RightTable  int
 	RightColumn string
+	// LeftProperty and RightProperty are set when the query wrote the
+	// comparison, and empty when the planner added it.
+	LeftProperty  string
+	RightProperty string
 }
 
 func (PlanColumnComparison) planPredicate() {}
@@ -692,6 +696,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := p.checkTemporal(table, node.Left.Property, value); err != nil {
+			return nil, err
+		}
 		return PlanCondition{
 			Table: table, Column: column, Property: node.Left.Property,
 			Operator: node.Operator, Value: value, InputPointer: operandInputPointer(node.Right),
@@ -745,6 +752,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 			if err != nil {
 				return nil, err
 			}
+			if err := p.checkTemporal(table, node.Property.Property, resolved); err != nil {
+				return nil, err
+			}
 			values = append(values, resolved)
 			inputPointers = append(inputPointers, operandInputPointer(value))
 		}
@@ -755,6 +765,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 
 	case ExpressionComparison:
 		return p.planExpressionComparison(node)
+
+	case PropertyComparison:
+		return p.planPropertyComparison(node)
 
 	case StringMatch:
 		table, column, err := p.resolveProperty(node.Property)
@@ -886,7 +899,29 @@ func (p *planner) resolveValue(value Operand, pos Position) (Literal, error) {
 		return Literal{}, planErrorf(value.Parameter.Pos, "parameter %q %v", name, err)
 	}
 	literal.Pos = value.Parameter.Pos
+	if temporal := value.Parameter.Temporal; temporal != "" {
+		if _, isDate := wallClock(literal.String); literal.Kind != LiteralString || !isDate {
+			return Literal{}, planErrorf(value.Parameter.Pos,
+				"parameter %q is used as %s(), which takes a date string such as 2026-08-13; got %s",
+				name, temporal, literal.describe())
+		}
+		literal.Temporal = temporal
+	}
 	return literal, nil
+}
+
+// checkTemporal refuses a date constant against a property that does not
+// hold dates: Cypher never finds a date equal to a string or a number.
+func (p *planner) checkTemporal(table int, property string, value Literal) error {
+	if value.Temporal == "" {
+		return nil
+	}
+	declared, known := p.dataPropertyType(table, property)
+	if known && valueFamily(declared) != "" && valueFamily(declared) != "date" {
+		return planErrorf(value.Pos, "%s() is compared with %q, which holds %s rather than dates",
+			value.Temporal, property, declared)
+	}
+	return nil
 }
 
 func (p *planner) planReturn(projections []Projection) error {
@@ -995,6 +1030,9 @@ func (p *planner) planAggregateOver(aggregate Aggregate) (*PlanAggregate, number
 }
 
 func (p *planner) planAggregateProperty(aggregate Aggregate) (*PlanAggregate, error) {
+	if aggregate.Variable != "" {
+		return p.planNodeCount(aggregate)
+	}
 	if aggregate.Property == nil {
 		return &PlanAggregate{Function: aggregate.Function, Star: true}, nil
 	}
@@ -1386,4 +1424,92 @@ func (p *planner) unknownSortName(key SortKey) error {
 	return planErrorf(key.Pos,
 		"%q is not returned by this query, so there is nothing to sort by (returned: %s)",
 		key.Alias, strings.Join(names, ", "))
+}
+
+// planPropertyComparison plans one property against another. Properties the
+// model types differently are refused: Cypher says a string is never a number,
+// while MySQL converts one to compare it, so the two would answer differently.
+func (p *planner) planPropertyComparison(node PropertyComparison) (PlanPredicate, error) {
+	leftTable, leftColumn, err := p.resolveProperty(node.Left)
+	if err != nil {
+		return nil, err
+	}
+	rightTable, rightColumn, err := p.resolveProperty(node.Right)
+	if err != nil {
+		return nil, err
+	}
+	leftType, leftKnown := p.dataPropertyType(leftTable, node.Left.Property)
+	rightType, rightKnown := p.dataPropertyType(rightTable, node.Right.Property)
+	if leftKnown && rightKnown {
+		leftFamily, rightFamily := valueFamily(leftType), valueFamily(rightType)
+		if leftFamily != "" && rightFamily != "" && leftFamily != rightFamily {
+			return nil, planErrorf(node.Pos, "comparing %s (%s) with %s (%s): the two are never equal or ordered",
+				node.Left, leftType, node.Right, rightType)
+		}
+	}
+	return PlanColumnComparison{
+		LeftTable: leftTable, LeftColumn: leftColumn, LeftProperty: node.Left.Property,
+		Operator:   node.Operator,
+		RightTable: rightTable, RightColumn: rightColumn, RightProperty: node.Right.Property,
+	}, nil
+}
+
+// valueFamily groups the declared types whose values compare with each other,
+// or is empty for a type it does not place.
+func valueFamily(declared string) string {
+	lowered := strings.ToLower(declared)
+	switch {
+	case lowered == "":
+		return ""
+	case isIn(integerTypes, lowered), isIn(floatTypes, lowered):
+		return "number"
+	case isIn(stringMatchTypes, lowered):
+		return "string"
+	case lowered == dtype.DATATYPE_BOOLEAN:
+		return "boolean"
+	case lowered == dtype.DATATYPE_DATE, lowered == dtype.DATATYPE_DATETIME,
+		lowered == dtype.DATATYPE_TIMESTAMP, lowered == dtype.DATATYPE_TIME:
+		return "date"
+	default:
+		return ""
+	}
+}
+
+func isIn(set map[string]struct{}, key string) bool {
+	_, ok := set[key]
+	return ok
+}
+
+// planNodeCount plans count(n) and count(DISTINCT n). A node is there when its
+// key is, so counting n counts its key: a row an OPTIONAL MATCH found nothing
+// for has none and is not counted, and DISTINCT counts each object once. A
+// node that must match is on every row, so without a key count(n) is count(*).
+func (p *planner) planNodeCount(aggregate Aggregate) (*PlanAggregate, error) {
+	table, bound := p.tableOf[aggregate.Variable]
+	if !bound {
+		return nil, planErrorf(aggregate.Pos, "variable %q is not defined in the MATCH pattern", aggregate.Variable)
+	}
+	keys := p.objectType[table].PrimaryKeys
+	switch {
+	case aggregate.Distinct && len(keys) != 1:
+		return nil, planErrorf(aggregate.Pos,
+			"count(DISTINCT %s) needs the object type to have exactly one primary key property; "+
+				"count a property that identifies %s instead, as in count(DISTINCT %s.property)",
+			aggregate.Variable, aggregate.Variable, aggregate.Variable)
+	case len(keys) == 0 && p.plan.Tables[table].Optional:
+		return nil, planErrorf(aggregate.Pos,
+			"count(%s) needs a primary key to tell a found %s from a missing one; count one of its properties instead",
+			aggregate.Variable, aggregate.Variable)
+	case len(keys) == 0:
+		return &PlanAggregate{Function: aggregate.Function, Star: true}, nil
+	}
+	key := PropertyRef{Variable: aggregate.Variable, Property: keys[0], Pos: aggregate.Pos}
+	_, column, err := p.resolveProperty(key)
+	if err != nil {
+		return nil, err
+	}
+	return &PlanAggregate{
+		Function: aggregate.Function, Distinct: aggregate.Distinct,
+		Table: table, Column: column, Property: keys[0],
+	}, nil
 }

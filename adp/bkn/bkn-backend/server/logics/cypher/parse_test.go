@@ -8,6 +8,7 @@ package cypher
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,28 @@ func TestParseReportsEverySyntaxError(t *testing.T) {
 		if errs[0].Msg == "" {
 			t.Fatal("syntax error carried no message")
 		}
+	}
+}
+
+// Spellings brought from SQL stay syntax errors, and the error says what
+// openCypher writes instead.
+func TestParseHintsTheStandardSpelling(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		want  string
+	}{
+		{"MATCH (g:Goal) WHERE g.team != 'Brazil' RETURN count(*) AS n", "openCypher writes not-equal as <>"},
+		{"MATCH (g:Goal)\nWHERE g.minute != 90 RETURN g.team", "openCypher writes not-equal as <>"},
+		{"MATCH (g:Goal) RETURN g.team AS t, count(*) AS n GROUP BY g.team", "openCypher has no GROUP BY"},
+		{"MATCH (g:Goal) RETURN g.team AS t, count(*) AS n group by g.team", "openCypher has no GROUP BY"},
+	} {
+		_, err := Parse(tc.query)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("Parse(%q) = %v, want a hint mentioning %q", tc.query, err, tc.want)
+		}
+	}
+	// A != inside a string is a value, not an operator, and parses.
+	if _, err := Parse("MATCH (g:Goal) WHERE g.note = 'a != b' RETURN g.note"); err != nil {
+		t.Fatalf("Parse of != inside a string: %v", err)
 	}
 }

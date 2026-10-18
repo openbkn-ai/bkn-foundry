@@ -835,9 +835,12 @@ func analyzeAggregateAtom(atom parsing.IOC_AtomContext) (*Aggregate, bool, error
 		return aggregate, true, nil
 	}
 	if variable, ok := bareVariable(arguments[0]); ok {
-		return nil, false, unsupportedf(arguments[0], "aggregating a whole node",
-			"%s(%s) is not supported: to count the matches write count(*), "+
-				"and to count distinct nodes write count(DISTINCT %s.<key property>)", name, variable, variable)
+		if function != "COUNT" {
+			return nil, false, unsupportedf(arguments[0], name+" over a whole node",
+				"%s takes a value; aggregate one of its properties, as in %s(%s.property)", name, name, variable)
+		}
+		aggregate.Variable = variable
+		return aggregate, true, nil
 	}
 	property, err := analyzePropertyRef(arguments[0])
 	if err != nil {
@@ -1360,11 +1363,22 @@ func analyzeComparison(ctx parsing.IOC_ComparisonExpressionContext) (Predicate, 
 		return nil, unsupportedf(ctx, "comparing a condition",
 			"a comparison must be variable.property against a value")
 	}
-	if leftValue.property == nil || rightValue.property != nil || rightValue.operand() == nil {
-		// One side has to be a column and the other a value; anything else
-		// would need expression generation the subset does not have yet.
+	operator := comparisonOperator(partials[0])
+	if leftValue.property != nil && rightValue.property != nil {
+		return PropertyComparison{
+			Left: *leftValue.property, Operator: operator, Right: *rightValue.property, Pos: positionOf(ctx),
+		}, nil
+	}
+	if leftValue.property == nil && rightValue.property != nil && leftValue.operand() != nil {
+		// A value on the left reads the same turned around: 5 < o.amount is
+		// o.amount > 5.
+		leftValue, rightValue = rightValue, leftValue
+		operator = mirroredOperators[operator]
+	}
+	if leftValue.property == nil || rightValue.operand() == nil {
+		// One side has to be a column; two values say nothing about the rows.
 		return nil, unsupportedf(ctx, "this comparison",
-			"a comparison must be variable.property against a literal or a parameter")
+			"a comparison must read a property, as in n.property = 'value' or n.a < n.b")
 	}
 	if rightValue.literal != nil && rightValue.literal.Kind == LiteralNull {
 		return nil, unsupportedf(ctx, "comparing against null",
@@ -1372,11 +1386,15 @@ func analyzeComparison(ctx parsing.IOC_ComparisonExpressionContext) (Predicate, 
 	}
 	return Comparison{
 		Left:     *leftValue.property,
-		Operator: comparisonOperator(partials[0]),
+		Operator: operator,
 		Right:    *rightValue.operand(),
 		Pos:      positionOf(ctx),
 	}, nil
 }
+
+// mirroredOperators turns a comparison around, for a value written on the
+// left.
+var mirroredOperators = map[string]string{"=": "=", "<>": "<>", "<": ">", ">": "<", "<=": ">=", ">=": "<="}
 
 // analyzeExpressionComparison reads a comparison with arithmetic on either
 // side. It reports false for anything else, which keeps the path every other
@@ -1839,6 +1857,9 @@ func analyzeAtomOperand(ctx parsing.IOC_PropertyOrLabelsExpressionContext) (oper
 }
 
 func analyzeAtomLiteral(ctx parsing.IOC_AtomContext) (operand, error) {
+	if invocation := ctx.OC_FunctionInvocation(); invocation != nil {
+		return analyzeTemporal(invocation)
+	}
 	literal := ctx.OC_Literal()
 	if literal == nil {
 		return operand{}, unsupported(ctx, describeAtom(ctx))
@@ -2044,4 +2065,43 @@ func codePoint(value uint64, digits string) (rune, error) {
 		return 0, fmt.Errorf("unpaired surrogate in unicode escape sequence \\u%s", digits)
 	}
 	return decoded, nil
+}
+
+// temporalFunctions are the date constructors a comparison may use, as in
+// f.due <= date('2026-08-13'). Each takes one string, written in the query or
+// passed as a parameter.
+var temporalFunctions = map[string]bool{"date": true, "datetime": true, "localdatetime": true}
+
+// analyzeTemporal reads date('...') and its kin as a date constant. Every
+// other function is still refused, and so is date() with no argument: the
+// current date depends on a clock and a time zone the query does not name.
+func analyzeTemporal(invocation parsing.IOC_FunctionInvocationContext) (operand, error) {
+	name := strings.ToLower(identifier(invocation.OC_FunctionName().GetText()))
+	if !temporalFunctions[name] {
+		return operand{}, unsupported(invocation, "function calls")
+	}
+	arguments := invocation.AllOC_Expression()
+	if len(arguments) != 1 || invocation.DISTINCT() != nil {
+		return operand{}, unsupportedf(invocation, name+"() without one string",
+			"write the date itself, as in %s('2026-08-13')", name)
+	}
+	value, err := analyzeOperand(arguments[0])
+	if err != nil {
+		return operand{}, err
+	}
+	switch {
+	case value.parameter != nil:
+		value.parameter.Temporal = name
+		return value, nil
+	case value.literal != nil && value.literal.Kind == LiteralString:
+		if _, ok := wallClock(value.literal.String); !ok {
+			return operand{}, unsupportedf(invocation, "this "+name,
+				"%q is not a date; write it as 2026-08-13 or 2026-08-13T09:30:00", value.literal.String)
+		}
+		value.literal.Temporal = name
+		return value, nil
+	default:
+		return operand{}, unsupportedf(invocation, name+"() over something other than a string",
+			"write the date as a string, as in %s('2026-08-13')", name)
+	}
 }

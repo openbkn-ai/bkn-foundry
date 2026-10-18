@@ -110,10 +110,12 @@ type SemanticQueryOrdering struct {
 }
 
 // semanticExpression is what the descriptor records of a computed value, and
-// semanticCondition of a condition returned as a value.
+// semanticCondition of a condition returned as a value, and semanticComparison
+// of one property compared with another.
 const (
 	semanticExpression = "arithmetic"
 	semanticCondition  = "condition"
+	semanticComparison = "property_comparison"
 )
 
 // semanticExpressionKind names what a computed column is in the descriptor.
@@ -257,8 +259,22 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 
 func appendSemanticPredicates(descriptor *SemanticQueryDescriptor, plan *Plan, predicate PlanPredicate, path string) error {
 	switch value := predicate.(type) {
-	case nil, PlanNever, PlanColumnComparison:
+	case nil, PlanNever:
 		return nil
+	case PlanColumnComparison:
+		// The planner's own comparisons, which keep two hops apart, are not
+		// something the query asked for.
+		if value.LeftProperty == "" || value.RightProperty == "" {
+			return nil
+		}
+		refs := []string{
+			semanticPropertyRef(plan, value.LeftTable, value.LeftProperty),
+			semanticPropertyRef(plan, value.RightTable, value.RightProperty),
+		}
+		descriptor.Predicates = append(descriptor.Predicates, SemanticQueryPredicate{
+			Operator: value.Operator, Expression: semanticComparison, PropertyRefs: dedupe(refs),
+			InputPointer: "$.query", LogicalPath: path,
+		})
 	case PlanCondition:
 		ref := semanticPropertyRef(plan, value.Table, value.Property)
 		if ref == "" {

@@ -271,7 +271,7 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order) RETURN a.x CONTAINS a.y", "CONTAINS against a property"},
 		{"MATCH (a:Order) RETURN a.x > count(*) + 1", "an aggregate in a condition"},
 		{"MATCH (a:Order) RETURN (a.x > 1) + 1", "a comparison here"},
-		{"MATCH (a:Order) WHERE a.x = a.y RETURN a.id", "against a literal"},
+		{"MATCH (a:Order) WHERE 1 = 2 RETURN a.id", "a comparison must read a property"},
 		{"MATCH (a:Order) WHERE a.x = null RETURN a.id", "comparing against null"},
 		{"MATCH (a:Order) WHERE a.x = 1 XOR a.y = 2 RETURN a.id", "XOR"},
 		{"MATCH (a:Order) WHERE a.x < a.y < a.z RETURN a.id", "chained comparisons"},

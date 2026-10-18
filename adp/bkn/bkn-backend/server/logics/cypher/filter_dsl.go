@@ -387,6 +387,10 @@ func markDateComparisons(predicate PlanPredicate, isDate func(table int, column 
 		if isDate(node.Table, node.Column) {
 			return dateComparison{PlanPredicate: node}
 		}
+	case PlanColumnComparison:
+		if isDate(node.LeftTable, node.LeftColumn) || isDate(node.RightTable, node.RightColumn) {
+			return dateComparison{PlanPredicate: node}
+		}
 	case PlanNegation:
 		return PlanNegation{Operand: markDateComparisons(node.Operand, isDate)}
 	case PlanLogical:
