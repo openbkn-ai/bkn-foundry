@@ -35,6 +35,7 @@ func (s *stubBknBackend) ListKNCapabilities(context.Context, string, string, str
 type stubOntologyQuery struct {
 	interfaces.DrivenOntologyQuery
 	resp       *interfaces.MetricQueryDownstreamResp
+	drillResp  *interfaces.MetricDrillThroughResp
 	err        error
 	gotKnID    string
 	gotMetric  string
@@ -47,6 +48,10 @@ func (s *stubOntologyQuery) QueryMetricData(_ context.Context, knID, metricID st
 	s.calls++
 	s.gotKnID, s.gotMetric, s.gotVersion, s.gotReq = knID, metricID, version, req
 	return s.resp, s.err
+}
+
+func (s *stubOntologyQuery) DrillThroughMetricData(_ context.Context, _, _ string, _ int, _ *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
+	return s.drillResp, s.err
 }
 
 func TestAttachRelatedMetrics(t *testing.T) {
@@ -140,5 +145,14 @@ func TestQueryMetric_EmptyEntriesAreArray(t *testing.T) {
 	resp, err := NewKnMetricsServiceWith(nil, nil, oq).QueryMetric(context.Background(), &interfaces.QueryMetricReq{KnID: "kn1", MetricID: "m1", Version: 1})
 	if err != nil || resp.Status != "no_data" || resp.Entries == nil || len(resp.Entries) != 0 {
 		t.Fatalf("response=%+v err=%v", resp, err)
+	}
+}
+
+func TestDrillThroughMetric_EmptyParticipantsAreArray(t *testing.T) {
+	query := &stubOntologyQuery{drillResp: &interfaces.MetricDrillThroughResp{Status: "ok"}}
+	result, err := NewKnMetricsServiceWith(nil, nil, query).DrillThroughMetric(context.Background(),
+		&interfaces.MetricDrillThroughReq{KnID: "kn1", MetricID: "m1", Version: 1, BucketKey: "selected"})
+	if err != nil || result.Participants == nil || len(result.Participants) != 0 {
+		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }

@@ -193,6 +193,9 @@ func (s *knMetricsService) DrillThroughMetric(ctx context.Context, req *interfac
 	if resp == nil {
 		return nil, errors.New("metric drill-through returned no result")
 	}
+	if resp.Participants == nil {
+		resp.Participants = []interfaces.ObjectMetricParticipant{}
+	}
 	resp.KnID = strings.TrimSpace(req.KnID)
 	resp.MetricID = strings.TrimSpace(req.MetricID)
 	resp.Version = req.Version
