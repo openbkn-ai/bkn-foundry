@@ -7,7 +7,7 @@
 from dataclasses import replace
 
 import aiohttp
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app import observability
@@ -207,3 +207,21 @@ async def authorize_network_setting(
 
 async def authorize_agent(account: Account, agent_id: str) -> None:
     await authorize(account, [_agent_check(agent_id)])
+
+
+# Changing a built-in Agent is a platform administration operation registered in
+# bkn-safe as admin-agent:manage (type level, like admin-client and
+# admin-license); super-admin holds it through its global grant.
+_AGENT_ADMIN_CHECK = {"resource": {"type": "admin-agent", "id": "*"}, "operation": "manage"}
+
+
+async def can_manage_agents(account: Account) -> bool:
+    """Whether the caller may change built-in Agents. A refusal is an answer;
+    an unavailable bkn-safe still fails the request."""
+    try:
+        await authorize(account, [_AGENT_ADMIN_CHECK])
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            return False
+        raise
+    return True

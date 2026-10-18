@@ -221,19 +221,26 @@ def test_execution_applies_network_and_user_layers(monkeypatch):
 ADMIN = "/api/bkn-agent/v1/admin/agents/studio_smart_qa"
 
 
-async def _make_creator(factory, account_id):
-    from app.models import AgentRow
+def _deny_agent_admin(monkeypatch):
+    """bkn-safe refuses admin-agent:manage; everything else stays allowed."""
+    original = public_auth._post
 
-    async with factory() as session:
-        row = await session.get(AgentRow, "studio_smart_qa")
-        row.f_create_user = account_id
-        await session.commit()
+    async def post(url, **kwargs):
+        result = await original(url, **kwargs)
+        for decision in result.get("results", []):
+            if decision["resource_type"] == "admin-agent":
+                decision["allowed"] = False
+                result["allowed"] = False
+        return result
+
+    monkeypatch.setattr(public_auth, "_post", post)
+    return original
 
 
-def test_only_the_creator_changes_shared_configuration_for_now(monkeypatch):
+def test_changing_built_in_agents_needs_admin_agent_manage(monkeypatch):
     async def run():
-        async with environment(monkeypatch) as (client, factory, _):
-            # The seeded Agent belongs to "admin"; the caller is "user-1".
+        async with environment(monkeypatch) as (client, _, _):
+            original = _deny_agent_admin(monkeypatch)
             assert (
                 await client.put(ADMIN, json={"model": "m"}, headers=AUTH)
             ).status_code == 403
@@ -242,6 +249,7 @@ def test_only_the_creator_changes_shared_configuration_for_now(monkeypatch):
                     f"{ADMIN}/prompt/rollback", json={"version": 1}, headers=AUTH
                 )
             ).status_code == 403
+            assert (await client.post(f"{ADMIN}/restore", headers=AUTH)).status_code == 403
             assert (await client.get(CONFIG, headers=AUTH)).json()[
                 "can_edit_shared"
             ] is False
@@ -251,7 +259,10 @@ def test_only_the_creator_changes_shared_configuration_for_now(monkeypatch):
             assert read.status_code == 200, read.text
             assert read.json()["can_edit"] is False
             assert (await client.get(f"{ADMIN}/prompt", headers=AUTH)).status_code == 200
-            await _make_creator(factory, "user-1")
+
+            # The permission, not authorship, decides: the seeded Agent belongs to
+            # "admin" and the caller is still "user-1".
+            monkeypatch.setattr(public_auth, "_post", original)
             assert (await client.get(CONFIG, headers=AUTH)).json()[
                 "can_edit_shared"
             ] is True
@@ -273,6 +284,61 @@ def test_only_the_creator_changes_shared_configuration_for_now(monkeypatch):
             # Unset fields stay as they were.
             again = await client.put(ADMIN, json={"status": "published"}, headers=AUTH)
             assert again.json()["model"] == "DeepSeek"
+
+    asyncio.run(run())
+
+
+def test_built_in_agents_cannot_be_unpublished_or_deleted(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, _, _):
+            draft = await client.put(ADMIN, json={"status": "draft"}, headers=AUTH)
+            assert draft.status_code == 400, draft.text
+
+            internal = "/api/bkn-agent/v1/agents/studio_smart_qa"
+            # The seeded owner, so only the built-in rule can refuse these.
+            owner = {"x-account-id": "admin", "x-account-type": "user"}
+            got = await client.get(internal, headers=owner)
+            assert got.status_code == 200, got.text
+            spec = got.json()
+            spec["status"] = "draft"
+            for key in ("create_user", "update_user", "create_time", "update_time"):
+                spec.pop(key)
+            refused = await client.put(internal, json=spec, headers=owner)
+            assert refused.status_code == 400, refused.text
+            deleted = await client.delete(internal, headers=owner)
+            assert deleted.status_code == 403, deleted.text
+            assert (await client.get(internal, headers=owner)).json()["status"] == "published"
+
+    asyncio.run(run())
+
+
+def test_restore_returns_a_built_in_agent_to_what_it_shipped_with(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, _, _):
+            shipped = (await client.get(ADMIN, headers=AUTH)).json()
+            # The migration records seeded Agents; the first change covers the rest.
+            assert shipped["restorable"] is False and shipped["modified"] is False
+
+            changed = await client.put(
+                ADMIN,
+                json={"model": "DeepSeek", "limits": {"max_turns": 3}},
+                headers=AUTH,
+            )
+            assert changed.json()["restorable"] is True
+            assert changed.json()["modified"] is True
+            await client.put(f"{ADMIN}/prompt", json={"content": "Edited"}, headers=AUTH)
+
+            restored = await client.post(f"{ADMIN}/restore", headers=AUTH)
+            assert restored.status_code == 200, restored.text
+            body = restored.json()
+            assert body["model"] == shipped["model"]
+            assert body["limits"] == shipped["limits"]
+            assert body["prompt_version"] == shipped["prompt_version"]
+            assert body["modified"] is False
+            prompt = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()
+            # The edited version stays in history; the shipped one is current again.
+            assert prompt["prompt"]["current_version"] == shipped["prompt_version"]
+            assert len(prompt["versions"]) == 2
 
     asyncio.run(run())
 
@@ -315,7 +381,7 @@ def test_admin_lists_only_seeded_built_in_agents(monkeypatch):
             assert list(items) == ["studio_smart_qa", "catalog-semantic-understanding"]
             qa, catalog = items.values()
             assert qa["layered"] is True and qa["uses_context_loader"] is True
-            assert qa["can_edit"] is False and qa["prompt_version"] == 1
+            assert qa["can_edit"] is True and qa["prompt_version"] == 1
             assert catalog["layered"] is False
             assert catalog["uses_context_loader"] is False
             assert catalog["can_edit"] is True
@@ -337,7 +403,6 @@ def test_admin_lists_only_seeded_built_in_agents(monkeypatch):
 def test_shared_prompt_publishes_versions_and_rolls_back(monkeypatch):
     async def run():
         async with environment(monkeypatch) as (client, factory, _):
-            await _make_creator(factory, "user-1")
             current = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()
             assert current["prompt"]["current_version"] == 1
 
@@ -391,7 +456,6 @@ def test_mcp_profile_switches_the_context_loader_surface(monkeypatch):
                 row = await session.get(AgentRow, "studio_smart_qa")
                 row.f_tools = [{"type": "context_loader", "allowed_tools": ["a"]}]
                 await session.commit()
-            await _make_creator(factory, "user-1")
             saved = await client.put(
                 ADMIN, json={"mcp_profile": "compact"}, headers=AUTH
             )
@@ -411,5 +475,44 @@ def test_mcp_profile_switches_the_context_loader_surface(monkeypatch):
                 ]
             reset = await client.put(ADMIN, json={"mcp_profile": None}, headers=AUTH)
             assert reset.json()["mcp_profile"] is None
+
+    asyncio.run(run())
+
+
+def test_prompt_versions_except_initial_and_current_can_be_deleted(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, _, _):
+            for content in ("Second", "Third"):
+                await client.put(f"{ADMIN}/prompt", json={"content": content}, headers=AUTH)
+            listed = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()
+            # The first change recorded v1 as what the Agent shipped with.
+            assert listed["initial_version"] == 1
+            assert [v["version"] for v in listed["versions"]] == [3, 2, 1]
+
+            in_use = await client.delete(f"{ADMIN}/prompt/versions/3", headers=AUTH)
+            assert in_use.status_code == 400, in_use.text
+            initial = await client.delete(f"{ADMIN}/prompt/versions/1", headers=AUTH)
+            assert initial.status_code == 400, initial.text
+
+            deleted = await client.delete(f"{ADMIN}/prompt/versions/2", headers=AUTH)
+            assert deleted.status_code == 200, deleted.text
+            assert [v["version"] for v in deleted.json()["versions"]] == [3, 1]
+            assert (
+                await client.delete(f"{ADMIN}/prompt/versions/2", headers=AUTH)
+            ).status_code == 404
+            assert (
+                await client.post(
+                    f"{ADMIN}/prompt/rollback", json={"version": 2}, headers=AUTH
+                )
+            ).status_code == 404
+
+            # A deleted number is never handed out again.
+            again = await client.put(f"{ADMIN}/prompt", json={"content": "Fourth"}, headers=AUTH)
+            assert again.json()["prompt"]["current_version"] == 4
+
+            _deny_agent_admin(monkeypatch)
+            assert (
+                await client.delete(f"{ADMIN}/prompt/versions/3", headers=AUTH)
+            ).status_code == 403
 
     asyncio.run(run())

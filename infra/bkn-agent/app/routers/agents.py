@@ -5,8 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import dao
 from app.auth import Account, get_account
 from app.db import get_session
-from app.errors import bad_request, forbidden, not_found
+from app.errors import bad_request, err, forbidden, not_found
 from app.models import AgentDeleted, AgentList, AgentOut, AgentSpec
+from app.public_auth import BUILTIN_AGENT_IDS
 
 router = APIRouter()
 
@@ -81,6 +82,9 @@ async def update_agent(
     session: AsyncSession = Depends(get_session),
 ):
     await _load_owned_agent(session, agent_id, account)
+    # Platform features depend on built-in Agents; they stay published.
+    if agent_id in BUILTIN_AGENT_IDS and spec.status != "published":
+        raise bad_request("BknAgent.Agent.BuiltinStaysPublished", agent_id=agent_id)
     try:
         agent = await dao.update_agent(session, agent_id, spec, account.account_id)
     except IntegrityError:
@@ -96,6 +100,8 @@ async def delete_agent(
     account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
 ):
+    if agent_id in BUILTIN_AGENT_IDS:
+        raise err(403, "BknAgent.Agent.BuiltinUndeletable", agent_id=agent_id)
     await _load_owned_agent(session, agent_id, account)
     if not await dao.delete_agent(session, agent_id):
         raise not_found("agent", agent_id)

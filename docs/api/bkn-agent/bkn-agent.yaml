@@ -659,6 +659,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/restore:
+    post:
+      tags:
+      - BknAgentExecution
+      summary: Restore Shared Agent
+      description: 'Return a built-in Agent to what it shipped with: model, tools
+        (including
+
+        the MCP surface), limits and the shared Prompt version. Prompt history is
+
+        kept; the shipped version simply becomes current again.'
+      operationId: restore_shared_agent_api_bkn_agent_v1_admin_agents__agent_id__restore_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/bkn-agent/v1/admin/agents/{agent_id}/prompt:
     get:
       tags:
@@ -754,6 +793,50 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PromptRollback'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedPromptOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/prompt/versions/{version}:
+    delete:
+      tags:
+      - BknAgentExecution
+      summary: Delete Shared Prompt Version
+      description: 'Remove a shared Prompt version from the history. The version in
+        use and
+
+        the shipped one (what restore returns to) stay.'
+      operationId: delete_shared_prompt_version_api_bkn_agent_v1_admin_agents__agent_id__prompt_versions__version__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          title: Version
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
       responses:
         '200':
           description: Successful Response
@@ -2435,6 +2518,12 @@ components:
           - type: integer
           - type: 'null'
           title: Prompt Version
+        restorable:
+          type: boolean
+          title: Restorable
+        modified:
+          type: boolean
+          title: Modified
         update_user:
           type: string
           title: Update User
@@ -2450,6 +2539,8 @@ components:
       - uses_context_loader
       - layered
       - can_edit
+      - restorable
+      - modified
       - update_user
       - update_time
       title: SharedOut
@@ -2462,6 +2553,11 @@ components:
             $ref: '#/components/schemas/PromptVersionOut'
           type: array
           title: Versions
+        initial_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Initial Version
       type: object
       required:
       - prompt

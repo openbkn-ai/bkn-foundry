@@ -65,6 +65,30 @@ class NetworkSettingRow(Base):
     f_update_time: Mapped[int] = mapped_column(BigInteger)
 
 
+class BuiltinDefaultRow(Base):
+    """What a built-in Agent shipped with; restoring returns to it."""
+
+    __tablename__ = "t_agent_builtin_default"
+
+    f_agent_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_model: Mapped[str] = mapped_column(String(100), default="")
+    f_tools: Mapped[list] = mapped_column(JSON, default=list)
+    f_limits: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    f_prompt_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    f_create_time: Mapped[int] = mapped_column(BigInteger)
+
+
+class PromptVersionHiddenRow(Base):
+    """A Prompt version removed from the visible history; the version row stays."""
+
+    __tablename__ = "t_agent_prompt_version_hidden"
+
+    f_prompt_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    f_hide_user: Mapped[str] = mapped_column(String(50))
+    f_hide_time: Mapped[int] = mapped_column(BigInteger)
+
+
 class UserSettingRow(Base):
     """Per-user additions on top of the shared and network settings."""
 

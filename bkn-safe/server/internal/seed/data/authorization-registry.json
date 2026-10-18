@@ -1157,6 +1157,19 @@
       ]
     },
     {
+      "id": "admin-agent",
+      "name": "内置 Agent 管理",
+      "_source": "bkn-agent",
+      "_note": "Type level, like admin-client: changing any built-in Agent (model, MCP surface, limits, shared Prompt, restore). Reading stays open to verified accounts.",
+      "operations": [
+        {
+          "id": "manage",
+          "name": "管理",
+          "description": "修改平台内置 Agent 的配置、共享提示词，或恢复它的初始版本。"
+        }
+      ]
+    },
+    {
       "id": "admin-apikey",
       "name": "全局 AppKey 管理",
       "_source": "bkn-safe",
