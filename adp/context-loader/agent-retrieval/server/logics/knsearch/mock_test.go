@@ -238,6 +238,11 @@ func (m *mockOntologyQuery) QueryMetricData(ctx context.Context, knID, metricID 
 	return &interfaces.MetricQueryDownstreamResp{}, nil
 }
 
+func (m *mockOntologyQuery) DrillThroughMetricData(ctx context.Context, knID, metricID string, version int,
+	req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
+	return &interfaces.MetricDrillThroughResp{}, nil
+}
+
 func (m *mockOntologyQuery) QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (resp *interfaces.QueryInstanceSubgraphResp, err error) {
 	return nil, nil
 }

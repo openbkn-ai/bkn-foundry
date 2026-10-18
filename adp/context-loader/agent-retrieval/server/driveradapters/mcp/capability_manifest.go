@@ -237,6 +237,7 @@ func capabilitySpecs() []capabilitySpec {
 		{toolKeyExploreSubgraph, "semantic_query", "ontology_subgraph/v1", "cover_physical_descendants", "ontology_subgraph/v1"},
 		{toolKeyGetLogicPropertiesValues, "semantic_query", "execution_only", "none", "none"},
 		{toolKeyQueryMetric, "semantic_query", "ontology_metric_result/v1", "cover_physical_descendants", "ontology_metric_result/v1"},
+		{toolKeyDrillThroughMetric, "semantic_query", "execution_only", "none", "none"},
 		{toolKeyGetActionInfo, "discovery", "execution_only", "none", "none"},
 		{toolKeyExecuteAction, "business_function", "execution_only", "managed_children_only", "none"},
 		{toolKeyGetActionExecution, "business_function", "execution_only", "none", "none"},

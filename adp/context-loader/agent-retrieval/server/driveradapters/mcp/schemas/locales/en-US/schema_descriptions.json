@@ -413,6 +413,9 @@
     "input_schema.properties.query.properties.time.description": "Inclusive Unix-millisecond time range with start and end.",
     "input_schema.properties.query.properties.time.properties.start.description": "Inclusive start time, Unix milliseconds.",
     "input_schema.properties.query.properties.time.properties.end.description": "Inclusive end time, Unix milliseconds.",
+    "input_schema.properties.query.properties.bucket_selection.description": "Continue drilling by passing the previous complete query and its server-issued bucket_key; do not construct bucket keys.",
+    "input_schema.properties.query.properties.bucket_selection.properties.parent_query.description": "Complete query used by the preceding query_metric call.",
+    "input_schema.properties.query.properties.bucket_selection.properties.bucket_key.description": "Server-issued bucket_key returned by the preceding result entry.",
     "output_schema.properties.kn_id.description": "Knowledge network id",
     "output_schema.properties.metric_id.description": "Metric id",
     "output_schema.properties.version.description": "Pinned published metric version",
@@ -420,7 +423,13 @@
     "output_schema.properties.entries.description": "Metric results with explicit per-entry status",
     "output_schema.properties.status.description": "Overall status: ok, no_data, unavailable, or partial",
     "output_schema.properties.warnings.description": "Warnings for partial or unavailable data",
-    "output_schema.properties.overall_ms.description": "Duration in milliseconds"
+    "output_schema.properties.overall_ms.description": "Duration in milliseconds",
+    "output_schema.properties.evaluated_at.description": "Result evaluation time in Unix milliseconds."
+  },
+  "drill_through_metric": {
+    "input_schema.properties.query.description": "Complete query used by query_metric when the bucket_key was selected; the server revalidates it.",
+    "input_schema.properties.bucket_key.description": "Opaque bucket_key returned by the corresponding query_metric result entry.",
+    "input_schema.properties.cursor.description": "next_cursor returned by the previous page."
   },
   "read_skill_file": {
     "input_schema.properties.kn_id.description": "Required. Knowledge network id. The caller needs view permission on the network itself, and the Skill must be mounted on this network to be read or run: a skill_id outlives the call that produced it and can be had from list_skills, so the scope is checked here.",

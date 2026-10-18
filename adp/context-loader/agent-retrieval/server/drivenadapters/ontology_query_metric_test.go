@@ -6,6 +6,7 @@ package drivenadapters
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
@@ -55,6 +56,37 @@ func TestQueryMetricData_EscapesIDsIntoPath(t *testing.T) {
 			"/api/ontology-query/in/v1/knowledge-networks/kn1/object-metrics/m1%2Fdata%3Fbranch=dev&x=/data")
 		convey.So(strings.Count(got, "?"), convey.ShouldEqual, 1)
 	})
+}
+
+func TestDrillThroughMetricData_ForwardsPinnedBucketAndCursor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	logger := mocks.NewMockLogger(ctrl)
+	logger.EXPECT().WithContext(gomock.Any()).Return(logger).AnyTimes()
+	httpClient := mocks.NewMockHTTPClient(ctrl)
+	client := &ontologyQueryClient{
+		logger: logger, baseURL: "http://ontology-query:13018/api/ontology-query", httpClient: httpClient,
+	}
+	httpClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, target string, _ map[string]string, body any) (int, []byte, error) {
+			parsed, err := url.Parse(target)
+			if err != nil || parsed.Query().Get("version") != "2" || parsed.Query().Get("branch") != "" ||
+				!strings.HasSuffix(parsed.EscapedPath(), "/object-metrics/metric-1/data/drill-through") {
+				t.Fatalf("unexpected drill-through URL: %s (%v)", target, err)
+			}
+			encoded, err := json.Marshal(body)
+			if err != nil || !strings.Contains(string(encoded), `"bucket_key":"opaque"`) ||
+				!strings.Contains(string(encoded), `"cursor":"page-2"`) ||
+				!strings.Contains(string(encoded), `"page_size":25`) {
+				t.Fatalf("unexpected drill-through body: %s (%v)", encoded, err)
+			}
+			return 200, []byte(`{"participants":[{"instance_identity":{"id":"row-1"},"role":"owner"}],"status":"ok","evaluated_at":123}`), nil
+		})
+	result, err := client.DrillThroughMetricData(context.Background(), "kn-1", "metric-1", 2,
+		&interfaces.MetricDrillThroughReq{BucketKey: "opaque", PageSize: 25, Cursor: "page-2"})
+	if err != nil || len(result.Participants) != 1 || result.Participants[0].InstanceIdentity["id"] != "row-1" {
+		t.Fatalf("drill-through response = %#v, %v", result, err)
+	}
 }
 
 func TestQueryMetricData_ForwardsVersion(t *testing.T) {

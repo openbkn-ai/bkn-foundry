@@ -92,6 +92,7 @@ var compactProfileTools = []string{
 	toolKeySearchInstance,
 	toolKeyQueryObjectInstance,
 	toolKeyQueryMetric,
+	toolKeyDrillThroughMetric,
 }
 
 // compactProfile is /mcp-compact: a small fixed tool list for hosts that load

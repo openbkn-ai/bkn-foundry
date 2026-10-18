@@ -538,6 +538,9 @@ func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq,
 			controlledRef(metricRef, "metric"),
 		},
 	}
+	if req.Query.BucketSelection != nil {
+		payload["bucket_selection"] = req.Query.BucketSelection
+	}
 	event := buildEvent(ec, "metric.query.completed", "context.query_metric", payload, "", ec.causationEventID)
 	event["bkn.trace.schema.version"] = "2.2.0"
 	return []Event{event}

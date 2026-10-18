@@ -19,3 +19,10 @@ type ObjectMetricQueryServiceV1 interface {
 	QueryObjectMetricDataV1(ctx context.Context, knID string, branch string, metricID string, version int, body *ObjectMetricQueryRequestV1) (ObjectMetricDataV1, error)
 	TrialObjectMetricDataV1(ctx context.Context, knID string, branch string, body *ObjectMetricTrialRequestV1) (ObjectMetricDataV1, error)
 }
+
+// Implementations may provide paged participant lookup for an authorized
+// result bucket. The existing query interface remains source compatible.
+type ObjectMetricDrillThroughServiceV1 interface {
+	QueryObjectMetricDrillThroughV1(ctx context.Context, knID, branch, metricID string, version int, body *ObjectMetricDrillThroughRequestV1) (ObjectMetricDrillThroughV1, error)
+	TrialObjectMetricDrillThroughV1(ctx context.Context, knID, branch string, body *ObjectMetricTrialDrillThroughRequestV1) (ObjectMetricDrillThroughV1, error)
+}

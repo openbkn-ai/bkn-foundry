@@ -74,14 +74,24 @@ func TestSchemaSnapshotDefinitionIDsUseReturnedCanonicalIDs(t *testing.T) {
 
 type stubMetricOntologyQuery struct {
 	interfaces.DrivenOntologyQuery
-	resp      *interfaces.MetricQueryDownstreamResp
-	gotMetric string
+	resp           *interfaces.MetricQueryDownstreamResp
+	drillResp      *interfaces.MetricDrillThroughResp
+	gotMetric      string
+	gotDrillMetric string
+	gotDrillReq    *interfaces.MetricDrillThroughReq
 }
 
 func (s *stubMetricOntologyQuery) QueryMetricData(_ context.Context, _, metricID string, _ int,
 	_ *interfaces.ObjectMetricQuery) (*interfaces.MetricQueryDownstreamResp, error) {
 	s.gotMetric = metricID
 	return s.resp, nil
+}
+
+func (s *stubMetricOntologyQuery) DrillThroughMetricData(_ context.Context, _, metricID string, _ int,
+	req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
+	s.gotDrillMetric = metricID
+	s.gotDrillReq = req
+	return s.drillResp, nil
 }
 
 func TestHandleGetObjectTypes_AdvertisesScopedMetrics(t *testing.T) {
@@ -150,6 +160,37 @@ func TestHandleQueryMetric(t *testing.T) {
 		convey.So(result.IsError, convey.ShouldBeTrue)
 		convey.So(oq.gotMetric, convey.ShouldBeEmpty)
 	})
+}
+
+func TestHandleDrillThroughMetric(t *testing.T) {
+	oq := &stubMetricOntologyQuery{drillResp: &interfaces.MetricDrillThroughResp{
+		Participants: []interfaces.ObjectMetricParticipant{{InstanceIdentity: map[string]any{"id": "order-1"}, Role: "owner"}},
+		Status:       "ok", EvaluatedAt: 123,
+	}}
+	handler := handleDrillThroughMetric(knmetrics.NewKnMetricsServiceWith(nil, nil, oq))
+	result, err := handler(context.Background(), mcpReq(map[string]any{
+		"kn_id": "kn-001", "metric_id": "m-001", "version": 2,
+		"query":      map[string]any{"analysis_dimensions": []any{map[string]any{"object_type_id": "order", "property_name": "status"}}},
+		"bucket_key": "opaque-key", "page_size": 25, "response_format": "json",
+	}))
+	if err != nil || result.IsError {
+		t.Fatalf("drill-through failed: %v, %#v", err, result)
+	}
+	if oq.gotDrillMetric != "m-001" || oq.gotDrillReq.BucketKey != "opaque-key" || oq.gotDrillReq.PageSize != 25 {
+		t.Fatalf("drill-through request lost its selection: %#v", oq.gotDrillReq)
+	}
+	got := resultToMap(t, result)
+	if got["metric_id"] != "m-001" || len(got["participants"].([]any)) != 1 {
+		t.Fatalf("unexpected drill-through result: %#v", got)
+	}
+
+	invalid, err := handler(context.Background(), mcpReq(map[string]any{
+		"kn_id": "kn-001", "metric_id": "m-001", "version": 2,
+		"bucket_key": "opaque-key", "page_size": 101,
+	}))
+	if err != nil || !invalid.IsError {
+		t.Fatalf("invalid page size must fail: %v, %#v", err, invalid)
+	}
 }
 
 // get_object_types must go to the enriched endpoint to get details by id: the exported view does not have condition_operations,

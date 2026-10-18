@@ -46,8 +46,108 @@ func RegisterObjectMetricRoutes(
 	}
 	public.POST("/knowledge-networks/:kn_id/object-metrics/trial", handler.verifyJsonContentType(), handler.PostObjectMetricTrialV1ByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/data", handler.verifyJsonContentType(), handler.PostObjectMetricDataV1ByEx)
+	public.POST("/knowledge-networks/:kn_id/object-metrics/trial/drill-through", handler.verifyJsonContentType(), handler.PostObjectMetricTrialDrillThroughV1ByEx)
+	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/data/drill-through", handler.verifyJsonContentType(), handler.PostObjectMetricDrillThroughV1ByEx)
 	internal.POST("/knowledge-networks/:kn_id/object-metrics/trial", handler.verifyJsonContentType(), handler.PostObjectMetricTrialV1ByIn)
 	internal.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/data", handler.verifyJsonContentType(), handler.PostObjectMetricDataV1ByIn)
+	internal.POST("/knowledge-networks/:kn_id/object-metrics/trial/drill-through", handler.verifyJsonContentType(), handler.PostObjectMetricTrialDrillThroughV1ByIn)
+	internal.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/data/drill-through", handler.verifyJsonContentType(), handler.PostObjectMetricDrillThroughV1ByIn)
+}
+
+func (r *restHandler) PostObjectMetricDrillThroughV1ByEx(c *gin.Context) {
+	visitorInfo, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err == nil {
+		r.postObjectMetricDrillThroughV1(c, visitorInfo)
+	}
+}
+
+func (r *restHandler) PostObjectMetricDrillThroughV1ByIn(c *gin.Context) {
+	r.postObjectMetricDrillThroughV1(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) PostObjectMetricTrialDrillThroughV1ByEx(c *gin.Context) {
+	visitorInfo, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err == nil {
+		r.postObjectMetricTrialDrillThroughV1(c, visitorInfo)
+	}
+}
+
+func (r *restHandler) PostObjectMetricTrialDrillThroughV1ByIn(c *gin.Context) {
+	r.postObjectMetricTrialDrillThroughV1(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) postObjectMetricDrillThroughV1(c *gin.Context, visitorInfo hydra.Visitor) {
+	ctx := rest.GetLanguageCtx(c)
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitorInfo.ID, Type: string(visitorInfo.Type)})
+	knID, metricID := c.Param("kn_id"), c.Param("metric_id")
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	version, err := strconv.Atoi(c.Query("version"))
+	if err != nil || version < 1 {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+			WithErrorDetails("version must identify an immutable published metric version"))
+		return
+	}
+	var body interfaces.ObjectMetricDrillThroughRequestV1
+	if err := c.ShouldBindJSON(&body); err != nil {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+			WithErrorDetails("bind json: "+err.Error()))
+		return
+	}
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeObjectMetricQuery(ctx, knID, branch, metricID)
+	}) {
+		return
+	}
+	service, ok := r.oms.(interfaces.ObjectMetricDrillThroughServiceV1)
+	if !ok {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusNotImplemented, oerrors.OntologyQuery_Metric_InvalidParameter).
+			WithErrorDetails("object metric drill-through is unavailable"))
+		return
+	}
+	result, err := service.QueryObjectMetricDrillThroughV1(ctx, knID, branch, metricID, version, &body)
+	if err != nil {
+		replyObjectMetricDrillThroughErrorV1(c, ctx, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+func (r *restHandler) postObjectMetricTrialDrillThroughV1(c *gin.Context, visitorInfo hydra.Visitor) {
+	ctx := rest.GetLanguageCtx(c)
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitorInfo.ID, Type: string(visitorInfo.Type)})
+	knID, branch := c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	var body interfaces.ObjectMetricTrialDrillThroughRequestV1
+	if err := c.ShouldBindJSON(&body); err != nil {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+			WithErrorDetails("bind json: "+err.Error()))
+		return
+	}
+	if !r.authorizeQuery(c, ctx, func() error {
+		return r.qas.AuthorizeObjectMetricTrial(ctx, knID, branch, &body.Definition, &body.Query)
+	}) {
+		return
+	}
+	service, ok := r.oms.(interfaces.ObjectMetricDrillThroughServiceV1)
+	if !ok {
+		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusNotImplemented, oerrors.OntologyQuery_Metric_InvalidParameter).
+			WithErrorDetails("object metric drill-through is unavailable"))
+		return
+	}
+	result, err := service.TrialObjectMetricDrillThroughV1(ctx, knID, branch, &body)
+	if err != nil {
+		replyObjectMetricDrillThroughErrorV1(c, ctx, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+func replyObjectMetricDrillThroughErrorV1(c *gin.Context, ctx context.Context, err error) {
+	if httpErr, ok := err.(*rest.HTTPError); ok {
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
+		WithErrorDetails(err.Error()))
 }
 
 func (r *restHandler) PostObjectMetricDataV1ByEx(c *gin.Context) {

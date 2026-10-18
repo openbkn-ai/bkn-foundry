@@ -59,6 +59,16 @@
               "start": {"type": "integer", "description": "起始时间，Unix 毫秒"},
               "end": {"type": "integer", "description": "结束时间，Unix 毫秒"}
             }
+          },
+          "bucket_selection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["parent_query", "bucket_key"],
+            "description": "继续下钻时传入上一层原样保留的 query 和该层结果返回的 bucket_key；不得自行构造桶键。",
+            "properties": {
+              "parent_query": {"type": "object", "description": "上一步 query_metric 使用的完整 query。"},
+              "bucket_key": {"type": "string", "description": "上一步结果条目返回的 bucket_key。"}
+            }
           }
         }
       }
@@ -82,15 +92,21 @@
           "properties": {
             "instance_identity": {"type": "object", "additionalProperties": true},
             "dimensions": {"type": "object", "additionalProperties": true},
+            "dimension_cells": {"type": "array", "items": {"type": "object"}},
             "time": {"type": "integer"},
+            "time_bucket": {"type": "object", "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}}},
             "value": {},
-            "status": {"type": "string", "enum": ["ok", "no_data", "unavailable"]}
+            "status": {"type": "string", "enum": ["ok", "no_data", "unavailable"]},
+            "bucket_key": {"type": "string"},
+            "available_actions": {"type": "array", "items": {"type": "string"}}
           }
         }
       },
       "status": {"type": "string", "enum": ["ok", "no_data", "unavailable", "partial"], "description": "整体查询状态。"},
       "warnings": {"type": "array", "items": {"type": "string"}, "description": "部分成功或不可用时的警告。"},
-      "overall_ms": {"type": "integer", "description": "查询耗时，单位毫秒。"}
+      "overall_ms": {"type": "integer", "description": "查询耗时，单位毫秒。"},
+      "evaluated_at": {"type": "integer", "description": "结果计算时间，Unix 毫秒。"},
+      "effective_window": {"type": "object", "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}}}
     }
   }
 }

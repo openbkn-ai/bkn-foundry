@@ -1,0 +1,42 @@
+{
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["kn_id", "metric_id", "version", "query", "bucket_key"],
+    "properties": {
+      "response_format": {"type": "string", "enum": ["json", "toon"], "default": "toon"},
+      "kn_id": {"type": "string"},
+      "metric_id": {"type": "string"},
+      "version": {"type": "integer", "minimum": 1},
+      "query": {"type": "object", "description": "选中 bucket_key 时 query_metric 使用的完整 query；服务端会重新校验。"},
+      "bucket_key": {"type": "string", "description": "query_metric 对应结果条目返回的不透明桶键。"},
+      "page_size": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
+      "cursor": {"type": "string", "description": "上一页返回的 next_cursor。"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["kn_id", "metric_id", "version", "participants", "evaluated_at", "status"],
+    "properties": {
+      "kn_id": {"type": "string"},
+      "metric_id": {"type": "string"},
+      "version": {"type": "integer"},
+      "participants": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["instance_identity", "role"],
+          "properties": {
+            "instance_identity": {"type": "object", "additionalProperties": true},
+            "role": {"type": "string"}
+          }
+        }
+      },
+      "next_cursor": {"type": "string"},
+      "bucket_value": {},
+      "evaluated_at": {"type": "integer"},
+      "status": {"type": "string", "enum": ["ok", "partial"]},
+      "warnings": {"type": "array", "items": {"type": "string"}}
+    }
+  }
+}

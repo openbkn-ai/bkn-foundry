@@ -40,6 +40,7 @@ type KnMetricsService interface {
 	AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) error
 	// QueryMetric takes the number based on the metric's own semantics.
 	QueryMetric(ctx context.Context, req *interfaces.QueryMetricReq) (*interfaces.QueryMetricResp, error)
+	DrillThroughMetric(ctx context.Context, req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error)
 }
 
 type knMetricsService struct {
@@ -169,8 +170,36 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 		out.Status = resp.Status
 		out.Warnings = resp.Warnings
 		out.OverallMs = resp.OverallMs
+		out.EvaluatedAt = resp.EvaluatedAt
+		out.EffectiveWindow = resp.EffectiveWindow
 	}
 	return out, nil
+}
+
+// DrillThroughMetric pages authorized participants of a selected published result bucket.
+func (s *knMetricsService) DrillThroughMetric(ctx context.Context, req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
+	if req == nil || strings.TrimSpace(req.KnID) == "" || strings.TrimSpace(req.MetricID) == "" || req.Version < 1 || strings.TrimSpace(req.BucketKey) == "" {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
+		return nil, errors.New("kn_id, metric_id, version, and bucket_key are required")
+	}
+	if req.PageSize < 0 || req.PageSize > 100 {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
+		return nil, errors.New("page_size must be between 0 and 100")
+	}
+	resp, err := s.ontologyQuery.DrillThroughMetricData(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.MetricID), req.Version, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("metric drill-through returned no result")
+	}
+	if resp.Participants == nil {
+		resp.Participants = []interfaces.ObjectMetricParticipant{}
+	}
+	resp.KnID = strings.TrimSpace(req.KnID)
+	resp.MetricID = strings.TrimSpace(req.MetricID)
+	resp.Version = req.Version
+	return resp, nil
 }
 
 //nolint:unused // Retained for metric diagnostics.

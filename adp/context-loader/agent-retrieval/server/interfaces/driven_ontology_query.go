@@ -392,4 +392,6 @@ type DrivenOntologyQuery interface {
 	// (POST .../object-metrics/{metric_id}/data).
 	QueryMetricData(ctx context.Context, knID, metricID string, version int,
 		req *ObjectMetricQuery) (resp *MetricQueryDownstreamResp, err error)
+	DrillThroughMetricData(ctx context.Context, knID, metricID string, version int,
+		req *MetricDrillThroughReq) (resp *MetricDrillThroughResp, err error)
 }

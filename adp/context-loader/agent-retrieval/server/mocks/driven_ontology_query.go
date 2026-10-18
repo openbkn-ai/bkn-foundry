@@ -161,6 +161,21 @@ func (mr *MockDrivenOntologyQueryMockRecorder) QueryMetricData(ctx, knID, metric
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryMetricData", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).QueryMetricData), ctx, knID, metricID, version, req)
 }
 
+// DrillThroughMetricData mocks base method.
+func (m *MockDrivenOntologyQuery) DrillThroughMetricData(ctx context.Context, knID, metricID string, version int, req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DrillThroughMetricData", ctx, knID, metricID, version, req)
+	ret0, _ := ret[0].(*interfaces.MetricDrillThroughResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DrillThroughMetricData indicates an expected call of DrillThroughMetricData.
+func (mr *MockDrivenOntologyQueryMockRecorder) DrillThroughMetricData(ctx, knID, metricID, version, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DrillThroughMetricData", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).DrillThroughMetricData), ctx, knID, metricID, version, req)
+}
+
 // QueryObjectInstances mocks base method.
 func (m *MockDrivenOntologyQuery) QueryObjectInstances(ctx context.Context, req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
 	m.ctrl.T.Helper()

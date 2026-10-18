@@ -37,6 +37,7 @@ paths:
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data:
     post:
       operationId: queryObjectMetricData
+      summary: Query an immutable published object metric version.
       parameters:
         - name: kn_id
           in: path
@@ -70,6 +71,60 @@ paths:
         "404": { description: Metric or referenced ontology element not found. }
         "409": { description: The requested version is not published. }
         "422": { description: The immutable definition cannot be executed against current data. }
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data/drill-through:
+    post:
+      operationId: drillThroughObjectMetricData
+      summary: Page through authorized participants of a published metric result bucket.
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: metric_id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: version
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectMetricDrillThroughRequest" }
+      responses:
+        "200":
+          description: Paged participants from current data, possibly partial.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricDrillThrough" }
+        "400": { description: "Invalid bucket, query, or cursor." }
+        "403": { description: The caller cannot query the metric or source data. }
+        "409": { description: The selected bucket is no longer available. }
+  /v1/knowledge-networks/{kn_id}/object-metrics/trial/drill-through:
+    post:
+      operationId: trialObjectMetricDrillThrough
+      summary: Page through authorized participants of a trial result bucket.
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObjectMetricTrialDrillThroughRequest" }
+      responses:
+        "200":
+          description: Paged participants from current data, possibly partial.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricDrillThrough" }
+        "400": { description: "Invalid bucket, query, or cursor." }
+        "403": { description: The caller cannot query the trial or source data. }
+        "409": { description: The selected bucket is no longer available. }
 components:
   securitySchemes:
     bearerAuth:
@@ -104,6 +159,13 @@ components:
           properties:
             start: { type: integer, format: int64, description: Inclusive Unix time in milliseconds. }
             end: { type: integer, format: int64, description: Inclusive Unix time in milliseconds. }
+        bucket_selection:
+          type: object
+          additionalProperties: false
+          required: [parent_query, bucket_key]
+          properties:
+            parent_query: { $ref: "#/components/schemas/ObjectMetricQuery" }
+            bucket_key: { type: string }
     ObjectMetricTrial:
       type: object
       additionalProperties: false
@@ -129,11 +191,75 @@ components:
             properties:
               instance_identity: { type: object, additionalProperties: true }
               dimensions: { type: object, additionalProperties: true }
+              dimension_cells:
+                type: array
+                description: Full dimension references; unlike the legacy dimensions map, relation path aliases remain distinct.
+                items:
+                  type: object
+                  required: [ref, value]
+                  properties:
+                    ref: { $ref: "#/components/schemas/PropertyRef" }
+                    value: {}
               time: { type: integer, format: int64 }
+              time_bucket:
+                type: object
+                required: [start, end]
+                properties:
+                  start: { type: integer, format: int64 }
+                  end: { type: integer, format: int64 }
               value: {}
               status: { type: string, enum: [ok, no_data, unavailable] }
+              bucket_key: { type: string, description: Opaque result locator; does not grant data access. }
+              available_actions:
+                type: array
+                items: { type: string, enum: [filter, drill, participants, context] }
         status: { type: string, enum: [ok, no_data, unavailable, partial] }
         warnings:
           type: array
           items: { type: string }
         overall_ms: { type: integer, format: int64 }
+        evaluated_at: { type: integer, format: int64 }
+        effective_window:
+          type: object
+          required: [start, end]
+          properties:
+            start: { type: integer, format: int64 }
+            end: { type: integer, format: int64 }
+    ObjectMetricDrillThroughRequest:
+      type: object
+      additionalProperties: false
+      required: [query, bucket_key]
+      properties:
+        query: { $ref: "#/components/schemas/ObjectMetricQuery" }
+        bucket_key: { type: string }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        cursor: { type: string }
+    ObjectMetricTrialDrillThroughRequest:
+      type: object
+      additionalProperties: false
+      required: [query, bucket_key, definition]
+      properties:
+        query: { $ref: "#/components/schemas/ObjectMetricQuery" }
+        bucket_key: { type: string }
+        page_size: { type: integer, minimum: 1, maximum: 100 }
+        cursor: { type: string }
+        definition: { type: object, additionalProperties: true }
+    ObjectMetricDrillThrough:
+      type: object
+      required: [participants, evaluated_at, status]
+      properties:
+        participants:
+          type: array
+          items:
+            type: object
+            required: [instance_identity, role]
+            properties:
+              instance_identity: { type: object, additionalProperties: true }
+              role: { type: string }
+        next_cursor: { type: string }
+        bucket_value: {}
+        evaluated_at: { type: integer, format: int64 }
+        status: { type: string, enum: [ok, partial] }
+        warnings:
+          type: array
+          items: { type: string }

@@ -961,6 +961,32 @@ func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Cont
 	}
 }
 
+// handleDrillThroughMetric pages participants of a server-issued metric bucket.
+func handleDrillThroughMetric(service knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return inputValidationToolError(ctx, err.Error()), nil
+		}
+		args := &interfaces.MetricDrillThroughReq{}
+		if err := bindPreciseArguments(req, args); err != nil {
+			return inputValidationToolError(ctx, err.Error()), nil
+		}
+		if args.KnID == "" {
+			args.KnID = getKnIDFromHeader(req)
+		}
+		resp, err := service.DrillThroughMetric(ctx, args)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
 // missingObjectTypeIDs returns the object type IDs that were requested but not obtained, maintaining the same semantics as when filtering exported views.
 //
 //nolint:unused // Retained for object-type validation extensions.
