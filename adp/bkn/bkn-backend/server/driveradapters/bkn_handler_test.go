@@ -8,11 +8,14 @@ package driveradapters
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -570,6 +573,28 @@ func Test_BKNRestHandler_UploadBKN_ExtensionCheck(t *testing.T) {
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
+
+		// filepath.Ext of "test.tar.gz" is ".gz", so this name used to be refused before the
+		// archive was even read; the content was not decompressed either.
+		Convey("Success when a gzip compressed tar is uploaded as .tar.gz\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
+
+			req := newMultipartRequestWithContentType(t, url, "test.tar.gz", "application/gzip", gzipBytes(t, newValidBKNTar(t)))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Success when a zip archive is uploaded\n", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
+
+			req := newMultipartRequestWithContentType(t, url, "test.zip", "application/zip", tarToZip(t, newValidBKNTar(t)))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+		})
 	})
 }
 
@@ -639,4 +664,49 @@ func Test_BKNRestHandler_UploadBKN_BindingPolicyCapabilities(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
 	})
+}
+
+// gzipBytes compresses data the way `tar czf` does.
+func gzipBytes(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// tarToZip repacks a tar archive's regular files into a zip archive.
+func tarToZip(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	tr := tar.NewReader(bytes.NewReader(data))
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+		w, err := zw.Create(header.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.Copy(w, tr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
