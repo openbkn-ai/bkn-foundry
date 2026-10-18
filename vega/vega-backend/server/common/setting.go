@@ -103,6 +103,14 @@ type TaskWorkerConfig struct {
 	StreamingWorkerCount int `mapstructure:"streamingWorkerCount"`
 }
 
+// DiscoverConfig configures resource discovery.
+type DiscoverConfig struct {
+	// FilesetPageSize is how many filesets a paged connector returns per page; out-of-range values fall back to the default.
+	FilesetPageSize int `mapstructure:"filesetPageSize"`
+	// FilesetMaxObjects is a safety limit on objects listed by one paged fileset discovery.
+	FilesetMaxObjects int `mapstructure:"filesetMaxObjects"`
+}
+
 // AppSetting contains application configuration.
 type AppSetting struct {
 	ServerSetting       ServerSetting             `mapstructure:"server"`
@@ -115,6 +123,7 @@ type AppSetting struct {
 	CatalogHealthCheck  CatalogHealthCheckConfig  `mapstructure:"catalogHealthCheck"`
 	IndexCleanup        IndexCleanupConfig        `mapstructure:"indexCleanup"`
 	TaskWorker          TaskWorkerConfig          `mapstructure:"taskWorker"`
+	Discover            DiscoverConfig            `mapstructure:"discover"`
 
 	DBSetting           libdb.DBSetting
 	MQSetting           libmq.MQSetting

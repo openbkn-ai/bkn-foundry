@@ -951,6 +951,51 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 	return resources, nil
 }
 
+// GetSourceRefsByCatalogID retrieves the id, source identifier and status of a category's Resources under a Catalog.
+func (ra *resourceAccess) GetSourceRefsByCatalogID(ctx context.Context, catalogID string, category string) ([]interfaces.ResourceSourceRef, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource source refs by catalog ID")
+	defer span.End()
+
+	span.SetAttributes(
+		attr.Key("catalog_id").String(catalogID),
+		attr.Key("category").String(category),
+	)
+
+	sqlStr, vals, err := sq.Select("f_id", "f_source_identifier", "f_status").
+		From(RESOURCE_TABLE_NAME).
+		Where(sq.Eq{"f_catalog_id": catalogID, "f_category": category}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+
+	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		logger.Errorf("Query resource source refs failed: %v", err)
+		span.SetStatus(codes.Error, "Query failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	refs := make([]interfaces.ResourceSourceRef, 0)
+	for rows.Next() {
+		var ref interfaces.ResourceSourceRef
+		if err := rows.Scan(&ref.ID, &ref.SourceIdentifier, &ref.Status); err != nil {
+			span.SetStatus(codes.Error, "Scan row failed")
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return refs, nil
+}
+
 // UpdateStatus updates a Resource's status, using tx when provided.
 func (ra *resourceAccess) UpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource status")

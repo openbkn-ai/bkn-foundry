@@ -152,6 +152,11 @@ config:
     discoverWorkerCount: 1
     batchWorkerCount: 1
     streamingWorkerCount: 1
+  discover:
+    # Filesets per page for connectors that list in pages (1-1000; invalid values fall back to 20).
+    filesetPageSize: 20
+    # Safety limit on objects listed by one paged fileset discovery (invalid values fall back to 10000000).
+    filesetMaxObjects: 10000000
   # RSA 公钥配置
   crypto:
     enabled: false

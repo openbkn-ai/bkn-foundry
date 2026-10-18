@@ -387,6 +387,60 @@ func TestResourceAccessGetByCatalogID(t *testing.T) {
 	})
 }
 
+func TestResourceAccessGetSourceRefsByCatalogID(t *testing.T) {
+	t.Run("returns source refs of the category", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_source_identifier, f_status FROM t_resource WHERE f_catalog_id = ? AND f_category = ?")).
+			WithArgs("catalog-1", interfaces.ResourceCategoryFileset).
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_source_identifier", "f_status"}).
+				AddRow("r1", "/a", interfaces.ResourceStatusActive).
+				AddRow("r2", "/b", interfaces.ResourceStatusStale))
+
+		got, err := access.GetSourceRefsByCatalogID(context.Background(), "catalog-1", interfaces.ResourceCategoryFileset)
+
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.ResourceSourceRef{
+			{ID: "r1", SourceIdentifier: "/a", Status: interfaces.ResourceStatusActive},
+			{ID: "r2", SourceIdentifier: "/b", Status: interfaces.ResourceStatusStale},
+		}, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns empty slice when catalog has no resources", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_source_identifier, f_status FROM t_resource WHERE f_catalog_id = ? AND f_category = ?")).
+			WithArgs("catalog-1", interfaces.ResourceCategoryFileset).
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_source_identifier", "f_status"}))
+
+		got, err := access.GetSourceRefsByCatalogID(context.Background(), "catalog-1", interfaces.ResourceCategoryFileset)
+
+		require.NoError(t, err)
+		assert.NotNil(t, got)
+		assert.Empty(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("propagates query error", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		queryErr := errors.New("db down")
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_source_identifier, f_status FROM t_resource WHERE f_catalog_id = ? AND f_category = ?")).
+			WithArgs("catalog-1", interfaces.ResourceCategoryFileset).
+			WillReturnError(queryErr)
+
+		got, err := access.GetSourceRefsByCatalogID(context.Background(), "catalog-1", interfaces.ResourceCategoryFileset)
+
+		require.ErrorIs(t, err, queryErr)
+		assert.Nil(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
 func TestResourceAccessList(t *testing.T) {
 	t.Run("returns resources with filters", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)

@@ -7,11 +7,13 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -22,10 +24,13 @@ type filesetDiscoverItem struct {
 	markAfterEnrich bool
 }
 
-// Page size and page cap for connectors that implement PagedFilesetLister.
+// Defaults and bounds for paged fileset discovery.
 const (
-	filesetListPageSize = 1000
-	filesetListMaxPages = 10000
+	defaultFilesetPageSize      = 20
+	maxFilesetPageSize          = 1000
+	defaultFilesetMaxObjects    = 10_000_000
+	filesetPageMaxAttempts      = 3
+	filesetPageRetryBaseBackoff = time.Second
 )
 
 // discoverFilesetResources discovers fileset resources from a fileset connector.
@@ -37,9 +42,11 @@ func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context,
 	if !ok {
 		return nil, fmt.Errorf("connector does not support fileset discover")
 	}
+	if lister, ok := connector.(interfaces.PagedFilesetLister); ok {
+		return dtw.discoverPagedFilesetResources(ctx, task, catalog, lister, progress)
+	}
 
-	// The full listing must succeed before any resource is touched, so a failed page never marks resources stale.
-	sourceFilesets, err := dtw.listSourceFilesets(ctx, task, filesetConnector, progress)
+	sourceFilesets, err := filesetConnector.ListFilesets(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list filesets: %w", err)
 	}
@@ -83,48 +90,210 @@ func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context,
 	return result, nil
 }
 
-// listSourceFilesets lists every fileset in the discovery scope, page by page when the connector
-// implements PagedFilesetLister and in a single ListFilesets call otherwise.
-func (dtw *DiscoverTaskWorker) listSourceFilesets(ctx context.Context, task *interfaces.DiscoverTask,
-	connector interfaces.FilesetConnector, progress *discoverTaskReconcileProgress) ([]*interfaces.FilesetMeta, error) {
+// discoverPagedFilesetResources applies each page as soon as it is listed, so memory holds one page plus the
+// catalog's lightweight source refs instead of every fileset and every resource row. Missing resources are
+// marked stale only after every page has been listed and applied; any failure returns before stale marking,
+// keeping the pages already applied.
+func (dtw *DiscoverTaskWorker) discoverPagedFilesetResources(ctx context.Context,
+	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, lister interfaces.PagedFilesetLister,
+	progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
 
-	lister, ok := connector.(interfaces.PagedFilesetLister)
-	if !ok {
-		return connector.ListFilesets(ctx)
+	refs, err := dtw.rs.InternalGetSourceRefsByCatalogID(ctx, catalog.ID, interfaces.ResourceCategoryFileset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get existing resource refs: %w", err)
 	}
+	refBySource := make(map[string]interfaces.ResourceSourceRef, len(refs))
+	for _, ref := range refs {
+		refBySource[ref.SourceIdentifier] = ref
+	}
+	logger.Infof("Loaded %d existing resource refs for paged fileset discovery", len(refBySource))
 
-	var filesets []*interfaces.FilesetMeta
+	pageSize, maxObjects := dtw.filesetPageSize(), dtw.filesetMaxObjects()
+	result := &interfaces.DiscoverResult{CatalogID: catalog.ID}
+	seen := make(map[string]struct{}, len(refBySource))
 	seenCursors := make(map[string]struct{})
 	cursor := ""
+	listed := 0
 	for page := 1; ; page++ {
-		if page > filesetListMaxPages {
-			return nil, fmt.Errorf("fileset listing exceeded %d pages", filesetListMaxPages)
-		}
 		if dtw.stopped.Load() {
 			return nil, ErrWorkerManagerStopping
 		}
-		result, err := lister.ListFilesetsPage(ctx, cursor, filesetListPageSize)
+		fsPage, err := dtw.listFilesetPage(ctx, lister, page, cursor, pageSize)
 		if err != nil {
-			return nil, fmt.Errorf("list fileset page %d: %w", page, err)
-		}
-		if result == nil {
-			return nil, fmt.Errorf("list fileset page %d: connector returned no page", page)
-		}
-		filesets = append(filesets, result.Items...)
-		// Per-page updates also refresh the task heartbeat during long listings.
-		if err := dtw.updateProgress(ctx, task.ID, progress.lastProgress, fmt.Sprintf("source filesets listed: page %d, %d objects", page, len(filesets))); err != nil {
 			return nil, err
 		}
+		listed += len(fsPage.Items)
+		if listed > maxObjects {
+			return nil, fmt.Errorf("fileset listing exceeded the safety limit of %d objects at page %d (cursor %q)", maxObjects, page, cursor)
+		}
+		if err := dtw.applyFilesetPage(ctx, task, catalog, fsPage.Items, refBySource, seen, result); err != nil {
+			return nil, fmt.Errorf("failed to apply fileset page %d (cursor %q): %w", page, cursor, err)
+		}
+		// Per-page updates show real progress and refresh the task heartbeat; they fail once the task stops running.
+		message := fmt.Sprintf("filesets processed: page %d, %d objects (%d new, %d updated, %d unchanged, %d restored)",
+			page, listed, result.NewCount, result.UpdatedCount, result.UnchangedCount, result.RestoredCount)
+		if err := dtw.updateProgress(ctx, task.ID, progress.lastProgress, message); err != nil {
+			return nil, fmt.Errorf("stop fileset discovery after page %d: %w", page, err)
+		}
 
-		if result.NextCursor == "" {
-			return filesets, nil
+		if fsPage.NextCursor == "" {
+			break
 		}
-		if _, repeated := seenCursors[result.NextCursor]; repeated || result.NextCursor == cursor {
-			return nil, fmt.Errorf("list fileset page %d: cursor %q repeated", page, result.NextCursor)
+		if _, repeated := seenCursors[fsPage.NextCursor]; repeated || fsPage.NextCursor == cursor {
+			return nil, fmt.Errorf("list fileset page %d: cursor %q repeated", page, fsPage.NextCursor)
 		}
-		seenCursors[result.NextCursor] = struct{}{}
-		cursor = result.NextCursor
+		seenCursors[fsPage.NextCursor] = struct{}{}
+		cursor = fsPage.NextCursor
 	}
+	logger.Infof("Listed and applied %d fileset objects", listed)
+
+	if actions := task.DiscoverActions; actions != nil && actions.MarkStale {
+		for sourceIdentifier, ref := range refBySource {
+			if _, ok := seen[sourceIdentifier]; ok {
+				continue
+			}
+			if dtw.stopped.Load() {
+				return nil, ErrWorkerManagerStopping
+			}
+			dtw.markFilesetMissing(ctx, ref.ID, ref.Status, result)
+		}
+	}
+
+	progress.MarkSourceListed()
+	progress.MarkResourcesReconciled()
+	if current, changed := progress.MarkMetadataEnriched(); changed {
+		if err := dtw.updateProgress(ctx, task.ID, current, "resources reconciled and metadata enriched"); err != nil {
+			return nil, err
+		}
+	}
+
+	result.Message = formatDiscoverResultMessage(result)
+	logger.Info(result.Message)
+	return result, nil
+}
+
+// listFilesetPage lists one page, retrying transient failures with exponential backoff.
+func (dtw *DiscoverTaskWorker) listFilesetPage(ctx context.Context, lister interfaces.PagedFilesetLister,
+	page int, cursor string, limit int) (*interfaces.FilesetPage, error) {
+
+	for attempt := 1; ; attempt++ {
+		fsPage, err := lister.ListFilesetsPage(ctx, cursor, limit)
+		if err == nil {
+			if fsPage == nil {
+				return nil, fmt.Errorf("list fileset page %d (cursor %q): connector returned no page", page, cursor)
+			}
+			return fsPage, nil
+		}
+		if attempt >= filesetPageMaxAttempts || !isRetryableFilesetListError(ctx, err) {
+			return nil, fmt.Errorf("list fileset page %d (cursor %q) failed after %d attempt(s): %w", page, cursor, attempt, err)
+		}
+		backoff := filesetPageRetryBaseBackoff << (attempt - 1)
+		logger.Warnf("List fileset page %d (cursor %q) failed on attempt %d, retrying in %s: %v", page, cursor, attempt, backoff, err)
+		if err := dtw.waitFilesetPageRetry(ctx, backoff); err != nil {
+			return nil, fmt.Errorf("list fileset page %d (cursor %q) retry interrupted: %w", page, cursor, err)
+		}
+	}
+}
+
+// isRetryableFilesetListError reports whether a listing error may succeed on retry.
+func isRetryableFilesetListError(ctx context.Context, err error) bool {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	var forbidden *interfaces.SourceReadForbiddenError
+	var invalid *interfaces.SourceQueryInvalidParameterError
+	var unsupported *interfaces.UnsupportedOperationError
+	return !errors.As(err, &forbidden) && !errors.As(err, &invalid) && !errors.As(err, &unsupported)
+}
+
+// waitFilesetPageRetry waits for backoff unless ctx ends first.
+func (dtw *DiscoverTaskWorker) waitFilesetPageRetry(ctx context.Context, backoff time.Duration) error {
+	if dtw.filesetRetryWait != nil {
+		return dtw.filesetRetryWait(ctx, backoff)
+	}
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// applyFilesetPage creates, restores and enriches the resources of one page and records what it saw.
+func (dtw *DiscoverTaskWorker) applyFilesetPage(ctx context.Context, task *interfaces.DiscoverTask,
+	catalog *interfaces.Catalog, page []*interfaces.FilesetMeta, refBySource map[string]interfaces.ResourceSourceRef,
+	seen map[string]struct{}, result *interfaces.DiscoverResult) error {
+
+	var ids []string
+	for _, fs := range page {
+		if ref, ok := refBySource[filesetSourceIdentifier(fs)]; ok {
+			ids = append(ids, ref.ID)
+		}
+	}
+	existingMap := make(map[string]*interfaces.Resource, len(ids))
+	if len(ids) > 0 {
+		byID, err := dtw.rs.InternalGetByIDs(ctx, ids)
+		if err != nil {
+			return fmt.Errorf("failed to get existing resources: %w", err)
+		}
+		for _, resource := range byID {
+			existingMap[resource.SourceIdentifier] = resource
+		}
+	}
+
+	items, err := dtw.upsertFilesetResources(ctx, task.DiscoverActions, catalog, page, existingMap, result)
+	if err != nil {
+		return err
+	}
+	for _, fs := range page {
+		seen[filesetSourceIdentifier(fs)] = struct{}{}
+	}
+	// A resource created on this page must be matched, not created again, if a later page repeats its identifier.
+	for _, item := range items {
+		if _, ok := refBySource[item.resource.SourceIdentifier]; !ok {
+			refBySource[item.resource.SourceIdentifier] = interfaces.ResourceSourceRef{
+				ID: item.resource.ID, SourceIdentifier: item.resource.SourceIdentifier, Status: item.resource.Status,
+			}
+		}
+	}
+	// Page-level enrichment reports through the page message, so it gets its own progress tracker.
+	return dtw.enrichFilesetMetadata(ctx, task, items, result, &discoverTaskReconcileProgress{})
+}
+
+// filesetPageSize returns the configured page size, or the default for a worker built without settings.
+func (dtw *DiscoverTaskWorker) filesetPageSize() int {
+	if dtw.filesetPageSizeSetting > 0 {
+		return dtw.filesetPageSizeSetting
+	}
+	return defaultFilesetPageSize
+}
+
+// filesetMaxObjects returns the configured safety limit, or the default for a worker built without settings.
+func (dtw *DiscoverTaskWorker) filesetMaxObjects() int {
+	if dtw.filesetMaxObjectsSetting > 0 {
+		return dtw.filesetMaxObjectsSetting
+	}
+	return defaultFilesetMaxObjects
+}
+
+// resolveFilesetDiscoverSettings validates the discover settings, falling back to defaults with a warning.
+func resolveFilesetDiscoverSettings(cfg common.DiscoverConfig) (pageSize int, maxObjects int) {
+	pageSize, maxObjects = cfg.FilesetPageSize, cfg.FilesetMaxObjects
+	if pageSize < 1 || pageSize > maxFilesetPageSize {
+		if pageSize != 0 {
+			logger.Warnf("discover.filesetPageSize %d is outside 1-%d, using default %d", pageSize, maxFilesetPageSize, defaultFilesetPageSize)
+		}
+		pageSize = defaultFilesetPageSize
+	}
+	if maxObjects < 1 {
+		if maxObjects != 0 {
+			logger.Warnf("discover.filesetMaxObjects %d is not positive, using default %d", maxObjects, defaultFilesetMaxObjects)
+		}
+		maxObjects = defaultFilesetMaxObjects
+	}
+	return pageSize, maxObjects
 }
 
 func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, task *interfaces.DiscoverTask,
@@ -135,8 +304,6 @@ func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, ta
 	result := &interfaces.DiscoverResult{
 		CatalogID: catalog.ID,
 	}
-
-	var items []filesetDiscoverItem
 
 	existingMap := make(map[string]*interfaces.Resource)
 	for _, r := range existingResources {
@@ -151,9 +318,33 @@ func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, ta
 		sourceMap[sid] = fs
 	}
 
+	items, err := dtw.upsertFilesetResources(ctx, actions, catalog, source, existingMap, result)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if actions != nil && actions.MarkStale {
+		for sourceIdentifier, existing := range existingMap {
+			if dtw.stopped.Load() {
+				return nil, nil, ErrWorkerManagerStopping
+			}
+			if _, ok := sourceMap[sourceIdentifier]; !ok {
+				dtw.markFilesetMissing(ctx, existing.ID, existing.Status, result)
+			}
+		}
+	}
+	return result, items, nil
+}
+
+// upsertFilesetResources creates new resources and collects existing ones of source for enrichment.
+func (dtw *DiscoverTaskWorker) upsertFilesetResources(ctx context.Context, actions *interfaces.DiscoverActions,
+	catalog *interfaces.Catalog, source []*interfaces.FilesetMeta, existingMap map[string]*interfaces.Resource,
+	result *interfaces.DiscoverResult) ([]filesetDiscoverItem, error) {
+
+	var items []filesetDiscoverItem
 	for _, fs := range source {
 		if dtw.stopped.Load() {
-			return nil, nil, ErrWorkerManagerStopping
+			return nil, ErrWorkerManagerStopping
 		}
 		sourceIdentifier := filesetSourceIdentifier(fs)
 		if resource, ok := existingMap[sourceIdentifier]; ok {
@@ -186,25 +377,20 @@ func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, ta
 			}
 		}
 	}
+	return items, nil
+}
 
-	if actions != nil && actions.MarkStale {
-		for sourceIdentifier, existing := range existingMap {
-			if dtw.stopped.Load() {
-				return nil, nil, ErrWorkerManagerStopping
-			}
-			if _, ok := sourceMap[sourceIdentifier]; !ok {
-				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
-				if existing.Status == interfaces.ResourceStatusActive {
-					if err := dtw.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
-						logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
-					} else {
-						result.StaleCount++
-					}
-				}
-			}
-		}
+// markFilesetMissing records a resource missing from the source and marks it stale when it was active.
+func (dtw *DiscoverTaskWorker) markFilesetMissing(ctx context.Context, id string, status string, result *interfaces.DiscoverResult) {
+	dtw.markDiscover(ctx, id, interfaces.DiscoverStatusMissing)
+	if status != interfaces.ResourceStatusActive {
+		return
 	}
-	return result, items, nil
+	if err := dtw.rs.UpdateStatus(ctx, id, interfaces.ResourceStatusStale, ""); err != nil {
+		logger.Errorf("Failed to mark resource %s as stale: %v", id, err)
+		return
+	}
+	result.StaleCount++
 }
 
 func filesetSourceIdentifier(fs *interfaces.FilesetMeta) string {

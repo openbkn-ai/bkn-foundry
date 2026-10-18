@@ -118,6 +118,8 @@ type FilesetPage struct {
 // to list in one call, such as object storage. Discovery prefers it over ListFilesets when available.
 type PagedFilesetLister interface {
 	// ListFilesetsPage lists at most limit filesets starting at cursor; an empty cursor starts from the beginning.
+	// limit is an upper bound: a connector may return fewer items, including none, to respect its own page limit,
+	// and must return an empty NextCursor on the last page.
 	ListFilesetsPage(ctx context.Context, cursor string, limit int) (*FilesetPage, error)
 }
 

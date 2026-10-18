@@ -57,6 +57,8 @@ type ResourceService interface {
 	InternalGetByIDs(ctx context.Context, ids []string) (map[string]*Resource, error)
 	// InternalGetByCatalogID retrieves all Resources under a Catalog for internal callers.
 	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
+	// InternalGetSourceRefsByCatalogID retrieves lightweight source refs of a category's Resources under a Catalog.
+	InternalGetSourceRefsByCatalogID(ctx context.Context, catalogID string, category string) ([]ResourceSourceRef, error)
 	// InternalUpdateLocalIndexName updates only a Resource's local index name for internal workers.
 	InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
 	// InternalUpdateLocalIndexState atomically updates Resource-owned index state.

@@ -159,6 +159,21 @@ func (mr *MockResourceAccessMockRecorder) GetPermissionRefsByIDs(ctx, ids any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPermissionRefsByIDs", reflect.TypeOf((*MockResourceAccess)(nil).GetPermissionRefsByIDs), ctx, ids)
 }
 
+// GetSourceRefsByCatalogID mocks base method.
+func (m *MockResourceAccess) GetSourceRefsByCatalogID(ctx context.Context, catalogID, category string) ([]interfaces.ResourceSourceRef, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSourceRefsByCatalogID", ctx, catalogID, category)
+	ret0, _ := ret[0].([]interfaces.ResourceSourceRef)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSourceRefsByCatalogID indicates an expected call of GetSourceRefsByCatalogID.
+func (mr *MockResourceAccessMockRecorder) GetSourceRefsByCatalogID(ctx, catalogID, category any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSourceRefsByCatalogID", reflect.TypeOf((*MockResourceAccess)(nil).GetSourceRefsByCatalogID), ctx, catalogID, category)
+}
+
 // GetSummariesByIDs mocks base method.
 func (m *MockResourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) (map[string]*interfaces.ResourceSummary, error) {
 	m.ctrl.T.Helper()

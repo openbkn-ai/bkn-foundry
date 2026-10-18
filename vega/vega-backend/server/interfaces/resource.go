@@ -63,6 +63,14 @@ var RESOURCE_SORT = map[string]struct{}{
 	ResourceSortUpdateTime: {},
 }
 
+// ResourceSourceRef is the minimal identity of a resource used to reconcile discovery pages without
+// loading full resource rows.
+type ResourceSourceRef struct {
+	ID               string
+	SourceIdentifier string
+	Status           string
+}
+
 // Resource represents a Data Resource entity.
 type Resource struct {
 	ID          string   `json:"id"`

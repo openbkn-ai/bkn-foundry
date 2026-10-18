@@ -409,6 +409,20 @@ func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID
 	return resources, nil
 }
 
+// InternalGetSourceRefsByCatalogID retrieves lightweight source refs of a category's Resources under a Catalog.
+func (rs *resourceService) InternalGetSourceRefsByCatalogID(ctx context.Context, catalogID string, category string) ([]interfaces.ResourceSourceRef, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetSourceRefsByCatalogID")
+	defer span.End()
+
+	refs, err := rs.ra.GetSourceRefsByCatalogID(ctx, catalogID, category)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get resource source refs failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return refs, nil
+}
+
 // GetByIDs retrieves Resources by IDs.
 func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRowCount bool) ([]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get resources by IDs")

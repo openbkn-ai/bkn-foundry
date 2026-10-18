@@ -19,6 +19,10 @@ data:
       {{- toYaml .Values.config.indexCleanup | nindent 6 }}
     taskWorker:
       {{- toYaml .Values.config.taskWorker | nindent 6 }}
+    {{- with .Values.config.discover }}
+    discover:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
   {{- if .Values.config.crypto.enabled }}
     crypto:
       {{- toYaml .Values.config.crypto | nindent 6 }}

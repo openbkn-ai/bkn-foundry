@@ -30,6 +30,8 @@ type ResourceAccess interface {
 	GetPermissionRefsByIDs(ctx context.Context, ids []string) (map[string]ResourcePermissionRef, error)
 	// GetByCatalogID retrieves all Resources under a Catalog.
 	GetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
+	// GetSourceRefsByCatalogID retrieves the id, source identifier and status of a category's Resources under a Catalog.
+	GetSourceRefsByCatalogID(ctx context.Context, catalogID string, category string) ([]ResourceSourceRef, error)
 	// List lists resource summaries with filters.
 	List(ctx context.Context, params ResourcesQueryParams) ([]*ResourceSummary, int64, error)
 	// ListPermissionRefs lists the minimal relations needed before list authorization.

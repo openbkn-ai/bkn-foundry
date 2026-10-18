@@ -190,6 +190,21 @@ func (mr *MockResourceServiceMockRecorder) InternalGetByIDs(ctx, ids any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByIDs", reflect.TypeOf((*MockResourceService)(nil).InternalGetByIDs), ctx, ids)
 }
 
+// InternalGetSourceRefsByCatalogID mocks base method.
+func (m *MockResourceService) InternalGetSourceRefsByCatalogID(ctx context.Context, catalogID, category string) ([]interfaces.ResourceSourceRef, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalGetSourceRefsByCatalogID", ctx, catalogID, category)
+	ret0, _ := ret[0].([]interfaces.ResourceSourceRef)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalGetSourceRefsByCatalogID indicates an expected call of InternalGetSourceRefsByCatalogID.
+func (mr *MockResourceServiceMockRecorder) InternalGetSourceRefsByCatalogID(ctx, catalogID, category any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetSourceRefsByCatalogID", reflect.TypeOf((*MockResourceService)(nil).InternalGetSourceRefsByCatalogID), ctx, catalogID, category)
+}
+
 // InternalList mocks base method.
 func (m *MockResourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, error) {
 	m.ctrl.T.Helper()

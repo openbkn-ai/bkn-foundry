@@ -701,6 +701,30 @@ func TestResourceServiceInternalGetByCatalogID(t *testing.T) {
 	assert.Equal(t, "r1", resources[0].ID)
 }
 
+func TestResourceServiceInternalGetSourceRefsByCatalogID(t *testing.T) {
+	t.Run("returns refs from access", func(t *testing.T) {
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		want := []interfaces.ResourceSourceRef{{ID: "r1", SourceIdentifier: "/a", Status: interfaces.ResourceStatusActive}}
+		mockRA.EXPECT().GetSourceRefsByCatalogID(gomock.Any(), "cat1", interfaces.ResourceCategoryFileset).Return(want, nil)
+
+		got, err := rs.InternalGetSourceRefsByCatalogID(context.Background(), "cat1", interfaces.ResourceCategoryFileset)
+
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("propagates access error", func(t *testing.T) {
+		rs, mockRA, _, _, _, _, _ := newTestService(t)
+		accessErr := errors.New("db down")
+		mockRA.EXPECT().GetSourceRefsByCatalogID(gomock.Any(), "cat1", interfaces.ResourceCategoryFileset).Return(nil, accessErr)
+
+		got, err := rs.InternalGetSourceRefsByCatalogID(context.Background(), "cat1", interfaces.ResourceCategoryFileset)
+
+		require.ErrorIs(t, err, accessErr)
+		assert.Nil(t, got)
+	})
+}
+
 func TestResourceServiceList(t *testing.T) {
 	t.Run("preserves page prefixes and covers authorized resources with tied timestamps", func(t *testing.T) {
 		allIDs := []string{"r4", "r3", "r2", "r1"}

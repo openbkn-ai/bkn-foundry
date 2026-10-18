@@ -54,6 +54,12 @@ type DiscoverTaskWorker struct {
 	wg      sync.WaitGroup
 	stopCh  chan struct{}
 	stopped atomic.Bool
+
+	// Paged fileset discovery settings; zero values fall back to the defaults.
+	filesetPageSizeSetting   int
+	filesetMaxObjectsSetting int
+	// filesetRetryWait replaces the backoff wait between page retries in tests.
+	filesetRetryWait func(ctx context.Context, backoff time.Duration) error
 }
 
 // NewDiscoverTaskWorker creates a new discover worker.
@@ -63,6 +69,11 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 		workerCount = appSetting.TaskWorker.DiscoverWorkerCount
 	}
 	queueSize := workerCount * taskQueueSizeMultiplier
+	var discoverConfig common.DiscoverConfig
+	if appSetting != nil {
+		discoverConfig = appSetting.Discover
+	}
+	filesetPageSize, filesetMaxObjects := resolveFilesetDiscoverSettings(discoverConfig)
 	worker := &DiscoverTaskWorker{
 		appSetting: appSetting,
 		cf:         factory.NewConnectorFactory(appSetting),
@@ -76,6 +87,9 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 		activeTaskIDs:    make(map[string]struct{}),
 		activeCatalogIDs: make(map[string]struct{}),
 		stopCh:           make(chan struct{}),
+
+		filesetPageSizeSetting:   filesetPageSize,
+		filesetMaxObjectsSetting: filesetMaxObjects,
 	}
 	worker.stopped.Store(false)
 	return worker
