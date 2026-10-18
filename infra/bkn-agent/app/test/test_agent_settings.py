@@ -238,18 +238,26 @@ def test_only_the_creator_changes_shared_configuration_for_now(monkeypatch):
                 await client.put(ADMIN, json={"model": "m"}, headers=AUTH)
             ).status_code == 403
             assert (
-                await client.get(f"{ADMIN}/prompt", headers=AUTH)
+                await client.post(
+                    f"{ADMIN}/prompt/rollback", json={"version": 1}, headers=AUTH
+                )
             ).status_code == 403
             assert (await client.get(CONFIG, headers=AUTH)).json()[
                 "can_edit_shared"
             ] is False
 
-            assert (await client.get(ADMIN, headers=AUTH)).status_code == 403
+            # Reading stays open, flagged read-only.
+            read = await client.get(ADMIN, headers=AUTH)
+            assert read.status_code == 200, read.text
+            assert read.json()["can_edit"] is False
+            assert (await client.get(f"{ADMIN}/prompt", headers=AUTH)).status_code == 200
             await _make_creator(factory, "user-1")
             assert (await client.get(CONFIG, headers=AUTH)).json()[
                 "can_edit_shared"
             ] is True
-            assert (await client.get(ADMIN, headers=AUTH)).json()["status"] == "published"
+            shared = (await client.get(ADMIN, headers=AUTH)).json()
+            assert shared["status"] == "published"
+            assert shared["can_edit"] is True
             updated = await client.put(
                 ADMIN,
                 json={
@@ -265,6 +273,63 @@ def test_only_the_creator_changes_shared_configuration_for_now(monkeypatch):
             # Unset fields stay as they were.
             again = await client.put(ADMIN, json={"status": "published"}, headers=AUTH)
             assert again.json()["model"] == "DeepSeek"
+
+    asyncio.run(run())
+
+
+def test_admin_lists_only_seeded_built_in_agents(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            from app.models import AgentRow
+
+            async with factory() as session:
+                qa = await session.get(AgentRow, "studio_smart_qa")
+                qa.f_tools = [{"type": "context_loader"}]
+                for agent_id, name in (
+                    ("catalog-semantic-understanding", "Catalog"),
+                    ("user-made", "Not built in"),
+                ):
+                    session.add(
+                        AgentRow(
+                            f_agent_id=agent_id,
+                            f_name=name,
+                            f_mode="task",
+                            f_prompt_id=None,
+                            f_model="",
+                            f_tools=[],
+                            f_skills=[],
+                            f_limits={"max_turns": 5},
+                            f_status="published",
+                            f_create_user="user-1",
+                            f_update_user="user-1",
+                            f_create_time=qa.f_create_time,
+                            f_update_time=qa.f_update_time,
+                        )
+                    )
+                await session.commit()
+
+            listed = await client.get("/api/bkn-agent/v1/admin/agents", headers=AUTH)
+            assert listed.status_code == 200, listed.text
+            items = {item["agent_id"]: item for item in listed.json()}
+            # Seeded order, and Agents created through the API are not listed.
+            assert list(items) == ["studio_smart_qa", "catalog-semantic-understanding"]
+            qa, catalog = items.values()
+            assert qa["layered"] is True and qa["uses_context_loader"] is True
+            assert qa["can_edit"] is False and qa["prompt_version"] == 1
+            assert catalog["layered"] is False
+            assert catalog["uses_context_loader"] is False
+            assert catalog["can_edit"] is True
+
+            # Built-ins outside the public surface are editable here too.
+            catalog_url = "/api/bkn-agent/v1/admin/agents/catalog-semantic-understanding"
+            updated = await client.put(
+                catalog_url, json={"limits": {"max_turns": 3}}, headers=AUTH
+            )
+            assert updated.status_code == 200, updated.text
+            assert updated.json()["limits"]["max_turns"] == 3
+            assert (
+                await client.get("/api/bkn-agent/v1/admin/agents/user-made", headers=AUTH)
+            ).status_code == 404
 
     asyncio.run(run())
 
