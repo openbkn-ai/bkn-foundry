@@ -763,14 +763,20 @@ func (s *Service) validateRequestOperations(ctx context.Context, resourceType st
 		}
 		return nil
 	}
-	var count int64
-	if err := s.db.WithContext(ctx).Model(&model.Operation{}).
-		Where("resource_type_id = ? AND id IN ? AND grantable = ?", resourceType, operations, true).
-		Count(&count).Error; err != nil {
+	registered, err := s.enforcer.Registry().Operations(ctx, resourceType)
+	if err != nil {
 		return err
 	}
-	if count != int64(len(operations)) {
-		return ErrInvalidRequest
+	available := make(map[string]bool, len(registered))
+	for _, operation := range registered {
+		available[operation.ID] = operation.IsGrantable()
+	}
+	seen := make(map[string]bool, len(operations))
+	for _, operation := range operations {
+		if seen[operation] || !available[operation] {
+			return ErrInvalidRequest
+		}
+		seen[operation] = true
 	}
 	return nil
 }

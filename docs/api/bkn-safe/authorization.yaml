@@ -42,10 +42,11 @@ paths:
   /registry:
     get:
       operationId: getAuthorizationRegistry
-      summary: Get the persisted authorization registry
+      summary: Get the startup authorization registry snapshot
       description: |
-        Returns the resource types and operations currently registered in
-        bkn-safe. This is a tokenless service-to-service endpoint on the
+        Returns the resource types and operations loaded and validated at startup.
+        The snapshot is shared with authorization checks and writes, and changes
+        to persisted definitions take effect after restart. This is a tokenless service-to-service endpoint on the
         platform-internal `/api/safe/v1/authz` network surface; it must not be
         exposed through an Ingress or called directly by browsers. Browser
         clients use the bearer-token-protected

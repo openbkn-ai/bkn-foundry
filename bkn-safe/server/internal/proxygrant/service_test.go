@@ -70,6 +70,19 @@ func newFixture(t *testing.T) fixture {
 	}
 }
 
+// restartRegistry models applying static definitions at the next process start.
+func (f *fixture) restartRegistry(t *testing.T) {
+	t.Helper()
+	enforcer, err := authz.New(f.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := enforcer.InitializeRegistry(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	f.enforcer, f.service = enforcer, proxygrant.New(f.db, enforcer)
+}
+
 func (f fixture) authorize(t *testing.T, resourceID string, operations ...string) {
 	t.Helper()
 	if err := f.enforcer.GrantObjectPermission(f.grantor, "resource", resourceID, "authorize"); err != nil {
@@ -152,6 +165,7 @@ func TestGrantRejectsNonGrantableOperation(t *testing.T) {
 		Update("grantable", false).Error; err != nil {
 		t.Fatal(err)
 	}
+	f.restartRegistry(t)
 
 	if _, changed, err := f.service.Grant(t.Context(), f.request("source-1", "ot-1", "r-1")); !errors.Is(err, proxygrant.ErrInvalidRequest) || changed {
 		t.Fatalf("Grant() = changed %v, err %v; want non-grantable invalid request", changed, err)
@@ -165,6 +179,16 @@ func TestGrantAndSyncNormalizeDirectOperationRequirements(t *testing.T) {
 		Update("implied_operation_ids", "view_detail").Error; err != nil {
 		t.Fatal(err)
 	}
+	f.restartRegistry(t)
+	const callback = "test:proxy-grant-static-metadata"
+	if err := f.db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "operations" || tx.Statement.Table == "resource_types" {
+			t.Errorf("proxy grant queried static metadata: %s", tx.Statement.Table)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.db.Callback().Query().Remove(callback) })
 	f.grantOperations(t, f.grantor, "r-1", "query_data", "view_detail")
 	request := f.request("source-required", "ot-required", "r-1")
 
@@ -264,6 +288,7 @@ func TestGrantAndRevokeTransitiveOperationRequirements(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			f.restartRegistry(t)
 			f.grantOperations(t, f.grantor, "r-1", "query_data", "authorize", "view_detail")
 			request := f.request("source-chain", "ot-chain", "r-1")
 			source, changed, err := f.service.Grant(t.Context(), request)
@@ -317,6 +342,7 @@ func TestRevokePreservesExplicitRequirementAndReplayIsStrictNoOp(t *testing.T) {
 		Update("implied_operation_ids", "view_detail").Error; err != nil {
 		t.Fatal(err)
 	}
+	f.restartRegistry(t)
 	f.grantOperations(t, f.grantor, "r-1", "query_data", "view_detail")
 
 	queryRequest := f.request("source-explicit-required", "ot-explicit-required", "r-1")
@@ -370,6 +396,7 @@ func TestRevokingNormalizedSourcePreservesIndependentRequiredPermissionSource(t 
 		Update("implied_operation_ids", "view_detail").Error; err != nil {
 		t.Fatal(err)
 	}
+	f.restartRegistry(t)
 	f.grantOperations(t, f.grantor, "r-1", "query_data", "view_detail")
 	first, _, err := f.service.Grant(t.Context(), f.request("source-required-1", "ot-required-1", "r-1"))
 	if err != nil {
@@ -479,6 +506,8 @@ func TestKNBindingDerivesExecuteOperationsWithoutAuthorize(t *testing.T) {
 		}
 	}
 
+	f.restartRegistry(t)
+
 	for _, test := range []struct {
 		resourceType string
 		resourceID   string
@@ -517,6 +546,7 @@ func TestSkillCapabilityBindingAcceptsOnlyExecute(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	f.restartRegistry(t)
 	f.grantTypedOperations(t, f.grantor, "skill", "skill-1", "view", "execute")
 	source := func(operation string) proxygrant.SourceSpec {
 		return proxygrant.SourceSpec{
@@ -669,6 +699,7 @@ func TestKNBindingTracksInheritedOperation(t *testing.T) {
 		Update("parent_operation_id", "query_data").Error; err != nil {
 		t.Fatal(err)
 	}
+	f.restartRegistry(t)
 	if err := f.db.Create(&model.ResourceParent{
 		ResourceTypeID: "resource", ResourceID: "r-1", ParentTypeID: "catalog", ParentID: "catalog-1",
 	}).Error; err != nil {
@@ -701,6 +732,8 @@ func TestKNBindingTracksOperationRegistration(t *testing.T) {
 		Delete(&model.Operation{}).Error; err != nil {
 		t.Fatal(err)
 	}
+	assertAllowed(t, f, true) // persisted edits do not alter the running snapshot
+	f.restartRegistry(t)
 	assertAllowed(t, f, false)
 }
 

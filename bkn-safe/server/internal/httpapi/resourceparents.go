@@ -67,7 +67,7 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 		if !bind(c, &req) {
 			return
 		}
-		if err := checkDeclaredHierarchy(c.Request.Context(), db, req.ResourceType, req.ParentType); err != nil {
+		if err := checkDeclaredHierarchy(c.Request.Context(), e.Registry(), req.ResourceType, req.ParentType); err != nil {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
@@ -236,9 +236,8 @@ func registerResourceParents(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB)
 // internal_resource) that reach nobody but the super-admin wildcard, so
 // inheritance would buy them nothing. A synchroniser must therefore SKIP the
 // types it finds undeclared instead of treating the 400 as an outage.
-func checkDeclaredHierarchy(ctx context.Context, db *gorm.DB, resourceType, parentType string) error {
-	var rt model.ResourceType
-	err := db.WithContext(ctx).First(&rt, "id = ?", resourceType).Error
+func checkDeclaredHierarchy(ctx context.Context, registry *authz.Registry, resourceType, parentType string) error {
+	rt, err := registry.ResourceType(ctx, resourceType)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errors.New("resource_type is not a registered resource type: " + resourceType)
 	}

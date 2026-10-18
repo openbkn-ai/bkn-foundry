@@ -5,9 +5,7 @@
 package authz
 
 import (
-	"gorm.io/gorm"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -22,15 +20,9 @@ func TestNormalizeOperations(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	const callback = "test:requested-operation-dependencies"
-	if err := db.Callback().Query().After("gorm:query").Register(callback, func(tx *gorm.DB) {
-		if tx.Statement.Table == "operations" && !strings.Contains(tx.Statement.SQL.String(), "id IN") {
-			t.Error("normalization queried the entire operation type instead of requested dependencies")
-		}
-	}); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Callback().Query().Remove(callback) })
+	mustNoErr(t, db.Create(&model.ResourceType{ID: "catalog"}).Error)
+	mustNoErr(t, e.InitializeRegistry(t.Context()))
+	count := countRegistryQueries(t, db)
 	got, err := e.NormalizeOperations(t.Context(), "catalog", []string{"task_manage", "task_manage"})
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +31,9 @@ func TestNormalizeOperations(t *testing.T) {
 		t.Fatalf("normalized = %v, want %v", got, want)
 	}
 
+	if count.Load() != 0 {
+		t.Fatalf("normalization queried the static registry %d times", count.Load())
+	}
 }
 
 func TestRequiringOperationsByRequirement(t *testing.T) {

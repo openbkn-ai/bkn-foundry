@@ -117,6 +117,12 @@ func Boot(opts Options) (*App, error) {
 		slog.Info("seed applied (roles + catalog + grants)")
 	}
 
+	// Seed-disabled startup loads the persisted registry without seed writes.
+	// Seed-enabled startup already published the same snapshot before grants.
+	if err := enforcer.InitializeRegistry(context.Background()); err != nil {
+		return nil, fmt.Errorf("init authorization registry: %w", err)
+	}
+
 	userStore := auth.NewUserStore(db)
 	hydraAdmin := auth.NewHydraAdmin(cfg.Hydra.AdminURL)
 	oauthAccessOrigins, err := oauthorigin.New(db, hydraAdmin, cfg.OAuth.StudioBaselineRedirectURIs)

@@ -398,53 +398,15 @@ func derivedCandidateIDs(ctx context.Context, accessorID string, idx *grantIndex
 	return out, nil
 }
 
-// derivedRulesByParent loads static registry metadata once per enforcer.
-// Startup primes it after seeding, so policy checks do not pay for registry
-// discovery on every request. Failed loads are deliberately not cached: a
-// request cancellation or temporary database failure must not deny every
-// subsequent normal authorization decision until process restart.
+// derivedRulesByParent reads the same registry snapshot as other metadata consumers.
 func (en *Enforcer) derivedRulesByParent(ctx context.Context) (map[string][]derivedRule, error) {
-	en.derivedRulesMu.Lock()
-	defer en.derivedRulesMu.Unlock()
-	if en.derivedRulesReady {
-		return en.derivedRules, nil
-	}
-
-	var types []model.ResourceType
-	if err := en.db.WithContext(ctx).Where("parent_type_id <> ''").Find(&types).Error; err != nil {
-		return nil, err
-	}
-	parentTypeByChild := make(map[string]string, len(types))
-	for _, resourceType := range types {
-		parentTypeByChild[resourceType.ID] = resourceType.ParentTypeID
-	}
-	var operations []model.Operation
-	if err := en.db.WithContext(ctx).Where("derived_to_operation_id <> ''").Find(&operations).Error; err != nil {
-		return nil, err
-	}
-	rules := map[string][]derivedRule{}
-	for _, operation := range operations {
-		parentType := parentTypeByChild[operation.ResourceTypeID]
-		if parentType == "" {
-			continue
-		}
-		rules[parentType] = append(rules[parentType], derivedRule{
-			childType: operation.ResourceTypeID,
-			childOp:   operation.ID,
-			parentOp:  operation.DerivedToOperationID,
-		})
-	}
-	en.derivedRules = rules
-	en.derivedRulesReady = true
-	return en.derivedRules, nil
+	return en.Registry().derivedRules(ctx)
 }
 
-// PrimeDerivedRules loads the static authorization-registry derivation
-// metadata. Startup calls this after seeding so request-time decisions do not
-// query the registry. It is safe to call repeatedly.
+// PrimeDerivedRules is retained for existing bootstrap callers. It now primes
+// the complete static registry, including derivations, before serving requests.
 func (en *Enforcer) PrimeDerivedRules(ctx context.Context) error {
-	_, err := en.derivedRulesByParent(ctx)
-	return err
+	return en.InitializeRegistry(ctx)
 }
 
 func (en *Enforcer) derivedDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
@@ -693,16 +655,7 @@ func (en *Enforcer) parentsOf(active []*climber) (map[ResourceRef]ResourceRef, e
 // -> operation to look for on its parent. Operations that do not inherit are
 // absent from the map.
 func (en *Enforcer) parentOpMap(resourceType string) (map[string]string, error) {
-	var rows []model.Operation
-	if err := en.db.Where("resource_type_id = ? AND parent_operation_id <> ''", resourceType).
-		Find(&rows).Error; err != nil {
-		return nil, err
-	}
-	out := make(map[string]string, len(rows))
-	for _, row := range rows {
-		out[row.ID] = row.ParentOperationID
-	}
-	return out, nil
+	return en.Registry().parentOperations(context.Background(), resourceType)
 }
 
 // childIDChunk bounds one IN clause over resource ids — both "children of these
@@ -858,8 +811,7 @@ func (en *Enforcer) childrenOf(resourceType, parentType string, parentIDs []stri
 
 // parentTypeOf returns the type this one hangs under, or "" when it is a root.
 func (en *Enforcer) parentTypeOf(resourceType string) (string, error) {
-	var rt model.ResourceType
-	err := en.db.First(&rt, "id = ?", resourceType).Error
+	rt, err := en.Registry().ResourceType(context.Background(), resourceType)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", nil
 	}

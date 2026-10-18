@@ -22,8 +22,10 @@ paths:
       parameters:
         - $ref: '#/components/parameters/AcceptLanguage'
       description: |
-        Returns the resource-type and operation definitions currently persisted
-        in bkn-safe. The response contains no grants, principals, or concrete
+        Returns the resource-type and operation definitions loaded and validated
+        at startup, from the same snapshot used by authorization checks and writes.
+        Persisted definition changes take effect after restart.
+        The response contains no grants, principals, or concrete
         resource IDs. It is authenticated with `RequireUser` and is intended
         for browser authorization-management clients; service-to-service
         callers use the internal `/api/safe/v1/authz/registry` endpoint.

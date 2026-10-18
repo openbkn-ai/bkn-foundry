@@ -6,15 +6,18 @@ package httpapi
 
 import (
 	"encoding/json"
+	"gorm.io/gorm"
 	"net/http"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 func TestAuthorizationRegistryReturnsPersistedContract(t *testing.T) {
-	r, _, db := newTestServer(t)
+	r, e, db := newTestServer(t)
 	notGrantable := false
 	if err := db.Create(&model.ResourceType{ID: "parent", Name: "Parent"}).Error; err != nil {
 		t.Fatal(err)
@@ -39,10 +42,33 @@ func TestAuthorizationRegistryReturnsPersistedContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := e.InitializeRegistry(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	count := countStaticQueries(t, db)
+	t.Cleanup(func() {
+		if count.Load() != 0 {
+			t.Errorf("registry API queried static tables %d times", count.Load())
+		}
+	})
 	w := do(t, r, http.MethodGet, "/api/safe/v1/authz/registry", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("catalog = %d body=%s", w.Code, w.Body.String())
 	}
+	wantBody := w.Body.String()
+	var readers sync.WaitGroup
+	for range 8 {
+		readers.Go(func() {
+			for range 10 {
+				got := do(t, r, http.MethodGet, "/api/safe/v1/authz/registry", nil)
+				if got.Code != http.StatusOK || got.Body.String() != wantBody {
+					t.Errorf("concurrent registry response differs: %d %s", got.Code, got.Body.String())
+					return
+				}
+			}
+		})
+	}
+	readers.Wait()
 	var response struct {
 		ResourceTypes []authorizationRegistryResourceType `json:"resource_types"`
 	}
@@ -69,10 +95,20 @@ func TestAuthorizationRegistryReturnsPersistedContract(t *testing.T) {
 }
 
 func TestMeAuthorizationRegistryRequiresToken(t *testing.T) {
-	r, _, db, _ := newAdminServer(t)
+	r, e, db, _ := newAdminServer(t)
 	if err := db.Create(&model.ResourceType{ID: "catalog", Name: "Catalog"}).Error; err != nil {
 		t.Fatal(err)
 	}
+
+	if err := e.InitializeRegistry(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	count := countStaticQueries(t, db)
+	t.Cleanup(func() {
+		if count.Load() != 0 {
+			t.Errorf("me registry API queried static tables %d times", count.Load())
+		}
+	})
 
 	const path = "/api/safe/v1/me/authorization-registry"
 	if w := tokReq(t, r, http.MethodGet, path, nil, ""); w.Code != http.StatusUnauthorized {
@@ -84,7 +120,7 @@ func TestMeAuthorizationRegistryRequiresToken(t *testing.T) {
 }
 
 func TestAuthorizationRegistryExpandsRequirementChains(t *testing.T) {
-	r, _, db := newTestServer(t)
+	r, e, db := newTestServer(t)
 	if err := db.Create(&model.ResourceType{ID: "catalog", Name: "Catalog"}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +131,15 @@ func TestAuthorizationRegistryExpandsRequirementChains(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := e.InitializeRegistry(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	count := countStaticQueries(t, db)
+	t.Cleanup(func() {
+		if count.Load() != 0 {
+			t.Errorf("registry API queried static tables %d times", count.Load())
+		}
+	})
 	w := do(t, r, http.MethodGet, "/api/safe/v1/authz/registry", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
@@ -112,4 +157,19 @@ func TestAuthorizationRegistryExpandsRequirementChains(t *testing.T) {
 			}
 		}
 	}
+}
+
+func countStaticQueries(t *testing.T, db *gorm.DB) *atomic.Int64 {
+	t.Helper()
+	count := &atomic.Int64{}
+	const callback = "test:registry-api-static-queries"
+	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "operations" || tx.Statement.Table == "resource_types" {
+			count.Add(1)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callback) })
+	return count
 }

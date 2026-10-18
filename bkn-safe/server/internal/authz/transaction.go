@@ -190,7 +190,7 @@ func (tx *PolicyTransaction) RolePermissions(roleID string) ([]RoleGrant, error)
 }
 
 func (tx *PolicyTransaction) RequiringOperationsByRequirement(ctx context.Context, resourceType string, operations []string) (map[string][]string, error) {
-	return requiringOperationsByRequirement(tx.db.WithContext(ctx), resourceType, operations)
+	return tx.Registry().requirements(ctx, resourceType, operations, true, true)
 }
 
 // acquireWrite takes the single policy-write slot. It honours ctx while queued
@@ -267,7 +267,7 @@ func (en *Enforcer) Transaction(ctx context.Context, fn func(*PolicyTransaction)
 		txDB.Statement.ConnPool = tx.Statement.ConnPool
 		return fn(&PolicyTransaction{
 			db:       txDB,
-			enforcer: &Enforcer{e: txEnforcer, db: txDB},
+			enforcer: &Enforcer{e: txEnforcer, db: txDB, registry: en.Registry().withDB(txDB)},
 		})
 	})
 	if err != nil {
