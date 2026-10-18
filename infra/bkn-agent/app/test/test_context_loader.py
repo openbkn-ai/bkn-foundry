@@ -695,3 +695,55 @@ def test_task_and_chat_propagate_session_owner_to_real_evidence(monkeypatch, mod
     assert seen[0]["conversation_id"] == "conv_owned"
     assert seen[0]["interaction_id"] == "int_owned"
     assert seen[0]["envelope"]["owner"] == owner
+
+
+_IN_PROGRESS = (
+    '{"error":{"code":"interaction_in_progress","current_status":"active",'
+    '"current_interaction_id":"int_stale","required_action":"bkn_finish_interaction"}}'
+)
+
+
+class _BusyOnce(_FakeTool):
+    """Start that reports a leftover open interaction on the first call only."""
+
+    def __init__(self):
+        super().__init__("bkn_start_interaction", args_schema={"type": "object", "properties": {}},
+                         result=_start_tool()._result)
+
+    async def coroutine(self, **kwargs):
+        self.calls.append(kwargs)
+        if len(self.calls) == 1:
+            raise RuntimeError(_IN_PROGRESS)
+        return self._result
+
+
+def test_thread_turn_closes_an_interrupted_interaction_and_starts_again(monkeypatch):
+    start, finish = _BusyOnce(), _FakeTool("bkn_finish_interaction")
+    _install(monkeypatch, [start, finish, _FakeTool("search_schema")])
+    token = auth.set_caller_token("Bearer t")
+    try:
+        session = asyncio.run(context_loader.open_session("问题", host_conversation_key="thread-1"))
+    finally:
+        auth._caller_token.reset(token)
+
+    assert session is not None and session.interaction_id == "int_real"
+    assert finish.calls == [{
+        "interaction_id": "int_stale",
+        "outcome": "cancelled",
+        "reason": "the previous turn was interrupted before it finished",
+    }]
+    assert len(start.calls) == 2
+
+
+def test_without_a_thread_an_open_interaction_is_not_closed(monkeypatch):
+    # Only a thread-owned turn may assume the open interaction is its own leftover.
+    start, finish = _BusyOnce(), _FakeTool("bkn_finish_interaction")
+    _install(monkeypatch, [start, finish, _FakeTool("search_schema")])
+    token = auth.set_caller_token("Bearer t")
+    try:
+        assert asyncio.run(context_loader.open_session("问题")) is None
+    finally:
+        auth._caller_token.reset(token)
+
+    assert finish.calls == []
+    assert len(start.calls) == 1

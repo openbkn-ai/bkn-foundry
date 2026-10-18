@@ -6,12 +6,6 @@
 # match zh_cn.py exactly; tools/check_i18n_catalogs.py enforces that in CI.
 
 error_messages = {
-    "BknAgent.Execution.ToolScopeUnsupported": {
-        "code": "BknAgent.Execution.ToolScopeUnsupported",
-        "description": "This tool cannot enforce the selected knowledge network and is unavailable for this execution.",
-        "detail": "This tool cannot enforce the selected knowledge network and is unavailable for this execution.",
-        "solution": "Use a tool that enforces the selected network scope.",
-    },
     "BknAgent.Execution.ToolScopeMismatch": {
         "code": "BknAgent.Execution.ToolScopeMismatch",
         "description": "The tool requested a different knowledge network; the call was rejected.",
