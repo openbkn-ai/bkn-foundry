@@ -116,6 +116,13 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 			httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails("legacy metrics/*.bkn is unsupported; migrate metrics to object metrics V1 before import")
 		}
+		// A package refused by its declared bkn_spec says which definition to fix; the generic
+		// load failure would leave the author only the server log to find out.
+		var specErr *bknsdk.SpecError
+		if errors.As(err, &specErr) {
+			httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+				WithErrorDetails(err.Error())
+		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

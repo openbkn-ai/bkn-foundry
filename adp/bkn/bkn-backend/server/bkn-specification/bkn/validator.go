@@ -23,8 +23,10 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
 // Property names: adp RegexPattern_Property_Name
 var propertyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$`)
 
-// NAME_INVALID_CHARACTER from adp bkn-backend/interfaces/common.go
-const nameInvalidChars = `/:?\"<>|：？''""！《》,#[]{}%&*$^!=.'`
+// NAME_INVALID_CHARACTER from adp bkn-backend/interfaces/common.go. The curly quotes ‘’“” are part
+// of that set; spelling them as ASCII quotes here let a tag pass offline validation and then fail
+// on push.
+const nameInvalidChars = "/:?\\\"<>|：？‘’“”！《》,#[]{}%&*$^!=.'"
 
 const (
 	objectNameMaxLength = 40

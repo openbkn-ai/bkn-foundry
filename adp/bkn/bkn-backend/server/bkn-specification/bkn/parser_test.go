@@ -1123,3 +1123,28 @@ func TestLogicPropertySource_IncompleteToolStillGetsColumns(t *testing.T) {
 
 	assert.Contains(t, SerializeObjectType(ot), "| Source Type | Source ID | Source Name | BoxID | ToolID | ResultPath |")
 }
+
+// Guards the current reading of a parameter table: every column keeps its literal meaning, even
+// when the table also carries the legacy Binding column.
+func TestParseParameterBinding_CurrentLayoutUnchanged(t *testing.T) {
+	text := `---
+type: action_type
+id: a
+name: a
+---
+
+## ActionType: a
+
+### Parameter Binding
+
+| Name | Type | Source | Operation | ValueFrom | Value | Binding | Description |
+|------|------|--------|-----------|-----------|-------|---------|-------------|
+| pod | string | Body | | property | pod_name | ignored | |
+`
+	at, err := ParseActionTypeFile(text, "a.bkn")
+	require.NoError(t, err)
+	require.Len(t, at.Parameters, 1)
+	assert.Equal(t, "Body", at.Parameters[0].Source)
+	assert.Equal(t, "property", at.Parameters[0].ValueFrom)
+	assert.Equal(t, "pod_name", at.Parameters[0].Value)
+}

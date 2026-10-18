@@ -2,6 +2,9 @@
 
 Go SDK for parsing, serializing, loading, and diffing BKN networks.
 
+The BKN format itself is specified in [SPECIFICATION.md](SPECIFICATION.md). That document and
+this package change together: when they disagree, decide which one is intended and fix the other.
+
 ## Object metrics in BKN archives
 
 Object metrics V1 are stored as `object_metrics/<id>@<version>.json`. Each file

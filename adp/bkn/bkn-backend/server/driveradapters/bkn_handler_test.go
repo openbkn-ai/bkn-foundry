@@ -98,6 +98,24 @@ func newLegacyMetricBKNTar(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// newUnsupportedSpecBKNTar creates an archive that declares a bkn_spec this parser does not read.
+func newUnsupportedSpecBKNTar(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := tar.NewWriter(&buf)
+	content := "---\ntype: knowledge_network\nid: test-net\nname: Test Network\nbkn_spec: \"4.0\"\n---\n"
+	if err := w.WriteHeader(&tar.Header{Name: "network.bkn", Mode: 0644, Size: int64(len(content))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte(content)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
 // newDraftBKNTar creates an archive whose object type is valid only when strict validation is disabled.
 func newDraftBKNTar(t *testing.T) []byte {
 	net := &bknsdk.BknNetwork{
@@ -247,6 +265,14 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			engine.ServeHTTP(w, req)
 			So(w.Code, ShouldEqual, http.StatusBadRequest)
 			So(w.Body.String(), ShouldContainSubstring, "legacy metrics")
+		})
+
+		Convey("Names the reason when the declared bkn_spec refuses the archive", func() {
+			req := newMultipartRequest(t, url, "test.tar", newUnsupportedSpecBKNTar(t))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, "unsupported bkn_spec")
 		})
 
 		Convey("Passes ignore mode to CreateKN\n", func() {
