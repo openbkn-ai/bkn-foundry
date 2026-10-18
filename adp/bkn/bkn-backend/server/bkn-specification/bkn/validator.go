@@ -23,10 +23,13 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
 // Property names: adp RegexPattern_Property_Name
 var propertyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$`)
 
-// NAME_INVALID_CHARACTER from adp bkn-backend/interfaces/common.go. The curly quotes ‘’“” are part
-// of that set; spelling them as ASCII quotes here let a tag pass offline validation and then fail
-// on push.
-const nameInvalidChars = "/:?\\\"<>|：？‘’“”！《》,#[]{}%&*$^!=.'"
+// NAME_INVALID_CHARACTER from adp bkn-backend/interfaces/common.go
+const nameInvalidChars = `/:?\"<>|：？''""！《》,#[]{}%&*$^!=.'`
+
+// tagInvalidChars is the full set the backend refuses in a tag. NAME_INVALID_CHARACTER also holds
+// the four curly quotes, which nameInvalidChars spells as ASCII quotes; without them a tag passed
+// offline validation and then failed on push. They are written as escapes to keep the source ASCII.
+const tagInvalidChars = nameInvalidChars + "\u2018\u2019\u201c\u201d"
 
 const (
 	objectNameMaxLength = 40
@@ -368,7 +371,7 @@ func validateTags(tags []string) error {
 		if utf8.RuneCountInString(tag) > objectNameMaxLength {
 			return fmt.Errorf("tag %q exceeds max length %d", tag, objectNameMaxLength)
 		}
-		if strings.ContainsAny(tag, nameInvalidChars) {
+		if strings.ContainsAny(tag, tagInvalidChars) {
 			return fmt.Errorf("tag %q contains invalid characters", tag)
 		}
 	}
