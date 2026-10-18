@@ -16,6 +16,8 @@ STUDIO = MIGRATIONS / "0.2.1/01-seed-studio-smart-qa.sql"
 PROVENANCE = MIGRATIONS / "0.2.1/02-seed-business-provenance.sql"
 PROVENANCE_UPGRADE = MIGRATIONS / "0.2.1/03-upgrade-business-provenance-defaults.sql"
 SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
+FILE_CATALOG = MIGRATIONS / "0.2.1/05-seed-file-catalog-agents.sql"
+FILE_CATALOG_AGENTS = ("file-semantic-understanding", "business-key-review")
 
 
 def statements(path):
@@ -151,7 +153,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
         "t_agent_network_setting",
         "t_agent_user_setting",
     ]
-    deltas = STUDIO.read_text() + PROVENANCE.read_text() + SETTINGS.read_text()
+    deltas = STUDIO.read_text() + PROVENANCE.read_text() + SETTINGS.read_text() + FILE_CATALOG.read_text()
     assert "alter table" not in deltas.lower()
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
 
@@ -164,8 +166,9 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         apply(upgraded, STUDIO)
         apply(upgraded, PROVENANCE)
         apply(upgraded, PROVENANCE_UPGRADE)
+        apply(upgraded, FILE_CATALOG)
         assert snapshot(fresh) == snapshot(upgraded)
-        assert len(snapshot(fresh)[0]) == 5
+        assert len(snapshot(fresh)[0]) == 7
         for table_before, table_after in zip(original, snapshot(upgraded)):
             assert all(row in table_after for row in table_before)
         versions = dict(
@@ -177,7 +180,7 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE])
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, FILE_CATALOG])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         apply(db, path)
@@ -200,6 +203,61 @@ def test_partial_seed_is_retryable_without_publishing_an_unfinished_agent(comple
         assert item_from_db(db, "studio_smart_qa")["spec"]["tools"] == [
             {"type": "context_loader"}
         ]
+
+
+@pytest.mark.parametrize("completed", [1, 2, 3, 4, 5])
+def test_partial_file_catalog_seed_is_retryable_without_an_unfinished_agent(completed):
+    with database() as db:
+        apply(db, FILE_CATALOG, limit=completed)
+        published = {row[0] for row in db.execute("SELECT f_agent_id FROM t_agent")}
+        # An Agent row only exists once its own Prompt head and version are complete.
+        for agent_id in published:
+            assert item_from_db(db, agent_id)["prompt"]["content"]
+        apply(db, FILE_CATALOG)
+        assert {row[0] for row in db.execute("SELECT f_agent_id FROM t_agent")} == set(FILE_CATALOG_AGENTS)
+
+
+def test_file_catalog_agents_are_tool_less_published_tasks():
+    with database() as db:
+        apply(db, FILE_CATALOG)
+        for agent_id in FILE_CATALOG_AGENTS:
+            spec = item_from_db(db, agent_id)["spec"]
+            assert (spec["mode"], spec["status"], spec["tools"], spec["skills"]) == ("task", "published", [], [])
+            assert spec["limits"] == {"max_turns": 1, "timeout_s": 300, "max_output_tokens": 8192}
+
+
+def test_file_understanding_prompt_requires_the_requirements_variable():
+    from fastapi import HTTPException
+
+    from app.core.prompt import _fill
+
+    with database() as db:
+        apply(db, FILE_CATALOG)
+        content, schema = db.execute(
+            "SELECT f_content, f_vars_schema FROM t_agent_prompt_version WHERE f_prompt_id=?",
+            ("file-semantic-understanding-prompt",),
+        ).fetchone()
+        schema = json.loads(schema)
+        rendered = _fill(content, {"requirements": "运输方式是订单属性"}, schema)
+        assert "运输方式是订单属性" in rendered and "{requirements}" not in rendered
+        assert _fill(content, {"requirements": ""}, schema).count("{") == 0
+        with pytest.raises(HTTPException):
+            _fill(content, {}, schema)
+        review = db.execute(
+            "SELECT f_content, f_vars_schema FROM t_agent_prompt_version WHERE f_prompt_id=?",
+            ("business-key-review-prompt",),
+        ).fetchone()
+        assert review[1] is None
+        assert _fill(review[0], {}, None) == review[0]
+
+
+@pytest.mark.parametrize("agent_id", FILE_CATALOG_AGENTS)
+def test_conflicting_file_catalog_prompt_is_not_taken_over(agent_id):
+    with database() as db:
+        db.execute(f"INSERT INTO t_agent_prompt VALUES('{agent_id}-prompt','customer {agent_id}',7,'customer',1)")
+        with pytest.raises(sqlite3.IntegrityError):
+            apply(db, FILE_CATALOG)
+        assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id=?", (agent_id,)).fetchone()[0] == 0
 
 
 def test_conflicting_prompt_is_not_taken_over():
@@ -277,7 +335,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
     fresh, upgrade = selected_migrations("0.2.0")
     assert fresh == [str(MIGRATIONS / "0.2.1/init.sql"), "0.2.1"]
     assert upgrade == [
-        [["0.2.1", [str(STUDIO), str(PROVENANCE), str(PROVENANCE_UPGRADE), str(SETTINGS)]]],
+        [["0.2.1", [str(STUDIO), str(PROVENANCE), str(PROVENANCE_UPGRADE), str(SETTINGS), str(FILE_CATALOG)]]],
         "0.2.1",
         True,
     ]
