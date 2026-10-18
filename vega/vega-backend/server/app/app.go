@@ -47,6 +47,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/content_task"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/worker"
 )
 
@@ -193,6 +194,7 @@ func Boot(_ Options) (*App, error) {
 // Run finalizes connector assembly, then starts workers and the HTTP service.
 func (app *App) Run() error {
 	app.connectorFactory.Finalize()
+	content_task.FreezeContentTaskDispatcher()
 	auditTelemetry := operationaudit.NewPublishTelemetry()
 	var auditRecorder *operationaudit.KafkaRecorder
 	retryAuditConnection := false

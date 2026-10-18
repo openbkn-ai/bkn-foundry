@@ -143,3 +143,32 @@ func TestRawAggregationValidationError(t *testing.T) {
 		t.Fatalf("wrapped aggregation error lost its path or reason: %v", err)
 	}
 }
+
+func TestContentTaskUnavailableError(t *testing.T) {
+	t.Run("without cause", func(t *testing.T) {
+		err := NewContentTaskUnavailableError(nil)
+
+		if err.Error() != "content task dispatcher unavailable" {
+			t.Fatalf("Error() = %q", err.Error())
+		}
+		if errors.Unwrap(err) != nil {
+			t.Fatalf("Unwrap() = %v, want nil", errors.Unwrap(err))
+		}
+	})
+
+	t.Run("wraps cause and is detectable through wrapping", func(t *testing.T) {
+		cause := errors.New("worker down")
+		wrapped := fmt.Errorf("dispatch: %w", NewContentTaskUnavailableError(cause))
+
+		var target *ContentTaskUnavailableError
+		if !errors.As(wrapped, &target) {
+			t.Fatalf("errors.As(%v) = false", wrapped)
+		}
+		if !errors.Is(wrapped, cause) {
+			t.Fatalf("errors.Is(%v, cause) = false", wrapped)
+		}
+		if target.Error() != "content task dispatcher unavailable: worker down" {
+			t.Fatalf("Error() = %q", target.Error())
+		}
+	})
+}

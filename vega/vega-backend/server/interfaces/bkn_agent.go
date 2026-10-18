@@ -18,6 +18,8 @@ type BknAgentRunRequest struct {
 	AgentID        string         `json:"agent_id"`
 	Message        string         `json:"message"`
 	ResponseFormat map[string]any `json:"response_format,omitempty"`
+	// PromptVars fills the agent prompt's declared variables; omitted when empty.
+	PromptVars map[string]any `json:"prompt_vars,omitempty"`
 }
 
 type BknAgentRunResponse struct {

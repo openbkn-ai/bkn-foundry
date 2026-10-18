@@ -62,6 +62,35 @@ func TestBknAgentAccessRun(t *testing.T) {
 		assert.Equal(t, "agent-task-1", got.TaskID)
 	})
 
+	t.Run("prompt_vars is sent only when set", func(t *testing.T) {
+		access, mockHTTPClient := setup(t)
+		respBody, err := sonic.Marshal(&interfaces.BknAgentRunResponse{TaskID: "agent-task-1"})
+		require.NoError(t, err)
+		var sent []*interfaces.BknAgentRunRequest
+		mockHTTPClient.EXPECT().
+			PostNoUnmarshal(gomock.Any(), "http://bkn-agent/api/bkn-agent/v1/run", gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, body any) (int, []byte, error) {
+				req, ok := body.(*interfaces.BknAgentRunRequest)
+				require.True(t, ok)
+				sent = append(sent, req)
+				return http.StatusAccepted, respBody, nil
+			}).Times(2)
+
+		_, err = access.Run(ctx, &interfaces.BknAgentRunRequest{AgentID: "agent-1", Message: "m"})
+		require.NoError(t, err)
+		_, err = access.Run(ctx, &interfaces.BknAgentRunRequest{AgentID: "agent-1", Message: "m",
+			PromptVars: map[string]any{"requirements": "transport mode is an order property"}})
+		require.NoError(t, err)
+
+		require.Len(t, sent, 2)
+		withoutVars, err := sonic.Marshal(sent[0])
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"agent_id":"agent-1","message":"m"}`, string(withoutVars))
+		withVars, err := sonic.Marshal(sent[1])
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"agent_id":"agent-1","message":"m","prompt_vars":{"requirements":"transport mode is an order property"}}`, string(withVars))
+	})
+
 	t.Run("success with fallback id", func(t *testing.T) {
 		access, mockHTTPClient := setup(t)
 		accountCtx := context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{

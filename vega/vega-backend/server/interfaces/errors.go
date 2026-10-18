@@ -159,3 +159,21 @@ func (e *RawAggregationValidationError) Error() string {
 	return fmt.Sprintf("invalid OpenSearch aggregation at %s: %s", e.Path, e.Reason)
 }
 func (e *RawAggregationValidationError) Unwrap() error { return e.Cause }
+
+// ContentTaskUnavailableError reports that no content worker is assembled or usable.
+// Callers decide how to surface it; the dispatcher never builds HTTP errors.
+type ContentTaskUnavailableError struct{ Cause error }
+
+// NewContentTaskUnavailableError preserves the underlying reason, if any.
+func NewContentTaskUnavailableError(cause error) *ContentTaskUnavailableError {
+	return &ContentTaskUnavailableError{Cause: cause}
+}
+
+func (e *ContentTaskUnavailableError) Error() string {
+	if e.Cause == nil {
+		return "content task dispatcher unavailable"
+	}
+	return fmt.Sprintf("content task dispatcher unavailable: %v", e.Cause)
+}
+
+func (e *ContentTaskUnavailableError) Unwrap() error { return e.Cause }
