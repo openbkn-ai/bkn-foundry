@@ -80,6 +80,8 @@ agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执�
 - 已有固定 ID 的 Agent 保留模型、工具、状态、Prompt 引用和历史。业务溯源优化 Agent 仅在原管理主体仍是最后修改者、完整 limits 等于旧默认值时，将 180 秒升级到 600 秒；仅对精确匹配 0.1.4/0.1.5 已发布默认内容、由原主体维护且无自定义变量的 Prompt 追加新版本。管理员编辑、回滚和冲突版本保留。修改共享 Prompt 使用原版本管理能力；个人覆写表和旧 API 不在本次删除。
 - 新 Agent 最后写入，兼容的未完成默认 Prompt 可在脚本重试时补全；Prompt 冲突或名称冲突报错，不接管客户配置。迁移器按语句提交，不承诺跨表事务回滚，冲突时可能保留尚未引用的默认 Prompt 行。
 
+文件目录的两个 Agent（#2215）由 `05-seed-file-catalog-agents.sql` 和同版本 `init.sql` 写入，规则同上：只补缺失、不覆盖管理员修改、冲突时失败。`file-semantic-understanding` 做文件级业务理解，共享 Prompt 声明必填变量 `requirements`（调用方经 `prompt_vars` 传入用户编写的理解要求，可为空字符串）；`business-key-review` 复核被规则拒绝的业务键并推荐上下文词，只给建议、由人确认。两者都是无工具的 `task` Agent，由 vega 带 `response_format` 调用；专业版 `file_catalog` 的门控在企业版调用入口，不在这份数据里。
+
 Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留空继承平台默认，声明完整 Context Loader MCP。`runtime.contextLoaderMcpUrl` / `CONTEXT_LOADER_MCP_URL` 继续选择完整版 `/mcp/` 或紧凑版 `/mcp-compact/`。公共用户入口、网络范围及权限检查见下文 #2173；不创建基础数据问答或图探索占位 Agent。
 
 业务溯源两个 Agent 保留原固定 ID、owner 和工具声明，缺失时安装当前默认 Prompt/限制；旧默认值仅按上述条件修复。SQL 登记不创建 EE 管理身份，也不开放许可证控制的 EE 入口。`python -m app.bootstrap.business_provenance` 保留为现有部署脚本的兼容命令，只验证管理主体、Agent 归属及共享 Prompt，不再调用 `/import` 或覆盖管理员修改。原 JSON 文件覆盖环境变量不再支持，显式设置时会报错；共享配置改为通过管理 API 维护。旧手工导入脚本 `scripts/import-business-provenance-optimizer.sh` 一并移除。
