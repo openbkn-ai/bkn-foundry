@@ -8,6 +8,7 @@ package cypher
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -167,6 +168,14 @@ type PlanNegative struct {
 }
 
 func (PlanNegative) planExpression() {}
+
+// PlanConditionValue is a condition returned as a value: true, false, or null
+// when it cannot be decided.
+type PlanConditionValue struct {
+	Predicate PlanPredicate
+}
+
+func (PlanConditionValue) planExpression() {}
 
 func planContainsAggregate(value PlanExpression) bool {
 	switch node := value.(type) {
@@ -1120,6 +1129,13 @@ func (p *planner) planExpression(value Expression) (PlanExpression, numberKind, 
 	case Arithmetic:
 		return p.planArithmetic(node)
 
+	case ConditionValue:
+		predicate, err := p.planPredicate(node.Predicate)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		return PlanConditionValue{Predicate: predicate}, kindNotNumber, nil
+
 	default:
 		return nil, kindUnknown, planErrorf(value.expressionPosition(), "unsupported expression %T", value)
 	}
@@ -1248,8 +1264,7 @@ func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 				return &PlanOrder{Alias: key.Alias}, nil
 			}
 		}
-		return nil, planErrorf(key.Pos,
-			"%q is not returned by this query, so there is nothing to sort by", key.Alias)
+		return nil, p.unknownSortName(key)
 
 	case key.Property != nil:
 		table, column, err := p.resolveProperty(*key.Property)
@@ -1352,4 +1367,23 @@ func (p *planner) resolveProperty(ref PropertyRef) (int, string, error) {
 		Property:     ref.Property,
 	})
 	return table, column, nil
+}
+
+// unknownSortName refuses ORDER BY on a name nothing is returned as, and says
+// what could be sorted by instead. Naming an aggregate function, as in
+// ORDER BY count, is the usual slip: the aggregate needs a name of its own.
+func (p *planner) unknownSortName(key SortKey) error {
+	names := make([]string, 0, len(p.plan.Select))
+	for _, column := range p.plan.Select {
+		names = append(names, strconv.Quote(column.Alias))
+	}
+	if _, aggregate := aggregateFunctions[strings.ToLower(key.Alias)]; aggregate {
+		return planErrorf(key.Pos,
+			"%q is not returned by this query, so there is nothing to sort by; to sort by an aggregate, "+
+				"name it in RETURN, as in %s(*) AS n, and ORDER BY n (returned: %s)",
+			key.Alias, strings.ToLower(key.Alias), strings.Join(names, ", "))
+	}
+	return planErrorf(key.Pos,
+		"%q is not returned by this query, so there is nothing to sort by (returned: %s)",
+		key.Alias, strings.Join(names, ", "))
 }

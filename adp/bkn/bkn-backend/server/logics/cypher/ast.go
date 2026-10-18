@@ -353,3 +353,15 @@ type Negative struct {
 }
 
 func (n Negative) expressionPosition() Position { return n.Pos }
+
+// ConditionValue is a condition returned as a value, as in
+// RETURN o.region STARTS WITH 'E' AS east: true, false, or null when the
+// condition cannot be decided, which is what the same condition in WHERE
+// treats as not matching. It is only ever a whole RETURN item, never part of a
+// computation.
+type ConditionValue struct {
+	Predicate Predicate
+	Pos       Position
+}
+
+func (c ConditionValue) expressionPosition() Position { return c.Pos }

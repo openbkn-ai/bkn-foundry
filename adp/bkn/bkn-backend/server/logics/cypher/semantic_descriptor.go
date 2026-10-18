@@ -109,8 +109,20 @@ type SemanticQueryOrdering struct {
 	Descending   bool     `json:"descending"`
 }
 
-// semanticExpression is what the descriptor records of a computed value.
-const semanticExpression = "arithmetic"
+// semanticExpression is what the descriptor records of a computed value, and
+// semanticCondition of a condition returned as a value.
+const (
+	semanticExpression = "arithmetic"
+	semanticCondition  = "condition"
+)
+
+// semanticExpressionKind names what a computed column is in the descriptor.
+func semanticExpressionKind(value PlanExpression) string {
+	if _, ok := value.(PlanConditionValue); ok {
+		return semanticCondition
+	}
+	return semanticExpression
+}
 
 func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescriptor, error) {
 	if plan == nil || strings.TrimSpace(plan.NetworkID) == "" || len(plan.Tables) == 0 || len(plan.Select) == 0 {
@@ -184,7 +196,7 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		}
 		switch {
 		case column.Expression != nil:
-			projection.Expression = semanticExpression
+			projection.Expression = semanticExpressionKind(column.Expression)
 			projection.PropertyRefs = semanticExpressionRefs(plan, column.Expression)
 		case column.Aggregate != nil:
 			projection.Aggregate = strings.ToLower(column.Aggregate.Function)
@@ -343,10 +355,42 @@ func semanticPropertyRef(plan *Plan, table int, property string) string {
 func semanticExpressionRefs(plan *Plan, value PlanExpression) []string {
 	var refs []string
 	seen := map[string]bool{}
+	add := func(ref string) {
+		if ref != "" && !seen[ref] {
+			seen[ref] = true
+			refs = append(refs, ref)
+		}
+	}
 	var walk func(PlanExpression)
+	var walkPredicate func(PlanPredicate)
+	walkPredicate = func(predicate PlanPredicate) {
+		switch node := predicate.(type) {
+		case PlanCondition:
+			add(semanticPropertyRef(plan, node.Table, node.Property))
+		case PlanNullCheck:
+			add(semanticPropertyRef(plan, node.Table, node.Property))
+		case PlanMembership:
+			add(semanticPropertyRef(plan, node.Table, node.Property))
+		case PlanStringMatch:
+			add(semanticPropertyRef(plan, node.Table, node.Property))
+		case PlanExpressionComparison:
+			walk(node.Left)
+			walk(node.Right)
+		case PlanNegation:
+			walkPredicate(node.Operand)
+		case PlanLogical:
+			for _, operand := range node.Operands {
+				walkPredicate(operand)
+			}
+		case dateComparison:
+			walkPredicate(node.PlanPredicate)
+		}
+	}
 	walk = func(value PlanExpression) {
 		var ref string
 		switch node := value.(type) {
+		case PlanConditionValue:
+			walkPredicate(node.Predicate)
 		case PlanValueColumn:
 			ref = semanticPropertyRef(plan, node.Table, node.Property)
 		case PlanAggregate:

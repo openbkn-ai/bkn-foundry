@@ -127,6 +127,8 @@ func walkExpressionColumns(value PlanExpression, visit func(table int, column st
 		walkExpressionColumns(node.Right, visit)
 	case PlanNegative:
 		walkExpressionColumns(node.Operand, visit)
+	case PlanConditionValue:
+		walkPredicateColumns(node.Predicate, visit)
 	}
 }
 

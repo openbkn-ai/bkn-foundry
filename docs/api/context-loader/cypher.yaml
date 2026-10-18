@@ -68,6 +68,9 @@ paths:
         - **RETURN**：属性、`AS` 别名、`DISTINCT`，以及 `count` / `sum` / `avg` /
           `min` / `max`（含 `count(*)` 与 `DISTINCT` 形式）。有聚合时按 RETURN 中其余
           列自动分组——这是 Cypher 的隐式 GROUP BY，无需也不能自己写 GROUP BY。
+          RETURN 也可以返回条件，写法与 `WHERE` 相同，如 `g.tournament_name CONTAINS 'Men' AS mens`：
+          值为 `true` / `false`，无法判定时（属性为 null，或 OPTIONAL MATCH 没匹配到节点）为
+          `null`；它和其他返回值一样参与分组。要按条件排序，请先起别名再按别名排序。
         - **算术**：`+` `-` `*` `/` `%` 与取负，可加括号，可写在 RETURN（含聚合的参数）、
           `WHERE` 比较的两侧和 `ORDER BY` 里，如 `count(*) * 2`、`sum(o.price * o.qty)`、
           `count(o.x) * 1.0 / count(*)`、`WHERE o.amount * o.rate > $floor`、

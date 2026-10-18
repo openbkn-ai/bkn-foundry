@@ -471,6 +471,19 @@ func evaluateExpression(value PlanExpression, s scope) (any, error) {
 			return nil, err
 		}
 		return computeArithmetic(node.Operator, left, right)
+	case PlanConditionValue:
+		t, err := evaluatePredicate(node.Predicate, s)
+		if err != nil {
+			return nil, err
+		}
+		switch t {
+		case truthTrue:
+			return true, nil
+		case truthFalse:
+			return false, nil
+		default:
+			return nil, nil
+		}
 	default:
 		return nil, fmt.Errorf("cannot evaluate a %T value", value)
 	}

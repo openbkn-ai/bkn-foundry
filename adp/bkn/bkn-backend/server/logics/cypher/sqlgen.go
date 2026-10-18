@@ -144,6 +144,20 @@ func (g *generator) expression(value PlanExpression) string {
 		}
 		return g.operand(node.Left, precedence, false) + " " + node.Operator + " " +
 			g.operand(node.Right, precedence, true)
+	case PlanConditionValue:
+		// MySQL evaluates a condition to 1, 0 or NULL, which the caller turns
+		// back into a boolean. The condition is written by the same code that
+		// writes WHERE, so it reads the same in both places.
+		condition := &generator{dialect: g.dialect, plan: g.plan}
+		if err := condition.writePredicate(node.Predicate, true); err != nil {
+			g.fail(err)
+			return ""
+		}
+		if condition.err != nil {
+			g.fail(condition.err)
+			return ""
+		}
+		return "(" + condition.out.String() + ")"
 	default:
 		g.fail(fmt.Errorf("cannot generate a %T value", value))
 		return ""
