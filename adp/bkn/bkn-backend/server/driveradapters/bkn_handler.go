@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -81,9 +80,9 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 
 	// Validate the file type.
 	if header.Header.Get("Content-Type") != "application/octet-stream" {
-		// Fall back to the filename extension.
-		ext := filepath.Ext(header.Filename)
-		if ext != ".tar" && ext != ".tgz" && ext != ".tar.gz" {
+		// Fall back to the filename extension. The suffix is matched on the whole name:
+		// filepath.Ext of "net.tar.gz" is ".gz", which never matched ".tar.gz".
+		if !hasArchiveSuffix(header.Filename) {
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails(commonValidationDetail(ctx, "ArchiveFileTypeInvalid", nil))
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -107,7 +106,8 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		branch, mode, strictMode, bindingPolicy, header.Filename, header.Size)
 
 	// Load the network directly from the tar archive in memory.
-	bknNetwork, err := bknsdk.LoadNetworkFromTar(file)
+	// The archive format is read from its first bytes: plain tar as always, tar.gz, or zip.
+	bknNetwork, err := bknsdk.LoadNetworkFromArchive(file)
 	if err != nil {
 		logger.Errorf("Failed to load network from tar: %s", err.Error())
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
@@ -429,4 +429,18 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 	c.Data(http.StatusOK, "application/octet-stream", tarData)
+}
+
+// archiveSuffixes are the file names an archive upload may carry when it is not sent as
+// application/octet-stream. The loader reads the format from the content, not from the name.
+var archiveSuffixes = []string{".tar", ".tgz", ".tar.gz", ".zip"}
+
+func hasArchiveSuffix(filename string) bool {
+	name := strings.ToLower(filename)
+	for _, suffix := range archiveSuffixes {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
 }
