@@ -34,6 +34,11 @@ type BknNetworkFrontmatter struct {
 	Version string `yaml:"version,omitempty"`
 	Branch  string `yaml:"branch,omitempty"`
 
+	// BknSpec is the BKN specification version the package is written in, normalized to
+	// major.minor ("3.0"). Empty means a package written before the field existed; such packages
+	// are read by the 2.x rules, exactly as before. See spec.go.
+	BknSpec string `yaml:"bkn_spec,omitempty"`
+
 	// Capabilities declares which Skills and ToolBox tools this network depends on. It is a
 	// dependency declaration, not a payload: the capabilities themselves travel through their own
 	// channels (a skill's package, a tool box's import/export), the way package.json names

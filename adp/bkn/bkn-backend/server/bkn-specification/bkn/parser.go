@@ -507,6 +507,11 @@ func ParseNetworkFile(text string, sourcePath string) (*BknNetwork, error) {
 		return nil, fmt.Errorf("missing required field 'id' in network.bkn frontmatter")
 	}
 
+	spec, err := normalizeBknSpec(fmData["bkn_spec"])
+	if err != nil {
+		return nil, err
+	}
+
 	network := &BknNetwork{
 		BknNetworkFrontmatter: BknNetworkFrontmatter{
 			Type:         strVal(fmData, "type"),
@@ -515,6 +520,7 @@ func ParseNetworkFile(text string, sourcePath string) (*BknNetwork, error) {
 			Tags:         strSliceVal(fmData, "tags"),
 			Version:      strVal(fmData, "version"),
 			Branch:       strVal(fmData, "branch"),
+			BknSpec:      spec,
 			Capabilities: parseCapabilities(fmData),
 		},
 		Description: extractBodyDescription(text),
@@ -525,8 +531,12 @@ func ParseNetworkFile(text string, sourcePath string) (*BknNetwork, error) {
 	return network, nil
 }
 
-// ParseObjectTypeFile parses an object_type definition file.
+// ParseObjectTypeFile parses an object_type definition file by the 2.x rules.
 func ParseObjectTypeFile(text string, sourcePath string) (*BknObjectType, error) {
+	return parseObjectTypeFile(text, sourcePath, parseOptions{})
+}
+
+func parseObjectTypeFile(text string, sourcePath string, opts parseOptions) (*BknObjectType, error) {
 	fmData, err := ParseFrontmatter(text)
 	if err != nil {
 		return nil, err
@@ -560,6 +570,15 @@ func ParseObjectTypeFile(text string, sourcePath string) (*BknObjectType, error)
 	}
 	if s, ok := sections["Logic Properties"]; ok {
 		obj.LogicProperties = parseLogicProperties(s)
+		if opts.v3() {
+			for _, lp := range obj.LogicProperties {
+				for _, p := range lp.Parameters {
+					if err := checkParameterValueSource(fmt.Sprintf("logic property %q", lp.Name), p); err != nil {
+						return nil, err
+					}
+				}
+			}
+		}
 	}
 	if s, ok := sections["Keys"]; ok {
 		pks, dk, ik := parseKeys(s)
@@ -661,8 +680,12 @@ func ParseRelationTypeFile(text string, sourcePath string) (*BknRelationType, er
 	return rel, nil
 }
 
-// ParseActionTypeFile parses an action_type definition file.
+// ParseActionTypeFile parses an action_type definition file by the 2.x rules.
 func ParseActionTypeFile(text string, sourcePath string) (*BknActionType, error) {
+	return parseActionTypeFile(text, sourcePath, parseOptions{})
+}
+
+func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*BknActionType, error) {
 	fmData, err := ParseFrontmatter(text)
 	if err != nil {
 		return nil, err
@@ -679,7 +702,7 @@ func ParseActionTypeFile(text string, sourcePath string) (*BknActionType, error)
 			ActionType:   strVal(fmData, "action_type"),
 			ActionIntent: strVal(fmData, "action_intent"),
 		},
-		Description: buildDescription(desc, sections, order, knownActionTypeSections),
+		Description: buildDescription(desc, sections, order, opts.knownActionSections()),
 		RawContent:  text,
 	}
 	act.Summary = ExtractSummary(act.Description)
@@ -712,7 +735,10 @@ func ParseActionTypeFile(text string, sourcePath string) (*BknActionType, error)
 		act.ActionSource = parseActionSource(s)
 	}
 	if s, ok := sections["Parameter Binding"]; ok {
-		act.Parameters = parseParameterBinding(s)
+		act.Parameters, err = parseParameterBinding(s, opts)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if s, ok := sections["Schedule"]; ok {
 		act.Schedule = parseSchedule(s)
@@ -835,11 +861,20 @@ func parseActionCondition(sectionText string) *ActionCondCfg {
 // Current column headers: Name | Type | Source | Operation | ValueFrom | Value | Description.
 // Legacy aliases "Parameter" (for Name) and "Binding"/"Value From" (for ValueFrom) are
 // also accepted for backwards compatibility with older BKN files.
-func parseParameterBinding(sectionText string) []Parameter {
+//
+// Under 3.0 a legacy row is converted to the current meaning (legacyBindingParameter) and a row
+// whose value source would make execution drop the parameter is refused.
+func parseParameterBinding(sectionText string, opts parseOptions) ([]Parameter, error) {
 	rows := parseTable(strings.Split(sectionText, "\n"))
 	var params []Parameter
 	for _, row := range rows {
 		name := firstNonEmpty(row, "Name", "Parameter")
+		if opts.v3() {
+			if param, ok := legacyBindingParameter(row, name); ok {
+				params = append(params, param)
+				continue
+			}
+		}
 		valueFrom := firstNonEmpty(row, "ValueFrom", "Binding", "Value From")
 		param := Parameter{
 			Name:        name,
@@ -850,9 +885,14 @@ func parseParameterBinding(sectionText string) []Parameter {
 			Value:       row["Value"],
 			Description: row["Description"],
 		}
+		if opts.v3() {
+			if err := checkParameterValueSource("action", param); err != nil {
+				return nil, err
+			}
+		}
 		params = append(params, param)
 	}
-	return params
+	return params, nil
 }
 
 // parseActionSource parses the action source table.

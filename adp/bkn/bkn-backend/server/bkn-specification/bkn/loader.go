@@ -103,14 +103,16 @@ func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
 		bknDoc.SkillContent = string(skillData)
 	}
 
-	// Step 4: Traverse subdirectories and load definitions
+	// Step 4: Traverse subdirectories and load definitions, under the rules of the specification
+	// network.bkn declares.
+	opts := parseOptions{spec: bknDoc.BknSpec}
 	for subdir := range SupportedBknSubDirs {
 		subdirPath := fsys.Join(absRoot, subdir)
 		if !fsys.IsDir(subdirPath) {
 			continue
 		}
 
-		if err := loadSubdirWithFS(fsys, subdirPath, subdir, bknDoc); err != nil {
+		if err := loadSubdirWithFS(fsys, subdirPath, subdir, bknDoc, opts); err != nil {
 			return nil, fmt.Errorf("load %s: %w", subdir, err)
 		}
 	}
@@ -134,7 +136,7 @@ func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
 
 // loadSubdirWithFS loads all .bkn/.md files from a subdirectory into the result document.
 // It uses the subdirectory name to determine which type-specific parser to use.
-func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *BknNetwork) error {
+func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *BknNetwork, opts parseOptions) error {
 	entries, err := fsys.ReadDir(subdirPath)
 	if err != nil {
 		return err
@@ -182,7 +184,7 @@ func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *Bk
 		// Use type-specific parser based on subdirectory type
 		switch subdirName {
 		case "object_types":
-			obj, err := ParseObjectTypeFile(string(data), filePath)
+			obj, err := parseObjectTypeFile(string(data), filePath, opts)
 			if err != nil {
 				return fmt.Errorf("parse %s: %w", name, err)
 			}
@@ -196,7 +198,7 @@ func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *Bk
 			result.RelationTypes = append(result.RelationTypes, rel)
 
 		case "action_types":
-			act, err := ParseActionTypeFile(string(data), filePath)
+			act, err := parseActionTypeFile(string(data), filePath, opts)
 			if err != nil {
 				return fmt.Errorf("parse %s: %w", name, err)
 			}

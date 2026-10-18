@@ -283,3 +283,12 @@ func TestValidateNetwork_LogicPropertyResultPathMustParse(t *testing.T) {
 	assert.False(t, res.OK())
 	assert.Contains(t, fmt.Sprintf("%+v", res.Errors), "not a valid jsonpath")
 }
+
+// The backend rejects the curly quotes ‘’“” in a tag; offline validation has to reject them too,
+// or a network passes validate and then fails on push.
+func TestValidateTags_RejectsCurlyQuotes(t *testing.T) {
+	for _, tag := range []string{"“核心”", "‘核心’"} {
+		assert.Error(t, validateTags([]string{tag}), tag)
+	}
+	assert.NoError(t, validateTags([]string{"核心", "主数据"}))
+}
