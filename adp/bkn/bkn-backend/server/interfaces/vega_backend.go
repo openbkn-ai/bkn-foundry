@@ -131,4 +131,7 @@ type ResourceDataQueryParams struct {
 	NeedTotal       bool                      `json:"need_total,omitempty"`
 	Sort            []*SortParams             `json:"sort,omitempty"`
 	OutputFields    []string                  `json:"output_fields,omitempty"`
+	// IgnoreLocalIndex reads a table resource from its data source even when
+	// vega-backend holds a local index of it.
+	IgnoreLocalIndex *bool `json:"ignore_local_index,omitempty"`
 }

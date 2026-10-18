@@ -591,6 +591,64 @@ func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID 
 	return &response, nil
 }
 
+func (vba *vegaBackendAccess) QueryResourceDataAs(ctx context.Context, account interfaces.AccountInfo,
+	resourceID string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "driven layer: Query resource data as account")
+	defer span.End()
+
+	if account.ID == "" || account.Type == "" {
+		err := fmt.Errorf("resource data query requires an account to run under, none given")
+		common.LogSafeError(ctx, "QueryResourceDataAs refused: account missing", err)
+		oteltrace.AddHttpAttrs4Error(span, 0, "InternalError", "Resource data query without an account")
+		return nil, err
+	}
+	request, err := resourceDataQueryRequest(params)
+	if err != nil {
+		return nil, err
+	}
+
+	httpUrl := fmt.Sprintf("%s/resources/%s/data", vba.baseUrl, url.PathEscape(resourceID))
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
+		HttpUrl:         httpUrl,
+		HttpMethod:      http.MethodPost,
+		HttpContentType: rest.ContentTypeJson,
+	})
+	headers := map[string]string{
+		interfaces.CONTENT_TYPE_NAME:          interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:     account.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE:   account.Type,
+		oteltrace.HTTP_HEADER_METHOD_OVERRIDE: http.MethodGet,
+	}
+	respCode, respData, err := vba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, request)
+	logger.Debugf("QueryResourceDataAs finished, response code is [%d], %s", respCode, common.SafeErrorSummary(err))
+
+	if err != nil {
+		// The filter carries the caller's values, so it never reaches the
+		// caller's error; only the summary goes to the log.
+		safeErr := interfaces.NewDependencyError("vega", "resource_data", interfaces.DependencyTransportKind(err), respCode)
+		common.LogSafeError(ctx, "QueryResourceDataAs failed: "+common.SafeErrorSummary(err), safeErr)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http resource data query failed")
+		return nil, safeErr
+	}
+	if respCode != http.StatusOK {
+		err := interfaces.NewDependencyError("vega", "resource_data", dependencyKindForStatus(respCode), respCode)
+		common.LogSafeError(ctx, fmt.Sprintf("QueryResourceDataAs returned HTTP %d", respCode), err)
+		logger.Debugf("QueryResourceDataAs response: %s", common.SafeTextSummary("response", string(respData)))
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, err
+	}
+
+	var response interfaces.DatasetQueryResponse
+	// Dynamic resource fields must keep their original JSON number representation.
+	if err := vegaResponseJSON.Unmarshal(respData, &response); err != nil {
+		common.LogSafeError(ctx, "Failed to unmarshal QueryResourceDataAs response", err)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal resource data response failed")
+		return nil, interfaces.NewDependencyError("vega", "resource_data", interfaces.DependencyInvalidResponse, respCode)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return &response, nil
+}
+
 func resourceDataQueryRequest(params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryParams, error) {
 	if params == nil {
 		return nil, fmt.Errorf("resource data query params are required")
