@@ -35,6 +35,9 @@ _INDIRECT_TOOLS = {
     "execute_native_tool",
 }
 
+REASONING_FLUSH_CHARS = 200
+REASONING_FLUSH_S = 0.3
+
 
 @dataclass
 class PublicChat:
@@ -46,13 +49,43 @@ class PublicChat:
     # The last assistant message without tool calls. Text spoken before a tool
     # call is progress narration and streams as tokens, but is not the answer.
     final: str | None = None
+    # Network and user layers: appended instructions and the narrowed tool set
+    # (None keeps every tool the shared definition loads).
+    instructions: list[tuple[str, str]] = field(default_factory=list)
+    allowed_tools: set[str] | None = None
     usage: dict = field(default_factory=dict)
     tool_starts: dict[str, float] = field(default_factory=dict)
+    # Reasoning arrives a token or two per chunk; it is sent in pieces instead.
+    reasoning_parts: list[str] = field(default_factory=list)
+    reasoning_since: float = 0.0
 
     def event(self, name: str, data: dict) -> str:
+        # Any other event first sends the reasoning held so far, so order holds.
+        pending = self._flush_reasoning()
         self.sequence += 1
         payload = {**data, "run_id": self.run_id, "sequence": self.sequence}
-        return f"event: {name}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        return pending + f"event: {name}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    def reasoning(self, text: str) -> str:
+        """Buffer reasoning; return an event once enough text or time has gathered."""
+        if not self.reasoning_parts:
+            self.reasoning_since = time.monotonic()
+        self.reasoning_parts.append(text)
+        if (
+            sum(map(len, self.reasoning_parts)) < REASONING_FLUSH_CHARS
+            and time.monotonic() - self.reasoning_since < REASONING_FLUSH_S
+        ):
+            return ""
+        return self._flush_reasoning()
+
+    def _flush_reasoning(self) -> str:
+        if not self.reasoning_parts:
+            return ""
+        content = "".join(self.reasoning_parts)
+        self.reasoning_parts.clear()
+        self.sequence += 1
+        payload = {"content": content, "run_id": self.run_id, "sequence": self.sequence}
+        return f"event: reasoning\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     @staticmethod
     def text(content) -> str:
@@ -162,7 +195,14 @@ class PublicChat:
                                 * 1000
                             ),
                             **(
-                                {"error": project(message.content)}
+                                {
+                                    "error": project(message.content),
+                                    # unavailable: the call did not go through;
+                                    # error: the tool ran and returned an error.
+                                    "error_kind": "unavailable"
+                                    if _TOOL_UNAVAILABLE in _text_of(message.content)
+                                    else "error",
+                                }
                                 if message.status == "error"
                                 else {}
                             ),
@@ -190,6 +230,8 @@ class PublicChat:
             )
             if not scoped:
                 continue
+            if self.allowed_tools is not None and tool.name not in self.allowed_tools:
+                continue
 
             # Bind closure state outside model-controlled keyword arguments.
             def bind(inner):
@@ -209,10 +251,21 @@ class PublicChat:
                     except ToolException:
                         raise
                     except Exception as exc:
-                        # A malformed tool result (for example one that fails
-                        # its own output schema) is a failed call the model can
-                        # work around, not a reason to fail the whole turn.
-                        raise ToolException(f"{type(exc).__name__}: {exc}") from exc
+                        # The call itself did not go through (unreachable, timed
+                        # out, or a result that fails its own schema). The model
+                        # can work around it, so the turn goes on, but the event
+                        # reports it apart from errors the tool itself returned.
+                        raise ToolException(
+                            json.dumps(
+                                {
+                                    **build_error_content("BknAgent.Tool.Unavailable"),
+                                    "cause": _redact(f"{type(exc).__name__}: {exc}")[
+                                        :500
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            )
+                        ) from exc
 
                 return call
 
@@ -229,6 +282,53 @@ class PublicChat:
                 )
             )
         return guarded
+
+
+def classify_failure(exc: BaseException) -> tuple[str, dict | None]:
+    """A stable code for a failed public turn, plus the upstream's own error.
+
+    Model Factory already returns user-facing error codes and messages; passing
+    them on tells the caller what actually failed. Credentials are removed and
+    the text is bounded; stack traces and addresses are never included.
+    """
+    import openai
+
+    if isinstance(exc, openai.APIConnectionError):
+        return "BknAgent.Model.Unavailable", None
+    if isinstance(exc, openai.APIStatusError):
+        body = exc.body if isinstance(exc.body, dict) else {}
+        error = body.get("error") if isinstance(body.get("error"), dict) else body
+        upstream = {
+            key: _redact(str(error[key]))[:500]
+            for key in ("code", "message")
+            if isinstance(error, dict) and error.get(key)
+        } or None
+        retryable = exc.status_code >= 500 or exc.status_code == 429
+        return (
+            "BknAgent.Model.Unavailable" if retryable else "BknAgent.Model.Rejected",
+            upstream,
+        )
+    return "BknAgent.Chat.Failed", None
+
+
+def _redact(text: str) -> str:
+    return re.sub(
+        r"(?i)bearer\s+[^\s\"']+|bak_[A-Za-z0-9_-]+|sk-[A-Za-z0-9_-]+",
+        "[redacted]",
+        text,
+    )
+
+
+_TOOL_UNAVAILABLE = '"code": "BknAgent.Tool.Unavailable"'
+
+
+def _text_of(content) -> str:
+    if isinstance(content, str):
+        return content
+    return "".join(
+        block.get("text", "") if isinstance(block, dict) else str(block)
+        for block in content or []
+    )
 
 
 _SENSITIVE = {

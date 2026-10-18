@@ -296,6 +296,24 @@ error_messages = {
         "detail": "Internal service error.",
         "solution": "Check the bkn-agent logs and the trace_id; retry later if a downstream service is unavailable.",
     },
+    "BknAgent.Tool.Unavailable": {
+        "code": "BknAgent.Tool.Unavailable",
+        "description": "The tool call did not complete.",
+        "detail": "The tool call did not complete.",
+        "solution": "Try another way to query; if it keeps happening, check the service behind the tool.",
+    },
+    "BknAgent.Model.Unavailable": {
+        "code": "BknAgent.Model.Unavailable",
+        "description": "The model service is temporarily unavailable.",
+        "detail": "The model service is temporarily unavailable.",
+        "solution": "Try again later; if it keeps failing, check the Model Factory and its upstream service.",
+    },
+    "BknAgent.Model.Rejected": {
+        "code": "BknAgent.Model.Rejected",
+        "description": "The model service rejected this request.",
+        "detail": "The model service rejected this request.",
+        "solution": "Check the model configuration, context length, or quota and try again.",
+    },
     "BknAgent.Chat.Timeout": {
         "code": "BknAgent.Chat.Timeout",
         "description": "The conversation timed out.",

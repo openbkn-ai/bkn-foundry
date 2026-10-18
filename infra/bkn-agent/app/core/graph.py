@@ -16,7 +16,9 @@ from app.core.checkpoint import open_checkpointer
 from app.core.llm import build_chat_model
 from app.core.structured import structured_extract_with_path
 from app.core.prompt import resolve_prompt
-from app.core.public_chat import PublicChat
+from app.core.agent_settings import instruction_block, shared_limits
+from app.core.context_budget import context_middleware
+from app.core.public_chat import PublicChat, classify_failure
 from app.core.skills import load_skills
 from app.core.tools import apply_tool_call_cap, instrument_tool_calls, load_tools
 from app.commons.i18n import build_error_content
@@ -94,7 +96,7 @@ async def stream_chat(
                 f"\nThe selected knowledge network is {public.kn_id}. "
                 "Tools may only access this network. Do not claim a tool "
                 "succeeded when it returned an error."
-            )
+            ) + instruction_block(public.instructions)
         skill_ids = list(dict.fromkeys([*agent.skills, *req.skills]))
         system_prompt += await load_skills(skill_ids, account_id, account_type)
         # Same order as the runner: the Context Loader session opens first, and
@@ -105,7 +107,10 @@ async def stream_chat(
             # thread_id anchors the session, so every turn of one thread lands
             # in the same conversation.
             cl_session = await context_loader.open_session(
-                req.message, agent_name=agent.name, host_conversation_key=thread_id
+                req.message,
+                agent_name=agent.name,
+                host_conversation_key=thread_id,
+                profile=context_loader.profile_of(agent.tools),
             )
             if cl_session is not None:
                 # Set only when a session was really opened.
@@ -216,10 +221,22 @@ async def stream_chat(
                         tools,
                         system_prompt=system_prompt,
                         checkpointer=checkpointer,
+                        # Legacy callers keep the unbounded history they had.
+                        middleware=context_middleware(
+                            shared_limits(agent),
+                            build_chat_model(
+                                agent.model, streaming=False, max_output_tokens=max_out
+                            ),
+                        )
+                        if public
+                        else (),
                     )
                     cfg = {
                         "configurable": {"thread_id": thread_id},
-                        "recursion_limit": max_turns * 2 + 1,
+                        # max_turns tool rounds plus the answering call. A round
+                        # is model + tools; the public surface adds the
+                        # summarization node before each model call.
+                        "recursion_limit": max_turns * 3 + 2 if public else max_turns * 2 + 1,
                     }
                     try:
                         async with asyncio.timeout(timeout_s):
@@ -252,6 +269,15 @@ async def stream_chat(
                                             chunk, meta = payload
                                         else:
                                             chunk, meta = item
+                                        if public and meta.get("langgraph_node") not in (None, "model"):
+                                            # Summarization calls a model inside middleware;
+                                            # that text is not part of the answer.
+                                            continue
+                                        if public and isinstance(chunk, AIMessageChunk):
+                                            thinking = chunk.additional_kwargs.get("reasoning_content")
+                                            if isinstance(thinking, str) and thinking:
+                                                if event := public.reasoning(thinking):
+                                                    yield event
                                         if isinstance(chunk, AIMessageChunk) or (public and isinstance(chunk, AIMessage)):
                                             content = public.text(chunk.content) if public else chunk.content
                                             if content:
@@ -366,7 +392,12 @@ async def stream_chat(
                     except TimeoutError:
                         yield _sse("error", _stream_error("BknAgent.Chat.Timeout", timeout=timeout_s))
                     except Exception as e:  # Errors must be sent explicitly onto the stream, never swallowed
-                        yield _sse("error", _stream_error("BknAgent.Chat.Failed", detail=str(e)))
+                        if public:
+                            logger.exception("public execution %s failed", public.run_id)
+                            code, upstream = classify_failure(e)
+                            yield _sse("error", {**_stream_error(code), "upstream": upstream})
+                        else:
+                            yield _sse("error", _stream_error("BknAgent.Chat.Failed", detail=str(e)))
         except (
             Exception
         ) as e:  # An assembly-stage failure (building the checkpointer or graph) must also

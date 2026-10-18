@@ -15,6 +15,7 @@ MIGRATIONS = ROOT / "migrations/bkn-agent/mariadb"
 STUDIO = MIGRATIONS / "0.2.1/01-seed-studio-smart-qa.sql"
 PROVENANCE = MIGRATIONS / "0.2.1/02-seed-business-provenance.sql"
 PROVENANCE_UPGRADE = MIGRATIONS / "0.2.1/03-upgrade-business-provenance-defaults.sql"
+SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
 
 
 def statements(path):
@@ -135,14 +136,23 @@ def snapshot(db):
     ]
 
 
-def test_new_snapshot_keeps_the_original_ten_tables_without_schema_changes():
+def test_new_snapshot_only_adds_the_two_setting_tables():
     old = (MIGRATIONS / "0.2.0/init.sql").read_text()
     new = (MIGRATIONS / "0.2.1/init.sql").read_text()
     assert new.startswith(old.rstrip() + "\n")
     tables = re.findall(r"create table if not exists (\w+)", new, re.I)
-    assert len(tables) == 10
-    assert tables == re.findall(r"create table if not exists (\w+)", old, re.I)
-    assert "alter table" not in (STUDIO.read_text() + PROVENANCE.read_text()).lower()
+    # The original ten tables are untouched; network and user settings were
+    # added deliberately (#2151 design change, 2026-10-17).
+    assert tables == re.findall(r"create table if not exists (\w+)", old, re.I) + [
+        "t_agent_network_setting",
+        "t_agent_user_setting",
+    ]
+    assert re.findall(r"create table if not exists (\w+)", SETTINGS.read_text(), re.I) == [
+        "t_agent_network_setting",
+        "t_agent_user_setting",
+    ]
+    deltas = STUDIO.read_text() + PROVENANCE.read_text() + SETTINGS.read_text()
+    assert "alter table" not in deltas.lower()
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
 
 
@@ -267,7 +277,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
     fresh, upgrade = selected_migrations("0.2.0")
     assert fresh == [str(MIGRATIONS / "0.2.1/init.sql"), "0.2.1"]
     assert upgrade == [
-        [["0.2.1", [str(STUDIO), str(PROVENANCE), str(PROVENANCE_UPGRADE)]]],
+        [["0.2.1", [str(STUDIO), str(PROVENANCE), str(PROVENANCE_UPGRADE), str(SETTINGS)]]],
         "0.2.1",
         True,
     ]

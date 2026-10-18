@@ -6,6 +6,7 @@
 
 import asyncio
 import hashlib
+import logging
 import json
 import uuid
 
@@ -23,8 +24,11 @@ from app.core.public_chat import PublicChat
 from app.db import SessionLocal, get_session
 from app.errors import err, not_found
 from app.models import ChatRequest, ExecutionOut, ExecutionRequest
-from app.public_auth import authorize_execution, get_public_account
+from app.core.agent_settings import merge
+from app.models import AgentSetting
+from app.public_auth import PUBLIC_AGENT_IDS, authorize_execution, get_public_account
 
+logger = logging.getLogger("bkn-agent.executions")
 router = APIRouter()
 _PROTOCOL = "public-execution-v1"
 # Like the existing chat/thread guard, this is deliberately single-replica.
@@ -32,17 +36,28 @@ _active: dict[str, asyncio.Task] = {}
 _thread_claims: set[str] = set()
 
 
+def _layer(row) -> AgentSetting | None:
+    """A stored layer that no longer validates is skipped rather than failing runs."""
+    if row is None:
+        return None
+    try:
+        return AgentSetting.model_validate(row.f_content)
+    except ValueError:
+        return None
+
+
 def _identity(account: Account) -> dict:
     return {"account_id": account.account_id, "account_type": account.account_type}
 
 
-def _failure(code: str | None) -> dict[str, str]:
-    return {
-        "code": code
-        if code and code.startswith("BknAgent.")
-        else "BknAgent.Execution.Failed",
-        "detail": build_error_content("BknAgent.Execution.Failed")["detail"],
-    }
+def _failure(code: str | None, upstream: dict | None = None) -> dict:
+    """The terminal error: the code's own localized text, and the upstream's
+    error when it gave one (live stream only; GET returns the code and text)."""
+    code = code if code and code.startswith("BknAgent.") else "BknAgent.Execution.Failed"
+    error = {"code": code, "detail": build_error_content(code)["detail"]}
+    if upstream:
+        error["upstream"] = upstream
+    return error
 
 
 def _decode(task) -> ExecutionOut:
@@ -111,7 +126,9 @@ async def cancel_execution(
     response_class=StreamingResponse,
     responses={
         200: {
-            "description": "SSE: meta, token, tool_started, tool_finished, usage, result, terminal. "
+            "description": "SSE: meta, reasoning, token, tool_started, tool_finished, usage, result, terminal. "
+            "reasoning carries the model's streamed thinking when it provides any; it is never "
+            "part of the answer. "
             "Each event carries run_id and sequence. result.content.answer is the last "
             "assistant message; text streamed before tool calls is progress, not the answer. "
             "Successful result is persisted before "
@@ -128,7 +145,7 @@ async def execute(
 ):
     # Only the migrated built-in chat is available initially. EE tools/agent
     # admission belongs to the independent graph-explorer delivery.
-    if req.agent_id != "studio_smart_qa":
+    if req.agent_id not in PUBLIC_AGENT_IDS:
         raise not_found("agent", req.agent_id)
     agent = await dao.get_agent(session, req.agent_id)
     if not agent or agent.status != "published" or agent.mode != "chat":
@@ -136,6 +153,16 @@ async def execute(
     await authorize_execution(account, agent.agent_id, req.context.kn_id)
     if any(ref.get("type") != "context_loader" for ref in agent.tools):
         raise err(409, "BknAgent.Execution.Unsupported")
+    network_row = await dao.get_network_setting(session, agent.agent_id, req.context.kn_id)
+    user_row = await dao.get_user_setting(session, agent.agent_id, account.account_id)
+    effective = merge(
+        agent,
+        _layer(network_row),
+        network_row.f_version if network_row else 0,
+        _layer(user_row),
+        user_row.f_version if user_row else 0,
+    )
+    agent = effective.agent
 
     request_data = req.model_dump(mode="json")
     fingerprint = hashlib.sha256(
@@ -177,6 +204,7 @@ async def execute(
             "request": request_data,
             "fingerprint": fingerprint,
             "agent_snapshot": agent.model_dump(mode="json"),
+            "setting_versions": effective.versions,
         }
         created = await dao.reserve_execution(
             session, run_id, agent.agent_id, task_input, account.account_id, thread_id
@@ -192,10 +220,13 @@ async def execute(
         _thread_claims.discard(thread_id)
         raise
     public = PublicChat(run_id, req.context.kn_id)
+    public.instructions = effective.instructions
+    public.allowed_tools = effective.allowed_tools
 
     async def events():
         _active[run_id] = asyncio.current_task()
         status, output, failure = "failed", None, "cancelled"
+        upstream = None
         stream = None
         try:
             timeout_s = (
@@ -229,7 +260,9 @@ async def execute(
                         status, failure = "succeeded", None
                     elif event.startswith("event: error\n"):
                         status = "failed"
-                        failure = json.loads(event.split("data: ", 1)[1])["code"]
+                        data = json.loads(event.split("data: ", 1)[1])
+                        failure = data["code"]
+                        upstream = data.get("upstream")
                     elif not event.startswith("event: meta\n"):
                         yield event
             if status == "succeeded":
@@ -259,6 +292,7 @@ async def execute(
                 else "BknAgent.Execution.Failed"
             )
         except Exception:
+            logger.exception("public execution %s failed outside the chat loop", run_id)
             status = "failed"
             failure = "BknAgent.Execution.Failed"
         finally:
@@ -301,7 +335,7 @@ async def execute(
                 if failure == "cancelled"
                 else "failed",
                 **(
-                    {"error": _failure(failure)}
+                    {"error": _failure(failure, upstream)}
                     if failure and failure != "cancelled"
                     else {}
                 ),

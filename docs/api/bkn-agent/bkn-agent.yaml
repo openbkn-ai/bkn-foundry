@@ -265,10 +265,12 @@ paths:
         required: true
       responses:
         '200':
-          description: 'SSE: meta, token, tool_started, tool_finished, usage, result,
-            terminal. Each event carries run_id and sequence. result.content.answer
-            is the last assistant message; text streamed before tool calls is progress,
-            not the answer. Successful result is persisted before result/terminal; terminal.status is succeeded/failed/cancelled.
+          description: 'SSE: meta, reasoning, token, tool_started, tool_finished,
+            usage, result, terminal. reasoning carries the model''s streamed thinking
+            when it provides any; it is never part of the answer. Each event carries
+            run_id and sequence. result.content.answer is the last assistant message;
+            text streamed before tool calls is progress, not the answer. Successful
+            result is persisted before result/terminal; terminal.status is succeeded/failed/cancelled.
             Retries return meta and the existing terminal; an active retry returns
             409. Disconnect cancels execution.'
           content:
@@ -285,6 +287,462 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
       security:
       - HTTPBearer: []
+  /api/bkn-agent/v1/me/agents/{agent_id}/setting:
+    get:
+      tags:
+      - BknAgentExecution
+      summary: Get User Setting
+      operationId: get_user_setting_api_bkn_agent_v1_me_agents__agent_id__setting_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSettingOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - BknAgentExecution
+      summary: Put User Setting
+      operationId: put_user_setting_api_bkn_agent_v1_me_agents__agent_id__setting_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSetting'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSettingOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags:
+      - BknAgentExecution
+      summary: Delete User Setting
+      operationId: delete_user_setting_api_bkn_agent_v1_me_agents__agent_id__setting_delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSettingOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/networks/{kn_id}/agents/{agent_id}/setting:
+    get:
+      tags:
+      - BknAgentExecution
+      summary: Get Network Setting
+      operationId: get_network_setting_api_bkn_agent_v1_networks__kn_id__agents__agent_id__setting_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kn_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Kn Id
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSettingOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - BknAgentExecution
+      summary: Put Network Setting
+      operationId: put_network_setting_api_bkn_agent_v1_networks__kn_id__agents__agent_id__setting_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kn_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Kn Id
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSetting'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSettingOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags:
+      - BknAgentExecution
+      summary: Delete Network Setting
+      operationId: delete_network_setting_api_bkn_agent_v1_networks__kn_id__agents__agent_id__setting_delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: kn_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Kn Id
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentSettingOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/me/agents/{agent_id}/config:
+    get:
+      tags:
+      - BknAgentExecution
+      summary: Get Agent Config
+      operationId: get_agent_config_api_bkn_agent_v1_me_agents__agent_id__config_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      - name: kn_id
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Kn Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentConfigOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}:
+    get:
+      tags:
+      - BknAgentExecution
+      summary: Get Shared Agent
+      operationId: get_shared_agent_api_bkn_agent_v1_admin_agents__agent_id__get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - BknAgentExecution
+      summary: Update Shared Agent
+      operationId: update_shared_agent_api_bkn_agent_v1_admin_agents__agent_id__put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SharedAgentUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/prompt:
+    get:
+      tags:
+      - BknAgentExecution
+      summary: Get Shared Prompt
+      operationId: get_shared_prompt_api_bkn_agent_v1_admin_agents__agent_id__prompt_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedPromptOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags:
+      - BknAgentExecution
+      summary: Publish Shared Prompt
+      operationId: publish_shared_prompt_api_bkn_agent_v1_admin_agents__agent_id__prompt_put
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptPublish'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedPromptOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/prompt/rollback:
+    post:
+      tags:
+      - BknAgentExecution
+      summary: Rollback Shared Prompt
+      operationId: rollback_shared_prompt_api_bkn_agent_v1_admin_agents__agent_id__prompt_rollback_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptRollback'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedPromptOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/bkn-agent/v1/invoke/{agent_id}:
     post:
       tags:
@@ -838,6 +1296,56 @@ paths:
               schema: {}
 components:
   schemas:
+    AgentConfigOut:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        status:
+          type: string
+          title: Status
+        shared:
+          $ref: '#/components/schemas/EffectiveOut'
+        network:
+          $ref: '#/components/schemas/AgentSettingOut'
+        user:
+          $ref: '#/components/schemas/AgentSettingOut'
+        effective:
+          $ref: '#/components/schemas/EffectiveOut'
+        mcp_profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mcp Profile
+        can_edit_network:
+          type: boolean
+          title: Can Edit Network
+        can_edit_shared:
+          type: boolean
+          title: Can Edit Shared
+      type: object
+      required:
+      - agent_id
+      - status
+      - shared
+      - network
+      - user
+      - effective
+      - can_edit_network
+      - can_edit_shared
+      title: AgentConfigOut
+      description: Everything the configuration page shows for one network, in one
+        read.
     AgentDeleted:
       properties:
         deleted:
@@ -893,6 +1401,34 @@ components:
             minimum: 10.0
           - type: 'null'
           title: Max Output Tokens
+        keep_tool_results:
+          anyOf:
+          - type: integer
+            maximum: 50.0
+            minimum: 1.0
+          - type: 'null'
+          title: Keep Tool Results
+        data_result_chars:
+          anyOf:
+          - type: integer
+            maximum: 200000.0
+            minimum: 500.0
+          - type: 'null'
+          title: Data Result Chars
+        schema_result_chars:
+          anyOf:
+          - type: integer
+            maximum: 500000.0
+            minimum: 500.0
+          - type: 'null'
+          title: Schema Result Chars
+        summarize_after_tokens:
+          anyOf:
+          - type: integer
+            maximum: 1000000.0
+            minimum: 4000.0
+          - type: 'null'
+          title: Summarize After Tokens
       type: object
       title: AgentLimits
     AgentList:
@@ -992,6 +1528,59 @@ components:
       - create_time
       - update_time
       title: AgentOut
+    AgentSetting:
+      properties:
+        instruction:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Instruction
+        allowed_tools:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 128
+              minLength: 1
+            type: array
+            maxItems: 100
+          - type: 'null'
+          title: Allowed Tools
+        limits:
+          anyOf:
+          - $ref: '#/components/schemas/AgentLimits'
+          - type: 'null'
+      additionalProperties: false
+      type: object
+      title: AgentSetting
+      description: 'A network or user layer: appends instructions and narrows tools
+        and limits.
+
+
+        It can never widen what the layer above allows; values beyond it are clamped
+
+        when the layers are merged.'
+    AgentSettingOut:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        setting:
+          $ref: '#/components/schemas/AgentSetting'
+        version:
+          type: integer
+          title: Version
+        update_time:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Update Time
+      type: object
+      required:
+      - agent_id
+      - setting
+      - version
+      title: AgentSettingOut
     AgentSpec:
       properties:
         agent_id:
@@ -1162,6 +1751,14 @@ components:
           title: Allowed Tools
           description: Allowlist of Context Loader MCP tool names this agent may load;
             omit it to allow all.
+        profile:
+          anyOf:
+          - type: string
+            enum:
+            - full
+            - compact
+          - type: 'null'
+          title: Profile
       additionalProperties: true
       type: object
       required:
@@ -1179,6 +1776,21 @@ components:
         a
 
         hard-coded url cannot do.'
+    EffectiveOut:
+      properties:
+        limits:
+          $ref: '#/components/schemas/AgentLimits'
+        allowed_tools:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Allowed Tools
+      type: object
+      required:
+      - limits
+      title: EffectiveOut
     EffectivePromptOut:
       properties:
         source:
@@ -1728,6 +2340,78 @@ components:
       - agent_id
       - message
       title: RunRequest
+    SharedAgentUpdate:
+      properties:
+        model:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Model
+        limits:
+          anyOf:
+          - $ref: '#/components/schemas/AgentLimits'
+          - type: 'null'
+        status:
+          anyOf:
+          - type: string
+            enum:
+            - draft
+            - published
+          - type: 'null'
+          title: Status
+        mcp_profile:
+          anyOf:
+          - type: string
+            enum:
+            - full
+            - compact
+          - type: 'null'
+          title: Mcp Profile
+      additionalProperties: false
+      type: object
+      title: SharedAgentUpdate
+      description: Shared runtime fields an administrator may change from Studio.
+    SharedOut:
+      properties:
+        agent_id:
+          type: string
+          title: Agent Id
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        status:
+          type: string
+          title: Status
+        limits:
+          $ref: '#/components/schemas/AgentLimits'
+        mcp_profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mcp Profile
+      type: object
+      required:
+      - agent_id
+      - status
+      - limits
+      title: SharedOut
+    SharedPromptOut:
+      properties:
+        prompt:
+          $ref: '#/components/schemas/PromptOut'
+        versions:
+          items:
+            $ref: '#/components/schemas/PromptVersionOut'
+          type: array
+          title: Versions
+      type: object
+      required:
+      - prompt
+      - versions
+      title: SharedPromptOut
     TaskOut:
       properties:
         task_id:
