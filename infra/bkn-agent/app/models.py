@@ -52,6 +52,31 @@ class PromptVersionRow(Base):
     f_create_time: Mapped[int] = mapped_column(BigInteger)
 
 
+class NetworkSettingRow(Base):
+    """Per-network additions on top of a shared Agent (public executions only)."""
+
+    __tablename__ = "t_agent_network_setting"
+
+    f_agent_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_kn_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_content: Mapped[dict] = mapped_column(JSON)
+    f_version: Mapped[int] = mapped_column(Integer, default=1)
+    f_update_user: Mapped[str] = mapped_column(String(50))
+    f_update_time: Mapped[int] = mapped_column(BigInteger)
+
+
+class UserSettingRow(Base):
+    """Per-user additions on top of the shared and network settings."""
+
+    __tablename__ = "t_agent_user_setting"
+
+    f_agent_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_account_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_content: Mapped[dict] = mapped_column(JSON)
+    f_version: Mapped[int] = mapped_column(Integer, default=1)
+    f_update_time: Mapped[int] = mapped_column(BigInteger)
+
+
 class PromptOverrideRow(Base):
     __tablename__ = "t_agent_prompt_override"
 
@@ -141,6 +166,9 @@ class ContextLoaderToolRef(_ToolRefBase):
         max_length=100,
         description="Allowlist of Context Loader MCP tool names this agent may load; omit it to allow all.",
     )
+    # Which Context Loader MCP surface to use: the full tool set or the compact
+    # one. Unset keeps the service-wide CONTEXT_LOADER_MCP_URL.
+    profile: Optional[Literal["full", "compact"]] = None
 
 
 ToolRef = Annotated[
@@ -160,6 +188,14 @@ class AgentLimits(BaseModel):
     # mf-model-api (logics.py max_tokens: conint(ge=10)): accepting 1..9 would
     # let the agent be created while every execution failed downstream with 400.
     max_output_tokens: Optional[int] = Field(default=None, ge=10, le=65536)
+    # Context budget, applied on the public execution surface only. Each tool
+    # result sent to the model is capped (schema/discovery tools get their own,
+    # wider cap), only the most recent results are kept in full, and older
+    # history is summarized once the context passes the token threshold.
+    keep_tool_results: Optional[int] = Field(default=None, ge=1, le=50)
+    data_result_chars: Optional[int] = Field(default=None, ge=500, le=200000)
+    schema_result_chars: Optional[int] = Field(default=None, ge=500, le=500000)
+    summarize_after_tokens: Optional[int] = Field(default=None, ge=4000, le=1000000)
 
 
 _ID_PATTERN = r"^[0-9A-Za-z_.-]+$"  # A preset id allows letters, digits, underscore, dot, and hyphen, for stable cross-environment references
@@ -286,6 +322,41 @@ class ExecutionRequest(BaseModel):
         default=None, min_length=1, max_length=50, pattern=_ID_PATTERN
     )
     context: ExecutionScope
+
+
+class AgentSetting(BaseModel):
+    """A network or user layer: appends instructions and narrows tools and limits.
+
+    It can never widen what the layer above allows; values beyond it are clamped
+    when the layers are merged.
+    """
+
+    model_config = {"extra": "forbid"}
+    instruction: Optional[str] = Field(default=None, max_length=2000)
+    allowed_tools: Optional[
+        list[Annotated[str, Field(min_length=1, max_length=128)]]
+    ] = Field(default=None, max_length=100)
+    limits: Optional[AgentLimits] = None
+
+
+class AgentSettingOut(BaseModel):
+    agent_id: str
+    setting: AgentSetting
+    # 0 means no setting has been saved for this layer.
+    version: int
+    update_time: Optional[int] = None
+
+
+class SharedAgentUpdate(BaseModel):
+    """Shared runtime fields an administrator may change from Studio."""
+
+    model_config = {"extra": "forbid"}
+    # Empty string means the platform default model.
+    model: Optional[str] = Field(default=None, max_length=200)
+    limits: Optional[AgentLimits] = None
+    status: Optional[Literal["draft", "published"]] = None
+    # Context Loader MCP surface for this Agent; null restores the service default.
+    mcp_profile: Optional[Literal["full", "compact"]] = None
 
 
 class ExecutionOut(BaseModel):

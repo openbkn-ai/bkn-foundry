@@ -304,6 +304,24 @@ error_messages = {
         "detail": "服务内部错误",
         "solution": "查看 bkn-agent 日志与 trace_id 定位；下游不可用时稍后重试。",
     },
+    "BknAgent.Tool.Unavailable": {
+        "code": "BknAgent.Tool.Unavailable",
+        "description": "工具调用没有成功完成。",
+        "detail": "工具调用没有成功完成。",
+        "solution": "可以换一种方式查询；持续出现时请检查对应的服务。",
+    },
+    "BknAgent.Model.Unavailable": {
+        "code": "BknAgent.Model.Unavailable",
+        "description": "模型服务暂时不可用。",
+        "detail": "模型服务暂时不可用。",
+        "solution": "请稍后重试；持续失败时请检查模型工厂及其上游服务。",
+    },
+    "BknAgent.Model.Rejected": {
+        "code": "BknAgent.Model.Rejected",
+        "description": "模型服务拒绝了这次请求。",
+        "detail": "模型服务拒绝了这次请求。",
+        "solution": "请检查模型配置、上下文长度或调用额度后再试。",
+    },
     "BknAgent.Chat.Timeout": {
         "code": "BknAgent.Chat.Timeout",
         "description": "对话超时",

@@ -72,8 +72,7 @@ def _record_model_response(message: Any, operation_id: str) -> None:
         event_id=event_id,
         operation_id=operation_id,
         adopted_source_event_ids=[
-            value for value in adopted_source_event_ids
-            if isinstance(value, str)
+            value for value in adopted_source_event_ids if isinstance(value, str)
         ],
         evidence_refs=evidence_refs if isinstance(evidence_refs, list) else [],
         business_refs=business_refs if isinstance(business_refs, list) else [],
@@ -83,7 +82,25 @@ def _record_model_response(message: Any, operation_id: str) -> None:
 class TraceChatOpenAI(ChatOpenAI):
     """Bind each real mf-model-api request to one operation and consume its fact receipt."""
 
-    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+    def _convert_chunk_to_generation_chunk(
+        self, chunk, default_chunk_class, base_generation_info
+    ):
+        generation = super()._convert_chunk_to_generation_chunk(
+            chunk, default_chunk_class, base_generation_info
+        )
+        # OpenAI-compatible reasoning models stream their thinking as
+        # delta.reasoning_content, which langchain_openai drops. Keep it beside
+        # the content so callers can show it; it is never sent back to the model.
+        choices = chunk.get("choices") or []
+        delta = (choices[0].get("delta") or {}) if choices else {}
+        reasoning = delta.get("reasoning_content")
+        if generation is not None and isinstance(reasoning, str) and reasoning:
+            generation.message.additional_kwargs["reasoning_content"] = reasoning
+        return generation
+
+    async def _agenerate(
+        self, messages, stop=None, run_manager=None, **kwargs
+    ) -> ChatResult:
         operation_id, parent_event_id = evidence.new_operation()
         # Execution identity is required even when Evidence is disabled or its
         # start event was not admitted. Only causal fact headers are conditional.
@@ -103,7 +120,9 @@ class TraceChatOpenAI(ChatOpenAI):
             _record_model_response(result.generations[0].message, operation_id)
         return result
 
-    async def _astream(self, *args: Any, **kwargs: Any) -> AsyncIterator[ChatGenerationChunk]:
+    async def _astream(
+        self, *args: Any, **kwargs: Any
+    ) -> AsyncIterator[ChatGenerationChunk]:
         operation_id, parent_event_id = evidence.new_operation()
         messages = args[0] if args else kwargs.get("messages", [])
         # Execution identity is required even when Evidence is disabled or its
@@ -131,10 +150,14 @@ class TraceChatOpenAI(ChatOpenAI):
                 trace_body.update(candidate_body)
             yield chunk
         if operation_id:
-            receipt = type("ModelFactReceipt", (), {
-                "response_metadata": response_metadata,
-                "additional_kwargs": {"bkn_trace": trace_body},
-            })()
+            receipt = type(
+                "ModelFactReceipt",
+                (),
+                {
+                    "response_metadata": response_metadata,
+                    "additional_kwargs": {"bkn_trace": trace_body},
+                },
+            )()
             _record_model_response(receipt, operation_id)
 
 

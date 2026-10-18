@@ -10,12 +10,14 @@ from app.models import (
     AgentOut,
     AgentRow,
     AgentSpec,
+    NetworkSettingRow,
     PromptOverrideRow,
     PromptRow,
     PromptVersionRow,
     TaskOut,
     TaskRow,
     ThreadRow,
+    UserSettingRow,
 )
 
 
@@ -118,6 +120,28 @@ async def update_agent(session: AsyncSession, agent_id: str, spec: AgentSpec, ac
     row.f_skills = spec.skills
     row.f_limits = spec.limits.model_dump(exclude_none=True) if spec.limits else None
     row.f_status = spec.status
+    row.f_update_user = account_id
+    row.f_update_time = _now_ms()
+    await session.commit()
+    return _to_out(row)
+
+
+async def update_shared_agent(
+    session: AsyncSession, agent_id: str, changes: dict, account_id: str
+) -> Optional[AgentOut]:
+    """Change only the shared runtime fields (model, limits, status); tools,
+    skills and the Prompt binding stay as defined."""
+    row = await session.get(AgentRow, agent_id)
+    if not row:
+        return None
+    if "model" in changes:
+        row.f_model = changes["model"]
+    if "limits" in changes:
+        row.f_limits = changes["limits"]
+    if "status" in changes:
+        row.f_status = changes["status"]
+    if "tools" in changes:
+        row.f_tools = changes["tools"]
     row.f_update_user = account_id
     row.f_update_time = _now_ms()
     await session.commit()
@@ -291,6 +315,85 @@ async def delete_prompt_override(session: AsyncSession, agent_id: str, account_i
     result = await session.execute(
         delete(PromptOverrideRow).where(
             PromptOverrideRow.f_agent_id == agent_id, PromptOverrideRow.f_account_id == account_id
+        )
+    )
+    await session.commit()
+    return result.rowcount > 0
+
+
+# ---- Network and user settings for public executions ----
+
+
+async def get_network_setting(
+    session: AsyncSession, agent_id: str, kn_id: str
+) -> Optional[NetworkSettingRow]:
+    return await session.get(NetworkSettingRow, (agent_id, kn_id))
+
+
+async def put_network_setting(
+    session: AsyncSession, agent_id: str, kn_id: str, content: dict, account_id: str
+) -> NetworkSettingRow:
+    row = await session.get(NetworkSettingRow, (agent_id, kn_id))
+    if row:
+        row.f_content = content
+        row.f_version += 1
+        row.f_update_user = account_id
+        row.f_update_time = _now_ms()
+    else:
+        row = NetworkSettingRow(
+            f_agent_id=agent_id,
+            f_kn_id=kn_id,
+            f_content=content,
+            f_version=1,
+            f_update_user=account_id,
+            f_update_time=_now_ms(),
+        )
+        session.add(row)
+    await session.commit()
+    return row
+
+
+async def delete_network_setting(session: AsyncSession, agent_id: str, kn_id: str) -> bool:
+    result = await session.execute(
+        delete(NetworkSettingRow).where(
+            NetworkSettingRow.f_agent_id == agent_id, NetworkSettingRow.f_kn_id == kn_id
+        )
+    )
+    await session.commit()
+    return result.rowcount > 0
+
+
+async def get_user_setting(
+    session: AsyncSession, agent_id: str, account_id: str
+) -> Optional[UserSettingRow]:
+    return await session.get(UserSettingRow, (agent_id, account_id))
+
+
+async def put_user_setting(
+    session: AsyncSession, agent_id: str, account_id: str, content: dict
+) -> UserSettingRow:
+    row = await session.get(UserSettingRow, (agent_id, account_id))
+    if row:
+        row.f_content = content
+        row.f_version += 1
+        row.f_update_time = _now_ms()
+    else:
+        row = UserSettingRow(
+            f_agent_id=agent_id,
+            f_account_id=account_id,
+            f_content=content,
+            f_version=1,
+            f_update_time=_now_ms(),
+        )
+        session.add(row)
+    await session.commit()
+    return row
+
+
+async def delete_user_setting(session: AsyncSession, agent_id: str, account_id: str) -> bool:
+    result = await session.execute(
+        delete(UserSettingRow).where(
+            UserSettingRow.f_agent_id == agent_id, UserSettingRow.f_account_id == account_id
         )
     )
     await session.commit()

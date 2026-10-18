@@ -12,7 +12,17 @@ from app import auth, evidence, observability
 from app.commons import locale
 from app.commons.i18n import build_error_content
 from app.observability import setup_otel, setup_otlp_logging
-from app.routers import agents, authorization_resources, chat, executions, impex, prompts, tasks, threads
+from app.routers import (
+    agent_settings,
+    agents,
+    authorization_resources,
+    chat,
+    executions,
+    impex,
+    prompts,
+    tasks,
+    threads,
+)
 
 logger = logging.getLogger("bkn-agent")
 
@@ -70,6 +80,7 @@ setup_otel(app)
 app.include_router(agents.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(chat.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(executions.router, prefix=API_PREFIX, tags=["BknAgentExecution"], responses=_ERRORS)
+app.include_router(agent_settings.router, prefix=API_PREFIX, tags=["BknAgentExecution"], responses=_ERRORS)
 app.include_router(tasks.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(prompts.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(threads.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)

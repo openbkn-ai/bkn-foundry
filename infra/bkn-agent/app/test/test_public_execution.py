@@ -1312,7 +1312,9 @@ def _closing_model(responses):
     return Model(responses=responses)
 
 
-async def _run_closing_turn(monkeypatch, model, limits, tool_delay=0):
+async def _run_closing_turn(
+    monkeypatch, model, limits, tool_delay=0, tool_result="partial data"
+):
     from langgraph.checkpoint.memory import MemorySaver
 
     from app.core import graph
@@ -1326,7 +1328,7 @@ async def _run_closing_turn(monkeypatch, model, limits, tool_delay=0):
         async def query(kn_id: str) -> str:
             """Read the selected network."""
             await asyncio.sleep(tool_delay)
-            return "partial data"
+            return tool_result
 
         tool = StructuredTool.from_function(
             coroutine=query,
@@ -1458,5 +1460,328 @@ def test_malformed_tool_result_is_a_failed_call_not_a_failed_turn():
         guarded = PublicChat("run", "network-1").guard_tools([tool])[0]
         result = await guarded.ainvoke({"kn_id": "network-1"})
         assert "Invalid structured content" in result
+
+    asyncio.run(run())
+
+
+def test_streamed_reasoning_is_kept_by_the_model_client():
+    from app.core.llm import TraceChatOpenAI
+    from langchain_core.messages import AIMessageChunk
+
+    model = TraceChatOpenAI(base_url="http://unused", api_key="x", model="m")
+    chunk = {
+        "choices": [
+            {
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "content": "",
+                    "reasoning_content": "think",
+                },
+            }
+        ]
+    }
+    generation = model._convert_chunk_to_generation_chunk(chunk, AIMessageChunk, {})
+    assert generation.message.additional_kwargs["reasoning_content"] == "think"
+    assert generation.message.content == ""
+
+
+def test_reasoning_streams_as_its_own_event_and_stays_out_of_the_answer(monkeypatch):
+    from langchain_core.language_models.chat_models import BaseChatModel
+    from langchain_core.messages import AIMessageChunk
+    from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import graph
+
+    class Thinking(BaseChatModel):
+        @property
+        def _llm_type(self):
+            return "thinking"
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            return ChatResult(
+                generations=[ChatGeneration(message=AIMessage(content="Answer"))]
+            )
+
+        async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(
+                    content="", additional_kwargs={"reasoning_content": "Let me think"}
+                )
+            )
+            yield ChatGenerationChunk(message=AIMessageChunk(content="Answer"))
+
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, _, _):
+            saver = MemorySaver()
+
+            @asynccontextmanager
+            async def checkpoint():
+                yield saver
+
+            async def tools(*args, **kwargs):
+                return []
+
+            monkeypatch.setattr(graph, "load_tools", tools)
+            monkeypatch.setattr(graph, "build_chat_model", lambda *a, **k: Thinking())
+            monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            events = parse_sse(response.text)
+            assert events[-1][1]["status"] == "succeeded", response.text
+            reasoning = [
+                data["content"] for event, data in events if event == "reasoning"
+            ]
+            assert reasoning == ["Let me think"]
+            result = next(data for event, data in events if event == "result")
+            assert result["content"]["answer"] == "Answer"
+
+    asyncio.run(run())
+
+
+def test_reasoning_tokens_are_sent_in_pieces_before_the_next_event(monkeypatch):
+    from app.core import public_chat
+
+    chat = public_chat.PublicChat(run_id="run", kn_id="kn")
+    monkeypatch.setattr(public_chat.time, "monotonic", lambda: 100.0)
+    held = [chat.reasoning(t) for t in ["Let", " me", " think"]]
+    assert held == ["", "", ""]
+
+    out = parse_sse(chat.event("token", {"content": "Answer"}))
+    assert out == [
+        ("reasoning", {"content": "Let me think", "run_id": "run", "sequence": 1}),
+        ("token", {"content": "Answer", "run_id": "run", "sequence": 2}),
+    ]
+    # Nothing held, nothing prepended.
+    assert parse_sse(chat.event("usage", {}))[0][0] == "usage"
+
+
+def test_reasoning_is_flushed_once_enough_text_or_time_gathers(monkeypatch):
+    from app.core import public_chat
+
+    clock = [0.0]
+    monkeypatch.setattr(public_chat.time, "monotonic", lambda: clock[0])
+    chat = public_chat.PublicChat(run_id="run", kn_id="kn")
+
+    assert chat.reasoning("x" * (public_chat.REASONING_FLUSH_CHARS - 1)) == ""
+    sent = parse_sse(chat.reasoning("y"))
+    assert sent[0][1]["content"] == "x" * (public_chat.REASONING_FLUSH_CHARS - 1) + "y"
+
+    assert chat.reasoning("slow") == ""
+    clock[0] += public_chat.REASONING_FLUSH_S
+    assert parse_sse(chat.reasoning(" thought"))[0][1]["content"] == "slow thought"
+
+
+def test_model_sees_capped_and_cleared_tool_results_but_history_keeps_them(monkeypatch):
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+
+    seen = []
+
+    class Model(FakeMessagesListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, *args, **kwargs):
+            seen.append([m for m in messages if isinstance(m, ToolMessage)])
+            return super()._generate(messages, *args, **kwargs)
+
+    def call(call_id):
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "query", "args": {"kn_id": "network-1"}, "id": call_id}
+            ],
+        )
+
+    model = Model(
+        responses=[call(f"c{i}") for i in range(4)] + [AIMessage(content="Done")]
+    )
+
+    limits = {"keep_tool_results": 2, "data_result_chars": 1000, "max_turns": 10}
+    events, messages = asyncio.run(
+        _run_closing_turn(monkeypatch, model, limits, tool_result="x" * 3000)
+    )
+
+    assert events[-1][1]["status"] == "succeeded", events
+    last = seen[-1]
+    # Only the two most recent results are kept, each capped with a note.
+    full = [m for m in last if "Result truncated" in m.content]
+    cleared = [m for m in last if "omitted to save context" in m.content]
+    assert len(full) == 2 and len(cleared) == 2
+    assert all(len(m.content) < 1500 for m in full)
+    # The saved thread keeps every result in full.
+    saved = [m for m in messages if isinstance(m, ToolMessage)]
+    assert len(saved) == 4 and all(m.content == "x" * 3000 for m in saved)
+
+
+def test_cap_tool_message_uses_the_wider_schema_cap():
+    from app.core.context_budget import cap_tool_message
+
+    data = ToolMessage(content="y" * 5000, tool_call_id="1", name="run_sql")
+    schema = ToolMessage(content="y" * 5000, tool_call_id="2", name="get_kn_detail")
+    assert "Result truncated" in cap_tool_message(data, 1000, 8000).content
+    assert cap_tool_message(schema, 1000, 8000) is schema
+
+
+def test_earlier_questions_bring_answers_but_not_their_tool_results():
+    from langchain_core.messages import HumanMessage
+
+    from app.core.context_budget import ToolResultBudget
+
+    class Request:
+        def __init__(self, messages):
+            self.messages = messages
+
+        def override(self, messages):
+            return Request(messages)
+
+    history = [
+        HumanMessage(content="first"),
+        AIMessage(content="", tool_calls=[{"name": "q", "args": {}, "id": "a"}]),
+        ToolMessage(content="old rows", tool_call_id="a", name="q"),
+        AIMessage(content="First answer"),
+        HumanMessage(content="second"),
+        AIMessage(content="", tool_calls=[{"name": "q", "args": {}, "id": "b"}]),
+        ToolMessage(content="new rows", tool_call_id="b", name="q"),
+    ]
+    sent = ToolResultBudget(1000, 1000)._request(Request(history)).messages
+    assert "earlier question omitted" in sent[2].content
+    assert sent[3].content == "First answer"
+    assert sent[6].content == "new rows"
+    # The saved history is untouched.
+    assert history[2].content == "old rows"
+
+
+def _status_error(status, body):
+    import httpx
+    import openai
+
+    request = httpx.Request("POST", "http://mf/chat/completions")
+    return openai.APIStatusError(
+        "upstream", response=httpx.Response(status, request=request), body=body
+    )
+
+
+def test_failures_are_classified_with_the_upstream_error():
+    import httpx
+    import openai
+
+    from app.core.public_chat import classify_failure
+
+    unreachable = openai.APIConnectionError(request=httpx.Request("POST", "http://mf"))
+    assert classify_failure(unreachable) == ("BknAgent.Model.Unavailable", None)
+
+    code, upstream = classify_failure(
+        _status_error(
+            500,
+            {
+                "error": {
+                    "code": "ModelFactory.Mydb.DataBase.ParameterError",
+                    "message": "模型工厂暂时无法访问数据库。 Bearer secret-token",
+                }
+            },
+        )
+    )
+    assert code == "BknAgent.Model.Unavailable"
+    assert upstream["code"] == "ModelFactory.Mydb.DataBase.ParameterError"
+    assert "secret-token" not in upstream["message"]
+
+    code, _ = classify_failure(
+        _status_error(400, {"error": {"message": "context too long"}})
+    )
+    assert code == "BknAgent.Model.Rejected"
+    assert classify_failure(RuntimeError("boom")) == ("BknAgent.Chat.Failed", None)
+
+
+def test_terminal_names_the_real_failure(monkeypatch):
+    from langchain_core.language_models.chat_models import BaseChatModel
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from app.core import graph
+
+    class Broken(BaseChatModel):
+        @property
+        def _llm_type(self):
+            return "broken"
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            raise _status_error(
+                500, {"error": {"code": "ModelFactory.Down", "message": "数据库不可用"}}
+            )
+
+    async def run():
+        async with environment(monkeypatch, stream=False) as (client, _, _):
+            saver = MemorySaver()
+
+            @asynccontextmanager
+            async def checkpoint():
+                yield saver
+
+            async def tools(*args, **kwargs):
+                return []
+
+            monkeypatch.setattr(graph, "load_tools", tools)
+            monkeypatch.setattr(graph, "build_chat_model", lambda *a, **k: Broken())
+            monkeypatch.setattr(graph, "open_checkpointer", checkpoint)
+            response = await client.post(
+                URL, json=BODY, headers={**AUTH, "Accept-Language": "zh-CN"}
+            )
+            terminal = parse_sse(response.text)[-1][1]
+            assert terminal["status"] == "failed"
+            assert terminal["error"]["code"] == "BknAgent.Model.Unavailable"
+            assert terminal["error"]["detail"] == "模型服务暂时不可用。"
+            assert terminal["error"]["upstream"] == {
+                "code": "ModelFactory.Down",
+                "message": "数据库不可用",
+            }
+
+    asyncio.run(run())
+
+
+def test_tool_events_tell_unreachable_calls_from_tool_errors():
+    async def run():
+        async def down(kn_id: str) -> str:
+            """Read the network."""
+            raise ConnectionError("connection refused")
+
+        tool = StructuredTool.from_function(
+            coroutine=down,
+            name="query",
+            metadata={"bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN},
+        )
+        public = PublicChat("run", "network-1")
+        unreachable = await public.guard_tools([tool])[0].ainvoke(
+            {"kn_id": "network-1"}
+        )
+        messages = [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "query", "args": {}, "id": "a"},
+                    {"name": "run_cypher", "args": {}, "id": "b"},
+                ],
+            ),
+            ToolMessage(
+                content=unreachable, tool_call_id="a", name="query", status="error"
+            ),
+            ToolMessage(
+                content='{"code":"BknBackend.Cypher.Unsupported"}',
+                tool_call_id="b",
+                name="run_cypher",
+                status="error",
+            ),
+        ]
+        events = parse_sse("".join(public.updates({"tools": {"messages": messages}})))
+        finished = {d["tool_call_id"]: d for e, d in events if e == "tool_finished"}
+        assert finished["a"]["error_kind"] == "unavailable"
+        assert finished["b"]["error_kind"] == "error"
 
     asyncio.run(run())

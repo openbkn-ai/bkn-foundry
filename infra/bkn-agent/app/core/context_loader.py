@@ -31,6 +31,7 @@ where it can be seen."""
 
 import json
 import logging
+import re
 from contextvars import ContextVar
 from typing import Any, Optional
 
@@ -90,8 +91,27 @@ def _credential() -> Optional[str]:
 _HOST_CONVERSATION_KEY_HEADER = "X-OpenBKN-Host-Conversation-Key"
 
 
+def profile_of(tool_refs: list[dict]) -> Optional[str]:
+    """The MCP surface an agent's Context Loader reference asks for, if any."""
+    for ref in tool_refs:
+        if ref.get("type") == "context_loader" and ref.get("profile") in ("full", "compact"):
+            return ref["profile"]
+    return None
+
+
+def mcp_url(profile: Optional[str] = None) -> str:
+    """The configured endpoint, switched to the full or compact surface on request."""
+    url = config.CONTEXT_LOADER_MCP_URL
+    if profile not in ("full", "compact"):
+        return url
+    base = re.sub(r"/mcp(-compact)?/?$", "", url)
+    return f"{base}/mcp-compact/" if profile == "compact" else f"{base}/mcp/"
+
+
 def _client(
-    authorization: str, host_conversation_key: Optional[str] = None
+    authorization: str,
+    host_conversation_key: Optional[str] = None,
+    profile: Optional[str] = None,
 ) -> MultiServerMCPClient:
     headers = locale.internal_request_headers(
         {"Authorization": authorization, **observability.outbound_headers()}
@@ -102,7 +122,7 @@ def _client(
         {
             _CONNECTION_NAME: {
                 "transport": "streamable_http",
-                "url": config.CONTEXT_LOADER_MCP_URL,
+                "url": mcp_url(profile),
                 "headers": headers,
                 "timeout": config.CONTEXT_LOADER_MCP_TIMEOUT_S,
             }
@@ -199,6 +219,7 @@ async def open_session(
     *,
     agent_name: str | None = None,
     host_conversation_key: str | None = None,
+    profile: str | None = None,
 ) -> Optional[ContextLoaderSession]:
     """Handshake and load the tools. Returns None when the credential is missing
     or the handshake fails, and the caller decides whether that is fatal.
@@ -223,7 +244,7 @@ async def open_session(
         )
         return None
 
-    client = _client(authorization, host_conversation_key)
+    client = _client(authorization, host_conversation_key, profile)
     try:
         tools = await client.get_tools()
     except Exception as e:
