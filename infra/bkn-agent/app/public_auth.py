@@ -141,6 +141,16 @@ async def get_public_account(
 # its own delivery.
 PUBLIC_AGENT_IDS = frozenset({"studio_smart_qa"})
 
+# Agents seeded by the migrations, in display order. System Admin lists and
+# edits these only; creating Agents is not a product operation.
+BUILTIN_AGENT_IDS = (
+    "studio_smart_qa",
+    "business_provenance_claim_attribution",
+    "business_provenance_optimizer",
+    "catalog-semantic-understanding",
+    "resource-semantic-understanding",
+)
+
 
 async def authorize(account: Account, checks: list[dict]) -> None:
     """Every check must be explicitly allowed; any gap fails closed."""

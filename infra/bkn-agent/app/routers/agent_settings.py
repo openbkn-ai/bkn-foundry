@@ -33,6 +33,7 @@ from app.models import (
     SharedAgentUpdate,
 )
 from app.public_auth import (
+    BUILTIN_AGENT_IDS,
     PUBLIC_AGENT_IDS,
     authorize_agent,
     authorize_network_setting,
@@ -244,11 +245,19 @@ def _can_edit_shared(account: Account, agent: AgentOut) -> bool:
     return account.account_id == agent.create_user
 
 
+async def _builtin_agent(session: AsyncSession, agent_id: str) -> AgentOut:
+    agent = (
+        await dao.get_agent(session, agent_id) if agent_id in BUILTIN_AGENT_IDS else None
+    )
+    if agent is None:
+        raise not_found("agent", agent_id)
+    return agent
+
+
 async def _shared_editor(
     session: AsyncSession, account: Account, agent_id: str
 ) -> AgentOut:
-    agent = await _public_agent(session, agent_id)
-    await authorize_agent(account, agent_id)
+    agent = await _builtin_agent(session, agent_id)
     if not _can_edit_shared(account, agent):
         raise err(403, "BknAgent.Execution.Forbidden")
     return agent
@@ -256,20 +265,60 @@ async def _shared_editor(
 
 class SharedOut(BaseModel):
     agent_id: str
+    name: str
     model: Optional[str] = None
     status: str
     limits: AgentLimits
     mcp_profile: Optional[str] = None
+    # Whether the Agent loads Context Loader at all; the MCP surface choice
+    # means nothing otherwise.
+    uses_context_loader: bool
+    # Whether network and personal settings apply (the public execution
+    # surface); the others are configured here only.
+    layered: bool
+    can_edit: bool
+    prompt_version: Optional[int] = None
+    update_user: str
+    update_time: int
 
 
-def _shared_out(agent: AgentOut) -> SharedOut:
+async def _shared_out(
+    session: AsyncSession, account: Account, agent: AgentOut
+) -> SharedOut:
+    prompt = await dao.get_prompt(session, agent.prompt_id) if agent.prompt_id else None
     return SharedOut(
         agent_id=agent.agent_id,
+        name=agent.name,
         model=agent.model or None,
         status=agent.status,
         limits=shared_limits(agent),
         mcp_profile=profile_of(agent.tools),
+        uses_context_loader=any(
+            isinstance(ref, dict) and ref.get("type") == "context_loader"
+            for ref in agent.tools
+        ),
+        layered=agent.agent_id in PUBLIC_AGENT_IDS,
+        can_edit=_can_edit_shared(account, agent),
+        prompt_version=prompt.current_version if prompt else None,
+        update_user=agent.update_user,
+        update_time=agent.update_time,
     )
+
+
+# Reading built-in configuration only needs a verified account: the defaults
+# ship in the migrations and the console gates the page. Changing it goes
+# through _shared_editor.
+@router.get("/admin/agents", response_model=list[SharedOut])
+async def list_shared_agents(
+    account: Account = Depends(get_public_account),
+    session: AsyncSession = Depends(get_session),
+):
+    items = []
+    for agent_id in BUILTIN_AGENT_IDS:
+        # A deployment may not have every built-in seeded.
+        if agent := await dao.get_agent(session, agent_id):
+            items.append(await _shared_out(session, account, agent))
+    return items
 
 
 @router.get("/admin/agents/{agent_id}", response_model=SharedOut)
@@ -278,7 +327,7 @@ async def get_shared_agent(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
-    return _shared_out(await _shared_editor(session, account, agent_id))
+    return await _shared_out(session, account, await _builtin_agent(session, agent_id))
 
 
 @router.put("/admin/agents/{agent_id}", response_model=SharedOut)
@@ -309,7 +358,7 @@ async def update_shared_agent(
     agent = await dao.update_shared_agent(
         session, agent_id, changes, account.account_id
     )
-    return _shared_out(agent)
+    return await _shared_out(session, account, agent)
 
 
 class SharedPromptOut(BaseModel):
@@ -333,9 +382,7 @@ async def get_shared_prompt(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _shared_prompt(
-        session, await _shared_editor(session, account, agent_id)
-    )
+    return await _shared_prompt(session, await _builtin_agent(session, agent_id))
 
 
 @router.put("/admin/agents/{agent_id}/prompt", response_model=SharedPromptOut)
