@@ -318,11 +318,22 @@ func objectMetricPropertyRequirements(definition *interfaces.ObjectMetricDefinit
 	for index := range definition.QueryCapabilities.TimeDimensions {
 		add(&definition.QueryCapabilities.TimeDimensions[index])
 	}
-	if query != nil {
+	// A bucket selection re-evaluates its parent query. Every property in that
+	// chain needs the same full-access check as a top-level trial query.
+	const maxAuthorizedBucketSelectionDepth = 8
+	for depth := 0; query != nil; depth++ {
+		if depth > maxAuthorizedBucketSelectionDepth {
+			collectionErr = fmt.Errorf("maximum object metric drill depth exceeded")
+			break
+		}
 		walkCondition(query.Filter)
 		for index := range query.AnalysisDimensions {
 			add(&query.AnalysisDimensions[index])
 		}
+		if query.BucketSelection == nil {
+			break
+		}
+		query = &query.BucketSelection.ParentQuery
 	}
 	for objectTypeID, properties := range requirements {
 		requirements[objectTypeID] = uniqueStrings(properties)

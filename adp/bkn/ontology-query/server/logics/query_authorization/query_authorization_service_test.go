@@ -260,6 +260,92 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullQueryFilterProperty(t *testing.
 	}
 }
 
+func TestAuthorizeObjectMetricTrialRejectsNonFullParentQueryProperties(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		parentQuery interfaces.ObjectMetricQueryRequestV1
+	}{
+		{
+			name: "parent filter",
+			parentQuery: interfaces.ObjectMetricQueryRequestV1{Filter: &interfaces.ObjectMetricConditionV1{
+				Left: &interfaces.ObjectMetricOperandV1{PropertyRef: &interfaces.ObjectMetricPropertyRefV1{
+					ObjectTypeID: "orders", PropertyName: "status",
+				}},
+			}},
+		},
+		{
+			name: "parent analysis dimension",
+			parentQuery: interfaces.ObjectMetricQueryRequestV1{AnalysisDimensions: []interfaces.ObjectMetricPropertyRefV1{{
+				ObjectTypeID: "orders", PropertyName: "status",
+			}}},
+		},
+		{
+			name: "ancestor filter",
+			parentQuery: interfaces.ObjectMetricQueryRequestV1{BucketSelection: &interfaces.ObjectMetricBucketSelectionV1{
+				ParentQuery: interfaces.ObjectMetricQueryRequestV1{Filter: &interfaces.ObjectMetricConditionV1{
+					Left: &interfaces.ObjectMetricOperandV1{PropertyRef: &interfaces.ObjectMetricPropertyRefV1{
+						ObjectTypeID: "orders", PropertyName: "status",
+					}},
+				}},
+			}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			models := omock.NewMockOntologyManagerAccess(ctrl)
+			permissions := omock.NewMockPermissionService(ctrl)
+			properties := omock.NewMockPropertyAccessService(ctrl)
+			service := &queryAuthorizationService{models: models, permissions: permissions, properties: properties}
+
+			orders := publishedObjectType("kn-a", "orders", "orders-resource")
+			orders.DataProperties = []cond.DataProperty{{Name: "amount"}, {Name: "status"}}
+			models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(orders, true, nil)
+			permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
+				{Type: "knowledge_network", ID: "kn-a"},
+				{Type: "object_type", ID: "kn-a/orders"},
+			}).Return(nil)
+			properties.EXPECT().ResolvePropertyLevels(gomock.Any(), []interfaces.PropertyLevelsRequestItem{
+				{ObjectTypeRef: "kn-a/orders", Properties: []string{"amount", "status"}},
+			}).Return([]interfaces.PropertyLevelsDecisionEntry{{
+				ObjectTypeRef: "kn-a/orders",
+				Properties: []interfaces.PropertyAccessDecision{
+					{Name: "amount", Level: interfaces.PropertyAccessFull},
+					{Name: "status", Level: interfaces.PropertyAccessSchema},
+				},
+			}}, nil)
+
+			definition := &interfaces.ObjectMetricDefinitionV1{
+				OwnerObjectTypeID: "orders",
+				Specification: interfaces.ObjectMetricSpecificationV1{Measure: &interfaces.ObjectMetricMeasureV1{
+					Expression: &interfaces.ObjectMetricExpressionV1{PropertyRef: &interfaces.ObjectMetricPropertyRefV1{
+						ObjectTypeID: "orders", PropertyName: "amount",
+					}},
+				}},
+			}
+			query := &interfaces.ObjectMetricQueryRequestV1{BucketSelection: &interfaces.ObjectMetricBucketSelectionV1{
+				ParentQuery: test.parentQuery,
+				BucketKey:   "server-issued-key",
+			}}
+			err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", definition, query)
+			var httpErr *rest.HTTPError
+			if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
+				t.Fatalf("parent query must require full property access: %v", err)
+			}
+		})
+	}
+}
+
+func TestObjectMetricPropertyRequirementsRejectsExcessiveBucketSelectionDepth(t *testing.T) {
+	query := interfaces.ObjectMetricQueryRequestV1{}
+	for range 9 {
+		query = interfaces.ObjectMetricQueryRequestV1{BucketSelection: &interfaces.ObjectMetricBucketSelectionV1{ParentQuery: query}}
+	}
+	_, err := objectMetricPropertyRequirements(&interfaces.ObjectMetricDefinitionV1{}, &query)
+	if err == nil {
+		t.Fatal("excessive parent query depth must be rejected before authorization")
+	}
+}
+
 func TestAuthorizeObjectMetricTrialRejectsRelationPathOutsidePublishedModel(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
