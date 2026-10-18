@@ -376,6 +376,55 @@ func TestDiscoverPagedFilesetResources(t *testing.T) {
 		assert.Nil(t, result)
 	})
 
+	t.Run("stops a connector that keeps returning empty pages with new cursors", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		dts := vmock.NewMockDiscoverTaskService(ctrl)
+		lister := vmock.NewMockPagedFilesetLister(ctrl)
+		dtw := &DiscoverTaskWorker{rs: rs, dts: dts}
+		calls := 0
+
+		rs.EXPECT().InternalGetSourceRefsByCatalogID(gomock.Any(), "catalog-1", interfaces.ResourceCategoryFileset).
+			Return([]interfaces.ResourceSourceRef{{ID: "r-gone", SourceIdentifier: "/gone", Status: interfaces.ResourceStatusActive}}, nil)
+		lister.EXPECT().ListFilesetsPage(gomock.Any(), gomock.Any(), defaultFilesetPageSize).
+			DoAndReturn(func(context.Context, string, int) (*interfaces.FilesetPage, error) {
+				calls++
+				return &interfaces.FilesetPage{NextCursor: fmt.Sprintf("c%d", calls)}, nil
+			}).Times(maxConsecutiveEmptyFilesetPages + 1)
+		dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", gomock.Any(), gomock.Any()).Return(true, nil).Times(maxConsecutiveEmptyFilesetPages + 1)
+		// No stale expectation for r-gone: an aborted scan must not mark anything stale.
+
+		result, err := dtw.discoverPagedFilesetResources(context.Background(), task, catalog, lister, &discoverTaskReconcileProgress{})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), fmt.Sprintf("more than %d consecutive empty pages", maxConsecutiveEmptyFilesetPages))
+		assert.Nil(t, result)
+	})
+
+	t.Run("tolerates occasional empty pages between non-empty ones", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		dts := vmock.NewMockDiscoverTaskService(ctrl)
+		lister := vmock.NewMockPagedFilesetLister(ctrl)
+		dtw := &DiscoverTaskWorker{rs: rs, dts: dts}
+
+		rs.EXPECT().InternalGetSourceRefsByCatalogID(gomock.Any(), "catalog-1", interfaces.ResourceCategoryFileset).Return(nil, nil)
+		gomock.InOrder(
+			lister.EXPECT().ListFilesetsPage(gomock.Any(), "", defaultFilesetPageSize).Return(page("c1"), nil),
+			lister.EXPECT().ListFilesetsPage(gomock.Any(), "c1", defaultFilesetPageSize).Return(page("", "/a"), nil),
+		)
+		rs.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
+			Return(&interfaces.Resource{ID: "r-a", SourceIdentifier: "/a", Category: interfaces.ResourceCategoryFileset, Status: interfaces.ResourceStatusActive}, nil)
+		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r-a", interfaces.DiscoverStatusNew).Return(nil)
+		rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).Return(nil)
+		dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+
+		result, err := dtw.discoverPagedFilesetResources(context.Background(), task, catalog, lister, &discoverTaskReconcileProgress{})
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, result.NewCount)
+	})
+
 	t.Run("stops at the object safety limit before applying the page", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)

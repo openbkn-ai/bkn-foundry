@@ -26,11 +26,13 @@ type filesetDiscoverItem struct {
 
 // Defaults and bounds for paged fileset discovery.
 const (
-	defaultFilesetPageSize      = 20
-	maxFilesetPageSize          = 1000
-	defaultFilesetMaxObjects    = 10_000_000
-	filesetPageMaxAttempts      = 3
-	filesetPageRetryBaseBackoff = time.Second
+	defaultFilesetPageSize   = 20
+	maxFilesetPageSize       = 1000
+	defaultFilesetMaxObjects = 10_000_000
+	// maxConsecutiveEmptyFilesetPages bounds connectors that keep returning new cursors without items.
+	maxConsecutiveEmptyFilesetPages = 100
+	filesetPageMaxAttempts          = 3
+	filesetPageRetryBaseBackoff     = time.Second
 )
 
 // discoverFilesetResources discovers fileset resources from a fileset connector.
@@ -114,6 +116,7 @@ func (dtw *DiscoverTaskWorker) discoverPagedFilesetResources(ctx context.Context
 	seenCursors := make(map[string]struct{})
 	cursor := ""
 	listed := 0
+	emptyPages := 0
 	for page := 1; ; page++ {
 		if dtw.stopped.Load() {
 			return nil, ErrWorkerManagerStopping
@@ -138,6 +141,14 @@ func (dtw *DiscoverTaskWorker) discoverPagedFilesetResources(ctx context.Context
 
 		if fsPage.NextCursor == "" {
 			break
+		}
+		if len(fsPage.Items) == 0 {
+			emptyPages++
+			if emptyPages > maxConsecutiveEmptyFilesetPages {
+				return nil, fmt.Errorf("list fileset page %d: more than %d consecutive empty pages (cursor %q)", page, maxConsecutiveEmptyFilesetPages, fsPage.NextCursor)
+			}
+		} else {
+			emptyPages = 0
 		}
 		if _, repeated := seenCursors[fsPage.NextCursor]; repeated || fsPage.NextCursor == cursor {
 			return nil, fmt.Errorf("list fileset page %d: cursor %q repeated", page, fsPage.NextCursor)
