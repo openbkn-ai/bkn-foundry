@@ -8,6 +8,8 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -120,5 +122,183 @@ func TestEnrichFilesetMetadata(t *testing.T) {
 		}}, result, &discoverTaskReconcileProgress{lastProgress: 95})
 
 		require.NoError(t, err)
+	})
+}
+
+// pagedFilesetConnector is a fileset connector that also implements PagedFilesetLister.
+type pagedFilesetConnector struct {
+	*vmock.MockFilesetConnector
+	*vmock.MockPagedFilesetLister
+}
+
+func newPagedFilesetConnector(ctrl *gomock.Controller) pagedFilesetConnector {
+	return pagedFilesetConnector{
+		MockFilesetConnector:   vmock.NewMockFilesetConnector(ctrl),
+		MockPagedFilesetLister: vmock.NewMockPagedFilesetLister(ctrl),
+	}
+}
+
+func TestDiscoverFilesetResources(t *testing.T) {
+	actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
+	task := &interfaces.DiscoverTask{ID: "task-1", Creator: interfaces.AccountInfo{ID: "u1"}, DiscoverActions: &actions}
+	catalog := &interfaces.Catalog{ID: "catalog-1"}
+
+	t.Run("marks missing resources stale only after every page is listed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		dts := vmock.NewMockDiscoverTaskService(ctrl)
+		connector := newPagedFilesetConnector(ctrl)
+		dtw := &DiscoverTaskWorker{rs: rs, dts: dts}
+		kept := &interfaces.Resource{ID: "r-kept", SourceIdentifier: "/a", Category: interfaces.ResourceCategoryFileset, Status: interfaces.ResourceStatusActive}
+		gone := &interfaces.Resource{ID: "r-gone", SourceIdentifier: "/gone", Category: interfaces.ResourceCategoryFileset, Status: interfaces.ResourceStatusActive}
+
+		gomock.InOrder(
+			connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "", filesetListPageSize).
+				Return(&interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: "a", Name: "A", DisplayPath: "/a"}}, NextCursor: "c1"}, nil),
+			connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "c1", filesetListPageSize).
+				Return(&interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: "b", Name: "B", DisplayPath: "/b"}}}, nil),
+			rs.EXPECT().InternalGetByCatalogID(gomock.Any(), "catalog-1").Return([]*interfaces.Resource{kept, gone}, nil),
+		)
+		dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+		rs.EXPECT().Create(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.ResourceRequest{})).
+			DoAndReturn(func(_ context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
+				assert.Equal(t, "/b", req.SourceIdentifier)
+				return &interfaces.Resource{ID: "r-b", SourceIdentifier: "/b", Category: interfaces.ResourceCategoryFileset}, nil
+			})
+		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r-b", interfaces.DiscoverStatusNew).Return(nil)
+		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r-gone", interfaces.DiscoverStatusMissing).Return(nil)
+		rs.EXPECT().UpdateStatus(gomock.Any(), "r-gone", interfaces.ResourceStatusStale, "").Return(nil)
+		rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+			Return(nil).Times(2)
+
+		result, err := dtw.discoverFilesetResources(context.Background(), task, catalog, connector, &discoverTaskReconcileProgress{})
+
+		require.NoError(t, err)
+		assert.Equal(t, 1, result.NewCount)
+		assert.Equal(t, 1, result.StaleCount)
+	})
+
+	t.Run("failure on a later page marks nothing stale and writes no resource", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		dts := vmock.NewMockDiscoverTaskService(ctrl)
+		connector := newPagedFilesetConnector(ctrl)
+		dtw := &DiscoverTaskWorker{rs: rs, dts: dts}
+		listErr := errors.New("list objects timeout")
+
+		connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "", filesetListPageSize).
+			Return(&interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: "a", DisplayPath: "/a"}}, NextCursor: "c1"}, nil)
+		connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "c1", filesetListPageSize).Return(nil, listErr)
+		dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", 0, "source filesets listed: page 1, 1 objects").Return(true, nil)
+		// rs has no expectations: any InternalGetByCatalogID, Create or UpdateStatus call fails the test.
+
+		result, err := dtw.discoverFilesetResources(context.Background(), task, catalog, connector, &discoverTaskReconcileProgress{})
+
+		require.ErrorIs(t, err, listErr)
+		assert.Nil(t, result)
+	})
+}
+
+func TestListSourceFilesets(t *testing.T) {
+	task := &interfaces.DiscoverTask{ID: "task-1"}
+
+	t.Run("falls back to ListFilesets without progress updates", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockFilesetConnector(ctrl)
+		dtw := &DiscoverTaskWorker{dts: vmock.NewMockDiscoverTaskService(ctrl)}
+		want := []*interfaces.FilesetMeta{{ID: "lib-1"}}
+		connector.EXPECT().ListFilesets(gomock.Any()).Return(want, nil)
+
+		got, err := dtw.listSourceFilesets(context.Background(), task, connector, &discoverTaskReconcileProgress{})
+
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	})
+
+	t.Run("concatenates pages and reports progress per page", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dts := vmock.NewMockDiscoverTaskService(ctrl)
+		connector := newPagedFilesetConnector(ctrl)
+		dtw := &DiscoverTaskWorker{dts: dts}
+
+		gomock.InOrder(
+			connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "", filesetListPageSize).
+				Return(&interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: "a"}, {ID: "b"}}, NextCursor: "c1"}, nil),
+			dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", 3, "source filesets listed: page 1, 2 objects").Return(true, nil),
+			connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "c1", filesetListPageSize).
+				Return(&interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: "c"}}}, nil),
+			dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", 3, "source filesets listed: page 2, 3 objects").Return(true, nil),
+		)
+
+		got, err := dtw.listSourceFilesets(context.Background(), task, connector, &discoverTaskReconcileProgress{lastProgress: 3})
+
+		require.NoError(t, err)
+		require.Len(t, got, 3)
+		assert.Equal(t, []string{"a", "b", "c"}, []string{got[0].ID, got[1].ID, got[2].ID})
+	})
+
+	t.Run("rejects invalid pages", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			second  *interfaces.FilesetPage
+			wantErr string
+		}{
+			{"repeated cursor", &interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: "b"}}, NextCursor: "c1"}, `cursor "c1" repeated`},
+			{"nil page", nil, "connector returned no page"},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				dts := vmock.NewMockDiscoverTaskService(ctrl)
+				connector := newPagedFilesetConnector(ctrl)
+				dtw := &DiscoverTaskWorker{dts: dts}
+				connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "", filesetListPageSize).
+					Return(&interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: "a"}}, NextCursor: "c1"}, nil)
+				connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "c1", filesetListPageSize).Return(tc.second, nil)
+				dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+
+				got, err := dtw.listSourceFilesets(context.Background(), task, connector, &discoverTaskReconcileProgress{})
+
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErr)
+				assert.Nil(t, got)
+			})
+		}
+	})
+
+	t.Run("stops at the page cap", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dts := vmock.NewMockDiscoverTaskService(ctrl)
+		connector := newPagedFilesetConnector(ctrl)
+		dtw := &DiscoverTaskWorker{dts: dts}
+		calls := 0
+		connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), gomock.Any(), filesetListPageSize).
+			DoAndReturn(func(context.Context, string, int) (*interfaces.FilesetPage, error) {
+				calls++
+				return &interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: fmt.Sprint(calls)}}, NextCursor: fmt.Sprintf("c%d", calls)}, nil
+			}).Times(filesetListMaxPages)
+		dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", gomock.Any(), gomock.Any()).Return(true, nil).Times(filesetListMaxPages)
+
+		got, err := dtw.listSourceFilesets(context.Background(), task, connector, &discoverTaskReconcileProgress{})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), fmt.Sprintf("exceeded %d pages", filesetListMaxPages))
+		assert.Nil(t, got)
+	})
+
+	t.Run("returns progress update failure", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dts := vmock.NewMockDiscoverTaskService(ctrl)
+		connector := newPagedFilesetConnector(ctrl)
+		dtw := &DiscoverTaskWorker{dts: dts}
+		connector.MockPagedFilesetLister.EXPECT().ListFilesetsPage(gomock.Any(), "", filesetListPageSize).
+			Return(&interfaces.FilesetPage{Items: []*interfaces.FilesetMeta{{ID: "a"}}, NextCursor: "c1"}, nil)
+		dts.EXPECT().InternalUpdateProgress(gomock.Any(), "task-1", gomock.Any(), gomock.Any()).Return(false, nil)
+
+		got, err := dtw.listSourceFilesets(context.Background(), task, connector, &discoverTaskReconcileProgress{})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "progress was not updated")
+		assert.Nil(t, got)
 	})
 }

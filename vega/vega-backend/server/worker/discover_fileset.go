@@ -22,6 +22,12 @@ type filesetDiscoverItem struct {
 	markAfterEnrich bool
 }
 
+// Page size and page cap for connectors that implement PagedFilesetLister.
+const (
+	filesetListPageSize = 1000
+	filesetListMaxPages = 10000
+)
+
 // discoverFilesetResources discovers fileset resources from a fileset connector.
 func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context,
 	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, connector interfaces.Connector,
@@ -32,7 +38,8 @@ func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context,
 		return nil, fmt.Errorf("connector does not support fileset discover")
 	}
 
-	sourceFilesets, err := filesetConnector.ListFilesets(ctx)
+	// The full listing must succeed before any resource is touched, so a failed page never marks resources stale.
+	sourceFilesets, err := dtw.listSourceFilesets(ctx, task, filesetConnector, progress)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list filesets: %w", err)
 	}
@@ -74,6 +81,50 @@ func (dtw *DiscoverTaskWorker) discoverFilesetResources(ctx context.Context,
 	logger.Info(result.Message)
 
 	return result, nil
+}
+
+// listSourceFilesets lists every fileset in the discovery scope, page by page when the connector
+// implements PagedFilesetLister and in a single ListFilesets call otherwise.
+func (dtw *DiscoverTaskWorker) listSourceFilesets(ctx context.Context, task *interfaces.DiscoverTask,
+	connector interfaces.FilesetConnector, progress *discoverTaskReconcileProgress) ([]*interfaces.FilesetMeta, error) {
+
+	lister, ok := connector.(interfaces.PagedFilesetLister)
+	if !ok {
+		return connector.ListFilesets(ctx)
+	}
+
+	var filesets []*interfaces.FilesetMeta
+	seenCursors := make(map[string]struct{})
+	cursor := ""
+	for page := 1; ; page++ {
+		if page > filesetListMaxPages {
+			return nil, fmt.Errorf("fileset listing exceeded %d pages", filesetListMaxPages)
+		}
+		if dtw.stopped.Load() {
+			return nil, ErrWorkerManagerStopping
+		}
+		result, err := lister.ListFilesetsPage(ctx, cursor, filesetListPageSize)
+		if err != nil {
+			return nil, fmt.Errorf("list fileset page %d: %w", page, err)
+		}
+		if result == nil {
+			return nil, fmt.Errorf("list fileset page %d: connector returned no page", page)
+		}
+		filesets = append(filesets, result.Items...)
+		// Per-page updates also refresh the task heartbeat during long listings.
+		if err := dtw.updateProgress(ctx, task.ID, progress.lastProgress, fmt.Sprintf("source filesets listed: page %d, %d objects", page, len(filesets))); err != nil {
+			return nil, err
+		}
+
+		if result.NextCursor == "" {
+			return filesets, nil
+		}
+		if _, repeated := seenCursors[result.NextCursor]; repeated || result.NextCursor == cursor {
+			return nil, fmt.Errorf("list fileset page %d: cursor %q repeated", page, result.NextCursor)
+		}
+		seenCursors[result.NextCursor] = struct{}{}
+		cursor = result.NextCursor
+	}
 }
 
 func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, task *interfaces.DiscoverTask,

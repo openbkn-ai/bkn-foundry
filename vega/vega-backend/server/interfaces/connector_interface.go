@@ -107,6 +107,20 @@ type FilesetConnector interface {
 	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
 }
 
+// FilesetPage is one page of a paged fileset listing.
+type FilesetPage struct {
+	Items []*FilesetMeta
+	// NextCursor is the cursor for the next page; empty means this is the last page.
+	NextCursor string
+}
+
+// PagedFilesetLister is optionally implemented by a FilesetConnector whose discovery scope is too large
+// to list in one call, such as object storage. Discovery prefers it over ListFilesets when available.
+type PagedFilesetLister interface {
+	// ListFilesetsPage lists at most limit filesets starting at cursor; an empty cursor starts from the beginning.
+	ListFilesetsPage(ctx context.Context, cursor string, limit int) (*FilesetPage, error)
+}
+
 // TopicConnector defines the interface for message queue connectors.
 // Implementations: kafka, pulsar, etc.
 type TopicConnector interface {

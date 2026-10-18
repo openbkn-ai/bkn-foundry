@@ -1142,6 +1142,45 @@ func (mr *MockFilesetConnectorMockRecorder) ValidateBuildSchema(resource any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateBuildSchema", reflect.TypeOf((*MockFilesetConnector)(nil).ValidateBuildSchema), resource)
 }
 
+// MockPagedFilesetLister is a mock of PagedFilesetLister interface.
+type MockPagedFilesetLister struct {
+	ctrl     *gomock.Controller
+	recorder *MockPagedFilesetListerMockRecorder
+	isgomock struct{}
+}
+
+// MockPagedFilesetListerMockRecorder is the mock recorder for MockPagedFilesetLister.
+type MockPagedFilesetListerMockRecorder struct {
+	mock *MockPagedFilesetLister
+}
+
+// NewMockPagedFilesetLister creates a new mock instance.
+func NewMockPagedFilesetLister(ctrl *gomock.Controller) *MockPagedFilesetLister {
+	mock := &MockPagedFilesetLister{ctrl: ctrl}
+	mock.recorder = &MockPagedFilesetListerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPagedFilesetLister) EXPECT() *MockPagedFilesetListerMockRecorder {
+	return m.recorder
+}
+
+// ListFilesetsPage mocks base method.
+func (m *MockPagedFilesetLister) ListFilesetsPage(ctx context.Context, cursor string, limit int) (*interfaces.FilesetPage, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFilesetsPage", ctx, cursor, limit)
+	ret0, _ := ret[0].(*interfaces.FilesetPage)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFilesetsPage indicates an expected call of ListFilesetsPage.
+func (mr *MockPagedFilesetListerMockRecorder) ListFilesetsPage(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFilesetsPage", reflect.TypeOf((*MockPagedFilesetLister)(nil).ListFilesetsPage), ctx, cursor, limit)
+}
+
 // MockTopicConnector is a mock of TopicConnector interface.
 type MockTopicConnector struct {
 	ctrl     *gomock.Controller
