@@ -20,7 +20,7 @@ from app.auth import Account
 from app.core.agent_settings import merge, shared_limits
 from app.core.context_loader import profile_of
 from app.db import get_session
-from app.errors import err, not_found
+from app.errors import bad_request, err, not_found
 from app.models import (
     AgentLimits,
     AgentOut,
@@ -37,6 +37,7 @@ from app.public_auth import (
     PUBLIC_AGENT_IDS,
     authorize_agent,
     authorize_network_setting,
+    can_manage_agents,
     get_public_account,
 )
 
@@ -231,18 +232,11 @@ async def get_agent_config(
         ),
         mcp_profile=profile_of(agent.tools),
         can_edit_network=can_edit,
-        can_edit_shared=_can_edit_shared(account, agent),
+        can_edit_shared=await can_manage_agents(account),
     )
 
 
 # ---- Shared configuration ----
-
-
-def _can_edit_shared(account: Account, agent: AgentOut) -> bool:
-    # Interim rule until an Agent management operation is registered in the
-    # authorization registry: only the Agent's creator may change shared
-    # configuration (the same ownership rule the internal write routes use).
-    return account.account_id == agent.create_user
 
 
 async def _builtin_agent(session: AsyncSession, agent_id: str) -> AgentOut:
@@ -257,9 +251,12 @@ async def _builtin_agent(session: AsyncSession, agent_id: str) -> AgentOut:
 async def _shared_editor(
     session: AsyncSession, account: Account, agent_id: str
 ) -> AgentOut:
+    """A built-in Agent the caller may change (admin-agent:manage). Before the
+    first change its shipped state is recorded, so it can always be restored."""
     agent = await _builtin_agent(session, agent_id)
-    if not _can_edit_shared(account, agent):
+    if not await can_manage_agents(account):
         raise err(403, "BknAgent.Execution.Forbidden")
+    await dao.ensure_builtin_default(session, agent_id)
     return agent
 
 
@@ -278,14 +275,17 @@ class SharedOut(BaseModel):
     layered: bool
     can_edit: bool
     prompt_version: Optional[int] = None
+    # Whether a shipped state is recorded, and whether the Agent differs from it.
+    restorable: bool
+    modified: bool
     update_user: str
     update_time: int
 
 
-async def _shared_out(
-    session: AsyncSession, account: Account, agent: AgentOut
-) -> SharedOut:
+async def _shared_out(session: AsyncSession, agent: AgentOut, can_edit: bool) -> SharedOut:
     prompt = await dao.get_prompt(session, agent.prompt_id) if agent.prompt_id else None
+    default = await dao.get_builtin_default(session, agent.agent_id)
+    version = prompt.current_version if prompt else None
     return SharedOut(
         agent_id=agent.agent_id,
         name=agent.name,
@@ -298,26 +298,36 @@ async def _shared_out(
             for ref in agent.tools
         ),
         layered=agent.agent_id in PUBLIC_AGENT_IDS,
-        can_edit=_can_edit_shared(account, agent),
-        prompt_version=prompt.current_version if prompt else None,
+        can_edit=can_edit,
+        prompt_version=version,
+        restorable=default is not None,
+        modified=default is not None
+        and (
+            agent.model != default.f_model
+            or agent.tools != default.f_tools
+            or (agent.limits.model_dump(exclude_none=True) if agent.limits else None)
+            != (default.f_limits or None)
+            or version != default.f_prompt_version
+        ),
         update_user=agent.update_user,
         update_time=agent.update_time,
     )
 
 
 # Reading built-in configuration only needs a verified account: the defaults
-# ship in the migrations and the console gates the page. Changing it goes
-# through _shared_editor.
+# ship in the migrations and the console gates the page. Changing it needs
+# admin-agent:manage (_shared_editor).
 @router.get("/admin/agents", response_model=list[SharedOut])
 async def list_shared_agents(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
+    can_edit = await can_manage_agents(account)
     items = []
     for agent_id in BUILTIN_AGENT_IDS:
         # A deployment may not have every built-in seeded.
         if agent := await dao.get_agent(session, agent_id):
-            items.append(await _shared_out(session, account, agent))
+            items.append(await _shared_out(session, agent, can_edit))
     return items
 
 
@@ -327,7 +337,8 @@ async def get_shared_agent(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
-    return await _shared_out(session, account, await _builtin_agent(session, agent_id))
+    agent = await _builtin_agent(session, agent_id)
+    return await _shared_out(session, agent, await can_manage_agents(account))
 
 
 @router.put("/admin/agents/{agent_id}", response_model=SharedOut)
@@ -339,6 +350,9 @@ async def update_shared_agent(
 ):
     agent = await _shared_editor(session, account, agent_id)
     changes = body.model_dump(exclude_unset=True)
+    # Platform features depend on built-in Agents; they cannot be unpublished.
+    if changes.get("status", "published") != "published":
+        raise bad_request("BknAgent.Agent.BuiltinStaysPublished", agent_id=agent_id)
     if "mcp_profile" in changes:
         profile = changes.pop("mcp_profile")
         tools = []
@@ -358,12 +372,55 @@ async def update_shared_agent(
     agent = await dao.update_shared_agent(
         session, agent_id, changes, account.account_id
     )
-    return await _shared_out(session, account, agent)
+    return await _shared_out(session, agent, True)
+
+
+@router.post("/admin/agents/{agent_id}/restore", response_model=SharedOut)
+async def restore_shared_agent(
+    agent_id: str = AgentId,
+    account: Account = Depends(get_public_account),
+    session: AsyncSession = Depends(get_session),
+):
+    """Return a built-in Agent to what it shipped with: model, tools (including
+    the MCP surface), limits and the shared Prompt version. Prompt history is
+    kept; the shipped version simply becomes current again."""
+    agent = await _shared_editor(session, account, agent_id)
+    default = await dao.get_builtin_default(session, agent_id)
+    if default is None:
+        raise err(404, "BknAgent.Agent.NoBuiltinDefault", agent_id=agent_id)
+    if (
+        default.f_prompt_version is not None
+        and agent.prompt_id
+        and await dao.rollback_prompt(
+            session, agent.prompt_id, default.f_prompt_version, account.account_id
+        )
+        is False
+    ):
+        raise not_found("prompt", f"{agent.prompt_id}@{default.f_prompt_version}")
+    agent = await dao.update_shared_agent(
+        session,
+        agent_id,
+        {
+            "model": default.f_model,
+            "tools": default.f_tools,
+            "limits": default.f_limits,
+            "status": "published",
+        },
+        account.account_id,
+    )
+    return await _shared_out(session, agent, True)
 
 
 class SharedPromptOut(BaseModel):
     prompt: PromptOut
     versions: list[PromptVersionOut]
+    # The shipped version: restorable, so it cannot be deleted.
+    initial_version: Optional[int] = None
+
+
+async def _initial_version(session: AsyncSession, agent_id: str) -> Optional[int]:
+    default = await dao.get_builtin_default(session, agent_id)
+    return default.f_prompt_version if default else None
 
 
 async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPromptOut:
@@ -372,7 +429,9 @@ async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPrompt
     ):
         raise not_found("prompt", agent.prompt_id or agent.agent_id)
     return SharedPromptOut(
-        prompt=prompt, versions=await dao.list_prompt_versions(session, agent.prompt_id)
+        prompt=prompt,
+        versions=await dao.list_prompt_versions(session, agent.prompt_id),
+        initial_version=await _initial_version(session, agent.agent_id),
     )
 
 
@@ -414,4 +473,28 @@ async def rollback_shared_prompt(
         is False
     ):
         raise not_found("prompt", f"{agent.prompt_id}@{body.version}")
+    return await _shared_prompt(session, agent)
+
+
+@router.delete(
+    "/admin/agents/{agent_id}/prompt/versions/{version}", response_model=SharedPromptOut
+)
+async def delete_shared_prompt_version(
+    version: int = Path(ge=1),
+    agent_id: str = AgentId,
+    account: Account = Depends(get_public_account),
+    session: AsyncSession = Depends(get_session),
+):
+    """Remove a shared Prompt version from the history. The version in use and
+    the shipped one (what restore returns to) stay."""
+    agent = await _shared_editor(session, account, agent_id)
+    prompt = await dao.get_prompt(session, agent.prompt_id) if agent.prompt_id else None
+    if prompt is None:
+        raise not_found("prompt", agent.prompt_id or agent_id)
+    if version == prompt.current_version:
+        raise bad_request("BknAgent.Prompt.VersionInUse", version=version)
+    if version == await _initial_version(session, agent_id):
+        raise bad_request("BknAgent.Prompt.InitialVersion", version=version)
+    if not await dao.hide_prompt_version(session, agent.prompt_id, version, account.account_id):
+        raise not_found("prompt", f"{agent.prompt_id}@{version}")
     return await _shared_prompt(session, agent)

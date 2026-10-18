@@ -10,9 +10,11 @@ from app.models import (
     AgentOut,
     AgentRow,
     AgentSpec,
+    BuiltinDefaultRow,
     NetworkSettingRow,
     PromptOverrideRow,
     PromptRow,
+    PromptVersionHiddenRow,
     PromptVersionRow,
     TaskOut,
     TaskRow,
@@ -124,6 +126,37 @@ async def update_agent(session: AsyncSession, agent_id: str, spec: AgentSpec, ac
     row.f_update_time = _now_ms()
     await session.commit()
     return _to_out(row)
+
+
+async def get_builtin_default(
+    session: AsyncSession, agent_id: str
+) -> Optional[BuiltinDefaultRow]:
+    return await session.get(BuiltinDefaultRow, agent_id)
+
+
+async def ensure_builtin_default(session: AsyncSession, agent_id: str) -> None:
+    """Record a built-in Agent's current state as its default if none is recorded.
+
+    The migration records every seeded built-in; this covers one seeded later, so
+    the first administrator change is still restorable.
+    """
+    if await session.get(BuiltinDefaultRow, agent_id):
+        return
+    row = await session.get(AgentRow, agent_id)
+    if not row:
+        return
+    head = await session.get(PromptRow, row.f_prompt_id) if row.f_prompt_id else None
+    session.add(
+        BuiltinDefaultRow(
+            f_agent_id=agent_id,
+            f_model=row.f_model,
+            f_tools=row.f_tools,
+            f_limits=row.f_limits,
+            f_prompt_version=head.f_current_version if head else None,
+            f_create_time=_now_ms(),
+        )
+    )
+    await session.commit()
 
 
 async def update_shared_agent(
@@ -504,10 +537,14 @@ async def publish_prompt_version(
 async def list_prompt_versions(session: AsyncSession, prompt_id: str):
     from app.models import PromptVersionOut
 
+    hidden = select(PromptVersionHiddenRow.f_version).where(
+        PromptVersionHiddenRow.f_prompt_id == prompt_id
+    )
     rows = (
         await session.execute(
             select(PromptVersionRow)
             .where(PromptVersionRow.f_prompt_id == prompt_id)
+            .where(PromptVersionRow.f_version.not_in(hidden))
             .order_by(PromptVersionRow.f_version.desc())
         )
     ).scalars().all()
@@ -530,13 +567,34 @@ async def rollback_prompt(session: AsyncSession, prompt_id: str, version: int, a
     if not head:
         return None
     target = await session.get(PromptVersionRow, (prompt_id, version))
-    if not target:
+    if not target or await session.get(PromptVersionHiddenRow, (prompt_id, version)):
         return False
     head.f_current_version = version
     head.f_update_user = account_id
     head.f_update_time = _now_ms()
     await session.commit()
     return await _prompt_out(session, head)
+
+
+async def hide_prompt_version(
+    session: AsyncSession, prompt_id: str, version: int, account_id: str
+) -> bool:
+    """Remove a version from the visible history. The row stays, so the number
+    is never reused; False when there is no such visible version."""
+    if not await session.get(PromptVersionRow, (prompt_id, version)):
+        return False
+    if await session.get(PromptVersionHiddenRow, (prompt_id, version)):
+        return False
+    session.add(
+        PromptVersionHiddenRow(
+            f_prompt_id=prompt_id,
+            f_version=version,
+            f_hide_user=account_id,
+            f_hide_time=_now_ms(),
+        )
+    )
+    await session.commit()
+    return True
 
 
 # ---------- Import and export (impex): upsert under the original id; a name collision is an error ----------
