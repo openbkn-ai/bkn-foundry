@@ -144,7 +144,9 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 		span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL), attribute.Bool(spanAttrGraph, true))
 		return s.queryGraph(ctx, query, compiled)
 	}
-	if s.executor() == common.CypherExecutorBindJoin {
+	// Totals over a WITH's groups nest one aggregation in another, which the
+	// bind-join executor does not do; the SQL path answers them.
+	if s.executor() == common.CypherExecutorBindJoin && len(compiled.plan.Totals) == 0 {
 		return s.queryBindJoin(ctx, query, compiled)
 	}
 	span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL))
