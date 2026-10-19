@@ -445,11 +445,14 @@ components:
           enum: [local_index, source]
         entries:
           description: |
-            文档条目。Binary 或无法提供内容的字段可返回 `ResourceValue`：`unavailable` 表示
+            文档条目。所有数据源已声明的 `json` 字段以普通字符串返回，不解析或校验字符串内容；
+            字段类型元数据仍为 `json`。SQL NULL 返回 null，源端文本不转换为对象、数组或数值。
+            此约定将原先返回的 JSON 对象或数组改为字符串，调用方需要结构化值时自行解析。
+            Binary 或无法提供内容的字段可返回 `ResourceValue`：`unavailable` 表示
             当前查询无法提供该字段内容（例如该字段不在本地索引中）。
             它不表示源值为 NULL；真实空值返回 null，缺失字段仅表示本次未返回。
             `metadata` / `content` 分别表示 Binary 长度或 Base64 内容。
-            源查询中 Other、JSON 的值按源端返回，不按 ResourceValue 包装或解读。
+            源查询中 Other 的值按源端返回，JSON 按上述字符串约定返回，均不按 ResourceValue 包装或解读。
           type: array
           items:
             $ref: "#/components/schemas/Document"

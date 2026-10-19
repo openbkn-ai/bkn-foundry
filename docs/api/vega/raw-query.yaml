@@ -344,7 +344,11 @@ components:
           items:
             $ref: "#/components/schemas/ColumnInfo"
         entries:
-          description: 查询结果（每条为一行/一个文档；支持的 OpenSearch 聚合也展开为逐行结果）
+          description: |
+            查询结果（每条为一行/一个文档；支持的 OpenSearch 聚合也展开为逐行结果）。
+            所有数据源的 json 字段以普通字符串返回，内容不作 JSON 解析或校验；
+            类型元数据仍为 json，SQL NULL 返回 null。原先消费对象或数组的调用方需自行解析字符串。
+            OpenSearch 别名或通配符按实际索引合并字段类型；同名字段映射为不同 Vega 类型时查询失败。
           type: array
           items:
             type: object

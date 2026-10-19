@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -120,6 +121,11 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 		}, nil
 	}
 
+	fieldTypes := make(map[string]string)
+	if err := c.fetchMappingsForQuery(ctx, resourceName, fieldTypes); err != nil {
+		return nil, fmt.Errorf("failed to read JSON field types: %w", err)
+	}
+
 	// Extract documents from hits
 	documents := make([]map[string]any, 0, len(hitsArray))
 	for _, hit := range hitsArray {
@@ -142,6 +148,9 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 			source["_score"] = score
 		}
 
+		if err := stringifyJSONQueryFields(source, fieldTypes); err != nil {
+			return nil, err
+		}
 		documents = append(documents, source)
 	}
 
@@ -232,8 +241,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 	// Obtain the mapping information of the index to determine the field type
 	fieldTypeMap := make(map[string]string)
 	if err := c.fetchMappingsForQuery(ctx, indexName, fieldTypeMap); err != nil {
-		// Fall back to the default string type if mapping retrieval fails.
-		logger.Warnf("failed to fetch index mappings, using default string type: %v", err)
+		return nil, fmt.Errorf("failed to read JSON field types: %w", err)
 	}
 
 	// Collect all field names from the first hit
@@ -253,6 +261,9 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 	// Convert hits to entries
 	entries := make([]map[string]any, 0, len(searchResp.Hits.Hits))
 	for _, hit := range searchResp.Hits.Hits {
+		if err := stringifyJSONQueryFields(hit.Source, fieldTypeMap); err != nil {
+			return nil, err
+		}
 		entries = append(entries, hit.Source)
 	}
 
@@ -306,18 +317,44 @@ func (c *OpenSearchConnector) fetchMappingsForQuery(ctx context.Context, indexNa
 		return fmt.Errorf("failed to unmarshal mappings: %w", err)
 	}
 
-	// Parse the fields and construct field type mappings
-	fields := make(map[string]interfaces.IndexFieldMeta)
-	if idxData, ok := dataMapping[indexName]; ok {
-		parseProperties("", idxData.Mappings.Properties, fields)
+	// 别名和通配符响应使用实际索引名，逐索引解析后再合并类型。
+	indexNames := make([]string, 0, len(dataMapping))
+	for name := range dataMapping {
+		indexNames = append(indexNames, name)
 	}
-	resolveIndexAliasTypes(fields)
-	for fieldName, meta := range fields {
-		nativeType := meta.Type
-		if meta.ResolvedType != "" {
-			nativeType = meta.ResolvedType
+	sort.Strings(indexNames)
+	mergedTypes := make(map[string]string)
+	for _, name := range indexNames {
+		properties := dataMapping[name].Mappings.Properties
+		fields := make(map[string]interfaces.IndexFieldMeta)
+		parseProperties("", properties, fields)
+		// 发现流程展开 object 子字段；查询还需保留顶层 object 的 JSON 类型。
+		for fieldName, property := range properties {
+			if property.Type == "object" || (property.Type == "" && property.Properties != nil) {
+				fields[fieldName] = interfaces.IndexFieldMeta{Type: "object"}
+			}
 		}
-		fieldTypeMap[fieldName] = c.MapType(nativeType)
+		resolveIndexAliasTypes(fields)
+		fieldNames := make([]string, 0, len(fields))
+		for fieldName := range fields {
+			fieldNames = append(fieldNames, fieldName)
+		}
+		sort.Strings(fieldNames)
+		for _, fieldName := range fieldNames {
+			meta := fields[fieldName]
+			nativeType := meta.Type
+			if meta.ResolvedType != "" {
+				nativeType = meta.ResolvedType
+			}
+			fieldType := c.MapType(nativeType)
+			if previous, exists := mergedTypes[fieldName]; exists && previous != fieldType {
+				return fmt.Errorf("conflicting mapping types for field %q", fieldName)
+			}
+			mergedTypes[fieldName] = fieldType
+		}
+	}
+	for fieldName, fieldType := range mergedTypes {
+		fieldTypeMap[fieldName] = fieldType
 	}
 
 	return nil
@@ -707,6 +744,13 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}, nil
 	}
 
+	fieldTypes := make(map[string]string, len(resource.SchemaDefinition))
+	for _, property := range resource.SchemaDefinition {
+		if property != nil {
+			fieldTypes[property.Name] = property.Type
+		}
+	}
+
 	// Extract documents from hits
 	documents := make([]map[string]any, 0, len(hitsArray))
 	var searchAfter []any
@@ -725,6 +769,9 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		// Add _score field if present
 		if score, ok := openSearchFloat64(hitMap["_score"]); ok {
 			source["_score"] = score
+		}
+		if err := stringifyJSONQueryFields(source, fieldTypes); err != nil {
+			return nil, err
 		}
 		documents = append(documents, source)
 		if sort, ok := hitMap["sort"].([]any); ok {
@@ -961,4 +1008,63 @@ func formatInValuesForScript(values []any) string {
 	}
 
 	return fmt.Sprintf("[%s]", strings.Join(strValues, ", "))
+}
+
+// stringifyJSONQueryFields 只序列化协议已解码的 JSON 字段；文本和空值保持原样。
+func stringifyJSONQueryFields(source map[string]any, fieldTypes map[string]string) error {
+	names := make([]string, 0, len(fieldTypes))
+	for name, fieldType := range fieldTypes {
+		if fieldType == interfaces.DataType_Json {
+			names = append(names, name)
+		}
+	}
+	// 父 JSON 字段先序列化，避免对子字段转换后再次编码而改变原值。
+	sort.Slice(names, func(i, j int) bool {
+		iDepth, jDepth := strings.Count(names[i], "."), strings.Count(names[j], ".")
+		if iDepth != jDepth {
+			return iDepth < jDepth
+		}
+		return names[i] < names[j]
+	})
+	var visit func(any, string) error
+	visit = func(node any, path string) error {
+		switch node := node.(type) {
+		case []any:
+			for _, item := range node {
+				if err := visit(item, path); err != nil {
+					return err
+				}
+			}
+		case map[string]any:
+			// 优先匹配完整键，保留 _source 中含字面点号的字段语义。
+			if value, exists := node[path]; exists {
+				switch value := value.(type) {
+				case nil, string:
+					return nil
+				case []byte:
+					node[path] = string(value)
+				default:
+					encoded, err := sonic.Marshal(value)
+					if err != nil {
+						return fmt.Errorf("failed to serialize JSON field %q", path)
+					}
+					node[path] = string(encoded)
+				}
+				return nil
+			}
+			// 最长前缀优先，同时支持嵌套对象及中间节点的字面点号。
+			for split := strings.LastIndex(path, "."); split > 0; split = strings.LastIndex(path[:split], ".") {
+				if child, exists := node[path[:split]]; exists {
+					return visit(child, path[split+1:])
+				}
+			}
+		}
+		return nil
+	}
+	for _, name := range names {
+		if err := visit(source, name); err != nil {
+			return err
+		}
+	}
+	return nil
 }
