@@ -42,12 +42,8 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 	if cfg.Operation != filter_condition.OperationKnnVector {
 		return nil
 	}
-	if resource != nil && resource.Category == interfaces.ResourceCategoryTable &&
-		(ignoreLocalIndex || !resourcelogic.HasAvailableLocalIndex(resource)) {
-		if ignoreLocalIndex {
-			return fmt.Errorf("condition [knn_vector] cannot use the local index while ignore_local_index is true")
-		}
-		return fmt.Errorf("condition [knn_vector] resource '%s' has no local index; build one before vector search", resource.Name)
+	if err := validateVectorIndexConditions(resource, cfg, ignoreLocalIndex); err != nil {
+		return err
 	}
 	text, ok := cfg.Value.(string)
 	if !ok {
@@ -81,6 +77,26 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 	cfg.Name = field
 	cfg.Value = vectors[0].Vector
 	return nil
+}
+
+// validateVectorIndexConditions 只检查索引前置条件，不解析字段或调用向量模型。
+func validateVectorIndexConditions(resource *interfaces.Resource, cfg *interfaces.FilterCondCfg, ignoreLocalIndex bool) error {
+	if cfg == nil || resource == nil || resource.Category != interfaces.ResourceCategoryTable ||
+		(!ignoreLocalIndex && resourcelogic.HasAvailableLocalIndex(resource)) {
+		return nil
+	}
+	for _, sub := range cfg.SubConds {
+		if err := validateVectorIndexConditions(resource, sub, ignoreLocalIndex); err != nil {
+			return err
+		}
+	}
+	if cfg.Operation != filter_condition.OperationKnnVector {
+		return nil
+	}
+	if ignoreLocalIndex {
+		return fmt.Errorf("condition [knn_vector] cannot use the local index while ignore_local_index is true")
+	}
+	return fmt.Errorf("condition [knn_vector] resource '%s' has no local index; build one before vector search", resource.Name)
 }
 
 // vectorFieldFor finds the physical vector field for a source field.

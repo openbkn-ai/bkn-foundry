@@ -198,6 +198,12 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			WithErrorDetails(err.Error())
 	}
 
+	if err := validateVectorIndexConditions(resource, params.FilterCondCfg, ignoreLocalIndex); err != nil {
+		otellog.LogError(ctx, "Vector index condition rejected", err)
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
+
 	if err := rds.validateOutputFieldsParams(resource, params); err != nil {
 		httpErr, _ := outputFieldHTTPError(ctx, err)
 		return nil, 0, httpErr

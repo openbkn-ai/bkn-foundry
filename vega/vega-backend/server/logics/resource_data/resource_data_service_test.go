@@ -158,33 +158,42 @@ func TestResourceDataServiceValidateOutputFieldsParams(t *testing.T) {
 	})
 }
 
-func TestQuerySourcePageFulltextPrecedesOutputFields(t *testing.T) {
-	for _, operation := range []string{filter_condition.OperationMatch, filter_condition.OperationMatchPhrase, filter_condition.OperationMultiMatch} {
+func TestQuerySourcePageSearchPrerequisitesPrecedeOutputFields(t *testing.T) {
+	for _, operation := range []string{filter_condition.OperationMatch, filter_condition.OperationMatchPhrase, filter_condition.OperationMultiMatch, filter_condition.OperationKnnVector} {
 		for _, ignore := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/ignore_index=%t", operation, ignore), func(t *testing.T) {
-				ctrl := gomock.NewController(t)
-				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
-				catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
-				resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "title", Type: interfaces.DataType_Text}}}
-				if ignore {
-					resource.LocalIndexName = "index"
-					resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
-				}
-				params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, OutputFields: []string{"id", "_score"}, FilterCondCfg: &interfaces.FilterCondCfg{Name: "title", Operation: operation}}
-				rows, total, err := (&resourceDataService{cs: catalogs}).QuerySourcePage(context.Background(), resource, params)
-				var httpErr *rest.HTTPError
-				require.ErrorAs(t, err, &httpErr)
-				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-				assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
-				if ignore {
-					assert.Contains(t, httpErr.BaseError.ErrorDetails, "ignore_local_index")
-				} else {
-					assert.Contains(t, httpErr.BaseError.ErrorDetails, "build one before full-text search")
-				}
-				assert.NotContains(t, httpErr.BaseError.ErrorDetails, "unknown output field")
-				assert.Nil(t, rows)
-				assert.Zero(t, total)
-			})
+			for _, nested := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/ignore_index=%t/nested=%t", operation, ignore, nested), func(t *testing.T) {
+					ctrl := gomock.NewController(t)
+					catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+					catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+					resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "title", Type: interfaces.DataType_Text}}}
+					if ignore {
+						resource.LocalIndexName = "index"
+						resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+					}
+					condition := &interfaces.FilterCondCfg{Name: "title", Operation: operation, ValueOptCfg: interfaces.ValueOptCfg{Value: "search text"}}
+					if nested {
+						condition = &interfaces.FilterCondCfg{Operation: "and", SubConds: []*interfaces.FilterCondCfg{condition}}
+					}
+					params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, OutputFields: []string{"id", "_score"}, FilterCondCfg: condition}
+					models := mock_interfaces.NewMockModelFactoryService(ctrl)
+					rows, total, err := (&resourceDataService{cs: catalogs, mfs: models}).QuerySourcePage(context.Background(), resource, params)
+					var httpErr *rest.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+					if ignore {
+						assert.Contains(t, httpErr.BaseError.ErrorDetails, "ignore_local_index")
+					} else if operation == filter_condition.OperationKnnVector {
+						assert.Contains(t, httpErr.BaseError.ErrorDetails, "build one before vector search")
+					} else {
+						assert.Contains(t, httpErr.BaseError.ErrorDetails, "build one before full-text search")
+					}
+					assert.NotContains(t, httpErr.BaseError.ErrorDetails, "unknown output field")
+					assert.Nil(t, rows)
+					assert.Zero(t, total)
+				})
+			}
 		}
 	}
 }
