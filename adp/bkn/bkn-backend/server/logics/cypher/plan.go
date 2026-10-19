@@ -43,6 +43,10 @@ type Plan struct {
 	Grouped bool
 	Having  PlanPredicate
 
+	// Totals aggregate the rows the rest of the plan yields, one per group,
+	// and are then what the statement returns; see Query.Totals.
+	Totals []PlanTotal
+
 	// Properties lists, in the model's own terms, every property the query
 	// names: what it returns, filters on, sorts by or aggregates over. Join
 	// keys and the primary keys that keep relationships distinct are not in
@@ -50,6 +54,15 @@ type Plan struct {
 	// it; it is what the caller must be allowed to read before the statement
 	// runs.
 	Properties []PlanProperty
+}
+
+// PlanTotal is one aggregate over the groups. Of is the alias of the column
+// of Select it reads, and is empty for count(*).
+type PlanTotal struct {
+	Function string
+	Distinct bool
+	Of       string
+	Alias    string
 }
 
 // PlanProperty is one property the query names, on one object type.
@@ -435,6 +448,18 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	}
 	if err := p.planOrderBy(query.OrderBy); err != nil {
 		return nil, err
+	}
+	totals := make(map[string]bool, len(query.Totals))
+	for _, total := range query.Totals {
+		if totals[total.Alias] {
+			// planReturn's rule, for the columns totals return instead.
+			return nil, planErrorf(total.Pos,
+				"column name %q is returned twice; give one of them a different alias", total.Alias)
+		}
+		totals[total.Alias] = true
+		p.plan.Totals = append(p.plan.Totals, PlanTotal{
+			Function: total.Function, Distinct: total.Distinct, Of: total.Of, Alias: total.Alias,
+		})
 	}
 	if err := p.checkGraphReturn(query.Return); err != nil {
 		return nil, err
@@ -1067,7 +1092,7 @@ func (p *planner) refuseUngroupedProperties(projections []Projection) error {
 			continue
 		}
 		for _, bare := range ungroupedColumns(column.Expression) {
-			if !p.isProjected(bare.Table, bare.Column) {
+			if !p.isProjected(bare.Table, bare.Column) && !p.isGroupKey(bare.Table, bare.Column) {
 				return planErrorf(projectionPosition(projections[i]),
 					"%q reads %s outside an aggregate; return %s as a column of its own so the result is grouped by it",
 					projections[i].Alias, bare.Property, bare.Property)
@@ -1441,7 +1466,8 @@ func (p *planner) planSortKey(key SortKey) (*PlanOrder, error) {
 		// test is on aggregating rather than on GROUP BY, because a query
 		// that aggregates every column derives no GROUP BY and collapses just
 		// as hard.
-		if (p.plan.Distinct || p.aggregating()) && !p.isProjected(table, column) {
+		if (p.plan.Distinct || p.aggregating()) && !p.isProjected(table, column) &&
+			(p.plan.Distinct || !p.isGroupKey(table, column)) {
 			collapsed := "DISTINCT"
 			if p.aggregating() {
 				collapsed = "an aggregate"
@@ -1485,7 +1511,7 @@ func (p *planner) planSortExpression(key SortKey) (*PlanOrder, error) {
 	}
 	if p.aggregating() {
 		for _, bare := range ungroupedColumns(value) {
-			if !p.isProjected(bare.Table, bare.Column) {
+			if !p.isProjected(bare.Table, bare.Column) && (p.plan.Distinct || !p.isGroupKey(bare.Table, bare.Column)) {
 				return nil, planErrorf(key.Pos,
 					"this sort key reads %s outside an aggregate, and a query with an aggregate can only be sorted by a returned value; add %s to RETURN",
 					bare.Property, bare.Property)
@@ -1508,6 +1534,13 @@ func (p *planner) aggregating() bool {
 		}
 	}
 	return false
+}
+
+// isGroupKey reports whether a column is one a WITH grouped by, which has one
+// value per group whether or not RETURN shows it. Under DISTINCT that is not
+// enough to sort by: a sort key there has to be returned.
+func (p *planner) isGroupKey(table int, column string) bool {
+	return hasColumn(p.groupKeys, PlanColumn{Table: table, Column: column})
 }
 
 func (p *planner) isProjected(table int, column string) bool {

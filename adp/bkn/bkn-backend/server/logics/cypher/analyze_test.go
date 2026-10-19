@@ -230,7 +230,7 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order) SET a.paid = true RETURN a.id", "read-only"},
 		{"MATCH (a:Order) DETACH DELETE a RETURN a.id", "read-only"},
 		{"MATCH (a:Order) RETURN a.id UNION MATCH (b:Order) RETURN b.id", "UNION"},
-		{"MATCH (a:Order) WITH a WITH a RETURN a.id", "more than one WITH"},
+		{"MATCH (a:Order) WITH a.id AS x MATCH (b:Order) WITH b MATCH (c:Order) RETURN c.id", "a WITH after the MATCH that follows a WITH"},
 		{"OPTIONAL MATCH (a:Order) RETURN a.id", "OPTIONAL MATCH"},
 		{"UNWIND [1, 2] AS x RETURN x", "UNWIND"},
 		{"CALL db.labels() YIELD label RETURN label", "procedure calls"},

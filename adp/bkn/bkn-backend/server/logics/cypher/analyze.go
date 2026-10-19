@@ -1013,14 +1013,24 @@ func analyzeExpression(ctx parsing.IOC_ExpressionContext) (Expression, error) {
 }
 
 func analyzeSum(ctx parsing.IOC_AddOrSubtractExpressionContext) (Expression, error) {
+	return readSum(ctx, analyzeTerm)
+}
+
+// termReader reads one term of an arithmetic expression: what a name means
+// depends on where the expression stands, so the descent below leaves that to
+// its caller. analyzeTerm reads the names of the pattern; after a WITH, the
+// names are what the WITH passed on.
+type termReader func(ctx parsing.IOC_PropertyOrLabelsExpressionContext, atom parsing.IOC_AtomContext) (Expression, error)
+
+func readSum(ctx parsing.IOC_AddOrSubtractExpressionContext, term termReader) (Expression, error) {
 	products := ctx.AllOC_MultiplyDivideModuloExpression()
 	operators := operatorTokens(ctx)
-	left, err := analyzeProduct(products[0])
+	left, err := readProduct(products[0], term)
 	if err != nil {
 		return nil, err
 	}
 	for i, product := range products[1:] {
-		right, err := analyzeProduct(product)
+		right, err := readProduct(product, term)
 		if err != nil {
 			return nil, err
 		}
@@ -1031,15 +1041,15 @@ func analyzeSum(ctx parsing.IOC_AddOrSubtractExpressionContext) (Expression, err
 	return left, nil
 }
 
-func analyzeProduct(ctx parsing.IOC_MultiplyDivideModuloExpressionContext) (Expression, error) {
+func readProduct(ctx parsing.IOC_MultiplyDivideModuloExpressionContext, term termReader) (Expression, error) {
 	powers := ctx.AllOC_PowerOfExpression()
 	operators := operatorTokens(ctx)
-	left, err := analyzePower(powers[0])
+	left, err := readPower(powers[0], term)
 	if err != nil {
 		return nil, err
 	}
 	for i, power := range powers[1:] {
-		right, err := analyzePower(power)
+		right, err := readPower(power, term)
 		if err != nil {
 			return nil, err
 		}
@@ -1050,21 +1060,21 @@ func analyzeProduct(ctx parsing.IOC_MultiplyDivideModuloExpressionContext) (Expr
 	return left, nil
 }
 
-// analyzePower refuses ^. Cypher computes it in floating point, MySQL reads ^
+// readPower refuses ^. Cypher computes it in floating point, MySQL reads ^
 // as bitwise XOR, and the portable spelling is a function call; none of that
 // is worth the surprise for something this rare.
-func analyzePower(ctx parsing.IOC_PowerOfExpressionContext) (Expression, error) {
+func readPower(ctx parsing.IOC_PowerOfExpressionContext, term termReader) (Expression, error) {
 	unaries := ctx.AllOC_UnaryAddOrSubtractExpression()
 	if len(unaries) != 1 {
 		return nil, unsupportedf(ctx, "exponentiation", "multiply the value out instead of using ^")
 	}
-	return analyzeSignedTerm(unaries[0])
+	return readSignedTerm(unaries[0], term)
 }
 
-// analyzeSignedTerm reads one term and the sign in front of it. A minus on a
+// readSignedTerm reads one term and the sign in front of it. A minus on a
 // number written in the query is folded into the number, as it is everywhere
 // else; on anything else it stays an operation.
-func analyzeSignedTerm(ctx parsing.IOC_UnaryAddOrSubtractExpressionContext) (Expression, error) {
+func readSignedTerm(ctx parsing.IOC_UnaryAddOrSubtractExpressionContext, term termReader) (Expression, error) {
 	listOperator := ctx.OC_ListOperatorExpression()
 	if listOperator.GetChildCount() > 1 {
 		return nil, unsupported(listOperator, "list indexing and slicing")
@@ -1075,7 +1085,7 @@ func analyzeSignedTerm(ctx parsing.IOC_UnaryAddOrSubtractExpressionContext) (Exp
 	}
 	atom := propertyOrLabels.OC_Atom()
 	if !negates(ctx) {
-		return analyzeTerm(propertyOrLabels, atom)
+		return term(propertyOrLabels, atom)
 	}
 	if atom.OC_Literal() != nil {
 		value, err := analyzeUnaryOperand(ctx)
@@ -1084,7 +1094,7 @@ func analyzeSignedTerm(ctx parsing.IOC_UnaryAddOrSubtractExpressionContext) (Exp
 		}
 		return *value.literal, nil
 	}
-	operand, err := analyzeTerm(propertyOrLabels, atom)
+	operand, err := term(propertyOrLabels, atom)
 	if err != nil {
 		return nil, err
 	}

@@ -167,7 +167,9 @@ func TestSemiJoinRefuses(t *testing.T) {
 		{"MATCH (o:Order) WITH collect(o.id) AS ids MATCH (i:Item) WHERE i.order_id IN ids[0..2] RETURN i.id",
 			"IN over something other than a list"},
 		{"MATCH (o:Order) WITH DISTINCT o.id AS a MATCH (i:Item) WHERE i.order_id = a WITH DISTINCT i.id AS b " +
-			"MATCH (x:Item) WHERE x.id = b RETURN x.id", "more than one WITH"},
+			"MATCH (x:Item) WHERE x.id = b RETURN x.id", "a WITH after the MATCH that follows a WITH"},
+		{"MATCH (o:Order) WITH DISTINCT o.id AS a WITH a MATCH (i:Item) WHERE i.order_id = a RETURN i.id",
+			"MATCH after a second WITH"},
 	} {
 		_, err := compileWithClause(t, tc.query)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {

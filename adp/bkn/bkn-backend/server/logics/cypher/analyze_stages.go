@@ -8,6 +8,8 @@ package cypher
 import (
 	"strings"
 
+	"github.com/antlr4-go/antlr/v4"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher/parsing"
 )
 
@@ -23,7 +25,12 @@ import (
 //
 // where the first stage only supplies values the second filters by, which is
 // a semi-join: each row of the second stage is kept once if its value is among
-// the first stage's. Anything longer is refused.
+// the first stage's. In the first shape, more WITHs may follow the first one
+// (see analyzeWiths); a MATCH may follow only the first WITH.
+//
+// Either shape may open with a WITH that names values written in the query,
+// as in WITH ['a', 'b'] AS codes MATCH ... WHERE n.code IN codes: each name
+// stands for its value in the conditions of the MATCH that follows.
 
 type stageSegment struct {
 	reading []parsing.IOC_ReadingClauseContext
@@ -50,26 +57,56 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(segments) > 1 {
-		return nil, unsupportedf(segments[1].with, "more than one WITH",
-			"a query may have one WITH; to compare two sets, share a node in one MATCH, "+
-				"as in (p1)-[:R]->(m)<-[:R]-(p2)")
+	after := final.AllOC_ReadingClause()
+	constants := nameScope{}
+	if len(segments[0].reading) == 0 {
+		if constants, err = analyzeConstants(segments[0].with); err != nil {
+			return nil, err
+		}
+		segments = segments[1:]
+	}
+	if len(segments) == 0 {
+		query, err := analyzeReading(after, final, constants)
+		if err != nil {
+			return nil, err
+		}
+		if err := analyzeProjectionBody(query, returning.OC_ProjectionBody(), nil); err != nil {
+			return nil, err
+		}
+		return query, nil
 	}
 	segment := segments[0]
 	if len(segment.reading) == 0 {
 		return nil, unsupportedf(segment.with, "a WITH before any MATCH", "start the query with MATCH")
 	}
+	// A stage after the second one would read values of a stage that is
+	// itself filtered by another, which nothing here writes as one statement.
+	for _, later := range segments[1:] {
+		if len(later.reading) > 0 {
+			return nil, unsupportedf(later.with, "a WITH after the MATCH that follows a WITH",
+				"end the query with RETURN there; to compare two sets, share a node in one MATCH, "+
+					"as in (p1)-[:R]->(m)<-[:R]-(p2)")
+		}
+	}
+	if len(segments) > 1 && len(after) > 0 {
+		return nil, unsupportedf(after[0], "MATCH after a second WITH",
+			"MATCH may follow only the first WITH; to compare two sets, share a node in one MATCH, "+
+				"as in (p1)-[:R]->(m)<-[:R]-(p2)")
+	}
 
-	after := final.AllOC_ReadingClause()
 	if len(after) == 0 {
-		query, err := analyzeReading(segment.reading, segment.with, nameScope{})
+		query, err := analyzeReading(segment.reading, segment.with, constants)
 		if err != nil {
 			return nil, err
 		}
-		if err := analyzeWith(query, segment.with, returning.OC_ProjectionBody()); err != nil {
+		withs := make([]parsing.IOC_WithContext, len(segments))
+		for i, each := range segments {
+			withs[i] = each.with
+		}
+		if err := analyzeWiths(query, withs, returning.OC_ProjectionBody()); err != nil {
 			return nil, err
 		}
-		// What the WITH's WHERE added is a condition like any other, so it
+		// What a WITH's WHERE added is a condition like any other, so it
 		// may not require an optional node either.
 		if err := refuseRequiredUseOfOptional(query); err != nil {
 			return nil, err
@@ -77,7 +114,7 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 		return query, nil
 	}
 
-	first, err := analyzeReading(segment.reading, segment.with, nameScope{})
+	first, err := analyzeReading(segment.reading, segment.with, constants)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +152,61 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 		}
 	}
 	return query, nil
+}
+
+// analyzeConstants reads a WITH that opens the query, before any MATCH. It may
+// only name values written in the query -- a literal, a list of literals or a
+// parameter -- which the conditions after it use by name.
+func analyzeConstants(with parsing.IOC_WithContext) (nameScope, error) {
+	body := with.OC_ProjectionBody()
+	shape := func(at antlr.ParserRuleContext) error {
+		return unsupportedf(at, "a WITH before any MATCH",
+			"start the query with MATCH, or open it with a WITH that only names values, as in WITH ['a', 'b'] AS codes")
+	}
+	if err := refuseWithModifiers(body); err != nil {
+		return nil, err
+	}
+	if with.OC_Where() != nil {
+		return nil, shape(with.OC_Where())
+	}
+	scope := nameScope{}
+	for _, item := range body.OC_ProjectionItems().AllOC_ProjectionItem() {
+		expression := item.OC_Expression()
+		name, err := withAlias(item)
+		if err != nil {
+			return nil, err
+		}
+		if name == "" {
+			return nil, unnamedWithValue(expression)
+		}
+		sum, err := valueChain(expression)
+		if err != nil || computedSum(sum) {
+			return nil, shape(expression)
+		}
+		constant := &constantValue{}
+		if term, single := singleExpressionAtom(expression); single && term.atom.OC_Literal() != nil &&
+			term.atom.OC_Literal().OC_ListLiteral() != nil {
+			values, _, err := analyzeListOperands(sum)
+			if err != nil {
+				return nil, err
+			}
+			constant.list, constant.values = true, values
+		} else {
+			value, err := analyzeAddOrSubtractOperand(sum)
+			if err != nil || (value.literal == nil && value.parameter == nil) {
+				return nil, shape(expression)
+			}
+			if value.literal != nil && value.literal.Kind == LiteralNull {
+				return nil, unsupportedf(expression, "naming null", "a null matches nothing; leave the condition out")
+			}
+			constant.value = *value.operand()
+		}
+		if _, taken := scope[name]; taken {
+			return nil, unsupportedf(item, "a name WITH uses twice", "%q is named twice; give each value its own name", name)
+		}
+		scope[name] = &nameBinding{constant: constant}
+	}
+	return scope, nil
 }
 
 // analyzeStageWith reads a WITH that passes one property's values to the next
@@ -171,8 +263,10 @@ func analyzeStageWith(with parsing.IOC_WithContext, stage *Query) (string, *name
 }
 
 // nameBinding is what a WITH gave a name: the values of one property from the
-// stage before it, as one value per row or as one collected list.
+// stage before it, as one value per row or as one collected list, or a value
+// written in the query.
 type nameBinding struct {
+	constant *constantValue
 	sub      *Query
 	set      bool
 	distinct bool
@@ -183,6 +277,15 @@ type nameBinding struct {
 }
 
 type nameScope map[string]*nameBinding
+
+// constantValue is a value an opening WITH named: a list of values, or one
+// literal or parameter. A parameter may stand for either, so it is read as a
+// list where IN uses it and as one value where a comparison does.
+type constantValue struct {
+	list   bool
+	values []Operand
+	value  Operand
+}
 
 // resolve replaces each use of a name in the query's conditions with a
 // semi-join. A use may only stand on its own at the top of WHERE: under OR or
@@ -201,10 +304,12 @@ func (s nameScope) resolve(query *Query) error {
 		query.Where = combine("AND", terms, query.Where.predicatePosition())
 	}
 	for _, edge := range query.Pattern.Edges {
-		for _, condition := range edge.Conditions {
-			if _, err := s.resolveTerm(condition, false); err != nil {
+		for i, condition := range edge.Conditions {
+			resolved, err := s.resolveTerm(condition, false)
+			if err != nil {
 				return err
 			}
+			edge.Conditions[i] = resolved
 		}
 	}
 	return nil
@@ -216,9 +321,31 @@ func (s nameScope) resolveTerm(predicate Predicate, top bool) (Predicate, error)
 		if node.Right.Name == nil {
 			return node, nil
 		}
+		if binding, known := s[node.Right.Name.Name]; known && binding.constant != nil {
+			if binding.constant.list {
+				return nil, unsupportedAt(node.Right.Name.Pos, "comparing with a list",
+					"test membership instead, as in n.property IN %s", node.Right.Name.Name)
+			}
+			node.Right = binding.constant.value
+			return node, nil
+		}
 		return s.semiJoin(*node.Right.Name, node.Left, node.Operator == "=", false, top, node.Pos)
 	case Membership:
 		if node.ListName == nil {
+			return node, nil
+		}
+		if binding, known := s[node.ListName.Name]; known && binding.constant != nil {
+			constant := binding.constant
+			switch {
+			case constant.list:
+				node.Values = constant.values
+			case constant.value.Parameter != nil:
+				node.ListParameter = constant.value.Parameter
+			default:
+				return nil, unsupportedAt(node.ListName.Pos, "IN over a single value",
+					"compare with it instead, as in n.property = %s", node.ListName.Name)
+			}
+			node.ListName = nil
 			return node, nil
 		}
 		if node.Negated {
@@ -228,7 +355,7 @@ func (s nameScope) resolveTerm(predicate Predicate, top bool) (Predicate, error)
 		return s.semiJoin(*node.ListName, node.Property, false, true, top, node.Pos)
 	case Negation:
 		if membership, ok := node.Operand.(Membership); ok && membership.ListName != nil {
-			if _, known := s[membership.ListName.Name]; known {
+			if binding, known := s[membership.ListName.Name]; known && binding.constant == nil {
 				return nil, unsupportedAt(membership.ListName.Pos, "NOT IN over a WITH's values",
 					"only membership, as in n.property IN %s, can filter by them", membership.ListName.Name)
 			}

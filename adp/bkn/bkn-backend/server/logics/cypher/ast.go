@@ -53,6 +53,27 @@ type Query struct {
 	Grouped   bool
 	GroupKeys []GroupKey
 	Having    Predicate
+
+	// Totals aggregate the groups a WITH made rather than the rows it
+	// grouped, as in
+	//
+	//	WITH m.code AS code, count(*) AS n WHERE n > 2 RETURN count(*) AS codes
+	//
+	// When they are set, Return is what each group yields -- the values the
+	// totals read, named as the WITH named them -- and the totals are what
+	// the query returns, computed over those rows.
+	Totals []Total
+}
+
+// Total is one aggregate over a WITH's groups. Of names the WITH's value it
+// aggregates, and is empty for count(*), which counts the groups.
+type Total struct {
+	Function string
+	Name     string
+	Distinct bool
+	Of       string
+	Alias    string
+	Pos      Position
 }
 
 // GroupKey is one thing a WITH grouped by: a property, or a node, which groups

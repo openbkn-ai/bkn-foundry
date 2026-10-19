@@ -122,7 +122,34 @@ const (
 	semanticCondition  = "condition"
 	semanticComparison = "property_comparison"
 	semanticSemiJoin   = "semi_join"
+	// semanticGroups marks an aggregate over the groups a WITH made rather
+	// than over the matched rows.
+	semanticGroups = "groups"
 )
+
+// semanticTotals describes what a query returns when it aggregates a WITH's
+// groups: the totals, each reading the properties of the group column it
+// aggregates. The group columns themselves are not returned.
+func semanticTotals(totals []PlanTotal, groups []SemanticQueryProjection) []SemanticQueryProjection {
+	projections := make([]SemanticQueryProjection, 0, len(totals))
+	for _, total := range totals {
+		projection := SemanticQueryProjection{
+			Alias: total.Alias, OutputPointer: semanticOutputPointer(total.Alias),
+			Aggregate: strings.ToLower(total.Function), Distinct: total.Distinct, Expression: semanticGroups,
+		}
+		for _, group := range groups {
+			if total.Of == "" || group.Alias != total.Of {
+				continue
+			}
+			if group.PropertyRef != "" {
+				projection.PropertyRefs = append(projection.PropertyRefs, group.PropertyRef)
+			}
+			projection.PropertyRefs = append(projection.PropertyRefs, group.PropertyRefs...)
+		}
+		projections = append(projections, projection)
+	}
+	return projections
+}
 
 // semanticExpressionKind names what a computed column is in the descriptor.
 func semanticExpressionKind(value PlanExpression) string {
@@ -231,6 +258,9 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 			return nil, fmt.Errorf("semantic query projection %d is incomplete", index)
 		}
 		descriptor.Projections = append(descriptor.Projections, projection)
+	}
+	if len(plan.Totals) > 0 {
+		descriptor.Projections = semanticTotals(plan.Totals, descriptor.Projections)
 	}
 	for _, column := range plan.GroupBy {
 		if column.Graph != nil {

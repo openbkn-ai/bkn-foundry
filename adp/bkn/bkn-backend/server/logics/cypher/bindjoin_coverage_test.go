@@ -164,6 +164,11 @@ func TestBindJoinRunsEveryQueryTheCompilerAccepts(t *testing.T) {
 				if err != nil {
 					continue
 				}
+				if len(plan.Totals) > 0 {
+					// Totals over a WITH's groups are the SQL path's alone;
+					// the service never hands them to this executor.
+					break
+				}
 				compiled++
 				api := newFakeDataAPI(model.data())
 				_, _, err = runBindJoin(context.Background(), plan, schema, api.read, defaultBindJoinLimits,

@@ -65,6 +65,9 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 	if len(plan.Tables) == 0 || len(plan.Select) == 0 {
 		return "", fmt.Errorf("cannot generate SQL for an empty plan")
 	}
+	if len(plan.Totals) > 0 {
+		return generateTotals(plan, dialect, options.DefaultLimit)
+	}
 
 	g := &generator{dialect: dialect, plan: plan, conclusions: options.conclusions}
 	g.where, g.semiJoins = splitSemiJoins(plan.Where)
@@ -79,6 +82,44 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 	}
 	g.writeOrderBy()
 	g.writeLimit(options.DefaultLimit)
+	if g.err != nil {
+		return "", g.err
+	}
+	return g.out.String(), nil
+}
+
+// groupsAlias names the derived table whose rows are a WITH's groups.
+const groupsAlias = "g"
+
+// generateTotals writes a query whose RETURN aggregates the groups a WITH
+// made. The grouped query becomes a derived table with one row per group, and
+// the totals aggregate its rows -- MySQL 5.7 has no CTE, and a derived table
+// is how it nests one aggregation in another. The derived table takes no
+// LIMIT: capping it would count only some of the groups.
+func generateTotals(plan *Plan, dialect Dialect, defaultLimit int64) (string, error) {
+	groups := *plan
+	groups.Totals, groups.Skip, groups.Limit = nil, nil, nil
+	inner, err := Generate(&groups, GenerateOptions{Dialect: dialect})
+	if err != nil {
+		return "", err
+	}
+	g := &generator{dialect: dialect, plan: plan}
+	g.out.WriteString("SELECT ")
+	for i, total := range plan.Totals {
+		if i > 0 {
+			g.out.WriteString(", ")
+		}
+		argument := "*"
+		if total.Of != "" {
+			argument = groupsAlias + "." + g.identifier(total.Of)
+		}
+		if total.Distinct {
+			argument = "DISTINCT " + argument
+		}
+		g.out.WriteString(total.Function + "(" + argument + ") AS " + g.identifier(total.Alias))
+	}
+	g.out.WriteString(" FROM (" + inner + ") " + groupsAlias)
+	g.writeLimit(defaultLimit)
 	if g.err != nil {
 		return "", g.err
 	}
