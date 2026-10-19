@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 package mariadb
 
 import (
@@ -658,6 +662,14 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 }
 
 func TestMariaDBConvertValue(t *testing.T) {
+	t.Run("JSON text is opaque", func(t *testing.T) {
+		for _, text := range []string{`{"n":9007199254740993}`, `[1,true]`, `"scalar"`, "", "true", "null", `{"incomplete":`, "引号\"反斜杠\\\n"} {
+			for _, raw := range []any{text, []byte(text)} {
+				assert.Equal(t, text, convertValue(raw, false))
+			}
+		}
+	})
+
 	t.Run("maria dbconvert value", func(t *testing.T) {
 		assert.Equal(t, "hello", convertValue([]byte("hello"), false))
 		assert.Equal(t, []byte("hello"), convertValue([]byte("hello"), true))

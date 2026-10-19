@@ -1,3 +1,7 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 package postgresql
 
 import (
@@ -468,6 +472,14 @@ func TestPostgresqlConnectorBuildHavingCondition(t *testing.T) {
 }
 
 func TestPostgresqlConvertValue(t *testing.T) {
+	t.Run("JSON text is opaque", func(t *testing.T) {
+		for _, text := range []string{`{"n":9007199254740993}`, `[1,true]`, `"scalar"`, "", "true", "null", `{"incomplete":`, "引号\"反斜杠\\\n"} {
+			for _, raw := range []any{text, []byte(text)} {
+				assert.Equal(t, text, convertValue(raw, "payload", map[string]string{"payload": "jsonb"}, false))
+			}
+		}
+	})
+
 	t.Run("postgresql convert value", func(t *testing.T) {
 		utc := time.Date(2026, 7, 9, 8, 0, 0, 0, time.UTC)
 		converted := convertValue(utc, "created_at", map[string]string{

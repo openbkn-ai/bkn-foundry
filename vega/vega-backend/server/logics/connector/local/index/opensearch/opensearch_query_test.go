@@ -622,3 +622,165 @@ func TestFormatInValuesForScript(t *testing.T) {
 		assert.Equal(t, "['a', 2, true]", formatInValuesForScript([]any{"a", 2, true}))
 	})
 }
+
+func TestOpenSearchJSONQueryResults(t *testing.T) {
+	for _, mode := range []string{"structured", "raw", "dsl"} {
+		t.Run(mode, func(t *testing.T) {
+			client, err := osclient.NewClient(osclient.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					body := `{"hits":{"total":{"value":1},"hits":[{"_id":"1","_source":{"object":{"n":9007199254740993},"array":[1,true],"text":"{incomplete","empty":"","nothing":null,"number":9007199254740993,"boolean":true,"null_text":"null","id":42,"vector":[1,2]}}]}}`
+					if strings.HasSuffix(request.URL.Path, "/_mapping") {
+						body = `{"events":{"mappings":{"properties":{"object":{"properties":{"n":{"type":"long"}}},"array":{"type":"nested"},"text":{"type":"object","enabled":false},"empty":{"type":"object","enabled":false},"nothing":{"type":"object"},"number":{"type":"object","enabled":false},"boolean":{"type":"object","enabled":false},"null_text":{"type":"object","enabled":false},"id":{"type":"long"},"vector":{"type":"knn_vector"}}}}}`
+					}
+					return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			c := &OpenSearchConnector{client: client, enabled: true}
+			resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+				{Name: "object", Type: interfaces.DataType_Json}, {Name: "array", Type: interfaces.DataType_Json},
+				{Name: "text", Type: interfaces.DataType_Json}, {Name: "empty", Type: interfaces.DataType_Json}, {Name: "nothing", Type: interfaces.DataType_Json}, {Name: "number", Type: interfaces.DataType_Json}, {Name: "boolean", Type: interfaces.DataType_Json}, {Name: "null_text", Type: interfaces.DataType_Json},
+				{Name: "id", Type: interfaces.DataType_Integer}, {Name: "vector", Type: interfaces.DataType_Vector},
+			}}
+			var entries []map[string]any
+			switch mode {
+			case "structured":
+				got, err := c.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 10}})
+				require.NoError(t, err)
+				entries = got.Entries
+			case "raw":
+				got, err := c.ExecuteRawQuery(context.Background(), "events", map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+				require.NoError(t, err)
+				entries = got.Entries
+			case "dsl":
+				got, err := c.ExecuteQueryWithDsl(context.Background(), "events", `{"query":{"match_all":{}}}`)
+				require.NoError(t, err)
+				entries = got.Entries
+			}
+			require.Len(t, entries, 1)
+			assert.Equal(t, `{"n":9007199254740993}`, entries[0]["object"])
+			assert.Equal(t, `[1,true]`, entries[0]["array"])
+			assert.Equal(t, "{incomplete", entries[0]["text"])
+			assert.Equal(t, "", entries[0]["empty"])
+			assert.Nil(t, entries[0]["nothing"])
+			assert.Equal(t, "9007199254740993", entries[0]["number"])
+			assert.Equal(t, "true", entries[0]["boolean"])
+			assert.Equal(t, "null", entries[0]["null_text"])
+			assert.Equal(t, json.Number("42"), entries[0]["id"])
+			assert.Equal(t, []any{json.Number("1"), json.Number("2")}, entries[0]["vector"])
+		})
+	}
+}
+
+func TestOpenSearchJSONQueryMappingFailure(t *testing.T) {
+	for _, mode := range []string{"raw", "dsl"} {
+		t.Run(mode, func(t *testing.T) {
+			client, err := osclient.NewClient(osclient.Config{
+				Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+				Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+					status, body := http.StatusOK, `{"hits":{"total":{"value":1},"hits":[{"_source":{"payload":{"n":1}}}]}}`
+					if strings.HasSuffix(request.URL.Path, "/_mapping") {
+						status, body = http.StatusForbidden, `{}`
+					}
+					return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+				}),
+			})
+			require.NoError(t, err)
+			c := &OpenSearchConnector{client: client, enabled: true}
+			if mode == "raw" {
+				got, err := c.ExecuteRawQuery(context.Background(), "events", map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+				require.ErrorContains(t, err, "failed to read JSON field types")
+				assert.Nil(t, got)
+			} else {
+				got, err := c.ExecuteQueryWithDsl(context.Background(), "events", `{"query":{"match_all":{}}}`)
+				require.ErrorContains(t, err, "failed to read JSON field types")
+				assert.Nil(t, got)
+			}
+		})
+	}
+}
+
+func TestStringifyJSONQueryFields(t *testing.T) {
+	t.Run("discovered paths traverse objects and arrays", func(t *testing.T) {
+		fields := map[string]interfaces.IndexFieldMeta{}
+		parseProperties("", map[string]Property{"outer": {Type: "object", Properties: map[string]Property{"payload": {Type: "nested"}, "vector": {Type: "knn_vector"}}}}, fields)
+		types := map[string]string{}
+		for name, field := range fields {
+			types[name] = (&OpenSearchConnector{}).MapType(field.Type)
+		}
+		for _, array := range []bool{false, true} {
+			child := map[string]any{"payload": []any{map[string]any{"n": json.Number("9007199254740993")}}, "vector": []any{json.Number("1"), json.Number("2")}}
+			var outer any = child
+			if array {
+				outer = []any{child, nil, map[string]any{"payload": "{incomplete"}}
+			}
+			source := map[string]any{"outer": outer}
+			require.NoError(t, stringifyJSONQueryFields(source, types))
+			assert.Equal(t, `[{"n":9007199254740993}]`, child["payload"])
+			assert.Equal(t, []any{json.Number("1"), json.Number("2")}, child["vector"])
+			if array {
+				assert.Equal(t, "{incomplete", outer.([]any)[2].(map[string]any)["payload"])
+			}
+		}
+	})
+	t.Run("parents are serialized before children", func(t *testing.T) {
+		source := map[string]any{"parent": map[string]any{"child": map[string]any{"n": 1}}}
+		require.NoError(t, stringifyJSONQueryFields(source, map[string]string{"parent": interfaces.DataType_Json, "parent.child": interfaces.DataType_Json}))
+		assert.Equal(t, `{"child":{"n":1}}`, source["parent"])
+	})
+	t.Run("literal dotted keys and missing values", func(t *testing.T) {
+		source := map[string]any{"outer.payload": map[string]any{"n": 1}, "outer": map[string]any{"payload": nil}, "empty": nil}
+		require.NoError(t, stringifyJSONQueryFields(source, map[string]string{"outer.payload": interfaces.DataType_Json, "missing.child": interfaces.DataType_Json, "empty.child": interfaces.DataType_Json}))
+		assert.Equal(t, `{"n":1}`, source["outer.payload"])
+		assert.Nil(t, source["outer"].(map[string]any)["payload"])
+		assert.NotContains(t, source, "missing")
+		assert.Nil(t, source["empty"])
+	})
+}
+
+func TestOpenSearchJSONAliasQueries(t *testing.T) {
+	for _, mode := range []string{"raw", "dsl"} {
+		for caseIndex, mapping := range []string{
+			`{"events-000001":{"mappings":{"properties":{"payload":{"type":"object","enabled":false}}}}}`,
+			`{"events-000001":{"mappings":{"properties":{"payload":{"type":"object","enabled":false}}}},"events-000002":{"mappings":{"properties":{"payload":{"type":"object","enabled":false}}}}}`,
+			`{"events-000001":{"mappings":{"properties":{"payload":{"type":"object","enabled":false}}}},"events-000002":{"mappings":{"properties":{"payload":{"type":"keyword"}}}}}`,
+		} {
+			t.Run(mode+"/"+[]string{"single index alias", "multiple compatible indices", "conflicting types"}[caseIndex], func(t *testing.T) {
+				conflict := strings.Contains(mapping, "keyword")
+				client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true, Transport: countRowsTransport(func(r *http.Request) (*http.Response, error) {
+					body := `{"hits":{"total":{"value":1},"hits":[{"_source":{"payload":{"n":9007199254740993}}}]}}`
+					if strings.HasSuffix(r.URL.Path, "/_mapping") {
+						body = mapping
+					}
+					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+				})})
+				require.NoError(t, err)
+				c := &OpenSearchConnector{client: client, enabled: true}
+				var entries []map[string]any
+				if mode == "raw" {
+					got, err := c.ExecuteRawQuery(context.Background(), "events", map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+					if conflict {
+						require.ErrorContains(t, err, "conflicting mapping types")
+						assert.Nil(t, got)
+						return
+					}
+					require.NoError(t, err)
+					entries = got.Entries
+					assert.Equal(t, interfaces.DataType_Json, got.Columns[0].Type)
+				} else {
+					got, err := c.ExecuteQueryWithDsl(context.Background(), "events", `{"query":{"match_all":{}}}`)
+					if conflict {
+						require.ErrorContains(t, err, "conflicting mapping types")
+						assert.Nil(t, got)
+						return
+					}
+					require.NoError(t, err)
+					entries = got.Entries
+				}
+				require.Len(t, entries, 1)
+				assert.Equal(t, `{"n":9007199254740993}`, entries[0]["payload"])
+			})
+		}
+	}
+}

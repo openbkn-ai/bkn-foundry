@@ -1,8 +1,6 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 package common
 
@@ -25,6 +23,23 @@ func DecodePreciseJSON(reader io.Reader, target any) error {
 // UnmarshalPreciseJSON preserves number literals in byte-backed dynamic JSON.
 func UnmarshalPreciseJSON(data []byte, target any) error {
 	return precisionJSON.Unmarshal(data, target)
+}
+
+// JSONQueryValueText 保留文本和空值，仅将协议已解码的 JSON 值序列化为文本。
+// 不解析文本内容；不启用 HTML 转义，避免改写源字段的字符表示。
+func JSONQueryValueText(value any) (any, error) {
+	switch value := value.(type) {
+	case nil, string:
+		return value, nil
+	case []byte:
+		return string(value), nil
+	default:
+		encoded, err := sonic.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		return string(encoded), nil
+	}
 }
 
 // NumberAsFloat64 converts JSON and Go numeric values to float64.

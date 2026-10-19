@@ -153,6 +153,31 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Equal(t, []map[string]any{{"id": "doc-1"}, nil}, got)
 	})
 
+	t.Run("get documents preserves dataset JSON types", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1", Category: interfaces.ResourceCategoryDataset,
+			SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
+		values := []any{map[string]any{"id": "creator"}, []any{"value", true}, int64(42), true, "{incomplete", nil}
+		documents := make([]map[string]any, len(values)+1)
+		ids := make([]string, len(documents))
+		for i := range documents {
+			ids[i] = fmt.Sprintf("doc-%d", i)
+			if i < len(values) {
+				documents[i] = map[string]any{"payload": values[i]}
+			}
+		}
+		lim.EXPECT().GetDocuments(gomock.Any(), "dataset-1", ids).Return(documents, nil)
+
+		got, err := ds.GetDocuments(ctx, resource, ids, true)
+
+		require.NoError(t, err)
+		require.Len(t, got, len(documents))
+		for i, value := range values {
+			assert.Equal(t, value, got[i]["payload"])
+		}
+		assert.Nil(t, got[len(values)])
+	})
+
 	t.Run("get documents allows resource-level query permission", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)

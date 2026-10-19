@@ -8,6 +8,7 @@ package local_index
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
@@ -181,6 +183,66 @@ func TestLocalIndexManagerValidateAnalyzerUsesRefreshedSnapshot(t *testing.T) {
 }
 
 func TestLocalIndexManagerListDocuments(t *testing.T) {
+	t.Run("table JSON results are returned as text", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockIndexConnector(ctrl)
+		manager := &localIndexManager{lic: connector}
+		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}}}
+		params := &interfaces.ResourceDataQueryParams{}
+		stored := []map[string]any{{"payload": map[string]any{"z": "<>&", "a": json.Number("9007199254740993")}}, {"payload": "scalar"}, {"payload": "{incomplete"}, {"payload": nil}, {}}
+		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", resourceForQuery(resource), params).Return(&interfaces.QueryResult{Entries: stored, Total: 5, SearchAfter: []any{"next"}}, nil)
+		got, total, err := manager.ListDocuments(context.Background(), "index", resource, params)
+		require.NoError(t, err)
+		require.Len(t, got, 5)
+		require.IsType(t, "", got[0]["payload"])
+		text := got[0]["payload"].(string)
+		var decoded any
+		require.NoError(t, common.UnmarshalPreciseJSON([]byte(text), &decoded))
+		assert.Equal(t, map[string]any{"a": json.Number("9007199254740993"), "z": "<>&"}, decoded)
+		assert.Contains(t, text, "<>&")
+		assert.Equal(t, []map[string]any{{"payload": "scalar"}, {"payload": "{incomplete"}, {"payload": nil}, {}}, got[1:])
+		assert.Equal(t, int64(5), total)
+		assert.Equal(t, []any{"next"}, params.SearchAfter)
+		assert.Len(t, SchemaForQuery(resource.SchemaDefinition), 1)
+	})
+	t.Run("dataset JSON values retain document types", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockIndexConnector(ctrl)
+		manager := &localIndexManager{lic: connector}
+		resource := &interfaces.Resource{Category: interfaces.ResourceCategoryDataset, SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
+		params := &interfaces.ResourceDataQueryParams{}
+		values := []any{map[string]any{"id": "creator", "number": json.Number("9007199254740993")}, []any{"value", true}, json.Number("9007199254740993"), true, "{incomplete", nil}
+		stored := make([]map[string]any, 0, len(values)+1)
+		for _, value := range values {
+			stored = append(stored, map[string]any{"payload": value})
+		}
+		stored = append(stored, map[string]any{})
+		connector.EXPECT().ExecuteQuery(gomock.Any(), "dataset-index", resourceForQuery(resource), params).
+			Return(&interfaces.QueryResult{Entries: stored, Total: int64(len(stored)), SearchAfter: []any{"next"}}, nil)
+
+		got, total, err := manager.ListDocuments(context.Background(), "dataset-index", resource, params)
+
+		require.NoError(t, err)
+		require.Len(t, got, len(values)+1)
+		for i, value := range values {
+			assert.Equal(t, value, got[i]["payload"])
+		}
+		assert.Empty(t, got[len(values)])
+		assert.Equal(t, int64(len(values)+1), total)
+		assert.Equal(t, []any{"next"}, params.SearchAfter)
+	})
+	t.Run("aggregate alias matching a JSON field stays numeric", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		connector := vmock.NewMockIndexConnector(ctrl)
+		manager := &localIndexManager{lic: connector}
+		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "payload", Type: interfaces.DataType_Json}}}
+		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "payload"}}
+		connector.EXPECT().ExecuteQuery(gomock.Any(), "index", resourceForQuery(resource), params).Return(&interfaces.QueryResult{Entries: []map[string]any{{"payload": int64(5)}}, Total: 5}, nil)
+		got, _, err := manager.ListDocuments(context.Background(), "index", resource, params)
+		require.NoError(t, err)
+		assert.Equal(t, int64(5), got[0]["payload"])
+	})
+
 	ctrl := gomock.NewController(t)
 	connector := vmock.NewMockIndexConnector(ctrl)
 	resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable,
