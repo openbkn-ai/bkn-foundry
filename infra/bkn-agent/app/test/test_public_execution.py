@@ -1649,12 +1649,157 @@ def test_earlier_questions_bring_answers_but_not_their_tool_results():
         AIMessage(content="", tool_calls=[{"name": "q", "args": {}, "id": "b"}]),
         ToolMessage(content="new rows", tool_call_id="b", name="q"),
     ]
-    sent = ToolResultBudget(1000, 1000)._request(Request(history)).messages
+    sent = ToolResultBudget(1000, 1000, keep=3)._request(Request(history)).messages
     assert "earlier question omitted" in sent[2].content
     assert sent[3].content == "First answer"
     assert sent[6].content == "new rows"
     # The saved history is untouched.
     assert history[2].content == "old rows"
+
+
+class _Request:
+    def __init__(self, messages):
+        self.messages = messages
+
+    def override(self, messages):
+        return _Request(messages)
+
+
+def _turn(*sizes, name="run_cypher"):
+    """One question whose tool calls return results of the given sizes."""
+    from langchain_core.messages import HumanMessage
+
+    messages = [HumanMessage(content="list every material")]
+    for i, size in enumerate(sizes):
+        call = {"name": name, "args": {"query": f"MATCH page {i}"}, "id": f"c{i}"}
+        messages.append(AIMessage(content="", tool_calls=[call]))
+        messages.append(ToolMessage(content="r" * size, tool_call_id=f"c{i}", name=name))
+    return messages
+
+
+def test_results_that_fit_the_budget_stay_visible_together():
+    from app.core.context_budget import ToolResultBudget
+
+    # keep=2 at 1000 chars allows 2000 chars: the newest large result and the
+    # three small ones fit, the oldest large one does not.
+    history = _turn(900, 100, 100, 100, 900)
+    sent = ToolResultBudget(1000, 1000, keep=2)._request(_Request(history)).messages
+    results = [m.content for m in sent if isinstance(m, ToolMessage)]
+    assert results[1:] == ["r" * 100] * 3 + ["r" * 900]
+    assert "omitted to save context" in results[0]
+    # The placeholder names the call, so the model knows what it already ran.
+    assert 'run_cypher {"query": "MATCH page 0"}' in results[0]
+    assert "about 900 characters" in results[0]
+
+
+def test_keep_holds_even_when_results_exceed_the_budget():
+    from app.core.context_budget import ToolResultBudget
+
+    sent = ToolResultBudget(1000, 1000, keep=2)._request(
+        _Request(_turn(3000, 3000, 3000))
+    ).messages
+    results = [m.content for m in sent if isinstance(m, ToolMessage)]
+    assert "omitted to save context" in results[0]
+    assert all("Result truncated" in r for r in results[1:])
+
+
+def test_truncation_note_asks_for_fewer_columns_not_pages():
+    from app.core.context_budget import cap_tool_message
+
+    note = cap_tool_message(
+        ToolMessage(content="y" * 5000, tool_call_id="1", name="run_cypher"), 1000, 8000
+    ).content
+    assert "only the columns you need" in note
+    assert "most compact response format" in note
+    assert "do not split the rows into pages" in note
+
+
+def test_a_repeated_read_in_the_same_question_reuses_its_result():
+    from langchain_core.messages import HumanMessage
+
+    from app.core.context_budget import earlier_result
+
+    query = {"query": "MATCH (b) RETURN b"}
+    earlier = [
+        HumanMessage(content="first"),
+        AIMessage(content="", tool_calls=[{"name": "run_cypher", "args": query, "id": "old"}]),
+        ToolMessage(content="stale rows", tool_call_id="old", name="run_cypher"),
+        AIMessage(content="First answer"),
+        HumanMessage(content="second"),
+    ]
+    # A result from an earlier question is not reused: the data may have changed.
+    again = {"name": "run_cypher", "args": query, "id": "new"}
+    assert earlier_result(earlier, again) is None
+
+    first = {"name": "run_cypher", "args": dict(reversed(list(query.items()))), "id": "a"}
+    messages = earlier + [
+        AIMessage(content="", tool_calls=[first]),
+        ToolMessage(content="rows", tool_call_id="a", name="run_cypher"),
+        AIMessage(content="", tool_calls=[again]),
+    ]
+    assert earlier_result(messages, again).content == "rows"
+    # A failed result is retried, and calls that are not reads always run.
+    messages[-2] = ToolMessage(
+        content="boom", tool_call_id="a", name="run_cypher", status="error"
+    )
+    assert earlier_result(messages, again) is None
+    assert earlier_result(messages, {**again, "name": "run_code"}) is None
+
+
+def test_repeated_read_cache_answers_without_calling_the_tool():
+    from app.core.context_budget import RepeatedReadCache
+
+    call = {"name": "run_cypher", "args": {"query": "MATCH page 0"}, "id": "again"}
+
+    class ToolRequest:
+        state = {"messages": _turn(10) + [AIMessage(content="", tool_calls=[call])]}
+        tool_call = call
+
+    def handler(_request):
+        raise AssertionError("the tool must not run again")
+
+    reply = RepeatedReadCache().wrap_tool_call(ToolRequest(), handler)
+    assert reply.tool_call_id == "again" and reply.content == "r" * 10
+
+
+def _summarizer():
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+
+    from app.core.context_budget import TurnSummarization
+
+    model = FakeMessagesListChatModel(responses=[AIMessage(content="summary")])
+    return TurnSummarization(
+        model, trigger=("tokens", 10), keep=("messages", 2), trim_tokens_to_summarize=4000
+    )
+
+
+def test_summarization_never_folds_the_current_question_away():
+    from langchain_core.messages import HumanMessage
+
+    summarizer = _summarizer()
+    # One long question: LangChain would cut inside it and drop the question.
+    assert summarizer._determine_cutoff_index(_turn(*[100] * 10)) == 0
+
+    earlier = [HumanMessage(content="first"), AIMessage(content="First answer")]
+    messages = earlier + _turn(*[100] * 10)
+    assert summarizer._determine_cutoff_index(messages) == len(earlier)
+
+    # Only an earlier summary before the question: nothing new to summarize.
+    summary = HumanMessage(content="summary", additional_kwargs={"lc_source": "summarization"})
+    assert summarizer._determine_cutoff_index([summary] + _turn(*[100] * 10)) == 0
+
+
+def test_summary_input_keeps_the_question_despite_large_tool_results():
+    summarizer = _summarizer()
+    # Raw results far past the trim window used to leave no question inside it,
+    # and the summary became "Previous conversation was too long to summarize."
+    trimmed = summarizer._trim_messages_for_summary(
+        _turn(*[40000] * 3) + [AIMessage(content="First answer")]
+    )
+    assert trimmed and trimmed[0].content == "list every material"
+    assert all(len(m.content) < 200 for m in trimmed if isinstance(m, ToolMessage))
 
 
 def _status_error(status, body):

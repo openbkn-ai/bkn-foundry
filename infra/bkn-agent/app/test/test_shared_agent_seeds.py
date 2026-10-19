@@ -250,8 +250,9 @@ def test_sql_defaults_match_the_previous_agent_and_prompt_definitions():
     expected = {
         # Frozen from the former JSON definitions after normal AgentSpec/PromptSpec validation.
         # studio_smart_qa: Prompt revised before the 0.2.1 release with query and
-        # answer guidance learned from the first end-to-end run.
-        "studio_smart_qa": "da80363c483e54b78fd4ae1337ed40439dd3e2c92e1ff0ba2e8b468cb23886ac",
+        # answer guidance learned from the first end-to-end run, then with
+        # guidance for listing every row in one query instead of pages.
+        "studio_smart_qa": "e7d82224b508339db5b5c6df177238f8006892d13fb71a434214edd83640e80f",
         "business_provenance_optimizer": "10531cf1bf25a4ac4e52219766f507556e3544f0d9296fc2daff589fe70e7540",
         "business_provenance_claim_attribution": "9dc9e6ad9f118db0c7f890f595584048e9937413c2b60319d57ebf809ee3cb43",
     }

@@ -63,6 +63,19 @@ uv pip compile requirements.txt test-requirements.txt --constraint requirements.
 agent 定义+prompt 当前版本，保留原 id upsert 幂等，同名不同 id 记 failed 不中断，
 跨环境引用缺失记 warning）。
 
+## 上下文预算（公开执行面）
+
+公开执行（`/executions`）按 Agent 合并后的 `limits` 控制每次模型调用看到的内容，只改发给模型的副本，保存的会话保留完整工具结果。未设置时取以下默认值（`app/core/agent_settings.py`）：
+
+| 字段 | 默认值 | 含义 |
+| --- | --- | --- |
+| `data_result_chars` | 12000（原 8000） | 单个数据工具结果的字符上限，超出部分截断并提示模型少取列、不要分页 |
+| `schema_result_chars` | 24000 | 单个结构/发现类工具结果的字符上限 |
+| `keep_tool_results` | 3 | 当前问题至少保留最近 3 个工具结果；在 `keep_tool_results × data_result_chars` 的预算内继续保留更早的结果（原先只按条数保留 3 个） |
+| `summarize_after_tokens` | 60000 | 会话超过该 token 数后，把之前的问题压缩成摘要；当前问题不参与压缩 |
+
+被移出的结果换成占位符，写明原调用和大小。同一问题内重复的只读调用（`run_cypher`、`query_object_instance` 等）直接复用之前的成功结果，不再请求后端。
+
 ## 算子工厂注册
 
 不再有。published agent 曾被自动注册进算子工厂 toolbox（#212），现已移除：

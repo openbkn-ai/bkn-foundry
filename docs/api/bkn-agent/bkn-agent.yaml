@@ -1562,6 +1562,9 @@ components:
             minimum: 1.0
           - type: 'null'
           title: Keep Tool Results
+          description: 'Tool results of the current question kept for the model: at
+            least this many, and more while their capped size fits in keep_tool_results
+            x data_result_chars. Default 3.'
         data_result_chars:
           anyOf:
           - type: integer
@@ -1569,6 +1572,7 @@ components:
             minimum: 500.0
           - type: 'null'
           title: Data Result Chars
+          description: Character cap for one data tool result. Default 12000.
         schema_result_chars:
           anyOf:
           - type: integer
@@ -1576,6 +1580,8 @@ components:
             minimum: 500.0
           - type: 'null'
           title: Schema Result Chars
+          description: Character cap for one schema or discovery tool result. Default
+            24000.
         summarize_after_tokens:
           anyOf:
           - type: integer
@@ -1583,6 +1589,8 @@ components:
             minimum: 4000.0
           - type: 'null'
           title: Summarize After Tokens
+          description: Earlier questions are summarized once the saved thread passes
+            this many tokens; the current question is never summarized. Default 60000.
       type: object
       title: AgentLimits
     AgentList:
