@@ -1418,6 +1418,10 @@ def test_closing_call_gets_budgeted_tool_results(monkeypatch):
     assert len(closing) == 3
     assert all(len(m.content) < 1500 for m in closing)
     assert any("omitted to save context" in m.content for m in closing)
+    # The interrupted call's fill does not take the kept slot: the newest real
+    # result is still visible, truncated, as it was to the loop's last call.
+    real = [m for m in closing if m.status != "error"]
+    assert "Result truncated" in real[-1].content
     saved = [m for m in messages if isinstance(m, ToolMessage) and m.status != "error"]
     assert all(m.content == "x" * 3000 for m in saved)
 
@@ -1809,6 +1813,17 @@ def test_a_write_since_the_read_makes_it_run_again():
         AIMessage(content="", tool_calls=[again]),
     ]
     assert earlier_result(beside, again) is None
+
+    # Other reads in between do not count as writes.
+    explore = {"name": "explore_subgraph", "args": {"start": "o1"}, "id": "e"}
+    reads = _turn() + [
+        AIMessage(content="", tool_calls=[read]),
+        ToolMessage(content="open", tool_call_id="a", name="run_cypher"),
+        AIMessage(content="", tool_calls=[explore]),
+        ToolMessage(content="graph", tool_call_id="e", name="explore_subgraph"),
+        AIMessage(content="", tool_calls=[again]),
+    ]
+    assert earlier_result(reads, again).content == "open"
 
 
 def test_public_execution_reuses_a_repeated_read(monkeypatch):
