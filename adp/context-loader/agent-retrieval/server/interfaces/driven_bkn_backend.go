@@ -105,16 +105,18 @@ type PropertyParameter struct {
 
 // ObjectType Object type structure definition
 type ObjectType struct {
-	ModuleType           string                         `json:"module_type,omitempty"` // Module type
-	ID                   string                         `json:"id"`                    // Object ID
-	Name                 string                         `json:"name"`                  // Object name
-	Tags                 []string                       `json:"tags,omitempty"`        // Tags
-	Comment              string                         `json:"comment,omitempty"`     // Comment
-	Score                float64                        `json:"_score,omitempty"`      // Score
-	DataSource           *ResourceInfo                  `json:"data_source"`
-	DataProperties       []*DataProperty                `json:"data_properties,omitempty"`  // Data properties
-	LogicProperties      []*LogicPropertyDef            `json:"logic_properties,omitempty"` // Logic properties
-	PrimaryKeys          []string                       `json:"primary_keys"`               // Primary key fields
+	ModuleType      string              `json:"module_type,omitempty"` // Module type
+	ID              string              `json:"id"`                    // Object ID
+	Name            string              `json:"name"`                  // Object name
+	Tags            []string            `json:"tags,omitempty"`        // Tags
+	Comment         string              `json:"comment,omitempty"`     // Comment
+	Score           float64             `json:"_score,omitempty"`      // Score
+	DataSource      *ResourceInfo       `json:"data_source"`
+	DataProperties  []*DataProperty     `json:"data_properties,omitempty"`  // Data properties
+	LogicProperties []*LogicPropertyDef `json:"logic_properties,omitempty"` // Logic properties
+	// PrimaryKeys is omitted when the object type has none: a nil slice would
+	// encode as null, which the get_object_types output schema rejects.
+	PrimaryKeys          []string                       `json:"primary_keys,omitempty"`
 	EffectivePermissions map[string]PropertyAccessLevel `json:"effective_permissions,omitempty"`
 	// DataSourceMetadataUnavailable is bkn-backend reporting that it could not read the bound
 	// resource for this response, so condition_operations are missing rather than empty: what the

@@ -123,3 +123,54 @@ func TestHandleGetObjectTypesFiltersUnauthorizedProperties(t *testing.T) {
 		t.Fatalf("unauthorized property reached MCP output: %#v", properties)
 	}
 }
+
+type pagedObjectTypesBackend struct {
+	stubMetricBknBackend
+	page []*interfaces.ObjectType
+}
+
+func (s *pagedObjectTypesBackend) ListObjectTypes(context.Context, string, int, int) (*interfaces.ObjectTypePage, error) {
+	return &interfaces.ObjectTypePage{Entries: s.page, TotalCount: int64(len(s.page)), Scanned: len(s.page)}, nil
+}
+
+// An object type without a primary key, read by page with no ids, must not put
+// primary_keys: null into structuredContent: MCP clients validate it against the
+// published schema and reject the whole result.
+func TestObjectTypesPageWithoutPrimaryKeysMatchesOutputSchema(t *testing.T) {
+	_, rawSchema := loadMCPLocaleBundle("zh-CN").ToolSchemas("get_object_types")
+	var document any
+	if err := json.Unmarshal(rawSchema, &document); err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource("schema.json", document); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile("schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bkn := &pagedObjectTypesBackend{page: []*interfaces.ObjectType{
+		{ID: "goals", Name: "Goals"},
+		{ID: "teams", Name: "Teams", PrimaryKeys: []string{"team_id"}},
+	}}
+	metrics := knmetrics.NewKnMetricsServiceWith(nil, bkn, nil)
+	handler := handleGetObjectTypes(bkn, metrics, &mcpObjectSchemaAccessStub{})
+	result, err := handler(context.Background(), mcpReq(map[string]any{
+		"kn_id": "kn", "limit": 200, "response_format": "json",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("tool returned an error: %+v", result)
+	}
+	wire := resultToMap(t, result)
+	if err := schema.Validate(wire); err != nil {
+		t.Fatalf("structuredContent violates published schema: %v", err)
+	}
+	goals := wire["object_types"].([]any)[0].(map[string]any)
+	if value, present := goals["primary_keys"]; present {
+		t.Fatalf("absent primary keys must be omitted, got %v", value)
+	}
+}
