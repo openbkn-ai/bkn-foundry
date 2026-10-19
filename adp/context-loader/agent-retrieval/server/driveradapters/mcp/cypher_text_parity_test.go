@@ -27,8 +27,8 @@ import (
 // them. Written out rather than parsed: a list derived from the text it checks
 // agrees with itself by construction.
 var cypherRefusals = map[string][]string{
-	"zh-CN": {"WITH", "UNION", "变长路径", "XOR", "返回整个节点", "函数调用", "乘方", "关系变量"},
-	"en-US": {"WITH", "UNION", "variable-length paths", "XOR", "returning a whole node", "function calls", "exponentiation", "relationship variables"},
+	"zh-CN": {"WITH", "UNION", "变长路径", "XOR", "函数调用", "乘方", "关系属性"},
+	"en-US": {"WITH", "UNION", "variable-length paths", "XOR", "function calls", "exponentiation", "relationship properties"},
 }
 
 // cypherAccepted are constructs the subset accepts that a text might wrongly

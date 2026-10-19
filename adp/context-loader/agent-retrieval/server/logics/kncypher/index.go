@@ -41,6 +41,9 @@ type RunCypherReq struct {
 	Branch     string         `json:"branch"`
 	Query      string         `json:"query"`
 	Parameters map[string]any `json:"parameters"`
+	// ObjectProperties names, per returned node variable, the properties its
+	// node value should carry besides its identity.
+	ObjectProperties map[string][]string `json:"object_properties"`
 }
 
 // KnCypherService runs one read-only Cypher query against a knowledge network.
@@ -93,10 +96,11 @@ func (s *knCypherService) RunCypher(ctx context.Context, req *RunCypherReq) (*in
 	}
 
 	resp, err := s.bkn.RunCypherQuery(ctx, &interfaces.CypherQueryReq{
-		KnID:       knID,
-		Branch:     strings.TrimSpace(req.Branch),
-		Query:      query,
-		Parameters: req.Parameters,
+		KnID:             knID,
+		Branch:           strings.TrimSpace(req.Branch),
+		Query:            query,
+		Parameters:       req.Parameters,
+		ObjectProperties: req.ObjectProperties,
 	})
 	if err != nil {
 		emitRunCypherFailure(ctx, nil, knID, query, classifyRunCypherFailure(err))

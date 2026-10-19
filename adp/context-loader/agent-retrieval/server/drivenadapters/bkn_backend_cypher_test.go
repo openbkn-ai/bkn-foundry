@@ -6,8 +6,10 @@ package drivenadapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"go.uber.org/mock/gomock"
@@ -107,5 +109,48 @@ func TestRunCypherQueryForwardsCallerIdentity(t *testing.T) {
 	client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
 	if _, err := client.RunCypherQuery(ctx, &interfaces.CypherQueryReq{KnID: "kn-1", Query: "MATCH (u:user) RETURN u"}); err != nil {
 		t.Fatalf("RunCypherQuery() error = %v", err)
+	}
+}
+
+// A query that returns nodes asks for the properties they carry, and its
+// answer describes its values; both cross Context Loader as bkn-backend wrote
+// them.
+func TestRunCypherQueryCarriesGraphValues(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+	mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+	var sent *interfaces.CypherQueryReq
+	mockHTTPClient.EXPECT().
+		PostNoUnmarshal(gomock.Any(), "http://bkn/in/v1/knowledge-networks/kn-1/cypher-queries", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ map[string]string, body any) (int, []byte, error) {
+			sent, _ = body.(*interfaces.CypherQueryReq)
+			return http.StatusOK, []byte(`{"columns":[{"name":"team","type":"object"}],` +
+				`"entries":[{"team":{"kind":"object","object_type_id":"teams","key":{"id":{"type":"integer","value":"9"}}}}],` +
+				`"value_types":{"team":{"kind":"object","object_type_id":"teams"}},` +
+				`"execution":{"match_rows":3,"match_complete":true,"conclusions_limited":false}}`), nil
+		})
+
+	client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
+	resp, err := client.RunCypherQuery(context.Background(), &interfaces.CypherQueryReq{
+		KnID: "kn-1", Query: "MATCH (t:teams) RETURN t AS team",
+		ObjectProperties: map[string][]string{"t": {"team_name"}},
+	})
+	if err != nil {
+		t.Fatalf("RunCypherQuery() error = %v", err)
+	}
+	body, _ := json.Marshal(sent)
+	if !strings.Contains(string(body), `"object_properties":{"t":["team_name"]}`) {
+		t.Fatalf("request body = %s, want object_properties", body)
+	}
+	if string(resp.ValueTypes) != `{"team":{"kind":"object","object_type_id":"teams"}}` {
+		t.Fatalf("value_types = %s", resp.ValueTypes)
+	}
+	if string(resp.Execution) != `{"match_rows":3,"match_complete":true,"conclusions_limited":false}` {
+		t.Fatalf("execution = %s", resp.Execution)
+	}
+	out, _ := json.Marshal(resp)
+	if !strings.Contains(string(out), `"value_types"`) || !strings.Contains(string(out), `"execution"`) {
+		t.Fatalf("response = %s, want value_types and execution passed on", out)
 	}
 }

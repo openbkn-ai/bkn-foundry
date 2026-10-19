@@ -41,10 +41,11 @@ func TestRunCypherCarriesTheQueryAcrossUntouched(t *testing.T) {
 
 	query := "MATCH (o:order)-[:rel_order_item_order]->(i:order_item) WHERE o.amount > $floor RETURN o.order_no AS no"
 	_, err := service.RunCypher(context.Background(), &RunCypherReq{
-		KnID:       "  kn_retail  ",
-		Branch:     "  main  ",
-		Query:      query,
-		Parameters: map[string]any{"floor": 100},
+		KnID:             "  kn_retail  ",
+		Branch:           "  main  ",
+		Query:            query,
+		Parameters:       map[string]any{"floor": 100},
+		ObjectProperties: map[string][]string{"o": {"order_no"}},
 	})
 	if err != nil {
 		t.Fatalf("RunCypher() error = %v", err)
@@ -62,6 +63,9 @@ func TestRunCypherCarriesTheQueryAcrossUntouched(t *testing.T) {
 	}
 	if got, ok := bkn.req.Parameters["floor"]; !ok || got != 100 {
 		t.Fatalf("parameters = %v, want floor carried across", bkn.req.Parameters)
+	}
+	if got := bkn.req.ObjectProperties["o"]; len(got) != 1 || got[0] != "order_no" {
+		t.Fatalf("object_properties = %v, want them carried across", bkn.req.ObjectProperties)
 	}
 }
 

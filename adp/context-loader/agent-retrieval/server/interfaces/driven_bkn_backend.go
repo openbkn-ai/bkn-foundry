@@ -754,6 +754,9 @@ type CypherQueryReq struct {
 	// a parameter changes which rows come back, never which resource or
 	// column is read.
 	Parameters map[string]any `json:"parameters,omitempty"`
+	// ObjectProperties names, per returned node variable, the properties its
+	// node value should carry besides its identity.
+	ObjectProperties map[string][]string `json:"object_properties,omitempty"`
 }
 
 // CypherQueryColumn is one output column of a Cypher query.
@@ -766,8 +769,13 @@ type CypherQueryColumn struct {
 // is deliberately absent: it names physical tables and columns, which a caller
 // is not entitled to just because they may read the data.
 type CypherQueryResp struct {
-	Columns            []CypherQueryColumn      `json:"columns"`
-	Entries            []map[string]any         `json:"entries"`
+	Columns []CypherQueryColumn `json:"columns"`
+	Entries []map[string]any    `json:"entries"`
+	// ValueTypes and Execution come with a query that returns nodes,
+	// relationships, maps or collect(...). They are passed through as
+	// bkn-backend wrote them, since bkn-backend owns their shape.
+	ValueTypes         json.RawMessage          `json:"value_types,omitempty"`
+	Execution          json.RawMessage          `json:"execution,omitempty"`
 	TraceDescriptor    json.RawMessage          `json:"-"`
 	PermissionImpacts  []ObjectPermissionImpact `json:"-"`
 	PermissionGuidance []*PermissionGuidance    `json:"permission_guidance,omitempty"`
