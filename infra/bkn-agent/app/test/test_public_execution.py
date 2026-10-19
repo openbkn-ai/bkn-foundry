@@ -1313,7 +1313,13 @@ def _closing_model(responses):
 
 
 async def _run_closing_turn(
-    monkeypatch, model, limits, tool_delay=0, tool_result="partial data"
+    monkeypatch,
+    model,
+    limits,
+    tool_delay=0,
+    tool_result="partial data",
+    tool_name="query",
+    runs=None,
 ):
     from langgraph.checkpoint.memory import MemorySaver
 
@@ -1327,12 +1333,14 @@ async def _run_closing_turn(
 
         async def query(kn_id: str) -> str:
             """Read the selected network."""
+            if runs is not None:
+                runs.append(kn_id)
             await asyncio.sleep(tool_delay)
             return tool_result
 
         tool = StructuredTool.from_function(
             coroutine=query,
-            name="query",
+            name=tool_name,
             metadata={"bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN},
         )
 
@@ -1380,6 +1388,38 @@ def test_step_limit_closes_with_an_answer_instead_of_failing(monkeypatch):
     tool_results = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
     assert {"first", "second"} <= tool_results
     assert messages[-1].content == "Closing answer"
+
+
+def test_closing_call_gets_budgeted_tool_results(monkeypatch):
+    def call(call_id):
+        return AIMessage(
+            content="",
+            tool_calls=[{"name": "query", "args": {"kn_id": "network-1"}, "id": call_id}],
+        )
+
+    base = type(_closing_model([]))
+    seen = []
+
+    class Model(base):
+        def _generate(self, messages, *args, **kwargs):
+            seen.append([m for m in messages if isinstance(m, ToolMessage)])
+            return super()._generate(messages, *args, **kwargs)
+
+    model = Model(responses=[call("a"), call("b"), call("c"), AIMessage(content="Closing")])
+    limits = {"max_turns": 2, "keep_tool_results": 1, "data_result_chars": 1000}
+    events, messages = asyncio.run(
+        _run_closing_turn(monkeypatch, model, limits, tool_result="x" * 3000)
+    )
+
+    assert events[-1][1]["status"] == "succeeded", events
+    closing = seen[-1]
+    # Every raw result is in the saved thread, but the closing call, like the
+    # loop's calls, sees them capped or replaced, never in full.
+    assert len(closing) == 3
+    assert all(len(m.content) < 1500 for m in closing)
+    assert any("omitted to save context" in m.content for m in closing)
+    saved = [m for m in messages if isinstance(m, ToolMessage) and m.status != "error"]
+    assert all(m.content == "x" * 3000 for m in saved)
 
 
 def test_empty_final_message_gets_a_closing_answer(monkeypatch):
@@ -1746,6 +1786,55 @@ def test_a_repeated_read_in_the_same_question_reuses_its_result():
     assert earlier_result(messages, {**again, "name": "run_code"}) is None
 
 
+def test_a_write_since_the_read_makes_it_run_again():
+    from app.core.context_budget import earlier_result
+
+    read = {"name": "run_cypher", "args": {"query": "MATCH (o) RETURN o"}, "id": "a"}
+    write = {"name": "execute_action", "args": {"action": "close"}, "id": "w"}
+    again = {**read, "id": "b"}
+    messages = _turn() + [
+        AIMessage(content="", tool_calls=[read]),
+        ToolMessage(content="open", tool_call_id="a", name="run_cypher"),
+        AIMessage(content="", tool_calls=[write]),
+        ToolMessage(content="done", tool_call_id="w", name="execute_action"),
+        AIMessage(content="", tool_calls=[again]),
+    ]
+    assert earlier_result(messages, again) is None
+
+    # A write run beside the read leaves its order unknown, so it counts too.
+    beside = _turn() + [
+        AIMessage(content="", tool_calls=[read, write]),
+        ToolMessage(content="open", tool_call_id="a", name="run_cypher"),
+        ToolMessage(content="done", tool_call_id="w", name="execute_action"),
+        AIMessage(content="", tool_calls=[again]),
+    ]
+    assert earlier_result(beside, again) is None
+
+
+def test_public_execution_reuses_a_repeated_read(monkeypatch):
+    def call(call_id):
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {"name": "run_cypher", "args": {"kn_id": "network-1"}, "id": call_id}
+            ],
+        )
+
+    model = _closing_model([call("first"), call("again"), AIMessage(content="Done")])
+    runs = []
+    events, messages = asyncio.run(
+        _run_closing_turn(
+            monkeypatch, model, None, tool_name="run_cypher", tool_result="rows", runs=runs
+        )
+    )
+
+    assert events[-1][1]["status"] == "succeeded", events
+    # The tool ran once; the repeat was answered from the saved result.
+    assert runs == ["network-1"]
+    results = {m.tool_call_id: m.content for m in messages if isinstance(m, ToolMessage)}
+    assert results == {"first": "rows", "again": "rows"}
+
+
 def test_repeated_read_cache_answers_without_calling_the_tool():
     from app.core.context_budget import RepeatedReadCache
 
@@ -1787,7 +1876,8 @@ def test_summarization_never_folds_the_current_question_away():
     assert summarizer._determine_cutoff_index(messages) == len(earlier)
 
     # Only an earlier summary before the question: nothing new to summarize.
-    summary = HumanMessage(content="summary", additional_kwargs={"lc_source": "summarization"})
+    # LangChain's own summary message, so a change to its marker shows up here.
+    summary = summarizer._build_new_messages("summary")[0]
     assert summarizer._determine_cutoff_index([summary] + _turn(*[100] * 10)) == 0
 
 

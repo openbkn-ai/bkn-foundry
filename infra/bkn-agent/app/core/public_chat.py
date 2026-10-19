@@ -14,6 +14,8 @@ from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool, ToolException
 
 from app.commons.i18n import build_error_content
+from app.core.context_budget import budget_messages
+from app.models import AgentLimits
 
 # Appended to the system prompt for the closing call when the tool loop ran
 # out of steps or ended without an answer.
@@ -117,22 +119,31 @@ class PublicChat:
             for call in pending.values()
         ]
 
-    async def finalize(self, graph, cfg: dict, model, system_prompt: str):
+    async def finalize(
+        self, graph, cfg: dict, model, system_prompt: str, limits: AgentLimits
+    ):
         """Close a turn that has no answer with one tool-free model call.
 
         The browser loop this replaces did the same when steps ran out. The
-        answer is saved to the thread so the next turn sees it.
+        answer is saved to the thread so the next turn sees it. The saved thread
+        holds every raw result of the question, so the call gets the same
+        budgeted copy the tool loop's model calls get.
         """
         state = await graph.aget_state(cfg)
         messages = state.values.get("messages", [])
         # A step limit can stop right after the model asked for tools.
         fills = self.interrupted_messages(messages)
+        sent = budget_messages(
+            [*messages, *fills],
+            limits.data_result_chars,
+            limits.schema_result_chars,
+            limits.keep_tool_results,
+        )
         final = None
         async for chunk in model.astream(
             [
                 SystemMessage(content=f"{system_prompt}\n\n{_FINALIZE_INSTRUCTION}"),
-                *messages,
-                *fills,
+                *sent,
             ]
         ):
             final = chunk if final is None else final + chunk
