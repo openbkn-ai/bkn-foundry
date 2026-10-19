@@ -166,6 +166,7 @@ func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.Cyph
 		return nil, executionError(ctx, err)
 	}
 
+	conditionsAsBooleans(compiled.plan, response.Columns, response.Entries)
 	return &interfaces.CypherQueryResult{
 		Columns:           response.Columns,
 		Entries:           response.Entries,
@@ -764,4 +765,32 @@ func validateQueryText(ctx context.Context, query string) error {
 
 func detail(ctx context.Context, name string, templateData map[string]any) string {
 	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail."+name, templateData)
+}
+
+// conditionsAsBooleans turns the 1, 0 and NULL MySQL returns for a condition
+// column back into the true, false and null the executor returns, so the
+// answer reads the same whichever path produced it.
+func conditionsAsBooleans(plan *Plan, columns []interfaces.RawQueryColumn, entries []map[string]any) {
+	for _, column := range plan.Select {
+		if _, ok := column.Expression.(PlanConditionValue); !ok {
+			continue
+		}
+		for i := range columns {
+			if columns[i].Name == column.Alias {
+				columns[i].Type = "boolean"
+			}
+		}
+		for _, entry := range entries {
+			value, present := entry[column.Alias]
+			if !present || value == nil {
+				continue
+			}
+			if _, isBool := value.(bool); isBool {
+				continue
+			}
+			if n, ok := asNumber(value); ok {
+				entry[column.Alias] = n.float() != 0
+			}
+		}
+	}
 }

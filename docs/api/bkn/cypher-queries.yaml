@@ -170,7 +170,7 @@ components:
             The Cypher query. Supported shape:
             MATCH (a:Label [{property: value, ...}]) [-[:RELATION]-(b:Label) ...]
             [WHERE <condition>]
-            RETURN [DISTINCT] a.property | aggregate(a.property) [AS alias], ...
+            RETURN [DISTINCT] a.property | aggregate(a.property) | <condition> [AS alias], ...
             [ORDER BY a.property | alias | aggregate(a.property) [DESC]] [SKIP n] [LIMIT n]
 
             A condition compares a property with =, <>, <, >, <= or >= against a literal or a
@@ -181,6 +181,12 @@ components:
             sensitivity follows the column collation, and using them on a non-string property
             is refused with 400. Conditions combine with AND, OR and NOT, and parentheses group
             them. XOR is not supported.
+
+            RETURN can also return a condition, written as in WHERE, as in
+            `g.tournament_name CONTAINS 'Men' AS mens`. Its value is true, false, or null when
+            the condition cannot be decided (a null property, or a node an OPTIONAL MATCH did
+            not find). Like any other returned value it groups an aggregated result. To sort
+            by a condition, return it with an alias and sort by the alias.
 
             Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
             count(*). Cypher has no GROUP BY: aggregating anything groups by everything else

@@ -147,19 +147,7 @@ func (e *bindJoinExecutor) prepare() error {
 		}
 	}
 
-	dateColumns := make([]map[string]bool, len(e.plan.Tables))
-	for i, table := range e.plan.Tables {
-		dateColumns[i] = map[string]bool{}
-		for _, dp := range e.schema.objectTypesByID[table.ObjectTypeID].DataProperties {
-			if dp != nil && dp.MappedField != nil && dateTypes[strings.ToLower(dp.Type)] {
-				dateColumns[i][dp.MappedField.Name] = true
-			}
-		}
-	}
-	isDate := func(table int, column string) bool {
-		return table >= 0 && table < len(dateColumns) && dateColumns[table][column]
-	}
-
+	isDate := dateColumnCheck(e.plan, e.schema)
 	terms := conjuncts(markDateComparisons(e.plan.Where, isDate))
 	for _, join := range e.plan.Joins {
 		for _, reading := range join.Readings {
@@ -898,6 +886,7 @@ func tupleKeyAs(row map[string]any, columns []string, numeric []bool) (string, b
 // returns the result in the shape the raw query route gives.
 func runBindJoin(ctx context.Context, plan *Plan, schema *Schema, read dataReader, limits bindJoinLimits,
 	defaultLimit int64) ([]interfaces.RawQueryColumn, []map[string]any, error) {
+	plan = markConditionValueDates(plan, dateColumnCheck(plan, schema))
 	executor, err := newBindJoinExecutor(plan, schema, read, limits)
 	if err != nil {
 		return nil, nil, err
@@ -1095,6 +1084,8 @@ func expressionType(plan *Plan, schema *Schema, value PlanExpression) string {
 		return aggregateType(plan, schema, node)
 	case PlanNegative:
 		return expressionType(plan, schema, node.Operand)
+	case PlanConditionValue:
+		return "boolean"
 	case PlanArithmetic:
 		if node.Operator == "/" {
 			return "float"
@@ -1106,4 +1097,59 @@ func expressionType(plan *Plan, schema *Schema, value PlanExpression) string {
 	default:
 		return "float"
 	}
+}
+
+// dateColumnCheck reports which columns of the plan's tables hold dates or
+// times, which the executor compares as wall-clock values.
+func dateColumnCheck(plan *Plan, schema *Schema) func(table int, column string) bool {
+	dateColumns := make([]map[string]bool, len(plan.Tables))
+	for i, table := range plan.Tables {
+		dateColumns[i] = map[string]bool{}
+		objectType := schema.objectTypesByID[table.ObjectTypeID]
+		if objectType == nil {
+			continue
+		}
+		for _, dp := range objectType.DataProperties {
+			if dp != nil && dp.MappedField != nil && dateTypes[strings.ToLower(dp.Type)] {
+				dateColumns[i][dp.MappedField.Name] = true
+			}
+		}
+	}
+	return func(table int, column string) bool {
+		return table >= 0 && table < len(dateColumns) && dateColumns[table][column]
+	}
+}
+
+// markConditionValueDates marks the date comparisons inside returned
+// conditions the way prepare marks the ones in WHERE, so a condition reads a
+// date the same wherever it is written. The plan is copied rather than
+// changed, since the caller still holds it.
+func markConditionValueDates(plan *Plan, isDate func(table int, column string) bool) *Plan {
+	mark := func(columns []PlanColumn) ([]PlanColumn, bool) {
+		var marked []PlanColumn
+		for i, column := range columns {
+			condition, ok := column.Expression.(PlanConditionValue)
+			if !ok {
+				continue
+			}
+			if marked == nil {
+				marked = append([]PlanColumn(nil), columns...)
+			}
+			marked[i].Expression = PlanConditionValue{Predicate: markDateComparisons(condition.Predicate, isDate)}
+		}
+		return marked, marked != nil
+	}
+	selected, selectChanged := mark(plan.Select)
+	grouped, groupChanged := mark(plan.GroupBy)
+	if !selectChanged && !groupChanged {
+		return plan
+	}
+	copied := *plan
+	if selectChanged {
+		copied.Select = selected
+	}
+	if groupChanged {
+		copied.GroupBy = grouped
+	}
+	return &copied
 }

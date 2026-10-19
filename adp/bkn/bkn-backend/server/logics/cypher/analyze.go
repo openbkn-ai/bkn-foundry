@@ -655,6 +655,9 @@ func analyzeRowCount(ctx parsing.IOC_ExpressionContext, clause string) (int64, e
 // or a value computed from those. The alias defaults to what was written,
 // which is how Cypher names a column nobody named.
 func analyzeProjection(ctx parsing.IOC_ExpressionContext) (*Projection, error) {
+	if _, err := valueChain(ctx); err != nil {
+		return analyzeConditionProjection(ctx)
+	}
 	if computed(ctx) {
 		return analyzeComputedProjection(ctx)
 	}
@@ -671,10 +674,29 @@ func analyzeProjection(ctx parsing.IOC_ExpressionContext) (*Projection, error) {
 	return &Projection{Property: property, Alias: property.String()}, nil
 }
 
+// analyzeConditionProjection reads a RETURN item that is a condition, which
+// returns whether each row meets it. It is read exactly as WHERE reads one, so
+// it accepts and refuses the same things.
+func analyzeConditionProjection(ctx parsing.IOC_ExpressionContext) (*Projection, error) {
+	predicate, err := analyzePredicate(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &Projection{
+		Expression: ConditionValue{Predicate: predicate, Pos: positionOf(ctx)},
+		Alias:      sourceText(ctx),
+		Pos:        positionOf(ctx),
+	}, nil
+}
+
 // analyzeSortKey reads one ORDER BY item. Besides a property it accepts the
 // name of a returned column and an aggregate written out again, because with
 // aggregates in RETURN those are the only ways to say what to sort by.
 func analyzeSortKey(ctx parsing.IOC_ExpressionContext) (*SortKey, error) {
+	if _, err := valueChain(ctx); err != nil {
+		return nil, unsupportedf(ctx, "sorting by a condition",
+			"return the condition with an alias, as in RETURN ... AS flag, and sort by the alias")
+	}
 	if computed(ctx) {
 		value, err := analyzeExpression(ctx)
 		if err != nil {
@@ -811,6 +833,11 @@ func analyzeAggregateAtom(atom parsing.IOC_AtomContext) (*Aggregate, bool, error
 		}
 		aggregate.Argument, aggregate.ArgumentText = argument, sourceText(arguments[0])
 		return aggregate, true, nil
+	}
+	if variable, ok := bareVariable(arguments[0]); ok {
+		return nil, false, unsupportedf(arguments[0], "aggregating a whole node",
+			"%s(%s) is not supported: to count the matches write count(*), "+
+				"and to count distinct nodes write count(DISTINCT %s.<key property>)", name, variable, variable)
 	}
 	property, err := analyzePropertyRef(arguments[0])
 	if err != nil {

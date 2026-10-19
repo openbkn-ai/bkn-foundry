@@ -287,6 +287,16 @@ func TestCompileRejections(t *testing.T) {
 		want  string
 	}{
 		{
+			name:  "sorting by an aggregate function's name says to alias it",
+			query: "MATCH (o:Order) RETURN o.region, count(*) ORDER BY count DESC",
+			want:  `name it in RETURN, as in count(*) AS n, and ORDER BY n (returned: "o.region", "count(*)")`,
+		},
+		{
+			name:  "sorting by an unknown name lists what is returned",
+			query: "MATCH (o:Order) RETURN o.region AS r ORDER BY region",
+			want:  `"region" is not returned by this query, so there is nothing to sort by (returned: "r")`,
+		},
+		{
 			name:  "unknown label",
 			query: "MATCH (i:Invoice) RETURN i.id",
 			want:  `unknown label "Invoice"`,
