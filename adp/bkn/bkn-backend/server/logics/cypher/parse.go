@@ -79,9 +79,25 @@ func (c *collector) hintAt(line, column int) string {
 	case len(rest) >= 5 && strings.EqualFold(rest[:5], "GROUP"):
 		return "openCypher has no GROUP BY: aggregating in RETURN groups by the other columns RETURN lists, " +
 			"as in RETURN n.property, count(*)"
+	case startsWithWord(rest, "LIKE"):
+		return "openCypher has no LIKE: match a substring with CONTAINS, STARTS WITH or ENDS WITH, " +
+			"as in n.property CONTAINS 'value', where % and _ are plain characters"
 	default:
 		return ""
 	}
+}
+
+// startsWithWord reports whether text starts with word, in any case, as a
+// whole word rather than the start of a longer name such as likes.
+func startsWithWord(text, word string) bool {
+	if len(text) < len(word) || !strings.EqualFold(text[:len(word)], word) {
+		return false
+	}
+	if len(text) == len(word) {
+		return true
+	}
+	next := text[len(word)]
+	return !(next == '_' || next >= '0' && next <= '9' || next >= 'a' && next <= 'z' || next >= 'A' && next <= 'Z')
 }
 
 // Parse turns query text into a parse tree. A non-nil error is always of type

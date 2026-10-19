@@ -86,6 +86,8 @@ func TestParseHintsTheStandardSpelling(t *testing.T) {
 		{"MATCH (g:Goal)\nWHERE g.minute != 90 RETURN g.team", "openCypher writes not-equal as <>"},
 		{"MATCH (g:Goal) RETURN g.team AS t, count(*) AS n GROUP BY g.team", "openCypher has no GROUP BY"},
 		{"MATCH (g:Goal) RETURN g.team AS t, count(*) AS n group by g.team", "openCypher has no GROUP BY"},
+		{"MATCH (f:Forecast) WHERE f.billno LIKE '%0023%' RETURN f.billno", "openCypher has no LIKE"},
+		{"MATCH (f:预测单) WHERE f.billno like \"0000023181\" RETURN f.billno", "openCypher has no LIKE"},
 	} {
 		_, err := Parse(tc.query)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
