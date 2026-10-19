@@ -94,10 +94,12 @@ def merge(
 ) -> EffectiveSettings:
     limits = shared_limits(agent)
     # The shared allow-list narrows Context Loader tools only; without such a
-    # reference there is nothing for it to narrow.
+    # reference there is nothing for it to narrow. Stored elements that are not
+    # references are ignored here; load_tools reports them at execution time.
+    refs = [ref for ref in agent.tools if isinstance(ref, dict)]
     allowed = (
-        _context_loader_allowed_tools(agent.tools)
-        if any(ref.get("type") == "context_loader" for ref in agent.tools)
+        _context_loader_allowed_tools(refs)
+        if any(ref.get("type") == "context_loader" for ref in refs)
         else None
     )
     instructions: list[tuple[str, str]] = []

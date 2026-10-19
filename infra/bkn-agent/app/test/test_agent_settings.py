@@ -516,3 +516,25 @@ def test_prompt_versions_except_initial_and_current_can_be_deleted(monkeypatch):
             ).status_code == 403
 
     asyncio.run(run())
+
+
+def test_admin_views_survive_tool_entries_that_are_not_references(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            from app.models import AgentRow
+
+            async with factory() as session:
+                row = await session.get(AgentRow, "studio_smart_qa")
+                # Hand-edited data: AgentOut lets scalar elements through.
+                row.f_tools = ["stray", {"type": "context_loader", "profile": "compact"}]
+                await session.commit()
+
+            listed = await client.get("/api/bkn-agent/v1/admin/agents", headers=AUTH)
+            assert listed.status_code == 200, listed.text
+            assert listed.json()[0]["mcp_profile"] == "compact"
+            assert (await client.get(CONFIG, headers=AUTH)).status_code == 200
+            switched = await client.put(ADMIN, json={"mcp_profile": "full"}, headers=AUTH)
+            assert switched.status_code == 200, switched.text
+            assert switched.json()["mcp_profile"] == "full"
+
+    asyncio.run(run())
