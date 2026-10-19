@@ -308,6 +308,17 @@ def classify_failure(exc: BaseException) -> tuple[str, dict | None]:
             "BknAgent.Model.Unavailable" if retryable else "BknAgent.Model.Rejected",
             upstream,
         )
+    if isinstance(exc, openai.APIError):
+        # An error event inside an accepted stream (an exhausted balance, a
+        # content filter) carries no HTTP status; it is still the model's answer.
+        body = exc.body if isinstance(exc.body, dict) else {}
+        code = body.get("code") or getattr(exc, "code", None)
+        upstream = {
+            key: _redact(str(value))[:500]
+            for key, value in (("code", code), ("message", exc.message))
+            if value
+        } or None
+        return "BknAgent.Model.Rejected", upstream
     return "BknAgent.Chat.Failed", None
 
 

@@ -1697,6 +1697,19 @@ def test_failures_are_classified_with_the_upstream_error():
     assert code == "BknAgent.Model.Rejected"
     assert classify_failure(RuntimeError("boom")) == ("BknAgent.Chat.Failed", None)
 
+    # An error event inside an accepted stream has no HTTP status; it is still
+    # the model's refusal, and its message is the real cause.
+    mid_stream = openai.APIError(
+        "Insufficient Balance sk-leaked",
+        request=httpx.Request("POST", "http://mf"),
+        body={"code": "insufficient_balance"},
+    )
+    code, upstream = classify_failure(mid_stream)
+    assert code == "BknAgent.Model.Rejected"
+    assert upstream["code"] == "insufficient_balance"
+    assert upstream["message"].startswith("Insufficient Balance")
+    assert "sk-leaked" not in upstream["message"]
+
 
 def test_terminal_names_the_real_failure(monkeypatch):
     from langchain_core.language_models.chat_models import BaseChatModel
