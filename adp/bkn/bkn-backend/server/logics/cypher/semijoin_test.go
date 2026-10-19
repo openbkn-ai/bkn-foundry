@@ -6,6 +6,8 @@
 package cypher
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -115,6 +117,22 @@ func TestSemiJoinGenerates(t *testing.T) {
 	}
 	if strings.Count(sql, "JOIN (SELECT") != 1 || !strings.Contains(sql, "t1.`f_cust` = t0.`f_code`") {
 		t.Errorf("want one semi-join and the second use compared with the first:\n%s", sql)
+	}
+}
+
+// More values than one membership filter is known to carry leave the
+// bind-join executor, so the query falls back to the SQL path.
+func TestSemiJoinPastTheValueBoundFallsBack(t *testing.T) {
+	data := bindJoinData()
+	data["res_order"] = nil
+	for i := 0; i <= maxSemiJoinValues; i++ {
+		data["res_order"] = append(data["res_order"], map[string]any{"f_id": i, "f_cust": fmt.Sprintf("c%d", i)})
+	}
+	_, err := runFake(t, newFakeDataAPI(data), defaultBindJoinLimits,
+		"MATCH (o:Order) WITH DISTINCT o.customer_code AS code MATCH (c:Customer) WHERE c.code = code RETURN count(*) AS n", nil)
+	var budget *ReadBudgetError
+	if !errors.As(err, &budget) {
+		t.Fatalf("err = %v, want a read budget error the service falls back on", err)
 	}
 }
 
