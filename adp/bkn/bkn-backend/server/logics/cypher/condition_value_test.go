@@ -105,9 +105,10 @@ func TestConditionValueSQL(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"(t0.`f_region` LIKE '%a!_%' ESCAPE '!') AS `a`",
-		"(t0.`f_amount` IN (50, 70)) AS `listed`",
-		"GROUP BY (t0.`f_region` LIKE '%a!_%' ESCAPE '!'), (t0.`f_amount` IN (50, 70))",
+		"CASE WHEN t0.`f_region` LIKE '%a!_%' ESCAPE '!' THEN 1 WHEN NOT (t0.`f_region` LIKE '%a!_%' ESCAPE '!') THEN 0 END AS `a`",
+		"CASE WHEN t0.`f_amount` IN (50, 70) THEN 1 WHEN NOT (t0.`f_amount` IN (50, 70)) THEN 0 END AS `listed`",
+		"GROUP BY CASE WHEN t0.`f_region` LIKE '%a!_%' ESCAPE '!' THEN 1 WHEN NOT (t0.`f_region` LIKE '%a!_%' ESCAPE '!') THEN 0 END, " +
+			"CASE WHEN t0.`f_amount` IN (50, 70) THEN 1 WHEN NOT (t0.`f_amount` IN (50, 70)) THEN 0 END",
 		"ORDER BY `n` DESC",
 	} {
 		if !strings.Contains(sql, want) {
