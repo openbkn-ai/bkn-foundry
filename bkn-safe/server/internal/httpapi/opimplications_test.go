@@ -161,6 +161,54 @@ func TestRolePermissionImplicationDirections(t *testing.T) {
 	}
 }
 
+func TestTaskPermissionRequirementChain(t *testing.T) {
+	r, e, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{ID: "builder", Account: "builder", Name: "Builder", Enabled: true}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "catalog", "view_detail")
+	seedCatalogOpRequires(t, db, "catalog", "resource_manage", "view_detail")
+	seedCatalogOpRequires(t, db, "catalog", "task_manage", "resource_manage")
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "builder", "resource": map[string]any{"type": "catalog", "id": "c1"}, "operations": []string{"task_manage"},
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("grant=%d %s", w.Code, w.Body.String())
+	}
+	entries := listObjectGrants(t, r, "?accessor_id=builder")
+	if len(entries) != 1 || len(entries[0].Operations) != 3 {
+		t.Fatalf("expanded grant=%+v", entries)
+	}
+	if err := db.Create(&model.Role{ID: "builder-role", Name: "custom builder", Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := &adminWriteServices{e: e, db: db}
+	if err := svc.GrantRolePermission(t.Context(), "builder-role", "catalog", "c1", "task_manage"); err != nil {
+		t.Fatal(err)
+	}
+	// Even removing both lower levels must retain them while task_manage remains.
+	if err := svc.RevokeRolePermissions(t.Context(), "builder-role", "catalog", "c1", []string{"resource_manage", "view_detail"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, subject := range []string{"builder", "builder-role"} {
+		for _, operation := range []string{"task_manage", "resource_manage", "view_detail"} {
+			allowed, err := e.Check(subject, "catalog", "c1", operation)
+			if err != nil || !allowed {
+				t.Fatalf("%s/%s=%v, %v", subject, operation, allowed, err)
+			}
+		}
+	}
+	if err := svc.RevokeRolePermissions(t.Context(), "builder-role", "catalog", "c1", []string{"task_manage", "resource_manage", "view_detail"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []string{"task_manage", "resource_manage", "view_detail"} {
+		allowed, err := e.Check("builder-role", "catalog", "c1", operation)
+		if err != nil || allowed {
+			t.Fatalf("revoked %s=%v, %v", operation, allowed, err)
+		}
+	}
+}
+
 // TestRolePermissionSaveOrderDoesNotChangeTheResult is the case review raised:
 // a console saving a permission diff as "grant resource_manage" plus "revoke
 // view_detail" must not end up with neither, silently discarding the grant it

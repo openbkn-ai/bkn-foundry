@@ -603,7 +603,7 @@ components:
           description: Compatible operation on `parent_type` used for parent-resource inheritance; omitted when none is declared.
         requires:
           type: array
-          description: Direct same-resource prerequisite operations. Empty when the operation has no prerequisites.
+          description: Complete same-resource prerequisite set, expanded transitively from the acyclic registry graph. Authorization writes include these prerequisites; existing grants and read-time decisions are unchanged. Empty when the operation has no prerequisites.
           items:
             type: string
     CheckRequest:

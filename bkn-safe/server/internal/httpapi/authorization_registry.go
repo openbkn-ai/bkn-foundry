@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -51,8 +52,19 @@ func authorizationRegistryHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		graphs := make(map[string]map[string][]string, len(resourceTypes))
+		for _, operation := range operations {
+			if graphs[operation.ResourceTypeID] == nil {
+				graphs[operation.ResourceTypeID] = make(map[string][]string)
+			}
+			graphs[operation.ResourceTypeID][operation.ID] = operationRequirements(operation.RequiredOperationIDs)
+		}
 		operationsByType := make(map[string][]authorizationRegistryOperation, len(resourceTypes))
 		for _, operation := range operations {
+			requirements := authz.ExpandRequirements(graphs[operation.ResourceTypeID], operation.ID)
+			if requirements == nil {
+				requirements = []string{}
+			}
 			operationsByType[operation.ResourceTypeID] = append(
 				operationsByType[operation.ResourceTypeID],
 				authorizationRegistryOperation{
@@ -61,7 +73,7 @@ func authorizationRegistryHandler(db *gorm.DB) gin.HandlerFunc {
 					Description:     operation.Description,
 					Grantable:       operation.IsGrantable(),
 					ParentOperation: operation.ParentOperationID,
-					Requires:        operationRequirements(operation.RequiredOperationIDs),
+					Requires:        requirements,
 				},
 			)
 		}

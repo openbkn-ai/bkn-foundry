@@ -365,6 +365,50 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 }
 
 func TestBuildTaskServiceCreate(t *testing.T) {
+	for _, source := range []string{"resource", "catalog"} {
+		for _, status := range []int{http.StatusForbidden, http.StatusNotFound, http.StatusServiceUnavailable, http.StatusInternalServerError} {
+			t.Run(fmt.Sprintf("%s lookup error %d", source, status), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				rs := mock_interfaces.NewMockResourceService(ctrl)
+				bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+				cs := mock_interfaces.NewMockCatalogService(ctrl)
+				service := &buildTaskService{rs: rs, bta: bta, cs: cs, dispatchCh: make(chan struct{}, 1)}
+				code := rest.PublicError_Forbidden
+				if status == http.StatusNotFound {
+					code = verrors.VegaBackend_Resource_NotFound
+				}
+				if status == http.StatusServiceUnavailable {
+					code = verrors.VegaBackend_Resource_InternalError_GetFailed
+				}
+				cause := rest.NewHTTPError(context.Background(), status, code)
+				downstream := fmt.Errorf("lookup: %w", cause)
+				if status == http.StatusInternalServerError {
+					downstream = errors.New("lookup failed")
+				}
+				resource := buildTaskTestResource()
+				if source == "resource" {
+					rs.EXPECT().GetByID(gomock.Any(), resource.ID).Return(nil, downstream)
+				} else {
+					rs.EXPECT().GetByID(gomock.Any(), resource.ID).Return(resource, nil)
+					cs.EXPECT().CheckCatalogPermission(gomock.Any(), resource.CatalogID, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
+					cs.EXPECT().GetByID(gomock.Any(), resource.CatalogID, false).Return(nil, downstream)
+				}
+				id, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: resource.ID, Mode: interfaces.BuildTaskModeBatch})
+				assert.Empty(t, id)
+				if status == http.StatusInternalServerError {
+					code = verrors.VegaBackend_Resource_InternalError_GetFailed
+					if source == "catalog" {
+						code = verrors.VegaBackend_Catalog_InternalError_GetFailed
+					}
+					httpErr := requireHTTPError(t, err, code)
+					assert.Equal(t, status, httpErr.HTTPCode)
+				} else {
+					assert.Same(t, cause, err)
+				}
+				assert.Empty(t, service.dispatchCh)
+			})
+		}
+	}
 	t.Run("connector rejects schema before side effects", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		cs := mock_interfaces.NewMockCatalogService(ctrl)
@@ -1079,6 +1123,38 @@ func TestValidateIncrementalBaseline(t *testing.T) {
 }
 
 func TestBuildTaskServiceStart(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusNotFound, http.StatusInternalServerError} {
+		t.Run(fmt.Sprintf("resource lookup error %d before status update", status), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			cs := mock_interfaces.NewMockCatalogService(ctrl)
+			rs := mock_interfaces.NewMockResourceService(ctrl)
+			bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+			service := &buildTaskService{cs: cs, rs: rs, bta: bta, dispatchCh: make(chan struct{}, 1)}
+			task := &interfaces.BuildTask{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusStopped, Mode: interfaces.BuildTaskModeBatch, IndexName: "test-index"}
+			bta.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
+			cs.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, &interfaces.Catalog{ID: task.CatalogID, Enabled: true}, nil)
+			bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+			code := rest.PublicError_Forbidden
+			if status == http.StatusNotFound {
+				code = verrors.VegaBackend_Resource_NotFound
+			}
+			cause := rest.NewHTTPError(context.Background(), status, code)
+			downstream := fmt.Errorf("lookup: %w", cause)
+			if status == http.StatusInternalServerError {
+				downstream = errors.New("lookup failed")
+			}
+			rs.EXPECT().GetByID(gomock.Any(), task.ResourceID).Return(nil, downstream)
+			err := service.Start(context.Background(), task.ID, false)
+			if status == http.StatusInternalServerError {
+				httpErr := requireHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_GetFailed)
+				assert.Equal(t, status, httpErr.HTTPCode)
+			} else {
+				assert.Same(t, cause, err)
+			}
+			assert.Empty(t, service.dispatchCh)
+		})
+	}
+
 	for _, changed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("start uses fingerprint changed=%v", changed), func(t *testing.T) {
 			ctrl := gomock.NewController(t)

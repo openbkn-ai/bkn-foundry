@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -17,6 +18,52 @@ import (
 	"github.com/openbkn-ai/licverify"
 	"gorm.io/gorm"
 )
+
+func TestMissingUnrequestedPrerequisitesIncludesTransitiveDependencies(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&[]model.Operation{
+		{ResourceTypeID: "catalog", ID: "view_detail"},
+		{ResourceTypeID: "catalog", ID: "resource_manage", RequiredOperationIDs: "view_detail"},
+		{ResourceTypeID: "catalog", ID: "task_manage", RequiredOperationIDs: "resource_manage"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// A historical management grant need not carry view_detail. Requesting task
+	// must still report that missing transitive prerequisite before approval.
+	if err := e.GrantObjectPermission("builder", "catalog", "c1", "resource_manage"); err != nil {
+		t.Fatal(err)
+	}
+	err = e.Transaction(t.Context(), func(tx *authz.PolicyTransaction) error {
+		missing, err := missingUnrequestedPrerequisites(t.Context(), tx, "builder", "catalog", "c1", []string{"task_manage"})
+		if err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(missing, []string{"view_detail"}) {
+			t.Fatalf("missing=%v, want [view_detail]", missing)
+		}
+		missing, err = missingUnrequestedPrerequisites(t.Context(), tx, "builder", "catalog", "c1", []string{"task_manage", "view_detail"})
+		if err != nil {
+			return err
+		}
+		if len(missing) != 0 {
+			t.Fatalf("complete request missing=%v", missing)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 type emptyOperationProposalHandler struct{}
 

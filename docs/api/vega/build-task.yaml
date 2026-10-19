@@ -138,6 +138,12 @@ paths:
         - 所有字段都需要在 Resource 的 schema 中存在；否则 400。
         - `index_name` 由服务端分配并在详情、列表响应中返回；请求体不接受该字段。
         - 创建后 status = `pending`。
+
+        需要所属 Catalog 的 `task_manage`，并通过目标 Resource 的查看权限检查。
+        新授权写入时 `task_manage` 的完整依赖为 `resource_manage`、`view_detail`；
+        既有授权不自动补齐，运行时不额外检查 requires。Resource 的显式查看拒绝仍生效。
+        读取 Resource/Catalog 的已分类错误保留原状态和错误码（如 403 `Public.Forbidden`、404）；
+        未分类读取故障返回 500。失败时不创建任务或触发调度。
       requestBody:
         required: true
         content:
@@ -161,6 +167,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "406":
@@ -248,6 +256,9 @@ paths:
 
         **非幂等**：对非 stopped / failed 状态的 task 调用 start 返回 409
         `VegaBackend.BuildTask.InvalidStateTransition`。
+
+        启动前重新读取 Resource；明确的权限拒绝保留 403 `Public.Forbidden`，
+        不存在保留 404，未分类读取故障返回 500。失败时不更新任务状态或触发调度。
       requestBody:
         required: false
         content:
@@ -261,6 +272,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -312,6 +325,12 @@ components:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Unauthorized:
       description: 未授权（OAuth Token 校验失败）
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: 权限拒绝，错误码 Public.Forbidden；请联系管理员授予所需权限
       content:
         application/json:
           schema:

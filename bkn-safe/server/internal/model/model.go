@@ -380,7 +380,7 @@ type Operation struct {
 	// RequiredOperationIDs are direct prerequisites on the SAME resource type.
 	// They are enforced when an allow set is written, so the persisted set contains
 	// every prerequisite. They do not alter read-time authorization decisions.
-	// The first version deliberately permits one layer only.
+	// Acyclic dependency chains are expanded transitively on authorization writes.
 	//
 	// The legacy database column name is retained to keep upgrades schema-only:
 	// the former "implies" rule represented the same stored edge, but enforced it
