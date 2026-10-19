@@ -260,3 +260,18 @@ SemanticUnderstandingInsufficientSampleDataSingular = "字段 {{.fields}} 的样
 SemanticUnderstandingInsufficientSampleDataPlural = "字段 {{.fields}} 的样本数据不足。"
 SemanticUnderstandingFieldSeparator = "、"
 SemanticUnderstandingMissingSamplePattern = "(?:缺少|没有|无|未提供|无法获取|未能获取|获取不到)(?:可用的?)?样本(?:数据|值)?|样本(?:数据|值|数量)?(?:缺失|不足|不可用|未提供|无法获取|未获取)"
+
+[VegaBackend.Query.InvalidParameter.OutputField]
+Description = "输出字段不存在或不合法"
+Solution = "请根据资源结构选择存在的字段。"
+ErrorLink = ""
+
+[VegaBackend.Query.UnsupportedOutputField]
+Description = "该字段类型暂不支持通过当前通道查询"
+Solution = "请选择当前查询通道支持读取的字段。"
+ErrorLink = ""
+
+[VegaBackend.Query.NoQueryableFields]
+Description = "该资源没有可查询字段"
+Solution = "请选择包含可查询字段的资源。"
+ErrorLink = ""

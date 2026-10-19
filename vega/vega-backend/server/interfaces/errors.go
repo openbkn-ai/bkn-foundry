@@ -106,11 +106,46 @@ func (e *StoredConditionBuildError) Error() string {
 }
 func (e *StoredConditionBuildError) Unwrap() error { return e.Cause }
 
+// OutputFieldErrorReason identifies a projection rejected before execution.
+type OutputFieldErrorReason string
+
+const (
+	OutputFieldUnknown       OutputFieldErrorReason = "unknown_output_field"
+	OutputFieldUnsupported   OutputFieldErrorReason = "unsupported_output_field"
+	OutputFieldNoneQueryable OutputFieldErrorReason = "no_queryable_fields"
+)
+
+// OutputFieldError contains only public field names, never source SQL or driver errors.
+type OutputFieldError struct {
+	Reason OutputFieldErrorReason
+	Field  string
+}
+
+// NewOutputFieldError identifies a field or channel capability rejected before execution.
+func NewOutputFieldError(reason OutputFieldErrorReason, field string) *OutputFieldError {
+	return &OutputFieldError{Reason: reason, Field: field}
+}
+
+func (e *OutputFieldError) Error() string {
+	switch e.Reason {
+	case OutputFieldUnknown:
+		return fmt.Sprintf("unknown output field %q", e.Field)
+	case OutputFieldUnsupported:
+		return fmt.Sprintf("output field %q is not supported by this query channel", e.Field)
+	default:
+		return "resource schema has no queryable fields"
+	}
+}
+
 // RequestSideQueryError returns the client-safe reason for an invalid query shape.
 func RequestSideQueryError(err error) (string, bool) {
 	var stored *StoredConditionBuildError
 	if errors.As(err, &stored) {
 		return "", false
+	}
+	var output *OutputFieldError
+	if errors.As(err, &output) {
+		return output.Error(), true
 	}
 	var invalidParameter *SourceQueryInvalidParameterError
 	if errors.As(err, &invalidParameter) {
