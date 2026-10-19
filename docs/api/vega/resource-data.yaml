@@ -347,7 +347,16 @@ components:
             $ref: "#/components/schemas/SortField"
         output_fields:
           description: |
-            指定输出字段列表。派生逻辑视图的非聚合查询可指定 `_score`；索引通道返回真实
+            指定输出字段列表。显式指定的字段必须全部合法；任一字段不存在时整单拒绝，返回
+            HTTP 400 `VegaBackend.Query.InvalidParameter.OutputField`，不静默删除字段。
+            字段存在但当前查询通道不支持读取时返回 HTTP 400
+            `VegaBackend.Query.UnsupportedOutputField`；默认投影没有可查询字段时返回
+            HTTP 400 `VegaBackend.Query.NoQueryableFields`。真实源连接、执行故障不归入这些错误。
+            省略或传空列表使用默认投影。本地索引通道对 Binary/Other 字段保留 unavailable
+            展示语义，显式请求与默认投影一致；该占位表示索引中无法读取原值。
+            聚合查询只能指定分组字段和实际聚合结果别名（未指定 alias 时为 `__value`）；
+            其他源字段不能作为聚合输出。显式选择仅裁剪结果列，不改变分组、排序、分页、行数或 total。
+            派生逻辑视图的非聚合查询可指定 `_score`；索引通道返回真实
             相关性分数，source 表查询不返回该元字段，不补零或伪造分数。
           type: array
           items:

@@ -10,6 +10,9 @@ package errors
 // Query error code
 const (
 	// 400 Bad Request
+	VegaBackend_Query_InvalidParameter_OutputField          = "VegaBackend.Query.InvalidParameter.OutputField"
+	VegaBackend_Query_UnsupportedOutputField                = "VegaBackend.Query.UnsupportedOutputField"
+	VegaBackend_Query_NoQueryableFields                     = "VegaBackend.Query.NoQueryableFields"
 	VegaBackend_Query_InvalidParameter                      = "VegaBackend.Query.InvalidParameter"
 	VegaBackend_Query_InvalidParameter_LimitExceeded        = "VegaBackend.Query.InvalidParameter.LimitExceeded"
 	VegaBackend_Query_InvalidParameter_JoinTableNotInTables = "VegaBackend.Query.InvalidParameter.JoinTableNotInTables"
@@ -39,6 +42,9 @@ const (
 
 var QueryErrCodeList = []string{
 	// 400 Bad Request
+	VegaBackend_Query_InvalidParameter_OutputField,
+	VegaBackend_Query_UnsupportedOutputField,
+	VegaBackend_Query_NoQueryableFields,
 	VegaBackend_Query_InvalidParameter,
 	VegaBackend_Query_InvalidParameter_LimitExceeded,
 	VegaBackend_Query_InvalidParameter_JoinTableNotInTables,

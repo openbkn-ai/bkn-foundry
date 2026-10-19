@@ -266,6 +266,9 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 	if len(params.GroupBy) == 0 && params.Aggregation == nil && params.Having == nil {
 		if len(params.OutputFields) > 0 {
 			for _, outName := range params.OutputFields {
+				if fieldMap[outName] == nil {
+					return sq.SelectBuilder{}, interfaces.NewOutputFieldError(interfaces.OutputFieldUnknown, outName)
+				}
 				selectFields = append(selectFields, selectField(outName))
 			}
 		} else if len(selectFields) == 0 {
@@ -275,6 +278,10 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 				selectFields = append(selectFields, selectField(prop.Name))
 			}
 		}
+	}
+
+	if len(selectFields) == 0 {
+		return sq.SelectBuilder{}, interfaces.NewOutputFieldError(interfaces.OutputFieldNoneQueryable, "")
 	}
 
 	builder := sq.Select(selectFields...).

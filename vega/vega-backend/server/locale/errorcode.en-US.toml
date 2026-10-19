@@ -260,3 +260,18 @@ SemanticUnderstandingInsufficientSampleDataSingular = "The {{.fields}} field has
 SemanticUnderstandingInsufficientSampleDataPlural = "The {{.fields}} fields have insufficient sample data."
 SemanticUnderstandingFieldSeparator = " and "
 SemanticUnderstandingMissingSamplePattern = "(?i)\\b(?:missing|absent|unavailable|insufficient)\\s+samples?(?:\\s+(?:data|values?))?\\b|\\b(?:no|without|lack|lacks|lacking)\\s+(?:of\\s+)?samples?(?:\\s+(?:data|values?))?\\b|\\bsamples?(?:\\s+(?:data|values?))?\\s+(?:(?:is|are|was|were)\\s+)?(?:missing|absent|unavailable|insufficient|not\\s+available|not\\s+provided)\\b"
+
+[VegaBackend.Query.InvalidParameter.OutputField]
+Description = "An output field is unknown or invalid"
+Solution = "Select fields defined in the resource schema."
+ErrorLink = ""
+
+[VegaBackend.Query.UnsupportedOutputField]
+Description = "The output field is not supported by this query channel"
+Solution = "Select fields supported by the current query channel."
+ErrorLink = ""
+
+[VegaBackend.Query.NoQueryableFields]
+Description = "The resource has no queryable fields"
+Solution = "Select a resource with queryable fields."
+ErrorLink = ""

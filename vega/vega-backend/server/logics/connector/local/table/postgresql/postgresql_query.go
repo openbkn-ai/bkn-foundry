@@ -262,6 +262,9 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	if len(params.GroupBy) == 0 && params.Aggregation == nil && params.Having == nil {
 		if len(params.OutputFields) > 0 {
 			for _, field := range params.OutputFields {
+				if fieldMap[field] == nil {
+					return nil, interfaces.NewOutputFieldError(interfaces.OutputFieldUnknown, field)
+				}
 				selectFields = append(selectFields, selectField(field))
 			}
 		} else if len(selectFields) == 0 {
@@ -270,6 +273,10 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 				selectFields = append(selectFields, selectField(prop.Name))
 			}
 		}
+	}
+
+	if len(selectFields) == 0 {
+		return nil, interfaces.NewOutputFieldError(interfaces.OutputFieldNoneQueryable, "")
 	}
 
 	// Build query

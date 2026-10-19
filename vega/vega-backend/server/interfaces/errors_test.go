@@ -143,3 +143,29 @@ func TestRawAggregationValidationError(t *testing.T) {
 		t.Fatalf("wrapped aggregation error lost its path or reason: %v", err)
 	}
 }
+
+func TestOutputFieldError(t *testing.T) {
+	for _, tc := range []struct {
+		reason  OutputFieldErrorReason
+		message string
+	}{
+		{OutputFieldUnknown, `unknown output field "value"`},
+		{OutputFieldUnsupported, `output field "value" is not supported by this query channel`},
+		{OutputFieldNoneQueryable, "resource schema has no queryable fields"},
+	} {
+		t.Run(string(tc.reason), func(t *testing.T) {
+			err := fmt.Errorf("prepare: %w", NewOutputFieldError(tc.reason, "value"))
+			var output *OutputFieldError
+			if !errors.As(err, &output) || output.Reason != tc.reason || output.Field != "value" {
+				t.Fatalf("lost projection error: %v", err)
+			}
+			reason, ok := RequestSideQueryError(err)
+			if !ok || reason != tc.message {
+				t.Fatalf("request-side projection reason = %q, %v", reason, ok)
+			}
+			if _, ok := RequestSideQueryError(NewStoredConditionBuildError(err)); ok {
+				t.Fatal("stored configuration failure became a request error")
+			}
+		})
+	}
+}

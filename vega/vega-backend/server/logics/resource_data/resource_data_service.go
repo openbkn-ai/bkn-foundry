@@ -97,7 +97,13 @@ func (rds *resourceDataService) QuerySourcePage(ctx context.Context, resource *i
 // query executes the existing structured resource-data path. Public callers
 // use QueryWithPaging so every result has the common paging envelope.
 func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.Resource,
-	params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
+	params *interfaces.ResourceDataQueryParams) (entries []map[string]any, total int64, err error) {
+	// 保留源端完整聚合形态，分页完成后只裁剪调用方选择的结果列。
+	defer func() {
+		if err == nil {
+			entries = projectAggregateOutputFields(entries, params)
+		}
+	}()
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List resource documents")
 	defer span.End()
@@ -192,6 +198,17 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			WithErrorDetails(err.Error())
 	}
 
+	if err := validateVectorIndexConditions(resource, params.FilterCondCfg, ignoreLocalIndex); err != nil {
+		otellog.LogError(ctx, "Vector index condition rejected", err)
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			WithErrorDetails(err.Error())
+	}
+
+	if err := rds.validateOutputFieldsParams(resource, params); err != nil {
+		httpErr, _ := outputFieldHTTPError(ctx, err)
+		return nil, 0, httpErr
+	}
+
 	// Resolve the stored view condition first. It is part of server configuration,
 	// so a model that becomes unavailable after saving the view is a server error.
 	// The fixed subtree is shared with FilterCondCfg; a successful resolution is
@@ -256,6 +273,9 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 					return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 						WithErrorDetails("stored view filter_condition cannot be built")
 				}
+				if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
+					return nil, 0, httpErr
+				}
 				if reason, ok := interfaces.RequestSideQueryError(err); ok {
 					return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 						WithErrorDetails(reason)
@@ -270,8 +290,6 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 
 		// Prepare the sort parameter
 		params = rds.prepareSortParams(resource, params)
-		// Prepare output
-		params = rds.prepareOutputFieldsParams(resource, params)
 
 		data, total, err := rds.QueryData(ctx, catalog, resource, params)
 		if err != nil {
@@ -314,8 +332,6 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	case interfaces.ResourceCategoryLogicalView:
 		// Prepare the sort parameter
 		params = rds.prepareSortParams(resource, params)
-		// Prepare output
-		params = rds.prepareOutputFieldsParams(resource, params)
 
 		// Query data in a logical view
 		result, err := resourcelogic.QueryLogicalViewWithPaging(ctx, resource, params)
@@ -335,8 +351,6 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	case interfaces.ResourceCategoryFileset:
 		// Prepare the sort parameter
 		params = rds.prepareSortParams(resource, params)
-		// Prepare output
-		params = rds.prepareOutputFieldsParams(resource, params)
 
 		data, total, err := rds.QueryData(ctx, catalog, resource, params)
 		if err != nil {
@@ -425,6 +439,10 @@ func normalizeIndexedUnavailableQueryValues(entries []map[string]any, resource *
 }
 
 func shouldIncludeOutputField(params *interfaces.ResourceDataQueryParams, field string) bool {
+	// 聚合结果类型由表达式决定，不能按同名源字段做 Binary/Other 归一化。
+	if params != nil && isIndexAggregateQuery(params) {
+		return false
+	}
 	if params == nil {
 		return true
 	}
@@ -453,13 +471,20 @@ func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *i
 		return nil, err
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
+		if err := rds.validateOutputFieldsParams(resource, params); err != nil {
+			httpErr, _ := outputFieldHTTPError(ctx, err)
+			return nil, httpErr
+		}
 		result, err := resourcelogic.QueryLogicalViewWithPaging(ctx, resource, params)
 		if err != nil {
 			return nil, err
 		}
 
-		if result != nil && result.QuerySource == "" {
-			result.QuerySource = resourceQuerySource(resource, params)
+		if result != nil {
+			result.Entries = projectAggregateOutputFields(result.Entries, params)
+			if result.QuerySource == "" {
+				result.QuerySource = resourceQuerySource(resource, params)
+			}
 		}
 		return result, nil
 	}
@@ -606,6 +631,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			if errors.As(err, &sourceReadForbidden) {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
 			}
+			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
+				return nil, 0, httpErr
+			}
 			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails(reason)
@@ -632,6 +660,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			var sourceReadForbidden *interfaces.SourceReadForbiddenError
 			if errors.As(err, &sourceReadForbidden) {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+			}
+			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
+				return nil, 0, httpErr
 			}
 			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
@@ -664,6 +695,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			}
 			// The same typing as the table/index branches: The unimplemented operators of anyshare are problems on the request side
 			// The caller can pass by simply changing the operator. If everything is uniformly packaged as 500, ontology-query will be judged as a dependency fault.
+			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
+				return nil, 0, httpErr
+			}
 			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails(reason)
@@ -727,27 +761,84 @@ func (rds *resourceDataService) prepareSortParams(resource *interfaces.Resource,
 	return filteredParams
 }
 
-// prepareOutputFieldsParams filters output fields to only include fields defined in resource SchemaDefinition.
-func (rds *resourceDataService) prepareOutputFieldsParams(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) *interfaces.ResourceDataQueryParams {
+// validateOutputFieldsParams rejects an invalid explicit projection without changing it.
+// Logical views resolve detail-query channel metadata in their own binder.
+func (rds *resourceDataService) validateOutputFieldsParams(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
 	if resource == nil || params == nil || len(params.OutputFields) == 0 {
-		return params
+		return nil
 	}
-
-	fieldMap := make(map[string]bool, len(resource.SchemaDefinition))
+	sourceFields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
 	for _, prop := range resource.SchemaDefinition {
-		if prop == nil || prop.Name == "" {
-			continue
-		}
-		fieldMap[prop.Name] = true
-	}
-
-	filteredOutputFields := make([]string, 0, len(params.OutputFields))
-	for _, field := range params.OutputFields {
-		if fieldMap[field] || (field == "_score" && resource.Category == interfaces.ResourceCategoryIndex) {
-			filteredOutputFields = append(filteredOutputFields, field)
+		if prop != nil && prop.Name != "" {
+			sourceFields[prop.Name] = prop
 		}
 	}
-	params.OutputFields = filteredOutputFields
+	aggregate := isIndexAggregateQuery(params)
+	outputFields := sourceFields
+	if aggregate {
+		outputFields = make(map[string]*interfaces.Property, len(params.GroupBy)+1)
+		for _, group := range params.GroupBy {
+			if group != nil && sourceFields[group.Property] != nil {
+				outputFields[group.Property] = sourceFields[group.Property]
+			}
+		}
+		if params.Aggregation != nil {
+			alias := params.Aggregation.Alias
+			if alias == "" {
+				alias = "__value"
+			}
+			outputFields[alias] = &interfaces.Property{Name: alias}
+		} else if params.Having != nil && params.Having.Field == "count(*)" {
+			outputFields["__value"] = &interfaces.Property{Name: "__value"}
+		}
+	}
+	indexChannel := resourceDataPaginationCategory(resource, params) == interfaces.ResourceCategoryIndex
+	for _, name := range params.OutputFields {
+		field := outputFields[name]
+		if field == nil {
+			if name == "_score" && !aggregate && (indexChannel || resource.Category == interfaces.ResourceCategoryLogicalView) {
+				continue
+			}
+			return interfaces.NewOutputFieldError(interfaces.OutputFieldUnknown, name)
+		}
+	}
+	return nil
+}
 
-	return params
+// projectAggregateOutputFields 只裁剪输出列，不改变分组、排序、行数和 total。
+func projectAggregateOutputFields(entries []map[string]any, params *interfaces.ResourceDataQueryParams) []map[string]any {
+	if params == nil || len(params.OutputFields) == 0 || !isIndexAggregateQuery(params) {
+		return entries
+	}
+	projected := make([]map[string]any, len(entries))
+	for i, entry := range entries {
+		row := make(map[string]any, len(params.OutputFields))
+		for _, name := range params.OutputFields {
+			if value, ok := entry[name]; ok {
+				row[name] = value
+			}
+		}
+		projected[i] = row
+	}
+	return projected
+}
+
+// outputFieldHTTPError maps public projection failures without exposing internal causes.
+func outputFieldHTTPError(ctx context.Context, err error) (*rest.HTTPError, bool) {
+	var stored *interfaces.StoredConditionBuildError
+	if errors.As(err, &stored) {
+		return nil, false
+	}
+	var output *interfaces.OutputFieldError
+	if !errors.As(err, &output) {
+		return nil, false
+	}
+	code := verrors.VegaBackend_Query_InvalidParameter_OutputField
+	switch output.Reason {
+	case interfaces.OutputFieldUnsupported:
+		code = verrors.VegaBackend_Query_UnsupportedOutputField
+	case interfaces.OutputFieldNoneQueryable:
+		code = verrors.VegaBackend_Query_NoQueryableFields
+	}
+	return rest.NewHTTPError(ctx, http.StatusBadRequest, code).WithErrorDetails(output.Error()), true
 }

@@ -33,6 +33,40 @@ func TestPostgresqlConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
 }
 
 func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
+	t.Run("invalid projections fail before source execution", func(t *testing.T) {
+
+		for _, tc := range []struct {
+			name   string
+			schema []*interfaces.Property
+			fields []string
+			reason interfaces.OutputFieldErrorReason
+			field  string
+		}{
+			{name: "unknown output", schema: []*interfaces.Property{{Name: "id"}}, fields: []string{"missing"}, reason: interfaces.OutputFieldUnknown, field: "missing"},
+			{name: "mixed output", schema: []*interfaces.Property{{Name: "id"}}, fields: []string{"id", "missing"}, reason: interfaces.OutputFieldUnknown, field: "missing"},
+			{name: "empty output name", schema: []*interfaces.Property{{Name: "id"}}, fields: []string{""}, reason: interfaces.OutputFieldUnknown},
+			{name: "empty schema", reason: interfaces.OutputFieldNoneQueryable},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				require.NoError(t, err)
+				defer func() { _ = db.Close() }()
+				connector := &PostgresqlConnector{db: db, connected: true}
+				resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: tc.schema}
+				params := &interfaces.ResourceDataQueryParams{OutputFields: tc.fields, NeedTotal: true}
+				before := append([]string(nil), tc.fields...)
+				result, err := connector.ExecuteQuery(context.Background(), resource, params)
+				var output *interfaces.OutputFieldError
+				require.ErrorAs(t, err, &output)
+				assert.Equal(t, tc.reason, output.Reason)
+				assert.Equal(t, tc.field, output.Field)
+				assert.Nil(t, result)
+				assert.Equal(t, before, params.OutputFields)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+
+	})
 	for _, tc := range []struct {
 		name      string
 		needTotal bool
