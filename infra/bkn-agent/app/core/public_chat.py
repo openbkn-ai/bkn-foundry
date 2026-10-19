@@ -133,12 +133,17 @@ class PublicChat:
         messages = state.values.get("messages", [])
         # A step limit can stop right after the model asked for tools.
         fills = self.interrupted_messages(messages)
-        sent = budget_messages(
-            [*messages, *fills],
-            limits.data_result_chars,
-            limits.schema_result_chars,
-            limits.keep_tool_results,
-        )
+        # Only real results count against the budget; the fills for interrupted
+        # calls would otherwise take kept slots from them.
+        sent = [
+            *budget_messages(
+                messages,
+                limits.data_result_chars,
+                limits.schema_result_chars,
+                limits.keep_tool_results,
+            ),
+            *fills,
+        ]
         final = None
         async for chunk in model.astream(
             [

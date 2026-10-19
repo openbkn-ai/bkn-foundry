@@ -42,11 +42,15 @@ SCHEMA_TOOLS = frozenset(
 )
 
 # Calls that only read, so repeating one within a question returns the same data.
+# get_action_execution and list_action_executions stay out: their results change
+# as actions run.
 READ_TOOLS = SCHEMA_TOOLS | {
     "list_knowledge_networks",
     "search_instance",
     "query_object_instance",
     "query_instance_subgraph",
+    "explore_subgraph",
+    "get_logic_properties_values",
     "query_metric",
     "drill_through_metric",
     "run_cypher",
