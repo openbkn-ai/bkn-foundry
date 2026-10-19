@@ -95,8 +95,13 @@ type SemanticQueryProjection struct {
 	// query, which the descriptor otherwise only ever holds as hashes. Both
 	// are omitted when unset, which keeps the bytes of every descriptor
 	// written before arithmetic existed unchanged.
-	Expression    string   `json:"expression,omitempty"`
-	PropertyRefs  []string `json:"property_refs,omitempty"`
+	Expression   string   `json:"expression,omitempty"`
+	PropertyRefs []string `json:"property_refs,omitempty"`
+	// Value is the kind of a graph value -- node, relation, constant, map or
+	// collect -- and RelationRefs the relation types it returns. A constant is
+	// recorded by kind only, never by what it says.
+	Value         string   `json:"value,omitempty"`
+	RelationRefs  []string `json:"relation_refs,omitempty"`
 	OutputPointer string   `json:"output_pointer"`
 }
 
@@ -203,6 +208,9 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 			Alias: column.Alias, OutputPointer: semanticOutputPointer(column.Alias),
 		}
 		switch {
+		case column.Graph != nil:
+			projection.Value = semanticGraphKind(column.Graph)
+			projection.PropertyRefs, projection.RelationRefs = semanticGraphRefs(plan, column.Graph)
 		case column.Expression != nil:
 			projection.Expression = semanticExpressionKind(column.Expression)
 			projection.PropertyRefs = semanticExpressionRefs(plan, column.Expression)
@@ -219,12 +227,17 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 		default:
 			projection.PropertyRef = semanticPropertyRef(plan, column.Table, column.Property)
 		}
-		if projection.PropertyRef == "" && projection.Aggregate == "" && projection.Expression == "" {
+		if projection.PropertyRef == "" && projection.Aggregate == "" && projection.Expression == "" && projection.Value == "" {
 			return nil, fmt.Errorf("semantic query projection %d is incomplete", index)
 		}
 		descriptor.Projections = append(descriptor.Projections, projection)
 	}
 	for _, column := range plan.GroupBy {
+		if column.Graph != nil {
+			refs, _ := semanticGraphRefs(plan, column.Graph)
+			descriptor.Grouping = append(descriptor.Grouping, refs...)
+			continue
+		}
 		if column.Expression != nil {
 			descriptor.Grouping = append(descriptor.Grouping, semanticExpressionRefs(plan, column.Expression)...)
 			continue
@@ -559,4 +572,66 @@ func appendSemanticSemiJoin(descriptor *SemanticQueryDescriptor, plan *Plan, joi
 		descriptor.Predicates = append(descriptor.Predicates, predicate)
 	}
 	return nil
+}
+
+// semanticGraphKind names what a graph value is.
+func semanticGraphKind(value PlanGraph) string {
+	switch value.(type) {
+	case PlanNodeValue:
+		return "node"
+	case PlanRelationValue:
+		return "relation"
+	case PlanGraphConstant:
+		return "constant"
+	case PlanGraphProperty:
+		return "property"
+	case PlanGraphMap:
+		return "map"
+	case PlanGraphCollect:
+		return "collect"
+	default:
+		return "graph"
+	}
+}
+
+// semanticGraphRefs lists, each once, the properties a graph value reads and
+// the relation types it returns, in the order first met.
+func semanticGraphRefs(plan *Plan, value PlanGraph) ([]string, []string) {
+	var properties, relations []string
+	seen := map[string]bool{}
+	add := func(list *[]string, ref string) {
+		if ref != "" && !seen[ref] {
+			seen[ref] = true
+			*list = append(*list, ref)
+		}
+	}
+	identity := func(id PlanIdentity) {
+		for _, key := range id.Keys {
+			add(&properties, semanticPropertyRef(plan, id.Table, key.Property))
+		}
+	}
+	var walk func(PlanGraph)
+	walk = func(value PlanGraph) {
+		switch node := value.(type) {
+		case PlanNodeValue:
+			identity(node.Identity)
+			for _, property := range node.Snapshot {
+				add(&properties, semanticPropertyRef(plan, node.Table, property.Property))
+			}
+		case PlanRelationValue:
+			add(&relations, "relation:"+plan.NetworkID+":"+node.RelationTypeID)
+			identity(node.Source)
+			identity(node.Target)
+		case PlanGraphProperty:
+			add(&properties, semanticPropertyRef(plan, node.Table, node.Property))
+		case PlanGraphMap:
+			for _, field := range node.Values {
+				walk(field)
+			}
+		case PlanGraphCollect:
+			walk(node.Argument)
+		}
+	}
+	walk(value)
+	return properties, relations
 }

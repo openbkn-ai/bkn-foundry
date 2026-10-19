@@ -204,6 +204,9 @@ func canonicalKey(value any) string {
 	if value == nil {
 		return "\x00"
 	}
+	if key, ok := graphKey(value); ok {
+		return key
+	}
 	if s, ok := value.(string); ok {
 		return "s" + s
 	}
@@ -668,6 +671,8 @@ func evaluateAggregate(aggregate PlanAggregate, group []binding) (any, error) {
 // columnValue computes one output column for a scope.
 func columnValue(column PlanColumn, s scope) (any, error) {
 	switch {
+	case column.Graph != nil:
+		return evaluateGraph(column.Graph, s)
 	case column.Expression != nil:
 		return evaluateExpression(column.Expression, s)
 	case column.Aggregate != nil:
@@ -687,18 +692,19 @@ type outputRow struct {
 // finishRows turns the matched rows into the result: grouping and aggregation,
 // DISTINCT, ORDER BY, then SKIP and LIMIT. defaultLimit applies when the query
 // wrote no LIMIT, as it does to the generated statement. presorted rows came
-// back from the data source in the query's order, which is kept.
-func finishRows(plan *Plan, rows []binding, defaultLimit int64, presorted bool) ([]map[string]any, error) {
+// back from the data source in the query's order, which is kept. limited
+// reports that LIMIT left result rows out.
+func finishRows(plan *Plan, rows []binding, defaultLimit int64, presorted bool) (entries []map[string]any, limited bool, err error) {
 	outputs, err := projectRows(plan, rows)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if plan.Distinct {
 		outputs = distinctRows(outputs)
 	}
 	if len(plan.OrderBy) > 0 && !presorted {
 		if err := sortRows(plan, outputs); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 
@@ -718,7 +724,7 @@ func finishRows(plan *Plan, rows []binding, defaultLimit int64, presorted bool) 
 		end = start + limit
 	}
 
-	entries := make([]map[string]any, 0, end-start)
+	entries = make([]map[string]any, 0, end-start)
 	for _, output := range outputs[start:end] {
 		entry := make(map[string]any, len(plan.Select))
 		for i, column := range plan.Select {
@@ -726,7 +732,7 @@ func finishRows(plan *Plan, rows []binding, defaultLimit int64, presorted bool) 
 		}
 		entries = append(entries, entry)
 	}
-	return entries, nil
+	return entries, end < int64(len(outputs)), nil
 }
 
 func projectRows(plan *Plan, rows []binding) ([]outputRow, error) {

@@ -45,6 +45,10 @@ type GenerateOptions struct {
 	// that has no LIMIT. Removing the default would therefore cost sorted
 	// results, not just a row cap.
 	DefaultLimit int64
+
+	// conclusions, when set, keeps only the rows of the conclusions a
+	// derived table chose; see planGraphRead.
+	conclusions *conclusionJoin
 }
 
 // Generate writes the plan as one SQL statement. Resources appear as
@@ -62,7 +66,7 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 		return "", fmt.Errorf("cannot generate SQL for an empty plan")
 	}
 
-	g := &generator{dialect: dialect, plan: plan}
+	g := &generator{dialect: dialect, plan: plan, conclusions: options.conclusions}
 	g.where, g.semiJoins = splitSemiJoins(plan.Where)
 	g.writeSelect()
 	g.writeFrom()
@@ -95,6 +99,8 @@ type generator struct {
 	// joins to that stage; where is the rest of the plan's condition.
 	semiJoins []PlanSemiJoin
 	where     PlanPredicate
+	// conclusions is joined after the semi-joins, when set.
+	conclusions *conclusionJoin
 }
 
 // splitSemiJoins takes the semi-joins out of a condition. The analyzer only
@@ -323,6 +329,9 @@ func (g *generator) writeFrom() {
 	}
 	g.writeSemiJoins()
 	g.writeOptionalJoins(joined, used)
+	// The chosen conclusions may name a node an OPTIONAL MATCH attached, so
+	// they join after every outer join.
+	g.writeConclusions()
 
 	// A join that attached no table still carries a condition: a cycle closing
 	// on tables already read, or a relationship from a node to itself. It is

@@ -109,6 +109,10 @@ type EdgeRef struct {
 	// query's WHERE -- a row that fails them keeps its place and loses the
 	// optional node, which is what OPTIONAL MATCH means.
 	Conditions []Predicate
+	// Variable names the relationship when the query binds it, as in
+	// -[e:WORKS_AT]->, so RETURN can return it as a relationship value. It is
+	// empty for an anonymous relationship.
+	Variable string
 	// Clause is which MATCH wrote this relationship. Several MATCH clauses
 	// describe one shape, but Cypher's rule that a pattern may not traverse
 	// the same relationship twice holds inside a single MATCH and not between
@@ -314,8 +318,11 @@ type Projection struct {
 	// written on its own keeps its own field, so every stage that handled
 	// those before arithmetic existed still sees them the same way.
 	Expression Expression
-	Alias      string
-	Pos        Position
+	// Value is set for a graph value -- a node, a relationship, a constant, a
+	// map or collect -- instead of any of the fields above.
+	Value GraphExpression
+	Alias string
+	Pos   Position
 }
 
 // Aggregate is count, sum, avg, min or max. Property and Argument are both nil

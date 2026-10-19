@@ -83,7 +83,9 @@ type PlanJoin struct {
 	Right          int
 	RelationTypeID string
 	Direction      Direction
-	Readings       [][]PlanJoinKey
+	// Variable is the relationship's name when the query binds it.
+	Variable string
+	Readings [][]PlanJoinKey
 	// Optional makes this an outer join: the row on the anchor side survives
 	// whether or not the other side has a match.
 	Optional bool
@@ -113,12 +115,15 @@ type PlanColumn struct {
 	Alias      string
 	Aggregate  *PlanAggregate
 	Expression PlanExpression
+	// Graph is set for a graph value instead of the fields above.
+	Graph PlanGraph
 }
 
-// aggregates reports whether the column collapses rows: it is an aggregate, or
-// it computes something from one.
+// aggregates reports whether the column collapses rows: it is an aggregate, it
+// computes something from one, or it collects.
 func (c PlanColumn) aggregates() bool {
-	return c.Aggregate != nil || (c.Expression != nil && planContainsAggregate(c.Expression))
+	return c.Aggregate != nil || (c.Expression != nil && planContainsAggregate(c.Expression)) ||
+		(c.Graph != nil && planGraphCollects(c.Graph))
 }
 
 // PlanAggregate is COUNT, SUM, AVG, MIN or MAX. Star is count(*), which counts
@@ -338,6 +343,11 @@ type PlanError struct {
 }
 
 func (e *PlanError) Error() string {
+	// Something outside the query text, such as object_properties, has no
+	// position to point at.
+	if e.Pos == (Position{}) {
+		return e.Err.Error()
+	}
 	return fmt.Sprintf("line %d:%d: %v", e.Pos.Line, e.Pos.Column, e.Err)
 }
 
@@ -364,12 +374,21 @@ type planner struct {
 	tableOf      map[string]int           // variable name to table index
 	// groupKeys are what a WITH grouped by, resolved to columns.
 	groupKeys []PlanColumn
+	// relationshipOf maps a relationship variable to the join it names.
+	relationshipOf map[string]joinVariable
+	// snapshotProperties are the properties object_properties asks of each
+	// node variable, and snapshotUsed which of them the query returns.
+	snapshotProperties map[string][]string
+	snapshotUsed       map[string]bool
 }
 
 // CompileOptions carries what the query itself does not: the values its
 // parameters stand for.
 type CompileOptions struct {
 	Parameters map[string]any
+	// ObjectProperties names, per node variable, the properties a returned
+	// node value carries besides its identity.
+	ObjectProperties map[string][]string
 }
 
 // Compile binds a query to a knowledge network and produces its plan.
@@ -382,7 +401,10 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 			Distinct: query.Distinct, Skip: query.Skip, Limit: query.Limit,
 			Grouped: query.Grouped,
 		},
-		tableOf: map[string]int{},
+		tableOf:            map[string]int{},
+		relationshipOf:     map[string]joinVariable{},
+		snapshotProperties: options.ObjectProperties,
+		snapshotUsed:       map[string]bool{},
 	}
 	if err := p.planPattern(query.Pattern); err != nil {
 		return nil, err
@@ -412,6 +434,9 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 		}
 	}
 	if err := p.planOrderBy(query.OrderBy); err != nil {
+		return nil, err
+	}
+	if err := p.checkGraphReturn(query.Return); err != nil {
 		return nil, err
 	}
 	return p.plan, nil
@@ -621,8 +646,9 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 
 	join := PlanJoin{
 		Left: left, Right: right, RelationTypeID: relationType.RTID, Direction: edge.Direction,
-		Optional: edge.Optional, OptionalTable: edge.OptionalNode,
+		Optional: edge.Optional, OptionalTable: edge.OptionalNode, Variable: edge.Variable,
 	}
+	var readForwards []bool
 	for _, forwards := range p.readings(edge.Direction) {
 		source, target := left, right
 		if !forwards {
@@ -637,6 +663,7 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 			return err
 		}
 		join.Readings = append(join.Readings, keys)
+		readForwards = append(readForwards, forwards)
 		// One hop is recorded per edge, not per reading. An undirected edge
 		// has two readings and no recorded hop: a lone one has nothing to
 		// coincide with, and one beside another over the same relation type
@@ -659,6 +686,11 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 			relationType.RTName, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID,
 			p.objectType[left].OTID, p.objectType[right].OTID)
 	}
+	if edge.Variable != "" {
+		if err := p.bindRelationship(edge, relationType, mappings, readForwards, left, right); err != nil {
+			return err
+		}
+	}
 	for _, condition := range edge.Conditions {
 		planned, err := p.planPredicate(condition)
 		if err != nil {
@@ -667,6 +699,34 @@ func (p *planner) addJoin(edge EdgeRef, left, right int) error {
 		join.Conditions = append(join.Conditions, planned)
 	}
 	p.plan.Joins = append(p.plan.Joins, join)
+	return nil
+}
+
+// bindRelationship records a relationship variable. Its value says which end
+// is the source, so a relationship whose direction the model leaves open --
+// an undirected one between two nodes of the same object type -- is refused
+// rather than given a direction it may not have.
+func (p *planner) bindRelationship(edge EdgeRef, relationType *interfaces.RelationType, mappings []interfaces.Mapping,
+	readForwards []bool, left, right int) error {
+	if _, taken := p.tableOf[edge.Variable]; taken {
+		return planErrorf(edge.Pos, "variable %q names a node already; use a different name for the relationship",
+			edge.Variable)
+	}
+	if _, taken := p.relationshipOf[edge.Variable]; taken {
+		return planErrorf(edge.Pos, "relationship variable %q is bound twice; use a different name", edge.Variable)
+	}
+	if len(readForwards) != 1 {
+		return planErrorf(edge.Pos,
+			"relationship %q could run either way between these nodes; write its direction to return it", edge.Variable)
+	}
+	source, target := left, right
+	if !readForwards[0] {
+		source, target = right, left
+	}
+	p.relationshipOf[edge.Variable] = joinVariable{
+		join: len(p.plan.Joins), sourceTable: source, targetTable: target,
+		mappings: mappings, digest: relationDigest(relationType, mappings), pos: edge.Pos,
+	}
 	return nil
 }
 
@@ -1032,6 +1092,9 @@ func ungroupedColumns(value PlanExpression) []PlanValueColumn {
 }
 
 func (p *planner) planProjection(projection Projection) (*PlanColumn, error) {
+	if projection.Value != nil {
+		return p.planGraphColumn(projection)
+	}
 	if projection.Expression != nil {
 		value, _, err := p.planExpression(projection.Expression)
 		if err != nil {
@@ -1135,6 +1198,8 @@ func (p *planner) planGrouping() {
 
 func projectionPosition(projection Projection) Position {
 	switch {
+	case projection.Value != nil:
+		return projection.Pos
 	case projection.Expression != nil:
 		return projection.Pos
 	case projection.Aggregate != nil:
@@ -1457,6 +1522,10 @@ func (p *planner) isProjected(table int, column string) bool {
 
 func (p *planner) resolveProperty(ref PropertyRef) (int, string, error) {
 	table, bound := p.tableOf[ref.Variable]
+	if _, isRelationship := p.relationshipOf[ref.Variable]; !bound && isRelationship {
+		return 0, "", planErrorf(ref.Pos,
+			"relationship %q has no properties: a relation here is a join between two object types", ref.Variable)
+	}
 	if !bound {
 		return 0, "", planErrorf(ref.Pos, "variable %q is not defined in the MATCH pattern", ref.Variable)
 	}

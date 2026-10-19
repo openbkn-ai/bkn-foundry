@@ -80,8 +80,11 @@ func NewCypherQueryService(appSetting *common.AppSetting) interfaces.CypherQuery
 // was bound against, which holds the caller's property levels, and the
 // semantic descriptor the internal face returns for tracing.
 type compiledQuery struct {
-	statement         string
-	rowLimit          int
+	statement string
+	rowLimit  int
+	// graph is how a query that returns graph values reads its rows; such
+	// a query has no statement of its own.
+	graph             *graphRead
 	plan              *Plan
 	schema            *Schema
 	traceDescriptor   json.RawMessage
@@ -137,6 +140,10 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	if err := s.authorizeProperties(ctx, query.KNID, compiled); err != nil {
 		return nil, err
 	}
+	if compiled.graph != nil {
+		span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL), attribute.Bool(spanAttrGraph, true))
+		return s.queryGraph(ctx, query, compiled)
+	}
 	if s.executor() == common.CypherExecutorBindJoin {
 		return s.queryBindJoin(ctx, query, compiled)
 	}
@@ -170,6 +177,56 @@ func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.Cyph
 	return &interfaces.CypherQueryResult{
 		Columns:           response.Columns,
 		Entries:           response.Entries,
+		TraceDescriptor:   compiled.traceDescriptor,
+		PermissionImpacts: compiled.permissionImpacts,
+	}, nil
+}
+
+// queryGraph runs a query that returns graph values. Its one statement runs
+// on the SQL path whatever the configured executor, which takes no new
+// capabilities; the rows it returns are only assembled into values here. A
+// read reaching the row cap is refused rather than answered with part of its
+// evidence.
+func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	read := compiled.graph
+	response, err := s.execute(ctx, query, compiled.plan, interfaces.RawQueryRequest{
+		Query:        read.statement,
+		QueryFormat:  interfaces.VEGA_QUERY_FORMAT_SQL,
+		InputDialect: interfaces.VEGA_DIALECT_MYSQL,
+		Paging: interfaces.ResourceDataPagingRequest{
+			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
+			Limit: read.rowLimit,
+		},
+		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
+	})
+	if err != nil {
+		return nil, executionError(ctx, err)
+	}
+	if read.evidence && len(response.Entries) >= graphRowCap {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_ReadBudgetExceeded).
+			WithErrorDetails(fmt.Sprintf("the evidence of this query reaches %d rows; narrow it with conditions "+
+				"or a smaller LIMIT, so no conclusion is returned with part of its evidence", graphRowCap))
+	}
+
+	conditionsAsBooleans(compiled.plan, response.Columns, response.Entries)
+	entries, limited, err := assembleGraphRows(compiled.plan, read, response.Entries)
+	var missingKey *missingKeyError
+	if errors.As(err, &missingKey) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
+			WithErrorDetails(missingKey.Error())
+	}
+	if err != nil {
+		common.LogSafeError(ctx, "Cypher graph value assembly failed", err)
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+	}
+	return &interfaces.CypherQueryResult{
+		Columns:    bindJoinColumns(compiled.plan, compiled.schema, entries),
+		Entries:    entries,
+		ValueTypes: graphValueTypes(compiled.plan, compiled.schema),
+		Execution: &interfaces.CypherExecution{
+			MatchRows: len(response.Entries), MatchComplete: true, ConclusionsLimited: limited,
+		},
 		TraceDescriptor:   compiled.traceDescriptor,
 		PermissionImpacts: compiled.permissionImpacts,
 	}, nil
@@ -220,7 +277,9 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, err
 	}
 
-	plan, err := Compile(analyzed, schema, CompileOptions{Parameters: query.Parameters})
+	plan, err := Compile(analyzed, schema, CompileOptions{
+		Parameters: query.Parameters, ObjectProperties: query.ObjectProperties,
+	})
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
 			WithErrorDetails(err.Error())
@@ -250,6 +309,24 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		}
 		common.LogSafeError(ctx, "Cypher row-filter compilation failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+	}
+
+	if plan.HasGraphValues() {
+		read, err := planGraphRead(plan, DialectMySQL, interfaces.CYPHER_DEFAULT_LIMIT)
+		var planErr *PlanError
+		if errors.As(err, &planErr) {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
+				WithErrorDetails(err.Error())
+		}
+		if err != nil {
+			common.LogSafeError(ctx, "Cypher SQL generation failed", err)
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+		}
+		return &compiledQuery{
+			graph: read, plan: plan, schema: schema,
+			traceDescriptor:   descriptorJSON,
+			permissionImpacts: rowFilterPermissionImpacts(rowFilteredObjectTypes),
+		}, nil
 	}
 
 	sql, err := Generate(plan, GenerateOptions{
@@ -415,6 +492,7 @@ const (
 	spanAttrFallbackReason = "cypher.fallback_reason"
 	spanAttrExecutor       = "cypher.executor"
 	spanAttrFallback       = "cypher.fallback"
+	spanAttrGraph          = "cypher.graph_values"
 
 	executionPathProxy  = "proxy"
 	executionPathCaller = "caller"

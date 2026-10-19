@@ -42,6 +42,10 @@ type CypherQuery struct {
 	// values only: a parameter can change which rows come back, never which
 	// resource or column is read.
 	Parameters map[string]any
+	// ObjectProperties names, per node variable, the properties a returned
+	// node carries besides its identity. Each one is authorized like any
+	// property the query names.
+	ObjectProperties map[string][]string
 }
 
 // CypherQueryResult carries the rows a query produced. The generated SQL is
@@ -50,6 +54,10 @@ type CypherQuery struct {
 type CypherQueryResult struct {
 	Columns []RawQueryColumn `json:"columns"`
 	Entries []map[string]any `json:"entries"`
+	// ValueTypes and Execution are set when the query returns graph values:
+	// what each column holds, and how complete the answer is.
+	ValueTypes map[string]*CypherValueType `json:"value_types,omitempty"`
+	Execution  *CypherExecution            `json:"execution,omitempty"`
 	// PermissionImpacts is returned only on the internal HTTP face. It lets an
 	// agent explain which object-type access rules narrowed or refused a query.
 	PermissionImpacts []CypherPermissionImpact `json:"-"`

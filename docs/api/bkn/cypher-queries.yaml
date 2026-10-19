@@ -95,7 +95,9 @@ paths:
             BknBackend.Cypher.Unsupported (valid openCypher outside the supported subset),
             BknBackend.Cypher.InvalidQuery (does not match the knowledge network model),
             BknBackend.Cypher.LimitExceeded (LIMIT above the ceiling),
-            BknBackend.Cypher.InvalidParameter (missing or oversized query).
+            BknBackend.Cypher.InvalidParameter (missing or oversized query),
+            BknBackend.Cypher.ReadBudgetExceeded (the evidence a collect(...) query reads
+            reaches 10000 rows; add conditions or lower LIMIT).
             error_details carries the compiler's message, with a line and column where the
             construct appears.
           content:
@@ -163,6 +165,19 @@ components:
           example:
             region: "eu"
             floor: 100
+        object_properties:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: |-
+            Properties a returned node carries besides its identity, keyed by the node's
+            variable. Each variable must be a node the query returns, and at most 128
+            properties may be named in all, across every variable; the properties are read
+            under the same authorization as any other property the query names.
+          example:
+            t: ["team_name"]
         query:
           type: string
           maxLength: 8192
@@ -170,7 +185,7 @@ components:
             The Cypher query. Supported shape:
             MATCH (a:Label [{property: value, ...}]) [-[:RELATION]-(b:Label) ...]
             [WHERE <condition>]
-            RETURN [DISTINCT] a.property | aggregate(a.property) | <condition> [AS alias], ...
+            RETURN [DISTINCT] a.property | aggregate(a.property) | <condition> | a | r | collect(x) | {k: x} [AS alias], ...
             [ORDER BY a.property | alias | aggregate(a.property) [DESC]] [SKIP n] [LIMIT n]
 
             or, to filter after aggregating, with one WITH after every MATCH:
@@ -220,6 +235,22 @@ components:
             DISTINCT, RETURN must be DISTINCT and not aggregate. v is used only as = and s only
             as IN, each as a condition of its own at the top of WHERE (not under OR or NOT).
 
+            RETURN can return a node or a relationship itself. A node is its object type and
+            its full primary key, each key value as exact text with its declared type, plus the
+            properties object_properties names; a relationship is its relation type, the
+            identities of its two ends and the key pairs that joined them. collect(x) gathers
+            x over each group into a list, keeping duplicates and skipping null; {k: x} builds
+            a map. Nodes and relationships group by identity, so RETURN t, count(*) counts per
+            object. Such a query runs as one SQL statement, whatever executor is configured.
+            With collect, each result row is a conclusion, the values beside collect, and LIMIT
+            counts conclusions: every matched row of each conclusion it keeps is collected. The
+            answer is complete or refused: evidence reaching 10000 rows fails with 400
+            BknBackend.Cypher.ReadBudgetExceeded rather than returning part of it. Graph values
+            cannot be sorted or made DISTINCT, collect cannot be mixed with other aggregates,
+            beside collect only nodes, relationships, properties and constants may be returned
+            and sorting is by the alias of a returned property, and relationships have no
+            properties of their own (r.x is refused).
+
             Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
             count(*). count(n) counts the rows where node n was found, and count(DISTINCT n)
             counts distinct objects by their primary key, which needs the object type to have
@@ -256,15 +287,109 @@ components:
       properties:
         columns:
           type: array
-          description: Output columns, in RETURN order. The name is the AS alias, or the source text of the property reference when no alias was written.
+          description: Output columns, in RETURN order. The name is the AS alias, or the source text of what was returned when no alias was written.
           items:
             $ref: "#/components/schemas/CypherQueryColumn"
         entries:
           type: array
-          description: Result rows, keyed by column name.
+          description: "Result rows, keyed by column name. A node is a CypherObjectValue, a relationship a CypherRelationValue, collect(...) a list and {k: x} an object."
           items:
             type: object
             additionalProperties: true
+        value_types:
+          type: object
+          description: Present when graph values are returned. The value type of each column, keyed by column name.
+          additionalProperties:
+            $ref: "#/components/schemas/CypherValueType"
+        execution:
+          $ref: "#/components/schemas/CypherExecution"
+    CypherValueType:
+      type: object
+      properties:
+        kind:
+          type: string
+          description: object, relation, map, list, or the scalar type of the value.
+        object_type_id:
+          type: string
+        relation_type_id:
+          type: string
+        fields:
+          type: object
+          description: For a map, the type of each key.
+          additionalProperties:
+            $ref: "#/components/schemas/CypherValueType"
+        element:
+          $ref: "#/components/schemas/CypherValueType"
+    CypherExecution:
+      type: object
+      description: Present when graph values are returned.
+      properties:
+        match_rows:
+          type: integer
+          description: >-
+            Rows the statement returned: the matched rows of the conclusions when RETURN
+            collects, the result rows otherwise.
+        match_complete:
+          type: boolean
+          description: Every matched row was read; a query that could not read them all fails instead.
+        conclusions_limited:
+          type: boolean
+          description: >-
+            The number of results reached LIMIT (or the default 1000), so more may exist. LIMIT
+            never cuts the evidence inside a collected list.
+    CypherObjectValue:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [object]
+        network_id:
+          type: string
+        branch:
+          type: string
+        object_type_id:
+          type: string
+        key:
+          type: object
+          description: Each primary key property, as exact text with its declared type.
+          additionalProperties:
+            type: object
+            properties:
+              type:
+                type: string
+              value:
+                type: string
+        properties:
+          type: object
+          description: The properties object_properties named.
+          additionalProperties: true
+    CypherRelationValue:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [relation]
+        relation_type_id:
+          type: string
+        source:
+          $ref: "#/components/schemas/CypherObjectValue"
+        target:
+          $ref: "#/components/schemas/CypherObjectValue"
+        basis:
+          type: array
+          description: The key pairs that joined the two ends.
+          items:
+            type: object
+            properties:
+              source_property:
+                type: string
+              source_value: {}
+              target_property:
+                type: string
+              target_value: {}
+        binding_digest:
+          type: string
+          description: Identifies the relation type's mapping the relationship was read through.
     CypherQueryColumn:
       type: object
       properties:
