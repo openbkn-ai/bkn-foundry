@@ -154,13 +154,38 @@ def _version_snapshot(version: AgentVersionRow) -> dict:
 
 
 async def current_version(session: AsyncSession, agent_id: str) -> Optional[AgentVersionRow]:
+    # Writers serialize on the Agent row and clear every other current flag, so
+    # there is one; reading the newest still keeps execution working if a stray
+    # duplicate ever exists.
     return (
         await session.execute(
-            select(AgentVersionRow).where(
-                AgentVersionRow.f_agent_id == agent_id, AgentVersionRow.f_current.is_(True)
-            )
+            select(AgentVersionRow)
+            .where(AgentVersionRow.f_agent_id == agent_id, AgentVersionRow.f_current.is_(True))
+            .order_by(AgentVersionRow.f_version.desc())
+            .limit(1)
+        )
+    ).scalars().first()
+
+
+async def _lock_agent(session: AsyncSession, agent_id: str) -> Optional[AgentRow]:
+    """Serialize version writers for one Agent on its row."""
+    return (
+        await session.execute(
+            select(AgentRow).where(AgentRow.f_agent_id == agent_id).with_for_update()
         )
     ).scalar_one_or_none()
+
+
+async def _make_current(session: AsyncSession, agent_id: str, version: int) -> None:
+    await session.execute(
+        update(AgentVersionRow)
+        .where(
+            AgentVersionRow.f_agent_id == agent_id,
+            AgentVersionRow.f_current.is_(True),
+            AgentVersionRow.f_version != version,
+        )
+        .values(f_current=False)
+    )
 
 
 async def initial_version(session: AsyncSession, agent_id: str) -> Optional[AgentVersionRow]:
@@ -199,7 +224,7 @@ async def record_version(
     Agent's first version is its initial version."""
     from app.public_auth import BUILTIN_AGENT_IDS
 
-    row = await session.get(AgentRow, agent_id)
+    row = await _lock_agent(session, agent_id)
     if not row:
         return None
     snapshot = await _snapshot(session, row)
@@ -209,8 +234,10 @@ async def record_version(
         before = _version_snapshot(current)
         changes = [field for field in _SNAPSHOT_FIELDS if snapshot[field] != before[field]]
         if not changes:
+            # Release the lock without writing.
+            if commit:
+                await session.commit()
             return current
-        current.f_current = False
     # Deleted versions keep their numbers, so the maximum covers them too.
     latest = (
         await session.execute(
@@ -233,6 +260,7 @@ async def record_version(
         f_create_user=account_id,
         f_create_time=_now_ms(),
     )
+    await _make_current(session, agent_id, version.f_version)
     session.add(version)
     if commit:
         await session.commit()
@@ -256,15 +284,17 @@ async def activate_version(
 ) -> Optional[AgentVersionRow]:
     """Make a version current again: its runtime goes back onto the Agent and
     the shared Prompt points at its version. No new version is written."""
+    row = await _lock_agent(session, agent_id)
     target = await session.get(AgentVersionRow, (agent_id, version))
-    row = await session.get(AgentRow, agent_id)
     if not target or target.f_deleted or not row:
+        await session.commit()
         return None
     if target.f_prompt_version is not None and row.f_prompt_id:
         head = await session.get(PromptRow, row.f_prompt_id)
         if not head or not await session.get(
             PromptVersionRow, (row.f_prompt_id, target.f_prompt_version)
         ):
+            await session.commit()
             return None
         head.f_current_version = target.f_prompt_version
         head.f_update_user = account_id
@@ -274,9 +304,7 @@ async def activate_version(
     row.f_limits = target.f_limits
     row.f_update_user = account_id
     row.f_update_time = _now_ms()
-    current = await current_version(session, agent_id)
-    if current is not None and current is not target:
-        current.f_current = False
+    await _make_current(session, agent_id, version)
     target.f_current = True
     await session.commit()
     return target

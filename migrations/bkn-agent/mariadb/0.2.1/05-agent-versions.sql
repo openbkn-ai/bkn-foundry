@@ -31,7 +31,9 @@ insert into t_agent_version (
     f_agent_id, f_version, f_model, f_tools, f_limits, f_prompt_version,
     f_changes, f_initial, f_current, f_deleted, f_create_user, f_create_time
 )
-select a.f_agent_id, 1, a.f_model, a.f_tools, a.f_limits, p.f_current_version,
+-- Older rows may hold SQL NULL tools or model; the snapshot columns do not.
+select a.f_agent_id, 1, coalesce(a.f_model, ''), coalesce(a.f_tools, '[]'), a.f_limits,
+    p.f_current_version,
     null,
     case when a.f_agent_id in (
         'studio_smart_qa',

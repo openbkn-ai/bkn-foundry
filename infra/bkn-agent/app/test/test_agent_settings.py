@@ -588,3 +588,40 @@ def test_execution_records_the_agent_version_it_ran(monkeypatch):
                 assert task.f_input["agent_version"] == 2
 
     asyncio.run(run())
+
+
+def test_a_stray_second_current_version_neither_breaks_reads_nor_survives_a_save(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            from sqlalchemy import select
+
+            from app import dao
+            from app.models import AgentVersionRow
+
+            await client.put(ADMIN, json={"limits": {"max_turns": 6}}, headers=AUTH)
+            async with factory() as session:
+                # What two racing writers could once leave behind.
+                first = await session.get(AgentVersionRow, ("studio_smart_qa", 1))
+                first.f_current = True
+                await session.commit()
+
+            read = await client.get(ADMIN, headers=AUTH)
+            assert read.status_code == 200, read.text
+            assert read.json()["version"] == 2
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            assert parse_sse(response.text)[-1][1]["status"] == "succeeded", response.text
+
+            await client.put(ADMIN, json={"limits": {"max_turns": 7}}, headers=AUTH)
+            async with factory() as session:
+                current = (
+                    await session.execute(
+                        select(AgentVersionRow.f_version).where(
+                            AgentVersionRow.f_agent_id == "studio_smart_qa",
+                            AgentVersionRow.f_current.is_(True),
+                        )
+                    )
+                ).scalars().all()
+                assert current == [3]
+                assert (await dao.current_version(session, "studio_smart_qa")).f_version == 3
+
+    asyncio.run(run())

@@ -66,8 +66,8 @@ def database():
         CREATE TABLE t_agent_prompt_version(f_prompt_id TEXT, f_version INTEGER,
             f_content TEXT, f_vars_schema TEXT, f_create_user TEXT, f_create_time INTEGER,
             PRIMARY KEY(f_prompt_id, f_version));
-        CREATE TABLE t_agent_version(f_agent_id TEXT, f_version INTEGER, f_model TEXT,
-            f_tools TEXT, f_limits TEXT, f_prompt_version INTEGER, f_changes TEXT,
+        CREATE TABLE t_agent_version(f_agent_id TEXT, f_version INTEGER,
+            f_model TEXT NOT NULL, f_tools TEXT NOT NULL, f_limits TEXT, f_prompt_version INTEGER, f_changes TEXT,
             f_initial INTEGER, f_current INTEGER, f_deleted INTEGER, f_create_user TEXT,
             f_create_time INTEGER, PRIMARY KEY(f_agent_id, f_version));
     """)
@@ -609,3 +609,16 @@ def test_every_agent_starts_with_one_current_version():
         # Running the delta again adds nothing.
         apply(db, VERSIONS)
         assert db.execute("SELECT count(*) FROM t_agent_version").fetchone()[0] == len(rows)
+
+
+def test_version_snapshot_tolerates_null_tools_and_model_in_older_rows():
+    with database() as db:
+        db.execute(
+            "INSERT INTO t_agent(f_agent_id, f_name, f_mode, f_model, f_tools, f_update_user)"
+            " VALUES ('legacy', 'Legacy', 'chat', NULL, NULL, 'u')"
+        )
+        apply(db, VERSIONS)
+        row = db.execute(
+            "SELECT f_model, f_tools, f_initial FROM t_agent_version WHERE f_agent_id='legacy'"
+        ).fetchone()
+        assert (row["f_model"], row["f_tools"], row["f_initial"]) == ("", "[]", 0)
