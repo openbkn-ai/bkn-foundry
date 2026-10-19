@@ -357,6 +357,10 @@ async def update_shared_agent(
         profile = changes.pop("mcp_profile")
         tools = []
         for ref in agent.tools:
+            # Leave anything that is not a reference exactly as stored.
+            if not isinstance(ref, dict):
+                tools.append(ref)
+                continue
             ref = dict(ref)
             if ref.get("type") == "context_loader":
                 if profile:

@@ -91,10 +91,18 @@ def _credential() -> Optional[str]:
 _HOST_CONVERSATION_KEY_HEADER = "X-OpenBKN-Host-Conversation-Key"
 
 
-def profile_of(tool_refs: list[dict]) -> Optional[str]:
-    """The MCP surface an agent's Context Loader reference asks for, if any."""
+def profile_of(tool_refs: list) -> Optional[str]:
+    """The MCP surface an agent's Context Loader reference asks for, if any.
+
+    AgentOut.tools passes stored elements through unvalidated so listing never
+    fails on hand-edited data; anything that is not a reference is skipped.
+    """
     for ref in tool_refs:
-        if ref.get("type") == "context_loader" and ref.get("profile") in ("full", "compact"):
+        if (
+            isinstance(ref, dict)
+            and ref.get("type") == "context_loader"
+            and ref.get("profile") in ("full", "compact")
+        ):
             return ref["profile"]
     return None
 
