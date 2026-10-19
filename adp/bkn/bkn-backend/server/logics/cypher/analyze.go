@@ -581,9 +581,12 @@ func analyzeRelationship(ctx parsing.IOC_RelationshipPatternContext) (*EdgeRef, 
 		return nil, unsupportedf(ctx, "relationships without a type",
 			"every relationship must name one relation type, as in -[:RELATION]->")
 	}
-	if detail.OC_Variable() != nil {
-		return nil, unsupportedf(detail, "relationship variables",
-			"a relationship is a join here and has no properties to project")
+	if variable := detail.OC_Variable(); variable != nil {
+		name, err := namedIdentifier(variable, "relationship variable")
+		if err != nil {
+			return nil, err
+		}
+		edge.Variable = name
 	}
 	if detail.OC_RangeLiteral() != nil {
 		return nil, unsupported(detail, "variable-length relationships")
@@ -695,6 +698,9 @@ func analyzeRowCount(ctx parsing.IOC_ExpressionContext, clause string) (int64, e
 // or a value computed from those. The alias defaults to what was written,
 // which is how Cypher names a column nobody named.
 func analyzeProjection(ctx parsing.IOC_ExpressionContext) (*Projection, error) {
+	if projection, ok, err := analyzeGraphProjection(ctx); ok || err != nil {
+		return projection, err
+	}
 	if _, err := valueChain(ctx); err != nil {
 		return analyzeConditionProjection(ctx)
 	}

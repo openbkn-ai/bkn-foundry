@@ -33,6 +33,9 @@ type CypherQueryRequest struct {
 	// a parameter changes which rows come back, never which resource or
 	// column is read.
 	Parameters map[string]any `json:"parameters"`
+	// ObjectProperties names, per node variable, the properties a returned
+	// node carries besides its identity.
+	ObjectProperties map[string][]string `json:"object_properties,omitempty"`
 }
 
 func (r *restHandler) RunCypherQueryByEx(c *gin.Context) {
@@ -85,10 +88,11 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	}
 
 	result, err := r.cqs.Query(ctx, interfaces.CypherQuery{
-		KNID:       knID,
-		Branch:     branch,
-		Query:      body.Query,
-		Parameters: body.Parameters,
+		KNID:             knID,
+		Branch:           branch,
+		Query:            body.Query,
+		Parameters:       body.Parameters,
+		ObjectProperties: body.ObjectProperties,
 	})
 	if err != nil {
 		replyHandlerError(c, span, ctx, err)
@@ -98,12 +102,14 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	if includeTraceDescriptor {
 		rest.ReplyOK(c, http.StatusOK, struct {
-			Columns           []interfaces.RawQueryColumn         `json:"columns"`
-			Entries           []map[string]any                    `json:"entries"`
-			Trace             json.RawMessage                     `json:"_trace,omitempty"`
-			PermissionImpacts []interfaces.CypherPermissionImpact `json:"permission_impacts,omitempty"`
-		}{Columns: result.Columns, Entries: result.Entries, Trace: result.TraceDescriptor,
-			PermissionImpacts: result.PermissionImpacts})
+			Columns           []interfaces.RawQueryColumn            `json:"columns"`
+			Entries           []map[string]any                       `json:"entries"`
+			ValueTypes        map[string]*interfaces.CypherValueType `json:"value_types,omitempty"`
+			Execution         *interfaces.CypherExecution            `json:"execution,omitempty"`
+			Trace             json.RawMessage                        `json:"_trace,omitempty"`
+			PermissionImpacts []interfaces.CypherPermissionImpact    `json:"permission_impacts,omitempty"`
+		}{Columns: result.Columns, Entries: result.Entries, ValueTypes: result.ValueTypes,
+			Execution: result.Execution, Trace: result.TraceDescriptor, PermissionImpacts: result.PermissionImpacts})
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, result)

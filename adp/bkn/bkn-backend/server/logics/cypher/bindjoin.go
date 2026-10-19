@@ -247,6 +247,8 @@ func (e *bindJoinExecutor) prepare() error {
 
 func walkColumnColumns(column PlanColumn, visit func(table int, column string)) {
 	switch {
+	case column.Graph != nil:
+		walkGraphColumns(column.Graph, visit)
 	case column.Expression != nil:
 		walkExpressionColumns(column.Expression, visit)
 	case column.Aggregate != nil:
@@ -903,7 +905,7 @@ func runBindJoin(ctx context.Context, plan *Plan, schema *Schema, read dataReade
 	if err != nil {
 		return nil, nil, err
 	}
-	entries, err := finishRows(plan, rows, defaultLimit, executor.window != nil)
+	entries, _, err := finishRows(plan, rows, defaultLimit, executor.window != nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1019,6 +1021,14 @@ func valueType(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return ""
+	case interfaces.CypherObjectValue:
+		return interfaces.CYPHER_KIND_OBJECT
+	case interfaces.CypherRelationValue:
+		return interfaces.CYPHER_KIND_RELATION
+	case map[string]any:
+		return interfaces.CYPHER_KIND_MAP
+	case []any:
+		return interfaces.CYPHER_KIND_LIST
 	case string:
 		return "string"
 	case bool:
