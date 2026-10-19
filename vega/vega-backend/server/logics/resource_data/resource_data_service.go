@@ -134,11 +134,6 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		return nil, 0, httpErr
 	}
 
-	if err := rds.validateOutputFieldsParams(resource, params); err != nil {
-		httpErr, _ := outputFieldHTTPError(ctx, err)
-		return nil, 0, httpErr
-	}
-
 	maxConcurrentQueries := int64(0)
 	if resource.Category != interfaces.ResourceCategoryLogicalView {
 		if concurrent, existsInCatalog := catalog.ConnectorCfg["concurrent"]; existsInCatalog {
@@ -201,6 +196,11 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		otellog.LogError(ctx, "Full-text condition rejected", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(err.Error())
+	}
+
+	if err := rds.validateOutputFieldsParams(resource, params); err != nil {
+		httpErr, _ := outputFieldHTTPError(ctx, err)
+		return nil, 0, httpErr
 	}
 
 	// Resolve the stored view condition first. It is part of server configuration,
@@ -787,7 +787,6 @@ func (rds *resourceDataService) validateOutputFieldsParams(resource *interfaces.
 		}
 	}
 	indexChannel := resourceDataPaginationCategory(resource, params) == interfaces.ResourceCategoryIndex
-	managedIndex := indexChannel && (resource.Category == interfaces.ResourceCategoryTable || resource.Category == interfaces.ResourceCategoryDataset)
 	for _, name := range params.OutputFields {
 		field := outputFields[name]
 		if field == nil {
@@ -795,10 +794,6 @@ func (rds *resourceDataService) validateOutputFieldsParams(resource *interfaces.
 				continue
 			}
 			return interfaces.NewOutputFieldError(interfaces.OutputFieldUnknown, name)
-		}
-		// 本地索引不存储 Binary/Other，unavailable 占位不表示可读。
-		if managedIndex && (field.Type == interfaces.DataType_Binary || field.Type == interfaces.DataType_Other) {
-			return interfaces.NewOutputFieldError(interfaces.OutputFieldUnsupported, name)
 		}
 	}
 	return nil

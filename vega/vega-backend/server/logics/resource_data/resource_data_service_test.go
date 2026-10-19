@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -106,16 +107,14 @@ func TestResourceDataServiceValidateOutputFieldsParams(t *testing.T) {
 		}
 	})
 
-	t.Run("explicit managed-index projection checks read capability", func(t *testing.T) {
+	t.Run("managed-index unavailable fields remain valid output fields", func(t *testing.T) {
 		for _, category := range []string{interfaces.ResourceCategoryTable, interfaces.ResourceCategoryDataset} {
 			for _, typ := range []string{interfaces.DataType_Binary, interfaces.DataType_Other} {
 				resource := &interfaces.Resource{Category: category, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "value", Type: typ}, {Name: "json", Type: interfaces.DataType_Json}}}
 				for _, selected := range [][]string{{"value"}, {"id", "value"}} {
 					params := &interfaces.ResourceDataQueryParams{OutputFields: selected}
-					var output *interfaces.OutputFieldError
-					require.ErrorAs(t, (&resourceDataService{}).validateOutputFieldsParams(resource, params), &output)
-					assert.Equal(t, interfaces.OutputFieldUnsupported, output.Reason)
-					assert.Equal(t, "value", output.Field)
+					require.NoError(t, (&resourceDataService{}).validateOutputFieldsParams(resource, params))
+					assert.Equal(t, selected, params.OutputFields)
 				}
 				for _, selected := range [][]string{nil, {}, {"id"}, {"json"}} {
 					require.NoError(t, (&resourceDataService{}).validateOutputFieldsParams(resource, &interfaces.ResourceDataQueryParams{OutputFields: selected}))
@@ -157,6 +156,37 @@ func TestResourceDataServiceValidateOutputFieldsParams(t *testing.T) {
 		params.IgnoreLocalIndex = &ignore
 		require.Error(t, rds.validateOutputFieldsParams(&interfaces.Resource{Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index"}, params))
 	})
+}
+
+func TestQuerySourcePageFulltextPrecedesOutputFields(t *testing.T) {
+	for _, operation := range []string{filter_condition.OperationMatch, filter_condition.OperationMatchPhrase, filter_condition.OperationMultiMatch} {
+		for _, ignore := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/ignore_index=%t", operation, ignore), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+				catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+				resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "title", Type: interfaces.DataType_Text}}}
+				if ignore {
+					resource.LocalIndexName = "index"
+					resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+				}
+				params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, OutputFields: []string{"id", "_score"}, FilterCondCfg: &interfaces.FilterCondCfg{Name: "title", Operation: operation}}
+				rows, total, err := (&resourceDataService{cs: catalogs}).QuerySourcePage(context.Background(), resource, params)
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+				assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+				if ignore {
+					assert.Contains(t, httpErr.BaseError.ErrorDetails, "ignore_local_index")
+				} else {
+					assert.Contains(t, httpErr.BaseError.ErrorDetails, "build one before full-text search")
+				}
+				assert.NotContains(t, httpErr.BaseError.ErrorDetails, "unknown output field")
+				assert.Nil(t, rows)
+				assert.Zero(t, total)
+			})
+		}
+	}
 }
 
 func TestQuerySourcePageInvalidOutputFields(t *testing.T) {
@@ -224,30 +254,33 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 	}
 }
 
-func TestQuerySourcePageRejectsUnavailableIndexOutput(t *testing.T) {
+func TestQuerySourcePagePreservesUnavailableIndexOutput(t *testing.T) {
 	for _, typ := range []string{interfaces.DataType_Binary, interfaces.DataType_Other} {
-		t.Run(typ, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
-			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
-			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
-			calls := 0
-			index.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(context.Context, string, *interfaces.Resource, *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
-				calls++
-				return []map[string]any{{"id": 1}}, 1, nil
-			}).AnyTimes()
-			resource := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "value", Type: typ}}}
-			params := &interfaces.ResourceDataQueryParams{OutputFields: []string{"id", "value"}}
-			rows, total, err := (&resourceDataService{cs: catalogs, lim: index}).QuerySourcePage(context.Background(), resource, params)
-			var httpErr *rest.HTTPError
-			require.ErrorAs(t, err, &httpErr)
-			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			assert.Equal(t, verrors.VegaBackend_Query_UnsupportedOutputField, httpErr.BaseError.ErrorCode)
-			assert.Nil(t, rows)
-			assert.Zero(t, total)
-			assert.Zero(t, calls)
-			assert.Equal(t, []string{"id", "value"}, params.OutputFields)
-		})
+		for _, selected := range [][]string{nil, {}, {"value"}, {"id", "value"}, {"id"}} {
+			t.Run(fmt.Sprintf("%s/output=%v", typ, selected), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+				index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+				catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+				resource := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "value", Type: typ}}}
+				params := &interfaces.ResourceDataQueryParams{OutputFields: selected}
+				stored := map[string]any{}
+				if len(selected) == 0 || slices.Contains(selected, "id") {
+					stored["id"] = 1
+				}
+				index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return([]map[string]any{stored}, int64(1), nil)
+				rows, total, err := (&resourceDataService{cs: catalogs, lim: index}).QuerySourcePage(context.Background(), resource, params)
+				require.NoError(t, err)
+				require.Len(t, rows, 1)
+				assert.Equal(t, int64(1), total)
+				if len(selected) == 0 || slices.Contains(selected, "value") {
+					assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable}, rows[0]["value"])
+				} else {
+					assert.NotContains(t, rows[0], "value")
+				}
+				assert.Equal(t, selected, params.OutputFields)
+			})
+		}
 	}
 }
 
