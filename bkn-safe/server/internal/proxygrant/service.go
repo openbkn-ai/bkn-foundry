@@ -1337,7 +1337,7 @@ func filteredPermissionSet(proxyID string, filtered []authz.FilteredResource) ma
 }
 
 // normalizeRequiredSources expands each explicitly requested source with one
-// source for every direct operation prerequisite. Keeping the same source
+// source for every transitive operation prerequisite. Keeping the same source
 // identity and binding makes provenance validation, Sync replacement and
 // Reconcile operate on the normalized permissions exactly like explicit ones.
 // The returned reverse index lets CheckMany report a denied explicit source
@@ -1350,7 +1350,7 @@ func (s *Service) normalizeRequiredSources(ctx context.Context,
 	}
 	requirementsByType := make(map[string]map[string][]string, len(operationsByType))
 	for resourceType, operations := range operationsByType {
-		requirements, err := s.enforcer.DirectRequirements(ctx, resourceType, operations)
+		requirements, err := s.enforcer.Requirements(ctx, resourceType, operations)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1781,7 +1781,7 @@ func (s *Service) revokeWithRequirements(ctx context.Context, tx *authz.PolicyTr
 	for _, source := range activeFamily {
 		operations = append(operations, source.Operation)
 	}
-	requirements, err := tx.DirectRequirements(ctx, target.ResourceType, operations)
+	requirements, err := tx.Requirements(ctx, target.ResourceType, operations)
 	if err != nil {
 		return target, false, nil, err
 	}
@@ -1805,6 +1805,13 @@ func (s *Service) revokeWithRequirements(ctx context.Context, tx *authz.PolicyTr
 		return target, false, nil, err
 	}
 
+	// Synthesized members of the target's dependency chain are candidates for
+	// removal together. Only retained roots may keep their prerequisites alive;
+	// otherwise a departing intermediate node would retain the chain's leaves.
+	departingRequirements := make(map[string]bool, len(requirements[target.Operation]))
+	for _, required := range requirements[target.Operation] {
+		departingRequirements[required] = true
+	}
 	stillRequired := make(map[string]bool)
 	activeByOperation := make(map[string]model.ProxyGrantSource, len(activeFamily))
 	for _, source := range activeFamily {
@@ -1812,6 +1819,9 @@ func (s *Service) revokeWithRequirements(ctx context.Context, tx *authz.PolicyTr
 			continue
 		}
 		activeByOperation[source.Operation] = source
+		if source.RequirementDerived && departingRequirements[source.Operation] {
+			continue
+		}
 		for _, required := range requirements[source.Operation] {
 			stillRequired[required] = true
 		}

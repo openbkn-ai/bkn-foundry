@@ -102,6 +102,10 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 	resource, err := bts.rs.GetByID(ctx, resourceID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
+			return "", httpErr
+		}
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -159,6 +163,10 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 	cat, err := bts.cs.GetByID(ctx, resource.CatalogID, false)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
+			return "", httpErr
+		}
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -881,6 +889,10 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	resource, err := bts.rs.GetByID(ctx, buildTask.ResourceID)
 	if err != nil {
 		otellog.LogError(ctx, "Get resource failed", err)
+		var httpErr *rest.HTTPError
+		if errors.As(err, &httpErr) {
+			return httpErr
+		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}

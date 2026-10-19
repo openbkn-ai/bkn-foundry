@@ -18,8 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"slices"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -155,9 +153,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	return ApplyWithAudit(db, enforcer, audit.New(db))
 }
 
-// ApplyWithAudit sends startup repairs through the same Audit transport as
-// ordinary administration. The legacy Apply entry point remains for tests.
-func ApplyWithAudit(db *gorm.DB, enforcer *authz.Enforcer, trail interface {
+// ApplyWithAudit retains the startup API without repairing existing grants.
+// New prerequisite declarations must not expand historical permissions.
+func ApplyWithAudit(db *gorm.DB, enforcer *authz.Enforcer, _ interface {
 	Record(context.Context, audit.Entry) error
 }) error {
 	if err := seedRoles(db); err != nil {
@@ -192,9 +190,6 @@ func ApplyWithAudit(db *gorm.DB, enforcer *authz.Enforcer, trail interface {
 	}
 	if err := seedDefaultModelAccess(enforcer); err != nil {
 		return fmt.Errorf("seed default model access: %w", err)
-	}
-	if err := backfillRequiredOperations(db, enforcer, trail); err != nil {
-		return fmt.Errorf("backfill required operations: %w", err)
 	}
 	if err := seedRoleBindings(enforcer); err != nil {
 		return fmt.Errorf("seed role bindings: %w", err)
@@ -635,178 +630,45 @@ func validateDerivedOperations(c catalog) error {
 	return nil
 }
 
-// validateRequirements checks the same-type prerequisites declared in
-// authorization-registry.json: every requirement is declared on the same type, is not the
-// target itself, and does not itself declare requirements. The last rule keeps
-// the first implementation strictly one layer instead of silently calculating
-// only part of a dependency graph.
-//
-// The failure this guards against is silent. A requirement naming an operation
-// the type does not declare would expand a grant into an op no check ever asks
-// about, while a multi-level declaration would make a one-layer runtime result
-// incomplete. Both are authoring mistakes in an embedded file, so refusing to
-// boot is the honest response.
+// validateRequirements rejects unknown same-type prerequisites and dependency
+// cycles before the registry is persisted. Shared acyclic dependencies are valid.
 func validateRequirements(c catalog) error {
 	for _, rt := range c.ResourceTypes {
-		declared := make(map[string]bool, len(rt.Operations))
-		requires := make(map[string][]string, len(rt.Operations))
+		requirements := make(map[string][]string, len(rt.Operations))
 		for _, op := range rt.Operations {
-			declared[op.ID] = true
-			requires[op.ID] = op.Requires
+			requirements[op.ID] = op.Requires
 		}
-		for _, op := range rt.Operations {
-			for _, required := range op.Requires {
-				if required == op.ID {
-					return fmt.Errorf("operation %s/%s requires itself", rt.ID, op.ID)
-				}
-				if !declared[required] {
-					return fmt.Errorf("operation %s/%s requires %q, which %s does not declare",
-						rt.ID, op.ID, required, rt.ID)
-				}
-				if len(requires[required]) > 0 {
-					return fmt.Errorf("operation %s/%s requires %s/%s, which itself declares requires",
-						rt.ID, op.ID, rt.ID, required)
-				}
+		visiting, done := make(map[string]bool), make(map[string]bool)
+		var visit func(string) error
+		visit = func(operation string) error {
+			if visiting[operation] {
+				return fmt.Errorf("operation %s/%s has a requirement cycle", rt.ID, operation)
 			}
-		}
-	}
-	return nil
-}
-
-// backfillRequiredOperations repairs grants written before a prerequisite was
-// declared: every eligible allow holding an operation gains its direct required
-// operations. Legacy and logical bundles keep their compatibility contracts;
-// runtime requires still prevents either from bypassing a later deny.
-//
-// The requirement is normalized when a grant is written, so without this the fix
-// would reach new grants only. For catalog.resource_manage that would leave the
-// reported defect standing for everyone who had already been granted it — the
-// grant reaches nothing on its own, and nothing tells the administrator to
-// re-save it. Runs after seedGrants so the rebuilt role matrix is in place, and
-// it is idempotent, so a start with nothing to repair costs one filtered read
-// per declared requirement.
-//
-// Deliberately NOT symmetric with revocation: this only ever adds. A row that
-// an administrator has since narrowed on purpose is repaired back to a usable
-// shape rather than left as a permission that answers 403 everywhere.
-func backfillRequiredOperations(db *gorm.DB, enforcer *authz.Enforcer, trail interface {
-	Record(context.Context, audit.Entry) error
-}) error {
-	var c catalog
-	if err := json.Unmarshal(catalogJSON, &c); err != nil {
-		return err
-	}
-	// Role ids up front: the audit vocabulary for a role's permission differs
-	// from an object grant's, and telling them apart per repaired row would be a
-	// query each.
-	roleNames, err := roleNameByID(db)
-	if err != nil {
-		return err
-	}
-	for _, rt := range c.ResourceTypes {
-		for _, op := range rt.Operations {
-			for _, required := range op.Requires {
-				added, err := enforcer.BackfillRequiredOperation(rt.ID, op.ID, required)
-				if err != nil {
+			if done[operation] {
+				return nil
+			}
+			visiting[operation] = true
+			for _, required := range requirements[operation] {
+				if required == operation {
+					return fmt.Errorf("operation %s/%s requires itself", rt.ID, operation)
+				}
+				if _, declared := requirements[required]; !declared {
+					return fmt.Errorf("operation %s/%s requires %q, which its resource type does not declare", rt.ID, operation, required)
+				}
+				if err := visit(required); err != nil {
 					return err
 				}
-				if len(added) == 0 {
-					continue
-				}
-				slog.Info("backfilled a direct operation requirement",
-					"resource_type", rt.ID, "operation", op.ID, "required", required, "rows", len(added))
-				// Model policies are deliberately removed and rebuilt on every
-				// startup by reconcileModelAuthorizationPolicies. Their derived
-				// display grants are therefore not new administrative changes;
-				// recording them would create four false Audit events per restart.
-				if !slices.Contains(modelResourceTypes, rt.ID) {
-					recordBackfillAudit(trail, roleNames, rt.ID, op.ID, required, added)
-				}
+			}
+			visiting[operation], done[operation] = false, true
+			return nil
+		}
+		for _, op := range rt.Operations {
+			if err := visit(op.ID); err != nil {
+				return err
 			}
 		}
 	}
 	return nil
-}
-
-// recordBackfillAudit writes one audit row per repaired grant, under the same
-// resource/action the console shows for an operator-issued object grant. A
-// permission that appears without anyone having clicked anything is exactly the
-// change an auditor asking "why does this account see this catalog" needs to
-// find, and a line in the pod log is not somewhere they can look.
-//
-// Failures are logged and swallowed: auditing must never be the reason a
-// deployment fails to start.
-func recordBackfillAudit(trail interface {
-	Record(context.Context, audit.Entry) error
-}, roleNames map[string]string,
-	resourceType, operation, required string, grants []authz.BackfilledGrant) {
-
-	for _, g := range grants {
-		detail, err := json.Marshal(map[string]any{
-			"accessor_id": g.AccessorID,
-			"resource":    map[string]string{"type": resourceType, "id": g.ResourceID},
-			"operations":  []string{required},
-			"_reason":     "required by " + operation,
-		})
-		if err != nil {
-			slog.Error("seed: could not encode backfill audit detail", "err", err)
-			continue
-		}
-		entry := audit.Entry{
-			ActorID: "system:seed",
-			Method:  "SYSTEM",
-			Detail:  string(detail),
-			Status:  http.StatusOK,
-		}
-		applyBackfillAuditTarget(&entry, roleNames, g)
-		if err := trail.Record(context.Background(), entry); err != nil {
-			slog.Error("seed: backfill audit record failed",
-				"resource_type", resourceType, "resource_id", g.ResourceID, "err", err)
-		}
-	}
-}
-
-// applyBackfillAuditTarget labels one repaired row with the vocabulary of the
-// surface that can actually show it. Getting this wrong is not cosmetic: an
-// audit row naming a surface where the grant is absent sends the auditor
-// looking in a list that will never contain it.
-//
-//   - a role subject is a role permission, which the console records as
-//     roles/grant_permission against the ROLE, not the resource;
-//   - a concrete grant to a real account is an object grant, and lands next to
-//     the operator-issued grant of the same object;
-//   - everything else — the public accessor, and type-wide "type:*" rows — is
-//     excluded from the object-grant list by construction, so it is labelled as
-//     what it is: a raw policy row, visible through GET /admin/policies.
-func applyBackfillAuditTarget(entry *audit.Entry, roleNames map[string]string, g authz.BackfilledGrant) {
-	if name, isRole := roleNames[g.AccessorID]; isRole {
-		entry.Resource = "roles"
-		entry.Action = "grant_permission"
-		entry.TargetID = g.AccessorID
-		entry.TargetName = name
-		return
-	}
-	entry.TargetID = g.ResourceID
-	entry.Action = "grant"
-	if g.ResourceID == "*" || g.AccessorID == authz.PublicAccessorID {
-		entry.Resource = "policies"
-		return
-	}
-	entry.Resource = "object-grants"
-}
-
-// roleNameByID loads the role id -> name map used to tell a role subject from
-// an accessor. Roles are few and this runs once per start.
-func roleNameByID(db *gorm.DB) (map[string]string, error) {
-	var roles []model.Role
-	if err := db.Find(&roles).Error; err != nil {
-		return nil, err
-	}
-	out := make(map[string]string, len(roles))
-	for _, r := range roles {
-		out[r.ID] = r.Name
-	}
-	return out, nil
 }
 
 func seedGrants(enforcer *authz.Enforcer) error {

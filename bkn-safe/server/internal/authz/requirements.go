@@ -13,9 +13,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// DirectRequirements returns the catalog-declared, same-resource prerequisites
-// for each requested operation. Requirements are one layer only; seed rejects
-// a requirement that itself declares requirements.
+// DirectRequirements returns the catalog-declared, same-resource prerequisites.
+// Use Requirements when validating or normalizing a complete dependency chain.
 func (en *Enforcer) DirectRequirements(ctx context.Context, resourceType string,
 	operations []string) (map[string][]string, error) {
 	if en.db == nil || len(operations) == 0 {
@@ -47,12 +46,73 @@ func directRequirements(db *gorm.DB, resourceType string,
 	return result, nil
 }
 
-// NormalizeOperations adds every direct requirement while preserving the
+// ExpandRequirements follows the requested operation's dependencies in a registry
+// already validated by seed. Seen operations are processed once, including shared dependencies.
+func ExpandRequirements(requirements map[string][]string, operation string) []string {
+	seen := map[string]bool{operation: true}
+	queue := []string{operation}
+	for i := 0; i < len(queue); i++ {
+		for _, required := range requirements[queue[i]] {
+			if !seen[required] {
+				seen[required] = true
+				queue = append(queue, required)
+			}
+		}
+	}
+	return queue[1:]
+}
+
+// Requirements returns all prerequisites for each requested operation, including
+// transitive dependencies. Only the requested operations and their dependencies are read.
+func (en *Enforcer) Requirements(ctx context.Context, resourceType string, operations []string) (map[string][]string, error) {
+	if en.db == nil || len(operations) == 0 {
+		return make(map[string][]string), nil
+	}
+	return requirementsFor(en.db.WithContext(ctx), resourceType, operations)
+}
+
+func (tx *PolicyTransaction) Requirements(ctx context.Context, resourceType string, operations []string) (map[string][]string, error) {
+	return requirementsFor(tx.db.WithContext(ctx), resourceType, operations)
+}
+
+func requirementsFor(db *gorm.DB, resourceType string, operations []string) (map[string][]string, error) {
+	dependencies := make(map[string][]string)
+	pending := distinctOperations(operations)
+	for len(pending) > 0 {
+		direct, err := directRequirements(db, resourceType, pending)
+		if err != nil {
+			return nil, err
+		}
+		for _, operation := range pending {
+			dependencies[operation] = direct[operation]
+		}
+		next := make(map[string]bool)
+		for _, operation := range pending {
+			for _, required := range dependencies[operation] {
+				if _, loaded := dependencies[required]; !loaded {
+					next[required] = true
+				}
+			}
+		}
+		pending = pending[:0]
+		for required := range next {
+			pending = append(pending, required)
+		}
+		sort.Strings(pending)
+	}
+	result := make(map[string][]string, len(operations))
+	for _, operation := range operations {
+		result[operation] = ExpandRequirements(dependencies, operation)
+	}
+	return result, nil
+}
+
+// NormalizeOperations adds every transitive requirement while preserving the
 // caller's first-seen order. Callers use the result to persist an authorization
 // set that satisfies the declared write-time constraint.
 func (en *Enforcer) NormalizeOperations(ctx context.Context, resourceType string,
 	operations []string) ([]string, error) {
-	requires, err := en.DirectRequirements(ctx, resourceType, operations)
+	requires, err := en.Requirements(ctx, resourceType, operations)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +138,7 @@ func (en *Enforcer) NormalizeOperations(ctx context.Context, resourceType string
 }
 
 // RequiringOperations returns the requested operations plus every operation
-// that directly requires one of them. Role revocation uses this reverse view to
+// that transitively requires one of them. Role revocation uses this reverse view to
 // keep a retained operation and its prerequisite together.
 func (en *Enforcer) RequiringOperations(ctx context.Context, resourceType string,
 	operations []string) ([]string, error) {
@@ -102,7 +162,7 @@ func (en *Enforcer) RequiringOperations(ctx context.Context, resourceType string
 	return out, nil
 }
 
-// RequiringOperationsByRequirement returns the direct reverse dependency list
+// RequiringOperationsByRequirement returns the transitive reverse dependency list
 // for every requested prerequisite. It loads the catalog once so callers that
 // revoke a set do not repeat the same resource-type query per operation.
 func (en *Enforcer) RequiringOperationsByRequirement(ctx context.Context, resourceType string,
@@ -117,22 +177,19 @@ func requiringOperationsByRequirement(db *gorm.DB, resourceType string,
 	operations []string) (map[string][]string, error) {
 	result := make(map[string][]string, len(operations))
 	var rows []model.Operation
-	if err := db.
-		Where("resource_type_id = ? AND implied_operation_ids <> ''", resourceType).
-		Find(&rows).Error; err != nil {
+	if err := db.Where("resource_type_id = ? AND implied_operation_ids <> ''", resourceType).Order("id").Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	wanted := make(map[string]bool, len(operations))
-	for _, operation := range operations {
-		wanted[operation] = true
-	}
-	// Seed rejects multi-level declarations, so one pass is the complete reverse
-	// set and intentionally does not turn this into a recursive dependency graph.
+	reverse := make(map[string][]string)
 	for _, row := range rows {
 		for _, required := range splitOperationIDs(row.RequiredOperationIDs) {
-			if wanted[required] {
-				result[required] = append(result[required], row.ID)
-			}
+			reverse[required] = append(reverse[required], row.ID)
+		}
+	}
+	for _, operation := range operations {
+		if requiring := ExpandRequirements(reverse, operation); len(requiring) > 0 {
+			sort.Strings(requiring)
+			result[operation] = requiring
 		}
 	}
 	return result, nil

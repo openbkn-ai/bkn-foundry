@@ -812,7 +812,7 @@ func (s *Service) hasRequestedPermission(ctx context.Context, accessorID, resour
 // still be usable when they are granted. A prerequisite included in the same
 // request is valid because the approval writes both grants atomically.
 func missingUnrequestedPrerequisites(ctx context.Context, tx *authz.PolicyTransaction, accessorID, resourceType, resourceID string, operations []string) ([]string, error) {
-	requirements, err := tx.DirectRequirements(ctx, resourceType, operations)
+	requirements, err := tx.Requirements(ctx, resourceType, operations)
 	if err != nil {
 		return nil, err
 	}

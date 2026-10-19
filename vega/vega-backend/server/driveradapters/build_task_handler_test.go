@@ -8,17 +8,21 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
@@ -44,6 +48,27 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 	defer restoreGinMode()
 
 	const url = "/api/vega-backend/in/v1/build-tasks"
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"forbidden", rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden), http.StatusForbidden, rest.PublicError_Forbidden},
+		{"wrapped not found", fmt.Errorf("lookup: %w", rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound},
+		{"unknown failure", errors.New("lookup failed"), http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine, bts, _ := setupBuildTaskHandlerTest(t)
+			bts.EXPECT().Create(gomock.Any(), gomock.Any()).Return("", tc.err)
+			req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(`{"resource_id":"res-1","mode":"batch"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			assert.Equal(t, tc.status, w.Code)
+			assert.Contains(t, w.Body.String(), tc.code)
+		})
+	}
 
 	t.Run("creates batch build task", func(t *testing.T) {
 		engine, bts, _ := setupBuildTaskHandlerTest(t)

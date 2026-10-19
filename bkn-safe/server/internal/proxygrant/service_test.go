@@ -254,6 +254,62 @@ func TestGrantAndSyncNormalizeDirectOperationRequirements(t *testing.T) {
 	}
 }
 
+func TestGrantAndRevokeTransitiveOperationRequirements(t *testing.T) {
+	for _, retainIntermediate := range []bool{false, true} {
+		t.Run(fmt.Sprintf("retain explicit intermediate=%v", retainIntermediate), func(t *testing.T) {
+			f := newFixture(t)
+			for operation, requirement := range map[string]string{"query_data": "view_detail", "view_detail": "authorize"} {
+				if err := f.db.Model(&model.Operation{}).Where("resource_type_id = ? AND id = ?", "resource", operation).
+					Update("implied_operation_ids", requirement).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			f.grantOperations(t, f.grantor, "r-1", "query_data", "authorize", "view_detail")
+			request := f.request("source-chain", "ot-chain", "r-1")
+			source, changed, err := f.service.Grant(t.Context(), request)
+			if err != nil || !changed {
+				t.Fatalf("Grant()=%+v, %v, %v", source, changed, err)
+			}
+			var active []model.ProxyGrantSource
+			if err := f.db.Where("proxy_account_id = ? AND source_id = ? AND lifecycle_status = ?", f.proxyID, request.Source.SourceID, proxygrant.StatusActive).Find(&active).Error; err != nil {
+				t.Fatal(err)
+			}
+			if len(active) != 3 {
+				t.Fatalf("normalized sources=%+v, want three operations", active)
+			}
+			for _, required := range active {
+				if required.Operation == "query_data" {
+					continue
+				}
+				if _, changed, err := f.service.Revoke(t.Context(), required.ID, proxygrant.RevokeRequest{GrantorID: f.grantor}); !errors.Is(err, proxygrant.ErrSourceRequired) || changed {
+					t.Fatalf("revoke required %s=%v, %v", required.Operation, changed, err)
+				}
+			}
+			if retainIntermediate {
+				explicit := request
+				explicit.Source.Operation = "view_detail"
+				if _, _, err := f.service.Grant(t.Context(), explicit); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, changed, err := f.service.Revoke(t.Context(), source.ID, proxygrant.RevokeRequest{GrantorID: f.grantor}); err != nil || !changed {
+				t.Fatalf("revoke target=%v, %v", changed, err)
+			}
+			var remaining int64
+			if err := f.db.Model(&model.ProxyGrantSource{}).Where("proxy_account_id = ? AND source_id = ? AND lifecycle_status = ?", f.proxyID, request.Source.SourceID, proxygrant.StatusActive).Count(&remaining).Error; err != nil {
+				t.Fatal(err)
+			}
+			wantRemaining := int64(0)
+			if retainIntermediate {
+				wantRemaining = 2
+			}
+			if remaining != wantRemaining {
+				t.Fatalf("remaining sources=%d, want %d", remaining, wantRemaining)
+			}
+		})
+	}
+}
+
 func TestRevokePreservesExplicitRequirementAndReplayIsStrictNoOp(t *testing.T) {
 	f := newFixture(t)
 	if err := f.db.Model(&model.Operation{}).

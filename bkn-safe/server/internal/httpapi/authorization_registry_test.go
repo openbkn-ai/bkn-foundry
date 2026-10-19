@@ -7,6 +7,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -79,5 +80,36 @@ func TestMeAuthorizationRegistryRequiresToken(t *testing.T) {
 	}
 	if w := tokReq(t, r, http.MethodGet, path, nil, "catalog-reader"); w.Code != http.StatusOK {
 		t.Fatalf("authenticated catalog = %d body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestAuthorizationRegistryExpandsRequirementChains(t *testing.T) {
+	r, _, db := newTestServer(t)
+	if err := db.Create(&model.ResourceType{ID: "catalog", Name: "Catalog"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&[]model.Operation{
+		{ResourceTypeID: "catalog", ID: "view_detail"},
+		{ResourceTypeID: "catalog", ID: "resource_manage", RequiredOperationIDs: "view_detail"},
+		{ResourceTypeID: "catalog", ID: "task_manage", RequiredOperationIDs: "resource_manage"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	w := do(t, r, http.MethodGet, "/api/safe/v1/authz/registry", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	var response struct {
+		ResourceTypes []authorizationRegistryResourceType `json:"resource_types"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range response.ResourceTypes[0].Operations {
+		if operation.ID == "task_manage" {
+			if want := []string{"resource_manage", "view_detail"}; !reflect.DeepEqual(operation.Requires, want) {
+				t.Fatalf("task requirements=%v, want %v", operation.Requires, want)
+			}
+		}
 	}
 }

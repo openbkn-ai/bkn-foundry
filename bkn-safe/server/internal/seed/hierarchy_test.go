@@ -265,9 +265,12 @@ func TestSeedDeclaresVegaAuthorizationHierarchy(t *testing.T) {
 		if err := db.First(&operation, "resource_type_id = ? AND id = ?", "catalog", operationID).Error; err != nil {
 			t.Fatal(err)
 		}
-		if operation.ParentOperationID != "" || operation.RequiredOperationIDs != "view_detail" {
-			t.Errorf("catalog/%s parent=%q requires=%q, want parent empty and requires view_detail",
-				operationID, operation.ParentOperationID, operation.RequiredOperationIDs)
+		want := "view_detail"
+		if operationID == "task_manage" {
+			want = "resource_manage"
+		}
+		if operation.ParentOperationID != "" || operation.RequiredOperationIDs != want {
+			t.Errorf("catalog/%s parent=%q requires=%q, want parent empty and requires %q", operationID, operation.ParentOperationID, operation.RequiredOperationIDs, want)
 		}
 	}
 	for _, operationID := range []string{"query_data", "data_write"} {
