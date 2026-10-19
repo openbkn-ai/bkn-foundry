@@ -722,6 +722,11 @@ func analyzeConditionProjection(ctx parsing.IOC_ExpressionContext) (*Projection,
 	if err != nil {
 		return nil, err
 	}
+	// A bare name reads as a WITH's value only in WHERE; here it would
+	// silently compare with nothing.
+	if err := refuseNames(predicate); err != nil {
+		return nil, err
+	}
 	return &Projection{
 		Expression: ConditionValue{Predicate: predicate, Pos: positionOf(ctx)},
 		Alias:      sourceText(ctx),
@@ -1776,13 +1781,43 @@ func nameOperand(ctx antlr.ParserRuleContext, err error) (operand, error) {
 	return operand{name: &NameRef{Name: name, Pos: positionOf(ctx)}}, nil
 }
 
+// refuseNames refuses a bare name anywhere in a condition, the way a name
+// nothing introduced is refused in WHERE.
+func refuseNames(predicate Predicate) error {
+	switch node := predicate.(type) {
+	case Comparison:
+		if node.Right.Name != nil {
+			return unsupportedAt(node.Right.Name.Pos, "referring to a node as a value", "use %s.property", node.Right.Name.Name)
+		}
+	case Membership:
+		if node.ListName != nil {
+			return unsupportedAt(node.ListName.Pos, "IN over something other than a list",
+				"write the values as a list, as in n.property IN [1, 2], or pass one list parameter, as in n.property IN $values")
+		}
+	case Negation:
+		return refuseNames(node.Operand)
+	case LogicalOperator:
+		for _, operand := range node.Operands {
+			if err := refuseNames(operand); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // sumBareVariable is bareVariable for one side of a comparison.
 func sumBareVariable(sum parsing.IOC_AddOrSubtractExpressionContext) (string, bool) {
 	if computedSum(sum) {
 		return "", false
 	}
-	atom := sum.AllOC_MultiplyDivideModuloExpression()[0].AllOC_PowerOfExpression()[0].
-		AllOC_UnaryAddOrSubtractExpression()[0].OC_ListOperatorExpression().OC_PropertyOrLabelsExpression()
+	listOperator := sum.AllOC_MultiplyDivideModuloExpression()[0].AllOC_PowerOfExpression()[0].
+		AllOC_UnaryAddOrSubtractExpression()[0].OC_ListOperatorExpression()
+	if listOperator.GetChildCount() > 1 {
+		// An index or a slice, as in ids[0] or ids[0..2], is not the name.
+		return "", false
+	}
+	atom := listOperator.OC_PropertyOrLabelsExpression()
 	if len(atom.AllOC_PropertyLookup()) > 0 || atom.OC_NodeLabels() != nil || atom.OC_Atom().OC_Variable() == nil {
 		return "", false
 	}

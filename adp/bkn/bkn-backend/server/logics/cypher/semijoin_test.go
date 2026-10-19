@@ -54,6 +54,21 @@ func TestSemiJoinEvaluates(t *testing.T) {
 			want: [][]any{{0}},
 		},
 		{
+			// Both uses name one value, so a customer pairs only with its
+			// own orders, not with every order whose code is in the set.
+			name: "one value used twice pairs the rows that share it",
+			query: "MATCH (o:Order) WHERE o.region = 'east' WITH DISTINCT o.customer_code AS code " +
+				"MATCH (c:Customer), (o2:Order) WHERE c.code = code AND o2.customer_code = code AND c.region = 'east' " +
+				"RETURN c.name AS name, o2.id AS id ORDER BY name, id",
+			want: [][]any{{"Alice", 1}, {"Alice", 2}, {"Bob", 3}, {"Bob", 4}},
+		},
+		{
+			name: "inline properties and WHERE together",
+			query: "MATCH (o:Order) WHERE o.region = 'east' WITH DISTINCT o.customer_code AS code " +
+				"MATCH (c:Customer {region: 'east'}) WHERE c.code = code AND c.name <> 'x' RETURN c.name AS name ORDER BY name",
+			want: [][]any{{"Alice"}, {"Bob"}},
+		},
+		{
 			name: "with other conditions on the second stage",
 			query: "MATCH (i:Item)-[:BELONGS_TO]->(o:Order) WITH DISTINCT o.customer_code AS code " +
 				"MATCH (c:Customer) WHERE c.code = code AND c.region = 'west' RETURN c.name AS name",
@@ -90,6 +105,17 @@ func TestSemiJoinGenerates(t *testing.T) {
 	if strings.Contains(sql, " IN (SELECT") {
 		t.Errorf("a semi-join is a derived-table join, not an IN subquery:\n%s", sql)
 	}
+
+	// A second use of the same value compares with the first instead of
+	// joining the earlier stage again.
+	sql, err = compileWithClause(t, "MATCH (o:Order) WITH DISTINCT o.customer_code AS code "+
+		"MATCH (c:Customer), (o2:Order) WHERE c.code = code AND o2.customer_code = code RETURN c.name, o2.id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(sql, "JOIN (SELECT") != 1 || !strings.Contains(sql, "t1.`f_cust` = t0.`f_code`") {
+		t.Errorf("want one semi-join and the second use compared with the first:\n%s", sql)
+	}
 }
 
 func TestSemiJoinRefuses(t *testing.T) {
@@ -116,6 +142,12 @@ func TestSemiJoinRefuses(t *testing.T) {
 		{"MATCH (o:Order) WITH DISTINCT o.region AS r MATCH (i:Item) WHERE i.id = r RETURN i.id",
 			"never equal"},
 		{"MATCH (o:Order) WHERE o.id = oid RETURN o.id", "referring to a node as a value"},
+		{"MATCH (o:Order) RETURN o.id AS id, o.region IN regions AS flagged", "IN over something other than a list"},
+		{"MATCH (o:Order) RETURN o.id AS id, o.region = r AS flagged", "referring to a node as a value"},
+		{"MATCH (o:Order) WITH collect(o.id) AS ids MATCH (i:Item) WHERE i.order_id IN ids RETURN i.order_id IN ids AS f",
+			"IN over something other than a list"},
+		{"MATCH (o:Order) WITH collect(o.id) AS ids MATCH (i:Item) WHERE i.order_id IN ids[0..2] RETURN i.id",
+			"IN over something other than a list"},
 		{"MATCH (o:Order) WITH DISTINCT o.id AS a MATCH (i:Item) WHERE i.order_id = a WITH DISTINCT i.id AS b " +
 			"MATCH (x:Item) WHERE x.id = b RETURN x.id", "more than one WITH"},
 	} {

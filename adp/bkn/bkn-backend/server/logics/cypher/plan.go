@@ -728,6 +728,9 @@ func (p *planner) planWhere(predicate Predicate) error {
 func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 	switch node := predicate.(type) {
 	case Comparison:
+		if node.Right.Name != nil {
+			return nil, fmt.Errorf("name %q was not resolved before planning", node.Right.Name.Name)
+		}
 		table, column, err := p.resolveProperty(node.Left)
 		if err != nil {
 			return nil, err
@@ -770,6 +773,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 		return PlanNullCheck{Table: table, Column: column, Property: node.Property.Property, Negated: node.Negated}, nil
 
 	case Membership:
+		if node.ListName != nil {
+			return nil, fmt.Errorf("name %q was not resolved before planning", node.ListName.Name)
+		}
 		table, column, err := p.resolveProperty(node.Property)
 		if err != nil {
 			return nil, err

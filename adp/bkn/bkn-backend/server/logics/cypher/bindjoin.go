@@ -1170,9 +1170,14 @@ func markConditionValueDates(plan *Plan, isDate func(table int, column string) b
 	return &copied
 }
 
+// maxSemiJoinValues bounds the values one membership filter sends to the
+// resource data API, which was measured to take 10000 in one read.
+const maxSemiJoinValues = 10000
+
 // resolveSemiJoins runs the earlier stage of each semi-join and puts its
 // values in place of it, as an IN the data source can filter by. No values
-// means no row can be kept. The plan is copied, not changed.
+// means no row can be kept, and more than one read takes falls back to SQL.
+// The plan is copied, not changed.
 func resolveSemiJoins(ctx context.Context, plan *Plan, schema *Schema, read dataReader,
 	limits bindJoinLimits) (*Plan, error) {
 	if len(plan.subPlans()) == 0 {
@@ -1201,6 +1206,11 @@ func resolveSemiJoins(ctx context.Context, plan *Plan, schema *Schema, read data
 			}
 			if len(values) == 0 {
 				return PlanNever{}, nil
+			}
+			if len(values) > maxSemiJoinValues {
+				// One membership filter carries every value; past what a
+				// single read is known to take, the SQL path joins instead.
+				return nil, &ReadBudgetError{Limit: maxSemiJoinValues}
 			}
 			return PlanMembership{Table: node.Table, Column: node.Column, Property: node.Property, Values: values}, nil
 		case PlanLogical:

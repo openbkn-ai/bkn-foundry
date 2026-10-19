@@ -240,9 +240,12 @@ func (s nameScope) resolveTerm(predicate Predicate, top bool) (Predicate, error)
 		node.Operand = operand
 		return node, nil
 	case LogicalOperator:
+		// An AND nested in a top-level AND is still a conjunction of the
+		// whole WHERE, as when inline properties and WHERE combine.
+		nested := top && node.Operator == "AND"
 		operands := make([]Predicate, len(node.Operands))
 		for i, operand := range node.Operands {
-			resolved, err := s.resolveTerm(operand, false)
+			resolved, err := s.resolveTerm(operand, nested)
 			if err != nil {
 				return nil, err
 			}
@@ -271,7 +274,13 @@ func (s nameScope) semiJoin(name NameRef, outer PropertyRef, equality, membershi
 			"only equality, as in n.property = %s, can filter by it", name.Name)
 	}
 	binding.used = true
-	if equality && binding.equal == nil {
+	if equality && binding.equal != nil {
+		// Every use of one value names the same value: a.x = v AND b.y = v
+		// keeps rows where both equal it, so the second use compares with
+		// the first rather than looking the set up again on its own.
+		return PropertyComparison{Left: outer, Operator: "=", Right: *binding.equal, Pos: pos}, nil
+	}
+	if equality {
 		equal := outer
 		binding.equal = &equal
 	}
