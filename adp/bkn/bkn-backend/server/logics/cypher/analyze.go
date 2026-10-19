@@ -77,32 +77,27 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 		return nil, unsupported(regular, "UNION")
 	}
 	single := regular.OC_SingleQuery()
-	part := single.OC_SinglePartQuery()
-	reading := []parsing.IOC_ReadingClauseContext(nil)
-	var with parsing.IOC_WithContext
 	if multi := single.OC_MultiPartQuery(); multi != nil {
-		// One WITH between the MATCH clauses and RETURN is read as part of
-		// this one query; anything longer is a pipeline of stages, which is
-		// not supported yet.
-		withs := multi.AllOC_With()
-		if len(withs) > 1 {
-			return nil, unsupportedf(withs[1], "more than one WITH",
-				"a query may have one WITH, between its MATCH clauses and RETURN")
-		}
-		if updating := multi.AllOC_UpdatingClause(); len(updating) > 0 {
-			return nil, unsupportedf(updating[0], "writing", "this interface only runs read-only queries")
-		}
-		with = withs[0]
-		part = multi.OC_SinglePartQuery()
-		if after := part.AllOC_ReadingClause(); len(after) > 0 {
-			return nil, unsupportedf(after[0], "MATCH after WITH",
-				"write every MATCH before the WITH; to relate two patterns, write both in MATCH and compare "+
-					"their properties in WHERE, as in WHERE a.code = b.code")
-		}
-		reading = multi.AllOC_ReadingClause()
-	} else {
-		reading = part.AllOC_ReadingClause()
+		return analyzeMultiPart(multi)
 	}
+	part := single.OC_SinglePartQuery()
+	returning, err := readOnlyReturn(part)
+	if err != nil {
+		return nil, err
+	}
+	query, err := analyzeReading(part.AllOC_ReadingClause(), part, nameScope{})
+	if err != nil {
+		return nil, err
+	}
+	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody(), nil); err != nil {
+		return nil, err
+	}
+	return query, nil
+}
+
+// readOnlyReturn checks that the last part of a query writes nothing and
+// returns something.
+func readOnlyReturn(part parsing.IOC_SinglePartQueryContext) (parsing.IOC_ReturnContext, error) {
 	if updating := part.AllOC_UpdatingClause(); len(updating) > 0 {
 		// The subset is read-only by construction, not by permission check, so
 		// a write clause is refused before anything is bound or generated.
@@ -112,9 +107,14 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	if returning == nil {
 		return nil, unsupportedf(part, "a query without RETURN", "add a RETURN clause")
 	}
+	return returning, nil
+}
 
+// analyzeReading reads MATCH clauses into a pattern and its conditions, with
+// the names an earlier WITH introduced resolved.
+func analyzeReading(reading []parsing.IOC_ReadingClauseContext, at antlr.ParserRuleContext, scope nameScope) (*Query, error) {
 	if len(reading) == 0 {
-		return nil, unsupportedf(part, "a query without MATCH", "add a MATCH clause")
+		return nil, unsupportedf(at, "a query without MATCH", "add a MATCH clause")
 	}
 
 	query := &Query{}
@@ -158,21 +158,10 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	// Conditions from the pattern and from WHERE mean the same thing and are
 	// joined the way Cypher joins them.
 	query.Where = combine("AND", inline, positionOf(lastMatch))
-	if err := refuseRequiredUseOfOptional(query); err != nil {
+	if err := scope.resolve(query); err != nil {
 		return nil, err
 	}
-	if with != nil {
-		if err := analyzeWith(query, with, returning.OC_ProjectionBody()); err != nil {
-			return nil, err
-		}
-		// What the WITH's WHERE added is a condition like any other, so it
-		// may not require an optional node either.
-		if err := refuseRequiredUseOfOptional(query); err != nil {
-			return nil, err
-		}
-		return query, nil
-	}
-	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody()); err != nil {
+	if err := refuseRequiredUseOfOptional(query); err != nil {
 		return nil, err
 	}
 	return query, nil
@@ -240,6 +229,8 @@ func predicateProperties(predicate Predicate) []PropertyRef {
 		return append(expressionProperties(node.Left), expressionProperties(node.Right)...)
 	case PropertyComparison:
 		return []PropertyRef{node.Left, node.Right}
+	case SemiJoin:
+		return []PropertyRef{node.Outer}
 	case Negation:
 		return predicateProperties(node.Operand)
 	case LogicalOperator:
@@ -540,7 +531,9 @@ func analyzeInlineProperties(ctx parsing.IOC_PropertiesContext, variable string)
 	for i, key := range keys {
 		value, err := analyzeOperand(values[i])
 		if err != nil {
-			return nil, err
+			if value, err = nameOperand(values[i], err); err != nil {
+				return nil, err
+			}
 		}
 		if value.operand() == nil {
 			return nil, unsupportedf(values[i], "a property map holding something other than a value",
@@ -617,7 +610,9 @@ func analyzeRelationship(ctx parsing.IOC_RelationshipPatternContext) (*EdgeRef, 
 	return edge, nil
 }
 
-func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) error {
+// analyzeProjectionBody reads RETURN. names maps a name an earlier WITH
+// introduced to the property it was found equal to, so that RETURN may use it.
+func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext, names map[string]PropertyRef) error {
 	query.Distinct = ctx.DISTINCT() != nil
 
 	items := ctx.OC_ProjectionItems()
@@ -627,9 +622,17 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) 
 		return unsupportedf(items, "RETURN *", "list the properties to return")
 	}
 	for _, item := range items.AllOC_ProjectionItem() {
-		projection, err := analyzeProjection(item.OC_Expression())
-		if err != nil {
-			return err
+		var projection *Projection
+		if name, ok := bareVariable(item.OC_Expression()); ok && names != nil {
+			if property, known := names[name]; known {
+				projection = &Projection{Property: &property, Alias: name, Pos: positionOf(item)}
+			}
+		}
+		if projection == nil {
+			var err error
+			if projection, err = analyzeProjection(item.OC_Expression()); err != nil {
+				return err
+			}
 		}
 		if variable := item.OC_Variable(); variable != nil {
 			alias, err := namedIdentifier(variable, "column name")
@@ -646,6 +649,9 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext) 
 			key, err := analyzeSortKey(item.OC_Expression())
 			if err != nil {
 				return err
+			}
+			if property, known := names[key.Alias]; known && !returnsAlias(query, key.Alias) {
+				key = &SortKey{Property: &property, Pos: key.Pos}
 			}
 			key.Descending = item.DESCENDING() != nil || item.DESC() != nil
 			query.OrderBy = append(query.OrderBy, *key)
@@ -714,6 +720,11 @@ func analyzeProjection(ctx parsing.IOC_ExpressionContext) (*Projection, error) {
 func analyzeConditionProjection(ctx parsing.IOC_ExpressionContext) (*Projection, error) {
 	predicate, err := analyzePredicate(ctx)
 	if err != nil {
+		return nil, err
+	}
+	// A bare name reads as a WITH's value only in WHERE; here it would
+	// silently compare with nothing.
+	if err := refuseNames(predicate); err != nil {
 		return nil, err
 	}
 	return &Projection{
@@ -1531,7 +1542,14 @@ func analyzeStringListNullPredicate(ctx parsing.IOC_StringListNullPredicateExpre
 
 	subject, err := analyzeAddOrSubtractOperand(ctx.OC_AddOrSubtractExpression())
 	if err != nil {
-		return nil, operand{}, err
+		// A bare name is kept only as one side of a condition, where an
+		// earlier WITH may have given it a value.
+		if parentheses != groupsConditions {
+			return nil, operand{}, err
+		}
+		if subject, err = nameOperand(ctx.OC_AddOrSubtractExpression(), err); err != nil {
+			return nil, operand{}, err
+		}
 	}
 
 	lists := ctx.AllOC_ListPredicateExpression()
@@ -1556,6 +1574,11 @@ func analyzeStringListNullPredicate(ctx parsing.IOC_StringListNullPredicateExpre
 		}, operand{}, nil
 	}
 
+	if name, ok := sumBareVariable(lists[0].OC_AddOrSubtractExpression()); ok && parentheses == groupsConditions {
+		return Membership{
+			Property: *subject.property, ListName: &NameRef{Name: name, Pos: positionOf(lists[0])}, Pos: positionOf(ctx),
+		}, operand{}, nil
+	}
 	values, listParameter, err := analyzeListOperands(lists[0].OC_AddOrSubtractExpression())
 	if err != nil {
 		return nil, operand{}, err
@@ -1722,6 +1745,9 @@ type operand struct {
 	property  *PropertyRef
 	literal   *Literal
 	parameter *ParameterRef
+	// name is a bare name, which only an earlier WITH can give a value; see
+	// resolveNames.
+	name *NameRef
 }
 
 // operand returns the value this side carries, or nil when it is a column.
@@ -1731,9 +1757,72 @@ func (o operand) operand() *Operand {
 		return &Operand{Literal: o.literal}
 	case o.parameter != nil:
 		return &Operand{Parameter: o.parameter}
+	case o.name != nil:
+		return &Operand{Name: o.name}
 	default:
 		return nil
 	}
+}
+
+// nameOperand reads a bare name where a value is expected. The analyzer
+// refuses one everywhere else; here it is kept, so that a name an earlier
+// WITH introduced can be resolved, and an unknown one is refused then.
+func nameOperand(ctx antlr.ParserRuleContext, err error) (operand, error) {
+	expression, ok := ctx.(parsing.IOC_ExpressionContext)
+	var name string
+	if ok {
+		name, ok = bareVariable(expression)
+	} else if sum, isSum := ctx.(parsing.IOC_AddOrSubtractExpressionContext); isSum {
+		name, ok = sumBareVariable(sum)
+	}
+	if !ok {
+		return operand{}, err
+	}
+	return operand{name: &NameRef{Name: name, Pos: positionOf(ctx)}}, nil
+}
+
+// refuseNames refuses a bare name anywhere in a condition, the way a name
+// nothing introduced is refused in WHERE.
+func refuseNames(predicate Predicate) error {
+	switch node := predicate.(type) {
+	case Comparison:
+		if node.Right.Name != nil {
+			return unsupportedAt(node.Right.Name.Pos, "referring to a node as a value", "use %s.property", node.Right.Name.Name)
+		}
+	case Membership:
+		if node.ListName != nil {
+			return unsupportedAt(node.ListName.Pos, "IN over something other than a list",
+				"write the values as a list, as in n.property IN [1, 2], or pass one list parameter, as in n.property IN $values")
+		}
+	case Negation:
+		return refuseNames(node.Operand)
+	case LogicalOperator:
+		for _, operand := range node.Operands {
+			if err := refuseNames(operand); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// sumBareVariable is bareVariable for one side of a comparison.
+func sumBareVariable(sum parsing.IOC_AddOrSubtractExpressionContext) (string, bool) {
+	if computedSum(sum) {
+		return "", false
+	}
+	listOperator := sum.AllOC_MultiplyDivideModuloExpression()[0].AllOC_PowerOfExpression()[0].
+		AllOC_UnaryAddOrSubtractExpression()[0].OC_ListOperatorExpression()
+	if listOperator.GetChildCount() > 1 {
+		// An index or a slice, as in ids[0] or ids[0..2], is not the name.
+		return "", false
+	}
+	atom := listOperator.OC_PropertyOrLabelsExpression()
+	if len(atom.AllOC_PropertyLookup()) > 0 || atom.OC_NodeLabels() != nil || atom.OC_Atom().OC_Variable() == nil {
+		return "", false
+	}
+	name := identifier(atom.OC_Atom().OC_Variable().GetText())
+	return name, name != ""
 }
 
 func analyzeOperand(ctx parsing.IOC_ExpressionContext) (operand, error) {

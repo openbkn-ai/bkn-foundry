@@ -63,6 +63,7 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 	}
 
 	g := &generator{dialect: dialect, plan: plan}
+	g.where, g.semiJoins = splitSemiJoins(plan.Where)
 	g.writeSelect()
 	g.writeFrom()
 	if err := g.writeWhere(); err != nil {
@@ -90,6 +91,42 @@ type generator struct {
 	// table, so they belong in WHERE rather than in the FROM list -- appending
 	// them there produced SQL that does not parse.
 	deferred []PlanJoin
+	// semiJoins are the conditions on an earlier stage's values, written as
+	// joins to that stage; where is the rest of the plan's condition.
+	semiJoins []PlanSemiJoin
+	where     PlanPredicate
+}
+
+// splitSemiJoins takes the semi-joins out of a condition. The analyzer only
+// lets one stand on its own at the top of WHERE, so each is a conjunct here.
+func splitSemiJoins(predicate PlanPredicate) (PlanPredicate, []PlanSemiJoin) {
+	switch node := predicate.(type) {
+	case PlanSemiJoin:
+		return nil, []PlanSemiJoin{node}
+	case PlanLogical:
+		if node.Operator != "AND" {
+			return predicate, nil
+		}
+		var rest []PlanPredicate
+		var semiJoins []PlanSemiJoin
+		for _, operand := range node.Operands {
+			remaining, found := splitSemiJoins(operand)
+			semiJoins = append(semiJoins, found...)
+			if remaining != nil {
+				rest = append(rest, remaining)
+			}
+		}
+		switch len(rest) {
+		case 0:
+			return nil, semiJoins
+		case 1:
+			return rest[0], semiJoins
+		default:
+			return PlanLogical{Operator: "AND", Operands: rest}, semiJoins
+		}
+	default:
+		return predicate, nil
+	}
 }
 
 func (g *generator) writeSelect() {
@@ -284,6 +321,7 @@ func (g *generator) writeFrom() {
 		joined[next] = true
 		used[join] = true
 	}
+	g.writeSemiJoins()
 	g.writeOptionalJoins(joined, used)
 
 	// A join that attached no table still carries a condition: a cycle closing
@@ -301,6 +339,30 @@ func (g *generator) writeFrom() {
 			}
 			g.deferred = append(g.deferred, join)
 		}
+	}
+}
+
+// writeSemiJoins joins each earlier stage as a derived table of its distinct
+// values, so a row matches at most once and is kept exactly when its value is
+// among them. It is written as a join rather than as IN (SELECT ...): both
+// mean the same, and a derived table is the form every SQL target vega-backend
+// compiles to accepts. The stage is unlimited, since a LIMIT would cut the set.
+func (g *generator) writeSemiJoins() {
+	for i, semiJoin := range g.semiJoins {
+		sub, err := Generate(semiJoin.Sub, GenerateOptions{Dialect: g.dialect})
+		if err != nil {
+			g.fail(err)
+			return
+		}
+		alias := "s" + strconv.Itoa(i)
+		g.out.WriteString(" JOIN (")
+		g.out.WriteString(sub)
+		g.out.WriteString(") ")
+		g.out.WriteString(alias)
+		g.out.WriteString(" ON ")
+		g.out.WriteString(g.column(semiJoin.Table, semiJoin.Column))
+		g.out.WriteString(" = ")
+		g.out.WriteString(alias + "." + g.identifier(semiJoin.Sub.Select[0].Alias))
 	}
 }
 
@@ -415,7 +477,7 @@ func (g *generator) writeJoinCondition(join PlanJoin) {
 }
 
 func (g *generator) writeWhere() error {
-	if g.plan.Where == nil && len(g.deferred) == 0 {
+	if g.where == nil && len(g.deferred) == 0 {
 		return nil
 	}
 	g.out.WriteString(" WHERE ")
@@ -434,13 +496,13 @@ func (g *generator) writeWhere() error {
 			g.out.WriteString(")")
 		}
 	}
-	if g.plan.Where == nil {
+	if g.where == nil {
 		return nil
 	}
 	if len(g.deferred) > 0 {
 		g.out.WriteString(" AND ")
 	}
-	return g.writePredicate(g.plan.Where, len(g.deferred) > 0)
+	return g.writePredicate(g.where, len(g.deferred) > 0)
 }
 
 // writePredicate writes one node of the condition tree. Parentheses are added
@@ -479,6 +541,11 @@ func (g *generator) writePredicate(predicate PlanPredicate, nested bool) error {
 	case PlanNever:
 		g.out.WriteString("1 = 0")
 		return nil
+
+	case PlanSemiJoin:
+		// writeSemiJoins writes every semi-join the analyzer allows; one
+		// left in a condition sits under OR or NOT, which a join cannot say.
+		return fmt.Errorf("a semi-join must be a condition of its own")
 
 	case PlanNullCheck:
 		g.out.WriteString(g.column(node.Table, node.Column))

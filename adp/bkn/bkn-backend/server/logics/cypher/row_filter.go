@@ -26,6 +26,16 @@ import (
 // would disappear along with them instead of coming back with nothing attached.
 func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 	plan *Plan, schema *Schema) ([]string, error) {
+	// A semi-join's earlier stage reads tables of its own, and the caller's
+	// row policy holds there exactly as it does here.
+	var subFiltered []string
+	for _, sub := range plan.subPlans() {
+		types, err := s.applyRowFilters(ctx, knID, sub, schema)
+		if err != nil {
+			return nil, err
+		}
+		subFiltered = append(subFiltered, types...)
+	}
 	refs := make([]string, 0, len(plan.Tables))
 	seen := make(map[string]struct{}, len(plan.Tables))
 	for _, table := range plan.Tables {
@@ -91,6 +101,12 @@ func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 		filters = append(filters, compiled)
 	}
 	plan.Where = combineRowFilterAnd(filters)
+	for _, objectTypeID := range subFiltered {
+		if _, exists := filteredSeen[objectTypeID]; !exists {
+			filteredSeen[objectTypeID] = struct{}{}
+			filteredObjectTypes = append(filteredObjectTypes, objectTypeID)
+		}
+	}
 	return filteredObjectTypes, nil
 }
 

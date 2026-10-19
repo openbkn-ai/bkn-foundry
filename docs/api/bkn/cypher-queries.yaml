@@ -178,6 +178,12 @@ components:
             WITH a | a.property AS name | aggregate(...) AS name, ... [WHERE <condition over those names>]
             RETURN name | a.property [AS alias], ... [ORDER BY ...] [SKIP n] [LIMIT n]
 
+            or, to filter by the values of an earlier stage (a semi-join):
+            MATCH ... [WHERE ...]
+            WITH [DISTINCT] a.property AS v | collect(a.property) AS s
+            MATCH ... WHERE b.property = v | b.property IN s [AND ...]
+            RETURN ...
+
             A condition compares a property with =, <>, <, >, <= or >= against a literal, a
             parameter or another property (o.shipped < o.ordered, a.code = b.code; properties the
             model types as a string and a number cannot be compared), or tests it with IN [ ... ], IN $list (the whole list as one parameter),
@@ -206,6 +212,13 @@ components:
             count(*) may follow. Refused: more than one WITH, MATCH after WITH, WITH DISTINCT,
             WITH *, ORDER BY / SKIP / LIMIT on WITH, arithmetic or IN / string predicates in
             its WHERE, and aggregating again after an aggregating WITH.
+
+            In the semi-join form each row of the second stage is kept once if its value is
+            among the first stage's, however often the first stage produced it; v may also be
+            an inline property value ({property: v}). The first stage's properties and rows are
+            authorized like any other part of the query. The WITH holds one item; without
+            DISTINCT, RETURN must be DISTINCT and not aggregate. v is used only as = and s only
+            as IN, each as a condition of its own at the top of WHERE (not under OR or NOT).
 
             Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
             count(*). count(n) counts the rows where node n was found, and count(DISTINCT n)

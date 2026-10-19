@@ -96,6 +96,8 @@ func walkPredicateColumns(predicate PlanPredicate, visit func(table int, column 
 	case PlanColumnComparison:
 		visit(node.LeftTable, node.LeftColumn)
 		visit(node.RightTable, node.RightColumn)
+	case PlanSemiJoin:
+		visit(node.Table, node.Column)
 	case PlanExpressionComparison:
 		walkExpressionColumns(node.Left, visit)
 		walkExpressionColumns(node.Right, visit)

@@ -297,6 +297,18 @@ type PlanColumnComparison struct {
 
 func (PlanColumnComparison) planPredicate() {}
 
+// PlanSemiJoin keeps a row when its column's value is among the values Sub
+// returns. Sub is a complete plan of its own with one DISTINCT column; it is
+// authorized and row-filtered like the plan it belongs to.
+type PlanSemiJoin struct {
+	Table    int
+	Column   string
+	Property string
+	Sub      *Plan
+}
+
+func (PlanSemiJoin) planPredicate() {}
+
 // PlanNever is a condition that never holds. It says so explicitly rather than
 // leaving an empty operator list behind, which would generate SQL that does
 // not parse.
@@ -716,6 +728,9 @@ func (p *planner) planWhere(predicate Predicate) error {
 func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 	switch node := predicate.(type) {
 	case Comparison:
+		if node.Right.Name != nil {
+			return nil, fmt.Errorf("name %q was not resolved before planning", node.Right.Name.Name)
+		}
 		table, column, err := p.resolveProperty(node.Left)
 		if err != nil {
 			return nil, err
@@ -758,6 +773,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 		return PlanNullCheck{Table: table, Column: column, Property: node.Property.Property, Negated: node.Negated}, nil
 
 	case Membership:
+		if node.ListName != nil {
+			return nil, fmt.Errorf("name %q was not resolved before planning", node.ListName.Name)
+		}
 		table, column, err := p.resolveProperty(node.Property)
 		if err != nil {
 			return nil, err
@@ -796,6 +814,9 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 
 	case PropertyComparison:
 		return p.planPropertyComparison(node)
+
+	case SemiJoin:
+		return p.planSemiJoin(node)
 
 	case StringMatch:
 		table, column, err := p.resolveProperty(node.Property)
@@ -1637,4 +1658,55 @@ func havingColumns(predicate PlanPredicate) []PlanColumn {
 	}
 	walk(predicate)
 	return columns
+}
+
+// planSemiJoin plans the earlier stage as a plan of its own and keeps the rows
+// whose property is among its values. What that stage reads is part of what
+// the query reads, so its properties join this plan's.
+func (p *planner) planSemiJoin(node SemiJoin) (PlanPredicate, error) {
+	table, column, err := p.resolveProperty(node.Outer)
+	if err != nil {
+		return nil, err
+	}
+	sub, err := Compile(node.Sub, p.schema, CompileOptions{Parameters: p.parameters})
+	if err != nil {
+		return nil, err
+	}
+	p.plan.Properties = append(p.plan.Properties, sub.Properties...)
+	value := sub.Select[0]
+	if outerType, known := p.dataPropertyType(table, node.Outer.Property); known {
+		if objectType := p.schema.objectTypesByID[sub.Tables[value.Table].ObjectTypeID]; objectType != nil {
+			for _, dp := range objectType.DataProperties {
+				if dp == nil || dp.Name != value.Property || dp.Type == "" {
+					continue
+				}
+				outer, inner := valueFamily(outerType), valueFamily(dp.Type)
+				if outer != "" && inner != "" && outer != inner {
+					return nil, planErrorf(node.Pos, "comparing %s (%s) with values of %s (%s): the two are never equal",
+						node.Outer, outerType, value.Property, dp.Type)
+				}
+			}
+		}
+	}
+	return PlanSemiJoin{Table: table, Column: column, Property: node.Outer.Property, Sub: sub}, nil
+}
+
+// subPlans lists the plans of the semi-joins in a plan's conditions.
+func (plan *Plan) subPlans() []*Plan {
+	var subs []*Plan
+	var walk func(PlanPredicate)
+	walk = func(predicate PlanPredicate) {
+		switch node := predicate.(type) {
+		case PlanSemiJoin:
+			subs = append(subs, node.Sub)
+		case PlanLogical:
+			for _, operand := range node.Operands {
+				walk(operand)
+			}
+		case PlanNegation:
+			walk(node.Operand)
+		}
+	}
+	walk(plan.Where)
+	return subs
 }

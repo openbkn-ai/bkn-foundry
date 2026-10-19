@@ -205,8 +205,10 @@ type Membership struct {
 	Property      PropertyRef
 	Values        []Operand
 	ListParameter *ParameterRef
-	Negated       bool
-	Pos           Position
+	// ListName is IN over a name a WITH introduced; see Operand.Name.
+	ListName *NameRef
+	Negated  bool
+	Pos      Position
 }
 
 func (m Membership) predicatePosition() Position { return m.Pos }
@@ -280,6 +282,16 @@ func (l Literal) describe() string {
 type Operand struct {
 	Literal   *Literal
 	Parameter *ParameterRef
+	// Name is a name a WITH introduced, as in p.code = code where code came
+	// from an earlier WITH. The reader resolves it before planning: to a
+	// constant, or to a semi-join on the values an earlier stage produced.
+	Name *NameRef
+}
+
+// NameRef is a bare name standing where a value is expected.
+type NameRef struct {
+	Name string
+	Pos  Position
 }
 
 // ParameterRef is $name, resolved against the request's parameters before the
@@ -404,3 +416,20 @@ type ConditionValue struct {
 }
 
 func (c ConditionValue) expressionPosition() Position { return c.Pos }
+
+// SemiJoin keeps the rows whose property is among the values an earlier stage
+// produced, as in
+//
+//	MATCH (b:BOM)-->(m:Material {code: '606'}) WITH DISTINCT b.product AS code
+//	MATCH (p:Product) WHERE p.number = code RETURN p.name
+//
+// Each row is kept once however often its value occurs in that stage, which
+// is what the WITH's DISTINCT or collect makes the query mean. Sub is the
+// earlier stage, returning the values as its only column.
+type SemiJoin struct {
+	Outer PropertyRef
+	Sub   *Query
+	Pos   Position
+}
+
+func (s SemiJoin) predicatePosition() Position { return s.Pos }
