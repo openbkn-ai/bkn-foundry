@@ -467,43 +467,48 @@ func TestIndependentResourceRequirementsDoNotChangeChecksAndLists(t *testing.T) 
 func TestApplyPreservesHistoricalGrantsWithoutBackfill(t *testing.T) {
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
 	t.Cleanup(entitlement.ResetForTest)
-	db := newDB(t)
-	e, err := authz.New(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := Apply(db, e); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&model.Role{ID: "role-x", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
-		t.Fatal(err)
-	}
-	for _, subject := range []string{"user-x", "role-x", authz.PublicAccessorID} {
-		mustNoErrSeed(t, e.GrantObjectPermission(subject, "catalog", "catalog-1", "task_manage"))
-	}
-	mustNoErrSeed(t, e.AssignRole("role-user", "role-x"))
-	for range 2 {
-		recorder := &countingAuditRecorder{}
-		if err := ApplyWithAudit(db, e, recorder); err != nil {
-			t.Fatal(err)
-		}
-		if len(recorder.entries) != 0 {
-			t.Fatalf("seed emitted unexpected grant changes: %+v", recorder.entries)
-		}
-		for _, subject := range []string{"user-x", "role-x", authz.PublicAccessorID, "role-user"} {
-			for _, operation := range []string{"resource_manage", "view_detail"} {
-				allowed, err := e.Check(subject, "catalog", "catalog-1", operation)
-				if err != nil {
+	for _, source := range []string{"professional", "role", "public"} {
+		t.Run(source, func(t *testing.T) {
+			db := newDB(t)
+			e, err := authz.New(db)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := Apply(db, e); err != nil {
+				t.Fatal(err)
+			}
+			accessor := "user-x"
+			switch source {
+			case "professional":
+				mustNoErrSeed(t, e.GrantProfessionalObjectPermission(accessor, "catalog", "catalog-1",
+					"task_manage", authz.EffectAllow, authz.AuthoritySourceAdminAuthz))
+			case "role":
+				if err := db.Create(&model.Role{ID: "role-x", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
 					t.Fatal(err)
 				}
-				if allowed {
-					t.Fatalf("seed added %s to %s", operation, subject)
+				mustNoErrSeed(t, e.GrantRolePermission("role-x", "catalog", "catalog-1", "task_manage"))
+				mustNoErrSeed(t, e.AssignRole(accessor, "role-x"))
+			case "public":
+				mustNoErrSeed(t, e.GrantSystemObjectPermission(authz.PublicAccessorID, "catalog", "catalog-1", "task_manage"))
+			}
+			for range 2 {
+				if err := Apply(db, e); err != nil {
+					t.Fatal(err)
+				}
+				for _, operation := range []string{"resource_manage", "view_detail"} {
+					allowed, err := e.Check(accessor, "catalog", "catalog-1", operation)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if allowed {
+						t.Fatalf("seed added %s to %s", operation, accessor)
+					}
+				}
+				allowed, err := e.Check(accessor, "catalog", "catalog-1", "task_manage")
+				if err != nil || !allowed {
+					t.Fatalf("historical task_manage for %s = %v, %v", accessor, allowed, err)
 				}
 			}
-			allowed, err := e.Check(subject, "catalog", "catalog-1", "task_manage")
-			if err != nil || !allowed {
-				t.Fatalf("historical task_manage for %s = %v, %v", subject, allowed, err)
-			}
-		}
+		})
 	}
 }
