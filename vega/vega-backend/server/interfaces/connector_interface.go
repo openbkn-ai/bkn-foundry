@@ -85,6 +85,9 @@ type TableConnector interface {
 	// BuildCountSQL wraps validated read-only SQL in a query that counts its result rows.
 	BuildCountSQL(sqlStr string) string
 	// ExecuteQuery executes a single-table query using resource and params, taking the table reference directly from resource.SourceIdentifier.
+	// 所有表连接器的明细投影均尝试读取 other，直接返回源值，不按类型排除或包装；真实 NULL 保留。
+	// 内部调用的 BinaryMode=nil 表示不读取 Binary，返回 not_requested；HTTP 入口默认使用 metadata。
+	// other 类型本身不代表不可读取。
 	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
 	// ExecuteRawSQL executes read-only SQL that has passed unified query validation, returning column information, data, and a count.
 	ExecuteRawSQL(ctx context.Context, sqlStr string) (*RawQueryResponse, error)

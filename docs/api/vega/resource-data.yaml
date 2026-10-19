@@ -407,7 +407,11 @@ components:
         aggr:
           type: string
           enum: [count, count_distinct, sum, max, min, avg]
-        alias: { type: string }
+        alias:
+          type: string
+          description: |
+            聚合结果列别名，省略时使用 `__value`。源表查询允许与未输出的源字段同名，
+            但不得与同时输出的 group_by 字段同名，否则返回参数错误。
     GroupByItem:
       type: object
       required: [property]
@@ -441,8 +445,11 @@ components:
           enum: [local_index, source]
         entries:
           description: |
-            文档条目。Binary 或无法索引的字段可返回 `ResourceValue`：`unavailable` 表示该字段
-            不在本地索引中；`metadata` / `content` 分别表示 Binary 长度或 Base64 内容。
+            文档条目。Binary 或无法提供内容的字段可返回 `ResourceValue`：`unavailable` 表示
+            当前查询无法提供该字段内容（例如该字段不在本地索引中）。
+            它不表示源值为 NULL；真实空值返回 null，缺失字段仅表示本次未返回。
+            `metadata` / `content` 分别表示 Binary 长度或 Base64 内容。
+            源查询中 Other、JSON 的值按源端返回，不按 ResourceValue 包装或解读。
           type: array
           items:
             $ref: "#/components/schemas/Document"
@@ -461,13 +468,19 @@ components:
           items:
             type: string
     ResourceValue:
-      description: Binary 或无法索引字段的特殊值表示。
+      description: |
+        Binary 字段的特殊值表示；本地索引中未存储的 Binary/Other 也可返回 unavailable。
+        源查询中 Other 字段直接返回源值，不使用该包装。真实空值返回 null；缺失字段不能解释为 NULL。
       type: object
       required: [mode]
       properties:
         mode:
           type: string
           enum: [unavailable, metadata, content]
+        reason:
+          description: 内部查询未请求 Binary 内容时为 not_requested；可缺省，客户端应容忍未知原因。
+          type: string
+          examples: [not_requested]
         byte_length:
           description: Binary 字段的字节长度。
           type: integer

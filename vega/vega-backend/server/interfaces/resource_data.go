@@ -32,6 +32,8 @@ const (
 	ResourceQuerySourceLocalIndex = "local_index"
 	ResourceQuerySourceSource     = "source"
 
+	ResourceValueReasonNotRequested = "not_requested"
+
 	ResourceValueModeUnavailable = "unavailable"
 	ResourceValueModeMetadata    = "metadata"
 	ResourceValueModeContent     = "content"
@@ -113,6 +115,7 @@ type ResourceDataQueryResult struct {
 // special handling. Binary content uses Base64 data; byte_length applies only
 // to Binary fields.
 type ResourceValue struct {
+	Reason     string `json:"reason,omitempty"`
 	Mode       string `json:"mode"`
 	ByteLength *int64 `json:"byte_length,omitempty"`
 	Data       any    `json:"data,omitempty"`

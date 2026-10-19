@@ -1448,3 +1448,19 @@ func TestResourceDataServiceQueryJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeBinaryQueryValuesPreservesUnavailable(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "blob", Type: interfaces.DataType_Binary}}}
+	for _, mode := range []string{interfaces.BinaryModeMetadata, interfaces.BinaryModeContent} {
+		t.Run(mode, func(t *testing.T) {
+			unavailable := interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable, Reason: interfaces.ResourceValueReasonNotRequested}
+			entries := []map[string]any{{"blob": unavailable}, {"blob": nil}, {}}
+			got, err := normalizeBinaryQueryValues(entries, resource, &interfaces.ResourceDataQueryParams{BinaryMode: &mode})
+			require.NoError(t, err)
+			assert.Equal(t, unavailable, got[0]["blob"])
+			assert.Contains(t, got[1], "blob")
+			assert.Nil(t, got[1]["blob"])
+			assert.NotContains(t, got[2], "blob")
+		})
+	}
+}

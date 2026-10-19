@@ -33,6 +33,148 @@ func TestPostgresqlConnectorExecuteRawSQLInvalidParameter(t *testing.T) {
 }
 
 func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
+	t.Run("aggregate timezone follows its input rather than same-name source field", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			mock.ExpectClose()
+			require.NoError(t, db.Close())
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+		connector := &PostgresqlConnector{db: db, connected: true}
+		resource := &interfaces.Resource{SourceIdentifier: "events", SchemaDefinition: []*interfaces.Property{
+			{Name: "created_at", OriginalType: "timestamptz", Type: interfaces.DataType_Datetime},
+			{Name: "payload", OriginalType: "bytea", Type: interfaces.DataType_Binary},
+		}}
+		value := time.Date(2026, 9, 9, 8, 0, 0, 0, time.FixedZone("source", 2*60*60))
+		mock.ExpectQuery("SELECT MAX").WillReturnRows(sqlmock.NewRows([]string{"payload"}).AddRow(value))
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created_at", Aggr: "max", Alias: "payload"}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"payload": value.Local()}}, result.Entries)
+	})
+
+	t.Run("aggregate alias conflicts reject duplicate result columns", func(t *testing.T) {
+		for _, kind := range []string{"explicit", "default", "implicit"} {
+			t.Run(kind, func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				require.NoError(t, err)
+				t.Cleanup(func() {
+					mock.ExpectClose()
+					require.NoError(t, db.Close())
+					require.NoError(t, mock.ExpectationsWereMet())
+				})
+				connector := &PostgresqlConnector{db: db, connected: true}
+				column := "__value"
+				params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count"}}
+				if kind == "explicit" {
+					column = "label"
+					params.Aggregation.Alias = column
+				}
+				if kind == "implicit" {
+					params.Aggregation = nil
+					params.Having = &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 0}
+				}
+				params.GroupBy = []*interfaces.GroupByItem{{Property: column}}
+				resource := &interfaces.Resource{Schema: "APP", SourceIdentifier: "values_table", SchemaDefinition: []*interfaces.Property{{Name: column, OriginalName: "SOURCE_LABEL", OriginalType: "varchar", Type: interfaces.DataType_String}}}
+				result, err := connector.ExecuteQuery(context.Background(), resource, params)
+				var conflict *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &conflict)
+				assert.Equal(t, "aggregate alias conflicts with a group field", conflict.Reason)
+				assert.Nil(t, result)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
+	t.Run("aggregate aliases may match unprojected binary fields", func(t *testing.T) {
+		metadata, content := interfaces.BinaryModeMetadata, interfaces.BinaryModeContent
+		for _, mode := range []*string{nil, &metadata, &content} {
+			modeName := "not requested"
+			if mode != nil {
+				modeName = *mode
+			}
+			for _, alias := range []string{"payload", ""} {
+				t.Run(modeName+"/"+alias, func(t *testing.T) {
+					db, mock, err := sqlmock.New()
+					require.NoError(t, err)
+					t.Cleanup(func() {
+						mock.ExpectClose()
+						require.NoError(t, db.Close())
+						require.NoError(t, mock.ExpectationsWereMet())
+					})
+					connector := &PostgresqlConnector{db: db, connected: true}
+					column := alias
+					if column == "" {
+						column = "__value"
+					}
+					resource := &interfaces.Resource{Schema: "APP", SourceIdentifier: "values_table", SchemaDefinition: []*interfaces.Property{{Name: column, OriginalName: "PAYLOAD", OriginalType: "BINARY", Type: interfaces.DataType_Binary}}}
+					mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{column}).AddRow(int64(7)))
+					result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count", Alias: alias}, BinaryMode: mode})
+					require.NoError(t, err)
+					assert.Equal(t, []map[string]any{{column: int64(7)}}, result.Entries)
+					require.NoError(t, mock.ExpectationsWereMet())
+				})
+			}
+		}
+	})
+
+	t.Run("aggregate byte values do not inherit source binary content mode", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			mock.ExpectClose()
+			require.NoError(t, db.Close())
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+		connector := &PostgresqlConnector{db: db, connected: true}
+		content := interfaces.BinaryModeContent
+		resource := &interfaces.Resource{SourceIdentifier: "values_table", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Binary}}}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"payload"}).AddRow([]byte("7")))
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count", Alias: "payload"}, BinaryMode: &content})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"payload": "7"}}, result.Entries)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("shared unavailable rule preserves readable Other and actual NULL", func(t *testing.T) {
+		metadata := interfaces.BinaryModeMetadata
+		for _, mode := range []*string{nil, &metadata} {
+			modeName := "not requested"
+			if mode != nil {
+				modeName = *mode
+			}
+			t.Run(modeName, func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				require.NoError(t, err)
+				t.Cleanup(func() {
+					mock.ExpectClose()
+					require.NoError(t, db.Close())
+					require.NoError(t, mock.ExpectationsWereMet())
+				})
+				connector := &PostgresqlConnector{db: db, connected: true}
+				resource := &interfaces.Resource{Schema: "APP", SourceIdentifier: "values_table", SchemaDefinition: []*interfaces.Property{
+					{Name: "blob", Type: interfaces.DataType_Binary}, {Name: "other", Type: interfaces.DataType_Other},
+				}}
+				mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"blob", "other"}).AddRow(nil, "[1,2]").AddRow(nil, nil))
+				result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{BinaryMode: mode})
+				require.NoError(t, err)
+				require.Len(t, result.Entries, 2)
+				assert.Equal(t, "[1,2]", result.Entries[0]["other"])
+				assert.Contains(t, result.Entries[1], "other")
+				assert.Nil(t, result.Entries[1]["other"])
+				for _, entry := range result.Entries {
+					if mode == nil {
+						assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable, Reason: interfaces.ResourceValueReasonNotRequested}, entry["blob"])
+					} else {
+						assert.Contains(t, entry, "blob")
+						assert.Nil(t, entry["blob"])
+					}
+				}
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
 	t.Run("invalid projections fail before source execution", func(t *testing.T) {
 
 		for _, tc := range []struct {

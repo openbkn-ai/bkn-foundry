@@ -57,3 +57,72 @@ func ScanRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 	result.Total = int64(len(result.Entries))
 	return result, nil
 }
+
+// NormalizeQueryResult 仅标记内部查询未请求读取的 Binary，其他字段保留源端结果。
+func NormalizeQueryResult(result *interfaces.QueryResult, resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams) {
+	if result == nil || resource == nil || params == nil || params.BinaryMode != nil || params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
+		return
+	}
+	selected := make(map[string]bool, len(params.OutputFields))
+	for _, name := range params.OutputFields {
+		selected[name] = true
+	}
+	for _, field := range resource.SchemaDefinition {
+		if field == nil || field.Type != interfaces.DataType_Binary ||
+			(len(selected) > 0 && !selected[field.Name]) {
+			continue
+		}
+		for _, entry := range result.Entries {
+			if _, exists := entry[field.Name]; exists {
+				entry[field.Name] = interfaces.ResourceValue{
+					Mode:   interfaces.ResourceValueModeUnavailable,
+					Reason: interfaces.ResourceValueReasonNotRequested,
+				}
+			}
+		}
+	}
+}
+
+// ValidateAggregateAlias 拒绝聚合列与同时输出的分组列重名，不限制未输出的源字段名。
+func ValidateAggregateAlias(alias string, groups []*interfaces.GroupByItem) error {
+	if alias == "" {
+		return nil
+	}
+	for _, group := range groups {
+		if group != nil && group.Property == alias {
+			return interfaces.NewConditionBuildError("aggregate alias conflicts with a group field")
+		}
+	}
+	return nil
+}
+
+// QueryBinaryContentColumns 按实际投影确定需要保留二进制内容的结果列。
+func QueryBinaryContentColumns(resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams) map[string]bool {
+	columns := make(map[string]bool)
+	if params.BinaryMode == nil || *params.BinaryMode != interfaces.BinaryModeContent {
+		return columns
+	}
+	binaryFields := make(map[string]bool)
+	for _, field := range resource.SchemaDefinition {
+		if field != nil && field.Type == interfaces.DataType_Binary {
+			binaryFields[field.Name] = true
+		}
+	}
+	if params.Aggregation == nil && len(params.GroupBy) == 0 && params.Having == nil {
+		return binaryFields
+	}
+	for _, group := range params.GroupBy {
+		if group != nil && binaryFields[group.Property] {
+			columns[group.Property] = true
+		}
+	}
+	if agg := params.Aggregation; agg != nil && (agg.Aggr == "min" || agg.Aggr == "max") && binaryFields[agg.Property] {
+		alias := agg.Alias
+		if alias == "" {
+			alias = "__value"
+		}
+		columns[alias] = true
+	}
+	return columns
+}
