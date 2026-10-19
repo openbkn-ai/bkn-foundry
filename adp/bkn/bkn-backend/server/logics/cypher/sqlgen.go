@@ -145,9 +145,12 @@ func (g *generator) expression(value PlanExpression) string {
 		return g.operand(node.Left, precedence, false) + " " + node.Operator + " " +
 			g.operand(node.Right, precedence, true)
 	case PlanConditionValue:
-		// MySQL evaluates a condition to 1, 0 or NULL, which the caller turns
-		// back into a boolean. The condition is written by the same code that
-		// writes WHERE, so it reads the same in both places.
+		// A condition is written as CASE rather than as a bare predicate: some
+		// dialects vega-backend translates into, such as SQL Server and Oracle,
+		// do not allow a predicate as a value. It gives 1, 0, or NULL when the
+		// condition cannot be decided, which the caller turns back into a
+		// boolean. The condition is written by the same code that writes WHERE,
+		// so it reads the same in both places.
 		condition := &generator{dialect: g.dialect, plan: g.plan}
 		if err := condition.writePredicate(node.Predicate, true); err != nil {
 			g.fail(err)
@@ -157,7 +160,8 @@ func (g *generator) expression(value PlanExpression) string {
 			g.fail(condition.err)
 			return ""
 		}
-		return "(" + condition.out.String() + ")"
+		written := condition.out.String()
+		return "CASE WHEN " + written + " THEN 1 WHEN NOT (" + written + ") THEN 0 END"
 	default:
 		g.fail(fmt.Errorf("cannot generate a %T value", value))
 		return ""

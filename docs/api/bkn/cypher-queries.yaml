@@ -173,14 +173,18 @@ components:
             RETURN [DISTINCT] a.property | aggregate(a.property) | <condition> [AS alias], ...
             [ORDER BY a.property | alias | aggregate(a.property) [DESC]] [SKIP n] [LIMIT n]
 
-            A condition compares a property with =, <>, <, >, <= or >= against a literal or a
-            parameter, or tests it with IN [ ... ], IN $list (the whole list as one parameter),
+            A condition compares a property with =, <>, <, >, <= or >= against a literal, a
+            parameter or another property (o.shipped < o.ordered, a.code = b.code; properties the
+            model types as a string and a number cannot be compared), or tests it with IN [ ... ], IN $list (the whole list as one parameter),
             IS NULL or IS NOT NULL. A string property can also be matched with STARTS WITH,
             ENDS WITH or CONTAINS against a string literal or parameter: the match is a literal
             substring match (% and _ are not wildcards), a null property never matches, case
             sensitivity follows the column collation, and using them on a non-string property
             is refused with 400. Conditions combine with AND, OR and NOT, and parentheses group
-            them. XOR is not supported.
+            them. XOR is not supported. Not-equal is written <>; != is not openCypher and is
+            refused with a syntax error that says so. A date or time property can be compared
+            with date('2026-08-13'), datetime(...) or localdatetime(...) over a string literal or
+            parameter; other functions, and date() with no argument, are refused.
 
             RETURN can also return a condition, written as in WHERE, as in
             `g.tournament_name CONTAINS 'Men' AS mens`. Its value is true, false, or null when
@@ -189,8 +193,10 @@ components:
             by a condition, return it with an alias and sort by the alias.
 
             Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
-            count(*). Cypher has no GROUP BY: aggregating anything groups by everything else
-            the query returns. A grouped or DISTINCT result can only be sorted by a value it
+            count(*). count(n) counts the rows where node n was found, and count(DISTINCT n)
+            counts distinct objects by their primary key, which needs the object type to have
+            exactly one. Cypher has no GROUP BY, and writing one is a syntax error that says
+            so: aggregating anything groups by everything else the query returns. A grouped or DISTINCT result can only be sorted by a value it
             returns.
 
             A MATCH may contain several comma-separated paths, and a query may contain several

@@ -919,6 +919,12 @@ func evaluateDateComparison(predicate PlanPredicate, s scope) (truth, error) {
 			return result.not(), nil
 		}
 		return result, nil
+	case PlanColumnComparison:
+		order, ok := compareDates(s.column(node.LeftTable, node.LeftColumn), s.column(node.RightTable, node.RightColumn))
+		if !ok {
+			return truthUnknown, nil
+		}
+		return orderTruth(order, node.Operator)
 	default:
 		return evaluatePredicate(predicate, s)
 	}
