@@ -30,6 +30,7 @@
 - Go 代码必须通过 `gofmt`；新增日志、错误处理和 tracing 行为应与所在包保持一致。
 - 非生成测试文件必须包含许可证文件头，按文件来源遵循仓库 `rules/CONTRIBUTING.md`：OpenBKN 净新文件使用 OpenBKN License，上游衍生文件保留 Apache 2.0 及上游版权行；生成文件不补文件头。
 - 不得修改、覆盖或提交工作区中属于用户的无关改动。
+- Dataset 是 Vega 管理的结构化文档资源，JSON 字段保留文档原有类型；table、index 等外部数据源的 JSON 查询输出约定不得直接套用到 Dataset，列表与按 ID 读取必须保持一致。
 
 ## 列表接口的权限过滤
 
