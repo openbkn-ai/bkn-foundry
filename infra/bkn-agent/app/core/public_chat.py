@@ -308,7 +308,42 @@ def classify_failure(exc: BaseException) -> tuple[str, dict | None]:
             "BknAgent.Model.Unavailable" if retryable else "BknAgent.Model.Rejected",
             upstream,
         )
+    if isinstance(exc, openai.APIError):
+        # An error frame inside an accepted stream carries no HTTP status: Model
+        # Factory's stream is always 200, so a busy, rate-limited or unreachable
+        # provider arrives this way too. Its OpenAI error type tells a passing
+        # failure from a refusal (an exhausted balance, a content filter).
+        body = exc.body if isinstance(exc.body, dict) else {}
+        code = body.get("code") or getattr(exc, "code", None)
+        kind = body.get("type") or getattr(exc, "type", None)
+        upstream = {
+            key: _redact(str(value))[:500]
+            for key, value in (("code", code), ("message", exc.message))
+            if value
+        } or None
+        # OpenAI's own 429 carries rate_limit_exceeded as the code, not the type.
+        if kind in _TRANSIENT_ERROR_TYPES or code in _TRANSIENT_ERROR_TYPES:
+            return "BknAgent.Model.Unavailable", upstream
+        return "BknAgent.Model.Rejected", upstream
     return "BknAgent.Chat.Failed", None
+
+
+# Error types worth retrying, unlike the rest: what Model Factory
+# (openai_error.error_type_for_status) gives provider 429/5xx/timeouts and lost
+# connections, plus the types it passes through unchanged when a provider names
+# its own (OpenAI rate limiting; Anthropic overload and server errors).
+_TRANSIENT_ERROR_TYPES = frozenset(
+    {
+        "server_error",
+        "service_unavailable_error",
+        "timeout_error",
+        "rate_limit_exceeded",
+        "rate_limit_error",
+        "api_connection_error",
+        "overloaded_error",
+        "api_error",
+    }
+)
 
 
 def _redact(text: str) -> str:

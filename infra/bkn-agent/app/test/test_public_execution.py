@@ -1697,6 +1697,38 @@ def test_failures_are_classified_with_the_upstream_error():
     assert code == "BknAgent.Model.Rejected"
     assert classify_failure(RuntimeError("boom")) == ("BknAgent.Chat.Failed", None)
 
+    # An error event inside an accepted stream has no HTTP status; it is still
+    # the model's refusal, and its message is the real cause.
+    mid_stream = openai.APIError(
+        "Insufficient Balance sk-leaked",
+        request=httpx.Request("POST", "http://mf"),
+        body={"code": "insufficient_balance", "type": "invalid_request_error"},
+    )
+    code, upstream = classify_failure(mid_stream)
+    assert code == "BknAgent.Model.Rejected"
+    assert upstream["code"] == "insufficient_balance"
+    assert upstream["message"].startswith("Insufficient Balance")
+    assert "sk-leaked" not in upstream["message"]
+
+    # Model Factory's stream is always HTTP 200, so a busy, rate-limited or
+    # unreachable provider also arrives as an error frame: worth retrying.
+    for body in (
+        {"code": "ModelFactory.Upstream", "type": "service_unavailable_error"},
+        {"code": "ModelFactory.Upstream", "type": "rate_limit_exceeded"},
+        {"code": "ModelFactory.Upstream", "type": "api_connection_error"},
+        # Passed through from the provider: Anthropic overload and server errors,
+        # and OpenAI's 429, whose rate-limit marker is the code.
+        {"type": "overloaded_error"},
+        {"type": "api_error"},
+        {"code": "rate_limit_exceeded", "type": "tokens"},
+    ):
+        transient = openai.APIError(
+            "Service is too busy", request=httpx.Request("POST", "http://mf"), body=body
+        )
+        code, upstream = classify_failure(transient)
+        assert code == "BknAgent.Model.Unavailable", body
+        assert upstream["message"] == "Service is too busy"
+
 
 def test_terminal_names_the_real_failure(monkeypatch):
     from langchain_core.language_models.chat_models import BaseChatModel
