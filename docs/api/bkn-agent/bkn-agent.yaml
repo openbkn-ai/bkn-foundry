@@ -659,6 +659,172 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/versions:
+    get:
+      tags:
+      - BknAgentExecution
+      summary: List Agent Versions
+      operationId: list_agent_versions_api_bkn_agent_v1_admin_agents__agent_id__versions_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentVersionOut'
+                title: Response List Agent Versions Api Bkn Agent V1 Admin Agents  Agent
+                  Id  Versions Get
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/versions/{version}/activate:
+    post:
+      tags:
+      - BknAgentExecution
+      summary: Activate Agent Version
+      description: 'Make a version current: its model, tools, limits and Prompt version
+        go
+
+        back onto the Agent. No new version is written.'
+      operationId: activate_agent_version_api_bkn_agent_v1_admin_agents__agent_id__versions__version__activate_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          title: Version
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/versions/{version}:
+    delete:
+      tags:
+      - BknAgentExecution
+      summary: Delete Agent Version
+      description: 'Remove a version from the history. The current and the initial
+        version
+
+        stay; a deleted number is never handed out again.'
+      operationId: delete_agent_version_api_bkn_agent_v1_admin_agents__agent_id__versions__version__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          title: Version
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentVersionOut'
+                title: Response Delete Agent Version Api Bkn Agent V1 Admin Agents  Agent
+                  Id  Versions  Version  Delete
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/restore:
+    post:
+      tags:
+      - BknAgentExecution
+      summary: Restore Shared Agent
+      description: 'Make the initial version current again: what the built-in Agent
+        shipped
+
+        with. History is kept.'
+      operationId: restore_shared_agent_api_bkn_agent_v1_admin_agents__agent_id__restore_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/bkn-agent/v1/admin/agents/{agent_id}/prompt:
     get:
       tags:
@@ -696,6 +862,7 @@ paths:
       tags:
       - BknAgentExecution
       summary: Publish Shared Prompt
+      description: Publish new shared Prompt content; it becomes a new Agent version.
       operationId: publish_shared_prompt_api_bkn_agent_v1_admin_agents__agent_id__prompt_put
       security:
       - HTTPBearer: []
@@ -715,45 +882,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PromptPublish'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SharedPromptOut'
-        4XX:
-          description: Platform error envelope (400 parameters / 401 identity / 404
-            not found / 409 conflict). The human-readable fields follow the request
-            Accept-Language; code stays stable.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorEnvelope'
-  /api/bkn-agent/v1/admin/agents/{agent_id}/prompt/rollback:
-    post:
-      tags:
-      - BknAgentExecution
-      summary: Rollback Shared Prompt
-      operationId: rollback_shared_prompt_api_bkn_agent_v1_admin_agents__agent_id__prompt_rollback_post
-      security:
-      - HTTPBearer: []
-      parameters:
-      - name: agent_id
-        in: path
-        required: true
-        schema:
-          type: string
-          minLength: 1
-          maxLength: 50
-          pattern: ^[0-9A-Za-z_.-]+$
-          title: Agent Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PromptRollback'
       responses:
         '200':
           description: Successful Response
@@ -1710,6 +1838,63 @@ components:
       - type
       - agent_id
       title: AgentToolRef
+    AgentVersionOut:
+      properties:
+        version:
+          type: integer
+          title: Version
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        mcp_profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mcp Profile
+        limits:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Limits
+        prompt_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Prompt Version
+        prompt_content:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prompt Content
+        changes:
+          items:
+            type: string
+          type: array
+          title: Changes
+          default: []
+        initial:
+          type: boolean
+          title: Initial
+        current:
+          type: boolean
+          title: Current
+        create_user:
+          type: string
+          title: Create User
+        create_time:
+          type: integer
+          title: Create Time
+      type: object
+      required:
+      - version
+      - initial
+      - current
+      - create_user
+      - create_time
+      title: AgentVersionOut
     ChatRequest:
       properties:
         agent_id:
@@ -2435,6 +2620,22 @@ components:
           - type: integer
           - type: 'null'
           title: Prompt Version
+        version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Version
+        initial_version:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Initial Version
+        restorable:
+          type: boolean
+          title: Restorable
+        modified:
+          type: boolean
+          title: Modified
         update_user:
           type: string
           title: Update User
@@ -2450,6 +2651,8 @@ components:
       - uses_context_loader
       - layered
       - can_edit
+      - restorable
+      - modified
       - update_user
       - update_time
       title: SharedOut
@@ -2457,15 +2660,9 @@ components:
       properties:
         prompt:
           $ref: '#/components/schemas/PromptOut'
-        versions:
-          items:
-            $ref: '#/components/schemas/PromptVersionOut'
-          type: array
-          title: Versions
       type: object
       required:
       - prompt
-      - versions
       title: SharedPromptOut
     TaskOut:
       properties:

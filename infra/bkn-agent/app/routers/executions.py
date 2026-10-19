@@ -198,6 +198,7 @@ async def execute(
         raise err(409, "BknAgent.Thread.Busy", thread_id=thread_id)
     _thread_claims.add(thread_id)
     try:
+        agent_version = await dao.current_version(session, agent.agent_id)
         task_input = {
             "protocol": _PROTOCOL,
             "subject": _identity(account),
@@ -205,6 +206,8 @@ async def execute(
             "fingerprint": fingerprint,
             "agent_snapshot": agent.model_dump(mode="json"),
             "setting_versions": effective.versions,
+            # The Agent version (model, tools, limits, Prompt version) this run used.
+            "agent_version": agent_version.f_version if agent_version else None,
         }
         created = await dao.reserve_execution(
             session, run_id, agent.agent_id, task_input, account.account_id, thread_id

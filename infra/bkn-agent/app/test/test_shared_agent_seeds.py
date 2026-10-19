@@ -16,6 +16,7 @@ STUDIO = MIGRATIONS / "0.2.1/01-seed-studio-smart-qa.sql"
 PROVENANCE = MIGRATIONS / "0.2.1/02-seed-business-provenance.sql"
 PROVENANCE_UPGRADE = MIGRATIONS / "0.2.1/03-upgrade-business-provenance-defaults.sql"
 SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
+VERSIONS = MIGRATIONS / "0.2.1/05-agent-versions.sql"
 
 
 def statements(path):
@@ -65,6 +66,10 @@ def database():
         CREATE TABLE t_agent_prompt_version(f_prompt_id TEXT, f_version INTEGER,
             f_content TEXT, f_vars_schema TEXT, f_create_user TEXT, f_create_time INTEGER,
             PRIMARY KEY(f_prompt_id, f_version));
+        CREATE TABLE t_agent_version(f_agent_id TEXT, f_version INTEGER,
+            f_model TEXT NOT NULL, f_tools TEXT NOT NULL, f_limits TEXT, f_prompt_version INTEGER, f_changes TEXT,
+            f_initial INTEGER, f_current INTEGER, f_deleted INTEGER, f_create_user TEXT,
+            f_create_time INTEGER, PRIMARY KEY(f_agent_id, f_version));
     """)
     return db
 
@@ -132,7 +137,12 @@ def seed_package(agent_id="business_provenance_optimizer"):
 def snapshot(db):
     return [
         [tuple(row) for row in db.execute(f"SELECT * FROM {table} ORDER BY 1,2")]
-        for table in ("t_agent", "t_agent_prompt", "t_agent_prompt_version")
+        for table in (
+            "t_agent",
+            "t_agent_prompt",
+            "t_agent_prompt_version",
+            "t_agent_version",
+        )
     ]
 
 
@@ -146,12 +156,21 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
     assert tables == re.findall(r"create table if not exists (\w+)", old, re.I) + [
         "t_agent_network_setting",
         "t_agent_user_setting",
+        "t_agent_version",
+    ]
+    assert re.findall(r"create table if not exists (\w+)", VERSIONS.read_text(), re.I) == [
+        "t_agent_version",
     ]
     assert re.findall(r"create table if not exists (\w+)", SETTINGS.read_text(), re.I) == [
         "t_agent_network_setting",
         "t_agent_user_setting",
     ]
-    deltas = STUDIO.read_text() + PROVENANCE.read_text() + SETTINGS.read_text()
+    deltas = (
+        STUDIO.read_text()
+        + PROVENANCE.read_text()
+        + SETTINGS.read_text()
+        + VERSIONS.read_text()
+    )
     assert "alter table" not in deltas.lower()
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
 
@@ -164,6 +183,7 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         apply(upgraded, STUDIO)
         apply(upgraded, PROVENANCE)
         apply(upgraded, PROVENANCE_UPGRADE)
+        apply(upgraded, VERSIONS)
         assert snapshot(fresh) == snapshot(upgraded)
         assert len(snapshot(fresh)[0]) == 5
         for table_before, table_after in zip(original, snapshot(upgraded)):
@@ -277,7 +297,18 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
     fresh, upgrade = selected_migrations("0.2.0")
     assert fresh == [str(MIGRATIONS / "0.2.1/init.sql"), "0.2.1"]
     assert upgrade == [
-        [["0.2.1", [str(STUDIO), str(PROVENANCE), str(PROVENANCE_UPGRADE), str(SETTINGS)]]],
+        [
+            [
+                "0.2.1",
+                [
+                    str(STUDIO),
+                    str(PROVENANCE),
+                    str(PROVENANCE_UPGRADE),
+                    str(SETTINGS),
+                    str(VERSIONS),
+                ],
+            ]
+        ],
         "0.2.1",
         True,
     ]
@@ -553,3 +584,41 @@ def test_owner_credential_rollback_is_not_mistaken_for_an_untouched_default():
         prompt_before = snapshot(db)[1:]
         apply(db, PROVENANCE_UPGRADE)
         assert snapshot(db)[1:] == prompt_before
+
+
+def test_every_agent_starts_with_one_current_version():
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.1/init.sql")
+        rows = {
+            row["f_agent_id"]: dict(row) for row in db.execute("SELECT * FROM t_agent_version")
+        }
+        agents = [row["f_agent_id"] for row in db.execute("SELECT f_agent_id FROM t_agent")]
+        assert sorted(rows) == sorted(agents)
+        assert all(row["f_version"] == 1 and row["f_current"] == 1 for row in rows.values())
+        # Built-in Agents mark v1 as the initial version restore returns to.
+        assert all(row["f_initial"] == 1 for row in rows.values())
+        qa = db.execute(
+            "SELECT f_model, f_tools, f_limits FROM t_agent WHERE f_agent_id='studio_smart_qa'"
+        ).fetchone()
+        assert (rows["studio_smart_qa"]["f_tools"], rows["studio_smart_qa"]["f_limits"]) == (
+            qa["f_tools"],
+            qa["f_limits"],
+        )
+        assert rows["resource-semantic-understanding"]["f_prompt_version"] == 3
+
+        # Running the delta again adds nothing.
+        apply(db, VERSIONS)
+        assert db.execute("SELECT count(*) FROM t_agent_version").fetchone()[0] == len(rows)
+
+
+def test_version_snapshot_tolerates_null_tools_and_model_in_older_rows():
+    with database() as db:
+        db.execute(
+            "INSERT INTO t_agent(f_agent_id, f_name, f_mode, f_model, f_tools, f_update_user)"
+            " VALUES ('legacy', 'Legacy', 'chat', NULL, NULL, 'u')"
+        )
+        apply(db, VERSIONS)
+        row = db.execute(
+            "SELECT f_model, f_tools, f_initial FROM t_agent_version WHERE f_agent_id='legacy'"
+        ).fetchone()
+        assert (row["f_model"], row["f_tools"], row["f_initial"]) == ("", "[]", 0)
