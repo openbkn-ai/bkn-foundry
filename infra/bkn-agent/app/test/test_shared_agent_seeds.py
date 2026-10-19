@@ -252,7 +252,7 @@ def test_sql_defaults_match_the_previous_agent_and_prompt_definitions():
         # studio_smart_qa: Prompt revised before the 0.2.1 release with query and
         # answer guidance learned from the first end-to-end run, then with
         # guidance for listing every row in one query instead of pages.
-        "studio_smart_qa": "e7d82224b508339db5b5c6df177238f8006892d13fb71a434214edd83640e80f",
+        "studio_smart_qa": "2cee40de08fa687841d5b4f5dc39d8c9493d14cba3fe03e03d39163b154a02c6",
         "business_provenance_optimizer": "10531cf1bf25a4ac4e52219766f507556e3544f0d9296fc2daff589fe70e7540",
         "business_provenance_claim_attribution": "9dc9e6ad9f118db0c7f890f595584048e9937413c2b60319d57ebf809ee3cb43",
     }

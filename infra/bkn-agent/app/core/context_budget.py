@@ -114,13 +114,51 @@ def cleared_placeholder(call: dict | None, size: int) -> str:
     )
 
 
-class ToolResultBudget(AgentMiddleware):
-    """Truncate and drop tool results in the request only.
+def budget_messages(
+    messages: list, data_chars: int, schema_chars: int, keep: int
+) -> list:
+    """The copy of messages the model receives.
 
     The current question keeps its most recent results while their capped size
     fits in keep x data_chars, and always at least keep of them, so one large
-    result and several small ones stay visible together.
+    result and several small ones stay visible together. Earlier questions keep
+    their answers; their raw tool results would only grow every later turn's
+    input, so they become placeholders.
     """
+    current = max(
+        (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)),
+        default=-1,
+    )
+    calls = {
+        call["id"]: call
+        for m in messages
+        if isinstance(m, AIMessage)
+        for call in m.tool_calls
+    }
+    budget = keep * data_chars
+    kept = used = 0
+    messages = list(messages)
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if not isinstance(m, ToolMessage):
+            continue
+        if i < current:
+            messages[i] = m.model_copy(update={"content": _EARLIER_TURN})
+            continue
+        size = len(_text_of(m.content))
+        capped = min(size, _limit_of(m, data_chars, schema_chars))
+        if kept < keep or used + capped <= budget:
+            kept += 1
+            used += capped
+            messages[i] = cap_tool_message(m, data_chars, schema_chars)
+        else:
+            placeholder = cleared_placeholder(calls.get(m.tool_call_id), size)
+            messages[i] = m.model_copy(update={"content": placeholder, "artifact": None})
+    return messages
+
+
+class ToolResultBudget(AgentMiddleware):
+    """Truncate and drop tool results in the request only (see budget_messages)."""
 
     def __init__(self, data_chars: int, schema_chars: int, keep: int):
         super().__init__()
@@ -129,40 +167,11 @@ class ToolResultBudget(AgentMiddleware):
         self.keep = keep
 
     def _request(self, request):
-        # Earlier questions keep their answers; their raw tool results would only
-        # grow every later turn's input, so they become placeholders.
-        current = max(
-            (i for i, m in enumerate(request.messages) if isinstance(m, HumanMessage)),
-            default=-1,
+        return request.override(
+            messages=budget_messages(
+                request.messages, self.data_chars, self.schema_chars, self.keep
+            )
         )
-        calls = {
-            call["id"]: call
-            for m in request.messages
-            if isinstance(m, AIMessage)
-            for call in m.tool_calls
-        }
-        budget = self.keep * self.data_chars
-        kept = used = 0
-        messages = list(request.messages)
-        for i in range(len(messages) - 1, -1, -1):
-            m = messages[i]
-            if not isinstance(m, ToolMessage):
-                continue
-            if i < current:
-                messages[i] = m.model_copy(update={"content": _EARLIER_TURN})
-                continue
-            size = len(_text_of(m.content))
-            capped = min(size, _limit_of(m, self.data_chars, self.schema_chars))
-            if kept < self.keep or used + capped <= budget:
-                kept += 1
-                used += capped
-                messages[i] = cap_tool_message(m, self.data_chars, self.schema_chars)
-            else:
-                placeholder = cleared_placeholder(calls.get(m.tool_call_id), size)
-                messages[i] = m.model_copy(
-                    update={"content": placeholder, "artifact": None}
-                )
-        return request.override(messages=messages)
 
     def wrap_model_call(self, request, handler):
         return handler(self._request(request))
@@ -178,23 +187,47 @@ def _same_call(a: dict, b: dict) -> bool:
 
 
 def earlier_result(messages: list, call: dict) -> ToolMessage | None:
-    """The successful result of an identical read call made for this question."""
+    """The successful result of an identical read call made for this question.
+
+    Any other kind of call since that read, a write among them, may have changed
+    the data, so the read runs again.
+    """
     if call.get("name") not in READ_TOOLS:
         return None
     start = max(
         (i for i, m in enumerate(messages) if isinstance(m, HumanMessage)), default=-1
     )
+    turn = messages[start + 1 :]
     ids = {
         c["id"]
-        for m in messages[start + 1 :]
+        for m in turn
         if isinstance(m, AIMessage)
         for c in m.tool_calls
         if c["id"] != call.get("id") and _same_call(c, call)
     }
-    for m in reversed(messages[start + 1 :]):
-        if isinstance(m, ToolMessage) and m.tool_call_id in ids and m.status != "error":
-            return m
-    return None
+    found = next(
+        (
+            m
+            for m in reversed(turn)
+            if isinstance(m, ToolMessage) and m.tool_call_id in ids and m.status != "error"
+        ),
+        None,
+    )
+    if found is None:
+        return None
+    # From the step that made the read up to now, including calls run beside it.
+    origin = next(
+        i
+        for i, m in enumerate(turn)
+        if isinstance(m, AIMessage)
+        and any(c["id"] == found.tool_call_id for c in m.tool_calls)
+    )
+    for m in turn[origin:]:
+        if isinstance(m, AIMessage) and any(
+            c["name"] not in READ_TOOLS for c in m.tool_calls
+        ):
+            return None
+    return found
 
 
 class RepeatedReadCache(AgentMiddleware):

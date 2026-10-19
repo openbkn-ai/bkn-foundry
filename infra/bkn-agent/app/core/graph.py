@@ -309,7 +309,7 @@ async def stream_chat(
                                 out_of_steps = True
                             if public and (out_of_steps or not public.final):
                                 async for content in public.finalize(
-                                    graph, cfg, model, system_prompt
+                                    graph, cfg, model, system_prompt, shared_limits(agent)
                                 ):
                                     answer_parts.append(content)
                                     public.answer.append(content)
