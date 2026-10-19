@@ -389,6 +389,9 @@ func normalizeBinaryQueryValues(entries []map[string]any, resource *interfaces.R
 			if !exists || value == nil {
 				continue
 			}
+			if special, ok := value.(interfaces.ResourceValue); ok && special.Mode == interfaces.ResourceValueModeUnavailable {
+				continue
+			}
 			if binaryMode == interfaces.BinaryModeMetadata {
 				length, ok := common.NumberAsInt64(value)
 				if !ok {

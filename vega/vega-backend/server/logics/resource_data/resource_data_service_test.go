@@ -1448,3 +1448,55 @@ func TestResourceDataServiceQueryJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestResourceDataServiceQueryDataPreservesOtherValues(t *testing.T) {
+	for _, connectorType := range []string{interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL, "doris"} {
+		t.Run(connectorType, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			cf := mock_interfaces.NewMockConnectorFactory(ctrl)
+			conn := mock_interfaces.NewMockTableConnector(ctrl)
+			rds := &resourceDataService{cf: cf}
+			catalog := &interfaces.Catalog{ConnectorType: connectorType}
+			resource := &interfaces.Resource{Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer}, {Name: "value", Type: interfaces.DataType_Other},
+			}}
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), connectorType, gomock.Any()).Return(conn, nil)
+			conn.EXPECT().Connect(gomock.Any()).Return(nil)
+			conn.EXPECT().Close(gomock.Any()).Return(nil)
+			conn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.QueryResult{
+				Entries: []map[string]any{
+					{"id": 1, "nullable": nil, "value": map[string]any{"data": []any{1, 2}, "mode": "unavailable"}},
+					{"id": 2, "nullable": nil, "value": nil},
+				}, Total: 2,
+			}, nil)
+			rows, total, err := rds.QueryData(context.Background(), catalog, resource, &interfaces.ResourceDataQueryParams{})
+			require.NoError(t, err)
+			assert.Equal(t, int64(2), total)
+			require.Len(t, rows, 2)
+			assert.Equal(t, map[string]any{"data": []any{1, 2}, "mode": "unavailable"}, rows[0]["value"])
+			assert.Contains(t, rows[1], "value")
+			assert.Nil(t, rows[1]["value"])
+			for _, row := range rows {
+				assert.Contains(t, row, "nullable")
+				assert.Nil(t, row["nullable"])
+				assert.NotContains(t, row, "unexpected")
+			}
+		})
+	}
+}
+
+func TestNormalizeBinaryQueryValuesPreservesUnavailable(t *testing.T) {
+	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "blob", Type: interfaces.DataType_Binary}}}
+	for _, mode := range []string{interfaces.BinaryModeMetadata, interfaces.BinaryModeContent} {
+		t.Run(mode, func(t *testing.T) {
+			unavailable := interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable, Reason: interfaces.ResourceValueReasonNotRequested}
+			entries := []map[string]any{{"blob": unavailable}, {"blob": nil}, {}}
+			got, err := normalizeBinaryQueryValues(entries, resource, &interfaces.ResourceDataQueryParams{BinaryMode: &mode})
+			require.NoError(t, err)
+			assert.Equal(t, unavailable, got[0]["blob"])
+			assert.Contains(t, got[1], "blob")
+			assert.Nil(t, got[1]["blob"])
+			assert.NotContains(t, got[2], "blob")
+		})
+	}
+}

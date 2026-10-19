@@ -232,12 +232,15 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		selectFields = append(selectFields, aggExpression+" AS "+pgQuoteColumnName(aggAlias))
 	}
 
-	// Aggregate output aliases must not overwrite a grouping dimension.
-	if aggExpression != "" {
-		for _, group := range params.GroupBy {
-			if group.Property == aggAlias {
-				return nil, interfaces.NewConditionBuildError("aggregate alias conflicts with a group field")
-			}
+	if err := table.ValidateAggregateAlias(aggAlias, params.GroupBy); err != nil {
+		return nil, err
+	}
+	// 聚合列仅保留 MIN/MAX 实际源字段的时间类型，不继承同名字段的类型。
+	delete(origTypeMap, aggAlias)
+
+	if agg := params.Aggregation; agg != nil && (agg.Aggr == "min" || agg.Aggr == "max") {
+		if field := fieldMap[agg.Property]; field != nil {
+			origTypeMap[aggAlias] = field.OriginalType
 		}
 	}
 
@@ -369,14 +372,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	}
 	result.Columns = columns
 
-	binaryContentColumns := map[string]bool{}
-	if params.BinaryMode != nil && *params.BinaryMode == interfaces.BinaryModeContent {
-		for _, prop := range resource.SchemaDefinition {
-			if prop != nil && prop.Type == interfaces.DataType_Binary {
-				binaryContentColumns[prop.Name] = true
-			}
-		}
-	}
+	binaryContentColumns := table.QueryBinaryContentColumns(resource, params)
 	for rows.Next() {
 		values := make([]any, len(columns))
 		valuePtrs := make([]any, len(columns))
@@ -424,6 +420,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		result.Total = total
 	}
 
+	table.NormalizeQueryResult(result, resource, params)
 	return result, nil
 }
 

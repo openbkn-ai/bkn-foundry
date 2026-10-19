@@ -17,6 +17,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 )
 
 // convertValue converts driver byte slices to strings unless binary content must be preserved.
@@ -88,14 +89,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	}
 	defer func() { _ = rows.Close() }()
 
-	binaryContentColumns := map[string]bool{}
-	if params.BinaryMode != nil && *params.BinaryMode == interfaces.BinaryModeContent {
-		for _, prop := range resource.SchemaDefinition {
-			if prop != nil && prop.Type == interfaces.DataType_Binary {
-				binaryContentColumns[prop.Name] = true
-			}
-		}
-	}
+	binaryContentColumns := table.QueryBinaryContentColumns(resource, params)
 	result, err := c.scanQueryRows(rows, binaryContentColumns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan query rows: %w", err)
@@ -128,6 +122,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		result.Total = total
 	}
 
+	table.NormalizeQueryResult(result, resource, params)
 	return result, nil
 }
 
@@ -240,6 +235,10 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 		// A count(*) HAVING clause requires an implicit COUNT(*) projection.
 		aggAlias = "__value"
 		selectFields = append(selectFields, "COUNT(*) AS "+mariadbQuoteColumnName(aggAlias))
+	}
+
+	if err := table.ValidateAggregateAlias(aggAlias, params.GroupBy); err != nil {
+		return sq.SelectBuilder{}, err
 	}
 
 	// Detail projection follows the requested binary representation.
