@@ -390,6 +390,14 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 			return nil, err
 		}
 		p.plan.Having = having
+		// A property the condition reads outside an aggregate belongs to a
+		// node the WITH grouped by, so grouping by it as well changes no
+		// group; it is what lets the database read it for the group.
+		for _, column := range havingColumns(having) {
+			if !hasColumn(p.plan.GroupBy, column) {
+				p.plan.GroupBy = append(p.plan.GroupBy, column)
+			}
+		}
 	}
 	if err := p.planOrderBy(query.OrderBy); err != nil {
 		return nil, err
@@ -1592,4 +1600,41 @@ func hasColumn(columns []PlanColumn, column PlanColumn) bool {
 		}
 	}
 	return false
+}
+
+// havingColumns lists the columns a per-group condition reads outside any
+// aggregate.
+func havingColumns(predicate PlanPredicate) []PlanColumn {
+	var columns []PlanColumn
+	add := func(table int, column, property string) {
+		columns = append(columns, PlanColumn{Table: table, Column: column, Property: property})
+	}
+	var walk func(PlanPredicate)
+	walk = func(predicate PlanPredicate) {
+		switch node := predicate.(type) {
+		case PlanCondition:
+			add(node.Table, node.Column, node.Property)
+		case PlanNullCheck:
+			add(node.Table, node.Column, node.Property)
+		case PlanMembership:
+			add(node.Table, node.Column, node.Property)
+		case PlanStringMatch:
+			add(node.Table, node.Column, node.Property)
+		case PlanColumnComparison:
+			add(node.LeftTable, node.LeftColumn, node.LeftProperty)
+			add(node.RightTable, node.RightColumn, node.RightProperty)
+		case PlanExpressionComparison:
+			for _, bare := range append(ungroupedColumns(node.Left), ungroupedColumns(node.Right)...) {
+				add(bare.Table, bare.Column, bare.Property)
+			}
+		case PlanNegation:
+			walk(node.Operand)
+		case PlanLogical:
+			for _, operand := range node.Operands {
+				walk(operand)
+			}
+		}
+	}
+	walk(predicate)
+	return columns
 }

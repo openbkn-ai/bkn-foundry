@@ -52,6 +52,11 @@ func TestWithGenerates(t *testing.T) {
 			want:  []string{"SELECT t0.`f_region` AS `r`", "GROUP BY t0.`f_region`", "HAVING SUM(t0.`f_amount`) > 60"},
 		},
 		{
+			name:  "a property tested beside an aggregate is grouped by too",
+			query: "MATCH (o:Order) WITH o, count(*) AS n WHERE n > 1 OR o.amount > 60 RETURN o.id AS id",
+			want:  []string{"GROUP BY t0.`f_id`, t0.`f_amount`", "HAVING COUNT(*) > 1 OR t0.`f_amount` > 60"},
+		},
+		{
 			name:  "a WITH that only renames",
 			query: "MATCH (o:Order) WITH o.amount AS a WHERE a > 30 RETURN a ORDER BY a",
 			want:  []string{"SELECT t0.`f_amount` AS `a`", "WHERE t0.`f_amount` > 30", "ORDER BY `a`"},
@@ -109,6 +114,23 @@ func TestWithEvaluates(t *testing.T) {
 			name:  "sum tested per group",
 			query: "MATCH (o:Order) WITH o.region AS r, sum(o.amount) AS total WHERE total > 60 RETURN r, total ORDER BY r",
 			want:  [][]any{{"east", 70}, {"west", 70}},
+		},
+		{
+			name:  "a LIMIT does not cut the rows a group is counted over",
+			query: "MATCH (o:Order) WITH o.region AS r, count(*) AS n WHERE n >= 2 RETURN r LIMIT 1",
+			want:  [][]any{{"east"}},
+		},
+		{
+			name: "OR mixing an aggregate with a property of the grouped node",
+			query: "MATCH (o:Order) WITH o, count(*) AS n WHERE n > 1 OR o.amount > 60 " +
+				"RETURN o.id AS id ORDER BY id",
+			want: [][]any{{2}},
+		},
+		{
+			name: "a date in the per-group condition compares by wall clock",
+			query: "MATCH (o:Order) WITH o, count(*) AS n WHERE o.placed_at > '2024-01-31 23:59:59' OR n > 5 " +
+				"RETURN o.id AS id ORDER BY id",
+			want: [][]any{{3}},
 		},
 		{
 			name:  "one group, condition fails",

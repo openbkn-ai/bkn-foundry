@@ -1075,6 +1075,8 @@ func TestBindJoinReadsEverythingWhenTheDataSourceCannotFinishTheQuery(t *testing
 		"MATCH (o:Order) RETURN DISTINCT o.region LIMIT 1",
 		"MATCH (c:Customer) WHERE c.name ENDS WITH 'e' RETURN c.name LIMIT 1",
 		"MATCH (o:Order) RETURN o.id, o.amount * 2 AS d ORDER BY d LIMIT 1",
+		"MATCH (o:Order) WITH o.region AS r, count(*) AS n WHERE n >= 2 RETURN r LIMIT 1",
+		"MATCH (o:Order) WITH o, count(*) AS n RETURN o.id LIMIT 1",
 	} {
 		_, api := mustRunFake(t, query, nil)
 		for _, r := range api.reads {
