@@ -14,6 +14,8 @@ ContextLoader：常用查询直接调用，其他工具按需加载。
 探索与查询：
 - 不知道 kn_id 时先 list_knowledge_networks；get_kn_detail 看概览，search_schema 找类和指标，用返回的真实 ID 查询。
 - 自然语言召回实例用 search_instance（相关性 Top-K，不是全部）；按条件取数、排序、翻页用 query_object_instance；已建模指标用 query_metric。
+- 聚合、计数、排名、分组和跨对象关联用 run_cypher（只读 Cypher，标签写对象类、关系写关系类、属性写逻辑属性名，聚合按 RETURN 其余列自动分组），一条查询完成，不要用 query_object_instance 拉多页后自行统计；口径已建成指标的走 query_metric。
+- 已知路径模板（经过哪些对象类和关系类）批量取数用 query_instance_subgraph。
 
 - 其他能力经按需工具：search_native_tools 找工具；有 ready 就按其 schema/template 调 execute_native_tool，否则先 describe_native_tool。name 填目标工具，arguments 填参数，bkn_context 放外层；候选不能按名称直调。
 

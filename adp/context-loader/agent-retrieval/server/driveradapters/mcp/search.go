@@ -38,8 +38,7 @@ const (
 	// schema plus a model turn, so carrying wins as long as the model would
 	// have asked often enough — and in the #1704 evaluation two thirds of the
 	// searches were followed by a describe. The rail is here for the outlier
-	// whose schema dwarfs the search result it rides on, which today is
-	// query_instance_subgraph and nothing else.
+	// whose schema dwarfs the search result it rides on.
 	//
 	// Bytes rather than runes, unlike maxExecutableSchemaChars: a schema in
 	// Chinese has about half the runes of the same schema in English and about

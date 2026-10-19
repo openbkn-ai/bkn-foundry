@@ -53,7 +53,7 @@ func TestCatalogReachesEveryToolNotPublishedDirectly(t *testing.T) {
 		if !slices.Equal(catalog.order, want) {
 			t.Errorf("%s: catalogue = %v, want %v", locale, catalog.order, want)
 		}
-		for _, name := range []string{toolKeyRunCypher, toolKeyExecuteAction, toolKeySearchCapabilities, toolKeyExecuteTool, toolKeyGetSkillContent} {
+		for _, name := range []string{toolKeyExploreSubgraph, toolKeyExecuteAction, toolKeySearchCapabilities, toolKeyExecuteTool, toolKeyGetSkillContent} {
 			if _, _, ok := catalog.lookup(context.Background(), name); !ok {
 				t.Errorf("%s: %s is not reachable through the gateway", locale, name)
 			}

@@ -49,7 +49,7 @@ info:
 
     **精简入口**：`/api/agent-retrieval/v1/mcp-compact` 是同一进程里的第二个 MCP
     端点，鉴权、受管生命周期和工具语义与 `/mcp` 相同，面向每次模型调用都携带全部
-    工具定义的宿主。它只公布 11 个工具，其余能力经按需网关使用，见下文
+    工具定义的宿主。它只公布 14 个工具，其余能力经按需网关使用，见下文
     `/mcp-compact` 与 `GET /mcp-compact/info`。
 
     **权限说明（`permission_guidance`）**：`query_object_instance` 与
@@ -240,14 +240,15 @@ paths:
         与 `/mcp` 相同的 MCP Streamable HTTP 协议、鉴权与受管生命周期，工具定义更少，
         适合每次模型调用都携带全部工具定义的宿主。
 
-        **公布的工具**（固定 11 个，不随连接变化）：
+        **公布的工具**（固定 14 个，不随连接变化）：
 
         - 生命周期：`bkn_start_interaction`、`bkn_finish_interaction`；
         - 直接查询：`list_knowledge_networks`、`get_kn_detail`、`search_schema`、
-          `search_instance`、`query_object_instance`、`query_metric`；
+          `search_instance`、`query_object_instance`、`query_metric`、
+          `drill_through_metric`、`run_cypher`、`query_instance_subgraph`；
         - 按需网关：`search_native_tools`、`describe_native_tool`、`execute_native_tool`。
 
-        **按需网关**：`/mcp` 上的其余业务工具（含 `run_cypher`、
+        **按需网关**：`/mcp` 上的其余业务工具（含 `explore_subgraph`、
         `execute_action`、`search_capabilities`、`execute_tool`、技能工具、沙箱执行工具
         `run_code` / `run_shell`，以及许可证覆盖的企业版工具）不出现在 `tools/list`，
         经网关使用：
