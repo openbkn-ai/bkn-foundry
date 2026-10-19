@@ -889,6 +889,10 @@ func tupleKeyAs(row map[string]any, columns []string, numeric []bool) (string, b
 // returns the result in the shape the raw query route gives.
 func runBindJoin(ctx context.Context, plan *Plan, schema *Schema, read dataReader, limits bindJoinLimits,
 	defaultLimit int64) ([]interfaces.RawQueryColumn, []map[string]any, error) {
+	plan, err := resolveSemiJoins(ctx, plan, schema, read, limits)
+	if err != nil {
+		return nil, nil, err
+	}
 	plan = markConditionValueDates(plan, dateColumnCheck(plan, schema))
 	executor, err := newBindJoinExecutor(plan, schema, read, limits)
 	if err != nil {
@@ -1164,4 +1168,66 @@ func markConditionValueDates(plan *Plan, isDate func(table int, column string) b
 	}
 	copied.Having = having
 	return &copied
+}
+
+// resolveSemiJoins runs the earlier stage of each semi-join and puts its
+// values in place of it, as an IN the data source can filter by. No values
+// means no row can be kept. The plan is copied, not changed.
+func resolveSemiJoins(ctx context.Context, plan *Plan, schema *Schema, read dataReader,
+	limits bindJoinLimits) (*Plan, error) {
+	if len(plan.subPlans()) == 0 {
+		return plan, nil
+	}
+	var resolve func(PlanPredicate) (PlanPredicate, error)
+	resolve = func(predicate PlanPredicate) (PlanPredicate, error) {
+		switch node := predicate.(type) {
+		case PlanSemiJoin:
+			_, entries, err := runBindJoin(ctx, node.Sub, schema, read, limits, -1)
+			if err != nil {
+				return nil, err
+			}
+			alias := node.Sub.Select[0].Alias
+			values := make([]Literal, 0, len(entries))
+			for _, entry := range entries {
+				value := entry[alias]
+				if value == nil {
+					continue
+				}
+				literal, err := literalFromParameter(value)
+				if err != nil {
+					return nil, fmt.Errorf("a semi-join value: %w", err)
+				}
+				values = append(values, literal)
+			}
+			if len(values) == 0 {
+				return PlanNever{}, nil
+			}
+			return PlanMembership{Table: node.Table, Column: node.Column, Property: node.Property, Values: values}, nil
+		case PlanLogical:
+			operands := make([]PlanPredicate, len(node.Operands))
+			for i, operand := range node.Operands {
+				resolved, err := resolve(operand)
+				if err != nil {
+					return nil, err
+				}
+				operands[i] = resolved
+			}
+			return PlanLogical{Operator: node.Operator, Operands: operands}, nil
+		case PlanNegation:
+			operand, err := resolve(node.Operand)
+			if err != nil {
+				return nil, err
+			}
+			return PlanNegation{Operand: operand}, nil
+		default:
+			return predicate, nil
+		}
+	}
+	where, err := resolve(plan.Where)
+	if err != nil {
+		return nil, err
+	}
+	copied := *plan
+	copied.Where = where
+	return &copied, nil
 }

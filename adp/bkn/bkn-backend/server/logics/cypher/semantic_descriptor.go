@@ -116,6 +116,7 @@ const (
 	semanticExpression = "arithmetic"
 	semanticCondition  = "condition"
 	semanticComparison = "property_comparison"
+	semanticSemiJoin   = "semi_join"
 )
 
 // semanticExpressionKind names what a computed column is in the descriptor.
@@ -266,6 +267,8 @@ func appendSemanticPredicates(descriptor *SemanticQueryDescriptor, plan *Plan, p
 	switch value := predicate.(type) {
 	case nil, PlanNever:
 		return nil
+	case PlanSemiJoin:
+		return appendSemanticSemiJoin(descriptor, plan, value, path)
 	case PlanColumnComparison:
 		// The planner's own comparisons, which keep two hops apart, are not
 		// something the query asked for.
@@ -523,4 +526,37 @@ func cloneInt64(value *int64) *int64 {
 	}
 	copy := *value
 	return &copy
+}
+
+// appendSemanticSemiJoin records a semi-join: the condition itself, reading
+// the outer property and the earlier stage's value, and what that stage read.
+// The stage's own aliases are prefixed, since a stage may reuse a name the
+// query uses for something else.
+func appendSemanticSemiJoin(descriptor *SemanticQueryDescriptor, plan *Plan, join PlanSemiJoin, path string) error {
+	sub, err := BuildSemanticQueryDescriptor(join.Sub, "")
+	if err != nil {
+		return err
+	}
+	stage := fmt.Sprintf("stage%d.", len(descriptor.Predicates))
+	inner := ""
+	if len(sub.Projections) > 0 {
+		inner = sub.Projections[0].PropertyRef
+	}
+	descriptor.Predicates = append(descriptor.Predicates, SemanticQueryPredicate{
+		Operator: "in", Expression: semanticSemiJoin, InputPointer: "$.query", LogicalPath: path,
+		PropertyRefs: dedupe([]string{semanticPropertyRef(plan, join.Table, join.Property), inner}),
+	})
+	for _, object := range sub.Objects {
+		object.Alias = stage + object.Alias
+		descriptor.Objects = append(descriptor.Objects, object)
+	}
+	for _, relation := range sub.Relations {
+		relation.SourceAlias, relation.TargetAlias = stage+relation.SourceAlias, stage+relation.TargetAlias
+		descriptor.Relations = append(descriptor.Relations, relation)
+	}
+	for _, predicate := range sub.Predicates {
+		predicate.LogicalPath = strings.TrimSuffix(stage+predicate.LogicalPath, ".")
+		descriptor.Predicates = append(descriptor.Predicates, predicate)
+	}
+	return nil
 }

@@ -180,7 +180,7 @@ func TestWithRefuses(t *testing.T) {
 		{"MATCH (o:Order) WITH * RETURN o.id", "WITH *"},
 		{"MATCH (o:Order) WITH o.region AS r ORDER BY r RETURN r", "ORDER BY, SKIP or LIMIT on WITH"},
 		{"MATCH (o:Order) WITH o.region RETURN o.region", "an unnamed value in WITH"},
-		{"MATCH (o:Order) WITH o MATCH (o)-[:PLACED_BY]->(c:Customer) RETURN c.name", "MATCH after WITH"},
+		{"MATCH (o:Order) WITH o MATCH (o)-[:PLACED_BY]->(c:Customer) RETURN c.name", "pass one property to the next MATCH"},
 		{"MATCH (o:Order) WITH o WITH o RETURN o.id", "more than one WITH"},
 		{"MATCH (o:Order) WITH o.region AS r, count(*) AS n RETURN sum(n)", "this RETURN after WITH"},
 		{"MATCH (o:Order) WITH o.region AS r RETURN o.amount", "not visible after the WITH"},

@@ -627,6 +627,10 @@ var queriesNamingAmount = []struct {
 	{name: "sorted", query: "MATCH (o:Order) RETURN o.id ORDER BY o.amount"},
 	{name: "aggregated", query: "MATCH (o:Order) RETURN sum(o.amount) AS total"},
 	{name: "across a relation", query: "MATCH (c:Customer)<-[:PLACED_BY]-(o:Order) RETURN c.name, o.amount"},
+	{name: "in a semi-join's first stage", query: "MATCH (o:Order) WHERE o.amount > 1 WITH DISTINCT o.customer_code AS code " +
+		"MATCH (c:Customer) WHERE c.code = code RETURN c.name"},
+	{name: "passed on by a semi-join", query: "MATCH (o:Order) WITH DISTINCT o.amount AS a " +
+		"MATCH (c:Customer) WHERE c.code = a RETURN c.name"},
 }
 
 // #1545: a compiled statement reads the column as it is, and nothing masks

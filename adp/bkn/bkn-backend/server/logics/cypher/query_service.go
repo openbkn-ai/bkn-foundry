@@ -269,10 +269,16 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 }
 
 // loadPropertyLevels records the caller's property levels for every object
-// type the query's pattern names. A label that does not resolve is left for
-// the compiler to report.
+// type the query's pattern names, a semi-join's earlier stage included: a
+// property the caller may not see must read as unknown wherever it is named.
+// A label that does not resolve is left for the compiler to report.
 func (s *cypherQueryService) loadPropertyLevels(ctx context.Context, knID string, schema *Schema,
 	query *Query) error {
+	for _, stage := range query.stages() {
+		if err := s.loadPropertyLevels(ctx, knID, schema, stage); err != nil {
+			return err
+		}
+	}
 	for _, node := range query.Pattern.Nodes {
 		objectType, err := schema.ResolveLabel(node.Label)
 		if err != nil {
@@ -667,6 +673,11 @@ func proxyBindings(plan *Plan) []interfaces.KNProxyBinding {
 		add(interfaces.MODULE_TYPE_RELATION_TYPE, join.RelationTypeID, plan.Tables[join.Left].ResourceID)
 		add(interfaces.MODULE_TYPE_RELATION_TYPE, join.RelationTypeID, plan.Tables[join.Right].ResourceID)
 	}
+	for _, sub := range plan.subPlans() {
+		for _, binding := range proxyBindings(sub) {
+			add(binding.ChildType, binding.ChildID, binding.TargetID)
+		}
+	}
 	return bindings
 }
 
@@ -679,6 +690,14 @@ func planResourceIDs(plan *Plan) []string {
 		if !seen[table.ResourceID] {
 			seen[table.ResourceID] = true
 			resourceIDs = append(resourceIDs, table.ResourceID)
+		}
+	}
+	for _, sub := range plan.subPlans() {
+		for _, resourceID := range planResourceIDs(sub) {
+			if !seen[resourceID] {
+				seen[resourceID] = true
+				resourceIDs = append(resourceIDs, resourceID)
+			}
 		}
 	}
 	return resourceIDs

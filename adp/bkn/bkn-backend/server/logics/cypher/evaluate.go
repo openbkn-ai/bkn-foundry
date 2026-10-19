@@ -341,6 +341,12 @@ func evaluatePredicate(predicate PlanPredicate, s scope) (truth, error) {
 	case PlanNever:
 		return truthFalse, nil
 
+	case PlanSemiJoin:
+		// The executor puts the earlier stage's values in place of a
+		// semi-join before it reads anything; meeting one here means it did
+		// not.
+		return truthUnknown, fmt.Errorf("a semi-join was not resolved before evaluation")
+
 	case dateComparison:
 		return evaluateDateComparison(node.PlanPredicate, s)
 
