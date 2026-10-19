@@ -209,12 +209,40 @@ class AgentLimits(BaseModel):
     max_output_tokens: Optional[int] = Field(default=None, ge=10, le=65536)
     # Context budget, applied on the public execution surface only. Each tool
     # result sent to the model is capped (schema/discovery tools get their own,
-    # wider cap), only the most recent results are kept in full, and older
-    # history is summarized once the context passes the token threshold.
-    keep_tool_results: Optional[int] = Field(default=None, ge=1, le=50)
-    data_result_chars: Optional[int] = Field(default=None, ge=500, le=200000)
-    schema_result_chars: Optional[int] = Field(default=None, ge=500, le=500000)
-    summarize_after_tokens: Optional[int] = Field(default=None, ge=4000, le=1000000)
+    # wider cap), the most recent results that fit the question's budget are
+    # kept, and earlier questions are summarized once the context passes the
+    # token threshold. Defaults live in app/core/agent_settings.py.
+    keep_tool_results: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=50,
+        description=(
+            "Tool results of the current question kept for the model: at least "
+            "this many, and more while their capped size fits in "
+            "keep_tool_results x data_result_chars. Default 3."
+        ),
+    )
+    data_result_chars: Optional[int] = Field(
+        default=None,
+        ge=500,
+        le=200000,
+        description="Character cap for one data tool result. Default 12000.",
+    )
+    schema_result_chars: Optional[int] = Field(
+        default=None,
+        ge=500,
+        le=500000,
+        description="Character cap for one schema or discovery tool result. Default 24000.",
+    )
+    summarize_after_tokens: Optional[int] = Field(
+        default=None,
+        ge=4000,
+        le=1000000,
+        description=(
+            "Earlier questions are summarized once the saved thread passes this "
+            "many tokens; the current question is never summarized. Default 60000."
+        ),
+    )
 
 
 _ID_PATTERN = r"^[0-9A-Za-z_.-]+$"  # A preset id allows letters, digits, underscore, dot, and hyphen, for stable cross-environment references
