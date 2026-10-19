@@ -10,11 +10,10 @@ from app.models import (
     AgentOut,
     AgentRow,
     AgentSpec,
-    BuiltinDefaultRow,
+    AgentVersionRow,
     NetworkSettingRow,
     PromptOverrideRow,
     PromptRow,
-    PromptVersionHiddenRow,
     PromptVersionRow,
     TaskOut,
     TaskRow,
@@ -66,6 +65,7 @@ async def create_agent(session: AsyncSession, spec: AgentSpec, account_id: str) 
     )
     session.add(row)
     await session.commit()
+    await record_version(session, row.f_agent_id, account_id)
     return _to_out(row)
 
 
@@ -125,38 +125,176 @@ async def update_agent(session: AsyncSession, agent_id: str, spec: AgentSpec, ac
     row.f_update_user = account_id
     row.f_update_time = _now_ms()
     await session.commit()
+    await record_version(session, agent_id, account_id)
     return _to_out(row)
 
 
-async def get_builtin_default(
-    session: AsyncSession, agent_id: str
-) -> Optional[BuiltinDefaultRow]:
-    return await session.get(BuiltinDefaultRow, agent_id)
+# ---------- Agent versions: snapshots of model, tools, limits and Prompt version ----------
+
+_SNAPSHOT_FIELDS = ("model", "tools", "limits", "prompt_version")
 
 
-async def ensure_builtin_default(session: AsyncSession, agent_id: str) -> None:
-    """Record a built-in Agent's current state as its default if none is recorded.
+async def _snapshot(session: AsyncSession, row: AgentRow) -> dict:
+    head = await session.get(PromptRow, row.f_prompt_id) if row.f_prompt_id else None
+    return {
+        "model": row.f_model or "",
+        "tools": row.f_tools or [],
+        "limits": row.f_limits or None,
+        "prompt_version": head.f_current_version if head else None,
+    }
 
-    The migration records every seeded built-in; this covers one seeded later, so
-    the first administrator change is still restorable.
-    """
-    if await session.get(BuiltinDefaultRow, agent_id):
-        return
+
+def _version_snapshot(version: AgentVersionRow) -> dict:
+    return {
+        "model": version.f_model or "",
+        "tools": version.f_tools or [],
+        "limits": version.f_limits or None,
+        "prompt_version": version.f_prompt_version,
+    }
+
+
+async def current_version(session: AsyncSession, agent_id: str) -> Optional[AgentVersionRow]:
+    return (
+        await session.execute(
+            select(AgentVersionRow).where(
+                AgentVersionRow.f_agent_id == agent_id, AgentVersionRow.f_current.is_(True)
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def initial_version(session: AsyncSession, agent_id: str) -> Optional[AgentVersionRow]:
+    return (
+        await session.execute(
+            select(AgentVersionRow).where(
+                AgentVersionRow.f_agent_id == agent_id,
+                AgentVersionRow.f_initial.is_(True),
+                AgentVersionRow.f_deleted.is_(False),
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def list_versions(session: AsyncSession, agent_id: str) -> list[AgentVersionRow]:
+    return list(
+        (
+            await session.execute(
+                select(AgentVersionRow)
+                .where(
+                    AgentVersionRow.f_agent_id == agent_id,
+                    AgentVersionRow.f_deleted.is_(False),
+                )
+                .order_by(AgentVersionRow.f_version.desc())
+            )
+        ).scalars()
+    )
+
+
+async def record_version(
+    session: AsyncSession, agent_id: str, account_id: str, commit: bool = True
+) -> Optional[AgentVersionRow]:
+    """Write the Agent's configuration as a new current version when it differs
+    from the current one. Every path that changes an Agent's runtime or the
+    Prompt version it uses ends here, so versions cover all of them. A built-in
+    Agent's first version is its initial version."""
+    from app.public_auth import BUILTIN_AGENT_IDS
+
     row = await session.get(AgentRow, agent_id)
     if not row:
-        return
-    head = await session.get(PromptRow, row.f_prompt_id) if row.f_prompt_id else None
-    session.add(
-        BuiltinDefaultRow(
-            f_agent_id=agent_id,
-            f_model=row.f_model,
-            f_tools=row.f_tools,
-            f_limits=row.f_limits,
-            f_prompt_version=head.f_current_version if head else None,
-            f_create_time=_now_ms(),
+        return None
+    snapshot = await _snapshot(session, row)
+    current = await current_version(session, agent_id)
+    changes = None
+    if current is not None:
+        before = _version_snapshot(current)
+        changes = [field for field in _SNAPSHOT_FIELDS if snapshot[field] != before[field]]
+        if not changes:
+            return current
+        current.f_current = False
+    # Deleted versions keep their numbers, so the maximum covers them too.
+    latest = (
+        await session.execute(
+            select(func.max(AgentVersionRow.f_version)).where(
+                AgentVersionRow.f_agent_id == agent_id
+            )
         )
+    ).scalar_one()
+    version = AgentVersionRow(
+        f_agent_id=agent_id,
+        f_version=(latest or 0) + 1,
+        f_model=snapshot["model"],
+        f_tools=snapshot["tools"],
+        f_limits=snapshot["limits"],
+        f_prompt_version=snapshot["prompt_version"],
+        f_changes=changes,
+        f_initial=current is None and latest is None and agent_id in BUILTIN_AGENT_IDS,
+        f_current=True,
+        f_deleted=False,
+        f_create_user=account_id,
+        f_create_time=_now_ms(),
     )
+    session.add(version)
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
+    return version
+
+
+async def _record_for_prompt(
+    session: AsyncSession, prompt_id: str, account_id: str, commit: bool
+) -> None:
+    agent_ids = (
+        await session.execute(select(AgentRow.f_agent_id).where(AgentRow.f_prompt_id == prompt_id))
+    ).scalars()
+    for agent_id in list(agent_ids):
+        await record_version(session, agent_id, account_id, commit=commit)
+
+
+async def activate_version(
+    session: AsyncSession, agent_id: str, version: int, account_id: str
+) -> Optional[AgentVersionRow]:
+    """Make a version current again: its runtime goes back onto the Agent and
+    the shared Prompt points at its version. No new version is written."""
+    target = await session.get(AgentVersionRow, (agent_id, version))
+    row = await session.get(AgentRow, agent_id)
+    if not target or target.f_deleted or not row:
+        return None
+    if target.f_prompt_version is not None and row.f_prompt_id:
+        head = await session.get(PromptRow, row.f_prompt_id)
+        if not head or not await session.get(
+            PromptVersionRow, (row.f_prompt_id, target.f_prompt_version)
+        ):
+            return None
+        head.f_current_version = target.f_prompt_version
+        head.f_update_user = account_id
+        head.f_update_time = _now_ms()
+    row.f_model = target.f_model
+    row.f_tools = target.f_tools
+    row.f_limits = target.f_limits
+    row.f_update_user = account_id
+    row.f_update_time = _now_ms()
+    current = await current_version(session, agent_id)
+    if current is not None and current is not target:
+        current.f_current = False
+    target.f_current = True
     await session.commit()
+    return target
+
+
+async def delete_version(session: AsyncSession, agent_id: str, version: int) -> str:
+    """Flag a version deleted. Returns "deleted", "missing", "current" or
+    "initial"; the current and the initial version stay."""
+    target = await session.get(AgentVersionRow, (agent_id, version))
+    if not target or target.f_deleted:
+        return "missing"
+    if target.f_current:
+        return "current"
+    if target.f_initial:
+        return "initial"
+    target.f_deleted = True
+    await session.commit()
+    return "deleted"
 
 
 async def update_shared_agent(
@@ -178,6 +316,7 @@ async def update_shared_agent(
     row.f_update_user = account_id
     row.f_update_time = _now_ms()
     await session.commit()
+    await record_version(session, agent_id, account_id)
     return _to_out(row)
 
 
@@ -531,20 +670,17 @@ async def publish_prompt_version(
         await session.commit()
     else:
         await session.flush()
+    await _record_for_prompt(session, prompt_id, account_id, commit)
     return await _prompt_out(session, head)
 
 
 async def list_prompt_versions(session: AsyncSession, prompt_id: str):
     from app.models import PromptVersionOut
 
-    hidden = select(PromptVersionHiddenRow.f_version).where(
-        PromptVersionHiddenRow.f_prompt_id == prompt_id
-    )
     rows = (
         await session.execute(
             select(PromptVersionRow)
             .where(PromptVersionRow.f_prompt_id == prompt_id)
-            .where(PromptVersionRow.f_version.not_in(hidden))
             .order_by(PromptVersionRow.f_version.desc())
         )
     ).scalars().all()
@@ -567,34 +703,14 @@ async def rollback_prompt(session: AsyncSession, prompt_id: str, version: int, a
     if not head:
         return None
     target = await session.get(PromptVersionRow, (prompt_id, version))
-    if not target or await session.get(PromptVersionHiddenRow, (prompt_id, version)):
+    if not target:
         return False
     head.f_current_version = version
     head.f_update_user = account_id
     head.f_update_time = _now_ms()
     await session.commit()
+    await _record_for_prompt(session, prompt_id, account_id, True)
     return await _prompt_out(session, head)
-
-
-async def hide_prompt_version(
-    session: AsyncSession, prompt_id: str, version: int, account_id: str
-) -> bool:
-    """Remove a version from the visible history. The row stays, so the number
-    is never reused; False when there is no such visible version."""
-    if not await session.get(PromptVersionRow, (prompt_id, version)):
-        return False
-    if await session.get(PromptVersionHiddenRow, (prompt_id, version)):
-        return False
-    session.add(
-        PromptVersionHiddenRow(
-            f_prompt_id=prompt_id,
-            f_version=version,
-            f_hide_user=account_id,
-            f_hide_time=_now_ms(),
-        )
-    )
-    await session.commit()
-    return True
 
 
 # ---------- Import and export (impex): upsert under the original id; a name collision is an error ----------
@@ -702,6 +818,7 @@ async def upsert_agent_with_id(
         await session.commit()
     else:
         await session.flush()
+    await record_version(session, agent_id, account_id, commit=commit)
     return _to_out(row), action
 
 
