@@ -1038,18 +1038,11 @@ func stringifyJSONQueryFields(source map[string]any, fieldTypes map[string]strin
 		case map[string]any:
 			// 优先匹配完整键，保留 _source 中含字面点号的字段语义。
 			if value, exists := node[path]; exists {
-				switch value := value.(type) {
-				case nil, string:
-					return nil
-				case []byte:
-					node[path] = string(value)
-				default:
-					encoded, err := sonic.Marshal(value)
-					if err != nil {
-						return fmt.Errorf("failed to serialize JSON field %q", path)
-					}
-					node[path] = string(encoded)
+				text, err := common.JSONQueryValueText(value)
+				if err != nil {
+					return fmt.Errorf("failed to serialize JSON field %q", path)
 				}
+				node[path] = text
 				return nil
 			}
 			// 最长前缀优先，同时支持嵌套对象及中间节点的字面点号。

@@ -202,6 +202,26 @@ func (lim *localIndexManager) ListDocuments(ctx context.Context, indexName strin
 	if err != nil {
 		return nil, 0, err
 	}
+	// 检索 schema 排除了 JSON 字段；返回值转换必须使用资源的完整 schema。
+	aggregate := params != nil && (params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil)
+	if res != nil && !aggregate {
+		for _, property := range res.SchemaDefinition {
+			if property == nil || property.Type != interfaces.DataType_Json {
+				continue
+			}
+			for _, entry := range queryResult.Entries {
+				value, exists := entry[property.Name]
+				if !exists {
+					continue
+				}
+				text, err := common.JSONQueryValueText(value)
+				if err != nil {
+					return nil, 0, fmt.Errorf("failed to serialize JSON field %q", property.Name)
+				}
+				entry[property.Name] = text
+			}
+		}
+	}
 	if params != nil {
 		params.SearchAfter = append([]any(nil), queryResult.SearchAfter...)
 	}
