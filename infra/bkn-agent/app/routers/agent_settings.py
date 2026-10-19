@@ -28,8 +28,6 @@ from app.models import (
     AgentSettingOut,
     PromptOut,
     PromptPublish,
-    PromptRollback,
-    PromptVersionOut,
     SharedAgentUpdate,
 )
 from app.public_auth import (
@@ -251,12 +249,13 @@ async def _builtin_agent(session: AsyncSession, agent_id: str) -> AgentOut:
 async def _shared_editor(
     session: AsyncSession, account: Account, agent_id: str
 ) -> AgentOut:
-    """A built-in Agent the caller may change (admin-agent:manage). Before the
-    first change its shipped state is recorded, so it can always be restored."""
+    """A built-in Agent the caller may change (admin-agent:manage). Its current
+    state is recorded as a version first, so the change is never the first
+    thing history knows about."""
     agent = await _builtin_agent(session, agent_id)
     if not await can_manage_agents(account):
         raise err(403, "BknAgent.Execution.Forbidden")
-    await dao.ensure_builtin_default(session, agent_id)
+    await dao.record_version(session, agent_id, account.account_id)
     return agent
 
 
@@ -275,7 +274,9 @@ class SharedOut(BaseModel):
     layered: bool
     can_edit: bool
     prompt_version: Optional[int] = None
-    # Whether a shipped state is recorded, and whether the Agent differs from it.
+    # The current Agent version and the initial one restore returns to.
+    version: Optional[int] = None
+    initial_version: Optional[int] = None
     restorable: bool
     modified: bool
     update_user: str
@@ -284,8 +285,8 @@ class SharedOut(BaseModel):
 
 async def _shared_out(session: AsyncSession, agent: AgentOut, can_edit: bool) -> SharedOut:
     prompt = await dao.get_prompt(session, agent.prompt_id) if agent.prompt_id else None
-    default = await dao.get_builtin_default(session, agent.agent_id)
-    version = prompt.current_version if prompt else None
+    current = await dao.current_version(session, agent.agent_id)
+    initial = await dao.initial_version(session, agent.agent_id)
     return SharedOut(
         agent_id=agent.agent_id,
         name=agent.name,
@@ -299,16 +300,11 @@ async def _shared_out(session: AsyncSession, agent: AgentOut, can_edit: bool) ->
         ),
         layered=agent.agent_id in PUBLIC_AGENT_IDS,
         can_edit=can_edit,
-        prompt_version=version,
-        restorable=default is not None,
-        modified=default is not None
-        and (
-            agent.model != default.f_model
-            or agent.tools != default.f_tools
-            or (agent.limits.model_dump(exclude_none=True) if agent.limits else None)
-            != (default.f_limits or None)
-            or version != default.f_prompt_version
-        ),
+        prompt_version=prompt.current_version if prompt else None,
+        version=current.f_version if current else None,
+        initial_version=initial.f_version if initial else None,
+        restorable=initial is not None,
+        modified=initial is not None and not initial.f_current,
         update_user=agent.update_user,
         update_time=agent.update_time,
     )
@@ -379,52 +375,116 @@ async def update_shared_agent(
     return await _shared_out(session, agent, True)
 
 
+class AgentVersionOut(BaseModel):
+    version: int
+    model: Optional[str] = None
+    mcp_profile: Optional[str] = None
+    limits: Optional[dict] = None
+    prompt_version: Optional[int] = None
+    prompt_content: Optional[str] = None
+    # What this version changed against the one before it (model, tools,
+    # limits, prompt_version); empty for a first version.
+    changes: list[str] = []
+    initial: bool
+    current: bool
+    create_user: str
+    create_time: int
+
+
+async def _versions_out(session: AsyncSession, agent: AgentOut) -> list[AgentVersionOut]:
+    contents = (
+        {v.version: v.content for v in await dao.list_prompt_versions(session, agent.prompt_id)}
+        if agent.prompt_id
+        else {}
+    )
+    return [
+        AgentVersionOut(
+            version=v.f_version,
+            model=v.f_model or None,
+            mcp_profile=profile_of(v.f_tools or []),
+            limits=v.f_limits,
+            prompt_version=v.f_prompt_version,
+            prompt_content=contents.get(v.f_prompt_version),
+            changes=v.f_changes or [],
+            initial=v.f_initial,
+            current=v.f_current,
+            create_user=v.f_create_user,
+            create_time=v.f_create_time,
+        )
+        for v in await dao.list_versions(session, agent.agent_id)
+    ]
+
+
+@router.get("/admin/agents/{agent_id}/versions", response_model=list[AgentVersionOut])
+async def list_agent_versions(
+    agent_id: str = AgentId,
+    account: Account = Depends(get_public_account),
+    session: AsyncSession = Depends(get_session),
+):
+    return await _versions_out(session, await _builtin_agent(session, agent_id))
+
+
+@router.post(
+    "/admin/agents/{agent_id}/versions/{version}/activate", response_model=SharedOut
+)
+async def activate_agent_version(
+    version: int = Path(ge=1),
+    agent_id: str = AgentId,
+    account: Account = Depends(get_public_account),
+    session: AsyncSession = Depends(get_session),
+):
+    """Make a version current: its model, tools, limits and Prompt version go
+    back onto the Agent. No new version is written."""
+    await _shared_editor(session, account, agent_id)
+    if not await dao.activate_version(session, agent_id, version, account.account_id):
+        raise not_found("agent_version", f"{agent_id}@{version}")
+    return await _shared_out(session, await _builtin_agent(session, agent_id), True)
+
+
+@router.delete("/admin/agents/{agent_id}/versions/{version}", response_model=list[AgentVersionOut])
+async def delete_agent_version(
+    version: int = Path(ge=1),
+    agent_id: str = AgentId,
+    account: Account = Depends(get_public_account),
+    session: AsyncSession = Depends(get_session),
+):
+    """Remove a version from the history. The current and the initial version
+    stay; a deleted number is never handed out again."""
+    agent = await _shared_editor(session, account, agent_id)
+    result = await dao.delete_version(session, agent_id, version)
+    if result == "current":
+        raise bad_request("BknAgent.Agent.VersionInUse", version=version)
+    if result == "initial":
+        raise bad_request("BknAgent.Agent.InitialVersion", version=version)
+    if result == "missing":
+        raise not_found("agent_version", f"{agent_id}@{version}")
+    return await _versions_out(session, agent)
+
+
 @router.post("/admin/agents/{agent_id}/restore", response_model=SharedOut)
 async def restore_shared_agent(
     agent_id: str = AgentId,
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
-    """Return a built-in Agent to what it shipped with: model, tools (including
-    the MCP surface), limits and the shared Prompt version. Prompt history is
-    kept; the shipped version simply becomes current again."""
-    agent = await _shared_editor(session, account, agent_id)
-    default = await dao.get_builtin_default(session, agent_id)
-    if default is None:
-        raise err(404, "BknAgent.Agent.NoBuiltinDefault", agent_id=agent_id)
-    if (
-        default.f_prompt_version is not None
-        and agent.prompt_id
-        and await dao.rollback_prompt(
-            session, agent.prompt_id, default.f_prompt_version, account.account_id
-        )
-        is False
+    """Make the initial version current again: what the built-in Agent shipped
+    with. History is kept."""
+    await _shared_editor(session, account, agent_id)
+    initial = await dao.initial_version(session, agent_id)
+    if initial is None or not await dao.activate_version(
+        session, agent_id, initial.f_version, account.account_id
     ):
-        raise not_found("prompt", f"{agent.prompt_id}@{default.f_prompt_version}")
-    agent = await dao.update_shared_agent(
-        session,
-        agent_id,
-        {
-            "model": default.f_model,
-            "tools": default.f_tools,
-            "limits": default.f_limits,
-            "status": "published",
-        },
-        account.account_id,
-    )
+        raise err(404, "BknAgent.Agent.NoInitialVersion", agent_id=agent_id)
+    agent = await _builtin_agent(session, agent_id)
+    if agent.status != "published":
+        agent = await dao.update_shared_agent(
+            session, agent_id, {"status": "published"}, account.account_id
+        )
     return await _shared_out(session, agent, True)
 
 
 class SharedPromptOut(BaseModel):
     prompt: PromptOut
-    versions: list[PromptVersionOut]
-    # The shipped version: restorable, so it cannot be deleted.
-    initial_version: Optional[int] = None
-
-
-async def _initial_version(session: AsyncSession, agent_id: str) -> Optional[int]:
-    default = await dao.get_builtin_default(session, agent_id)
-    return default.f_prompt_version if default else None
 
 
 async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPromptOut:
@@ -432,11 +492,7 @@ async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPrompt
         prompt := await dao.get_prompt(session, agent.prompt_id)
     ):
         raise not_found("prompt", agent.prompt_id or agent.agent_id)
-    return SharedPromptOut(
-        prompt=prompt,
-        versions=await dao.list_prompt_versions(session, agent.prompt_id),
-        initial_version=await _initial_version(session, agent.agent_id),
-    )
+    return SharedPromptOut(prompt=prompt)
 
 
 @router.get("/admin/agents/{agent_id}/prompt", response_model=SharedPromptOut)
@@ -455,50 +511,9 @@ async def publish_shared_prompt(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
+    """Publish new shared Prompt content; it becomes a new Agent version."""
     agent = await _shared_editor(session, account, agent_id)
     await dao.publish_prompt_version(
         session, agent.prompt_id, body.content, body.vars_schema, account.account_id
     )
-    return await _shared_prompt(session, agent)
-
-
-@router.post("/admin/agents/{agent_id}/prompt/rollback", response_model=SharedPromptOut)
-async def rollback_shared_prompt(
-    body: PromptRollback,
-    agent_id: str = AgentId,
-    account: Account = Depends(get_public_account),
-    session: AsyncSession = Depends(get_session),
-):
-    agent = await _shared_editor(session, account, agent_id)
-    if (
-        await dao.rollback_prompt(
-            session, agent.prompt_id, body.version, account.account_id
-        )
-        is False
-    ):
-        raise not_found("prompt", f"{agent.prompt_id}@{body.version}")
-    return await _shared_prompt(session, agent)
-
-
-@router.delete(
-    "/admin/agents/{agent_id}/prompt/versions/{version}", response_model=SharedPromptOut
-)
-async def delete_shared_prompt_version(
-    version: int = Path(ge=1),
-    agent_id: str = AgentId,
-    account: Account = Depends(get_public_account),
-    session: AsyncSession = Depends(get_session),
-):
-    """Remove a shared Prompt version from the history. The version in use and
-    the shipped one (what restore returns to) stay."""
-    agent = await _shared_editor(session, account, agent_id)
-    prompt = await dao.get_prompt(session, agent.prompt_id) if agent.prompt_id else None
-    if prompt is None:
-        raise not_found("prompt", agent.prompt_id or agent_id)
-    if version == prompt.current_version:
-        raise bad_request("BknAgent.Prompt.VersionInUse", version=version)
-    if version == await _initial_version(session, agent_id):
-        raise bad_request("BknAgent.Prompt.InitialVersion", version=version)
-    if not await dao.hide_prompt_version(session, agent.prompt_id, version, account.account_id):
-        raise not_found("prompt", f"{agent.prompt_id}@{version}")
     return await _shared_prompt(session, agent)

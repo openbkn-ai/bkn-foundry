@@ -245,9 +245,7 @@ def test_changing_built_in_agents_needs_admin_agent_manage(monkeypatch):
                 await client.put(ADMIN, json={"model": "m"}, headers=AUTH)
             ).status_code == 403
             assert (
-                await client.post(
-                    f"{ADMIN}/prompt/rollback", json={"version": 1}, headers=AUTH
-                )
+                await client.post(f"{ADMIN}/versions/1/activate", headers=AUTH)
             ).status_code == 403
             assert (await client.post(f"{ADMIN}/restore", headers=AUTH)).status_code == 403
             assert (await client.get(CONFIG, headers=AUTH)).json()[
@@ -316,15 +314,15 @@ def test_restore_returns_a_built_in_agent_to_what_it_shipped_with(monkeypatch):
     async def run():
         async with environment(monkeypatch) as (client, _, _):
             shipped = (await client.get(ADMIN, headers=AUTH)).json()
-            # The migration records seeded Agents; the first change covers the rest.
-            assert shipped["restorable"] is False and shipped["modified"] is False
 
             changed = await client.put(
                 ADMIN,
                 json={"model": "DeepSeek", "limits": {"max_turns": 3}},
                 headers=AUTH,
             )
-            assert changed.json()["restorable"] is True
+            # Its state before the first change became v1, the initial version.
+            assert changed.json()["initial_version"] == 1
+            assert changed.json()["version"] == 2
             assert changed.json()["modified"] is True
             await client.put(f"{ADMIN}/prompt", json={"content": "Edited"}, headers=AUTH)
 
@@ -334,13 +332,13 @@ def test_restore_returns_a_built_in_agent_to_what_it_shipped_with(monkeypatch):
             assert body["model"] == shipped["model"]
             assert body["limits"] == shipped["limits"]
             assert body["prompt_version"] == shipped["prompt_version"]
-            assert body["modified"] is False
-            prompt = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()
-            # The edited version stays in history; the shipped one is current again.
-            assert prompt["prompt"]["current_version"] == shipped["prompt_version"]
-            assert len(prompt["versions"]) == 2
+            assert body["version"] == 1 and body["modified"] is False
+            # History is kept.
+            versions = (await client.get(f"{ADMIN}/versions", headers=AUTH)).json()
+            assert [v["version"] for v in versions] == [3, 2, 1]
 
     asyncio.run(run())
+
 
 
 def test_admin_lists_only_seeded_built_in_agents(monkeypatch):
@@ -400,33 +398,42 @@ def test_admin_lists_only_seeded_built_in_agents(monkeypatch):
     asyncio.run(run())
 
 
-def test_shared_prompt_publishes_versions_and_rolls_back(monkeypatch):
+def test_every_change_becomes_an_agent_version_that_can_be_switched_to(monkeypatch):
     async def run():
-        async with environment(monkeypatch) as (client, factory, _):
-            current = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()
-            assert current["prompt"]["current_version"] == 1
-
+        async with environment(monkeypatch) as (client, _, _):
+            await client.put(ADMIN, json={"limits": {"max_turns": 7}}, headers=AUTH)
             published = await client.put(
-                f"{ADMIN}/prompt",
-                json={"content": "Revised instructions"},
-                headers=AUTH,
+                f"{ADMIN}/prompt", json={"content": "Revised instructions"}, headers=AUTH
             )
             assert published.status_code == 200, published.text
-            body = published.json()
-            assert body["prompt"]["current_version"] == 2
-            assert body["prompt"]["content"] == "Revised instructions"
-            assert [v["version"] for v in body["versions"]] == [2, 1]
+            assert published.json()["prompt"]["current_version"] == 2
 
-            rolled = await client.post(
-                f"{ADMIN}/prompt/rollback", json={"version": 1}, headers=AUTH
-            )
-            assert rolled.json()["prompt"]["current_version"] == 1
-            missing = await client.post(
-                f"{ADMIN}/prompt/rollback", json={"version": 9}, headers=AUTH
-            )
-            assert missing.status_code == 404
+            versions = (await client.get(f"{ADMIN}/versions", headers=AUTH)).json()
+            assert [v["version"] for v in versions] == [3, 2, 1]
+            latest, runtime, first = versions
+            assert latest["current"] and latest["changes"] == ["prompt_version"]
+            assert latest["prompt_content"] == "Revised instructions"
+            assert runtime["changes"] == ["limits"] and runtime["limits"]["max_turns"] == 7
+            assert first["initial"] and first["changes"] == []
+            # Saving the same configuration again writes nothing.
+            await client.put(ADMIN, json={"limits": {"max_turns": 7}}, headers=AUTH)
+            assert len((await client.get(f"{ADMIN}/versions", headers=AUTH)).json()) == 3
+
+            # Switching brings runtime and Prompt back together, without a new version.
+            switched = await client.post(f"{ADMIN}/versions/2/activate", headers=AUTH)
+            assert switched.status_code == 200, switched.text
+            assert switched.json()["version"] == 2
+            assert switched.json()["limits"]["max_turns"] == 7
+            assert switched.json()["prompt_version"] == 1
+            prompt = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()
+            assert prompt["prompt"]["current_version"] == 1
+            assert len((await client.get(f"{ADMIN}/versions", headers=AUTH)).json()) == 3
+            assert (
+                await client.post(f"{ADMIN}/versions/9/activate", headers=AUTH)
+            ).status_code == 404
 
     asyncio.run(run())
+
 
 
 def test_mcp_profile_switches_the_context_loader_surface(monkeypatch):
@@ -479,43 +486,37 @@ def test_mcp_profile_switches_the_context_loader_surface(monkeypatch):
     asyncio.run(run())
 
 
-def test_prompt_versions_except_initial_and_current_can_be_deleted(monkeypatch):
+def test_versions_except_initial_and_current_can_be_deleted(monkeypatch):
     async def run():
         async with environment(monkeypatch) as (client, _, _):
-            for content in ("Second", "Third"):
-                await client.put(f"{ADMIN}/prompt", json={"content": content}, headers=AUTH)
-            listed = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()
-            # The first change recorded v1 as what the Agent shipped with.
-            assert listed["initial_version"] == 1
-            assert [v["version"] for v in listed["versions"]] == [3, 2, 1]
+            for turns in (5, 6):
+                await client.put(ADMIN, json={"limits": {"max_turns": turns}}, headers=AUTH)
+            assert (await client.get(ADMIN, headers=AUTH)).json()["version"] == 3
 
-            in_use = await client.delete(f"{ADMIN}/prompt/versions/3", headers=AUTH)
+            in_use = await client.delete(f"{ADMIN}/versions/3", headers=AUTH)
             assert in_use.status_code == 400, in_use.text
-            initial = await client.delete(f"{ADMIN}/prompt/versions/1", headers=AUTH)
+            initial = await client.delete(f"{ADMIN}/versions/1", headers=AUTH)
             assert initial.status_code == 400, initial.text
 
-            deleted = await client.delete(f"{ADMIN}/prompt/versions/2", headers=AUTH)
+            deleted = await client.delete(f"{ADMIN}/versions/2", headers=AUTH)
             assert deleted.status_code == 200, deleted.text
-            assert [v["version"] for v in deleted.json()["versions"]] == [3, 1]
+            assert [v["version"] for v in deleted.json()] == [3, 1]
+            assert (await client.delete(f"{ADMIN}/versions/2", headers=AUTH)).status_code == 404
             assert (
-                await client.delete(f"{ADMIN}/prompt/versions/2", headers=AUTH)
-            ).status_code == 404
-            assert (
-                await client.post(
-                    f"{ADMIN}/prompt/rollback", json={"version": 2}, headers=AUTH
-                )
+                await client.post(f"{ADMIN}/versions/2/activate", headers=AUTH)
             ).status_code == 404
 
-            # A deleted number is never handed out again.
-            again = await client.put(f"{ADMIN}/prompt", json={"content": "Fourth"}, headers=AUTH)
-            assert again.json()["prompt"]["current_version"] == 4
+            # A deleted number is never handed out again, even the newest one.
+            await client.post(f"{ADMIN}/versions/1/activate", headers=AUTH)
+            assert (await client.delete(f"{ADMIN}/versions/3", headers=AUTH)).status_code == 200
+            again = await client.put(ADMIN, json={"limits": {"max_turns": 9}}, headers=AUTH)
+            assert again.json()["version"] == 4
 
             _deny_agent_admin(monkeypatch)
-            assert (
-                await client.delete(f"{ADMIN}/prompt/versions/3", headers=AUTH)
-            ).status_code == 403
+            assert (await client.delete(f"{ADMIN}/versions/4", headers=AUTH)).status_code == 403
 
     asyncio.run(run())
+
 
 
 def test_admin_views_survive_tool_entries_that_are_not_references(monkeypatch):
@@ -536,5 +537,54 @@ def test_admin_views_survive_tool_entries_that_are_not_references(monkeypatch):
             switched = await client.put(ADMIN, json={"mcp_profile": "full"}, headers=AUTH)
             assert switched.status_code == 200, switched.text
             assert switched.json()["mcp_profile"] == "full"
+
+    asyncio.run(run())
+
+
+def test_internal_changes_and_new_agents_are_versioned_too(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            from app import dao
+
+            owner = {"x-account-id": "user-1", "x-account-type": "user"}
+            created = await client.post(
+                "/api/bkn-agent/v1/agents",
+                json={"name": "custom", "mode": "chat", "model": "m1"},
+                headers=owner,
+            )
+            assert created.status_code == 200, created.text
+            agent_id = created.json()["agent_id"]
+            spec = {"name": "custom", "mode": "chat", "model": "m2"}
+            updated = await client.put(
+                f"/api/bkn-agent/v1/agents/{agent_id}", json=spec, headers=owner
+            )
+            assert updated.status_code == 200, updated.text
+
+            async with factory() as session:
+                versions = await dao.list_versions(session, agent_id)
+            assert [(v.f_version, v.f_model, v.f_current) for v in versions] == [
+                (2, "m2", True),
+                (1, "m1", False),
+            ]
+            # Not a built-in: there is no initial version to restore to.
+            assert not any(v.f_initial for v in versions)
+
+    asyncio.run(run())
+
+
+def test_execution_records_the_agent_version_it_ran(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            await client.put(ADMIN, json={"limits": {"max_turns": 8}}, headers=AUTH)
+            response = await client.post(URL, json=BODY, headers=AUTH)
+            assert parse_sse(response.text)[-1][1]["status"] == "succeeded", response.text
+
+            async with factory() as session:
+                from sqlalchemy import select
+
+                from app.models import TaskRow
+
+                task = (await session.execute(select(TaskRow))).scalar_one()
+                assert task.f_input["agent_version"] == 2
 
     asyncio.run(run())

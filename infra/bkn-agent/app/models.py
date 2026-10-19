@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal, Optional
 from jsonschema.exceptions import SchemaError
 from jsonschema.validators import validator_for
 from pydantic import AfterValidator, BaseModel, Field, field_serializer, model_validator
-from sqlalchemy import BigInteger, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -65,28 +65,23 @@ class NetworkSettingRow(Base):
     f_update_time: Mapped[int] = mapped_column(BigInteger)
 
 
-class BuiltinDefaultRow(Base):
-    """What a built-in Agent shipped with; restoring returns to it."""
+class AgentVersionRow(Base):
+    """A snapshot of an Agent's configuration; exactly one per Agent is current."""
 
-    __tablename__ = "t_agent_builtin_default"
+    __tablename__ = "t_agent_version"
 
     f_agent_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_version: Mapped[int] = mapped_column(Integer, primary_key=True)
     f_model: Mapped[str] = mapped_column(String(100), default="")
     f_tools: Mapped[list] = mapped_column(JSON, default=list)
     f_limits: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     f_prompt_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    f_changes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    f_initial: Mapped[bool] = mapped_column(Boolean, default=False)
+    f_current: Mapped[bool] = mapped_column(Boolean, default=False)
+    f_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    f_create_user: Mapped[str] = mapped_column(String(50))
     f_create_time: Mapped[int] = mapped_column(BigInteger)
-
-
-class PromptVersionHiddenRow(Base):
-    """A Prompt version removed from the visible history; the version row stays."""
-
-    __tablename__ = "t_agent_prompt_version_hidden"
-
-    f_prompt_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    f_version: Mapped[int] = mapped_column(Integer, primary_key=True)
-    f_hide_user: Mapped[str] = mapped_column(String(50))
-    f_hide_time: Mapped[int] = mapped_column(BigInteger)
 
 
 class UserSettingRow(Base):

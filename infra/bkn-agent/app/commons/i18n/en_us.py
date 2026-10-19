@@ -230,23 +230,23 @@ error_messages = {
         "detail": "Built-in Agents must stay published.",
         "solution": "Platform features depend on built-in Agents; keep status=published.",
     },
-    "BknAgent.Agent.NoBuiltinDefault": {
+    "BknAgent.Agent.NoInitialVersion": {
         "code": "BknAgent.NotFound",
-        "description": "No initial version is recorded for this built-in Agent.",
-        "detail_template": "Agent {agent_id} has no recorded initial version.",
-        "detail": "No initial version is recorded.",
+        "description": "This built-in Agent has no initial version.",
+        "detail_template": "Agent {agent_id} has no initial version.",
+        "detail": "No initial version.",
         "solution": "Make sure the bkn-agent database migrations have run to the latest version.",
     },
-    "BknAgent.Prompt.VersionInUse": {
+    "BknAgent.Agent.VersionInUse": {
         "code": "BknAgent.ParamError.Version",
-        "description": "The Prompt version in use cannot be deleted.",
+        "description": "The Agent version in use cannot be deleted.",
         "detail_template": "v{version} is in use.",
         "detail": "This version is in use.",
         "solution": "Switch to another version first, then delete this one.",
     },
-    "BknAgent.Prompt.InitialVersion": {
+    "BknAgent.Agent.InitialVersion": {
         "code": "BknAgent.ParamError.Version",
-        "description": "The initial Prompt version cannot be deleted.",
+        "description": "The initial version cannot be deleted.",
         "detail_template": "v{version} is the initial version.",
         "detail": "The initial version is kept for restoring.",
         "solution": "The initial version is always kept so the Agent can be restored.",

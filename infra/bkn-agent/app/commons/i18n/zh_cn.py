@@ -245,23 +245,23 @@ error_messages = {
         "detail": "内置 Agent 必须保持发布",
         "solution": "平台功能依赖内置 Agent，保持 status=published。",
     },
-    "BknAgent.Agent.NoBuiltinDefault": {
+    "BknAgent.Agent.NoInitialVersion": {
         "code": "BknAgent.NotFound",
-        "description": "没有记录这个内置 Agent 的初始版本",
-        "detail_template": "agent {agent_id} 没有初始版本记录",
-        "detail": "没有初始版本记录",
+        "description": "这个内置 Agent 没有初始版本",
+        "detail_template": "agent {agent_id} 没有初始版本",
+        "detail": "没有初始版本",
         "solution": "确认 bkn-agent 的数据库迁移已执行到最新版本。",
     },
-    "BknAgent.Prompt.VersionInUse": {
+    "BknAgent.Agent.VersionInUse": {
         "code": "BknAgent.ParamError.Version",
-        "description": "不能删除正在使用的提示词版本",
+        "description": "不能删除正在使用的 Agent 版本",
         "detail_template": "v{version} 正在使用",
         "detail": "该版本正在使用",
         "solution": "先切换到其他版本，再删除这个版本。",
     },
-    "BknAgent.Prompt.InitialVersion": {
+    "BknAgent.Agent.InitialVersion": {
         "code": "BknAgent.ParamError.Version",
-        "description": "不能删除初始提示词版本",
+        "description": "不能删除初始版本",
         "detail_template": "v{version} 是初始版本",
         "detail": "初始版本用于恢复，不能删除",
         "solution": "初始版本始终保留，供恢复使用。",
