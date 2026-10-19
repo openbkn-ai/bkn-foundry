@@ -174,8 +174,8 @@ components:
           description: |-
             Properties a returned node carries besides its identity, keyed by the node's
             variable. Each variable must be a node the query returns, and at most 128
-            properties may be named per node; the properties are read under the same
-            authorization as any other property the query names.
+            properties may be named in all, across every variable; the properties are read
+            under the same authorization as any other property the query names.
           example:
             t: ["team_name"]
         query:

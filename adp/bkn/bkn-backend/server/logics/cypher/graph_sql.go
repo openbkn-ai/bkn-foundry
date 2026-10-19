@@ -40,8 +40,17 @@ type graphRead struct {
 	// evidence is set when RETURN collects: the statement returns matched
 	// rows, which are grouped into conclusions after reading.
 	evidence bool
-	// conclusionLimit is how many conclusions the derived table keeps.
+	// conclusionLimit is how many conclusions LIMIT keeps.
 	conclusionLimit int64
+	// paged is set when a derived table chose and paged the conclusions;
+	// otherwise SKIP and LIMIT apply after grouping.
+	paged bool
+	// flat and chosen are the plans of the statement and of its derived
+	// table, which tests run to stand in for the database.
+	flat, chosen *Plan
+	// keys are the conclusion's columns: each table column, and its alias
+	// in the derived table.
+	keys []graphReadColumn
 }
 
 // graphReadColumn is one table column a graph read returns, under an alias of
@@ -145,12 +154,15 @@ func planRowRead(plan *Plan, dialect Dialect, defaultLimit int64) (*graphRead, e
 		}
 	}
 	flat.OrderBy = withoutGraphSorts(plan)
+	if len(columns.columns) == 0 && len(flat.Select) == 0 {
+		return nil, errReadsNothing
+	}
 
 	statement, err := Generate(&flat, GenerateOptions{Dialect: dialect, DefaultLimit: defaultLimit})
 	if err != nil {
 		return nil, err
 	}
-	return &graphRead{statement: statement, rowLimit: pageSize(plan.Limit), columns: columns.columns}, nil
+	return &graphRead{statement: statement, rowLimit: pageSize(plan.Limit), columns: columns.columns, flat: &flat}, nil
 }
 
 // planEvidenceRead reads a query with collect: the matched rows of the
@@ -197,8 +209,10 @@ func planEvidenceRead(plan *Plan, dialect Dialect, defaultLimit int64) (*graphRe
 		limit = *plan.Limit
 	}
 	var conclusions *conclusionJoin
+	var chosenPlan *Plan
 	if len(keys.columns) > 0 {
 		chosen := *plan
+		chosenPlan = &chosen
 		chosen.Select = conclusionSelect
 		chosen.Distinct = true
 		chosen.GroupBy = nil
@@ -216,6 +230,9 @@ func planEvidenceRead(plan *Plan, dialect Dialect, defaultLimit int64) (*graphRe
 	for _, column := range plan.Select {
 		columns.addColumn(column)
 	}
+	if len(columns.columns) == 0 {
+		return nil, errReadsNothing
+	}
 	flat := *plan
 	flat.Select = columns.planColumns()
 	flat.Distinct = false
@@ -230,9 +247,16 @@ func planEvidenceRead(plan *Plan, dialect Dialect, defaultLimit int64) (*graphRe
 	}
 	return &graphRead{
 		statement: statement, rowLimit: graphRowCap, columns: columns.columns,
-		evidence: true, conclusionLimit: limit,
+		evidence: true, conclusionLimit: limit, paged: conclusions != nil,
+		flat: &flat, chosen: chosenPlan, keys: keys.columns,
 	}, nil
 }
+
+// errReadsNothing refuses a RETURN of only constants: no column of the match
+// is read, so there is nothing to select. It was refused before graph values
+// existed, and stays refused.
+var errReadsNothing = planErrorf(Position{}, "RETURN reads nothing from the matched rows; "+
+	"return a node, a relationship or a property beside constants")
 
 func hasAlias(columns []PlanColumn, alias string) bool {
 	for _, column := range columns {
@@ -318,6 +342,11 @@ func graphBindings(plan *Plan, read *graphRead, entries []map[string]any) []bind
 func assembleGraphRows(plan *Plan, read *graphRead, entries []map[string]any) ([]map[string]any, bool, error) {
 	rows := graphBindings(plan, read, entries)
 	if read.evidence {
+		if !read.paged {
+			// Nothing beside collect: one conclusion, which SKIP and
+			// LIMIT apply to as they would to any result row.
+			return finishRows(plan, rows, read.conclusionLimit, false)
+		}
 		// The statement chose and paged the conclusions; grouping them is
 		// all that is left.
 		grouped := *plan

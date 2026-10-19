@@ -211,6 +211,11 @@ func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.Cy
 
 	conditionsAsBooleans(compiled.plan, response.Columns, response.Entries)
 	entries, limited, err := assembleGraphRows(compiled.plan, read, response.Entries)
+	var missingKey *missingKeyError
+	if errors.As(err, &missingKey) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
+			WithErrorDetails(missingKey.Error())
+	}
 	if err != nil {
 		common.LogSafeError(ctx, "Cypher graph value assembly failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)

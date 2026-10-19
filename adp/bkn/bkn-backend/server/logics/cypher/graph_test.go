@@ -8,6 +8,7 @@ package cypher
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -16,7 +17,9 @@ import (
 )
 
 // runGraph compiles a query against the typed test model with the given
-// object_properties and runs it through the bind-join executor.
+// object_properties and answers it the way the service does: the graph read's
+// statement, then assembly. The in-memory executor stands in for the database
+// that runs the statement, including the derived table of chosen conclusions.
 func runGraph(t *testing.T, data map[string][]map[string]any, query string,
 	objectProperties map[string][]string) ([]map[string]any, *Plan, error) {
 	t.Helper()
@@ -33,9 +36,55 @@ func runGraph(t *testing.T, data map[string][]map[string]any, query string,
 	if err != nil {
 		return nil, nil, err
 	}
-	_, entries, err := runBindJoin(context.Background(), plan, schema, newFakeDataAPI(data).read,
+	read, err := planGraphRead(plan, DialectMySQL, interfaces.CYPHER_DEFAULT_LIMIT)
+	if err != nil {
+		return nil, nil, err
+	}
+	api := newFakeDataAPI(data)
+	_, rows, err := runBindJoin(context.Background(), read.flat, schema, api.read,
 		defaultBindJoinLimits, interfaces.CYPHER_DEFAULT_LIMIT)
+	if err != nil {
+		return nil, nil, err
+	}
+	if read.chosen != nil {
+		_, chosen, err := runBindJoin(context.Background(), read.chosen, schema, api.read,
+			defaultBindJoinLimits, interfaces.CYPHER_DEFAULT_LIMIT)
+		if err != nil {
+			return nil, nil, err
+		}
+		rows = keepChosen(read, rows, chosen)
+	}
+	entries, _, err := assembleGraphRows(plan, read, rows)
 	return entries, plan, err
+}
+
+// keepChosen is the statement's join to its derived table: the rows whose
+// conclusion columns equal a chosen conclusion's, NULL matching NULL.
+func keepChosen(read *graphRead, rows, chosen []map[string]any) []map[string]any {
+	aliasOf := map[[2]string]string{}
+	for _, column := range read.columns {
+		aliasOf[[2]string{strconv.Itoa(column.table), column.column}] = column.alias
+	}
+	tuple := func(row map[string]any, alias func(graphReadColumn) string) string {
+		values := make([]any, 0, len(read.keys))
+		for _, key := range read.keys {
+			values = append(values, row[alias(key)])
+		}
+		return canonicalTuple(values)
+	}
+	wanted := map[string]bool{}
+	for _, row := range chosen {
+		wanted[tuple(row, func(key graphReadColumn) string { return key.alias })] = true
+	}
+	var kept []map[string]any
+	for _, row := range rows {
+		if wanted[tuple(row, func(key graphReadColumn) string {
+			return aliasOf[[2]string{strconv.Itoa(key.table), key.column}]
+		})] {
+			kept = append(kept, row)
+		}
+	}
+	return kept
 }
 
 func mustRunGraph(t *testing.T, query string, objectProperties map[string][]string) []map[string]any {
@@ -174,7 +223,8 @@ func TestGraphKeysStayExactAndMustExist(t *testing.T) {
 	}
 
 	data["res_order"] = []map[string]any{{"f_id": nil, "f_region": "east"}}
-	if _, _, err := runGraph(t, data, "MATCH (o:Order) RETURN o", nil); err == nil || !strings.Contains(err.Error(), "no identity") {
+	var missing *missingKeyError
+	if _, _, err := runGraph(t, data, "MATCH (o:Order) RETURN o", nil); !errors.As(err, &missing) {
 		t.Fatalf("err = %v, want a row without a key refused", err)
 	}
 }
@@ -255,5 +305,43 @@ func TestGraphSnapshotPropertiesAreBounded(t *testing.T) {
 	_, _, err := runGraph(t, bindJoinData(), "MATCH (o:Order) RETURN o", map[string][]string{"o": properties})
 	if err == nil || !strings.Contains(err.Error(), "at most "+strconv.Itoa(MaxSnapshotProperties)) {
 		t.Fatalf("err = %v, want the bound reported", err)
+	}
+}
+
+// A RETURN of only constants reads no column of the match, so there is no
+// statement to write; it is refused as it was before graph values.
+func TestGraphConstantsAloneAreRefused(t *testing.T) {
+	for _, query := range []string{
+		"MATCH (o:Order) RETURN 1",
+		"MATCH (o:Order) RETURN 'x' AS k",
+		"MATCH (o:Order) RETURN {a: 1} AS m",
+		"MATCH (o:Order) RETURN collect({a: 1}) AS ms",
+	} {
+		_, _, err := runGraph(t, bindJoinData(), query, nil)
+		var planErr *PlanError
+		if !errors.As(err, &planErr) || !strings.Contains(err.Error(), "reads nothing") {
+			t.Errorf("%s: err = %v, want it refused as reading nothing", query, err)
+		}
+	}
+}
+
+// With nothing beside collect there is one conclusion, and SKIP and LIMIT
+// apply to it as to any result row.
+func TestGraphCollectAlonePagesItsOneRow(t *testing.T) {
+	for _, tc := range []struct {
+		query   string
+		entries int
+	}{
+		{"MATCH (o:Order) RETURN collect(o.id) AS ids", 1},
+		{"MATCH (o:Order) RETURN collect(o.id) AS ids SKIP 1", 0},
+		{"MATCH (o:Order) RETURN collect(o.id) AS ids LIMIT 0", 0},
+	} {
+		entries, _, err := runGraph(t, bindJoinData(), tc.query, nil)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.query, err)
+		}
+		if len(entries) != tc.entries {
+			t.Errorf("%s: %d rows, want %d", tc.query, len(entries), tc.entries)
+		}
 	}
 }

@@ -116,8 +116,7 @@ func objectValue(identity PlanIdentity, row map[string]any) (interfaces.CypherOb
 	for _, key := range identity.Keys {
 		value := row[key.Column]
 		if value == nil {
-			return object, fmt.Errorf("a %q row has no value for its key property %q, so it has no identity",
-				identity.ObjectTypeID, key.Property)
+			return object, &missingKeyError{objectType: identity.ObjectTypeID, property: key.Property}
 		}
 		kind := key.Type
 		if kind == "" {
@@ -126,6 +125,18 @@ func objectValue(identity PlanIdentity, row map[string]any) (interfaces.CypherOb
 		object.Key[key.Property] = interfaces.CypherKeyValue{Type: kind, Value: keyText(value)}
 	}
 	return object, nil
+}
+
+// missingKeyError is a matched row without a value for one of its object
+// type's key properties: the data does not meet the model, so the row has no
+// identity to return.
+type missingKeyError struct {
+	objectType, property string
+}
+
+func (e *missingKeyError) Error() string {
+	return fmt.Sprintf("a %q row has no value for its key property %q, so it cannot be returned as a node; "+
+		"return its properties instead", e.objectType, e.property)
 }
 
 // keyText writes a key value exactly: a number as its decimal digits, never
