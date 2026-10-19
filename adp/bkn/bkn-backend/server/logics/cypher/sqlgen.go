@@ -69,6 +69,9 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 		return "", err
 	}
 	g.writeGroupBy()
+	if err := g.writeHaving(); err != nil {
+		return "", err
+	}
 	g.writeOrderBy()
 	g.writeLimit(options.DefaultLimit)
 	if g.err != nil {
@@ -220,6 +223,16 @@ func (g *generator) aggregate(aggregate PlanAggregate) string {
 		inner = "DISTINCT " + inner
 	}
 	return aggregate.Function + "(" + inner + ")"
+}
+
+// writeHaving writes the condition each group must meet, which reads
+// aggregates and so cannot go in WHERE.
+func (g *generator) writeHaving() error {
+	if g.plan.Having == nil {
+		return nil
+	}
+	g.out.WriteString(" HAVING ")
+	return g.writePredicate(g.plan.Having, false)
 }
 
 // writeGroupBy writes the grouping the planner derived from what is returned.

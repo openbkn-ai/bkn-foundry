@@ -36,6 +36,13 @@ type Plan struct {
 	Skip      *int64
 	Limit     *int64
 
+	// Grouped says the query aggregates even when no returned column does,
+	// as when a WITH aggregated and RETURN shows only what it grouped by.
+	// Having is the condition each group must meet, from the WHERE of that
+	// WITH; it reads aggregates over the group.
+	Grouped bool
+	Having  PlanPredicate
+
 	// Properties lists, in the model's own terms, every property the query
 	// names: what it returns, filters on, sorts by or aggregates over. Join
 	// keys and the primary keys that keep relationships distinct are not in
@@ -343,6 +350,8 @@ type planner struct {
 	distinctness []PlanPredicate
 	objectType   []*interfaces.ObjectType // per table, parallel to plan.Tables
 	tableOf      map[string]int           // variable name to table index
+	// groupKeys are what a WITH grouped by, resolved to columns.
+	groupKeys []PlanColumn
 }
 
 // CompileOptions carries what the query itself does not: the values its
@@ -359,6 +368,7 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 		plan: &Plan{
 			NetworkID: schema.KNID, Branch: schema.Branch,
 			Distinct: query.Distinct, Skip: query.Skip, Limit: query.Limit,
+			Grouped: query.Grouped,
 		},
 		tableOf: map[string]int{},
 	}
@@ -368,8 +378,18 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	if err := p.planWhere(query.Where); err != nil {
 		return nil, err
 	}
+	if err := p.planGroupKeys(query.GroupKeys); err != nil {
+		return nil, err
+	}
 	if err := p.planReturn(query.Return); err != nil {
 		return nil, err
+	}
+	if query.Having != nil {
+		having, err := p.planPredicate(query.Having)
+		if err != nil {
+			return nil, err
+		}
+		p.plan.Having = having
 	}
 	if err := p.planOrderBy(query.OrderBy); err != nil {
 		return nil, err
@@ -1054,6 +1074,18 @@ func (p *planner) planAggregateProperty(aggregate Aggregate) (*PlanAggregate, er
 // it rather than accepting one is also what stops a statement from grouping by
 // something the caller never sees.
 func (p *planner) planGrouping() {
+	if p.plan.Grouped {
+		// A WITH said what to group by. Returned columns that are not
+		// aggregates are among its keys or properties of a node it grouped
+		// by, so grouping by them as well changes no group.
+		p.plan.GroupBy = append([]PlanColumn(nil), p.groupKeys...)
+		for _, column := range p.plan.Select {
+			if !column.aggregates() && !hasColumn(p.plan.GroupBy, column) {
+				p.plan.GroupBy = append(p.plan.GroupBy, column)
+			}
+		}
+		return
+	}
 	aggregates := 0
 	for _, column := range p.plan.Select {
 		if column.aggregates() {
@@ -1373,6 +1405,9 @@ func (p *planner) planSortExpression(key SortKey) (*PlanOrder, error) {
 // the test: aggregating every column derives no GROUP BY and still collapses
 // the result to a single row.
 func (p *planner) aggregating() bool {
+	if p.plan.Grouped {
+		return true
+	}
 	for _, column := range p.plan.Select {
 		if column.aggregates() {
 			return true
@@ -1512,4 +1547,49 @@ func (p *planner) planNodeCount(aggregate Aggregate) (*PlanAggregate, error) {
 		Function: aggregate.Function, Distinct: aggregate.Distinct,
 		Table: table, Column: column, Property: keys[0],
 	}, nil
+}
+
+// planGroupKeys resolves what a WITH grouped by. A node groups by its primary
+// key, so two objects that share a name stay two groups.
+func (p *planner) planGroupKeys(keys []GroupKey) error {
+	for _, key := range keys {
+		if key.Property != nil {
+			table, column, err := p.resolveProperty(*key.Property)
+			if err != nil {
+				return err
+			}
+			p.groupKeys = append(p.groupKeys, PlanColumn{Table: table, Column: column, Property: key.Property.Property})
+			continue
+		}
+		table, bound := p.tableOf[key.Node]
+		if !bound {
+			return planErrorf(key.Pos, "variable %q is not defined in the MATCH pattern", key.Node)
+		}
+		primaryKeys := p.objectType[table].PrimaryKeys
+		if len(primaryKeys) == 0 {
+			return planErrorf(key.Pos, "grouping by %s needs its object type to have a primary key; "+
+				"WITH one of its properties instead, as in WITH %s.property AS name", key.Node, key.Node)
+		}
+		for _, primaryKey := range primaryKeys {
+			_, column, err := p.resolveProperty(PropertyRef{Variable: key.Node, Property: primaryKey, Pos: key.Pos})
+			if err != nil {
+				return err
+			}
+			p.groupKeys = append(p.groupKeys, PlanColumn{Table: table, Column: column, Property: primaryKey})
+		}
+	}
+	return nil
+}
+
+func hasColumn(columns []PlanColumn, column PlanColumn) bool {
+	if column.Expression != nil || column.Aggregate != nil {
+		return false
+	}
+	for _, existing := range columns {
+		if existing.Expression == nil && existing.Aggregate == nil &&
+			existing.Table == column.Table && existing.Column == column.Column {
+			return true
+		}
+	}
+	return false
 }

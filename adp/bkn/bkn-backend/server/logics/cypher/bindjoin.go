@@ -220,6 +220,9 @@ func (e *bindJoinExecutor) prepare() error {
 	for _, column := range e.plan.GroupBy {
 		walkColumnColumns(column, need)
 	}
+	if e.plan.Having != nil {
+		walkPredicateColumns(e.plan.Having, need)
+	}
 	for _, order := range e.plan.OrderBy {
 		switch {
 		case order.Expression != nil:

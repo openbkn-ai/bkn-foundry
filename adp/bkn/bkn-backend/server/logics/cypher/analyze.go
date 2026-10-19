@@ -77,11 +77,32 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 		return nil, unsupported(regular, "UNION")
 	}
 	single := regular.OC_SingleQuery()
-	if single.OC_MultiPartQuery() != nil {
-		return nil, unsupported(single, "WITH")
-	}
-
 	part := single.OC_SinglePartQuery()
+	reading := []parsing.IOC_ReadingClauseContext(nil)
+	var with parsing.IOC_WithContext
+	if multi := single.OC_MultiPartQuery(); multi != nil {
+		// One WITH between the MATCH clauses and RETURN is read as part of
+		// this one query; anything longer is a pipeline of stages, which is
+		// not supported yet.
+		withs := multi.AllOC_With()
+		if len(withs) > 1 {
+			return nil, unsupportedf(withs[1], "more than one WITH",
+				"a query may have one WITH, between its MATCH clauses and RETURN")
+		}
+		if updating := multi.AllOC_UpdatingClause(); len(updating) > 0 {
+			return nil, unsupportedf(updating[0], "writing", "this interface only runs read-only queries")
+		}
+		with = withs[0]
+		part = multi.OC_SinglePartQuery()
+		if after := part.AllOC_ReadingClause(); len(after) > 0 {
+			return nil, unsupportedf(after[0], "MATCH after WITH",
+				"write every MATCH before the WITH; to relate two patterns, write both in MATCH and compare "+
+					"their properties in WHERE, as in WHERE a.code = b.code")
+		}
+		reading = multi.AllOC_ReadingClause()
+	} else {
+		reading = part.AllOC_ReadingClause()
+	}
 	if updating := part.AllOC_UpdatingClause(); len(updating) > 0 {
 		// The subset is read-only by construction, not by permission check, so
 		// a write clause is refused before anything is bound or generated.
@@ -92,7 +113,6 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 		return nil, unsupportedf(part, "a query without RETURN", "add a RETURN clause")
 	}
 
-	reading := part.AllOC_ReadingClause()
 	if len(reading) == 0 {
 		return nil, unsupportedf(part, "a query without MATCH", "add a MATCH clause")
 	}
@@ -140,6 +160,17 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	query.Where = combine("AND", inline, positionOf(lastMatch))
 	if err := refuseRequiredUseOfOptional(query); err != nil {
 		return nil, err
+	}
+	if with != nil {
+		if err := analyzeWith(query, with, returning.OC_ProjectionBody()); err != nil {
+			return nil, err
+		}
+		// What the WITH's WHERE added is a condition like any other, so it
+		// may not require an optional node either.
+		if err := refuseRequiredUseOfOptional(query); err != nil {
+			return nil, err
+		}
+		return query, nil
 	}
 	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody()); err != nil {
 		return nil, err
