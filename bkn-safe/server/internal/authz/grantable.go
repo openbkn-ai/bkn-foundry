@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
+	"gorm.io/gorm"
 )
 
 // ErrOperationNotGrantable identifies an attempt to persist an allow or deny
@@ -35,20 +35,8 @@ func (en *Enforcer) ValidateGrantableOperations(ctx context.Context, resourceTyp
 	if en.db == nil {
 		return errors.New("authz enforcer has no operation registry")
 	}
-	unique := distinctOperations(operations)
-	var rows []model.Operation
-	query := en.db.WithContext(ctx).Where("resource_type_id = ?", resourceType)
-	allOperations := false
-	for _, operation := range unique {
-		if operation == ActAll {
-			allOperations = true
-			break
-		}
-	}
-	if !allOperations {
-		query = query.Where("id IN ?", unique)
-	}
-	if err := query.Order("id").Find(&rows).Error; err != nil {
+	rows, err := en.Registry().Operations(ctx, resourceType)
+	if err != nil {
 		return err
 	}
 	notGrantable := make(map[string]bool, len(rows))
@@ -80,12 +68,12 @@ func (en *Enforcer) validateGrantablePolicy(ctx context.Context, object, operati
 		if operation == ActAll {
 			return nil
 		}
-		var rows []model.Operation
-		if err := en.db.WithContext(ctx).Where("id = ?", operation).Order("resource_type_id").Find(&rows).Error; err != nil {
+		rows, err := en.Registry().Operations(ctx, "")
+		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			if !row.IsGrantable() {
+			if row.ID == operation && !row.IsGrantable() {
 				return fmt.Errorf("%w: */%s covers %s/%s", ErrOperationNotGrantable, operation, row.ResourceTypeID, row.ID)
 			}
 		}
@@ -96,13 +84,11 @@ func (en *Enforcer) validateGrantablePolicy(ctx context.Context, object, operati
 		return nil
 	}
 	if hasWildcard(resourceID) {
-		var parentTypeID string
-		if err := en.db.WithContext(ctx).Model(&model.ResourceType{}).
-			Where("id = ? AND parent_type_id <> ''", resourceType).
-			Limit(1).Pluck("parent_type_id", &parentTypeID).Error; err != nil {
+		rt, err := en.Registry().ResourceType(ctx, resourceType)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		if parentTypeID != "" {
+		if rt.ParentTypeID != "" {
 			return fmt.Errorf("%w: %s", ErrSubResourceWildcard, object)
 		}
 	}

@@ -450,7 +450,7 @@ func (s *Service) CheckMany(ctx context.Context, req BatchCheckRequest) (BatchCh
 			}
 		}
 		if actorEligible {
-			if err := validateRegisteredOperations(tx.DB(), needsActor); err != nil {
+			if err := validateRegisteredOperations(ctx, tx.Registry(), needsActor); err != nil {
 				return err
 			}
 			resourceSet := map[authz.ResourceRef]bool{}
@@ -767,7 +767,7 @@ func (s *Service) SyncDelta(ctx context.Context, req DeltaSyncRequest) (SyncResu
 			needsActor = append(needsActor, spec)
 		}
 		if len(needsActor) > 0 {
-			if err := validateRegisteredOperations(tx.DB(), needsActor); err != nil {
+			if err := validateRegisteredOperations(ctx, tx.Registry(), needsActor); err != nil {
 				return err
 			}
 			permissions, err := transactionActorPermissions(ctx, tx, req.ProxyAccountID, req.GrantorID, needsActor)
@@ -1275,7 +1275,7 @@ func (s *Service) readOnlyActorPermissions(ctx context.Context, proxyID, grantor
 		}
 		return nil, false, err
 	}
-	if err := validateRegisteredOperations(s.db.WithContext(ctx), specs); err != nil {
+	if err := validateRegisteredOperations(ctx, s.enforcer.Registry(), specs); err != nil {
 		return nil, false, err
 	}
 	resources, operations := deltaPermissionInputs(specs)
@@ -1534,7 +1534,7 @@ func validateDelegatorOperation(tx *authz.PolicyTransaction, delegatorID string,
 	if err := validateGrantorIdentity(tx.DB(), delegatorID); err != nil {
 		return err
 	}
-	if err := validateRegisteredOperation(tx.DB(), spec); err != nil {
+	if err := validateRegisteredOperation(tx.DB().Statement.Context, tx.Registry(), spec); err != nil {
 		return err
 	}
 	operation, err := tx.Check(delegatorID, spec.ResourceType, spec.ResourceID, spec.Operation)
@@ -1551,7 +1551,7 @@ func validateAdministrativeAuthority(tx *authz.PolicyTransaction, grantorID stri
 	if err := validateGrantorIdentity(tx.DB(), grantorID); err != nil {
 		return err
 	}
-	if err := validateRegisteredOperation(tx.DB(), spec); err != nil {
+	if err := validateRegisteredOperation(tx.DB().Statement.Context, tx.Registry(), spec); err != nil {
 		return err
 	}
 	authorize, err := tx.Check(grantorID, spec.ResourceType, spec.ResourceID, "authorize")
@@ -1568,10 +1568,9 @@ func validateAdministrativeAuthority(tx *authz.PolicyTransaction, grantorID stri
 	return nil
 }
 
-func validateRegisteredOperation(db *gorm.DB, spec SourceSpec) error {
-	var operation model.Operation
-	if err := db.Where("resource_type_id = ? AND id = ?", spec.ResourceType, spec.Operation).
-		First(&operation).Error; err != nil {
+func validateRegisteredOperation(ctx context.Context, registry *authz.Registry, spec SourceSpec) error {
+	operation, err := registry.Operation(ctx, spec.ResourceType, spec.Operation)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrInvalidRequest
 		}
@@ -1583,24 +1582,9 @@ func validateRegisteredOperation(db *gorm.DB, spec SourceSpec) error {
 	return nil
 }
 
-func validateRegisteredOperations(db *gorm.DB, specs []SourceSpec) error {
-	resourceTypes := map[string]bool{}
-	operationIDs := map[string]bool{}
-	for _, spec := range specs {
-		resourceTypes[spec.ResourceType] = true
-		operationIDs[spec.Operation] = true
-	}
-	resourceTypeValues := make([]string, 0, len(resourceTypes))
-	for value := range resourceTypes {
-		resourceTypeValues = append(resourceTypeValues, value)
-	}
-	operationValues := make([]string, 0, len(operationIDs))
-	for value := range operationIDs {
-		operationValues = append(operationValues, value)
-	}
-	var registered []model.Operation
-	if err := db.Where("resource_type_id IN ? AND id IN ?", resourceTypeValues, operationValues).
-		Find(&registered).Error; err != nil {
+func validateRegisteredOperations(ctx context.Context, registry *authz.Registry, specs []SourceSpec) error {
+	registered, err := registry.Operations(ctx, "")
+	if err != nil {
 		return err
 	}
 	available := map[string]bool{}

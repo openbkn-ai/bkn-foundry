@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -38,7 +39,7 @@ type resourceRef struct {
 // array-vs-map responses, policy-delete double form, public/private split).
 func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory.Service) {
 	g := r.Group("/api/safe/v1/authz")
-	registerAuthorizationRegistry(g, db)
+	registerAuthorizationRegistry(g, e.Registry())
 	registerPropertyLevels(g, e, db)
 	registerRowFilter(g, e, dir)
 	// Policy and hierarchy writes are internal consequences of a caller's
@@ -287,7 +288,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory
 		}
 		catalogCandidates := make(map[string][]string, len(order))
 		for _, rtype := range order {
-			candidates, err := catalogOps(db, rtype)
+			candidates, err := catalogOps(c.Request.Context(), e.Registry(), rtype)
 			if err != nil {
 				serverError(c, err)
 				return
@@ -377,7 +378,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory
 			return
 		}
 
-		auditPolicyWriteShape(c, db, "POST", req.AccessorID, req.Resource, req.Operations)
+		auditPolicyWriteShape(c, e, db, "POST", req.AccessorID, req.Resource, req.Operations)
 		// Normalize direct requirements here too (#1121). This route is the one a service
 		// calls directly, so leaving it out would keep the very bypass the rule
 		// exists to close: a caller could still write catalog.resource_manage
@@ -421,7 +422,7 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		auditPolicyWriteShape(c, db, "DELETE", "", req.Resource, nil)
+		auditPolicyWriteShape(c, e, db, "DELETE", "", req.Resource, nil)
 		if err := e.RemoveResourcePolicies(req.Resource.Type, req.Resource.ID); err != nil {
 			if errors.Is(err, authz.ErrManagedProxyPolicies) {
 				replyPublicError(c, http.StatusConflict)
@@ -786,7 +787,7 @@ const superAdminRoleName = "super_admin"
 //   - an empty operation list — the execution factory sends one when a request
 //     carries no allow set, and it is a harmless no-op today;
 //   - a wildcard resource ID — bounded to one type, and cheap to keep working.
-func auditPolicyWriteShape(c *gin.Context, db *gorm.DB, verb, accessorID string, resource resourceRef, operations []string) {
+func auditPolicyWriteShape(c *gin.Context, e *authz.Enforcer, db *gorm.DB, verb, accessorID string, resource resourceRef, operations []string) {
 	var findings []string
 	if accessorID != "" {
 		if ok, err := accessorExists(c, db, accessorID); err == nil && !ok && accessorID != authz.PublicAccessorID {
@@ -796,7 +797,7 @@ func auditPolicyWriteShape(c *gin.Context, db *gorm.DB, verb, accessorID string,
 	if resource.ID == "*" {
 		findings = append(findings, "wildcard resource id")
 	}
-	if valid, err := catalogOpSet(db, resource.Type); err == nil {
+	if valid, err := catalogOpSet(c.Request.Context(), e.Registry(), resource.Type); err == nil {
 		if len(valid) == 0 {
 			findings = append(findings, "resource type not in catalog")
 		} else {
@@ -1114,9 +1115,9 @@ func uniqueResourceRefs(refs []authz.ResourceRef) []authz.ResourceRef {
 }
 
 // catalogOps returns the operation ids registered for a resource type.
-func catalogOps(db *gorm.DB, resourceType string) ([]string, error) {
-	var ops []model.Operation
-	if err := db.Where("resource_type_id = ?", resourceType).Find(&ops).Error; err != nil {
+func catalogOps(ctx context.Context, registry *authz.Registry, resourceType string) ([]string, error) {
+	ops, err := registry.Operations(ctx, resourceType)
+	if err != nil {
 		return nil, err
 	}
 	ids := make([]string, 0, len(ops))

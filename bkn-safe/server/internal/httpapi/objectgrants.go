@@ -176,7 +176,7 @@ func authorizeDelegatedResourceManagement(ctx context.Context, enforcer *authz.E
 	if operatorID == "" || !isConcreteResourceID(ref.ID) {
 		return resourceRef{}, false, nil
 	}
-	root, ok, err := grantAuthorizationRoot(ctx, db, ref)
+	root, ok, err := grantAuthorizationRoot(ctx, db, enforcer.Registry(), ref)
 	if err != nil || !ok {
 		return resourceRef{}, false, err
 	}
@@ -184,7 +184,7 @@ func authorizeDelegatedResourceManagement(ctx context.Context, enforcer *authz.E
 	if err != nil || !authorized {
 		return root, authorized, err
 	}
-	viewOp, err := resourceViewOperation(ctx, db, ref.Type)
+	viewOp, err := resourceViewOperation(ctx, enforcer.Registry(), ref.Type)
 	if err != nil {
 		return root, false, err
 	}
@@ -195,9 +195,9 @@ func authorizeDelegatedResourceManagement(ctx context.Context, enforcer *authz.E
 // grantAuthorizationRoot applies the BKN boundary: a knowledge-network is the
 // sole authorization-management root for its registered child resources.
 // Other resource families manage grants on the concrete resource itself.
-func grantAuthorizationRoot(ctx context.Context, db *gorm.DB, ref resourceRef) (resourceRef, bool, error) {
-	var resourceType model.ResourceType
-	if err := db.WithContext(ctx).First(&resourceType, "id = ?", ref.Type).Error; err != nil {
+func grantAuthorizationRoot(ctx context.Context, db *gorm.DB, registry *authz.Registry, ref resourceRef) (resourceRef, bool, error) {
+	resourceType, err := registry.ResourceType(ctx, ref.Type)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return resourceRef{}, false, nil
 		}
@@ -207,7 +207,7 @@ func grantAuthorizationRoot(ctx context.Context, db *gorm.DB, ref resourceRef) (
 		return ref, true, nil
 	}
 	var parent model.ResourceParent
-	err := db.WithContext(ctx).First(&parent,
+	err = db.WithContext(ctx).First(&parent,
 		"resource_type_id = ? AND resource_id = ?", ref.Type, ref.ID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return resourceRef{}, false, nil
@@ -224,34 +224,27 @@ func grantAuthorizationRoot(ctx context.Context, db *gorm.DB, ref resourceRef) (
 // resourceViewOperation resolves the view vocabulary from the registered
 // operation catalog. The authorization engine does not normalize these names:
 // BKN/Vega use view_detail, execution-factory uses view, and models use display.
-func resourceViewOperation(ctx context.Context, db *gorm.DB, resourceType string) (string, error) {
-	var ids []string
-	if err := db.WithContext(ctx).Model(&model.Operation{}).
-		Where("resource_type_id = ? AND id IN ?", resourceType, []string{"view_detail", "view", "display"}).
-		Pluck("id", &ids).Error; err != nil {
+func resourceViewOperation(ctx context.Context, registry *authz.Registry, resourceType string) (string, error) {
+	ops, err := registry.Operations(ctx, resourceType)
+	if err != nil {
 		return "", err
 	}
 	for _, preferred := range []string{"view_detail", "view", "display"} {
-		for _, id := range ids {
-			if id == preferred {
-				return id, nil
+		for _, op := range ops {
+			if op.ID == preferred {
+				return preferred, nil
 			}
 		}
 	}
 	return "", fmt.Errorf("resource type %q does not declare a view operation", resourceType)
 }
 
-func isBKNChildResourceType(ctx context.Context, db *gorm.DB, resourceType string) (bool, error) {
-	var parentTypeID string
-	result := db.WithContext(ctx).Model(&model.ResourceType{}).
-		Select("parent_type_id").Where("id = ?", resourceType).Scan(&parentTypeID)
-	if result.Error != nil {
-		return false, result.Error
+func isBKNChildResourceType(ctx context.Context, registry *authz.Registry, resourceType string) (bool, error) {
+	rt, err := registry.ResourceType(ctx, resourceType)
+	if err != nil {
+		return false, err
 	}
-	if result.RowsAffected == 0 {
-		return false, gorm.ErrRecordNotFound
-	}
-	return parentTypeID == "knowledge_network", nil
+	return rt.ParentTypeID == "knowledge_network", nil
 }
 
 // restrictDelegatedOps enforces the two limits on a non-administrator writing a
@@ -747,9 +740,9 @@ func objectGrantQueryParam(c *gin.Context, primary, alias string) string {
 // catalogOpSet returns the resource type's grantable operation ids as a set.
 // Read-only/computed operations remain available from the registry and the
 // decision APIs, but never appear valid on an authorization write request.
-func catalogOpSet(db *gorm.DB, resourceType string) (map[string]bool, error) {
-	var operations []model.Operation
-	if err := db.Where("resource_type_id = ?", resourceType).Find(&operations).Error; err != nil {
+func catalogOpSet(ctx context.Context, registry *authz.Registry, resourceType string) (map[string]bool, error) {
+	operations, err := registry.Operations(ctx, resourceType)
+	if err != nil {
 		return nil, err
 	}
 	set := make(map[string]bool, len(operations))
@@ -1104,7 +1097,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, dir *directory.Servic
 			return
 		}
 
-		valid, err := catalogOpSet(db, req.Resource.Type)
+		valid, err := catalogOpSet(c.Request.Context(), e.Registry(), req.Resource.Type)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -1113,7 +1106,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, dir *directory.Servic
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
-		bknChild, err := isBKNChildResourceType(c.Request.Context(), db, req.Resource.Type)
+		bknChild, err := isBKNChildResourceType(c.Request.Context(), e.Registry(), req.Resource.Type)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
@@ -1235,9 +1228,8 @@ func effectiveObjectGrantDecisions(ctx context.Context, e *authz.Enforcer, db *g
 				!errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, err
 			} else if err == nil {
-				var op model.Operation
-				if err := db.WithContext(ctx).First(&op,
-					"resource_type_id = ? AND id = ?", ref.Type, operation).Error; err != nil &&
+				op, err := e.Registry().Operation(ctx, ref.Type, operation)
+				if err != nil &&
 					!errors.Is(err, gorm.ErrRecordNotFound) {
 					return nil, err
 				} else if err == nil {

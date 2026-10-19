@@ -315,7 +315,7 @@ func New(deps Deps) *gin.Engine {
 		// verifier.
 		meReads := r.Group("/api/safe/v1/me", sharedrest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
 		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
-		registerMeAuthorizationRegistry(meReads, deps.DB)
+		registerMeAuthorizationRegistry(meReads, deps.Enforcer.Registry())
 
 		// What this deployment can do, for the frontend's menu. Authn only:
 		// it describes the cluster, not the caller. Enforcement stays at each

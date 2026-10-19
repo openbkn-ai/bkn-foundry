@@ -32,6 +32,13 @@ func TestValidateRequirementsRejectsAuthoringMistakes(t *testing.T) {
 			wantErr: "does not declare",
 		},
 		{
+			name: "empty requirement",
+			catalog: catalog{ResourceTypes: []catalogResourceType{
+				{ID: "catalog", Operations: []catalogOperation{{ID: "manage", Requires: []string{""}}}},
+			}},
+			wantErr: "does not declare",
+		},
+		{
 			name: "self requirement",
 			catalog: catalog{ResourceTypes: []catalogResourceType{
 				{ID: "catalog", Operations: []catalogOperation{

@@ -170,6 +170,9 @@ func ApplyWithAudit(db *gorm.DB, enforcer *authz.Enforcer, _ interface {
 	if err := seedCatalog(db); err != nil {
 		return fmt.Errorf("seed catalog: %w", err)
 	}
+	if err := enforcer.InitializeRegistry(context.Background()); err != nil {
+		return err
+	}
 	if err := reconcileDeprecatedSeedRoles(db, enforcer); err != nil {
 		return fmt.Errorf("reconcile deprecated seed roles: %w", err)
 	}
@@ -530,145 +533,43 @@ func deleteUndeclaredOperations(db *gorm.DB, resourceTypeID string, declared []s
 	return q.Delete(&model.Operation{}).Error
 }
 
-// validateHierarchy checks the type-level hierarchy declared in authorization-registry.json:
-// every parent_type resolves to a declared type, every parent_operation resolves
-// to an operation the parent actually defines, an operation may not inherit from
-// a type with no parent, and the parent chain is acyclic. All four are authoring
-// mistakes in an embedded file, so failing the seed is the right response — the
-// alternative is a grant that quietly never applies.
+// catalogRows adapts the authoritative embedded declaration for the shared validators.
+func catalogRows(c catalog) ([]model.ResourceType, []model.Operation) {
+	types := make([]model.ResourceType, 0, len(c.ResourceTypes))
+	var ops []model.Operation
+	for _, rt := range c.ResourceTypes {
+		types = append(types, model.ResourceType{ID: rt.ID, Name: rt.Name, ParentTypeID: rt.ParentType})
+		for _, op := range rt.Operations {
+			ops = append(ops, model.Operation{ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name,
+				Description: op.Description, Grantable: op.Grantable, ParentOperationID: op.ParentOperation,
+				DerivedToOperationID: op.DerivedToOperation, RequiredOperationIDs: strings.Join(op.Requires, ",")})
+		}
+	}
+	return types, ops
+}
+
 func validateHierarchy(c catalog) error {
-	ops := make(map[string]map[string]bool, len(c.ResourceTypes))
-	parent := make(map[string]string, len(c.ResourceTypes))
-	for _, rt := range c.ResourceTypes {
-		set := make(map[string]bool, len(rt.Operations))
-		for _, op := range rt.Operations {
-			set[op.ID] = true
-		}
-		ops[rt.ID] = set
-		parent[rt.ID] = rt.ParentType
-	}
-	for _, rt := range c.ResourceTypes {
-		if rt.ParentType != "" {
-			if _, ok := ops[rt.ParentType]; !ok {
-				return fmt.Errorf("resource type %q declares unknown parent_type %q", rt.ID, rt.ParentType)
-			}
-			if rt.ParentType == rt.ID {
-				return fmt.Errorf("resource type %q is its own parent_type", rt.ID)
-			}
-		}
-		for _, op := range rt.Operations {
-			if op.ParentOperation == "" {
-				continue
-			}
-			if rt.ParentType == "" {
-				return fmt.Errorf("operation %s/%s declares parent_operation %q but %s has no parent_type",
-					rt.ID, op.ID, op.ParentOperation, rt.ID)
-			}
-			if !ops[rt.ParentType][op.ParentOperation] {
-				return fmt.Errorf("operation %s/%s maps to %s/%s, which is not a registered operation",
-					rt.ID, op.ID, rt.ParentType, op.ParentOperation)
-			}
-		}
-	}
-	// Acyclic check: walk each chain with a step budget of the type count. A
-	// cycle would make the enforce-time fallback loop forever.
-	for id := range parent {
-		seen := map[string]bool{id: true}
-		for cur, steps := parent[id], 0; cur != ""; cur, steps = parent[cur], steps+1 {
-			if seen[cur] || steps > len(parent) {
-				return fmt.Errorf("resource type parent chain has a cycle at %q", cur)
-			}
-			seen[cur] = true
-		}
-	}
-	return nil
+	types, ops := catalogRows(c)
+	return authz.ValidateRegistryHierarchy(types, ops)
 }
-
-// validateDerivedOperations keeps child-to-parent derived operations explicit
-// and finite. Source-operation requirements are independent of the derived
-// effect and are validated by validateRequirements.
 func validateDerivedOperations(c catalog) error {
-	resourceTypes := make(map[string]catalogResourceType, len(c.ResourceTypes))
-	for _, rt := range c.ResourceTypes {
-		resourceTypes[rt.ID] = rt
-	}
-	for _, rt := range c.ResourceTypes {
-		for _, op := range rt.Operations {
-			if op.DerivedToOperation == "" {
-				continue
-			}
-			if rt.ParentType == "" {
-				return fmt.Errorf("operation %s/%s declares derived_to_operation %q but %s has no parent_type",
-					rt.ID, op.ID, op.DerivedToOperation, rt.ID)
-			}
-			parent, ok := resourceTypes[rt.ParentType]
-			if !ok {
-				return fmt.Errorf("operation %s/%s derives to unregistered parent type %s",
-					rt.ID, op.ID, rt.ParentType)
-			}
-			var target catalogOperation
-			for _, candidate := range parent.Operations {
-				if candidate.ID == op.DerivedToOperation {
-					target = candidate
-					break
-				}
-			}
-			if target.ID == "" {
-				return fmt.Errorf("operation %s/%s derives to %s/%s, which is not a registered operation",
-					rt.ID, op.ID, rt.ParentType, op.DerivedToOperation)
-			}
-			if target.Grantable == nil || *target.Grantable {
-				return fmt.Errorf("operation %s/%s derives to grantable operation %s/%s",
-					rt.ID, op.ID, rt.ParentType, target.ID)
-			}
-			if target.DerivedToOperation != "" {
-				return fmt.Errorf("operation %s/%s derives to %s/%s, which derives again",
-					rt.ID, op.ID, rt.ParentType, target.ID)
-			}
-		}
-	}
-	return nil
+	types, ops := catalogRows(c)
+	return authz.ValidateRegistryDerivations(types, ops)
 }
-
-// validateRequirements rejects unknown same-type prerequisites and dependency
-// cycles before the registry is persisted. Shared acyclic dependencies are valid.
 func validateRequirements(c catalog) error {
+	// Preserve embedded-file validation before serializing the edges to the
+	// legacy comma-separated column, where an empty edge would disappear.
 	for _, rt := range c.ResourceTypes {
-		requirements := make(map[string][]string, len(rt.Operations))
 		for _, op := range rt.Operations {
-			requirements[op.ID] = op.Requires
-		}
-		visiting, done := make(map[string]bool), make(map[string]bool)
-		var visit func(string) error
-		visit = func(operation string) error {
-			if visiting[operation] {
-				return fmt.Errorf("operation %s/%s has a requirement cycle", rt.ID, operation)
-			}
-			if done[operation] {
-				return nil
-			}
-			visiting[operation] = true
-			for _, required := range requirements[operation] {
-				if required == operation {
-					return fmt.Errorf("operation %s/%s requires itself", rt.ID, operation)
+			for _, required := range op.Requires {
+				if required == "" || strings.TrimSpace(required) != required {
+					return fmt.Errorf("operation %s/%s requires %q, which its resource type does not declare", rt.ID, op.ID, required)
 				}
-				if _, declared := requirements[required]; !declared {
-					return fmt.Errorf("operation %s/%s requires %q, which its resource type does not declare", rt.ID, operation, required)
-				}
-				if err := visit(required); err != nil {
-					return err
-				}
-			}
-			visiting[operation], done[operation] = false, true
-			return nil
-		}
-		for _, op := range rt.Operations {
-			if err := visit(op.ID); err != nil {
-				return err
 			}
 		}
 	}
-	return nil
+	types, ops := catalogRows(c)
+	return authz.ValidateRegistryRequirements(types, ops)
 }
 
 func seedGrants(enforcer *authz.Enforcer) error {

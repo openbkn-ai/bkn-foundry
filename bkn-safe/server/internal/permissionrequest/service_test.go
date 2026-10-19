@@ -862,3 +862,54 @@ func TestTodoSummaryCountsOnlyActiveUnreviewedPendingRequests(t *testing.T) {
 		t.Fatalf("todo summary = %#v, want one active unreviewed pending request", summary)
 	}
 }
+
+func TestRequestOperationValidationUsesStartupSnapshot(t *testing.T) {
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	finegrained.ResetForTest()
+	finegrained.Register(licverify.EditionProfessional)
+	t.Cleanup(func() { finegrained.ResetForTest(); entitlement.ResetForTest() })
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	en, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Create(&model.ResourceType{ID: "catalog"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	noGrant := false
+	if err = db.Create(&[]model.Operation{
+		{ResourceTypeID: "catalog", ID: "view"},
+		{ResourceTypeID: "catalog", ID: "summary", Grantable: &noGrant},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err = en.InitializeRegistry(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	const callback = "test:permission-request-static-metadata"
+	if err = db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "operations" || tx.Statement.Table == "resource_types" {
+			t.Errorf("permission request queried static metadata: %s", tx.Statement.Table)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callback) })
+	service := New(db, en)
+	for range 3 {
+		if err := service.validateRequestOperations(t.Context(), "catalog", []string{"view"}); err != nil {
+			t.Fatal(err)
+		}
+		for _, ops := range [][]string{{"summary"}, {"missing"}, {"view", "view"}} {
+			if err := service.validateRequestOperations(t.Context(), "catalog", ops); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("operations %v: %v", ops, err)
+			}
+		}
+	}
+}

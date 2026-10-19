@@ -166,8 +166,6 @@ func (en *Enforcer) FilterResourceOpsRaw(ctx context.Context, accessorID string,
 func (en *Enforcer) validProxySourceIDs(ctx context.Context, sources []safemodel.ProxyGrantSource) (map[string]bool, error) {
 	valid := make(map[string]bool, len(sources))
 	byDelegator := map[string][]safemodel.ProxyGrantSource{}
-	resourceTypes := map[string]bool{}
-	operations := map[string]bool{}
 	delegators := map[string]bool{}
 	for _, source := range sources {
 		switch source.SourceType {
@@ -179,8 +177,6 @@ func (en *Enforcer) validProxySourceIDs(ctx context.Context, sources []safemodel
 				continue
 			}
 			byDelegator[delegator] = append(byDelegator[delegator], source)
-			resourceTypes[source.ResourceType] = true
-			operations[source.Operation] = true
 			delegators[delegator] = true
 		}
 	}
@@ -192,9 +188,8 @@ func (en *Enforcer) validProxySourceIDs(ctx context.Context, sources []safemodel
 		ResourceType string
 		Operation    string
 	}
-	var registeredRows []safemodel.Operation
-	if err := en.db.WithContext(ctx).Where("resource_type_id IN ? AND id IN ?", sortedKeys(resourceTypes), sortedKeys(operations)).
-		Find(&registeredRows).Error; err != nil {
+	registeredRows, err := en.Registry().Operations(ctx, "")
+	if err != nil {
 		return nil, err
 	}
 	registered := make(map[operationKey]bool, len(registeredRows))

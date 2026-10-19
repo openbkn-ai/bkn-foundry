@@ -25,7 +25,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
@@ -114,12 +113,7 @@ type Enforcer struct {
 	// of a reload. It is a channel rather than a mutex so a caller whose context
 	// ends while queued leaves without doing any work (#1511).
 	writeSlot chan struct{}
-	// The authorization registry is static after startup reconciliation. Cache
-	// child-to-parent derivation metadata so ordinary authorization checks do
-	// not add registry queries.
-	derivedRulesMu    sync.Mutex
-	derivedRulesReady bool
-	derivedRules      map[string][]derivedRule
+	registry  *Registry
 }
 
 // New builds an Enforcer using a GORM-backed policy store on the given db.
@@ -155,7 +149,7 @@ func New(db *gorm.DB) (*Enforcer, error) {
 	if err := e.LoadPolicy(); err != nil {
 		return nil, fmt.Errorf("load policy: %w", err)
 	}
-	return &Enforcer{e: e, db: db, writeSlot: make(chan struct{}, 1)}, nil
+	return &Enforcer{e: e, db: db, writeSlot: make(chan struct{}, 1), registry: newRegistry(db)}, nil
 }
 
 // obj builds the "type:id" object key.
@@ -222,13 +216,12 @@ func (en *Enforcer) hasCurrentProxySource(ctx context.Context, proxyID, resource
 		case safemodel.ProxyGrantSourceTypeManual, safemodel.ProxyGrantSourceTypeAdmin:
 			return true, nil
 		case safemodel.ProxyGrantSourceTypeKNBinding:
-			var registered int64
-			if err := en.db.WithContext(ctx).Model(&safemodel.Operation{}).
-				Where("resource_type_id = ? AND id = ?", resourceType, op).Count(&registered).Error; err != nil {
-				return false, err
-			}
-			if registered == 0 {
+			_, err := en.Registry().Operation(ctx, resourceType, op)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
 				continue
+			}
+			if err != nil {
+				return false, err
 			}
 			var active int64
 			if err := en.db.WithContext(ctx).Model(&safemodel.User{}).
@@ -1055,8 +1048,8 @@ func (en *Enforcer) AccessibleResourceScopeAnyOperation(accessorID,
 	if idx.superAdmin {
 		return []string{}, true, false, nil
 	}
-	var operations []safemodel.Operation
-	if err := en.db.Where("resource_type_id = ?", resourceType).Order("id ASC").Find(&operations).Error; err != nil {
+	operations, err := en.Registry().Operations(context.Background(), resourceType)
+	if err != nil {
 		return nil, false, false, err
 	}
 	operationIDs := make([]string, 0, len(operations))

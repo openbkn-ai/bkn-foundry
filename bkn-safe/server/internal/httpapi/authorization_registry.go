@@ -6,62 +6,48 @@ package httpapi
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
 // registerAuthorizationRegistry exposes the catalog on the ClusterIP-only authz
 // surface for service-to-service callers. Browser callers must use
 // registerMeAuthorizationRegistry instead; it is protected by RequireUser.
-func registerAuthorizationRegistry(g *gin.RouterGroup, db *gorm.DB) {
-	g.GET("/registry", authorizationRegistryHandler(db))
+func registerAuthorizationRegistry(g *gin.RouterGroup, registry *authz.Registry) {
+	g.GET("/registry", authorizationRegistryHandler(registry))
 }
 
 // registerMeAuthorizationRegistry exposes the same persisted contract to a
 // signed-in browser through the gateway-exposed /me surface. The catalog has no
 // grants, principals, or concrete resource ids, but it must not make the
 // tokenless /authz surface browser-reachable.
-func registerMeAuthorizationRegistry(g *gin.RouterGroup, db *gorm.DB) {
-	g.GET("/authorization-registry", authorizationRegistryHandler(db))
+func registerMeAuthorizationRegistry(g *gin.RouterGroup, registry *authz.Registry) {
+	g.GET("/authorization-registry", authorizationRegistryHandler(registry))
 }
 
-// authorizationRegistryHandler reads the catalog currently effective in
-// bkn-safe's database. Consumers must not keep a second hand-maintained copy:
-// seed may change it during an upgrade and the enforcer evaluates these rows.
-func authorizationRegistryHandler(db *gorm.DB) gin.HandlerFunc {
+// authorizationRegistryHandler exposes the same startup snapshot used by the enforcer.
+func authorizationRegistryHandler(registry *authz.Registry) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var resourceTypes []model.ResourceType
-		if err := db.WithContext(c.Request.Context()).
-			Order("id ASC").
-			Find(&resourceTypes).Error; err != nil {
+		resourceTypes, err := registry.ResourceTypes(c.Request.Context())
+		if err != nil {
 			serverError(c, err)
 			return
 		}
-
-		var operations []model.Operation
-		if err := db.WithContext(c.Request.Context()).
-			Order("resource_type_id ASC").
-			Order("id ASC").
-			Find(&operations).Error; err != nil {
+		operations, err := registry.Operations(c.Request.Context(), "")
+		if err != nil {
 			serverError(c, err)
 			return
-		}
-
-		graphs := make(map[string]map[string][]string, len(resourceTypes))
-		for _, operation := range operations {
-			if graphs[operation.ResourceTypeID] == nil {
-				graphs[operation.ResourceTypeID] = make(map[string][]string)
-			}
-			graphs[operation.ResourceTypeID][operation.ID] = operationRequirements(operation.RequiredOperationIDs)
 		}
 		operationsByType := make(map[string][]authorizationRegistryOperation, len(resourceTypes))
 		for _, operation := range operations {
-			requirements := authz.ExpandRequirements(graphs[operation.ResourceTypeID], operation.ID)
+			requirementsByOperation, err := registry.Requirements(c.Request.Context(), operation.ResourceTypeID, []string{operation.ID})
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			requirements := requirementsByOperation[operation.ID]
 			if requirements == nil {
 				requirements = []string{}
 			}
@@ -105,21 +91,4 @@ type authorizationRegistryOperation struct {
 	Grantable       bool     `json:"grantable"`
 	ParentOperation string   `json:"parent_operation,omitempty"`
 	Requires        []string `json:"requires"`
-}
-
-func operationRequirements(value string) []string {
-	if value == "" {
-		return []string{}
-	}
-	seen := make(map[string]bool)
-	requires := make([]string, 0)
-	for _, operation := range strings.Split(value, ",") {
-		operation = strings.TrimSpace(operation)
-		if operation == "" || seen[operation] {
-			continue
-		}
-		seen[operation] = true
-		requires = append(requires, operation)
-	}
-	return requires
 }

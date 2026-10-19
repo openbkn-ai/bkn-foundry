@@ -235,7 +235,7 @@ func TestCatalogSummaryDerivationChunksDirectChildCandidates(t *testing.T) {
 	}
 }
 
-func TestDerivedRuleLoadFailureIsRetried(t *testing.T) {
+func TestDerivedRuleLoadFailureRequiresExplicitStartupRetry(t *testing.T) {
 	e, db := newTestEnforcerDB(t)
 	declareCatalogHierarchy(t, db)
 	ownedBy(t, db, "res-1", "cat-1")
@@ -246,6 +246,7 @@ func TestDerivedRuleLoadFailureIsRetried(t *testing.T) {
 		t.Fatalf("cancelled prime error = %v, want context.Canceled", err)
 	}
 
+	mustNoErr(t, e.InitializeRegistry(t.Context()))
 	mustNoErr(t, e.GrantObjectPermission("summary-reader", "resource", "res-1", "view_detail"))
 	allowed, err := e.Check("summary-reader", "catalog", "cat-1", "view_summary")
 	if err != nil || !allowed {
