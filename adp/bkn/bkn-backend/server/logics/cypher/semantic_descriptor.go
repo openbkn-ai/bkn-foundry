@@ -181,6 +181,11 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 	if err := appendSemanticPredicates(descriptor, plan, plan.Where, ""); err != nil {
 		return nil, err
 	}
+	// A WITH's condition on aggregates is recorded under its own path, since
+	// it filters groups rather than rows.
+	if err := appendSemanticPredicates(descriptor, plan, plan.Having, "having"); err != nil {
+		return nil, err
+	}
 	// A condition carried by an outer join decides what that join matched
 	// rather than which rows survive. It is recorded under the relationship it
 	// qualifies, so the descriptor says which of the two it was.
@@ -392,6 +397,9 @@ func semanticExpressionRefs(plan *Plan, value PlanExpression) []string {
 		case PlanExpressionComparison:
 			walk(node.Left)
 			walk(node.Right)
+		case PlanColumnComparison:
+			add(semanticPropertyRef(plan, node.LeftTable, node.LeftProperty))
+			add(semanticPropertyRef(plan, node.RightTable, node.RightProperty))
 		case PlanNegation:
 			walkPredicate(node.Operand)
 		case PlanLogical:

@@ -220,6 +220,9 @@ func (e *bindJoinExecutor) prepare() error {
 	for _, column := range e.plan.GroupBy {
 		walkColumnColumns(column, need)
 	}
+	if e.plan.Having != nil {
+		walkPredicateColumns(e.plan.Having, need)
+	}
 	for _, order := range e.plan.OrderBy {
 		switch {
 		case order.Expression != nil:
@@ -917,7 +920,11 @@ type readWindow struct {
 // order. A page larger than one read can return is left to the full read.
 func (e *bindJoinExecutor) readWindowFor(defaultLimit int64) *readWindow {
 	plan := e.plan
-	if len(plan.Tables) != 1 || len(plan.Joins) != 0 || len(e.residuals) != 0 || e.nothing || plan.Distinct {
+	// A query that groups, as one after an aggregating WITH does even when
+	// RETURN shows no aggregate, has to see every row before it can count or
+	// test a group.
+	if len(plan.Tables) != 1 || len(plan.Joins) != 0 || len(e.residuals) != 0 || e.nothing || plan.Distinct ||
+		plan.Grouped || plan.Having != nil {
 		return nil
 	}
 	for _, column := range plan.Select {
@@ -1141,7 +1148,11 @@ func markConditionValueDates(plan *Plan, isDate func(table int, column string) b
 	}
 	selected, selectChanged := mark(plan.Select)
 	grouped, groupChanged := mark(plan.GroupBy)
-	if !selectChanged && !groupChanged {
+	having := plan.Having
+	if having != nil {
+		having = markDateComparisons(having, isDate)
+	}
+	if !selectChanged && !groupChanged && plan.Having == nil {
 		return plan
 	}
 	copied := *plan
@@ -1151,5 +1162,6 @@ func markConditionValueDates(plan *Plan, isDate func(table int, column string) b
 	if groupChanged {
 		copied.GroupBy = grouped
 	}
+	copied.Having = having
 	return &copied
 }

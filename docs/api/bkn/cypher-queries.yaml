@@ -173,6 +173,11 @@ components:
             RETURN [DISTINCT] a.property | aggregate(a.property) | <condition> [AS alias], ...
             [ORDER BY a.property | alias | aggregate(a.property) [DESC]] [SKIP n] [LIMIT n]
 
+            or, to filter after aggregating, with one WITH after every MATCH:
+            MATCH ... [WHERE <condition>]
+            WITH a | a.property AS name | aggregate(...) AS name, ... [WHERE <condition over those names>]
+            RETURN name | a.property [AS alias], ... [ORDER BY ...] [SKIP n] [LIMIT n]
+
             A condition compares a property with =, <>, <, >, <= or >= against a literal, a
             parameter or another property (o.shipped < o.ordered, a.code = b.code; properties the
             model types as a string and a number cannot be compared), or tests it with IN [ ... ], IN $list (the whole list as one parameter),
@@ -191,6 +196,16 @@ components:
             the condition cannot be decided (a null property, or a node an OPTIONAL MATCH did
             not find). Like any other returned value it groups an aggregated result. To sort
             by a condition, return it with an alias and sort by the alias.
+
+            A WITH groups by what it passes on that is not an aggregate; a node groups by its
+            primary key, so two objects that share a name stay two groups. Values in WITH are
+            named with AS. Its WHERE compares those names, properties of the nodes it passed
+            on, literals and parameters: a condition on grouping keys filters rows before
+            grouping, and one on aggregates is tested per group (SQL HAVING). RETURN lists the
+            WITH's names or properties of its nodes; after a WITH that does not aggregate,
+            count(*) may follow. Refused: more than one WITH, MATCH after WITH, WITH DISTINCT,
+            WITH *, ORDER BY / SKIP / LIMIT on WITH, arithmetic or IN / string predicates in
+            its WHERE, and aggregating again after an aggregating WITH.
 
             Aggregates are count, sum, avg, min and max, each also in its DISTINCT form, plus
             count(*). count(n) counts the rows where node n was found, and count(DISTINCT n)

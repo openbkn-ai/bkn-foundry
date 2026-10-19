@@ -724,7 +724,7 @@ func finishRows(plan *Plan, rows []binding, defaultLimit int64, presorted bool) 
 }
 
 func projectRows(plan *Plan, rows []binding) ([]outputRow, error) {
-	aggregating := false
+	aggregating := plan.Grouped
 	for _, column := range plan.Select {
 		if column.aggregates() {
 			aggregating = true
@@ -775,6 +775,15 @@ func projectRows(plan *Plan, rows []binding) ([]outputRow, error) {
 		var first binding
 		if len(group) > 0 {
 			first = group[0]
+		}
+		if plan.Having != nil {
+			holds, err := evaluatePredicate(plan.Having, scope{row: first, group: group})
+			if err != nil {
+				return nil, err
+			}
+			if holds != truthTrue {
+				continue
+			}
 		}
 		output, err := projectScope(plan, scope{row: first, group: group})
 		if err != nil {

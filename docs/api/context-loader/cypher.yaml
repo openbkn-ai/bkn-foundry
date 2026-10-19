@@ -87,8 +87,17 @@ paths:
           `IN` 列表、内联属性、`SKIP` / `LIMIT` 里仍不能写算术。
         - **ORDER BY / SKIP / LIMIT**：ORDER BY 可用属性、返回列名或聚合。结果被聚合
           或 DISTINCT 折叠后，只能按返回的值排序。
+        - **比较两组对象**：如「两个产品共用哪些物料」，在一个 MATCH 里让两条路径共享节点即可，不需要 WITH：
+          `MATCH (p1:产品 {material_number: $a})-[:产品关联产品bom]->(b1:产品BOM)-[:产品bom关联物料]->(m:物料)<-[:产品bom关联物料]-(b2:产品BOM)<-[:产品关联产品bom]-(p2:产品 {material_number: $b}) RETURN DISTINCT m.material_code`。
+        - **WITH**：一条查询可以在所有 MATCH 之后写一个 WITH，用于先聚合再过滤，如
+          `MATCH (g:goal)-[:rel_goal_team]->(t:team) WITH t, count(*) AS n WHERE n > 100 RETURN t.name AS team, n ORDER BY n DESC`。
+          WITH 里的值须用 `AS` 命名，节点可直接传下去（`WITH t`，按对象的主键分组，同名对象不会合并）。
+          WITH 的 `WHERE` 只能用 WITH 传下来的名字、节点的属性、字面量或参数比较：只涉及分组键的条件在分组前过滤，
+          涉及聚合的条件对每个分组判断。RETURN 只能取 WITH 的名字或传下来节点的属性；不聚合的 WITH 之后可以再写
+          `count(*)`。以下仍拒绝：多个 WITH、WITH 之后再写 MATCH、`WITH DISTINCT`、`WITH *`、WITH 上的
+          ORDER BY / SKIP / LIMIT、WITH 的 WHERE 里写算术或 IN / 字符串谓词、聚合后再聚合。
 
-        **不支持**（会被拒绝，报错指名是哪个语法与位置）：`WITH`、
+        **不支持**（会被拒绝，报错指名是哪个语法与位置）：
         `UNION`、变长路径 `[:R*1..3]`、`XOR`、返回整个节点、函数调用、`^` 乘方、写操作（`CREATE` / `MERGE` / `DELETE` /
         `SET` / `REMOVE`）。
 

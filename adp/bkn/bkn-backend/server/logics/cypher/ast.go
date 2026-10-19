@@ -44,6 +44,23 @@ type Query struct {
 	OrderBy  []SortKey
 	Skip     *int64
 	Limit    *int64
+
+	// The fields below come from a WITH that aggregates, which the reader
+	// folds into this one query. GroupKeys are what the WITH grouped by,
+	// whether or not RETURN shows them; Having is the part of the WITH's
+	// WHERE that tests aggregates, applied to each group. Grouped says the
+	// query aggregates even when RETURN itself shows no aggregate.
+	Grouped   bool
+	GroupKeys []GroupKey
+	Having    Predicate
+}
+
+// GroupKey is one thing a WITH grouped by: a property, or a node, which groups
+// by the object it is.
+type GroupKey struct {
+	Property *PropertyRef
+	Node     string
+	Pos      Position
 }
 
 // Pattern is what one MATCH describes: the nodes it names and the
