@@ -51,7 +51,7 @@ paths:
           `{prop: value}`。
         - **关系**：`-[:R]->`、`<-[:R]-`、无向 `-[:R]-`，每条必须指名一个关系类；
           一条查询的模式最多 8 条关系、9 个节点（不与其他节点相连的节点也各算一张表）。
-          关系变量（`-[r:R]->`）不支持。
+          关系可以带变量（`-[r:R]->`），用于在 RETURN 里返回关系本身；关系没有自己的属性，`r.x` 会被拒绝。
         - **OPTIONAL MATCH**：写一条关系，把一个新节点挂到前面子句已经找到的节点上。
           匹配不到时该行保留，新节点的列为 NULL，所以 `count(可选侧的属性)` 得 0 而不是整行
           消失（`count(*)` 仍然算 1 行）——按邻居数排序又不丢零度邻居，用的就是这一点。
@@ -74,6 +74,14 @@ paths:
           RETURN 也可以返回条件，写法与 `WHERE` 相同，如 `g.tournament_name CONTAINS 'Men' AS mens`：
           值为 `true` / `false`，无法判定时（属性为 null，或 OPTIONAL MATCH 没匹配到节点）为
           `null`；它和其他返回值一样参与分组。要按条件排序，请先起别名再按别名排序。
+        - **图值**：RETURN 可以直接返回节点 `t` 与关系 `r`。节点返回对象类和完整主键（主键值按声明类型
+          以精确文本给出），再加上 `object_properties` 里点名的属性；关系返回关系类、两端节点的标识和
+          连接两端的键值对。`collect(x)` 把每组的 `x` 收成列表（保留重复、跳过 null），`{k: x}` 构造映射。
+          节点和关系按标识分组，所以 `RETURN t AS team, count(*) AS n` 按每个对象计数，一次调用就拿到
+          对象和计数。这类查询总是作为一条 SQL 执行；带 `collect` 时每个结果行是一个结论（`collect` 以外的
+          返回值），`LIMIT` 按结论计数，保留下来的结论带全部证据。证据达到 10000 行时返回 400
+          `BknBackend.Cypher.ReadBudgetExceeded`，不会返回部分证据。图值不能用于 `ORDER BY` 或 `DISTINCT`，
+          `collect` 不能和其他聚合混用，`collect` 旁只能返回节点、关系、属性或常量，并只能按返回属性的别名排序。
         - **算术**：`+` `-` `*` `/` `%` 与取负，可加括号，可写在 RETURN（含聚合的参数）、
           `WHERE` 比较的两侧和 `ORDER BY` 里，如 `count(*) * 2`、`sum(o.price * o.qty)`、
           `count(o.x) * 1.0 / count(*)`、`WHERE o.amount * o.rate > $floor`、
@@ -103,7 +111,7 @@ paths:
           `=` 使用、`s` 只能以 `IN` 使用，不能放在 OR / NOT 下。
 
         **不支持**（会被拒绝，报错指名是哪个语法与位置）：
-        `UNION`、变长路径 `[:R*1..3]`、`XOR`、返回整个节点、函数调用、`^` 乘方、写操作（`CREATE` / `MERGE` / `DELETE` /
+        `UNION`、变长路径 `[:R*1..3]`、`XOR`、函数调用、`^` 乘方、写操作（`CREATE` / `MERGE` / `DELETE` /
         `SET` / `REMOVE`）。
 
         **行数**：不写 `LIMIT` 默认返回 1000 行；`LIMIT` 不得超过 10000。
@@ -152,7 +160,8 @@ paths:
         '400':
           description: |
             缺少 `kn_id` / `query`，或语句用了不支持的语法、引用了不存在的对象类 /
-            关系类 / 属性。编译器的拒绝原样透传，`error_details` 里带构造名与位置。
+            关系类 / 属性，或带 `collect` 的查询证据达到 10000 行（`BknBackend.Cypher.ReadBudgetExceeded`，
+            请加过滤条件或减小 LIMIT）。编译器的拒绝原样透传，`error_details` 里带构造名与位置。
           content:
             application/json:
               schema:
@@ -217,6 +226,16 @@ components:
             判空写 `IS NULL`。用在 `IN $name` 右侧的参数须为非空数组，元素为同一类标量
             （整数与小数都算数字），不能含 `null`，最多 500 个，如 `{"keys": [6, 7, 8]}`。
             一条查询里多个长列表合计过大时会返回 400，需拆成多次查询。
+        object_properties:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          description: |
+            返回的节点除标识外还要带哪些属性，按节点变量给出，如 `{"t": ["team_name"]}`。
+            变量必须是 RETURN 里返回的节点，所有变量合计最多 128 个属性；这些属性和查询里其他属性一样
+            受授权约束。不传时节点只带标识。
 
     RunCypherResponse:
       type: object
@@ -229,13 +248,30 @@ components:
             properties:
               name:
                 type: string
-                description: 列名。写了 `AS` 就是别名，否则是属性引用的原文。
+                description: 列名。写了 `AS` 就是别名，否则是所写表达式的原文。
               type:
                 type: string
-                description: 列的数据类型。
+                description: 列的数据类型；`object`、`relation`、`list`、`map` 表示图值。
         entries:
           type: array
-          description: 结果行，按列名取值。
+          description: 结果行，按列名取值。节点、关系的取值结构见 bkn-backend Cypher API 的 CypherObjectValue / CypherRelationValue。
           items:
             type: object
             additionalProperties: true
+        value_types:
+          type: object
+          additionalProperties: true
+          description: 返回图值时出现：每列的值类型，节点和关系标出对象类或关系类，列表标出元素类型，映射标出各键的类型。
+        execution:
+          type: object
+          description: 返回图值时出现。
+          properties:
+            match_rows:
+              type: integer
+              description: SQL 返回的行数：带 `collect` 时是所选结论的全部匹配行，否则是结果行数。
+            match_complete:
+              type: boolean
+              description: 匹配的行是否全部读完；读不完的查询会直接失败。
+            conclusions_limited:
+              type: boolean
+              description: 结果数达到了 LIMIT（或默认的 1000），可能还有更多。LIMIT 不会截掉列表里收集的证据。
