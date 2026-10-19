@@ -321,15 +321,17 @@ def classify_failure(exc: BaseException) -> tuple[str, dict | None]:
             for key, value in (("code", code), ("message", exc.message))
             if value
         } or None
-        if kind in _TRANSIENT_ERROR_TYPES:
+        # OpenAI's own 429 carries rate_limit_exceeded as the code, not the type.
+        if kind in _TRANSIENT_ERROR_TYPES or code in _TRANSIENT_ERROR_TYPES:
             return "BknAgent.Model.Unavailable", upstream
         return "BknAgent.Model.Rejected", upstream
     return "BknAgent.Chat.Failed", None
 
 
-# OpenAI error types Model Factory (openai_error.error_type_for_status) gives
-# provider 429/5xx/timeouts and lost connections, plus the OpenAI spelling of
-# rate limiting; worth retrying, unlike the rest.
+# Error types worth retrying, unlike the rest: what Model Factory
+# (openai_error.error_type_for_status) gives provider 429/5xx/timeouts and lost
+# connections, plus the types it passes through unchanged when a provider names
+# its own (OpenAI rate limiting; Anthropic overload and server errors).
 _TRANSIENT_ERROR_TYPES = frozenset(
     {
         "server_error",
@@ -338,6 +340,8 @@ _TRANSIENT_ERROR_TYPES = frozenset(
         "rate_limit_exceeded",
         "rate_limit_error",
         "api_connection_error",
+        "overloaded_error",
+        "api_error",
     }
 )
 

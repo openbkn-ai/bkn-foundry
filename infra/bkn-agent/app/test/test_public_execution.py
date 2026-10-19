@@ -1712,14 +1712,21 @@ def test_failures_are_classified_with_the_upstream_error():
 
     # Model Factory's stream is always HTTP 200, so a busy, rate-limited or
     # unreachable provider also arrives as an error frame: worth retrying.
-    for kind in ("service_unavailable_error", "rate_limit_exceeded", "api_connection_error"):
+    for body in (
+        {"code": "ModelFactory.Upstream", "type": "service_unavailable_error"},
+        {"code": "ModelFactory.Upstream", "type": "rate_limit_exceeded"},
+        {"code": "ModelFactory.Upstream", "type": "api_connection_error"},
+        # Passed through from the provider: Anthropic overload and server errors,
+        # and OpenAI's 429, whose rate-limit marker is the code.
+        {"type": "overloaded_error"},
+        {"type": "api_error"},
+        {"code": "rate_limit_exceeded", "type": "tokens"},
+    ):
         transient = openai.APIError(
-            "Service is too busy",
-            request=httpx.Request("POST", "http://mf"),
-            body={"code": "ModelFactory.Upstream", "type": kind},
+            "Service is too busy", request=httpx.Request("POST", "http://mf"), body=body
         )
         code, upstream = classify_failure(transient)
-        assert code == "BknAgent.Model.Unavailable", kind
+        assert code == "BknAgent.Model.Unavailable", body
         assert upstream["message"] == "Service is too busy"
 
 
