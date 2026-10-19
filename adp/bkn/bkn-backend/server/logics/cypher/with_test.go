@@ -283,6 +283,8 @@ func TestWithRefuses(t *testing.T) {
 		{"MATCH (o:Order) WITH o.region AS r, count(*) AS n RETURN r, sum(n)", "this RETURN over a WITH's groups"},
 		{"MATCH (o:Order) WITH o.region AS r, count(*) AS n RETURN sum(n) ORDER BY r", "DISTINCT or ORDER BY on a RETURN"},
 		{"MATCH (o:Order) WITH o, count(*) AS n RETURN count(o)", "aggregating o over the groups"},
+		{"MATCH (o:Order) WITH o.region AS r, count(*) AS n RETURN count(*), count(*)", "column name \"count(*)\" is returned twice"},
+		{"MATCH (o:Order) WITH o.region AS r, count(*) AS n RETURN count(*) AS x, sum(n) AS x", "column name \"x\" is returned twice"},
 		{"MATCH (o:Order) WITH o.region AS r RETURN sum(r)", "an aggregate after WITH"},
 		{"MATCH (o:Order) WITH o.region AS r, collect(o.id) AS ids RETURN r, ids", "using a list a WITH collected"},
 		{"MATCH (o:Order) WITH o.region AS r, collect(o.id) AS ids WHERE ids > 1 RETURN r", "using a list a WITH collected"},

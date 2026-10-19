@@ -449,7 +449,14 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	if err := p.planOrderBy(query.OrderBy); err != nil {
 		return nil, err
 	}
+	totals := make(map[string]bool, len(query.Totals))
 	for _, total := range query.Totals {
+		if totals[total.Alias] {
+			// planReturn's rule, for the columns totals return instead.
+			return nil, planErrorf(total.Pos,
+				"column name %q is returned twice; give one of them a different alias", total.Alias)
+		}
+		totals[total.Alias] = true
 		p.plan.Totals = append(p.plan.Totals, PlanTotal{
 			Function: total.Function, Distinct: total.Distinct, Of: total.Of, Alias: total.Alias,
 		})
