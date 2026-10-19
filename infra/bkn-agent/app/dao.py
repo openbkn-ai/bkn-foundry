@@ -177,14 +177,17 @@ async def _lock_agent(session: AsyncSession, agent_id: str) -> Optional[AgentRow
 
 
 async def _make_current(session: AsyncSession, agent_id: str, version: int) -> None:
+    """One statement leaves exactly `version` current among the Agent's versions.
+
+    Setting the flag in SQL, not on a loaded object, matters: an object already
+    in the session may still say current from before the lock, and assigning
+    the same value writes nothing while the clearing statement has run.
+    """
     await session.execute(
         update(AgentVersionRow)
-        .where(
-            AgentVersionRow.f_agent_id == agent_id,
-            AgentVersionRow.f_current.is_(True),
-            AgentVersionRow.f_version != version,
-        )
-        .values(f_current=False)
+        .where(AgentVersionRow.f_agent_id == agent_id)
+        .values(f_current=AgentVersionRow.f_version == version)
+        .execution_options(synchronize_session="fetch")
     )
 
 
@@ -305,7 +308,6 @@ async def activate_version(
     row.f_update_user = account_id
     row.f_update_time = _now_ms()
     await _make_current(session, agent_id, version)
-    target.f_current = True
     await session.commit()
     return target
 

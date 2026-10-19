@@ -625,3 +625,27 @@ def test_a_stray_second_current_version_neither_breaks_reads_nor_survives_a_save
                 assert (await dao.current_version(session, "studio_smart_qa")).f_version == 3
 
     asyncio.run(run())
+
+
+def test_activating_the_version_a_request_started_on_keeps_it_current(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            from app import dao
+
+            await client.put(ADMIN, json={"limits": {"max_turns": 6}}, headers=AUTH)
+            async with factory() as session:
+                # Loaded while v2 is current, as _shared_editor does at the start.
+                loaded = await dao.current_version(session, "studio_smart_qa")
+                assert loaded.f_version == 2
+                # Meanwhile another request switches to v1.
+                async with factory() as other:
+                    await dao.activate_version(other, "studio_smart_qa", 1, "admin-2")
+                # This request now activates the version it started on.
+                await dao.activate_version(session, "studio_smart_qa", 2, "admin-1")
+            async with factory() as session:
+                current = await dao.current_version(session, "studio_smart_qa")
+                assert current is not None and current.f_version == 2
+                versions = await dao.list_versions(session, "studio_smart_qa")
+                assert [v.f_version for v in versions if v.f_current] == [2]
+
+    asyncio.run(run())
