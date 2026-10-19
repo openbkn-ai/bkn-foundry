@@ -900,9 +900,9 @@ func (p *planner) resolveValue(value Operand, pos Position) (Literal, error) {
 	}
 	literal.Pos = value.Parameter.Pos
 	if temporal := value.Parameter.Temporal; temporal != "" {
-		if _, isDate := wallClock(literal.String); literal.Kind != LiteralString || !isDate {
+		if literal.Kind != LiteralString || !plainDate(literal.String) {
 			return Literal{}, planErrorf(value.Parameter.Pos,
-				"parameter %q is used as %s(), which takes a date string such as 2026-08-13; got %s",
+				"parameter %q is used as %s(), which takes a date string such as 2026-08-13 without a time zone; got %s",
 				name, temporal, literal.describe())
 		}
 		literal.Temporal = temporal

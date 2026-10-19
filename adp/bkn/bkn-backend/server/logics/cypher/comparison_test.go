@@ -174,3 +174,39 @@ func TestPropertyComparisonDescriptor(t *testing.T) {
 		t.Fatalf("predicates = %+v, want the property comparison", descriptor.Predicates)
 	}
 }
+
+// An OPTIONAL MATCH condition may compare properties, and a later required
+// use of the optional node through a property comparison is still refused.
+func TestPropertyComparisonsAndOptionalMatch(t *testing.T) {
+	rows, _ := mustRunFake(t, "MATCH (o:Order) OPTIONAL MATCH (o)<-[:BELONGS_TO]-(i:Item) WHERE i.id > o.previous_id "+
+		"RETURN o.id AS ord, count(i) AS items ORDER BY ord", nil)
+	if want := [][]any{{1, 0}, {2, 1}, {3, 0}, {4, 0}}; !reflect.DeepEqual(rows, want) {
+		t.Fatalf("rows = %v, want %v", rows, want)
+	}
+	for _, query := range []string{
+		"MATCH (o:Order) OPTIONAL MATCH (o)<-[:BELONGS_TO]-(i:Item) MATCH (o)-[:PLACED_BY]->(c:Customer) " +
+			"WHERE i.id > o.id RETURN o.id",
+		"MATCH (o:Order) OPTIONAL MATCH (o)<-[:BELONGS_TO]-(i:Item) WHERE o.id > o.previous_id RETURN o.id",
+	} {
+		if _, err := compileComparison(t, query, nil); err == nil {
+			t.Errorf("%s: compiled, want it refused", query)
+		}
+	}
+}
+
+// date() and its kin read a wall-clock date; a time zone offset would be read
+// differently by the data source and the executor, so it is refused.
+func TestTemporalRefusesOffsets(t *testing.T) {
+	for _, query := range []string{
+		"MATCH (o:Order) WHERE o.placed_at >= datetime('2024-01-01T00:00:00+08:00') RETURN o.id",
+		"MATCH (o:Order) WHERE o.placed_at >= datetime('2024-01-01T00:00:00Z') RETURN o.id",
+	} {
+		if _, err := compileComparison(t, query, nil); err == nil || !strings.Contains(err.Error(), "is not a date") {
+			t.Errorf("%s: err = %v, want the offset refused", query, err)
+		}
+	}
+	if _, err := compileComparison(t, "MATCH (o:Order) WHERE o.placed_at >= datetime($at) RETURN o.id",
+		map[string]any{"at": "2024-01-01T00:00:00Z"}); err == nil || !strings.Contains(err.Error(), "takes a date string") {
+		t.Errorf("parameter with an offset: err = %v, want it refused", err)
+	}
+}

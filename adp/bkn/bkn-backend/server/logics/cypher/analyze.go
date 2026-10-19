@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf16"
 
@@ -206,6 +207,8 @@ func predicateProperties(predicate Predicate) []PropertyRef {
 		return []PropertyRef{node.Property}
 	case ExpressionComparison:
 		return append(expressionProperties(node.Left), expressionProperties(node.Right)...)
+	case PropertyComparison:
+		return []PropertyRef{node.Left, node.Right}
 	case Negation:
 		return predicateProperties(node.Operand)
 	case LogicalOperator:
@@ -2094,9 +2097,10 @@ func analyzeTemporal(invocation parsing.IOC_FunctionInvocationContext) (operand,
 		value.parameter.Temporal = name
 		return value, nil
 	case value.literal != nil && value.literal.Kind == LiteralString:
-		if _, ok := wallClock(value.literal.String); !ok {
+		if !plainDate(value.literal.String) {
 			return operand{}, unsupportedf(invocation, "this "+name,
-				"%q is not a date; write it as 2026-08-13 or 2026-08-13T09:30:00", value.literal.String)
+				"%q is not a date; write it as 2026-08-13 or 2026-08-13T09:30:00, without a time zone",
+				value.literal.String)
 		}
 		value.literal.Temporal = name
 		return value, nil
@@ -2104,4 +2108,18 @@ func analyzeTemporal(invocation parsing.IOC_FunctionInvocationContext) (operand,
 		return operand{}, unsupportedf(invocation, name+"() over something other than a string",
 			"write the date as a string, as in %s('2026-08-13')", name)
 	}
+}
+
+// plainDateLayouts are the forms a date constant may take: a wall-clock date
+// or time with no time zone. An offset would be read by the data source and
+// dropped by the executor, so the two would compare different instants.
+var plainDateLayouts = []string{"2006-01-02", "2006-01-02T15:04:05.999999999", "2006-01-02 15:04:05.999999999"}
+
+func plainDate(text string) bool {
+	for _, layout := range plainDateLayouts {
+		if _, err := time.Parse(layout, strings.TrimSpace(text)); err == nil {
+			return true
+		}
+	}
+	return false
 }
