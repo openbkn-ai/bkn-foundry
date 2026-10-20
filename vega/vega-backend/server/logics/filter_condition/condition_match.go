@@ -37,7 +37,7 @@ func (c *MatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 
 	// First, obtain the fields array from the RemainCfg
 	if cfgFields, ok := cfg.RemainCfg["fields"].([]any); ok {
-		if len(cfgFields) == 1 && cfgFields[0].(string) == interfaces.AllField {
+		if len(cfgFields) == 1 && cfgFields[0] == interfaces.AllField {
 			for _, field := range fieldsMap {
 				fields = append(fields, field)
 			}

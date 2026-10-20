@@ -89,6 +89,61 @@ func TestNormalizeValueFrom(t *testing.T) {
 }
 
 func TestFilterConditionFactory(t *testing.T) {
+	t.Run("match field arrays", func(t *testing.T) {
+		for _, operation := range []string{OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
+			t.Run(operation, func(t *testing.T) {
+				for _, tc := range []struct {
+					name   string
+					fields []any
+					want   []string
+				}{
+					{name: "integer", fields: []any{1}},
+					{name: "json number", fields: []any{json.Number("1")}},
+					{name: "null", fields: []any{nil}},
+					{name: "boolean", fields: []any{true}},
+					{name: "object", fields: []any{map[string]any{"field": "name"}}},
+					{name: "mixed types", fields: []any{"name", 1}},
+					{name: "unknown field", fields: []any{"missing"}},
+					{name: "single field", fields: []any{"name"}, want: []string{"name"}},
+					{name: "multiple fields", fields: []any{"name", "tags"}, want: []string{"name", "tags"}},
+					{name: "wildcard", fields: []any{interfaces.AllField},
+						want: []string{"name", "age", "score", "created_at", "is_active", "tags", "other_name"}},
+				} {
+					t.Run(tc.name, func(t *testing.T) {
+						cfg := constCfg("", operation, "hello")
+						cfg.RemainCfg = map[string]any{"fields": tc.fields}
+						cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+						if tc.want == nil {
+							require.Error(t, err)
+							assert.Nil(t, cond)
+							assert.Contains(t, err.Error(), "field")
+							return
+						}
+						require.NoError(t, err)
+						require.NotNil(t, cond)
+						assert.Equal(t, operation, cond.GetOperation())
+						var fields []*interfaces.Property
+						switch actual := cond.(type) {
+						case *MatchCond:
+							fields = actual.Fields
+						case *MatchPhraseCond:
+							fields = actual.Fields
+						case *MultiMatchCond:
+							fields = actual.Fields
+						default:
+							t.Fatalf("unexpected condition type %T", cond)
+						}
+						names := make([]string, len(fields))
+						for i, field := range fields {
+							names[i] = field.Name
+						}
+						assert.ElementsMatch(t, tc.want, names)
+					})
+				}
+			})
+		}
+	})
+
 	t.Run("returns nil for nil config", func(t *testing.T) {
 		cond, err := NewFilterCondition(context.Background(), nil, testFieldsMap())
 
