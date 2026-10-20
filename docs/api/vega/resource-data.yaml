@@ -60,6 +60,14 @@ paths:
         授权版本不足返回 403 `Public.Forbidden`。
         HANA 源表无 SELECT 权限时返回 403
         `VegaBackend.Resource.SourceReadForbidden`，不暴露驱动原始错误。
+        已保存的衍生逻辑视图因源字段删除、绑定/类型不匹配、输出 Feature 变化，
+        或固定过滤条件非法（包括缺值、非法范围、不支持的算子）、无法按当前 schema/index 配置构造时，
+        返回 400 `VegaBackend.LogicalView.DefinitionInvalid`。
+        `description` 包含可识别的相关字段及编辑视图的修复提示；`error_details` 包含
+        `fields`（源字段名数组；输出绑定使用 original_name，过滤条件使用 field 名称）及 `reason`
+        （`source_field_mismatch`、`source_feature_mismatch`、`filter_field_missing` 或 `filter_incompatible`）。
+        普通查询条件非法仍返回 400 查询参数错误；不因条件来自已保存定义而改为 500。
+        非过滤条件的视图存储结构损坏、源读取及模型服务故障仍按原有错误处理。
         已保存的复合逻辑视图在首次查询和 cursor 续页时也暂时返回 501。
 
         **`Override: POST` 响应**：201 + `{ id }`。后端生成文档 ID；携带 `_id` 的 body 返回 400。
@@ -241,10 +249,11 @@ components:
   responses:
     BadRequest:
       description: |
-        请求参数 / 请求体非法。常见 errcode：
+        请求参数 / 请求体非法，或衍生逻辑视图定义已失效。常见 errcode：
         - `VegaBackend.InvalidParameter.OverrideMethod`：POST 缺/错 Override 头
         - `VegaBackend.InvalidParameter.RequestBody`：body schema / 必填字段不合法
         - `VegaBackend.InvalidParameter.FilterCondition`：filter_condition 解析失败
+        - `VegaBackend.LogicalView.DefinitionInvalid`：已保存视图与当前源字段不匹配；请编辑视图重新配置输出字段或固定过滤条件
         - `VegaBackend.Resource.InternalError.InvalidCategory`：写/删/单条 GET 操作针对非 dataset resource
       content:
         application/json:

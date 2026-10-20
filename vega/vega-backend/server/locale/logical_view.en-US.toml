@@ -62,3 +62,8 @@ ErrorLink = ""
 Description = "Field feature comment length exceeded"
 Solution = "Please shorten the feature comment"
 ErrorLink = ""
+
+[VegaBackend.LogicalView.DefinitionInvalid]
+Description = "The derived logical view definition is no longer valid{{if .Fields}} for source fields: {{.Fields}}{{else}}; check its fixed filter condition{{end}}. Edit the view to reconfigure its output fields or filter condition."
+Solution = "Update the view output fields or fixed filter condition to match the current source schema, then query again"
+ErrorLink = ""

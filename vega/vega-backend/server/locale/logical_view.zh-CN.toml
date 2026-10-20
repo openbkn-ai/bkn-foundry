@@ -62,3 +62,8 @@ ErrorLink = ""
 Description = "字段特征备注长度超限"
 Solution = "请缩短特征备注内容"
 ErrorLink = ""
+
+[VegaBackend.LogicalView.DefinitionInvalid]
+Description = "衍生逻辑视图定义已失效{{if .Fields}}，涉及源字段：{{.Fields}}{{else}}，请检查固定过滤条件{{end}}。请编辑视图，重新配置输出字段或过滤条件。"
+Solution = "请根据当前源资源字段修改视图的输出字段或固定过滤条件，然后重新查询"
+ErrorLink = ""
