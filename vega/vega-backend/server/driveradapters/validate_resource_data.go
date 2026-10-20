@@ -357,8 +357,14 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 				WithErrorDetails("Having value cannot be empty")
 		}
 
-		// 集合与范围的值结构在进入连接器前统一校验。
+		// HAVING 值结构在进入连接器前统一校验。
 		switch params.Having.Operation {
+		case "==", "!=", ">", ">=", "<", "<=":
+			switch params.Having.Value.(type) {
+			case []any, []string, map[string]any:
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+					WithErrorDetails("Having comparison requires a scalar value")
+			}
 		case "in", "not_in", "range", "out_range":
 			var length int
 			switch value := params.Having.Value.(type) {

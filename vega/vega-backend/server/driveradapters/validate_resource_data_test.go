@@ -398,6 +398,50 @@ func TestValidateAggregateParams(t *testing.T) {
 		}
 	})
 
+	t.Run("HAVING comparisons require scalar JSON values", func(t *testing.T) {
+		for _, operation := range []string{"==", "!=", ">", ">=", "<", "<="} {
+			for _, tc := range []struct {
+				name, value string
+				valid       bool
+			}{
+				{"array", `[1,2]`, false},
+				{"empty array", `[]`, false},
+				{"object", `{"value":1}`, false},
+				{"empty object", `{}`, false},
+				{"null", `null`, false},
+				{"zero", `0`, true},
+				{"negative number", `-1.5`, true},
+				{"precise integer", `170141183460469231731687303715884105727`, true},
+				{"string", `"09"`, true},
+				{"boolean", `false`, true},
+			} {
+				t.Run(operation+"/"+tc.name, func(t *testing.T) {
+					var params interfaces.ResourceDataQueryParams
+					payload := `{"having":{"field":"count(*)","operation":"` + operation + `","value":` + tc.value + `}}`
+					require.NoError(t, common.UnmarshalPreciseJSON([]byte(payload), &params))
+					err := ValidateResourceDataQueryParams(ctx, &params)
+					if tc.valid {
+						require.NoError(t, err)
+						return
+					}
+					var httpErr *rest.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
+				})
+			}
+		}
+	})
+	t.Run("HAVING comparisons reject typed string arrays", func(t *testing.T) {
+		for _, value := range []any{[]string{"1", "2"}, []string(nil), []string{}} {
+			err := ValidateResourceDataQueryParams(ctx, &interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)", Operation: "==", Value: value}})
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
+		}
+	})
+
 	t.Run("allows count star having without aggregation", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{
 			Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">=", Value: float64(1)},

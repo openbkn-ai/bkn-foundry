@@ -433,7 +433,8 @@ components:
           enum: ["==", "!=", ">", ">=", "<", "<=", in, not_in, range, out_range]
         value:
           description: |
-            不允许 null。in/not_in 要求至少包含一个元素的数组；
+            不允许 null。比较运算符 ==/!=/>/>=/</<= 要求单个标量值，不接受数组或对象。
+            in/not_in 要求至少包含一个元素的数组；
             range/out_range 要求恰好包含两个元素的数组。
             不符合值结构的请求返回 HTTP 400，错误码 VegaBackend.InvalidParameter.Having。
     ListResponse:
