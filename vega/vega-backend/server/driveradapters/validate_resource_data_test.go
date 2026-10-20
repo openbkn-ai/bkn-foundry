@@ -362,6 +362,86 @@ func TestValidateAggregateParams(t *testing.T) {
 		}
 	})
 
+	t.Run("validates HAVING array values before query execution", func(t *testing.T) {
+		for _, operation := range []string{"in", "not_in", "range", "out_range"} {
+			for _, tc := range []struct {
+				name  string
+				value any
+				valid bool
+			}{
+				{"scalar", 1, false},
+				{"string", "1,2", false},
+				{"object", map[string]any{"value": 1}, false},
+				{"null", nil, false},
+				{"nil array", []any(nil), false},
+				{"empty array", []any{}, false},
+				{"empty string array", []string{}, false},
+				{"one element", []any{1}, operation == "in" || operation == "not_in"},
+				{"two elements", []any{1, 2}, true},
+				{"two strings", []string{"1", "2"}, true},
+				{"three elements", []any{1, 2, 3}, operation == "in" || operation == "not_in"},
+			} {
+				t.Run(operation+"/"+tc.name, func(t *testing.T) {
+					params := &interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)", Operation: operation, Value: tc.value}}
+					err := ValidateResourceDataQueryParams(ctx, params)
+					if tc.valid {
+						require.NoError(t, err)
+						assert.Equal(t, tc.value, params.Having.Value)
+						return
+					}
+					var httpErr *rest.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
+				})
+			}
+		}
+	})
+
+	t.Run("HAVING comparisons require scalar JSON values", func(t *testing.T) {
+		for _, operation := range []string{"==", "!=", ">", ">=", "<", "<="} {
+			for _, tc := range []struct {
+				name, value string
+				valid       bool
+			}{
+				{"array", `[1,2]`, false},
+				{"empty array", `[]`, false},
+				{"object", `{"value":1}`, false},
+				{"empty object", `{}`, false},
+				{"null", `null`, false},
+				{"zero", `0`, true},
+				{"negative number", `-1.5`, true},
+				{"precise integer", `170141183460469231731687303715884105727`, true},
+				{"string", `"09"`, true},
+				{"boolean", `false`, true},
+			} {
+				t.Run(operation+"/"+tc.name, func(t *testing.T) {
+					var params interfaces.ResourceDataQueryParams
+					payload := `{"having":{"field":"count(*)","operation":"` + operation + `","value":` + tc.value + `}}`
+					require.NoError(t, common.UnmarshalPreciseJSON([]byte(payload), &params))
+					err := ValidateResourceDataQueryParams(ctx, &params)
+					if tc.valid {
+						require.NoError(t, err)
+						return
+					}
+					var httpErr *rest.HTTPError
+					require.ErrorAs(t, err, &httpErr)
+					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
+				})
+			}
+		}
+	})
+	t.Run("HAVING comparisons reject typed string arrays", func(t *testing.T) {
+		for _, value := range []any{[]string{"1", "2"}, []string(nil), []string{}} {
+			err := ValidateResourceDataQueryParams(ctx, &interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)", Operation: "==", Value: value}})
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
+		}
+	})
+
 	t.Run("allows count star having without aggregation", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{
 			Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">=", Value: float64(1)},
