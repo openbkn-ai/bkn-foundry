@@ -58,7 +58,7 @@ bkn_spec: "3.0"
 
 | 条款 | 2.x | 3.0 |
 |------|-----|-----|
-| `### Tool Configuration` 小节（§8.6） | 解析为 Action Source，同时并入描述 | 只解析为 Action Source |
+| `### Tool Configuration` 小节（§8.6） | 解析为 Action Source，同时并入描述 | 拒绝，错误信息给出 `### Action Source`（§1.3） |
 | 旧参数表 `Parameter \| Source \| Binding`（§8.7） | `Binding` 按 `ValueFrom` 读取，值的来源错位 | 拒绝，错误信息给出按当前列布局改写后的写法（§1.3） |
 | 参数的 `ValueFrom` 不是 `property` / `input` / `const`（§8.7，含逻辑属性参数） | 原样导入，执行时该参数被丢弃 | 拒绝导入，并指出是哪个参数 |
 | 属性声明：`Semantic`、`Required` 列与 `### Property Constraints`（§6.8；其中 `value_type` 为**设计中**） | 新列忽略，小节并入描述 | 解析为声明，写错时拒绝 |
@@ -532,7 +532,7 @@ Incremental Key: updated_at
 
 ### 6.8 属性声明（3.0）
 
-> **状态：3.0。** `Semantic`、`Required` 与 `### Property Constraints` 中除 `value_type` 外的键已实现；`value_type`（§16）与别名为设计中，3.0 解析器认识以下写法，但按「此版本尚不支持」拒绝，不静默丢弃。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** `Semantic`、`Required` 与 `### Property Constraints` 中除 `value_type` 外的键已实现；`value_type`（§16）与别名为设计中，3.0 解析器认识以下写法，但按「此版本尚不支持」拒绝，不静默丢弃。bkn-backend 存储这些声明为设计中（bkn-foundry#2259）；在此之前上传含这些声明的 3.0 包时按「此版本尚不支持」拒绝并指出属性，不入库后丢失。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 属性声明描述数据应当满足的要求，只用于理解与展示，**不校验源数据**；声明本身写错时在导入和保存时拒绝。
 
@@ -763,8 +763,8 @@ value: 启用
 ```
 ````
 
-两个小节都必需。条件结构见 §8.5，但没有 `object_type_id` 字段；也可以包在 `condition:` 或
-`trigger_condition:` 键下。
+两个小节都必需。条件结构见 §8.5，但没有 `object_type_id` 字段；2.x 下也可以包在 `condition:` 或
+`trigger_condition:` 键下，3.0 只接受直接写（§1.3）。
 
 ### 7.6 关系声明（3.0）
 
@@ -894,11 +894,10 @@ action_intent: modify
 ### Trigger Condition
 
 ```yaml
-condition:
-  object_type_id: pod
-  field: status
-  operation: ==
-  value: Failed
+object_type_id: pod
+field: status
+operation: ==
+value: Failed
 ```
 
 ### Action Source
@@ -958,7 +957,7 @@ impact_contracts:
 `object_type_id` 必须在网络中已定义；`expected_operation` 为 `add`、`modify` 或 `delete`。
 也可以省略 `impact_contracts:` 键，直接写列表。
 
-**Affect Object** 是一张表，列为 `Affect Object` 和 `Affect Description`，只读第一行，对应行动类的 `affect` 字段（受影响的对象类与说明，Studio 行动类表单可编辑）。它与 `Impact Contracts` 是两个不同的字段，不是同义写法，3.0 下保留。导出时 2.x 总是输出这张表（多为空表）；**3.0（设计中）** 只在有内容时输出。
+**Affect Object** 是一张表，列为 `Affect Object` 和 `Affect Description`，只读第一行，对应行动类的 `affect` 字段（受影响的对象类与说明，Studio 行动类表单可编辑）。它与 `Impact Contracts` 是两个不同的字段，不是同义写法，3.0 下保留。导出时 2.x 总是输出这张表（多为空表）；**3.0** 只在有内容时输出。
 
 ### 8.5 Trigger Condition
 
@@ -966,17 +965,16 @@ impact_contracts:
 ### Trigger Condition
 
 ```yaml
-condition:
-  operation: and
-  sub_conds:
-    - object_type_id: pod
-      field: status
-      operation: ==
-      value: Failed
-    - object_type_id: pod
-      field: restart_count
-      operation: <
-      value: 3
+operation: and
+sub_conds:
+  - object_type_id: pod
+    field: status
+    operation: ==
+    value: Failed
+  - object_type_id: pod
+    field: restart_count
+    operation: <
+    value: 3
 ```
 ````
 
@@ -989,7 +987,7 @@ condition:
 | `value_from` | 值的来源，可选 |
 | `value` | 比较值 |
 
-条件可以包在 `condition:` 或 `trigger_condition:` 键下，也可以直接写。
+条件直接写在 yaml 块中。2.x 下也可以包在 `condition:` 或 `trigger_condition:` 键下；3.0 只接受直接写，包装键按 §1.3 拒绝。
 
 可用操作符：
 
@@ -1016,7 +1014,7 @@ condition:
 只读第一行。`tool` 不能填 MCP 的两列，`mcp` 不能填工具箱的两列。
 
 标题也可以写作 `### Tool Configuration`，同样解析为 Action Source，列名也可以用 `Toolbox ID`、`Tool ID`、`MCP ID`、`Tool Name`。
-2.x 下这一节还会被当作未知小节并入描述（附录 A-1）；3.0 下不会。新文件请使用 `### Action Source`。
+以上旧标题与旧列名只在 2.x 下可读，2.x 下这一节还会被当作未知小节并入描述（附录 A-1）；3.0 下按 §1.3 拒绝并给出 `### Action Source` 与对应列名。新文件请使用 `### Action Source`。
 
 ### 8.7 Parameter Binding
 
@@ -1038,8 +1036,8 @@ condition:
 属性名或常量写在 `Binding`（`input` 时写 `-`）。
 
 - 2.x：`Binding` 按 `ValueFrom` 读取，值的来源错位，参数在执行时被丢弃（附录 A-2）。
-- 3.0：表中有 `Binding` 列且没有 `ValueFrom` 列、并且该行 `Source` 是 `property` / `input` / `const`
-  之一时，`Source` 转为 `ValueFrom`，`Binding` 转为 `Value`，`Source` 置空。
+- 3.0：拒绝旧布局，不自动转换；错误信息给出按当前列布局的改写（`Source` 中的值的来源写到 `ValueFrom`，
+  `Binding` 写到 `Value`，`Source` 置空）。旧列名 `Parameter`、`Value From`、`Binding` 也按 §1.3 拒绝。
 
 **3.0 的校验**：每个参数的 `ValueFrom` 必须是 `property`、`input` 或 `const`，否则拒绝导入。
 值的来源误写在 `Source` 列时，错误信息会直接指出。2.x 不做这项检查（附录 A-4）。
@@ -1413,7 +1411,7 @@ unit: 元
 
 | # | 问题 | 现状 | 影响 |
 |---|------|------|------|
-| A-1 | `### Tool Configuration` 不在行动类已知小节中 | 2.x 现状：能被解析为 Action Source，但整节同时并入描述。3.0 已修正 | 按 SDK 模板写的行动，描述里多出一段工具表 |
+| A-1 | `### Tool Configuration` 不在行动类已知小节中 | 2.x 现状：能被解析为 Action Source，但整节同时并入描述。3.0 拒绝旧标题，错误信息给出 `### Action Source` | 按 SDK 模板写的行动，描述里多出一段工具表 |
 | A-2 | 旧列名 `Binding` 映射到 `ValueFrom` | 2.x 现状：旧布局把 `property` 等写在 `Source`、属性名写在 `Binding`，读取后值的来源错位。3.0 拒绝旧布局，错误信息给出改写 | 按 SDK 模板写的行动参数在执行时被静默丢弃；已入库的数据不会自动修复，3.0 升级预检会列出疑似错位的参数并预填建议值（**设计中**，§14.2） |
 | A-3 | 导出时 frontmatter 由字符串拼接生成 | 值不加引号；2.x 保持现状，3.0 导出保留字符串类型（§14.2） | 名称含 `: ` 时导出文件无法再导入；`001`、`1.0` 等读回后变成 `1` |
 | A-4 | 当前列布局下把值的来源写进 `Source` | 2.x 现状：`Source` 写 `property`、属性名写在 `ValueFrom` 的表（bkn-sdk 的 `SPECIFICATION.llm.md` 对逻辑属性就是这样教的）按字面读取。3.0 拒绝导入 | 2.x 下该参数在执行时被静默丢弃；SDK 文档需修正 |
@@ -1437,7 +1435,7 @@ unit: 元
 | 关系映射方式 | `direct`、`data_view` | `direct`、`indirect`、`filtered_cross_join` |
 | 逻辑属性 | 列表式元数据，类型 `metric` / `operator` | 四张表（Meta / Source / Parameters / Analysis Dimensions），类型 `metric` / `tool` |
 | 参数表 | `Parameter`、`Source`、`Binding` | `Name`、`Type`、`Source`、`Operation`、`ValueFrom`、`Value`、`Description` |
-| 行动执行配置 | `### Tool Configuration` | `### Action Source`（旧标题仍可读，见 A-1） |
+| 行动执行配置 | `### Tool Configuration` | `### Action Source`（旧标题 2.x 下仍可读，3.0 拒绝，见 A-1） |
 | 行动类小节 | 含 `Pre-conditions`、`Scope of Impact`、`Execution Description` | 不再结构化解析，写了会并入描述 |
 | 行动类 frontmatter | 含 `enabled`、`risk_level`、`requires_approval` | 不再解析，写了会被忽略 |
 | Bound Object 的 Action Type | 含 `query` | 只有 `add`、`modify`、`delete` |

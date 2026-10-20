@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -123,6 +124,13 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 			httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails(err.Error())
 		}
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if detail := unstoredPropertyDeclaration(bknNetwork); detail != "" {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(detail)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -450,4 +458,31 @@ func hasArchiveSuffix(filename string) bool {
 		}
 	}
 	return false
+}
+
+// unstoredPropertyDeclaration names the first 3.0 property declaration (Semantic, Required or
+// ### Property Constraints) in a package. The specification library reads them, but the backend
+// does not store them until #2259, so importing would drop them; the upload refuses the package
+// instead. It returns "" when there is none, which is always the case for a 2.x package.
+func unstoredPropertyDeclaration(net *bknsdk.BknNetwork) string {
+	if net.BknSpec != bknsdk.BknSpecV3 {
+		return ""
+	}
+	for _, ot := range net.ObjectTypes {
+		for _, p := range ot.DataProperties {
+			var what string
+			switch {
+			case p.Semantic != "":
+				what = "Semantic"
+			case p.Constraints != nil:
+				what = "### Property Constraints"
+			case p.Required && !slices.Contains(ot.PrimaryKeys, p.Name):
+				what = "Required"
+			default:
+				continue
+			}
+			return fmt.Sprintf("object type %q data property %q: %s is not supported by this version yet", ot.ID, p.Name, what)
+		}
+	}
+	return ""
 }

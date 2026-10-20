@@ -235,6 +235,14 @@ func checkDefinitionV3(kind, text string, fm rawFrontmatter) error {
 		return specErrorf("definition heading %q does not match; write \"## %s\"", "## "+heading, want)
 	}
 	desc, sections, order := extractSectionsWithDesc(text)
+	// A section is kept by its title, so a second one with the same title would replace the first.
+	seen := map[string]bool{}
+	for _, title := range order {
+		if seen[title] {
+			return specErrorf("section %q appears twice; write it once", "### "+title)
+		}
+		seen[title] = true
+	}
 	if kind == kindRiskType {
 		// A risk type has no known sections: its whole body is description, ### headings included.
 		return nil
@@ -515,6 +523,9 @@ func checkYAMLContent(where, title, text string) error {
 		return specErrorf("%s holds a second code block; a section holds one yaml block", where)
 	}
 	if len(content.blocks) == 0 {
+		if strings.TrimSpace(text) != "" {
+			return specErrorf("%s holds no yaml code block; write the content in a ```yaml block", where)
+		}
 		return nil
 	}
 	block := content.blocks[0]
