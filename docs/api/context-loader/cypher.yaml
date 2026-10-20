@@ -102,6 +102,10 @@ paths:
           或 DISTINCT 折叠后，只能按返回的值排序。
         - **比较两组对象**：如「两个产品共用哪些物料」，在一个 MATCH 里让两条路径共享节点即可，不需要 WITH：
           `MATCH (p1:产品 {material_number: $a})-[:产品关联产品bom]->(b1:产品BOM)-[:产品bom关联物料]->(m:物料)<-[:产品bom关联物料]-(b2:产品BOM)<-[:产品关联产品bom]-(p2:产品 {material_number: $b}) RETURN DISTINCT m.material_code`。
+        - **比较两个列表**：两段各自 `collect([DISTINCT] x.p)`，第二个 WITH 把第一个列表传下去，RETURN 只写大小：
+          `MATCH … WITH collect(DISTINCT a.p) AS l1 MATCH … WITH l1, collect(DISTINCT b.q) AS l2
+          RETURN size([x IN l1 WHERE x IN l2]) AS common, size(l1) AS n1, size(l2) AS n2`，返回一行；
+          第二段没匹配到时没有行。不能直接返回列表，要列出共有的值用上面的共享节点写法；不支持 UNWIND。
         - **WITH**：一条查询可以在所有 MATCH 之后写一个 WITH，用于先聚合再过滤，如
           `MATCH (g:goal)-[:rel_goal_team]->(t:team) WITH t, count(*) AS n WHERE n > 100 RETURN t.name AS team, n ORDER BY n DESC`。
           WITH 里的值须用 `AS` 命名，节点可直接传下去（`WITH t`，按对象的主键分组，同名对象不会合并）。
@@ -110,7 +114,7 @@ paths:
           如 `WITH code, stock - usage * 50 AS gap WHERE gap < 0`。第一个 WITH 里的 `collect(x.p) AS s` 只能写成
           `size(s)`，即收集到的个数（如 `WHERE size(s) = 3`）。RETURN 取 WITH 的名字、传下来节点的属性或由它们算出的值；
           不聚合的 WITH 之后可以再写 `count(*)`；聚合的 WITH 之后，RETURN 也可以只写聚合（如 `RETURN count(*) AS n`、
-          `max(n)`），对分组再统计，返回一行。以下仍拒绝：第二个 WITH 之后再写 MATCH、`WITH DISTINCT`、`WITH *`、WITH 上的
+          `max(n)`），对分组再统计，返回一行。以下仍拒绝：第二个 WITH 之后再写 MATCH（比较两个列表除外）、`WITH DISTINCT`、`WITH *`、WITH 上的
           ORDER BY / SKIP / LIMIT、WITH 的 WHERE 里写 IN / 字符串谓词、第一个之后的 WITH 再聚合。
         - **开头定义常量**：查询可以用只含字面量、字面量列表或参数的 WITH 开头，如
           `WITH ['382-000005', 'P61-000351'] AS products MATCH (p:产品) WHERE p.material_number IN products …`，

@@ -179,7 +179,7 @@ ORDER BY n DESC LIMIT 4
 
 ## 🔗 WITH: working in stages
 
-WITH has two uses, told apart by what follows it.
+WITH has three uses, told apart by what follows it.
 
 ### 1. Filtering after aggregating
 
@@ -235,13 +235,33 @@ A list works too: `WITH collect(b.material_code) AS codes MATCH (m:物料) WHERE
 - `v` is used only with `=` and `s` only with `IN`, each as a condition of its own at the top of WHERE, not under OR or NOT. `v` may also stand in an inline property map: `{q: v}`.
 - No WITH may follow the second stage.
 
+### 3. Comparing two collected lists
+
+Each of two stages collects a list, and RETURN gives the size of each and the number of elements they share:
+
+```cypher
+MATCH (p1:产品 {material_number: 'P61-000351'})-[:产品关联产品bom]->(b1:产品BOM)-[:产品bom关联物料]->(m1:物料)
+WHERE b1.alt_priority = 0
+WITH collect(DISTINCT m1.material_code) AS codes1
+MATCH (p2:产品 {material_number: 'U00-000151'})-[:产品关联产品bom]->(b2:产品BOM)-[:产品bom关联物料]->(m2:物料)
+WHERE b2.alt_priority = 0
+WITH codes1, collect(DISTINCT m2.material_code) AS codes2
+RETURN size([x IN codes1 WHERE x IN codes2]) AS common, size(codes1) AS n1, size(codes2) AS n2
+```
+
+- Each WITH collects one property, `collect([DISTINCT] x.p) AS name`, and the second passes the first list on unchanged. Neither WITH takes a WHERE, and the second MATCH may not use the first list.
+- RETURN gives sizes only: `size(a)`, `size(b)` and the shared count `size([x IN a WHERE x IN b])` (or `[x IN b WHERE x IN a]`), as one row.
+- A list collected without DISTINCT keeps its repeats, and the shared count counts the filtered list's repeats, as Cypher does; counting both ways round therefore needs DISTINCT on both lists.
+- When the second MATCH finds nothing there is no row; when the first finds nothing there is one row, with the first list's size and the shared count at 0.
+- The lists themselves cannot be returned. To list the shared values, share a node in one MATCH, as under MATCH above ("To compare two sets").
+
 ### Naming constants up front
 
-Either use may open with a WITH that names literals, lists or parameters, which the conditions of the following MATCH use by name (see the totals example above).
+Each use may open with a WITH that names literals, lists or parameters, which the conditions of the following MATCH use by name (see the totals example above).
 
 ### What WITH still refuses
 
-- MATCH after a second WITH;
+- MATCH after a second WITH, or a WITH after the second MATCH, except when comparing two lists;
 - `WITH DISTINCT` (outside the semi-join) and `WITH *`;
 - ORDER BY, SKIP or LIMIT on a WITH;
 - IN or string matching in a WITH's WHERE;
@@ -298,11 +318,11 @@ LIMIT 3
 | `GROUP BY` | Leave it out: aggregation groups by the other returned columns |
 | `UNION` | Run two queries |
 | Variable-length paths `[:R*1..3]`, path variables `p = ...` | Write each length as a fixed path |
-| `UNWIND`, list comprehensions `[x IN … WHERE …]`, indexing `xs[0]` | To intersect two sets, share a node in one MATCH |
+| `UNWIND`, indexing `xs[0]`; list comprehensions `[x IN … WHERE …]` outside the `size(...)` that compares two lists | Count what two lists share with `size([x IN a WHERE x IN b])`; to list the shared values, share a node in one MATCH |
 | Function calls other than the date functions, `coalesce()`, `size()` (on a list a WITH collected) and the aggregates | Not supported yet |
 | `XOR`, exponentiation `^` | Rewrite with AND / OR / NOT; multiply out |
 | Relationship properties `r.x` | Relationships have none; read the end nodes' properties |
-| MATCH after a second WITH | Share a node between the paths in one MATCH |
+| MATCH after a second WITH (except when comparing two lists) | Share a node between the paths in one MATCH |
 | `CREATE`, `MERGE`, `SET`, `DELETE`, `REMOVE`, `CALL` | The interface is read-only and runs no procedures |
 
 ---

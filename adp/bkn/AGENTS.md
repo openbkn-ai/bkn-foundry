@@ -141,7 +141,7 @@ adp/
 - Use `$PROJECT_ROOT` or relative paths, avoid hardcoded personal paths
 - Include runnable code examples
 - Keep API docs in sync with code changes
-- Any change to what `run_cypher` / the Cypher endpoint accepts, refuses or returns must update, in the same PR, `docs/api/bkn/cypher-queries.yaml`, `help/zh/manual/cypher.md` and `help/en/manual/cypher.md`, and the Context Loader tool text when it describes the change. Run the manual's examples against a test environment before submitting.
+- Any change to what `run_cypher` / the Cypher endpoint accepts, refuses or returns must update, in the same PR, `docs/api/bkn/cypher-queries.yaml`, `help/zh/manual/cypher.md` and `help/en/manual/cypher.md`, the Context Loader tool text when it describes the change, and the built-in agent prompts that list what the subset supports (the `studio_smart_qa` prompt in `migrations/bkn-agent/mariadb/*/01-seed-studio-smart-qa.sql` and `init.sql`, with its digest in `infra/bkn-agent/app/test/test_shared_agent_seeds.py`). Run the manual's examples against a test environment before submitting.
 
 ## Configuration
 

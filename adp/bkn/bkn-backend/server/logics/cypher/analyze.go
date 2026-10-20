@@ -129,7 +129,7 @@ func analyzeReading(reading []parsing.IOC_ReadingClauseContext, at antlr.ParserR
 		match := clause.OC_Match()
 		if match == nil {
 			if clause.OC_Unwind() != nil {
-				return nil, unsupported(clause, "UNWIND")
+				return nil, unwindError(clause)
 			}
 			return nil, unsupported(clause, "procedure calls")
 		}

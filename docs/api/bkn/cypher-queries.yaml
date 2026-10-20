@@ -201,7 +201,12 @@ components:
             MATCH ... WHERE b.property = v | b.property IN s [AND ...]
             RETURN ...
 
-            Either form may open with WITH <literal> | [<literal>, ...] | $param AS name, ...,
+            or, to compare two collected lists:
+            MATCH ... [WHERE ...] WITH collect([DISTINCT] a.property) AS l1
+            MATCH ... [WHERE ...] WITH l1, collect([DISTINCT] b.property) AS l2
+            RETURN size([x IN l1 WHERE x IN l2]) | size(l1) | size(l2) [AS alias], ...
+
+            Each form may open with WITH <literal> | [<literal>, ...] | $param AS name, ...,
             whose names the conditions of the MATCH that follows use, as in
             WITH ['a', 'b'] AS codes MATCH (n:Label) WHERE n.code IN codes.
 
@@ -251,7 +256,7 @@ components:
             nodes and values computed from them; after a WITH that does not aggregate, count(*)
             may follow. After a WITH that aggregates, RETURN may instead aggregate its groups,
             as in RETURN count(*) AS groups: then it holds only such aggregates and returns one
-            row. Refused: MATCH after a second WITH, WITH DISTINCT, WITH *, ORDER BY / SKIP /
+            row. Refused: MATCH after a second WITH (except when comparing two lists), WITH DISTINCT, WITH *, ORDER BY / SKIP /
             LIMIT on WITH, IN / string predicates in its WHERE, and aggregating in a WITH after
             the first.
 
@@ -261,6 +266,16 @@ components:
             authorized like any other part of the query. The WITH holds one item; without
             DISTINCT, RETURN must be DISTINCT and not aggregate. v is used only as = and s only
             as IN, each as a condition of its own at the top of WHERE (not under OR or NOT).
+
+            Comparing two lists returns one row of sizes: of each list, and of the elements of
+            one list the other also holds, size([x IN l1 WHERE x IN l2]). A list collected
+            without DISTINCT keeps its repeats, and the shared count counts the filtered list's
+            repeats, as Cypher does; counting both ways round needs DISTINCT on both lists.
+            When the second stage matches nothing there is no row. Neither WITH takes a WHERE,
+            the second MATCH may not use the first list, the lists themselves cannot be
+            returned (to list shared values, share a node in one MATCH), and the two
+            properties must not be a string and a number. UNWIND is refused. Such a query
+            always runs on the SQL path.
 
             RETURN can return a node or a relationship itself. A node is its object type and
             its full primary key, each key value as exact text with its declared type, plus the
