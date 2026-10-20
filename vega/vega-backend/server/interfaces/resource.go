@@ -55,6 +55,19 @@ const (
 	MaxKeywordIgnoreAbove = 8191
 )
 
+// IsPhysicalResourceCategory 判断资源是否属于外部数据源的物理资源类别。
+func IsPhysicalResourceCategory(category string) bool {
+	switch category {
+	case ResourceCategoryTable, ResourceCategoryFile,
+		ResourceCategoryFileset, ResourceCategoryAPI,
+		ResourceCategoryMetric, ResourceCategoryTopic,
+		ResourceCategoryIndex:
+		return true
+	default:
+		return false
+	}
+}
+
 // RESOURCE_SORT is a whitelist of supported API sort fields. The data access
 // layer maps these fields to database columns.
 var RESOURCE_SORT = map[string]struct{}{
