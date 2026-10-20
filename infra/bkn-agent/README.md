@@ -97,6 +97,10 @@ Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留
 
 Cypher 生成固定 ID 为 `cypher_generation`，由 `06-seed-cypher-generation.sql` 写入缺失默认数据，同样初始为 draft、模型留空。它只加载完整版 Context Loader 的 `get_kn_detail`、`search_schema`、`get_object_types`、`get_relation_types`、`search_instance` 和 `run_cypher`：按真实属性名写带 `RETURN` 和 `LIMIT` 的完整查询，用 `run_cypher` 原样试跑，只交付试跑通过的查询（优先返回节点、关系或虚拟边，用户只要统计时返回标量），放在 cypher 代码块里，调用方原样运行。
 
+对象指标设计固定 ID 为 `object_metric_designer`，由 `07-seed-object-metric-designer.sql` 写入缺失默认数据，初始为 draft、模型留空，工具和技能列表均为空。它只能通过 `/api/bkn-agent/v1/metric-design/executions` 的受限入口接收当前表单与已授权候选，输出服务端校验的字段级提案；不直接保存、发布或查询指标实例数据。续聊绑定真实用户、知识网络、对象类、指标类型和草稿版本；管理员完成模型配置并发布后才可使用。
+
+第二期的验证与试算由 Studio 在用户明确点击后调用既有指标 API。Agent 入口仅接收与当前表单修订一致的限量 `diagnostic`（状态、问题、警告、值类型/单位、行数和耗时），不接收实例标识或明细值，也不把客户端报告当成服务端真实性证明。试算保持原有 `query_data` 与底层数据权限、超时和结果限制。
+
 业务溯源两个 Agent 保留原固定 ID、owner 和工具声明，缺失时安装当前默认 Prompt/限制；旧默认值仅按上述条件修复。SQL 登记不创建 EE 管理身份，也不开放许可证控制的 EE 入口。`python -m app.bootstrap.business_provenance` 保留为现有部署脚本的兼容命令，只验证管理主体、Agent 归属及共享 Prompt，不再调用 `/import` 或覆盖管理员修改。原 JSON 文件覆盖环境变量不再支持，显式设置时会报错；共享配置改为通过管理 API 维护。旧手工导入脚本 `scripts/import-business-provenance-optimizer.sh` 一并移除。
 
 迁移脚本执行、生产配置与部署仍需 Owner 确认。本轮未连接真实数据库执行迁移。若测试环境已经运行旧版 PR 的 0.2.1 三表脚本，不自动 DROP 表或伪造迁移记录；迁移器不会重跑已安装版本的新编号脚本，应单独核对该环境的版本和脚本进度后安排补充迁移。

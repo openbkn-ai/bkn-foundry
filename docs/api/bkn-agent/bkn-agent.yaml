@@ -287,6 +287,37 @@ paths:
                 $ref: '#/components/schemas/ErrorEnvelope'
       security:
       - HTTPBearer: []
+  /api/bkn-agent/v1/metric-design/executions:
+    post:
+      tags:
+      - BknAgentMetricDesign
+      summary: Execute Metric Design
+      operationId: execute_metric_design_api_bkn_agent_v1_metric_design_executions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetricDesignRequest'
+        required: true
+      responses:
+        '200':
+          description: Scoped SSE execution. Emits meta, token, proposal, usage, result,
+            and terminal. The proposal is validated and persisted before successful
+            terminal; GET /executions/{run_id} can recover it.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      security:
+      - HTTPBearer: []
   /api/bkn-agent/v1/me/agents/{agent_id}/setting:
     get:
       tags:
@@ -2308,6 +2339,285 @@ components:
       - type
       - url
       title: McpToolRef
+    MetricCandidate:
+      properties:
+        id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Id
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+        name:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Name
+        type:
+          type: string
+          enum:
+          - atomic
+          - derived
+          - composite
+          title: Type
+        scope:
+          type: string
+          enum:
+          - object_instance
+          - object_set
+          title: Scope
+        object_type_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Object Type Id
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - version
+      - name
+      - type
+      - scope
+      - object_type_id
+      title: MetricCandidate
+    MetricDesignCandidates:
+      properties:
+        properties:
+          items:
+            $ref: '#/components/schemas/MetricPropertyCandidate'
+          type: array
+          maxItems: 200
+          title: Properties
+        published_metrics:
+          items:
+            $ref: '#/components/schemas/MetricCandidate'
+          type: array
+          maxItems: 200
+          title: Published Metrics
+      additionalProperties: false
+      type: object
+      title: MetricDesignCandidates
+    MetricDesignDiagnostic:
+      properties:
+        kind:
+          type: string
+          enum:
+          - validation
+          - trial
+          title: Kind
+        form_revision:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Form Revision
+        status:
+          type: string
+          enum:
+          - valid
+          - invalid
+          - ok
+          - no_data
+          - partial
+          - unavailable
+          - forbidden
+          - invalid_request
+          - failed
+          title: Status
+        issues:
+          items:
+            $ref: '#/components/schemas/MetricDesignIssue'
+          type: array
+          maxItems: 20
+          title: Issues
+        warnings:
+          items:
+            type: string
+          type: array
+          maxItems: 10
+          title: Warnings
+        output_shape:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Output Shape
+        physical_type:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Physical Type
+        unit_code:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Unit Code
+        entry_count:
+          anyOf:
+          - type: integer
+            maximum: 10000.0
+            minimum: 0.0
+          - type: 'null'
+          title: Entry Count
+        overall_ms:
+          anyOf:
+          - type: integer
+            maximum: 3600000.0
+            minimum: 0.0
+          - type: 'null'
+          title: Overall Ms
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - form_revision
+      - status
+      title: MetricDesignDiagnostic
+      description: Bounded, client-reported feedback; never authoritative proof of
+        validation.
+    MetricDesignIssue:
+      properties:
+        code:
+          type: string
+          maxLength: 100
+          title: Code
+        field:
+          type: string
+          maxLength: 200
+          title: Field
+        message:
+          type: string
+          maxLength: 500
+          title: Message
+      additionalProperties: false
+      type: object
+      required:
+      - code
+      - field
+      - message
+      title: MetricDesignIssue
+    MetricDesignRequest:
+      properties:
+        client_request_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Client Request Id
+        thread_id:
+          anyOf:
+          - type: string
+            maxLength: 50
+            minLength: 1
+            pattern: ^[0-9A-Za-z_.-]+$
+          - type: 'null'
+          title: Thread Id
+        scope:
+          $ref: '#/components/schemas/MetricDesignScope'
+        base_form_revision:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Base Form Revision
+        form_snapshot:
+          additionalProperties: true
+          type: object
+          title: Form Snapshot
+        candidates:
+          $ref: '#/components/schemas/MetricDesignCandidates'
+        diagnostic:
+          anyOf:
+          - $ref: '#/components/schemas/MetricDesignDiagnostic'
+          - type: 'null'
+        message:
+          type: string
+          maxLength: 4000
+          minLength: 1
+          title: Message
+      additionalProperties: false
+      type: object
+      required:
+      - client_request_id
+      - scope
+      - base_form_revision
+      - form_snapshot
+      - candidates
+      - message
+      title: MetricDesignRequest
+    MetricDesignScope:
+      properties:
+        kn_id:
+          type: string
+          maxLength: 50
+          minLength: 1
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Kn Id
+        owner_object_type_id:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Owner Object Type Id
+        metric_type:
+          type: string
+          enum:
+          - atomic
+          - derived
+          - composite
+          title: Metric Type
+        mode:
+          type: string
+          enum:
+          - create
+          - edit
+          title: Mode
+        metric_id:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Metric Id
+        draft_version:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Draft Version
+      additionalProperties: false
+      type: object
+      required:
+      - kn_id
+      - owner_object_type_id
+      - metric_type
+      - mode
+      title: MetricDesignScope
+    MetricPropertyCandidate:
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Name
+        label:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Label
+        type:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Type
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - label
+      title: MetricPropertyCandidate
     OverrideDeleted:
       properties:
         deleted:

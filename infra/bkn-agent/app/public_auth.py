@@ -146,6 +146,7 @@ PUBLIC_AGENT_IDS = frozenset({"studio_smart_qa", "cypher_generation"})
 BUILTIN_AGENT_IDS = (
     "studio_smart_qa",
     "cypher_generation",
+    "object_metric_designer",
     "business_provenance_claim_attribution",
     "business_provenance_optimizer",
     "catalog-semantic-understanding",

@@ -26,7 +26,19 @@ from app.errors import err, not_found
 from app.models import ChatRequest, ExecutionOut, ExecutionRequest
 from app.core.agent_settings import merge
 from app.models import AgentSetting
-from app.public_auth import PUBLIC_AGENT_IDS, authorize_execution, get_public_account
+from app.metric_design import (
+    AGENT_ID as METRIC_AGENT_ID,
+    PROTOCOL as METRIC_PROTOCOL,
+    MetricDesignRequest,
+    PROPOSAL_SCHEMA,
+    validate_proposal,
+)
+from app.public_auth import (
+    PUBLIC_AGENT_IDS,
+    authorize_execution,
+    authorize_network_setting,
+    get_public_account,
+)
 
 logger = logging.getLogger("bkn-agent.executions")
 router = APIRouter()
@@ -80,13 +92,17 @@ async def _owned(session, run_id, account):
     info = (task.input or {}) if task else {}
     if (
         not task
-        or info.get("protocol") != _PROTOCOL
+        or info.get("protocol") not in {_PROTOCOL, METRIC_PROTOCOL}
         or info.get("subject") != _identity(account)
     ):
         raise not_found("task", run_id)
-    await authorize_execution(
-        account, task.agent_id, info["request"]["context"]["kn_id"]
-    )
+    kn_id = info["request"]["context"]["kn_id"]
+    if info["protocol"] == METRIC_PROTOCOL:
+        if task.agent_id != METRIC_AGENT_ID or not info.get("metric_request"):
+            raise not_found("task", run_id)
+        await authorize_network_setting(account, task.agent_id, kn_id, write=True)
+    else:
+        await authorize_execution(account, task.agent_id, kn_id)
     return task
 
 
@@ -143,14 +159,32 @@ async def execute(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
+    return await _execute_impl(req, account, session)
+
+
+async def _execute_impl(
+    req: ExecutionRequest,
+    account: Account,
+    session: AsyncSession,
+    metric_request: MetricDesignRequest | None = None,
+):
     # Only the built-in Agents admitted on the public surface run here.
-    if req.agent_id not in PUBLIC_AGENT_IDS:
+    if req.agent_id not in PUBLIC_AGENT_IDS and not (
+        metric_request and req.agent_id == METRIC_AGENT_ID
+    ):
         raise not_found("agent", req.agent_id)
     agent = await dao.get_agent(session, req.agent_id)
     if not agent or agent.status != "published" or agent.mode != "chat":
         raise not_found("agent", req.agent_id)
-    await authorize_execution(account, agent.agent_id, req.context.kn_id)
-    if any(ref.get("type") != "context_loader" for ref in agent.tools):
+    if metric_request:
+        if account.account_type != "user":
+            raise err(403, "BknAgent.Execution.Forbidden")
+        await authorize_network_setting(account, agent.agent_id, req.context.kn_id, write=True)
+    else:
+        await authorize_execution(account, agent.agent_id, req.context.kn_id)
+    if metric_request and (agent.tools or agent.skills):
+        raise err(409, "BknAgent.Execution.Unsupported")
+    if not metric_request and any(ref.get("type") != "context_loader" for ref in agent.tools):
         raise err(409, "BknAgent.Execution.Unsupported")
     network_row = await dao.get_network_setting(session, agent.agent_id, req.context.kn_id)
     user_row = await dao.get_user_setting(session, agent.agent_id, account.account_id)
@@ -162,10 +196,14 @@ async def execute(
         user_row.f_version if user_row else 0,
     )
     agent = effective.agent
+    if metric_request and (agent.tools or agent.skills):
+        raise err(409, "BknAgent.Execution.Unsupported")
 
     request_data = req.model_dump(mode="json")
+    metric_data = metric_request.model_dump(mode="json") if metric_request else None
+    protocol = METRIC_PROTOCOL if metric_request else _PROTOCOL
     fingerprint = hashlib.sha256(
-        json.dumps(request_data, sort_keys=True).encode()
+        json.dumps(metric_data or request_data, sort_keys=True).encode()
     ).hexdigest()
     run_id = str(
         uuid.uuid5(
@@ -177,7 +215,7 @@ async def execute(
     )
     previous = await dao.get_task(session, run_id, account_id=account.account_id)
     if previous:
-        return _replay(previous, fingerprint, account)
+        return _replay(previous, fingerprint, account, protocol)
     thread_id = req.thread_id or str(uuid.uuid4())
     if req.thread_id:
         row = await dao.get_thread_row(session, thread_id)
@@ -187,11 +225,13 @@ async def execute(
             or row.f_account_id != account.account_id
             or row.f_agent_id != agent.agent_id
             or not origin
-            or origin.get("protocol") != _PROTOCOL
+            or origin.get("protocol") != protocol
             or origin.get("subject") != _identity(account)
         ):
             raise not_found("thread", thread_id)
         if origin["request"]["context"] != request_data["context"]:
+            raise err(409, "BknAgent.Execution.Conflict")
+        if metric_request and origin.get("metric_request", {}).get("scope") != metric_data["scope"]:
             raise err(409, "BknAgent.Execution.Conflict")
     if thread_id in _thread_claims:
         raise err(409, "BknAgent.Thread.Busy", thread_id=thread_id)
@@ -199,9 +239,10 @@ async def execute(
     try:
         agent_version = await dao.current_version(session, agent.agent_id)
         task_input = {
-            "protocol": _PROTOCOL,
+            "protocol": protocol,
             "subject": _identity(account),
             "request": request_data,
+            **({"metric_request": metric_data} if metric_data else {}),
             "fingerprint": fingerprint,
             "agent_snapshot": agent.model_dump(mode="json"),
             "setting_versions": effective.versions,
@@ -217,6 +258,7 @@ async def execute(
                 await dao.get_task(session, run_id, account_id=account.account_id),
                 fingerprint,
                 account,
+                protocol,
             )
     except BaseException:
         _thread_claims.discard(thread_id)
@@ -230,6 +272,7 @@ async def execute(
         status, output, failure = "failed", None, "cancelled"
         upstream = None
         stream = None
+        proposal = None
         try:
             timeout_s = (
                 agent.limits.timeout_s
@@ -250,6 +293,7 @@ async def execute(
                         agent_id=agent.agent_id,
                         thread_id=thread_id,
                         message=req.message,
+                        response_format=PROPOSAL_SCHEMA if metric_request else None,
                     ),
                     account.account_id,
                     account.account_type,
@@ -265,9 +309,14 @@ async def execute(
                         data = json.loads(event.split("data: ", 1)[1])
                         failure = data["code"]
                         upstream = data.get("upstream")
+                    elif metric_request and event.startswith("event: structured\n"):
+                        data = json.loads(event.split("data: ", 1)[1])
+                        proposal = validate_proposal(data["content"], metric_request)
                     elif not event.startswith("event: meta\n"):
                         yield event
             if status == "succeeded":
+                if metric_request and proposal is None:
+                    raise ValueError("metric designer did not return a proposal")
                 output = json.dumps(
                     {
                         "answer": public.final
@@ -276,6 +325,7 @@ async def execute(
                         "context": request_data["context"],
                         "prompt_version": public.prompt_version,
                         "usage": public.usage or None,
+                        **({"proposal": proposal} if metric_request else {}),
                     },
                     ensure_ascii=False,
                 )
@@ -323,6 +373,8 @@ async def execute(
             with anyio.CancelScope(shield=True):
                 await finish()
         if status == "succeeded":
+            if metric_request:
+                yield public.event("proposal", {"content": proposal})
             yield public.event(
                 "usage",
                 {"available": bool(public.usage), "usage": public.usage or None},
@@ -355,10 +407,10 @@ def _response(events):
     )
 
 
-def _replay(task, fingerprint, account):
+def _replay(task, fingerprint, account, protocol=_PROTOCOL):
     if (
         not task
-        or (task.input or {}).get("protocol") != _PROTOCOL
+        or (task.input or {}).get("protocol") != protocol
         or task.input.get("subject") != _identity(account)
         or task.input.get("fingerprint") != fingerprint
     ):
@@ -373,6 +425,10 @@ def _replay(task, fingerprint, account):
             "meta", {"thread_id": task.parent_thread_id, "agent_id": task.agent_id}
         )
         if result.result is not None:
+            if protocol == METRIC_PROTOCOL:
+                yield public.event(
+                    "proposal", {"content": result.result.get("proposal")}
+                )
             yield public.event("result", {"content": result.result})
         yield public.event(
             "terminal",
