@@ -26,6 +26,7 @@ BKN Foundry 为**纯后台**平台，请通过 CLI、各语言 SDK 或 HTTP API 
 | 🧠 [模型管理](manual/model.md) | LLM、Embedding、Reranker 的注册与管理 |
 | 🕸️ [BKN 引擎](manual/bkn.md) | 业务知识网络 — 对象类、关系类、行动类与实例 |
 | 🗄️ [VEGA 引擎](manual/vega.md) | 数据虚拟化 — 连接、模型、视图与统一查询 |
+| 🔎 [Cypher 查询](manual/cypher.md) | 只读 openCypher 子集：语法、示例、限制与错误码 |
 | 📚 [Context Loader](manual/context-loader.md) | 面向智能体的上下文组装 |
 | 🛠️ [Execution Factory](manual/execution-factory.md) | 工具、算子与技能 |
 | 🔭 [BKN Trace](manual/bkn-trace.md) | 链路追踪、指标与证据链式可观测 |

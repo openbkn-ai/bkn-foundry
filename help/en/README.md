@@ -26,6 +26,7 @@ Reference manuals by subsystem (living under `./manual/`).
 | [Model Management](manual/model.md) | LLM, Embedding, and Reranker registration and management |
 | [BKN Engine](manual/bkn.md) | Business Knowledge Network — object types, relations, actions, instances |
 | [VEGA Engine](manual/vega.md) | Data virtualization — connections, models, views, unified query |
+| [Cypher Queries](manual/cypher.md) | Read-only openCypher subset: syntax, examples, limits, error codes |
 | [Context Loader](manual/context-loader.md) | Agent context assembly from ontology and data |
 | [Execution Factory](manual/execution-factory.md) | Tools, operators, and skills for agents |
 | [BKN Trace](manual/bkn-trace.md) | Traces, metrics, and evidence-chain style observability |
