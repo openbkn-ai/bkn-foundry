@@ -236,8 +236,12 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	// The conditions for vector retrieval include the query text and the source field name. Here, they are changed to vector and physical vector fields.
 	if err := rds.resolveVectorConditions(ctx, resource, params.FilterCondCfg, ignoreLocalIndex); err != nil {
 		otellog.LogError(ctx, "Resolve vector condition failed", err)
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
-			WithErrorDetails(err.Error())
+		if reason, invalid := interfaces.RequestSideQueryError(err); invalid {
+			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+				WithErrorDetails(reason)
+		}
+		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+			WithErrorDetails("vector query could not be resolved")
 	}
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
 	if err != nil {

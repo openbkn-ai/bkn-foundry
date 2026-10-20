@@ -784,3 +784,21 @@ func TestOpenSearchJSONAliasQueries(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenSearchConnectorExecuteQueryPreservesBackendErrors(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusInternalServerError} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			body := `{"error":{"type":"illegal_argument_exception","reason":"Query vector has invalid dimension: 3. Dimension should be: 1024"}}`
+			client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true, Transport: countRowsTransport(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})})
+			require.NoError(t, err)
+			cfg := &interfaces.FilterCondCfg{Name: "embedding", Operation: filter_condition.OperationKnnVector, ValueOptCfg: interfaces.ValueOptCfg{Value: make([]float32, 3)}}
+			result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "index", &interfaces.Resource{}, &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg})
+			require.Error(t, err)
+			assert.Nil(t, result)
+			_, invalid := interfaces.RequestSideQueryError(err)
+			assert.False(t, invalid, "backend errors without known index dimensions retain their original classification")
+		})
+	}
+}
