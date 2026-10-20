@@ -109,10 +109,21 @@ func TestGenerateDocumentID(t *testing.T) {
 }
 
 func TestNormalizeBuildDocumentFields(t *testing.T) {
+	t.Run("calendar dates keep source days and durations remain source values", func(t *testing.T) {
+		native := time.Date(2026, 10, 19, 0, 0, 0, 0, time.FixedZone("test", 8*3600))
+		doc := map[string]any{"day": native}
+		require.NoError(t, normalizeBuildDocumentFields(doc, []*interfaces.Property{{Name: "day", Type: interfaces.DataType_Date}}, nil))
+		assert.Equal(t, "2026-10-19", doc["day"])
+		for _, value := range []any{"100:00:00", "-01:02:03.400000", json.Number("43200123456")} {
+			doc := map[string]any{"clock": value}
+			require.NoError(t, normalizeBuildDocumentFields(doc, []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}}, nil))
+			assert.Equal(t, value, doc["clock"])
+		}
+	})
 	t.Run("normalizes source clocks and preserves other fields", func(t *testing.T) {
 		for _, input := range []any{"12:00:00.100000", []byte("12:00:00.100"), time.Date(2026, 10, 19, 12, 0, 0, 100000000, time.UTC)} {
 			doc := map[string]any{"clock": input, "label": "12:00:00.100", "empty": nil}
-			require.NoError(t, normalizeBuildDocumentFields(doc, []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}, {Name: "label", Type: interfaces.DataType_String}, {Name: "empty", Type: interfaces.DataType_Time}, {Name: "missing", Type: interfaces.DataType_Time}}))
+			require.NoError(t, normalizeBuildDocumentFields(doc, []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}, {Name: "label", Type: interfaces.DataType_String}, {Name: "empty", Type: interfaces.DataType_Time}, {Name: "missing", Type: interfaces.DataType_Time}}, nil))
 			assert.Equal(t, "12:00:00.1", doc["clock"])
 			assert.Equal(t, "12:00:00.100", doc["label"])
 			assert.Nil(t, doc["empty"])
@@ -141,7 +152,7 @@ func TestNormalizeBuildDocumentFields(t *testing.T) {
 		document["null_value"] = "null"
 		document["empty_value"] = "  "
 
-		require.NoError(t, normalizeBuildDocumentFields(document, schemaWithValues))
+		require.NoError(t, normalizeBuildDocumentFields(document, schemaWithValues, nil))
 		assert.Equal(t, map[string]any{"region": "cn"}, document["object"])
 		assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
 		assert.Equal(t, map[string]any{"tier": json.Number("2")}, document["bytes"])
@@ -154,7 +165,7 @@ func TestNormalizeBuildDocumentFields(t *testing.T) {
 		for _, text := range []string{`{"items":[{"sku":"BOX-01","count":2}]}`, `{"items":["SENSOR-A","SENSOR-B"]}`, `{"items":[]}`, `{"items":null}`, `[{"id":9007199254740993}]`, `"value"`, `true`, `42`, `null`} {
 			t.Run(text, func(t *testing.T) {
 				doc := map[string]any{"payload": text}
-				require.NoError(t, normalizeBuildDocumentFields(doc, schema))
+				require.NoError(t, normalizeBuildDocumentFields(doc, schema, nil))
 				encoded, err := json.Marshal(doc["payload"])
 				require.NoError(t, err)
 				assert.JSONEq(t, text, string(encoded))
@@ -166,7 +177,7 @@ func TestNormalizeBuildDocumentFields(t *testing.T) {
 		values := []any{map[string]any{"items": []any{"a", map[string]any{"sku": "b"}}}, []any{1, true}, true, int64(9007199254740993)}
 		for _, value := range values {
 			doc := map[string]any{"payload": value}
-			require.NoError(t, normalizeBuildDocumentFields(doc, schema))
+			require.NoError(t, normalizeBuildDocumentFields(doc, schema, nil))
 			assert.Equal(t, value, doc["payload"])
 		}
 	})
@@ -178,7 +189,7 @@ func TestNormalizeBuildDocumentFields(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			document := map[string]any{"payload": value}
 
-			err := normalizeBuildDocumentFields(document, schema)
+			err := normalizeBuildDocumentFields(document, schema, nil)
 
 			require.Error(t, err)
 			assert.ErrorContains(t, err, `JSON field "payload"`)

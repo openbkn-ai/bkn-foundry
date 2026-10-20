@@ -325,7 +325,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				// Determine operation type
 				switch op {
 				case "r", "c":
-					if err := sbw.handleCreateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields, resource.SchemaDefinition); err != nil {
+					if err := sbw.handleCreateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields, resource.SchemaDefinition, valueMap["schema"]); err != nil {
 						if !errors.Is(err, errStreamingDocumentWrite) {
 							return err
 						}
@@ -335,7 +335,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 					}
 				case "u":
 					// Update operation
-					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields, resource.SchemaDefinition); err != nil {
+					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline, outputFields, resource.SchemaDefinition, valueMap["schema"]); err != nil {
 						logger.Errorf("Failed to handle update operation: %v", err)
 						time.Sleep(retryInterval)
 						continue
@@ -545,9 +545,9 @@ func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 	}
 }
 
-func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string, schema []*interfaces.Property) error {
+func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string, schema []*interfaces.Property, messageSchema any) error {
 	document := filterBuildDocumentFields(after, outputFields)
-	if err := normalizeBuildDocumentFields(document, schema); err != nil {
+	if err := normalizeBuildDocumentFields(document, schema, debeziumAfterLogicalTypes(messageSchema)); err != nil {
 		return fmt.Errorf("normalize streaming document: %w", err)
 	}
 	kafkaKeyValues, err := getKafkaKeyValues(buildTaskInfo.IndexConfig.PrimaryKeyFields, keyMap)
@@ -570,7 +570,7 @@ func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyM
 }
 
 // handleUpdateOperation handles update operations.
-func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string, schema []*interfaces.Property) error {
+func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string, schema []*interfaces.Property, messageSchema any) error {
 	documentIDFields := buildTaskInfo.IndexConfig.PrimaryKeyFields
 	kafkaKeyValues, err := getKafkaKeyValues(documentIDFields, keyMap)
 	if err != nil {
@@ -592,7 +592,7 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 	if err != nil {
 		return fmt.Errorf("generate new document ID: %w", err)
 	}
-	if err := normalizeBuildDocumentFields(document, schema); err != nil {
+	if err := normalizeBuildDocumentFields(document, schema, debeziumAfterLogicalTypes(messageSchema)); err != nil {
 		return fmt.Errorf("normalize streaming document: %w", err)
 	}
 	if buildTaskHasEmbedding(buildTaskInfo) {
@@ -676,4 +676,27 @@ func (sbw *streamingBuildWorker) buildTableName(ctx context.Context, catalog *in
 		return "", err
 	}
 	return tableConnector.BuildOriginalName(meta), nil
+}
+
+// debeziumAfterLogicalTypes 读取 after 字段的逻辑类型，避免从数字大小推断 CDC 时间单位。
+func debeziumAfterLogicalTypes(schema any) map[string]string {
+	root, _ := schema.(map[string]any)
+	fields, _ := root["fields"].([]any)
+	result := make(map[string]string)
+	for _, raw := range fields {
+		field, _ := raw.(map[string]any)
+		if field["field"] != "after" {
+			continue
+		}
+		children, _ := field["fields"].([]any)
+		for _, child := range children {
+			column, _ := child.(map[string]any)
+			name, _ := column["field"].(string)
+			logicalType, _ := column["name"].(string)
+			if name != "" && logicalType != "" {
+				result[name] = logicalType
+			}
+		}
+	}
+	return result
 }

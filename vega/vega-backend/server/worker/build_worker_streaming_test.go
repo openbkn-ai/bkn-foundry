@@ -197,7 +197,7 @@ func TestHandleCreateOperationExcludesUnsupportedFields(t *testing.T) {
 		&embeddingPipeline{},
 		[]string{"id", "title"},
 		nil,
-	))
+		nil))
 }
 
 func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *testing.T) {
@@ -231,7 +231,7 @@ func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *test
 		&embeddingPipeline{},
 		[]string{"id", "title"},
 		nil,
-	))
+		nil))
 }
 
 func TestHandleUpdateOperationExcludesUnsupportedFields(t *testing.T) {
@@ -262,7 +262,7 @@ func TestHandleUpdateOperationExcludesUnsupportedFields(t *testing.T) {
 		&embeddingPipeline{},
 		[]string{"id"},
 		nil,
-	))
+		nil))
 }
 
 func TestHandleUpdateOperationKeepsOldDocumentWhenReplacementWriteFails(t *testing.T) {
@@ -291,7 +291,7 @@ func TestHandleUpdateOperationKeepsOldDocumentWhenReplacementWriteFails(t *testi
 		&embeddingPipeline{},
 		[]string{"id"},
 		nil,
-	)
+		nil)
 	require.ErrorContains(t, err, "write failed")
 }
 
@@ -320,6 +320,36 @@ func TestBuildConnectorConfigUsesCaptureDatabase(t *testing.T) {
 }
 
 func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
+	t.Run("CDC schema decodes calendar days and clock units on create and update", func(t *testing.T) {
+		for _, operation := range []string{"create", "update"} {
+			for _, tc := range []struct{ logicalType, raw, want string }{
+				{"io.debezium.time.MicroTime", "43200123456", "12:00:00.123456"},
+				{"io.debezium.time.Time", "43200123", "12:00:00.123"},
+				{"io.debezium.time.NanoTime", "43200123456789", "12:00:00.123456789"},
+			} {
+				t.Run(operation+"/"+tc.logicalType, func(t *testing.T) {
+					var event map[string]any
+					require.NoError(t, common.UnmarshalPreciseJSON([]byte(`{"schema":{"fields":[{"field":"before","fields":[{"field":"clock","name":"unknown"}]},{"field":"after","fields":[{"field":"clock","name":"`+tc.logicalType+`"},{"field":"day","name":"io.debezium.time.Date"}]}]},"payload":{"after":{"id":2,"clock":`+tc.raw+`,"day":20745}}}`), &event))
+					after := event["payload"].(map[string]any)["after"].(map[string]any)
+					lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
+					worker := &streamingBuildWorker{lim: lim}
+					task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}}}}
+					id, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: json.Number("2")}})
+					require.NoError(t, err)
+					lim.EXPECT().IndexDocuments(gomock.Any(), "index", map[string]map[string]any{id: {"id": json.Number("2"), "clock": tc.want, "day": "2026-10-19"}}).Return(nil, nil)
+					fields := []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}, {Name: "day", Type: interfaces.DataType_Date}}
+					if operation == "create" {
+						err = worker.handleCreateOperation(context.Background(), map[string]any{"id": json.Number("2")}, after, "index", task, &embeddingPipeline{}, []string{"id", "clock", "day"}, fields, event["schema"])
+					} else {
+						err = worker.handleUpdateOperation(context.Background(), map[string]any{"id": json.Number("2")}, after, "index", task, &embeddingPipeline{}, []string{"id", "clock", "day"}, fields, event["schema"])
+					}
+					require.NoError(t, err)
+					assert.Equal(t, json.Number(tc.raw), after["clock"])
+					assert.Equal(t, json.Number("20745"), after["day"])
+				})
+			}
+		}
+	})
 	for _, operation := range []string{"create", "update"} {
 		for _, tc := range []struct {
 			name      string
@@ -335,7 +365,9 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 			{"invalid", `{`, nil, true, interfaces.DataType_Json},
 			{"time string", "12:00:00.100000", "12:00:00.1", false, interfaces.DataType_Time},
 			{"time bytes", []byte("12:00:00.100000"), "12:00:00.1", false, interfaces.DataType_Time},
-			{"time invalid", "24:00:00", nil, true, interfaces.DataType_Time},
+			{"time duration", "24:00:00", "24:00:00", false, interfaces.DataType_Time},
+			{"time negative duration", "-01:00:00", "-01:00:00", false, interfaces.DataType_Time},
+			{"time numeric without schema", json.Number("43200123456"), json.Number("43200123456"), false, interfaces.DataType_Time},
 		} {
 			t.Run(operation+"/"+tc.name, func(t *testing.T) {
 				lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
@@ -355,9 +387,9 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 				}
 				var err error
 				if operation == "create" {
-					err = worker.handleCreateOperation(context.Background(), map[string]any{"id": 2}, after, "index", task, &embeddingPipeline{}, []string{"id", "payload"}, schema)
+					err = worker.handleCreateOperation(context.Background(), map[string]any{"id": 2}, after, "index", task, &embeddingPipeline{}, []string{"id", "payload"}, schema, nil)
 				} else {
-					err = worker.handleUpdateOperation(context.Background(), map[string]any{"id": 1}, after, "index", task, &embeddingPipeline{}, []string{"id", "payload"}, schema)
+					err = worker.handleUpdateOperation(context.Background(), map[string]any{"id": 1}, after, "index", task, &embeddingPipeline{}, []string{"id", "payload"}, schema, nil)
 				}
 				if tc.invalid {
 					require.ErrorContains(t, err, `field "payload"`)
@@ -376,7 +408,7 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 		require.NoError(t, err)
 		lim.EXPECT().IndexDocuments(gomock.Any(), "index", map[string]map[string]any{id: {"clock": "12:00:00.1"}}).Return(nil, nil)
 		after := map[string]any{"clock": "12:00:00.100"}
-		require.NoError(t, worker.handleUpdateOperation(context.Background(), map[string]any{"clock": "12:00:00.100"}, after, "index", task, &embeddingPipeline{}, []string{"clock"}, []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}}))
+		require.NoError(t, worker.handleUpdateOperation(context.Background(), map[string]any{"clock": "12:00:00.100"}, after, "index", task, &embeddingPipeline{}, []string{"clock"}, []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}}, nil))
 		assert.Equal(t, "12:00:00.100", after["clock"])
 	})
 }
@@ -450,4 +482,12 @@ func TestStreamingBuildWorkerBuildTableName(t *testing.T) {
 		require.ErrorContains(t, err, "decode table metadata")
 		assert.Empty(t, got)
 	})
+}
+
+func TestDebeziumAfterLogicalTypes(t *testing.T) {
+	for _, schema := range []any{nil, "unknown", map[string]any{}, map[string]any{"fields": []any{nil, "unknown", map[string]any{"field": "before", "fields": []any{map[string]any{"field": "clock", "name": "io.debezium.time.MicroTime"}}}}}} {
+		assert.Empty(t, debeziumAfterLogicalTypes(schema))
+	}
+	schema := map[string]any{"fields": []any{map[string]any{"field": "after", "fields": []any{nil, map[string]any{"field": "clock", "name": "io.debezium.time.MicroTime"}, map[string]any{"field": "untyped"}, map[string]any{"name": "io.debezium.time.Date"}}}}}
+	assert.Equal(t, map[string]string{"clock": "io.debezium.time.MicroTime"}, debeziumAfterLogicalTypes(schema))
 }

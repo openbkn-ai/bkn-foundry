@@ -19,7 +19,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
@@ -81,10 +80,11 @@ func extractKeyValues(fields []string, document map[string]any) ([]interfaces.Ke
 	return values, nil
 }
 
-// normalizeBuildDocumentFields 规范构建文档的 JSON 与日内时间，不改变源游标或文档标识。
-func normalizeBuildDocumentFields(document map[string]any, properties []*interfaces.Property) error {
+// normalizeBuildDocumentFields 规范源端 JSON、日历日期与日内时间，不套用 HTTP 过滤输入的接受集。
+// sourceTypes 来自 CDC 消息 schema；缺失逻辑类型时不猜测数字的时间单位。
+func normalizeBuildDocumentFields(document map[string]any, properties []*interfaces.Property, sourceTypes map[string]string) error {
 	for _, property := range properties {
-		if property == nil || (property.Type != interfaces.DataType_Json && property.Type != interfaces.DataType_Time) {
+		if property == nil || (property.Type != interfaces.DataType_Json && property.Type != interfaces.DataType_Time && property.Type != interfaces.DataType_Date) {
 			continue
 		}
 		value, exists := document[property.Name]
@@ -92,15 +92,12 @@ func normalizeBuildDocumentFields(document map[string]any, properties []*interfa
 			continue
 		}
 
-		if property.Type == interfaces.DataType_Time {
-			if raw, ok := value.([]byte); ok {
-				value = string(raw)
+		if property.Type == interfaces.DataType_Time || property.Type == interfaces.DataType_Date {
+			logicalType := sourceTypes[property.Name]
+			if logicalType == "" {
+				logicalType = sourceTypes[property.OriginalName]
 			}
-			normalized, err := filter_condition.ParseTemporalValue(interfaces.DataType_Time, value, common.ServerTimeZone())
-			if err != nil {
-				return fmt.Errorf("time field %q: %w", property.Name, err)
-			}
-			document[property.Name] = normalized
+			document[property.Name] = normalizeBuildTemporalValue(property.Type, value, logicalType)
 		} else {
 			normalized, err := normalizeJSONValue(value)
 			if err != nil {

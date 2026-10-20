@@ -1131,7 +1131,8 @@ func TestJSONNumbersEqual(t *testing.T) {
 }
 
 func TestResourceServiceCreate(t *testing.T) {
-	t.Run("rejects invalid fixed datetime before persistence", func(t *testing.T) {
+	// Prepare owns definition validation; this test checks propagation and prevents persistence.
+	t.Run("propagates prepare temporal validation error before persistence", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		viewService := vmock.NewMockLogicalViewService(ctrl)
 		previous := GetLogicalViewService()
@@ -2013,7 +2014,8 @@ func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfac
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
-	t.Run("rejects invalid fixed datetime before persistence", func(t *testing.T) {
+	// Prepare owns definition validation; this test checks propagation and prevents persistence.
+	t.Run("propagates prepare temporal validation error before persistence", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		viewService := vmock.NewMockLogicalViewService(ctrl)
 		previous := GetLogicalViewService()
