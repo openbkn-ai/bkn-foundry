@@ -28,8 +28,15 @@ service:
     targetPort: 30800
 
 # No blanket ingress: legacy agent management and service-call routes remain
-# internal. Only the credential-verified /api/bkn-agent/v1/executions surface may
-# be exposed through the unified gateway after deployment review (#2173).
+# internal. Enable only the credential-verified execution/recovery routes when
+# Studio needs the Object Metric Designer through the unified gateway.
+publicIngress:
+  enabled: false
+  className: class-443
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
 
 depServices:
   rds:
