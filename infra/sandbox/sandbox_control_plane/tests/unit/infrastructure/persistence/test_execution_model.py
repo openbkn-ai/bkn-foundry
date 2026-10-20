@@ -50,12 +50,17 @@ class TestBoundedCode:
         )
 
     def test_cut_inside_a_multibyte_character_stays_valid_utf8(self):
-        for prefix in ("", "a", "ab"):
-            code = prefix + "中" * 30000
+        # The kept tail is what varies the cut point, so the ASCII suffix moves it 0, 2
+        # and 1 bytes into a three-byte character; those continuation bytes are dropped.
+        for suffix, partial_bytes in (("", 0), ("a", 2), ("ab", 1)):
+            code = "中" * 30000 + suffix
+
             stored = bounded_code(code)
-            assert len(stored.encode("utf-8")) <= CODE_COLUMN_MAX_BYTES
-            assert stored.encode("utf-8").decode("utf-8") == stored
-            assert stored.endswith("中" * 1000)
+
+            marker, tail = stored.split("\n", 1)
+            budget = CODE_COLUMN_MAX_BYTES - len((marker + "\n").encode("utf-8"))
+            assert len(tail.encode("utf-8")) == budget - partial_bytes
+            assert tail == "中" * ((budget - partial_bytes - len(suffix)) // 3) + suffix
 
 
 class TestExecutionModelStorage:
