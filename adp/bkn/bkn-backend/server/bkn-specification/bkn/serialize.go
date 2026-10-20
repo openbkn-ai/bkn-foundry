@@ -66,27 +66,48 @@ func encodeYAMLBlock(v any) string {
 
 // SerializeBknNetwork Serializes BknNetwork to BKN format
 func SerializeBknNetwork(doc *BknNetwork) string {
-	var sb strings.Builder
-	_, _ = fmt.Fprintf(&sb, "---\n")
-	_, _ = fmt.Fprintf(&sb, "type: knowledge_network\n")
-	_, _ = fmt.Fprintf(&sb, "id: %s\n", doc.ID)
-	_, _ = fmt.Fprintf(&sb, "name: %s\n", doc.Name)
-	_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(doc.Tags, ", "))
+	return serializeBknNetwork(doc, serializeOptions{})
+}
 
-	if doc.Version != "" {
-		_, _ = fmt.Fprintf(&sb, "version: %s\n", doc.Version)
+func serializeBknNetwork(doc *BknNetwork, opts serializeOptions) string {
+	var sb strings.Builder
+	if opts.v3 {
+		fields := []frontmatterField{
+			scalarField("type", "knowledge_network"), scalarField("id", doc.ID), scalarField("name", doc.Name),
+			listField("tags", doc.Tags), scalarField("bkn_spec", BknSpecV3),
+		}
+		if doc.Version != "" {
+			fields = append(fields, scalarField("version", doc.Version))
+		}
+		if doc.Branch != "" {
+			fields = append(fields, scalarField("branch", doc.Branch))
+		}
+		if capabilities := capabilitiesField(doc.Capabilities); capabilities != nil {
+			fields = append(fields, *capabilities)
+		}
+		writeFrontmatterV3(&sb, fields)
+	} else {
+		_, _ = fmt.Fprintf(&sb, "---\n")
+		_, _ = fmt.Fprintf(&sb, "type: knowledge_network\n")
+		_, _ = fmt.Fprintf(&sb, "id: %s\n", doc.ID)
+		_, _ = fmt.Fprintf(&sb, "name: %s\n", doc.Name)
+		_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(doc.Tags, ", "))
+
+		if doc.Version != "" {
+			_, _ = fmt.Fprintf(&sb, "version: %s\n", doc.Version)
+		}
+		if doc.Branch != "" {
+			_, _ = fmt.Fprintf(&sb, "branch: %s\n", doc.Branch)
+		}
+		if block := serializeCapabilities(doc.Capabilities); block != "" {
+			_, _ = fmt.Fprint(&sb, block)
+		}
+		_, _ = fmt.Fprintf(&sb, "---\n\n")
 	}
-	if doc.Branch != "" {
-		_, _ = fmt.Fprintf(&sb, "branch: %s\n", doc.Branch)
-	}
-	if block := serializeCapabilities(doc.Capabilities); block != "" {
-		_, _ = fmt.Fprint(&sb, block)
-	}
-	_, _ = fmt.Fprintf(&sb, "---\n\n")
 
 	_, _ = fmt.Fprintf(&sb, "# %s\n\n", doc.Name)
 	if doc.Description != "" {
-		_, _ = fmt.Fprintf(&sb, "%s\n\n", doc.Description)
+		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(doc.Description))
 	}
 
 	// Network Overview
@@ -226,17 +247,16 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 
 // SerializeObjectType Serializes BknObjectType to BKN format
 func SerializeObjectType(ot *BknObjectType) string {
+	return serializeObjectType(ot, serializeOptions{})
+}
+
+func serializeObjectType(ot *BknObjectType, opts serializeOptions) string {
 	var sb strings.Builder
-	_, _ = fmt.Fprintf(&sb, "---\n")
-	_, _ = fmt.Fprintf(&sb, "type: object_type\n")
-	_, _ = fmt.Fprintf(&sb, "id: %s\n", ot.ID)
-	_, _ = fmt.Fprintf(&sb, "name: %s\n", ot.Name)
-	_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(ot.Tags, ", "))
-	_, _ = fmt.Fprintf(&sb, "---\n\n")
+	writeDefinitionFrontmatter(&sb, opts, "object_type", ot.ID, ot.Name, ot.Tags)
 
 	_, _ = fmt.Fprintf(&sb, "## ObjectType: %s\n\n", ot.Name)
 	if ot.Description != "" {
-		_, _ = fmt.Fprintf(&sb, "%s\n\n", ot.Description)
+		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(ot.Description))
 	}
 
 	// Data Source
@@ -251,32 +271,11 @@ func SerializeObjectType(ot *BknObjectType) string {
 
 	// Data Properties
 	_, _ = fmt.Fprintf(&sb, "### Data Properties\n\n")
-	hasMaskRule := false
-	for _, dp := range ot.DataProperties {
-		if dp.MaskRule != nil {
-			hasMaskRule = true
-			break
-		}
-	}
-	if hasMaskRule {
-		_, _ = fmt.Fprintf(&sb, "| Name | Display Name | Type | Description | Mapped Field | Mask Rule |\n")
-		_, _ = fmt.Fprintf(&sb, "|------|--------------|------|-------------|--------------|-----------|\n")
+	if opts.v3 {
+		writeDataPropertiesV3(&sb, ot)
 	} else {
-		_, _ = fmt.Fprintf(&sb, "| Name | Display Name | Type | Description | Mapped Field |\n")
-		_, _ = fmt.Fprintf(&sb, "|------|--------------|------|-------------|--------------|\n")
+		writeDataProperties(&sb, ot)
 	}
-	if len(ot.DataProperties) > 0 {
-		for _, dp := range ot.DataProperties {
-			if hasMaskRule {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s |\n",
-					tableCell(dp.Name), tableCell(dp.DisplayName), tableCell(dp.Type), tableCell(dp.Description), tableCell(dp.MappedField), tableCell(serializeMaskRule(dp.MaskRule)))
-			} else {
-				_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
-					tableCell(dp.Name), tableCell(dp.DisplayName), tableCell(dp.Type), tableCell(dp.Description), tableCell(dp.MappedField))
-			}
-		}
-	}
-	_, _ = fmt.Fprintf(&sb, "\n")
 
 	// Logic Properties
 	_, _ = fmt.Fprintf(&sb, "### Logic Properties\n\n")
@@ -342,19 +341,48 @@ func SerializeObjectType(ot *BknObjectType) string {
 	return sb.String()
 }
 
+// writeDataProperties writes the 2.x Data Properties table.
+func writeDataProperties(sb *strings.Builder, ot *BknObjectType) {
+	hasMaskRule := false
+	for _, dp := range ot.DataProperties {
+		if dp.MaskRule != nil {
+			hasMaskRule = true
+			break
+		}
+	}
+	if hasMaskRule {
+		_, _ = fmt.Fprintf(sb, "| Name | Display Name | Type | Description | Mapped Field | Mask Rule |\n")
+		_, _ = fmt.Fprintf(sb, "|------|--------------|------|-------------|--------------|-----------|\n")
+	} else {
+		_, _ = fmt.Fprintf(sb, "| Name | Display Name | Type | Description | Mapped Field |\n")
+		_, _ = fmt.Fprintf(sb, "|------|--------------|------|-------------|--------------|\n")
+	}
+	if len(ot.DataProperties) > 0 {
+		for _, dp := range ot.DataProperties {
+			if hasMaskRule {
+				_, _ = fmt.Fprintf(sb, "| %s | %s | %s | %s | %s | %s |\n",
+					tableCell(dp.Name), tableCell(dp.DisplayName), tableCell(dp.Type), tableCell(dp.Description), tableCell(dp.MappedField), tableCell(serializeMaskRule(dp.MaskRule)))
+			} else {
+				_, _ = fmt.Fprintf(sb, "| %s | %s | %s | %s | %s |\n",
+					tableCell(dp.Name), tableCell(dp.DisplayName), tableCell(dp.Type), tableCell(dp.Description), tableCell(dp.MappedField))
+			}
+		}
+	}
+	_, _ = fmt.Fprintf(sb, "\n")
+}
+
 // SerializeRelationType Serializes BknRelationType to BKN format
 func SerializeRelationType(rt *BknRelationType) string {
+	return serializeRelationType(rt, serializeOptions{})
+}
+
+func serializeRelationType(rt *BknRelationType, opts serializeOptions) string {
 	var sb strings.Builder
-	_, _ = fmt.Fprintf(&sb, "---\n")
-	_, _ = fmt.Fprintf(&sb, "type: relation_type\n")
-	_, _ = fmt.Fprintf(&sb, "id: %s\n", rt.ID)
-	_, _ = fmt.Fprintf(&sb, "name: %s\n", rt.Name)
-	_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(rt.Tags, ", "))
-	_, _ = fmt.Fprintf(&sb, "---\n\n")
+	writeDefinitionFrontmatter(&sb, opts, "relation_type", rt.ID, rt.Name, rt.Tags)
 
 	_, _ = fmt.Fprintf(&sb, "## RelationType: %s\n\n", rt.Name)
 	if rt.Description != "" {
-		_, _ = fmt.Fprintf(&sb, "%s\n\n", rt.Description)
+		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(rt.Description))
 	}
 
 	// Endpoint
@@ -422,6 +450,10 @@ func SerializeRelationType(rt *BknRelationType) string {
 
 // SerializeActionType Serializes BknActionType to BKN format
 func SerializeActionType(at *BknActionType) string {
+	return serializeActionType(at, serializeOptions{})
+}
+
+func serializeActionType(at *BknActionType, opts serializeOptions) string {
 	var sb strings.Builder
 	intent := strings.TrimSpace(at.ActionIntent)
 	actionType := strings.TrimSpace(at.ActionType)
@@ -429,22 +461,33 @@ func SerializeActionType(at *BknActionType) string {
 		intent = actionType
 	}
 
-	_, _ = fmt.Fprintf(&sb, "---\n")
-	_, _ = fmt.Fprintf(&sb, "type: action_type\n")
-	_, _ = fmt.Fprintf(&sb, "id: %s\n", at.ID)
-	_, _ = fmt.Fprintf(&sb, "name: %s\n", at.Name)
-	_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(at.Tags, ", "))
-	if actionType != "" {
-		_, _ = fmt.Fprintf(&sb, "action_type: %s\n", actionType)
+	if opts.v3 {
+		// 3.0 writes the intent once, as action_intent; action_type is a 2.x synonym.
+		fields := []frontmatterField{
+			scalarField("type", "action_type"), scalarField("id", at.ID), scalarField("name", at.Name), listField("tags", at.Tags),
+		}
+		if intent != "" {
+			fields = append(fields, scalarField("action_intent", intent))
+		}
+		writeFrontmatterV3(&sb, fields)
+	} else {
+		_, _ = fmt.Fprintf(&sb, "---\n")
+		_, _ = fmt.Fprintf(&sb, "type: action_type\n")
+		_, _ = fmt.Fprintf(&sb, "id: %s\n", at.ID)
+		_, _ = fmt.Fprintf(&sb, "name: %s\n", at.Name)
+		_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(at.Tags, ", "))
+		if actionType != "" {
+			_, _ = fmt.Fprintf(&sb, "action_type: %s\n", actionType)
+		}
+		if intent != "" {
+			_, _ = fmt.Fprintf(&sb, "action_intent: %s\n", intent)
+		}
+		_, _ = fmt.Fprintf(&sb, "---\n\n")
 	}
-	if intent != "" {
-		_, _ = fmt.Fprintf(&sb, "action_intent: %s\n", intent)
-	}
-	_, _ = fmt.Fprintf(&sb, "---\n\n")
 
 	_, _ = fmt.Fprintf(&sb, "## ActionType: %s\n\n", at.Name)
 	if at.Description != "" {
-		_, _ = fmt.Fprintf(&sb, "%s\n\n", at.Description)
+		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(at.Description))
 	}
 
 	// Bound Object
@@ -456,14 +499,17 @@ func SerializeActionType(at *BknActionType) string {
 	}
 	_, _ = fmt.Fprintf(&sb, "\n")
 
-	// Affect Object
-	_, _ = fmt.Fprintf(&sb, "### Affect Object\n\n")
-	_, _ = fmt.Fprintf(&sb, "| Affect Object | Affect Description |\n")
-	_, _ = fmt.Fprintf(&sb, "|---------------|--------------------|\n")
-	if at.AffectObject != nil {
-		_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(at.AffectObject.ObjectType), tableCell(at.AffectObject.Description))
+	// Affect Object. 3.0 writes it only when it has content.
+	hasAffect := at.AffectObject != nil && (at.AffectObject.ObjectType != "" || at.AffectObject.Description != "")
+	if !opts.v3 || hasAffect {
+		_, _ = fmt.Fprintf(&sb, "### Affect Object\n\n")
+		_, _ = fmt.Fprintf(&sb, "| Affect Object | Affect Description |\n")
+		_, _ = fmt.Fprintf(&sb, "|---------------|--------------------|\n")
+		if at.AffectObject != nil {
+			_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(at.AffectObject.ObjectType), tableCell(at.AffectObject.Description))
+		}
+		_, _ = fmt.Fprintf(&sb, "\n")
 	}
-	_, _ = fmt.Fprintf(&sb, "\n")
 
 	if len(at.ImpactContracts) > 0 {
 		_, _ = fmt.Fprintf(&sb, "### Impact Contracts\n\n")
@@ -519,17 +565,16 @@ func SerializeActionType(at *BknActionType) string {
 
 // SerializeRiskType Serializes BknRiskType to BKN format
 func SerializeRiskType(rt *BknRiskType) string {
+	return serializeRiskType(rt, serializeOptions{})
+}
+
+func serializeRiskType(rt *BknRiskType, opts serializeOptions) string {
 	var sb strings.Builder
-	_, _ = fmt.Fprintf(&sb, "---\n")
-	_, _ = fmt.Fprintf(&sb, "type: risk_type\n")
-	_, _ = fmt.Fprintf(&sb, "id: %s\n", rt.ID)
-	_, _ = fmt.Fprintf(&sb, "name: %s\n", rt.Name)
-	_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(rt.Tags, ", "))
-	_, _ = fmt.Fprintf(&sb, "---\n\n")
+	writeDefinitionFrontmatter(&sb, opts, "risk_type", rt.ID, rt.Name, rt.Tags)
 
 	_, _ = fmt.Fprintf(&sb, "## RiskType: %s\n\n", rt.Name)
 	if rt.Description != "" {
-		_, _ = fmt.Fprintf(&sb, "%s\n\n", rt.Description)
+		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(rt.Description))
 	}
 
 	return sb.String()
@@ -538,17 +583,16 @@ func SerializeRiskType(rt *BknRiskType) string {
 // SerializeConceptGroup Serializes BknConceptGroup to BKN format.
 // otIndex maps ObjectType ID → *BknObjectType for Name/Description lookup.
 func SerializeConceptGroup(cg *BknConceptGroup, otIndex map[string]*BknObjectType) string {
+	return serializeConceptGroup(cg, otIndex, serializeOptions{})
+}
+
+func serializeConceptGroup(cg *BknConceptGroup, otIndex map[string]*BknObjectType, opts serializeOptions) string {
 	var sb strings.Builder
-	_, _ = fmt.Fprintf(&sb, "---\n")
-	_, _ = fmt.Fprintf(&sb, "type: concept_group\n")
-	_, _ = fmt.Fprintf(&sb, "id: %s\n", cg.ID)
-	_, _ = fmt.Fprintf(&sb, "name: %s\n", cg.Name)
-	_, _ = fmt.Fprintf(&sb, "tags: [%s]\n", strings.Join(cg.Tags, ", "))
-	_, _ = fmt.Fprintf(&sb, "---\n\n")
+	writeDefinitionFrontmatter(&sb, opts, "concept_group", cg.ID, cg.Name, cg.Tags)
 
 	_, _ = fmt.Fprintf(&sb, "## ConceptGroup: %s\n\n", cg.Name)
 	if cg.Description != "" {
-		_, _ = fmt.Fprintf(&sb, "%s\n\n", cg.Description)
+		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(cg.Description))
 	}
 	_, _ = fmt.Fprintf(&sb, "### Object Types\n\n")
 	_, _ = fmt.Fprintf(&sb, "| ID | Name | Description |\n")

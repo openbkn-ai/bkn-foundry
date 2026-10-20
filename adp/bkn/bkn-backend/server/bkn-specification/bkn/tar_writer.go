@@ -34,8 +34,12 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 	now := time.Now()
 	mfs := NewMemoryFileSystem()
 
+	// Only a network that declares bkn_spec 3.0 is written under 3.0; every other network is written
+	// exactly as before.
+	opts := serializeOptions{v3: doc.BknSpec == BknSpecV3}
+
 	// Write network.bkn
-	rootContent := SerializeBknNetwork(doc)
+	rootContent := serializeBknNetwork(doc, opts)
 	mfs.AddFile("network.bkn", []byte(rootContent))
 	if err := writeTarEntry(tw, "network.bkn", []byte(rootContent), now); err != nil {
 		return err
@@ -43,7 +47,7 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 
 	// Write ObjectTypes
 	for _, ot := range doc.ObjectTypes {
-		content := SerializeObjectType(ot)
+		content := serializeObjectType(ot, opts)
 		path := "object_types/" + ot.ID + ".bkn"
 		mfs.AddFile(path, []byte(content))
 		if err := writeTarEntry(tw, path, []byte(content), now); err != nil {
@@ -53,7 +57,7 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 
 	// Write RelationTypes
 	for _, rt := range doc.RelationTypes {
-		content := SerializeRelationType(rt)
+		content := serializeRelationType(rt, opts)
 		path := "relation_types/" + rt.ID + ".bkn"
 		mfs.AddFile(path, []byte(content))
 		if err := writeTarEntry(tw, path, []byte(content), now); err != nil {
@@ -63,7 +67,7 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 
 	// Write ActionTypes
 	for _, at := range doc.ActionTypes {
-		content := SerializeActionType(at)
+		content := serializeActionType(at, opts)
 		path := "action_types/" + at.ID + ".bkn"
 		mfs.AddFile(path, []byte(content))
 		if err := writeTarEntry(tw, path, []byte(content), now); err != nil {
@@ -73,7 +77,7 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 
 	// Write RiskTypes
 	for _, rt := range doc.RiskTypes {
-		content := SerializeRiskType(rt)
+		content := serializeRiskType(rt, opts)
 		path := "risk_types/" + rt.ID + ".bkn"
 		mfs.AddFile(path, []byte(content))
 		if err := writeTarEntry(tw, path, []byte(content), now); err != nil {
@@ -89,7 +93,7 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 
 	// Write ConceptGroups
 	for _, cg := range doc.ConceptGroups {
-		content := SerializeConceptGroup(cg, otIndex)
+		content := serializeConceptGroup(cg, otIndex, opts)
 		path := "concept_groups/" + cg.ID + ".bkn"
 		mfs.AddFile(path, []byte(content))
 		if err := writeTarEntry(tw, path, []byte(content), now); err != nil {

@@ -119,6 +119,34 @@ func newUnsupportedSpecBKNTar(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// newV3BKNTar creates a bkn_spec 3.0 archive whose name property carries the given Required cell.
+func newV3BKNTar(t *testing.T, required string) []byte {
+	t.Helper()
+	files := map[string]string{
+		"network.bkn": "---\ntype: knowledge_network\nid: test-net\nname: Test Network\ntags: []\nbkn_spec: \"3.0\"\n---\n\n# Test Network\n",
+		"object_types/pod.bkn": "---\ntype: object_type\nid: pod\nname: Pod\ntags: []\n---\n\n## ObjectType: Pod\n\n" +
+			"### Data Properties\n\n| Name | Display Name | Type | Required | Description | Mapped Field |\n" +
+			"|------|--------------|------|----------|-------------|--------------|\n" +
+			"| id | ID | string | | | id |\n| name | 名称 | string | " + required + " | | name |\n\n" +
+			"### Keys\n\nPrimary Keys: id\nDisplay Key: name\n",
+	}
+	var buf bytes.Buffer
+	w := tar.NewWriter(&buf)
+	for _, path := range []string{"network.bkn", "object_types/pod.bkn"} {
+		content := files[path]
+		if err := w.WriteHeader(&tar.Header{Name: path, Mode: 0644, Size: int64(len(content))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
 // newDraftBKNTar creates an archive whose object type is valid only when strict validation is disabled.
 func newDraftBKNTar(t *testing.T) []byte {
 	net := &bknsdk.BknNetwork{
@@ -276,6 +304,22 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			engine.ServeHTTP(w, req)
 			So(w.Code, ShouldEqual, http.StatusBadRequest)
 			So(w.Body.String(), ShouldContainSubstring, "unsupported bkn_spec")
+		})
+
+		Convey("Refuses a 3.0 property declaration the backend does not store yet", func() {
+			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "true"))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, `object type \"pod\" data property \"name\": Required is not supported by this version yet`)
+		})
+
+		Convey("Imports a 3.0 package without property declarations", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, false).Return("kn1", nil)
+			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, ""))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusOK)
 		})
 
 		Convey("Passes ignore mode to CreateKN\n", func() {

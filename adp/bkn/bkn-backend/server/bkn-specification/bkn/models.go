@@ -146,6 +146,10 @@ type ResourceInfo struct {
 }
 
 // DataProperty is a ### Data Properties table row.
+//
+// Semantic, Required and Constraints are 3.0 declarations (SPECIFICATION.md §6.8). They describe
+// what the data should be, for understanding and display; nothing checks the source data against
+// them. A 2.x package never sets them.
 type DataProperty struct {
 	Name        string
 	DisplayName string
@@ -153,6 +157,35 @@ type DataProperty struct {
 	Description string
 	MappedField string
 	MaskRule    *maskrule.Rule
+
+	Semantic    string
+	Required    bool
+	Constraints *PropertyConstraints
+}
+
+// PropertyConstraints is one property's entry in ### Property Constraints. A nil field is not
+// declared.
+type PropertyConstraints struct {
+	Range    *ValueRange
+	Length   *LengthRange
+	Pattern  string
+	Unit     string
+	Unique   bool
+	CRS      string
+	Timezone string
+}
+
+// ValueRange is a closed interval. Min and Max hold a number for a numeric property and the ISO
+// 8601 text for a date or time property, as written; either may be absent.
+type ValueRange struct {
+	Min any
+	Max any
+}
+
+// LengthRange is a closed interval on the number of characters.
+type LengthRange struct {
+	Min *int
+	Max *int
 }
 
 // LogicProperty represents a logic property definition.
