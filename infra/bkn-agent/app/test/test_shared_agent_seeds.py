@@ -17,6 +17,7 @@ PROVENANCE = MIGRATIONS / "0.2.1/02-seed-business-provenance.sql"
 PROVENANCE_UPGRADE = MIGRATIONS / "0.2.1/03-upgrade-business-provenance-defaults.sql"
 SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
 VERSIONS = MIGRATIONS / "0.2.1/05-agent-versions.sql"
+CYPHER = MIGRATIONS / "0.2.1/06-seed-graph-explorer-cypher.sql"
 
 
 def statements(path):
@@ -170,6 +171,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
         + PROVENANCE.read_text()
         + SETTINGS.read_text()
         + VERSIONS.read_text()
+        + CYPHER.read_text()
     )
     assert "alter table" not in deltas.lower()
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
@@ -184,8 +186,9 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         apply(upgraded, PROVENANCE)
         apply(upgraded, PROVENANCE_UPGRADE)
         apply(upgraded, VERSIONS)
+        apply(upgraded, CYPHER)
         assert snapshot(fresh) == snapshot(upgraded)
-        assert len(snapshot(fresh)[0]) == 5
+        assert len(snapshot(fresh)[0]) == 6
         for table_before, table_after in zip(original, snapshot(upgraded)):
             assert all(row in table_after for row in table_before)
         versions = dict(
@@ -197,7 +200,7 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE])
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         apply(db, path)
@@ -307,6 +310,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(PROVENANCE_UPGRADE),
                     str(SETTINGS),
                     str(VERSIONS),
+                    str(CYPHER),
                 ],
             ]
         ],
@@ -623,3 +627,55 @@ def test_version_snapshot_tolerates_null_tools_and_model_in_older_rows():
             "SELECT f_model, f_tools, f_initial FROM t_agent_version WHERE f_agent_id='legacy'"
         ).fetchone()
         assert (row["f_model"], row["f_tools"], row["f_initial"]) == ("", "[]", 0)
+
+
+def test_graph_explorer_cypher_seed_reads_schema_and_runs_cypher_only():
+    with database() as db:
+        apply(db, CYPHER)
+        item = item_from_db(db, "graph_explorer_cypher")
+        assert item["spec"]["status"] == "draft"
+        assert item["spec"]["model"] == ""
+        assert item["spec"]["tools"] == [
+            {
+                "type": "context_loader",
+                "profile": "full",
+                "allowed_tools": [
+                    "get_kn_detail",
+                    "search_schema",
+                    "get_object_types",
+                    "get_relation_types",
+                    "search_instance",
+                    "run_cypher",
+                ],
+            }
+        ]
+        # The page reads the query out of a cypher fence and draws only nodes
+        # and relationships, so the Prompt has to say both.
+        assert "```cypher" in item["prompt"]["content"]
+        assert "relationType" in item["prompt"]["content"]
+        rows = db.execute(
+            "SELECT f_version, f_initial, f_current, f_prompt_version FROM t_agent_version"
+            " WHERE f_agent_id='graph_explorer_cypher'"
+        ).fetchall()
+        assert [tuple(row) for row in rows] == [(1, 1, 1, 1)]
+
+
+@pytest.mark.parametrize("completed", [1, 2])
+def test_partial_cypher_seed_is_retryable_without_an_unfinished_agent(completed):
+    with database() as db:
+        apply(db, CYPHER, limit=completed)
+        assert db.execute("SELECT COUNT(*) FROM t_agent").fetchone()[0] == 0
+        apply(db, CYPHER)
+        assert db.execute("SELECT COUNT(*) FROM t_agent").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM t_agent_version").fetchone()[0] == 1
+
+
+def test_conflicting_cypher_prompt_is_not_taken_over():
+    with database() as db:
+        db.execute(
+            "INSERT INTO t_agent_prompt VALUES('graph_explorer_cypher_prompt','customer',7,'customer',1)"
+        )
+        before = snapshot(db)
+        with pytest.raises(sqlite3.IntegrityError):
+            apply(db, CYPHER)
+        assert snapshot(db) == before

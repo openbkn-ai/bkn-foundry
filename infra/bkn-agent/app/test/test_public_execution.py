@@ -271,6 +271,54 @@ def test_public_request_rejects_config_and_lifecycle_overrides(monkeypatch, extr
     asyncio.run(run())
 
 
+def test_graph_explorer_cypher_runs_on_the_public_surface(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, calls):
+            async with factory() as session:
+                session.add(
+                    AgentRow(
+                        f_agent_id="graph_explorer_cypher",
+                        f_name="Cypher",
+                        f_mode="chat",
+                        f_prompt_id="qa-prompt",
+                        f_tools=[
+                            {
+                                "type": "context_loader",
+                                "profile": "full",
+                                "allowed_tools": ["get_object_types", "run_cypher"],
+                            }
+                        ],
+                        f_skills=[],
+                        f_status="published",
+                        f_create_user="admin",
+                        f_update_user="admin",
+                        f_create_time=1,
+                        f_update_time=1,
+                    )
+                )
+                await session.commit()
+            checked = []
+            allow = public_auth._post
+
+            async def post(url, **kwargs):
+                if "json" in kwargs:
+                    checked.extend(kwargs["json"]["checks"])
+                return await allow(url, **kwargs)
+
+            monkeypatch.setattr(public_auth, "_post", post)
+            body = {**BODY, "agent_id": "graph_explorer_cypher"}
+            response = await client.post(URL, json=body, headers=AUTH)
+            assert response.status_code == 200, response.text
+            events = parse_sse(response.text)
+            assert events[0][1]["agent_id"] == "graph_explorer_cypher"
+            assert events[-1][1]["status"] == "succeeded"
+            assert [call.agent_id for call in calls] == ["graph_explorer_cypher"]
+            # The caller needs use on this Agent, not on smart Q&A.
+            assert {"resource": {"type": "agent", "id": "graph_explorer_cypher"}, "operation": "use"} in checked
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("change", ["draft", "task", "unknown", "unscoped"])
 def test_unsupported_agent_never_starts(monkeypatch, change):
     async def run():

@@ -88,12 +88,14 @@ agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执�
 
 0.2.1 的首装和升级路径：
 
-- 首次安装执行 `migrations/bkn-agent/mariadb/0.2.1/init.sql`，保留原十张表和语义理解定义，并添加 Studio 智能问答及两个业务溯源 Agent。
+- 首次安装执行 `migrations/bkn-agent/mariadb/0.2.1/init.sql`，保留原十张表和语义理解定义，并添加 Studio 智能问答、图探索 Cypher 生成及两个业务溯源 Agent。
 - 升级依次执行 `01-seed-studio-smart-qa.sql`、`02-seed-business-provenance.sql` 和 `03-upgrade-business-provenance-defaults.sql`。前两条只写缺失默认数据；第三条补齐直接从旧 EE 版本升级时遗漏的官方默认修复，不新增或修改表结构。
 - 已有固定 ID 的 Agent 保留模型、工具、状态、Prompt 引用和历史。业务溯源优化 Agent 仅在原管理主体仍是最后修改者、完整 limits 等于旧默认值时，将 180 秒升级到 600 秒；仅对精确匹配 0.1.4/0.1.5 已发布默认内容、由原主体维护且无自定义变量的 Prompt 追加新版本。管理员编辑、回滚和冲突版本保留。修改共享 Prompt 使用原版本管理能力；个人覆写表和旧 API 不在本次删除。
 - 新 Agent 最后写入，兼容的未完成默认 Prompt 可在脚本重试时补全；Prompt 冲突或名称冲突报错，不接管客户配置。迁移器按语句提交，不承诺跨表事务回滚，冲突时可能保留尚未引用的默认 Prompt 行。
 
-Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留空继承平台默认，声明完整 Context Loader MCP。`runtime.contextLoaderMcpUrl` / `CONTEXT_LOADER_MCP_URL` 继续选择完整版 `/mcp/` 或紧凑版 `/mcp-compact/`。公共用户入口、网络范围及权限检查见下文 #2173；不创建基础数据问答或图探索占位 Agent。
+Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留空继承平台默认，声明完整 Context Loader MCP。`runtime.contextLoaderMcpUrl` / `CONTEXT_LOADER_MCP_URL` 继续选择完整版 `/mcp/` 或紧凑版 `/mcp-compact/`。公共用户入口、网络范围及权限检查见下文 #2173；不创建基础数据问答占位 Agent。
+
+图探索 Cypher 生成固定 ID 为 `graph_explorer_cypher`，由 `06-seed-graph-explorer-cypher.sql` 写入缺失默认数据，同样初始为 draft、模型留空。它只加载完整版 Context Loader 的 `get_kn_detail`、`search_schema`、`get_object_types`、`get_relation_types`、`search_instance` 和 `run_cypher`：按真实属性名写查询，用 `run_cypher` 试跑，只交付试跑通过且返回节点或关系的查询，放在 cypher 代码块里由图探索页运行。
 
 业务溯源两个 Agent 保留原固定 ID、owner 和工具声明，缺失时安装当前默认 Prompt/限制；旧默认值仅按上述条件修复。SQL 登记不创建 EE 管理身份，也不开放许可证控制的 EE 入口。`python -m app.bootstrap.business_provenance` 保留为现有部署脚本的兼容命令，只验证管理主体、Agent 归属及共享 Prompt，不再调用 `/import` 或覆盖管理员修改。原 JSON 文件覆盖环境变量不再支持，显式设置时会报错；共享配置改为通过管理 API 维护。旧手工导入脚本 `scripts/import-business-provenance-optimizer.sh` 一并移除。
 
@@ -120,7 +122,7 @@ attribution. Upgrade Context Loader together with Agent for this contract.
 
 `POST /api/bkn-agent/v1/executions` 返回 SSE；`GET /api/bkn-agent/v1/executions/{run_id}` 读取运行状态与已提交结果；`POST /api/bkn-agent/v1/executions/{run_id}/cancel` 请求停止。三者均要求 `Authorization: Bearer ...`，OAuth 通过 Hydra 校验，`bak_` 通过 bkn-safe 校验，外部账号头不作为身份依据。依赖地址通过 `runtime.hydraAdminBase` / `HYDRA_ADMIN_BASE` 和 `runtime.bknSafeBase` / `BKN_SAFE_BASE` 配置，向下游继续传递原调用凭据。
 
-首期仅接入 `studio_smart_qa`。调用前须由管理员完成共享配置并发布，且调用者具有该 Agent 的 `use` 和知识网络的 `view_detail` 权限；实际数据与行动权限继续由下游校验。本接口不自动发布、授予权限或修改默认配置。
+接入 `studio_smart_qa` 和 `graph_explorer_cypher`。调用前须由管理员完成共享配置并发布，且调用者具有该 Agent 的 `use` 和知识网络的 `view_detail` 权限；实际数据与行动权限继续由下游校验。本接口不自动发布、授予权限或修改默认配置。
 
 ```json
 {
