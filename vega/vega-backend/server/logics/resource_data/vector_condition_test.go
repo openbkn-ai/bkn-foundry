@@ -131,3 +131,20 @@ func TestEmbeddingModelForIndexUsesReferencedVectorFieldOwner(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "target-model", modelID)
 }
+
+func TestResolveVectorConditionsRejectsModelDimensionMismatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := mock_interfaces.NewMockModelFactoryService(ctrl)
+	model := &interfaces.SmallModel{ModelID: "model"}
+	resource := &interfaces.Resource{LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 1024}}}}}}
+	cfg := &interfaces.FilterCondCfg{Name: "title", Operation: filter_condition.OperationKnnVector, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: "query text"}}
+	models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
+	models.EXPECT().GetVector(gomock.Any(), model, []string{"query text"}).Return([]*interfaces.VectorResp{{Vector: []float32{0.1, 0.2, 0.3}}}, nil)
+	err := (&resourceDataService{mfs: models}).resolveVectorConditions(context.Background(), resource, cfg, false)
+	require.Error(t, err)
+	_, invalid := interfaces.RequestSideQueryError(err)
+	assert.False(t, invalid)
+	assert.Contains(t, err.Error(), "1024")
+	assert.Equal(t, "title", cfg.Name)
+	assert.Equal(t, "query text", cfg.Value)
+}

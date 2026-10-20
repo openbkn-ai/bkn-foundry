@@ -343,6 +343,11 @@ components:
         filter_condition:
           description: |
             过滤条件，结构由 `FilterCondCfg` 决定。Override=DELETE 时必填且非空。
+            `knn_vector` 在索引维度已知时校验向量长度：调用方原始向量维度不匹配返回
+            HTTP 400 `VegaBackend.Resource.InvalidParameter`，`error_details` 包含实际及要求维度；
+            模型输出维度不匹配返回服务端错误。匹配维度的原始向量和文本检索仍受支持。
+            旧索引缺少维度元数据时维持原查询行为，下游维度错误仍返回 HTTP 500。
+            模型服务、索引或其他基础设施故障保持服务端错误分类。
           type: object
           additionalProperties: true
         paging:

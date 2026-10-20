@@ -36,12 +36,16 @@ func registerMockLogicalViewService(t *testing.T, service interfaces.LogicalView
 
 func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		stored     bool
-		statusCode int
+		name             string
+		stored           bool
+		modelFailure     bool
+		embeddingFailure bool
+		statusCode       int
 	}{
 		{name: "stored condition", stored: true, statusCode: http.StatusInternalServerError},
-		{name: "request condition", statusCode: http.StatusBadRequest},
+		{name: "request condition", statusCode: http.StatusInternalServerError},
+		{name: "model lookup fails", modelFailure: true, statusCode: http.StatusInternalServerError},
+		{name: "embedding service fails", embeddingFailure: true, statusCode: http.StatusInternalServerError},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -49,7 +53,16 @@ func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
 			mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 				Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-			mockMFS.EXPECT().GetModelByID(gomock.Any(), "removed-model").Return(nil, nil)
+			switch {
+			case tc.modelFailure:
+				mockMFS.EXPECT().GetModelByID(gomock.Any(), "removed-model").Return(nil, errors.New("private model service failure"))
+			case tc.embeddingFailure:
+				model := &interfaces.SmallModel{ModelID: "removed-model"}
+				mockMFS.EXPECT().GetModelByID(gomock.Any(), "removed-model").Return(model, nil)
+				mockMFS.EXPECT().GetVector(gomock.Any(), model, []string{"query text"}).Return(nil, errors.New("private embedding service failure"))
+			default:
+				mockMFS.EXPECT().GetModelByID(gomock.Any(), "removed-model").Return(nil, nil)
+			}
 			rds := &resourceDataService{cs: mockCS, mfs: mockMFS}
 			resource := &interfaces.Resource{
 				ID: "source", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable,
@@ -70,6 +83,7 @@ func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
 			var httpErr *rest.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.statusCode, httpErr.HTTPCode)
+			assert.NotContains(t, httpErr.BaseError.ErrorDetails, "private")
 		})
 	}
 }
@@ -1124,8 +1138,8 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 // 「数据资源内部错误」，ontology-query 继续判成依赖故障。
 type codedQueryError struct{ code int }
 
-func (e codedQueryError) Error() string { return "source database error" }
-func (e codedQueryError) Code() int     { return e.code }
+func (e *codedQueryError) Error() string { return "source database error" }
+func (e *codedQueryError) Code() int     { return e.code }
 
 func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 	newResource := func(category string) *interfaces.Resource {
@@ -1274,7 +1288,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockCF.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeHANA, gomock.Any()).Return(mockConn, nil)
 		mockConn.EXPECT().Connect(gomock.Any()).Return(nil)
 		mockConn.EXPECT().Close(gomock.Any()).Return(nil)
-		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, codedQueryError{258})
+		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, &codedQueryError{258})
 
 		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
 		var httpErr *rest.HTTPError
@@ -1507,6 +1521,107 @@ func TestNormalizeBinaryQueryValuesPreservesUnavailable(t *testing.T) {
 			assert.Contains(t, got[1], "blob")
 			assert.Nil(t, got[1]["blob"])
 			assert.NotContains(t, got[2], "blob")
+		})
+	}
+}
+
+func TestResourceDataServiceQuerySourcePageVectorDimensions(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		value      any
+		downstream error
+		status     int
+	}{
+		{"raw mismatch", []any{0.1, 0.2, 0.3}, nil, 400},
+		{"matching raw vector", make([]float32, 1024), nil, 0},
+		{"text vector", "query text", nil, 0},
+		{"backend outage", make([]float32, 1024), errors.New("backend unavailable"), 500},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+			models := mock_interfaces.NewMockModelFactoryService(ctrl)
+			resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": float64(1024)}}}}}}
+			field := "title_vector"
+			if _, text := tc.value.(string); text {
+				field = "title"
+				model := &interfaces.SmallModel{ModelID: "model"}
+				models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
+				models.EXPECT().GetVector(gomock.Any(), model, []string{"query text"}).Return([]*interfaces.VectorResp{{Vector: make([]float32, 1024)}}, nil)
+			}
+			cfg := &interfaces.FilterCondCfg{Name: field, Operation: filter_condition.OperationKnnVector, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: tc.value}}
+			params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", Enabled: true}, nil)
+			if tc.name != "raw mismatch" {
+				index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return([]map[string]any{{"title": "example"}}, int64(1), tc.downstream)
+			}
+			rows, total, err := (&resourceDataService{cs: catalogs, lim: index, mfs: models}).QuerySourcePage(context.Background(), resource, params)
+			if tc.status == 0 {
+				require.NoError(t, err)
+				assert.Equal(t, int64(1), total)
+				require.Len(t, rows, 1)
+				assert.Equal(t, "title_vector", cfg.Name)
+				return
+			}
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+			assert.Nil(t, rows)
+			assert.Zero(t, total)
+			if tc.status == 400 {
+				assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+				assert.Contains(t, httpErr.BaseError.ErrorDetails, "3")
+				assert.Contains(t, httpErr.BaseError.ErrorDetails, "1024")
+			}
+		})
+	}
+}
+
+func TestResourceDataServiceQuerySourcePageLegacyVectorDimensions(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		text           bool
+		backendFailure bool
+	}{
+		{"raw success", false, false}, {"text success", true, false},
+		{"raw dimension failure", false, true}, {"model dimension failure", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+			models := mock_interfaces.NewMockModelFactoryService(ctrl)
+			resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector}}}}}
+			cfg := &interfaces.FilterCondCfg{Name: "title_vector", Operation: filter_condition.OperationKnnVector, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: make([]float32, 3)}}
+			if tc.text {
+				cfg.Name = "title"
+				cfg.Value = "query text"
+				model := &interfaces.SmallModel{ModelID: "model"}
+				models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
+				models.EXPECT().GetVector(gomock.Any(), model, []string{"query text"}).Return([]*interfaces.VectorResp{{Vector: make([]float32, 3)}}, nil)
+			}
+			params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{ID: "catalog", Enabled: true}, nil)
+			var backendErr error
+			expectedRows := []map[string]any{{"title": "example"}}
+			if tc.backendFailure {
+				backendErr = errors.New("search failed: [400 Bad Request] Query vector has invalid dimension: 3. Dimension should be: 1024")
+			}
+			index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(expectedRows, int64(1), backendErr)
+			rows, total, err := (&resourceDataService{cs: catalogs, lim: index, mfs: models}).QuerySourcePage(context.Background(), resource, params)
+			if !tc.backendFailure {
+				require.NoError(t, err)
+				assert.Equal(t, expectedRows, rows)
+				assert.Equal(t, int64(1), total)
+				return
+			}
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_Resource_InternalError, httpErr.BaseError.ErrorCode)
+			assert.Nil(t, rows)
+			assert.Zero(t, total)
 		})
 	}
 }

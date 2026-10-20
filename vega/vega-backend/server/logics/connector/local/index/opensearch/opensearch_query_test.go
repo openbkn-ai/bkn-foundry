@@ -784,3 +784,27 @@ func TestOpenSearchJSONAliasQueries(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenSearchConnectorExecuteQueryPreservesBackendErrors(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusInternalServerError} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			body := `{"error":{"type":"illegal_argument_exception","reason":"Query vector has invalid dimension: 3. Dimension should be: 1024"}}`
+			client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true, Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+				var query map[string]any
+				require.NoError(t, json.NewDecoder(request.Body).Decode(&query))
+				assert.Equal(t, map[string]any{"knn": map[string]any{"embedding": map[string]any{"vector": []any{float64(0), float64(0), float64(0)}, "k": float64(10)}}}, query["query"])
+				return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})})
+			require.NoError(t, err)
+			cfg := &interfaces.FilterCondCfg{Name: "embedding", Operation: filter_condition.OperationKnnVector, ValueOptCfg: interfaces.ValueOptCfg{Value: make([]float32, 3)}}
+			actual, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"embedding": {Name: "embedding", Type: interfaces.DataType_Vector}})
+			require.NoError(t, err)
+			require.NotNil(t, actual)
+			result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "index", &interfaces.Resource{}, &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg, ActualFilterCond: actual})
+			require.Error(t, err)
+			assert.Nil(t, result)
+			_, invalid := interfaces.RequestSideQueryError(err)
+			assert.False(t, invalid, "backend errors without known index dimensions retain their original classification")
+		})
+	}
+}

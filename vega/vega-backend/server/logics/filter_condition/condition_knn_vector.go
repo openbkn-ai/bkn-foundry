@@ -9,7 +9,9 @@ package filter_condition
 import (
 	"context"
 	"fmt"
+	"reflect"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -47,6 +49,10 @@ func (c *KnnVectorCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, fmt.Errorf("condition [knn_vector] does not support value_from type '%s'", cfg.ValueFrom)
 	}
 
+	if err := ValidateVectorDimension(field, cfg.Value); err != nil {
+		return nil, err
+	}
+
 	subConds := []interfaces.FilterCondition{}
 	for _, subCond := range cfg.SubConds {
 		cond, err := NewFilterCondition(ctx, subCond, fieldsMap)
@@ -64,4 +70,24 @@ func (c *KnnVectorCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		FilterFieldName: cfg.Name,
 		SubConds:        subConds,
 	}, nil
+}
+
+// ValidateVectorDimension 按向量字段的索引配置校验长度；旧索引没有维度元数据时交由连接器处理。
+func ValidateVectorDimension(field *interfaces.Property, value any) error {
+	if field == nil {
+		return nil
+	}
+	if IsSlice(value) {
+		actual := reflect.ValueOf(value).Len()
+		for _, feature := range field.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+				continue
+			}
+			expected, known := common.NumberAsInt64(feature.Config["dimension"])
+			if known && expected > 0 && int64(actual) != expected {
+				return interfaces.NewConditionBuildError("condition [knn_vector] field '%s': query vector has dimension %d; index requires dimension %d", field.Name, actual, expected)
+			}
+		}
+	}
+	return nil
 }
