@@ -283,9 +283,10 @@ func parseDataSource(sectionText string) *ResourceInfo {
 	}
 }
 
-func parseDataProperties(sectionText string) ([]*DataProperty, error) {
+// parseDataProperties reads the Data Properties table. Under 3.0 it also reads the Semantic and
+// Required columns; explicitFalse names the properties whose Required is written false.
+func parseDataProperties(sectionText string, opts parseOptions) (props []*DataProperty, explicitFalse []string, err error) {
 	rows := parseTable(strings.Split(sectionText, "\n"))
-	var props []*DataProperty
 	for _, row := range rows {
 		property := &DataProperty{
 			Name:        row["Name"],
@@ -298,18 +299,29 @@ func parseDataProperties(sectionText string) ([]*DataProperty, error) {
 			// A row without a name is a row the table reader could not rebuild. Refusing it
 			// here is what makes a broken file visible; dropping the row would import an
 			// object type that is quietly missing a property.
-			return nil, fmt.Errorf("data property row %d is malformed: empty Name", len(props)+1)
+			return nil, nil, fmt.Errorf("data property row %d is malformed: empty Name", len(props)+1)
 		}
 		if rawRule := strings.TrimSpace(row["Mask Rule"]); rawRule != "" {
 			var rule maskrule.Rule
 			if err := json.Unmarshal([]byte(rawRule), &rule); err != nil {
-				return nil, fmt.Errorf("data property %q has invalid Mask Rule JSON: %w", property.Name, err)
+				return nil, nil, fmt.Errorf("data property %q has invalid Mask Rule JSON: %w", property.Name, err)
 			}
 			property.MaskRule = &rule
 		}
+		if opts.v3() {
+			property.Semantic = strings.TrimSpace(row["Semantic"])
+			required, isFalse, err := parseRequired(property.Name, row["Required"])
+			if err != nil {
+				return nil, nil, err
+			}
+			property.Required = required
+			if isFalse {
+				explicitFalse = append(explicitFalse, property.Name)
+			}
+		}
 		props = append(props, property)
 	}
-	return props, nil
+	return props, explicitFalse, nil
 }
 
 func parseLogicProperties(sectionText string) []*LogicProperty {
@@ -526,6 +538,18 @@ func ParseNetworkFile(text string, sourcePath string) (*BknNetwork, error) {
 		Description: extractBodyDescription(text),
 		RawContent:  text,
 	}
+	if spec == BknSpecV3 {
+		fm, err := parseRawFrontmatter(text)
+		if err != nil {
+			return nil, err
+		}
+		if err := checkNetworkV3(text, fm); err != nil {
+			return nil, fmt.Errorf("network.bkn: %w", err)
+		}
+		network.ID, network.Name, network.Tags = fm.str("id"), fm.str("name"), fm.list("tags")
+		network.Version, network.Branch = fm.str("version"), fm.str("branch")
+		network.Description = unescapeDescriptionV3(network.Description)
+	}
 	network.Summary = ExtractSummary(network.Description)
 
 	return network, nil
@@ -542,16 +566,20 @@ func parseObjectTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 		return nil, err
 	}
 
+	header, err := readDefinitionHeader(kindObjectType, text, fmData, opts)
+	if err != nil {
+		return nil, err
+	}
 	desc, sections, order := extractSectionsWithDesc(text)
 
 	obj := &BknObjectType{
 		BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{
 			Type: "object_type",
-			ID:   strVal(fmData, "id"),
-			Name: strVal(fmData, "name"),
-			Tags: strSliceVal(fmData, "tags"),
+			ID:   header.id,
+			Name: header.name,
+			Tags: header.tags,
 		},
-		Description: buildDescription(desc, sections, order, knownObjectTypeSections),
+		Description: header.description(buildDescription(desc, sections, order, opts.knownObjectSections())),
 		RawContent:  text,
 	}
 	obj.Summary = ExtractSummary(obj.Description)
@@ -562,8 +590,9 @@ func parseObjectTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 	if s, ok := sections["Data Source"]; ok {
 		obj.DataSource = parseDataSource(s)
 	}
+	var explicitFalse []string
 	if s, ok := sections["Data Properties"]; ok {
-		obj.DataProperties, err = parseDataProperties(s)
+		obj.DataProperties, explicitFalse, err = parseDataProperties(s, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -586,13 +615,47 @@ func parseObjectTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 		obj.DisplayKey = dk
 		obj.IncrementalKey = ik
 	}
+	if opts.v3() {
+		if err := parseObjectTypeDeclarationsV3(obj, sections, explicitFalse); err != nil {
+			return nil, err
+		}
+	}
 
 	return obj, nil
 }
 
-// ParseRelationTypeFile parses a relation_type definition file.
+// parseObjectTypeDeclarationsV3 reads ### Property Constraints and checks the property declarations
+// of a 3.0 object type.
+func parseObjectTypeDeclarationsV3(obj *BknObjectType, sections map[string]string, explicitFalse []string) error {
+	for _, name := range explicitFalse {
+		if containsString(obj.PrimaryKeys, name) {
+			return specErrorf("data property %q: a primary key is required by definition; leave Required empty instead of writing false", name)
+		}
+	}
+	for _, p := range obj.DataProperties {
+		if containsString(obj.PrimaryKeys, p.Name) {
+			p.Required = true
+		}
+	}
+	if s, ok := sections["Property Constraints"]; ok {
+		if err := parsePropertyConstraintsV3(s, obj.DataProperties); err != nil {
+			return err
+		}
+	}
+	return ValidateObjectTypeDeclarations(obj)
+}
+
+// ParseRelationTypeFile parses a relation_type definition file by the 2.x rules.
 func ParseRelationTypeFile(text string, sourcePath string) (*BknRelationType, error) {
+	return parseRelationTypeFile(text, sourcePath, parseOptions{})
+}
+
+func parseRelationTypeFile(text string, sourcePath string, opts parseOptions) (*BknRelationType, error) {
 	fmData, err := ParseFrontmatter(text)
+	if err != nil {
+		return nil, err
+	}
+	header, err := readDefinitionHeader(kindRelationType, text, fmData, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -602,11 +665,11 @@ func ParseRelationTypeFile(text string, sourcePath string) (*BknRelationType, er
 	rel := &BknRelationType{
 		BknRelationTypeFrontmatter: BknRelationTypeFrontmatter{
 			Type: "relation_type",
-			ID:   strVal(fmData, "id"),
-			Name: strVal(fmData, "name"),
-			Tags: strSliceVal(fmData, "tags"),
+			ID:   header.id,
+			Name: header.name,
+			Tags: header.tags,
 		},
-		Description: buildDescription(desc, sections, order, knownRelationTypeSections),
+		Description: header.description(buildDescription(desc, sections, order, knownRelationTypeSections)),
 		RawContent:  text,
 	}
 	rel.Summary = ExtractSummary(rel.Description)
@@ -691,19 +754,26 @@ func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 		return nil, err
 	}
 
+	header, err := readDefinitionHeader(kindActionType, text, fmData, opts)
+	if err != nil {
+		return nil, err
+	}
 	desc, sections, order := extractSectionsWithDesc(text)
 
 	act := &BknActionType{
 		BknActionTypeFrontmatter: BknActionTypeFrontmatter{
 			Type:         "action_type",
-			ID:           strVal(fmData, "id"),
-			Name:         strVal(fmData, "name"),
-			Tags:         strSliceVal(fmData, "tags"),
+			ID:           header.id,
+			Name:         header.name,
+			Tags:         header.tags,
 			ActionType:   strVal(fmData, "action_type"),
 			ActionIntent: strVal(fmData, "action_intent"),
 		},
-		Description: buildDescription(desc, sections, order, opts.knownActionSections()),
+		Description: header.description(buildDescription(desc, sections, order, opts.knownActionSections())),
 		RawContent:  text,
+	}
+	if opts.v3() {
+		act.ActionIntent = header.raw.str("action_intent")
 	}
 	act.Summary = ExtractSummary(act.Description)
 
@@ -862,19 +932,13 @@ func parseActionCondition(sectionText string) *ActionCondCfg {
 // Legacy aliases "Parameter" (for Name) and "Binding"/"Value From" (for ValueFrom) are
 // also accepted for backwards compatibility with older BKN files.
 //
-// Under 3.0 a legacy row is converted to the current meaning (legacyBindingParameter) and a row
-// whose value source would make execution drop the parameter is refused.
+// Under 3.0 the table has a single layout (the legacy one is refused before parsing, see strict.go)
+// and a row whose value source would make execution drop the parameter is refused.
 func parseParameterBinding(sectionText string, opts parseOptions) ([]Parameter, error) {
 	rows := parseTable(strings.Split(sectionText, "\n"))
 	var params []Parameter
 	for _, row := range rows {
 		name := firstNonEmpty(row, "Name", "Parameter")
-		if opts.v3() {
-			if param, ok := legacyBindingParameter(row, name); ok {
-				params = append(params, param)
-				continue
-			}
-		}
 		valueFrom := firstNonEmpty(row, "ValueFrom", "Binding", "Value From")
 		param := Parameter{
 			Name:        name,
@@ -932,23 +996,31 @@ func parseSchedule(sectionText string) *Schedule {
 	}
 }
 
-// ParseRiskTypeFile parses a risk_type definition file.
+// ParseRiskTypeFile parses a risk_type definition file by the 2.x rules.
 func ParseRiskTypeFile(text string, sourcePath string) (*BknRiskType, error) {
+	return parseRiskTypeFile(text, sourcePath, parseOptions{})
+}
+
+func parseRiskTypeFile(text string, sourcePath string, opts parseOptions) (*BknRiskType, error) {
 	fmData, err := ParseFrontmatter(text)
 	if err != nil {
 		return nil, err
 	}
 
+	header, err := readDefinitionHeader(kindRiskType, text, fmData, opts)
+	if err != nil {
+		return nil, err
+	}
 	desc, sections, order := extractSectionsWithDesc(text)
 
 	risk := &BknRiskType{
 		BknRiskTypeFrontmatter: BknRiskTypeFrontmatter{
 			Type: "risk_type",
-			ID:   strVal(fmData, "id"),
-			Name: strVal(fmData, "name"),
-			Tags: strSliceVal(fmData, "tags"),
+			ID:   header.id,
+			Name: header.name,
+			Tags: header.tags,
 		},
-		Description: buildDescription(desc, sections, order, knownRiskTypeSections),
+		Description: header.description(buildDescription(desc, sections, order, knownRiskTypeSections)),
 		RawContent:  text,
 	}
 	risk.Summary = ExtractSummary(risk.Description)
@@ -956,8 +1028,17 @@ func ParseRiskTypeFile(text string, sourcePath string) (*BknRiskType, error) {
 	return risk, nil
 }
 
+// ParseConceptGroupFile parses a concept_group definition file by the 2.x rules.
 func ParseConceptGroupFile(text string, sourcePath string) (*BknConceptGroup, error) {
+	return parseConceptGroupFile(text, sourcePath, parseOptions{})
+}
+
+func parseConceptGroupFile(text string, sourcePath string, opts parseOptions) (*BknConceptGroup, error) {
 	fmData, err := ParseFrontmatter(text)
+	if err != nil {
+		return nil, err
+	}
+	header, err := readDefinitionHeader(kindConceptGroup, text, fmData, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -967,11 +1048,11 @@ func ParseConceptGroupFile(text string, sourcePath string) (*BknConceptGroup, er
 	cg := &BknConceptGroup{
 		BknConceptGroupFrontmatter: BknConceptGroupFrontmatter{
 			Type: "concept_group",
-			ID:   strVal(fmData, "id"),
-			Name: strVal(fmData, "name"),
-			Tags: strSliceVal(fmData, "tags"),
+			ID:   header.id,
+			Name: header.name,
+			Tags: header.tags,
 		},
-		Description: buildDescription(desc, sections, order, knownConceptGroupSections),
+		Description: header.description(buildDescription(desc, sections, order, knownConceptGroupSections)),
 		RawContent:  text,
 	}
 	cg.Summary = ExtractSummary(cg.Description)
@@ -1036,4 +1117,38 @@ func parseCapabilities(fmData map[string]any) *BknCapabilities {
 		return nil
 	}
 	return capabilities
+}
+
+// definitionHeader is what every definition file reads from its frontmatter, by the rules of the
+// package's specification.
+type definitionHeader struct {
+	id, name string
+	tags     []string
+	v3       bool
+	raw      rawFrontmatter
+}
+
+// readDefinitionHeader reads id, name and tags. Under 3.0 it first applies the structure rules of
+// strict.go to the whole file and reads the fields as written.
+func readDefinitionHeader(kind, text string, fmData map[string]any, opts parseOptions) (definitionHeader, error) {
+	if !opts.v3() {
+		return definitionHeader{id: strVal(fmData, "id"), name: strVal(fmData, "name"), tags: strSliceVal(fmData, "tags")}, nil
+	}
+	raw, err := parseRawFrontmatter(text)
+	if err != nil {
+		return definitionHeader{}, err
+	}
+	if err := checkDefinitionV3(kind, text, raw); err != nil {
+		return definitionHeader{}, err
+	}
+	return definitionHeader{id: raw.str("id"), name: raw.str("name"), tags: raw.list("tags"), v3: true, raw: raw}, nil
+}
+
+// description returns a definition's description as stored: under 3.0 the exporter's escape of
+// lines that start with # is reversed.
+func (h definitionHeader) description(desc string) string {
+	if h.v3 {
+		return unescapeDescriptionV3(desc)
+	}
+	return desc
 }

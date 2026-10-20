@@ -100,6 +100,20 @@ func (o parseOptions) knownActionSections() map[string]bool {
 	return known
 }
 
+// knownObjectSections returns the object type sections that are parsed. 3.0 adds Property
+// Constraints; under 2.x it is an unknown section and goes into the description, as it always did.
+func (o parseOptions) knownObjectSections() map[string]bool {
+	if !o.v3() {
+		return knownObjectTypeSections
+	}
+	known := make(map[string]bool, len(knownObjectTypeSections)+1)
+	for title := range knownObjectTypeSections {
+		known[title] = true
+	}
+	known["Property Constraints"] = true
+	return known
+}
+
 var parameterValueSources = map[string]bool{"property": true, "input": true, "const": true}
 
 // checkParameterValueSource is the 3.0 rule for a parameter row. Execution switches on ValueFrom
@@ -118,14 +132,15 @@ func checkParameterValueSource(owner string, p Parameter) error {
 		owner, p.Name, p.ValueFrom)
 }
 
-// legacyBindingParameter reads a row of the legacy parameter table
-// (Parameter | Type | Source | Binding | Description) under 3.0.
+// legacyBindingParameter rewrites a row of the legacy parameter table
+// (Parameter | Type | Source | Binding | Description) to the current meaning.
 //
 // That table put the value source — property, input or const — in Source and the property name or
 // constant in Binding. The 2.x rules map Binding onto ValueFrom, which leaves the property name
-// where the value source belongs, and execution then drops the parameter. A row is converted only
-// when the table has a Binding column and no ValueFrom column and its Source holds one of the three
-// value sources.
+// where the value source belongs, and execution then drops the parameter. 3.0 refuses the layout and
+// shows this rewrite as the fix; the network check suggests the same rewrite for parameters already
+// stored. A row is rewritten only when the table has a Binding column and no ValueFrom column and
+// its Source holds one of the three value sources.
 func legacyBindingParameter(row map[string]string, name string) (Parameter, bool) {
 	if _, ok := row["Binding"]; !ok {
 		return Parameter{}, false

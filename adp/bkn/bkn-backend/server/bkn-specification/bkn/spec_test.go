@@ -154,34 +154,32 @@ func TestLoadNetwork_LegacySpecKeepsCurrentBehavior(t *testing.T) {
 	assert.Equal(t, "pod_name", lp.Parameters[0].ValueFrom)
 }
 
-func TestLoadNetwork_V3ReadsCorrectedRules(t *testing.T) {
-	net, err := loadSpecNetwork(t, "bkn_spec: \"3.0\"\n", goodLogicParameter, legacyParameterTable)
-	require.NoError(t, err)
-	assert.Equal(t, BknSpecV3, net.BknSpec)
+// 3.0 has one layout for each thing: the 2.x forms the legacy test above reads are refused, with
+// the rewrite in the message.
+func TestLoadNetwork_V3RefusesTheLegacyForms(t *testing.T) {
+	_, err := loadSpecNetwork(t, "bkn_spec: \"3.0\"\n", goodLogicParameter, legacyParameterTable)
+	assert.ErrorContains(t, err, `section "### Tool Configuration" is not a 3.0 section; write "### Action Source"`)
+	var specErr *SpecError
+	assert.ErrorAs(t, err, &specErr)
 
-	at := net.ActionTypes[0]
-	require.NotNil(t, at.ActionSource)
-	assert.Equal(t, "tool_restart", at.ActionSource.ToolID)
-	assert.Equal(t, "重启异常 Pod。", at.Description)
-
-	require.Len(t, at.Parameters, 2)
-	assert.Equal(t, Parameter{Name: "pod", Type: "string", ValueFrom: "property", Value: "pod_name", Description: "Pod 名称"}, at.Parameters[0])
-	assert.Equal(t, Parameter{Name: "reason", Type: "string", ValueFrom: "input", Value: "", Description: "原因"}, at.Parameters[1])
+	_, err = loadV3(t, v3Edit{fAct,
+		"| Name | Type | Source | Operation | ValueFrom | Value | Description |\n|------|------|--------|-----------|-----------|-------|-------------|\n| pod | string | Body | | property | pod_name | Pod 名称 |\n| reason | string | Body | | input | | 原因 |",
+		legacyParameterTable})
+	assert.ErrorContains(t, err, `e.g. row "pod" as ValueFrom "property", Value "pod_name"`)
 }
 
 // Under 3.0 a parameter that execution would silently drop is refused at import.
 func TestLoadNetwork_V3RefusesParametersExecutionWouldDrop(t *testing.T) {
-	spec := "bkn_spec: \"3.0\"\n"
-	current := "| Name | Type | Source | Operation | ValueFrom | Value | Description |\n|------|------|--------|-----------|-----------|-------|-------------|\n"
+	const goodRow = "| pod | string | Body | | property | pod_name | Pod 名称 |"
 
-	_, err := loadSpecNetwork(t, spec, goodLogicParameter, current+"| pod | string | property | | pod_name | | |")
+	_, err := loadV3(t, v3Edit{fAct, goodRow, "| pod | string | property | | pod_name | | |"})
 	assert.ErrorContains(t, err, "belongs in ValueFrom, not Source")
 	var specErr *SpecError
 	assert.ErrorAs(t, err, &specErr, "importers recognize a spec refusal through the wrapping")
 
-	_, err = loadSpecNetwork(t, spec, goodLogicParameter, current+"| pod | string | Body | | | | |")
+	_, err = loadV3(t, v3Edit{fAct, goodRow, "| pod | string | Body | | | | |"})
 	assert.ErrorContains(t, err, "ValueFrom must be property, input or const")
 
-	_, err = loadSpecNetwork(t, spec, `| pod | string | property | | pod_name | | |`, current+"| pod | string | Body | | property | pod_name | |")
+	_, err = loadV3(t, v3Edit{fObj, "| pod | string | | == | property | pod_name | |", "| pod | string | property | | pod_name | | |"})
 	assert.ErrorContains(t, err, `logic property "cpu"`)
 }

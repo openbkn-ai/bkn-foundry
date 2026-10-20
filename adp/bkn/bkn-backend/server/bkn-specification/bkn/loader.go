@@ -23,6 +23,10 @@ const (
 	ExtensionBkn     = ".bkn"
 )
 
+// valueTypesDir holds the value types of a 3.0 package (SPECIFICATION.md §16). The 2.x reader never
+// looks into it.
+const valueTypesDir = "value_types"
+
 // Supported file extensions for BKN content.
 var (
 	SupportedExtensions = map[string]bool{
@@ -106,6 +110,9 @@ func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
 	// Step 4: Traverse subdirectories and load definitions, under the rules of the specification
 	// network.bkn declares.
 	opts := parseOptions{spec: bknDoc.BknSpec}
+	if opts.v3() && fsys.IsDir(fsys.Join(absRoot, valueTypesDir)) {
+		return nil, specErrorf("%s/: value types %s", valueTypesDir, unsupportedYet)
+	}
 	for subdir := range SupportedBknSubDirs {
 		subdirPath := fsys.Join(absRoot, subdir)
 		if !fsys.IsDir(subdirPath) {
@@ -191,7 +198,7 @@ func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *Bk
 			result.ObjectTypes = append(result.ObjectTypes, obj)
 
 		case "relation_types":
-			rel, err := ParseRelationTypeFile(string(data), filePath)
+			rel, err := parseRelationTypeFile(string(data), filePath, opts)
 			if err != nil {
 				return fmt.Errorf("parse %s: %w", name, err)
 			}
@@ -205,7 +212,7 @@ func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *Bk
 			result.ActionTypes = append(result.ActionTypes, act)
 
 		case "risk_types":
-			ris, err := ParseRiskTypeFile(string(data), filePath)
+			ris, err := parseRiskTypeFile(string(data), filePath, opts)
 			if err != nil {
 				return fmt.Errorf("parse %s: %w", name, err)
 			}
@@ -213,7 +220,7 @@ func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *Bk
 
 		case "concept_groups":
 			// Concept groups use generic parsing for now
-			grp, err := ParseConceptGroupFile(string(data), filePath)
+			grp, err := parseConceptGroupFile(string(data), filePath, opts)
 			if err != nil {
 				return fmt.Errorf("parse %s: %w", name, err)
 			}
