@@ -263,6 +263,38 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 			assert.Zero(t, total)
 		})
 	}
+	t.Run("index source preserves wrapped stored condition failures", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		factory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := mock_interfaces.NewMockIndexConnector(ctrl)
+		resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryIndex,
+			SourceIdentifier: "physical-index",
+			SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text}}}
+		fixed := &interfaces.FilterCondCfg{Name: "title", Operation: filter_condition.OperationEqual,
+			ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: "example"}}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: fixed, FixedFilterCondCfg: fixed}
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).
+			Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}, nil)
+		factory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).Return(connector, nil)
+		connector.EXPECT().Connect(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		cause := interfaces.NewConditionBuildError("text field has no keyword feature")
+		storedCause := interfaces.NewStoredConditionBuildError(cause)
+		connector.EXPECT().ExecuteQuery(gomock.Any(), resource.SourceIdentifier, resource, params).
+			Return(nil, fmt.Errorf("compile index query: %w", storedCause))
+		service := &resourceDataService{cs: catalogs, cf: factory}
+
+		rows, total, err := service.QuerySourcePage(context.Background(), resource, params)
+
+		assert.Nil(t, rows)
+		assert.Zero(t, total)
+		var stored *interfaces.StoredConditionBuildError
+		require.ErrorAs(t, err, &stored)
+		assert.Same(t, storedCause, stored)
+		assert.ErrorIs(t, err, cause)
+	})
+
 }
 
 func TestQuerySourcePagePreservesUnavailableIndexOutput(t *testing.T) {
