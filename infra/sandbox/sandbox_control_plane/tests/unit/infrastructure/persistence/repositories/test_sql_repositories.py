@@ -11,7 +11,10 @@ from src.domain.services.scheduler import RuntimeNode
 from src.domain.value_objects.execution_status import ExecutionState, ExecutionStatus, SessionStatus
 from src.domain.value_objects.resource_limit import ResourceLimit
 from src.infrastructure.persistence.database import Base  # noqa: F401
-from src.infrastructure.persistence.models.execution_model import ExecutionModel
+from src.infrastructure.persistence.models.execution_model import (
+    CODE_COLUMN_MAX_BYTES,
+    ExecutionModel,
+)
 from src.infrastructure.persistence.models.runtime_node_model import RuntimeNodeModel
 from src.infrastructure.persistence.models.session_model import SessionModel
 from src.infrastructure.persistence.models.template_model import TemplateModel
@@ -312,6 +315,17 @@ class TestSqlExecutionRepository:
         assert existing.f_status == "completed"
         assert existing.f_return_value == '{"ok": true}'
         assert existing.f_metrics == '{"time": 1}'
+
+    @pytest.mark.asyncio
+    async def test_update_keeps_code_within_the_column(self):
+        existing = ExecutionModel.from_entity(make_execution(status=ExecutionStatus.RUNNING))
+        update_db = FakeAsyncSession({(ExecutionModel, "exec-1"): existing})
+        oversized = make_execution(status=ExecutionStatus.COMPLETED)
+        oversized.code = "z" * (CODE_COLUMN_MAX_BYTES + 1)
+
+        await SqlExecutionRepository(update_db).save(oversized)
+
+        assert len(existing.f_code.encode("utf-8")) <= CODE_COLUMN_MAX_BYTES
 
     @pytest.mark.asyncio
     async def test_queries_deletes_counts_and_empty_retry_helpers(self):

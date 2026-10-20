@@ -10,12 +10,17 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.schema import CreateTable
 
 from src.domain.entities.execution import Execution
 from src.domain.value_objects.execution_status import ExecutionState, ExecutionStatus
-from src.infrastructure.persistence.database import Base  # noqa: F401
+from src.infrastructure.persistence.database import (  # noqa: F401
+    LEGACY_DATABASE_NAME,
+    TARGET_DATABASE_NAME,
+    Base,
+)
 from src.infrastructure.persistence.models.execution_model import ExecutionModel
 from src.infrastructure.persistence.repositories.sql_execution_repository import (
     SqlExecutionRepository,
@@ -31,6 +36,10 @@ async def engine():
     url = os.environ.get("SANDBOX_RESULT_TEST_DATABASE_URL")
     if not url:
         pytest.skip("disposable MySQL URL is required")
+    # These tests drop and recreate t_sandbox_execution. Refuse the product schemas
+    # outright rather than trusting the caller to have picked a scratch database.
+    if make_url(url).database in (TARGET_DATABASE_NAME, LEGACY_DATABASE_NAME):
+        pytest.fail(f"refusing to run against the product database {make_url(url).database!r}")
     engine = create_async_engine(url)
     async with engine.begin() as conn:
         await conn.run_sync(ExecutionModel.__table__.drop, checkfirst=True)
@@ -83,10 +92,45 @@ async def test_migration_preserves_large_utf8_results(engine, field):
     migration = root / "migrations/sandbox/mariadb/0.2.0/01-expand-execution-results.sql"
     async with engine.begin() as conn:
         for statement in migration.read_text().split(";"):
-            if statement.strip():
-                await conn.execute(text(statement))
+            # Migrations pin `USE openbkn;` for the installer. Executed here it would
+            # move the connection out of the scratch database, and the fixture's
+            # DROP TABLE would land on whatever schema the server calls openbkn.
+            body = "\n".join(
+                line for line in statement.splitlines() if not line.lstrip().startswith("--")
+            ).strip()
+            if body and not body.upper().startswith("USE "):
+                await conn.execute(text(body))
     saved, report = await record(engine, field)
     assert getattr(saved, field) == getattr(report, field)
     assert saved.state.status == (
         ExecutionStatus.FAILED if field == "stderr" else ExecutionStatus.COMPLETED
     )
+
+
+@pytest.mark.asyncio
+async def test_oversized_code_and_credentials_do_not_block_the_record(engine):
+    # #2294: run_code prepends a ~64 KB stub, which overflowed the TEXT f_code column
+    # with 1406 before the code ever ran. The event carried the caller's token.
+    user_code = "print('业务代码')\n"
+    code = '"""文档字符串"""\n' * 6000 + user_code
+    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+        repo = SqlExecutionRepository(session)
+        await repo.save(
+            Execution(
+                id="exec-mysql",
+                session_id="session",
+                code=code,
+                language="python",
+                event_data={"token": "ory_at_secret"},
+                state=ExecutionState(status=ExecutionStatus.PENDING),
+            )
+        )
+        await repo.commit()
+        saved = await repo.find_by_id("exec-mysql")
+        stored_event = (
+            await session.execute(text("SELECT f_event_data FROM t_sandbox_execution"))
+        ).scalar_one()
+
+    assert len(code.encode("utf-8")) > 65535
+    assert saved.code.endswith(user_code)
+    assert "ory_at_secret" not in stored_event

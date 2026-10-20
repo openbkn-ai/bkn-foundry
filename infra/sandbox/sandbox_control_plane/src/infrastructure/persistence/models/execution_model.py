@@ -5,6 +5,7 @@ The SQLAlchemy model used for persistence.
 Naming convention: t_{module}_{entity} for tables, f_{field_name} for columns.
 """
 
+import hashlib
 from datetime import datetime
 
 from sqlalchemy import Column, String, Integer, BigInteger, Text, Index
@@ -13,6 +14,31 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import func
 
 from src.infrastructure.persistence.database import Base
+
+# f_code is a MariaDB TEXT column: 65535 bytes, not characters.
+CODE_COLUMN_MAX_BYTES = 65535
+
+
+def bounded_code(code: str) -> str:
+    """
+    Fit the code into f_code.
+
+    The executor receives the code with the request and never reads it back from
+    here; the column only feeds the execution history. Rejecting the row would fail
+    the execution before it starts (#2294), so oversized code keeps its tail behind
+    a marker. The tail is the part worth keeping: callers such as run_code put a
+    generated prelude first and the caller's own code last.
+    """
+    raw = code.encode("utf-8")
+    if len(raw) <= CODE_COLUMN_MAX_BYTES:
+        return code
+    digest = hashlib.sha256(raw).hexdigest()
+    marker = f"# [truncated: {len(raw)} bytes, sha256:{digest}, tail kept]\n"
+    budget = CODE_COLUMN_MAX_BYTES - len(marker.encode("utf-8"))
+    # Cutting inside a multi-byte character leaves continuation bytes at the start;
+    # dropping them keeps the result valid UTF-8 and within budget.
+    tail = raw[-budget:].decode("utf-8", errors="ignore")
+    return marker + tail
 
 
 class ExecutionModel(Base):
@@ -114,13 +140,14 @@ class ExecutionModel(Base):
             f_id=execution.id,
             f_session_id=execution.session_id,
             f_status=execution.state.status.value,
-            f_code=execution.code,
+            f_code=bounded_code(execution.code),
             f_language=execution.language,
             f_timeout_sec=execution.timeout,
             f_entrypoint="",
-            f_event_data=(
-                json.dumps(execution.event_data, ensure_ascii=False) if execution.event_data else ""
-            ),
+            # The event goes to the executor with the request and nothing reads it back.
+            # It can carry the caller's credentials (run_code sends a bearer token), so
+            # it is not stored.
+            f_event_data="",
             f_return_value=(
                 json.dumps(execution.return_value, ensure_ascii=False)
                 if execution.return_value

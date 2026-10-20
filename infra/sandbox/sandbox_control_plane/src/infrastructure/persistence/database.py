@@ -267,6 +267,9 @@ class DatabaseManager:
         self._engine = create_async_engine(
             self._get_runtime_database_url(),
             echo=settings.log_level == "DEBUG",
+            # Statement parameters carry execution payloads, which can hold caller
+            # credentials. Keep them out of DBAPI error messages and echoed SQL.
+            hide_parameters=True,
             pool_size=settings.db_pool_size,
             max_overflow=settings.db_max_overflow,
             pool_recycle=settings.db_pool_recycle,
