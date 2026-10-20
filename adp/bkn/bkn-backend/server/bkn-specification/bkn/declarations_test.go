@@ -40,7 +40,6 @@ func TestLoadLegacy_IgnoresPropertyDeclarations(t *testing.T) {
 		assert.Nil(t, p.Constraints)
 	}
 	assert.Contains(t, ot.Description, "### Property Constraints")
-	assert.False(t, HasV3Declarations(net))
 }
 
 const (

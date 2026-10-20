@@ -105,30 +105,27 @@ func TestWriteV3_EscapesDescriptionHeadings(t *testing.T) {
 	assert.Equal(t, files, exportFiles(t, again))
 }
 
-// A network built without bkn_spec (the backend's export) but carrying a declaration is written
-// under 3.0, so the declaration survives the next import.
-func TestWriteNetwork_DeclarationsSelectV3(t *testing.T) {
+// Only bkn_spec selects 3.0: a network without it is written exactly as before, even when it
+// carries a 3.0 declaration (the backend's export does not set bkn_spec).
+func TestWriteNetwork_WithoutBknSpecStaysLegacy(t *testing.T) {
 	net, err := loadV3(t)
 	require.NoError(t, err)
 	net.BknSpec = BknSpecLegacy
-	require.True(t, HasV3Declarations(net))
-	assert.Contains(t, exportFiles(t, net)["network.bkn"], "bkn_spec: \"3.0\"")
+	require.NotNil(t, net.ObjectTypes[0].DataProperties[3].Constraints, "the network carries declarations")
+	files := exportFiles(t, net)
+	assert.NotContains(t, files["network.bkn"], "bkn_spec")
+	assert.Equal(t, SerializeBknNetwork(net), files["network.bkn"])
+	assert.Equal(t, SerializeObjectType(net.ObjectTypes[0]), files["object_types/pod.bkn"])
+	assert.Equal(t, SerializeActionType(net.ActionTypes[0]), files["action_types/restart_pod.bkn"])
 }
 
 // A network without any 3.0 declaration is written exactly as before.
 func TestWriteNetwork_LegacyStaysLegacy(t *testing.T) {
 	net, err := loadV3(t, v3Edit{fNet, "bkn_spec: \"3.0\"\n", ""})
 	require.NoError(t, err)
-	require.False(t, HasV3Declarations(net))
 	files := exportFiles(t, net)
 	assert.NotContains(t, files["network.bkn"], "bkn_spec")
 	assert.Equal(t, SerializeObjectType(net.ObjectTypes[0]), files["object_types/pod.bkn"])
 	assert.Equal(t, SerializeActionType(net.ActionTypes[0]), files["action_types/restart_pod.bkn"])
 	assert.Equal(t, SerializeBknNetwork(net), files["network.bkn"])
-
-	// Required on a primary key alone is implied, not a declaration.
-	for _, p := range net.ObjectTypes[0].DataProperties {
-		p.Required = p.Name == "id"
-	}
-	assert.False(t, HasV3Declarations(net))
 }

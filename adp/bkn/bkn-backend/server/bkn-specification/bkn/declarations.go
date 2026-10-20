@@ -389,26 +389,3 @@ func timeBound(typ string, v any) (time.Time, bool) {
 	t, err := time.Parse(time.RFC3339, s)
 	return t, err == nil
 }
-
-// hasPropertyDeclarations reports whether a property carries a 3.0 declaration that a 2.x export
-// would drop. Required on a primary key is implied, so it alone is not one.
-func hasPropertyDeclarations(p *DataProperty, primaryKeys []string) bool {
-	if p == nil {
-		return false
-	}
-	return p.Semantic != "" || p.Constraints != nil || (p.Required && !containsString(primaryKeys, p.Name))
-}
-
-// HasV3Declarations reports whether a network carries any 3.0 declaration, and so has to be
-// exported under bkn_spec 3.0: a 2.x package cannot hold them, and importing it again would drop
-// them.
-func HasV3Declarations(doc *BknNetwork) bool {
-	for _, ot := range doc.ObjectTypes {
-		for _, p := range ot.DataProperties {
-			if hasPropertyDeclarations(p, ot.PrimaryKeys) {
-				return true
-			}
-		}
-	}
-	return false
-}

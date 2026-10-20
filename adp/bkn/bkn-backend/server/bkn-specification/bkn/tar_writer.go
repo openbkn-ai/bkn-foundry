@@ -34,10 +34,9 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 	now := time.Now()
 	mfs := NewMemoryFileSystem()
 
-	// A network with a 3.0 declaration is written under bkn_spec 3.0: a 2.x package cannot hold the
-	// declaration, and importing it again would drop it. Every other network is written exactly as
-	// before.
-	opts := serializeOptions{v3: doc.BknSpec == BknSpecV3 || HasV3Declarations(doc)}
+	// Only a network that declares bkn_spec 3.0 is written under 3.0; every other network is written
+	// exactly as before.
+	opts := serializeOptions{v3: doc.BknSpec == BknSpecV3}
 
 	// Write network.bkn
 	rootContent := serializeBknNetwork(doc, opts)
