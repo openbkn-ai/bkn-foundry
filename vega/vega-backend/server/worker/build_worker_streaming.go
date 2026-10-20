@@ -547,7 +547,7 @@ func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 
 func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline, outputFields []string, schema []*interfaces.Property) error {
 	document := filterBuildDocumentFields(after, outputFields)
-	if err := normalizeJSONDocumentFields(document, schema); err != nil {
+	if err := normalizeBuildDocumentFields(document, schema); err != nil {
 		return fmt.Errorf("normalize streaming document: %w", err)
 	}
 	kafkaKeyValues, err := getKafkaKeyValues(buildTaskInfo.IndexConfig.PrimaryKeyFields, keyMap)
@@ -583,9 +583,6 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 
 	// Create updated document from the after data
 	document := filterBuildDocumentFields(after, outputFields)
-	if err := normalizeJSONDocumentFields(document, schema); err != nil {
-		return fmt.Errorf("normalize streaming document: %w", err)
-	}
 
 	newKeyValues, err := extractKeyValues(documentIDFields, document)
 	if err != nil {
@@ -594,6 +591,9 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 	newDocID, err := generateDocumentID(newKeyValues)
 	if err != nil {
 		return fmt.Errorf("generate new document ID: %w", err)
+	}
+	if err := normalizeBuildDocumentFields(document, schema); err != nil {
+		return fmt.Errorf("normalize streaming document: %w", err)
 	}
 	if buildTaskHasEmbedding(buildTaskInfo) {
 		if err := pipeline.enrich(ctx, map[string]map[string]any{newDocID: document}, buildTaskEmbeddingConfig(buildTaskInfo)); err != nil {

@@ -18,6 +18,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 // convertValue converts driver byte slices to strings unless binary content must be preserved.
@@ -389,6 +390,12 @@ func mariadbQueryError(err error) error {
 
 // buildHavingCondition binds values to a validated aggregate expression or alias.
 func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause, expression string, field *interfaces.Property) (sq.Sqlizer, error) {
+	if field != nil {
+		if err := filter_condition.ValidateTemporalPrecision(field.Type, having.Value); err != nil {
+			return nil, err
+		}
+	}
+
 	if having.Field != "__value" && having.Field != "count(*)" {
 		return nil, fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}

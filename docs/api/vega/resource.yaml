@@ -968,6 +968,9 @@ components:
             源物理资源已有可用平台索引时，创建和完整 PUT 更新会按索引可查询字段校验；
             引用 JSON、binary、other 等不支持索引过滤的字段时返回 400，不保存该定义。
             这些字段仍可作为视图输出字段；无索引源资源的固定条件仍按既有源端能力校验和执行。
+            创建和更新均校验 datetime/date/time 常量，格式及时区规则见 resource-data.yaml 中 filter_condition。
+            datetime 不接受仅日期字符串，date/time 不接受时间戳；非法固定条件返回 HTTP 400
+            `VegaBackend.LogicalView.InvalidParameter.LogicDefinition`，不保存该定义。
           type: object
           additionalProperties: true
     ResourceIndexConfig:

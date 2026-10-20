@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
@@ -20,10 +21,58 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/sync_checkpoint"
 )
 
 func TestBuildBatchCursorFilter(t *testing.T) {
+	t.Run("temporal checkpoint round trip", func(t *testing.T) {
+		t.Setenv("TZ", "Asia/Shanghai")
+		for _, kind := range []string{interfaces.DataType_Datetime, interfaces.DataType_Date, interfaces.DataType_Time} {
+			t.Run(kind, func(t *testing.T) {
+				field := &interfaces.Property{Name: "cursor", Type: kind, OriginalType: "timestamp without time zone"}
+				native := time.Date(2026, 10, 19, 14, 30, 0, 123456789, time.UTC)
+				original, err := buildBatchCursorFilter([]string{"cursor"}, []interfaces.KeyValue{{Key: "cursor", Value: native}})
+				require.NoError(t, err)
+				before, err := filter_condition.NewFilterCondition(context.Background(), original, map[string]*interfaces.Property{"cursor": field})
+				require.NoError(t, err)
+				mark, err := sync_checkpoint.EncodeBatch([]interfaces.KeyValue{{Key: "cursor", Value: native}})
+				require.NoError(t, err)
+				restored, err := sync_checkpoint.DecodeBatch(mark)
+				require.NoError(t, err)
+				require.NoError(t, sync_checkpoint.ValidateCursor(restored, []string{"cursor"}, []*interfaces.Property{field}))
+				resumed, err := buildBatchCursorFilter([]string{"cursor"}, restored.Cursor)
+				require.NoError(t, err)
+				after, err := filter_condition.NewFilterCondition(context.Background(), resumed, map[string]*interfaces.Property{"cursor": field})
+				require.NoError(t, err)
+				beforeValue := before.(*filter_condition.OrCond).SubConds[0].(*filter_condition.AndCond).SubConds[0].(*filter_condition.GtCond).Value
+				afterValue := after.(*filter_condition.OrCond).SubConds[0].(*filter_condition.AndCond).SubConds[0].(*filter_condition.GtCond).Value
+				assert.Equal(t, beforeValue, afterValue)
+				assert.Equal(t, native, original.SubConds[0].SubConds[0].Value)
+			})
+		}
+	})
+
+	t.Run("resumed cursor keeps source precision", func(t *testing.T) {
+		for _, kind := range []string{interfaces.DataType_Datetime, interfaces.DataType_Time} {
+			literal := "14:30:00.123456789"
+			if kind == interfaces.DataType_Datetime {
+				literal = "2026-10-19T14:30:00.123456789Z"
+			}
+			filter, err := buildBatchCursorFilter([]string{"cursor"}, []interfaces.KeyValue{{Key: "cursor", Value: literal}})
+			require.NoError(t, err)
+			cond, err := filter_condition.NewFilterCondition(context.Background(), filter, map[string]*interfaces.Property{"cursor": {Name: "cursor", Type: kind}})
+			require.NoError(t, err)
+			value := cond.(*filter_condition.OrCond).SubConds[0].(*filter_condition.AndCond).SubConds[0].(*filter_condition.GtCond).Value
+			if kind == interfaces.DataType_Datetime {
+				assert.Equal(t, 123456789, value.(time.Time).Nanosecond())
+			} else {
+				assert.Equal(t, literal, value)
+			}
+			assert.Equal(t, literal, filter.SubConds[0].SubConds[0].Value)
+		}
+	})
+
 	filter, err := buildBatchCursorFilter(
 		[]string{"customer_id", "id"},
 		[]interfaces.KeyValue{{Key: "customer_id", Value: "customer-1"}, {Key: "id", Value: 100}},

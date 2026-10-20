@@ -1131,6 +1131,28 @@ func TestJSONNumbersEqual(t *testing.T) {
 }
 
 func TestResourceServiceCreate(t *testing.T) {
+	t.Run("rejects invalid fixed datetime before persistence", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		viewService := vmock.NewMockLogicalViewService(ctrl)
+		previous := GetLogicalViewService()
+		SetLogicalViewService(viewService)
+		t.Cleanup(func() { SetLogicalViewService(previous) })
+		req := &interfaces.ResourceRequest{CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
+			LogicType: interfaces.LogicType_Derived, LogicDefinition: map[string]any{
+				"source_resource_id": "source", "filter_condition": map[string]any{
+					"field": "created", "operation": ">=", "value": "2026-10-19",
+				},
+			}}
+		invalid := rest.NewHTTPError(context.Background(), http.StatusBadRequest,
+			verrors.VegaBackend_LogicalView_InvalidParameter_LogicDefinition).
+			WithErrorDetails("field created: invalid datetime value 2026-10-19")
+		viewService.EXPECT().Prepare(gomock.Any(), req).Return("", nil, invalid)
+		rs, _, _, _, _, _, _ := newTestService(t)
+		created, err := rs.Create(context.Background(), req)
+		assert.Same(t, invalid, err)
+		assert.Nil(t, created)
+	})
+
 	t.Run("create dataset category", func(t *testing.T) {
 		rs, mockRA, _, mockDS, _, _, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
@@ -1991,6 +2013,32 @@ func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfac
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("rejects invalid fixed datetime before persistence", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		viewService := vmock.NewMockLogicalViewService(ctrl)
+		previous := GetLogicalViewService()
+		SetLogicalViewService(viewService)
+		t.Cleanup(func() { SetLogicalViewService(previous) })
+		req := &interfaces.ResourceRequest{CatalogID: "cat1", Name: "view", Category: interfaces.ResourceCategoryLogicalView,
+			LogicType: interfaces.LogicType_Derived, LogicDefinition: map[string]any{
+				"source_resource_id": "source", "filter_condition": map[string]any{
+					"field": "created", "operation": ">=", "value": "2026-10-19",
+				},
+			}}
+		invalid := rest.NewHTTPError(context.Background(), http.StatusBadRequest,
+			verrors.VegaBackend_LogicalView_InvalidParameter_LogicDefinition).
+			WithErrorDetails("field created: invalid datetime value 2026-10-19")
+		viewService.EXPECT().Prepare(gomock.Any(), req).Return("", nil, invalid)
+		rs, _, permissions, _, _, _, _ := newTestService(t)
+		permissions.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		stored := &interfaces.Resource{ID: "view", CatalogID: "cat1", Category: interfaces.ResourceCategoryLogicalView,
+			LogicType: interfaces.LogicType_Derived, Name: "original"}
+		err := updateResourceForTest(t, rs, stored, req)
+		assert.Same(t, invalid, err)
+		assert.Equal(t, "original", stored.Name)
+		assert.Nil(t, stored.LogicDefinition)
+	})
+
 	t.Run("rejects existing dataset analyzer changes before side effects", func(t *testing.T) {
 		for _, tc := range []struct {
 			name, current, next string

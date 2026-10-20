@@ -6,18 +6,301 @@ package opensearch
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
+	t.Run("time bounds include all legacy zero padding without adjacent instants", func(t *testing.T) {
+		t.Run("large time sets retain keyword terms and enforce the expanded limit", func(t *testing.T) {
+			field := &interfaces.Property{Name: "clock", OriginalName: "clock", Type: interfaces.DataType_Time}
+			for _, size := range []int{5000, 10000} {
+				values := make([]any, size)
+				for i := range values {
+					values[i] = time.UnixMilli(int64(i)).UTC().Format(common.TimeLayout)
+				}
+				cond, err := filter_condition.NewFilterCondition(context.Background(), osConstCfg("clock", "in", values), map[string]*interfaces.Property{"clock": field})
+				require.NoError(t, err)
+				query, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+				if size == 5000 {
+					require.NoError(t, err)
+					terms := query["terms"].(map[string]any)["clock"].([]any)
+					assert.Greater(t, len(terms), 5000)
+					assert.LessOrEqual(t, len(terms), 65536)
+				} else {
+					var buildErr *interfaces.ConditionBuildError
+					require.ErrorAs(t, err, &buildErr)
+					assert.Nil(t, query)
+				}
+			}
+		})
+		t.Run("sets include legacy whole second forms and exclude the next nanosecond", func(t *testing.T) {
+			field := &interfaces.Property{Name: "clock", OriginalName: "clock", Type: interfaces.DataType_Time}
+			for _, op := range []string{"in", "not_in", "!="} {
+				var value any = []any{"12:00:00", "12:00:00.000", "12:00:00.000000000"}
+				if op == "!=" {
+					value = "12:00:00.000"
+				}
+				cond, err := filter_condition.NewFilterCondition(context.Background(), osConstCfg("clock", op, value), map[string]*interfaces.Property{"clock": field})
+				require.NoError(t, err)
+				query, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+				require.NoError(t, err)
+				if op != "in" {
+					query = query["bool"].(map[string]any)["must_not"].(map[string]any)
+				}
+				terms := query["terms"].(map[string]any)["clock"].([]any)
+				assert.Len(t, terms, 10)
+				assert.Contains(t, terms, "12:00:00")
+				assert.Contains(t, terms, "12:00:00.000000000")
+				assert.NotContains(t, terms, "12:00:00.000000001")
+			}
+		})
+		field := &interfaces.Property{Name: "clock", OriginalName: "clock", Type: interfaces.DataType_Time}
+		for _, tc := range []struct{ op, bound, want string }{
+			{">", "gt", "12:00:00.100000000"}, {">=", "gte", "12:00:00.1"},
+			{"<", "lt", "12:00:00.1"}, {"<=", "lte", "12:00:00.100000000"},
+		} {
+			cond, err := filter_condition.NewFilterCondition(context.Background(), osConstCfg("clock", tc.op, "12:00:00.100"), map[string]*interfaces.Property{"clock": field})
+			require.NoError(t, err)
+			query, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"range": map[string]any{"clock": map[string]any{tc.bound: tc.want}}}, query)
+			for _, source := range []string{"12:00:00.099999999", "12:00:00.1", "12:00:00.100", "12:00:00.100000000", "12:00:00.100000001"} {
+				clock, err := time.Parse(time.TimeOnly, source)
+				require.NoError(t, err)
+				comparison := strings.Compare(source, tc.want)
+				var got, want bool
+				switch tc.op {
+				case ">":
+					got, want = comparison > 0, clock.Nanosecond() > 100000000
+				case ">=":
+					got, want = comparison >= 0, clock.Nanosecond() >= 100000000
+				case "<":
+					got, want = comparison < 0, clock.Nanosecond() < 100000000
+				case "<=":
+					got, want = comparison <= 0, clock.Nanosecond() <= 100000000
+				}
+				assert.Equal(t, want, got, "%s %s .1", source, tc.op)
+			}
+		}
+		for _, literal := range []string{"12:00:00.1", "12:00:00.100", "12:00:00.100000000"} {
+			cond, err := filter_condition.NewFilterCondition(context.Background(), osConstCfg("clock", "==", literal), map[string]*interfaces.Property{"clock": field})
+			require.NoError(t, err)
+			query, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"terms": map[string]any{"clock": []any{"12:00:00.1", "12:00:00.10", "12:00:00.100", "12:00:00.1000", "12:00:00.10000", "12:00:00.100000", "12:00:00.1000000", "12:00:00.10000000", "12:00:00.100000000"}}}, query)
+		}
+	})
+	t.Run("date range budgets deduplicate and cover composite conditions", func(t *testing.T) {
+		field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime, Attributes: map[string]any{"format": "epoch_millis"}}
+		fields := map[string]*interfaces.Property{"created": field}
+		duplicates := make([]any, 5000)
+		for i := range duplicates {
+			duplicates[i] = "2026-10-19T00:00:00Z"
+		}
+		cfg := osConstCfg("created", "in", duplicates)
+		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
+		require.NoError(t, err)
+		query, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+		require.NoError(t, err)
+		assert.Len(t, query["bool"].(map[string]any)["should"], 1)
+		values := make([]any, 600)
+		for i := range values {
+			values[i] = time.UnixMilli(1792339200000 + int64(i)).UTC().Format(time.RFC3339Nano)
+		}
+		composite := &interfaces.FilterCondCfg{Operation: "and", SubConds: []*interfaces.FilterCondCfg{osConstCfg("created", "in", values), osConstCfg("created", "not_in", values)}}
+		cond, err = filter_condition.NewFilterCondition(context.Background(), composite, fields)
+		require.NoError(t, err)
+		query, err = (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+		var conditionErr *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &conditionErr)
+		assert.Nil(t, query)
+	})
+
+	t.Run("whole seconds have explicit zero fractions", func(t *testing.T) {
+		field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime}
+		for _, op := range []string{"==", ">", ">=", "<", "<="} {
+			cfg := osConstCfg("created", op, "2026-10-19T00:00:00Z")
+			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
+			require.NoError(t, err)
+			dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+			require.NoError(t, err)
+			encoded, err := json.Marshal(dsl)
+			require.NoError(t, err)
+			assert.Contains(t, string(encoded), "2026-10-19T00:00:00.000000000Z")
+		}
+	})
+	t.Run("date sets enforce budgets for every mapping and precision", func(t *testing.T) {
+		for _, format := range []string{"", "epoch_millis", "yyyy/MM/dd HH:mm:ss"} {
+			for _, op := range []string{"in", "not_in"} {
+				for _, size := range []int{1024, 1025, 5000} {
+					field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime, Attributes: map[string]any{}}
+					if format != "" {
+						field.Attributes["format"] = format
+					}
+					values := make([]any, size)
+					for i := range values {
+						values[i] = time.UnixMilli(1792339200000 + int64(i)).UTC().Format(time.RFC3339Nano)
+					}
+					cond, err := filter_condition.NewFilterCondition(context.Background(), osConstCfg("created", op, values), map[string]*interfaces.Property{"created": field})
+					require.NoError(t, err)
+					dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+					if size <= 1024 {
+						require.NoError(t, err)
+						assert.Equal(t, size, countIndexRangeClauses(dsl))
+					} else {
+						var conditionErr *interfaces.ConditionBuildError
+						require.ErrorAs(t, err, &conditionErr)
+						assert.Nil(t, dsl)
+					}
+				}
+			}
+		}
+	})
+	t.Run("date nanos sets distinguish an exact millisecond from its next nanosecond", func(t *testing.T) {
+		field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos", Attributes: map[string]any{"format": "epoch_millis"}}
+		for _, op := range []string{"in", "not_in"} {
+			for _, literal := range []any{"2026-10-19T00:00:00Z", json.Number("1792368000000"), "1792368000000"} {
+				cond, err := filter_condition.NewFilterCondition(context.Background(), osConstCfg("created", op, []any{literal, "2026-10-19T00:00:00.000000001Z"}), map[string]*interfaces.Property{"created": field})
+				require.NoError(t, err)
+				dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+				require.NoError(t, err)
+				if op == "not_in" {
+					dsl = dsl["bool"].(map[string]any)["must_not"].(map[string]any)
+				}
+				queries := dsl["bool"].(map[string]any)["should"].([]map[string]any)
+				require.Len(t, queries, 2)
+				for i, text := range []string{"2026-10-19T00:00:00.000000000Z", "2026-10-19T00:00:00.000000001Z"} {
+					assert.Equal(t, map[string]any{"range": map[string]any{"created": map[string]any{"gte": text, "lte": text, "format": "strict_date_optional_time_nanos"}}}, queries[i])
+				}
+			}
+			// A set containing only an exact millisecond must also avoid the integer terms path.
+			cond, err := filter_condition.NewFilterCondition(context.Background(), osConstCfg("created", op, []any{"2026-10-19T00:00:00Z"}), map[string]*interfaces.Property{"created": field})
+			require.NoError(t, err)
+			dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+			require.NoError(t, err)
+			assert.Equal(t, 1, countIndexRangeClauses(dsl))
+		}
+	})
+
+	t.Run("datetime equality and sets retain boolean semantics", func(t *testing.T) {
+		field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime, Attributes: map[string]any{"format": "epoch_millis"}}
+		first, second := "2026-10-19T00:00:00.123456789Z", "2026-10-20T00:00:00.123456789Z"
+		firstQuery := map[string]any{"range": map[string]any{"created": map[string]any{"gte": first, "lte": first, "format": "strict_date_optional_time_nanos"}}}
+		secondQuery := map[string]any{"range": map[string]any{"created": map[string]any{"gte": second, "lte": second, "format": "strict_date_optional_time_nanos"}}}
+		union := map[string]any{"bool": map[string]any{"should": []map[string]any{firstQuery, secondQuery}, "minimum_should_match": 1}}
+		for _, tc := range []struct {
+			op    string
+			value any
+			want  map[string]any
+		}{
+			{"==", first, firstQuery},
+			{"!=", first, map[string]any{"bool": map[string]any{"must_not": firstQuery}}},
+			{"in", []any{first, second}, union},
+			{"not_in", []any{first, second}, map[string]any{"bool": map[string]any{"must_not": union}}},
+		} {
+			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: tc.op, ValueOptCfg: interfaces.ValueOptCfg{Value: tc.value}}
+			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
+			require.NoError(t, err)
+			got, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.value, cfg.Value)
+		}
+	})
+
+	t.Run("date queries declare their format independently of mapping", func(t *testing.T) {
+		for _, format := range []string{"epoch_millis", "yyyy/MM/dd HH:mm:ss", "strict_date_optional_time_nanos"} {
+			field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos", Attributes: map[string]any{"format": format}}
+			for _, op := range []string{"==", "!=", ">", ">=", "<", "<=", "in", "not_in", "range", "out_range", "between"} {
+				t.Run(format+"/"+op, func(t *testing.T) {
+					literal := "2026-10-19T00:00:00.123456789Z"
+					var value any = literal
+					switch op {
+					case "in", "not_in", "range", "out_range", "between":
+						value = []any{literal, literal}
+					}
+					cfg := &interfaces.FilterCondCfg{Name: "created", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: value}}
+					cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
+					require.NoError(t, err)
+					dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+					require.NoError(t, err)
+					encoded, err := json.Marshal(dsl)
+					require.NoError(t, err)
+					assert.Contains(t, string(encoded), `"format":"strict_date_optional_time_nanos"`)
+					assert.Contains(t, string(encoded), literal)
+					assert.NotContains(t, string(encoded), `"term":`)
+					assert.NotContains(t, string(encoded), `"terms":`)
+					assert.Equal(t, value, cfg.Value)
+				})
+			}
+		}
+	})
+
+	t.Run("datetime keeps nanosecond precision", func(t *testing.T) {
+		field := &interfaces.Property{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime}
+		cfg := &interfaces.FilterCondCfg{Name: "created", Operation: ">", ValueOptCfg: interfaces.ValueOptCfg{Value: "2026-10-19T00:00:00.123456789Z"}}
+		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
+		require.NoError(t, err)
+		dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"range": map[string]any{"created": map[string]any{"gt": "2026-10-19T00:00:00.123456789Z", "format": "strict_date_optional_time_nanos"}}}, dsl)
+	})
+	t.Run("temporal input contract", func(t *testing.T) {
+		t.Setenv("TZ", "Asia/Shanghai")
+		for _, kind := range []string{interfaces.DataType_Datetime, interfaces.DataType_Date, interfaces.DataType_Time} {
+			field := &interfaces.Property{Name: "value", OriginalName: "value", Type: kind}
+			literals := []any{"2026-10-19T00:00:00+08:00", "2026-10-19 00:00:00", json.Number("1792339200000"), "1792339200000"}
+			if kind == interfaces.DataType_Date {
+				literals = []any{"2026-10-19"}
+			}
+			if kind == interfaces.DataType_Time {
+				literals = []any{"14:30:00.123", "14:30:00.123000", "14:30:00.123000000"}
+			}
+			for _, op := range []string{"==", "!=", ">", ">=", "<", "<=", "in", "not_in", "range", "out_range", "between"} {
+				var expected map[string]any
+				for _, literal := range literals {
+					value := literal
+					switch op {
+					case "in", "not_in", "range", "out_range", "between":
+						value = []any{literal, literal}
+					}
+					cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: value}}
+					cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
+					require.NoError(t, err)
+					dsl, err := (&OpenSearchConnector{}).ConvertFilterCondition(cond, []*interfaces.Property{field})
+					require.NoError(t, err)
+					encoded, err := json.Marshal(dsl)
+					require.NoError(t, err)
+					switch kind {
+					case interfaces.DataType_Datetime:
+						assert.Contains(t, string(encoded), "2026-10-18T16:00:00.000000000Z")
+					case interfaces.DataType_Time:
+						assert.Contains(t, string(encoded), "14:30:00.123")
+					default:
+						assert.Contains(t, string(encoded), literal)
+					}
+					if expected == nil {
+						expected = dsl
+					} else {
+						assert.Equal(t, expected, dsl, "equivalent temporal inputs must compile identically")
+					}
+					assert.Equal(t, value, cfg.Value)
+				}
+			}
+		}
+	})
+
 	t.Run("text aliases use the target keyword field", func(t *testing.T) {
 		conn := &OpenSearchConnector{}
 		target := &interfaces.Property{Name: "title", OriginalName: "physical.title", Type: interfaces.DataType_Text,
@@ -168,8 +451,8 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		},
 		{
 			name: "between uses inclusive bounds",
-			cfg:  osConstCfg("created_at", filter_condition.OperationBetween, []any{"2026-01-01", "2026-01-02"}),
-			want: map[string]any{"range": map[string]any{"created_at": map[string]any{"gte": "2026-01-01", "lte": "2026-01-02"}}},
+			cfg:  osConstCfg("created_at", filter_condition.OperationBetween, []any{"2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z"}),
+			want: map[string]any{"range": map[string]any{"created_at": map[string]any{"gte": "2026-01-01T00:00:00.000000000Z", "lte": "2026-01-02T00:00:00.000000000Z", "format": "strict_date_optional_time_nanos"}}},
 		},
 		{
 			name: "not null builds exists",

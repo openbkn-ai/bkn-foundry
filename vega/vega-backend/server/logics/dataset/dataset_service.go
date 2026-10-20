@@ -328,6 +328,11 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	}
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
 	if err != nil {
+		var zoneErr *interfaces.ServerTimeZoneError
+		if errors.As(err, &zoneErr) {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).WithErrorDetails(zoneErr.Error())
+		}
+
 		span.SetStatus(codes.Error, "Build dataset delete condition failed")
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(err.Error())

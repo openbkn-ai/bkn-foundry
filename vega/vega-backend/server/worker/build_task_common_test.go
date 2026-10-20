@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
@@ -107,7 +108,17 @@ func TestGenerateDocumentID(t *testing.T) {
 	require.ErrorContains(t, err, `build key field "id" is missing`)
 }
 
-func TestNormalizeJSONDocumentFields(t *testing.T) {
+func TestNormalizeBuildDocumentFields(t *testing.T) {
+	t.Run("normalizes source clocks and preserves other fields", func(t *testing.T) {
+		for _, input := range []any{"12:00:00.100000", []byte("12:00:00.100"), time.Date(2026, 10, 19, 12, 0, 0, 100000000, time.UTC)} {
+			doc := map[string]any{"clock": input, "label": "12:00:00.100", "empty": nil}
+			require.NoError(t, normalizeBuildDocumentFields(doc, []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}, {Name: "label", Type: interfaces.DataType_String}, {Name: "empty", Type: interfaces.DataType_Time}, {Name: "missing", Type: interfaces.DataType_Time}}))
+			assert.Equal(t, "12:00:00.1", doc["clock"])
+			assert.Equal(t, "12:00:00.100", doc["label"])
+			assert.Nil(t, doc["empty"])
+			assert.NotContains(t, doc, "missing")
+		}
+	})
 	schema := []*interfaces.Property{
 		{Name: "payload", Type: interfaces.DataType_Json},
 		{Name: "name", Type: interfaces.DataType_String},
@@ -130,7 +141,7 @@ func TestNormalizeJSONDocumentFields(t *testing.T) {
 		document["null_value"] = "null"
 		document["empty_value"] = "  "
 
-		require.NoError(t, normalizeJSONDocumentFields(document, schemaWithValues))
+		require.NoError(t, normalizeBuildDocumentFields(document, schemaWithValues))
 		assert.Equal(t, map[string]any{"region": "cn"}, document["object"])
 		assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
 		assert.Equal(t, map[string]any{"tier": json.Number("2")}, document["bytes"])
@@ -143,7 +154,7 @@ func TestNormalizeJSONDocumentFields(t *testing.T) {
 		for _, text := range []string{`{"items":[{"sku":"BOX-01","count":2}]}`, `{"items":["SENSOR-A","SENSOR-B"]}`, `{"items":[]}`, `{"items":null}`, `[{"id":9007199254740993}]`, `"value"`, `true`, `42`, `null`} {
 			t.Run(text, func(t *testing.T) {
 				doc := map[string]any{"payload": text}
-				require.NoError(t, normalizeJSONDocumentFields(doc, schema))
+				require.NoError(t, normalizeBuildDocumentFields(doc, schema))
 				encoded, err := json.Marshal(doc["payload"])
 				require.NoError(t, err)
 				assert.JSONEq(t, text, string(encoded))
@@ -155,7 +166,7 @@ func TestNormalizeJSONDocumentFields(t *testing.T) {
 		values := []any{map[string]any{"items": []any{"a", map[string]any{"sku": "b"}}}, []any{1, true}, true, int64(9007199254740993)}
 		for _, value := range values {
 			doc := map[string]any{"payload": value}
-			require.NoError(t, normalizeJSONDocumentFields(doc, schema))
+			require.NoError(t, normalizeBuildDocumentFields(doc, schema))
 			assert.Equal(t, value, doc["payload"])
 		}
 	})
@@ -167,7 +178,7 @@ func TestNormalizeJSONDocumentFields(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			document := map[string]any{"payload": value}
 
-			err := normalizeJSONDocumentFields(document, schema)
+			err := normalizeBuildDocumentFields(document, schema)
 
 			require.Error(t, err)
 			assert.ErrorContains(t, err, `JSON field "payload"`)

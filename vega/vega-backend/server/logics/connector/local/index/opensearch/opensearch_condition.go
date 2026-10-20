@@ -17,8 +17,26 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
+// 日期查询显式指定纳秒格式，与源字段 mapping 的 format 解耦。
+const (
+	indexDateQueryFormat         = "strict_date_optional_time_nanos"
+	maxIndexTemporalRangeClauses = 1024
+	maxIndexTimeTerms            = 65536
+)
+
 // ConvertFilterCondition converts a FilterCondition to OpenSearch DSL.
 func (c *OpenSearchConnector) ConvertFilterCondition(condition interfaces.FilterCondition, schemaDefinition []*interfaces.Property) (map[string]any, error) {
+	query, err := c.convertFilterCondition(condition, schemaDefinition)
+	if err != nil {
+		return nil, err
+	}
+	if countIndexRangeClauses(query) > 0 && countIndexQueryClauses(query) > maxIndexTemporalRangeClauses {
+		return nil, interfaces.NewConditionBuildError("OpenSearch range filters require at most %d query clauses", maxIndexTemporalRangeClauses)
+	}
+	return query, nil
+}
+
+func (c *OpenSearchConnector) convertFilterCondition(condition interfaces.FilterCondition, schemaDefinition []*interfaces.Property) (map[string]any, error) {
 
 	switch condition.GetOperation() {
 	case filter_condition.OperationAnd:
@@ -242,9 +260,20 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 		if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
 			return nil, err
 		}
+		if cond.Lfield.Type == interfaces.DataType_Time {
+			query, _, err := indexTemporalSetQuery(exactField, cond.Lfield.Type, []any{cond.Value})
+			return query, err
+		}
+		if _, temporal := cond.Value.(time.Time); temporal {
+			query := indexTemporalRangeQuery(exactField, cond.Lfield.Type, map[string]any{
+				"gte": cond.Value,
+				"lte": cond.Value,
+			})
+			return query, nil
+		}
 		return map[string]any{
 			"term": map[string]any{
-				exactField: cond.Value,
+				exactField: indexConditionValue(cond.Value),
 			},
 		}, nil
 	case interfaces.ValueFrom_Field:
@@ -280,11 +309,25 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 		if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
 			return nil, err
 		}
+		if cond.Lfield.Type == interfaces.DataType_Time {
+			query, _, err := indexTemporalSetQuery(exactField, cond.Lfield.Type, []any{cond.Value})
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"bool": map[string]any{"must_not": query}}, nil
+		}
+		if _, temporal := cond.Value.(time.Time); temporal {
+			query := indexTemporalRangeQuery(exactField, cond.Lfield.Type, map[string]any{
+				"gte": cond.Value,
+				"lte": cond.Value,
+			})
+			return map[string]any{"bool": map[string]any{"must_not": query}}, nil
+		}
 		return map[string]any{
 			"bool": map[string]any{
 				"must_not": map[string]any{
 					"term": map[string]any{
-						exactField: cond.Value,
+						exactField: indexConditionValue(cond.Value),
 					},
 				},
 			},
@@ -311,13 +354,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionGt(condition interfaces.Filt
 
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		return map[string]any{
-			"range": map[string]any{
-				cond.Lfield.OriginalName: map[string]any{
-					"gt": cond.Value,
-				},
-			},
-		}, nil
+		return indexTemporalRangeQuery(propertyPhysicalFieldName(cond.Lfield), cond.Lfield.Type, map[string]any{
+			"gt": cond.Value,
+		}), nil
 	case interfaces.ValueFrom_Field:
 		return fieldComparisonScript(
 			propertyPhysicalFieldName(cond.Lfield), ">", propertyPhysicalFieldName(cond.Rfield)), nil
@@ -336,13 +375,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionGte(condition interfaces.Fil
 
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		return map[string]any{
-			"range": map[string]any{
-				cond.Lfield.OriginalName: map[string]any{
-					"gte": cond.Value,
-				},
-			},
-		}, nil
+		return indexTemporalRangeQuery(propertyPhysicalFieldName(cond.Lfield), cond.Lfield.Type, map[string]any{
+			"gte": cond.Value,
+		}), nil
 	case interfaces.ValueFrom_Field:
 		return fieldComparisonScript(
 			propertyPhysicalFieldName(cond.Lfield), ">=", propertyPhysicalFieldName(cond.Rfield)), nil
@@ -361,13 +396,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionLt(condition interfaces.Filt
 
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		return map[string]any{
-			"range": map[string]any{
-				cond.Lfield.OriginalName: map[string]any{
-					"lt": cond.Value,
-				},
-			},
-		}, nil
+		return indexTemporalRangeQuery(propertyPhysicalFieldName(cond.Lfield), cond.Lfield.Type, map[string]any{
+			"lt": cond.Value,
+		}), nil
 	case interfaces.ValueFrom_Field:
 		return fieldComparisonScript(
 			propertyPhysicalFieldName(cond.Lfield), "<", propertyPhysicalFieldName(cond.Rfield)), nil
@@ -386,13 +417,9 @@ func (c *OpenSearchConnector) ConvertFilterConditionLte(condition interfaces.Fil
 
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		return map[string]any{
-			"range": map[string]any{
-				cond.Lfield.OriginalName: map[string]any{
-					"lte": cond.Value,
-				},
-			},
-		}, nil
+		return indexTemporalRangeQuery(propertyPhysicalFieldName(cond.Lfield), cond.Lfield.Type, map[string]any{
+			"lte": cond.Value,
+		}), nil
 	case interfaces.ValueFrom_Field:
 		return fieldComparisonScript(
 			propertyPhysicalFieldName(cond.Lfield), "<=", propertyPhysicalFieldName(cond.Rfield)), nil
@@ -433,9 +460,17 @@ func (c *OpenSearchConnector) ConvertFilterConditionIn(condition interfaces.Filt
 		return nil, err
 	}
 
+	query, temporal, err := indexTemporalSetQuery(exactField, cond.Lfield.Type, cond.Value)
+	if err != nil {
+		return nil, err
+	}
+	if temporal {
+		return query, nil
+	}
+
 	return map[string]any{
 		"terms": map[string]any{
-			exactField: cond.Value,
+			exactField: indexConditionValue(cond.Value),
 		},
 	}, nil
 }
@@ -460,11 +495,19 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 		return nil, err
 	}
 
+	query, temporal, err := indexTemporalSetQuery(exactField, cond.Lfield.Type, cond.Value)
+	if err != nil {
+		return nil, err
+	}
+	if temporal {
+		return map[string]any{"bool": map[string]any{"must_not": query}}, nil
+	}
+
 	return map[string]any{
 		"bool": map[string]any{
 			"must_not": map[string]any{
 				"terms": map[string]any{
-					exactField: cond.Value,
+					exactField: indexConditionValue(cond.Value),
 				},
 			},
 		},
@@ -599,14 +642,10 @@ func (c *OpenSearchConnector) ConvertFilterConditionRange(condition interfaces.F
 		return nil, interfaces.NewConditionBuildError("range condition requires exactly 2 values")
 	}
 
-	return map[string]any{
-		"range": map[string]any{
-			cond.Lfield.OriginalName: map[string]any{
-				"gte": values[0],
-				"lte": values[1],
-			},
-		},
-	}, nil
+	return indexTemporalRangeQuery(propertyPhysicalFieldName(cond.Lfield), cond.Lfield.Type, map[string]any{
+		"gte": values[0],
+		"lte": values[1],
+	}), nil
 }
 
 // ConvertFilterConditionOutRange converts an OutRangeCond to OpenSearch DSL.
@@ -625,20 +664,12 @@ func (c *OpenSearchConnector) ConvertFilterConditionOutRange(condition interface
 	return map[string]any{
 		"bool": map[string]any{
 			"should": []map[string]any{
-				{
-					"range": map[string]any{
-						cond.Lfield.OriginalName: map[string]any{
-							"lt": values[0],
-						},
-					},
-				},
-				{
-					"range": map[string]any{
-						cond.Lfield.OriginalName: map[string]any{
-							"gt": values[1],
-						},
-					},
-				},
+				indexTemporalRangeQuery(propertyPhysicalFieldName(cond.Lfield), cond.Lfield.Type, map[string]any{
+					"lt": values[0],
+				}),
+				indexTemporalRangeQuery(propertyPhysicalFieldName(cond.Lfield), cond.Lfield.Type, map[string]any{
+					"gt": values[1],
+				}),
 			},
 			"minimum_should_match": 1,
 		},
@@ -867,14 +898,10 @@ func (c *OpenSearchConnector) ConvertFilterConditionBetween(condition interfaces
 		return nil, interfaces.NewConditionBuildError("between condition requires exactly 2 values")
 	}
 
-	return map[string]any{
-		"range": map[string]any{
-			cond.Lfield.OriginalName: map[string]any{
-				"gte": values[0],
-				"lte": values[1],
-			},
-		},
-	}, nil
+	return indexTemporalRangeQuery(propertyPhysicalFieldName(cond.Lfield), cond.Lfield.Type, map[string]any{
+		"gte": values[0],
+		"lte": values[1],
+	}), nil
 }
 
 // ConvertFilterConditionExist converts an ExistCond to OpenSearch DSL.
@@ -1241,4 +1268,152 @@ func positiveInt(value any) (int, bool) {
 		return 0, false
 	}
 	return converted, true
+}
+
+// indexConditionValue 将公共层的 datetime 时刻编码为明确的 UTC RFC3339 文本，
+// date/time 字符串保持日历语义，集合值逐项处理，不改写条件本身。
+func indexConditionValue(value any) any {
+	switch typed := value.(type) {
+	case time.Time:
+		return typed.UTC().Format(common.RFC3339FixedNanosLayout)
+	case []any:
+		values := make([]any, len(typed))
+		for i, item := range typed {
+			values[i] = indexConditionValue(item)
+		}
+		return values
+	default:
+		return value
+	}
+}
+
+func indexTemporalRangeQuery(field, fieldType string, bounds map[string]any) map[string]any {
+	encoded := make(map[string]any, len(bounds)+1)
+	for op, value := range bounds {
+		encoded[op] = indexConditionValue(value)
+		if fieldType == interfaces.DataType_Time {
+			// 对合法 HH:mm:ss[.fraction]，同一时刻的所有尾零形式位于这两个字典序边界之间。
+			if text, ok := value.(string); ok {
+				if clock, err := time.Parse(common.TimeLayout, text); err == nil {
+					layout := common.TimeLayout
+					if op == "gt" || op == "lte" {
+						layout = common.TimeFixedNanosLayout
+					}
+					encoded[op] = clock.Format(layout)
+				}
+			}
+		}
+		if _, temporal := value.(time.Time); temporal {
+			encoded["format"] = indexDateQueryFormat
+		}
+	}
+	return map[string]any{"range": map[string]any{field: encoded}}
+}
+
+// 日期 terms 在引擎内仍展开为布尔子句，且整数毫秒会扩大 date_nanos 的匹配范围。
+// datetime 使用固定纳秒精度的闭区间；time keyword 使用有限的等价尾零集合。
+func indexTemporalSetQuery(field, fieldType string, values []any) (map[string]any, bool, error) {
+	if len(values) == 0 {
+		return nil, false, nil
+	}
+	unique := make([]any, 0, len(values))
+	seen := make(map[any]struct{}, len(values))
+	for _, value := range values {
+		if fieldType == interfaces.DataType_Time {
+			parsed, err := filter_condition.ParseTemporalValue(fieldType, value, common.ServerTimeZone())
+			if err != nil {
+				return nil, true, err
+			}
+			value = parsed
+		} else if instant, temporal := value.(time.Time); temporal {
+			value = instant.UTC()
+		} else {
+			return nil, false, nil
+		}
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	if fieldType == interfaces.DataType_Time {
+		// keyword terms 不会像日期 terms 一样展开布尔子句；枚举最多 10 种等价尾零形式。
+		if len(unique) > maxIndexTimeTerms {
+			return nil, true, interfaces.NewConditionBuildError("OpenSearch time sets support at most %d expanded terms", maxIndexTimeTerms)
+		}
+		terms := make([]any, 0, len(unique))
+		for _, value := range unique {
+			text := value.(string)
+			terms = append(terms, text)
+			if !strings.Contains(text, ".") {
+				text += "."
+			}
+			for len(text) < len(common.TimeFixedNanosLayout) {
+				text += "0"
+				terms = append(terms, text)
+			}
+			if len(terms) > maxIndexTimeTerms {
+				return nil, true, interfaces.NewConditionBuildError("OpenSearch time sets support at most %d expanded terms", maxIndexTimeTerms)
+			}
+		}
+		return map[string]any{"terms": map[string]any{field: terms}}, true, nil
+	}
+	if len(unique) > maxIndexTemporalRangeClauses {
+		return nil, true, interfaces.NewConditionBuildError("OpenSearch temporal sets support at most %d distinct values", maxIndexTemporalRangeClauses)
+	}
+	queries := make([]map[string]any, len(unique))
+	for i, value := range unique {
+		queries[i] = indexTemporalRangeQuery(field, fieldType, map[string]any{"gte": value, "lte": value})
+	}
+	return map[string]any{"bool": map[string]any{"should": queries, "minimum_should_match": 1}}, true, nil
+}
+
+// 按整个条件树计算 range 预算，覆盖 datetime/time 集合及混合条件。
+func countIndexRangeClauses(value any) int {
+	count := 0
+	switch typed := value.(type) {
+	case map[string]any:
+		if ranges, ok := typed["range"].(map[string]any); ok {
+			count += len(ranges)
+		}
+		for _, child := range typed {
+			count += countIndexRangeClauses(child)
+		}
+	case []map[string]any:
+		for _, child := range typed {
+			count += countIndexRangeClauses(child)
+		}
+	case []any:
+		for _, child := range typed {
+			count += countIndexRangeClauses(child)
+		}
+	}
+	return count
+}
+
+func countIndexQueryClauses(value any) int {
+	switch query := value.(type) {
+	case map[string]any:
+		if boolean, ok := query["bool"].(map[string]any); ok {
+			count := 0
+			for _, op := range []string{"must", "filter", "should", "must_not"} {
+				count += countIndexQueryClauses(boolean[op])
+			}
+			return count
+		}
+		return 1
+	case []map[string]any:
+		count := 0
+		for _, query := range query {
+			count += countIndexQueryClauses(query)
+		}
+		return count
+	case []any:
+		count := 0
+		for _, query := range query {
+			count += countIndexQueryClauses(query)
+		}
+		return count
+	}
+	return 0
 }

@@ -465,7 +465,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 				if _, exists := indexDocuments[docID]; exists {
 					return fmt.Errorf("build document ID: duplicate primary key values %q", docID)
 				}
-				if err := normalizeJSONDocumentFields(doc, resource.SchemaDefinition); err != nil {
+				if err := normalizeBuildDocumentFields(doc, resource.SchemaDefinition); err != nil {
 					return fmt.Errorf("normalize document for local index: %w", err)
 				}
 				indexDocuments[docID] = doc

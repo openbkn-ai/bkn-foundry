@@ -655,6 +655,9 @@ func normalizeTimestampValue(value any) any {
 // dateValueExpr selects the SQL expression for a bound date or time value.
 // Epoch milliseconds use FROM_UNIXTIME(?/1000); TIME and parsed timestamps use a plain placeholder.
 func dateValueExpr(field *interfaces.Property, value any) string {
+	if field.Type == interfaces.DataType_Date {
+		return "?"
+	}
 	if field.Type == interfaces.DataType_Time {
 		return "?"
 	}
@@ -672,13 +675,12 @@ func dateValueExpr(field *interfaces.Property, value any) string {
 // validateDateValue checks supported date and time value representations.
 // TIME requires a string; other date types accept epoch milliseconds, RFC3339 text, or time.Time.
 func validateDateValue(field *interfaces.Property, value any) error {
-	if value == nil {
-		return nil
+	if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Time {
+		_, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
+		return err
 	}
-	if field.Type == interfaces.DataType_Time {
-		if _, ok := value.(string); !ok {
-			return fmt.Errorf("MariaDB time field %q requires a time string, got %T", field.Name, value)
-		}
+
+	if value == nil {
 		return nil
 	}
 
@@ -710,6 +712,14 @@ func validateDateValue(field *interfaces.Property, value any) error {
 
 // dateCompareExpr builds a comparison against a bound date or time value.
 func dateCompareExpr(lhs string, field *interfaces.Property, op string, value any) (sq.Sqlizer, error) {
+	if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Datetime || field.Type == interfaces.DataType_Time {
+		parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
+		if err != nil {
+			return nil, err
+		}
+		value = parsed
+	}
+
 	if err := validateDateValue(field, value); err != nil {
 		return nil, err
 	}
@@ -724,6 +734,14 @@ func dateSetExpr(lhs string, field *interfaces.Property, op string, values []any
 	valueExprs := make([]string, len(values))
 	args := make([]any, len(values))
 	for i, value := range values {
+		if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Datetime || field.Type == interfaces.DataType_Time {
+			parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
+			if err != nil {
+				return nil, err
+			}
+			value = parsed
+		}
+
 		if err := validateDateValue(field, value); err != nil {
 			return nil, err
 		}

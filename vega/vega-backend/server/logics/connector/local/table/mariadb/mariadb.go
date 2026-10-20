@@ -21,8 +21,8 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/mitchellh/mapstructure"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 )
 
 const (
@@ -241,8 +241,8 @@ func (c *MariaDBConnector) connectionString() string {
 	for k, v := range c.config.Options {
 		values.Set(k, v.(string))
 	}
-	values.Set("loc", table.ServerTimeZone())
-	values.Set("time_zone", "'"+table.ServerTimeZone()+"'")
+	values.Set("loc", common.ServerTimeZone())
+	values.Set("time_zone", "'"+common.ServerTimeZone()+"'")
 
 	return fmt.Sprintf("%s:%s@tcp(%s)/?%s",
 		c.config.Username,

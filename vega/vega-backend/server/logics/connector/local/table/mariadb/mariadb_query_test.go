@@ -367,6 +367,15 @@ func TestMariaDBConnectorBuildCountSQL(t *testing.T) {
 }
 
 func TestMariaDBConnectorBuildHavingCondition(t *testing.T) {
+	t.Run("invalid temporal value is a request error", func(t *testing.T) {
+		field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
+		_, err := (&MariaDBConnector{}).buildHavingCondition(&interfaces.HavingClause{Field: "__value", Operation: ">", Value: "2026-10-19"}, "MIN(created)", field)
+		var conditionErr *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &conditionErr)
+		_, request := interfaces.RequestSideQueryError(err)
+		assert.True(t, request)
+	})
+
 	connector := &MariaDBConnector{}
 	field := &interfaces.Property{Type: interfaces.DataType_Integer}
 	for _, tc := range []struct {

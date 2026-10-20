@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -88,7 +89,120 @@ func TestNormalizeValueFrom(t *testing.T) {
 	}
 }
 
-func TestFilterConditionFactory(t *testing.T) {
+func TestNewFilterCondition(t *testing.T) {
+	t.Run("nanosecond precision", func(t *testing.T) {
+		for _, kind := range []string{interfaces.DataType_Datetime, interfaces.DataType_Time} {
+			field := &interfaces.Property{Name: "value", Type: kind}
+			literal := "14:30:00.123456789"
+			if kind == interfaces.DataType_Datetime {
+				literal = "2026-10-19T14:30:00.123456789Z"
+			}
+			cfg := constCfg("value", OperationGte, literal)
+			cond, err := NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
+			require.NoError(t, err)
+			if kind == interfaces.DataType_Datetime {
+				assert.Equal(t, 123456789, cond.(*GteCond).Value.(time.Time).Nanosecond())
+			} else {
+				assert.Equal(t, literal, cond.(*GteCond).Value)
+			}
+
+		}
+	})
+
+	t.Run("temporal input contract", func(t *testing.T) {
+		t.Setenv("TZ", "Asia/Shanghai")
+		for _, literal := range []any{"2026-10-19T00:00:00+08:00", "2026-10-19 00:00:00", json.Number("1792339200000"), "1792339200000"} {
+			cfg := constCfg("created_at", OperationGte, literal)
+			cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+			require.NoError(t, err)
+			parsed, ok := cond.(*GteCond).Value.(time.Time)
+			require.True(t, ok, "runtime value: %T", cond.(*GteCond).Value)
+			assert.Equal(t, int64(1792339200000), parsed.UnixMilli())
+			assert.Equal(t, 0, parsed.Hour())
+			assert.Equal(t, literal, cfg.Value)
+		}
+
+		for _, nativeType := range []string{"timestamp without time zone", "datetime", "datetime2", "timestamp"} {
+			field := &interfaces.Property{Name: "value", Type: interfaces.DataType_Datetime, OriginalType: nativeType}
+			native := time.Date(2026, 10, 19, 0, 0, 0, 123456789, time.UTC)
+			cfg := constCfg("value", OperationGte, native)
+			cond, err := NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
+			require.NoError(t, err)
+			parsed := cond.(*GteCond).Value.(time.Time)
+			assert.Equal(t, int64(1792339200123), parsed.UnixMilli())
+			assert.Equal(t, 123456789, parsed.Nanosecond())
+			assert.Equal(t, native, cfg.Value)
+		}
+		t.Setenv("TZ", "invalid/zone")
+		cond, err := NewFilterCondition(context.Background(), constCfg("created_at", OperationGte, "2026-10-19 00:00:00"), testFieldsMap())
+		var zoneErr *interfaces.ServerTimeZoneError
+		require.ErrorAs(t, err, &zoneErr)
+		assert.Nil(t, cond)
+		t.Setenv("TZ", "")
+		cond, err = NewFilterCondition(context.Background(), constCfg("created_at", OperationGte, "2026-10-19 00:00:00"), testFieldsMap())
+		require.NoError(t, err)
+		assert.Equal(t, time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC), cond.(*GteCond).Value)
+		t.Setenv("TZ", "Asia/Shanghai")
+
+		for _, tc := range []struct {
+			kind    string
+			valid   string
+			invalid []any
+		}{
+			{interfaces.DataType_Date, "2026-10-19", []any{"2026-10-19T00:00:00Z", "1792339200000", json.Number("1792339200000"), "2026-02-30"}},
+			{interfaces.DataType_Time, "14:30:00.123", []any{"14:30", "24:00:00", "14:30:00Z", "1792339200000", json.Number("1792339200000")}},
+		} {
+			fields := map[string]*interfaces.Property{"value": {Name: "value", Type: tc.kind}}
+			cond, err := NewFilterCondition(context.Background(), constCfg("value", OperationEqual, tc.valid), fields)
+			require.NoError(t, err)
+			assert.Equal(t, tc.valid, cond.(*EqualCond).Value)
+			for _, literal := range tc.invalid {
+				cond, err := NewFilterCondition(context.Background(), constCfg("value", OperationEqual, literal), fields)
+				require.Error(t, err, "%s: %v", tc.kind, literal)
+				assert.Nil(t, cond)
+			}
+		}
+	})
+	t.Run("datetime literals", func(t *testing.T) {
+		for _, op := range []string{OperationEqual, OperationEqual2, OperationNotEqual, OperationNotEqual2,
+			OperationGt, OperationGt2, OperationGte, OperationGte2, OperationLt, OperationLt2,
+			OperationLte, OperationLte2, OperationIn, OperationNotIn, OperationRange, OperationOutRange, OperationBetween} {
+			t.Run(op, func(t *testing.T) {
+				for _, literal := range []any{"2026-10-19", "bad date", "2026-02-30 00:00:00", true, 1.5} {
+					value := literal
+					if !OperationMap[op].IsSingleValue() {
+						value = []any{"2026-10-19 00:00:00", literal}
+					}
+					cond, err := NewFilterCondition(context.Background(), constCfg("created_at", op, value), testFieldsMap())
+					require.Error(t, err, "literal: %v", literal)
+					assert.Nil(t, cond)
+					assert.Contains(t, err.Error(), "created_at")
+				}
+				for _, literal := range []any{"2026-10-19 00:00:00", "2026-10-19T00:00:00+08:00", json.Number("1792339200000"), "1792339200000"} {
+					value := literal
+					if !OperationMap[op].IsSingleValue() {
+						value = []any{literal, literal}
+					}
+					cfg := constCfg("created_at", op, value)
+					cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+					require.NoError(t, err)
+					assert.NotNil(t, cond)
+					assert.Equal(t, value, cfg.Value)
+				}
+			})
+		}
+		for _, fieldType := range []string{interfaces.DataType_Timestamp} {
+			fields := map[string]*interfaces.Property{"value": {Name: "value", Type: fieldType}}
+			cond, err := NewFilterCondition(context.Background(), constCfg("value", OperationGte, "connector-specific"), fields)
+			require.NoError(t, err)
+			assert.NotNil(t, cond)
+		}
+		cfg := constCfg("created_at", OperationGte, "created_at")
+		cfg.ValueFrom = interfaces.ValueFrom_Field
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.NoError(t, err)
+		assert.NotNil(t, cond)
+	})
 	t.Run("match field arrays", func(t *testing.T) {
 		for _, operation := range []string{OperationMatch, OperationMatchPhrase, OperationMultiMatch} {
 			t.Run(operation, func(t *testing.T) {
@@ -184,7 +298,7 @@ func TestFilterConditionFactory(t *testing.T) {
 			assert.Equal(t, "age", got.Lfield.Name)
 			assert.Equal(t, []any{18, 30}, got.Value)
 		}},
-		{name: "out range accepts datetime field", cfg: constCfg("created_at", OperationOutRange, []any{"2026-01-01", "2026-12-31"}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
+		{name: "out range accepts datetime field", cfg: constCfg("created_at", OperationOutRange, []any{"2026-01-01 00:00:00", "2026-12-31 00:00:00"}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
 			got := cond.(*OutRangeCond)
 			assert.Equal(t, "created_at", got.Lfield.Name)
 		}},
@@ -200,7 +314,7 @@ func TestFilterConditionFactory(t *testing.T) {
 			got := cond.(*CurrentCond)
 			assert.Equal(t, CurrentMonth, got.Value)
 		}},
-		{name: "between uses declared datetime field", cfg: constCfg("created_at", OperationBetween, []any{"2026-01-01", "2026-01-02"}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
+		{name: "between uses declared datetime field", cfg: constCfg("created_at", OperationBetween, []any{"2026-01-01 00:00:00", "2026-01-02 00:00:00"}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
 			got := cond.(*BetweenCond)
 			assert.Equal(t, "created_at", got.Lfield.Name)
 			assert.Equal(t, interfaces.DataType_Datetime, got.Lfield.Type)
@@ -572,7 +686,7 @@ func TestRangeCond(t *testing.T) {
 		}
 	})
 	t.Run("range cond date field", func(t *testing.T) {
-		cfg := constCfg("created_at", "range", []any{"2024-01-01", "2024-12-31"})
+		cfg := constCfg("created_at", "range", []any{"2024-01-01 00:00:00", "2024-12-31 00:00:00"})
 		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

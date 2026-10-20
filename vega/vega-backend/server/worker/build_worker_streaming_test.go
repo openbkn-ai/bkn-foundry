@@ -319,25 +319,29 @@ func TestBuildConnectorConfigUsesCaptureDatabase(t *testing.T) {
 	})
 }
 
-func TestStreamingHandlersNormalizeJSON(t *testing.T) {
+func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 	for _, operation := range []string{"create", "update"} {
 		for _, tc := range []struct {
-			name    string
-			value   any
-			want    any
-			invalid bool
+			name      string
+			value     any
+			want      any
+			invalid   bool
+			fieldType string
 		}{
-			{"object array", `{"items":[{"id":9007199254740993}]}`, map[string]any{"items": []any{map[string]any{"id": json.Number("9007199254740993")}}}, false},
-			{"scalar array", []byte(`{"items":["a","b"]}`), map[string]any{"items": []any{"a", "b"}}, false},
-			{"scalar root", `"value"`, "value", false},
-			{"null", `null`, nil, false},
-			{"invalid", `{`, nil, true},
+			{"object array", `{"items":[{"id":9007199254740993}]}`, map[string]any{"items": []any{map[string]any{"id": json.Number("9007199254740993")}}}, false, interfaces.DataType_Json},
+			{"scalar array", []byte(`{"items":["a","b"]}`), map[string]any{"items": []any{"a", "b"}}, false, interfaces.DataType_Json},
+			{"scalar root", `"value"`, "value", false, interfaces.DataType_Json},
+			{"null", `null`, nil, false, interfaces.DataType_Json},
+			{"invalid", `{`, nil, true, interfaces.DataType_Json},
+			{"time string", "12:00:00.100000", "12:00:00.1", false, interfaces.DataType_Time},
+			{"time bytes", []byte("12:00:00.100000"), "12:00:00.1", false, interfaces.DataType_Time},
+			{"time invalid", "24:00:00", nil, true, interfaces.DataType_Time},
 		} {
 			t.Run(operation+"/"+tc.name, func(t *testing.T) {
 				lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
 				worker := &streamingBuildWorker{lim: lim}
 				task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}}}}
-				schema := []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}
+				schema := []*interfaces.Property{{Name: "payload", Type: tc.fieldType}}
 				after := map[string]any{"id": 2, "payload": tc.value}
 				if !tc.invalid {
 					docID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
@@ -356,7 +360,7 @@ func TestStreamingHandlersNormalizeJSON(t *testing.T) {
 					err = worker.handleUpdateOperation(context.Background(), map[string]any{"id": 1}, after, "index", task, &embeddingPipeline{}, []string{"id", "payload"}, schema)
 				}
 				if tc.invalid {
-					require.ErrorContains(t, err, `JSON field "payload"`)
+					require.ErrorContains(t, err, `field "payload"`)
 				} else {
 					require.NoError(t, err)
 				}
@@ -364,6 +368,17 @@ func TestStreamingHandlersNormalizeJSON(t *testing.T) {
 			})
 		}
 	}
+	t.Run("time primary key keeps its source document identity", func(t *testing.T) {
+		lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
+		worker := &streamingBuildWorker{lim: lim}
+		task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"clock"}}}}
+		id, err := generateDocumentID([]interfaces.KeyValue{{Key: "clock", Value: "12:00:00.100"}})
+		require.NoError(t, err)
+		lim.EXPECT().IndexDocuments(gomock.Any(), "index", map[string]map[string]any{id: {"clock": "12:00:00.1"}}).Return(nil, nil)
+		after := map[string]any{"clock": "12:00:00.100"}
+		require.NoError(t, worker.handleUpdateOperation(context.Background(), map[string]any{"clock": "12:00:00.100"}, after, "index", task, &embeddingPipeline{}, []string{"clock"}, []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}}))
+		assert.Equal(t, "12:00:00.100", after["clock"])
+	})
 }
 
 func TestStreamingBuildWorkerExecuteBuild(t *testing.T) {

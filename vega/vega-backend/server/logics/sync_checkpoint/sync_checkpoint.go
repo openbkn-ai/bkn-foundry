@@ -13,6 +13,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -157,11 +158,18 @@ func convertCursorValue(value any, dataType string) (any, error) {
 		default:
 			return nil, fmt.Errorf("cursor value must be a JSON unsigned integer, got %T", value)
 		}
-	case interfaces.DataType_String,
-		interfaces.DataType_Date,
-		interfaces.DataType_Time,
-		interfaces.DataType_Datetime,
-		interfaces.DataType_Timestamp:
+	case interfaces.DataType_Date, interfaces.DataType_Time, interfaces.DataType_Datetime:
+		text, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("cursor value must be a JSON string, got %T", value)
+		}
+		// time.Time 经 checkpoint JSON 往返会变成 RFC3339 字符串。在内部边界恢复载体，
+		// 供过滤层按源字段解释墙上时间；公共 API 的日期/时间格式要求保持不变。
+		if native, err := time.Parse(time.RFC3339Nano, text); err == nil {
+			return native, nil
+		}
+		return text, nil
+	case interfaces.DataType_String, interfaces.DataType_Timestamp:
 		text, ok := value.(string)
 		if !ok {
 			return nil, fmt.Errorf("cursor value must be a JSON string, got %T", value)

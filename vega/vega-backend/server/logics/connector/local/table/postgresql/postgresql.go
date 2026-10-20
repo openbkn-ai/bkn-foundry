@@ -24,7 +24,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 )
 
 const (
@@ -282,7 +281,7 @@ func (c *PostgresqlConnector) connectionString() string {
 	if q.Get("sslmode") == "" {
 		q.Set("sslmode", "disable")
 	}
-	q.Set("timezone", table.ServerTimeZone())
+	q.Set("timezone", common.ServerTimeZone())
 	u.RawQuery = q.Encode()
 	return u.String()
 }
