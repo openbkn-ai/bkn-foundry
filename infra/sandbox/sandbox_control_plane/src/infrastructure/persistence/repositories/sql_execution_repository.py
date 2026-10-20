@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.repositories.execution_repository import IExecutionRepository
 from src.domain.entities.execution import Execution
-from src.infrastructure.persistence.models.execution_model import ExecutionModel
+from src.infrastructure.persistence.models.execution_model import ExecutionModel, bounded_code
 
 
 class SqlExecutionRepository(IExecutionRepository):
@@ -36,7 +36,7 @@ class SqlExecutionRepository(IExecutionRepository):
         if model:
             # Update the existing row
             model.f_session_id = execution.session_id
-            model.f_code = execution.code
+            model.f_code = bounded_code(execution.code)
             model.f_language = execution.language
             model.f_status = execution.state.status.value
             model.f_stdout = execution.stdout

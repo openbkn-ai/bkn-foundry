@@ -67,6 +67,18 @@ class TestDatabaseManager:
         pass
 
     @pytest.mark.asyncio
+    async def test_initialize_hides_statement_parameters(self, db_manager, mock_settings):
+        """A DBAPI error must not echo the execution payload, which can hold a token."""
+        with (
+            patch("src.infrastructure.persistence.database.get_settings", return_value=mock_settings),
+            patch.object(db_manager, "ensure_database_exists", AsyncMock()),
+            patch("src.infrastructure.persistence.database.create_async_engine") as create_engine,
+        ):
+            await db_manager.initialize()
+
+        assert create_engine.call_args.kwargs["hide_parameters"] is True
+
+    @pytest.mark.asyncio
     async def test_create_tables_not_initialized(self, db_manager):
         """Test create tables not initialized."""
         with pytest.raises(RuntimeError, match="not initialized"):
