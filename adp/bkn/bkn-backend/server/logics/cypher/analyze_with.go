@@ -114,6 +114,9 @@ func analyzeWith(query *Query, with parsing.IOC_WithContext) (withScope, error) 
 	}
 
 	scope := withScope{}
+	// order keeps the items as written, so the GROUP BY follows the WITH and
+	// the same query always compiles to the same SQL.
+	var order []string
 	for _, item := range items.AllOC_ProjectionItem() {
 		expression := item.OC_Expression()
 		alias, err := withAlias(item)
@@ -154,6 +157,7 @@ func analyzeWith(query *Query, with parsing.IOC_WithContext) (withScope, error) 
 			return nil, unsupportedf(item, "a name WITH uses twice", "%q is named twice; give each value its own name", alias)
 		}
 		scope[alias] = entry
+		order = append(order, alias)
 	}
 
 	for _, entry := range scope {
@@ -162,7 +166,8 @@ func analyzeWith(query *Query, with parsing.IOC_WithContext) (withScope, error) 
 		}
 	}
 	if query.Grouped {
-		for _, entry := range scope {
+		for _, alias := range order {
+			entry := scope[alias]
 			switch {
 			case entry.aggregates:
 			case entry.node != "":
