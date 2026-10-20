@@ -44,9 +44,17 @@ func NewFilterCondition(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, err
 	}
 
+	// 先沿用算子的结构校验，再用解析后的副本构造时间条件，保留既有缺值和数组错误语义。
 	cond, err := condFactory.New(ctx, cfg, fieldsMap)
 	if err != nil {
 		return nil, err
+	}
+	runtimeCfg, err := normalizeTemporalCondition(cfg, fieldsMap)
+	if err != nil {
+		return nil, err
+	}
+	if runtimeCfg != cfg {
+		return condFactory.New(ctx, runtimeCfg, fieldsMap)
 	}
 	return cond, nil
 }

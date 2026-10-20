@@ -10,8 +10,6 @@ package driveradapters
 import (
 	"context"
 	"fmt"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +21,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )

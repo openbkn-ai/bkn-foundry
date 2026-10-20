@@ -194,3 +194,10 @@ func (e *RawAggregationValidationError) Error() string {
 	return fmt.Sprintf("invalid OpenSearch aggregation at %s: %s", e.Path, e.Reason)
 }
 func (e *RawAggregationValidationError) Unwrap() error { return e.Cause }
+
+// ServerTimeZoneError 表示服务器时区配置错误，不属于调用方输入错误。
+type ServerTimeZoneError struct{}
+
+// NewServerTimeZoneError 创建不泄漏配置细节的服务时区错误。
+func NewServerTimeZoneError() *ServerTimeZoneError { return &ServerTimeZoneError{} }
+func (*ServerTimeZoneError) Error() string         { return "invalid server time zone configuration" }

@@ -1625,3 +1625,56 @@ func TestResourceDataServiceQuerySourcePageLegacyVectorDimensions(t *testing.T) 
 		})
 	}
 }
+
+func TestQuerySourcePageTemporalConfigurationErrors(t *testing.T) {
+	t.Setenv("TZ", "invalid/zone")
+	for _, stored := range []bool{false, true} {
+		ctrl := gomock.NewController(t)
+		catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+		catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+		svc := &resourceDataService{cs: catalogs}
+		field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
+		source := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{field}}
+		cfg := &interfaces.FilterCondCfg{Name: "created", Operation: ">=", ValueOptCfg: interfaces.ValueOptCfg{Value: "2026-10-19 00:00:00"}}
+		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
+		if stored {
+			params.FixedFilterCondCfg = cfg
+		}
+		rows, total, err := svc.QuerySourcePage(context.Background(), source, params)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InternalError, httpErr.BaseError.ErrorCode)
+		assert.Nil(t, rows)
+		assert.Zero(t, total)
+	}
+}
+
+func TestQuerySourcePageHavingTemporalErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, zone string
+		value      any
+		status     int
+	}{
+		{"date-only datetime", "UTC", "2026-10-19", http.StatusBadRequest},
+		{"invalid array element", "UTC", []any{"2026-10-19T00:00:00Z", "bad"}, http.StatusBadRequest},
+		{"server timezone", "invalid/zone", "2026-10-19 00:00:00", http.StatusInternalServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TZ", tc.zone)
+			ctrl := gomock.NewController(t)
+			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+			svc := &resourceDataService{cs: catalogs}
+			field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
+			source := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{field}}
+			params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created", Aggr: "max"}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: tc.value}}
+			rows, total, err := svc.QuerySourcePage(context.Background(), source, params)
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, tc.status, httpErr.HTTPCode)
+			assert.Nil(t, rows)
+			assert.Zero(t, total)
+		})
+	}
+}

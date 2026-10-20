@@ -19,6 +19,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 // convertRawValue converts driver byte values to strings unless binary output is requested.
@@ -457,6 +458,12 @@ func (c *PostgresqlConnector) buildDateFormat(dateField, calendarInterval string
 
 // buildHavingCondition binds values to a validated aggregate expression.
 func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClause, expression string, field *interfaces.Property) (sq.Sqlizer, error) {
+	if field != nil {
+		if err := filter_condition.ValidateTemporalPrecision(field.Type, having.Value); err != nil {
+			return nil, err
+		}
+	}
+
 	if having.Field != "__value" && having.Field != "count(*)" {
 		return nil, fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}

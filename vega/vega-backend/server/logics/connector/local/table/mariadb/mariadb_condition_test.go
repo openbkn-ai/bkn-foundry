@@ -9,6 +9,8 @@ package mariadb
 import (
 	"context"
 	"encoding/json"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
 	"time"
@@ -33,10 +35,10 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "==", float64(1785295334428))
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` = FROM_UNIXTIME(?/1000)" {
+		if sql != "`created_at` = ?" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 1 || args[0] != int64(1785295334428) {
+		if len(args) != 1 || args[0] != time.UnixMilli(1785295334428).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -44,26 +46,18 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "==", "1785295334428")
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` = FROM_UNIXTIME(?/1000)" {
+		if sql != "`created_at` = ?" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 1 || args[0] != "1785295334428" {
+		if len(args) != 1 || args[0] != time.UnixMilli(1785295334428).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
-	t.Run("reject date literal before mysql numeric coercion", func(t *testing.T) {
-		c := &MariaDBConnector{}
-		cond := mustNewCond(t, "created_at", "==", "2026-01-01 00:00:00")
-		expr, err := c.ConvertFilterCondition(cond)
-		if err == nil {
-			t.Fatal("expected non-epoch date value error")
-		}
-		if expr != nil {
-			t.Fatalf("expected nil expression, got %v", expr)
-		}
-		if !strings.Contains(err.Error(), "requires epoch milliseconds") {
-			t.Fatalf("unexpected error: %v", err)
-		}
+	t.Run("accept complete datetime without numeric coercion", func(t *testing.T) {
+		t.Setenv("TZ", "UTC")
+		sql, args := toSQL(t, &MariaDBConnector{}, mustNewCond(t, "created_at", "==", "2026-01-01 00:00:00"))
+		assert.Equal(t, "`created_at` = ?", sql)
+		assert.Equal(t, []any{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, args)
 	})
 	t.Run("convert equal field to field", func(t *testing.T) {
 		c := &MariaDBConnector{}
@@ -121,10 +115,10 @@ func TestMariaDBConnectorConvertFilterConditionNotEqual(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "!=", float64(1785295334428))
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` <> FROM_UNIXTIME(?/1000)" {
+		if sql != "`created_at` <> ?" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 1 || args[0] != int64(1785295334428) {
+		if len(args) != 1 || args[0] != time.UnixMilli(1785295334428).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -151,14 +145,14 @@ func TestMariaDBConnectorConvertFilterConditionGte(t *testing.T) {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
-	t.Run("convert date gte uses from unix time", func(t *testing.T) {
+	t.Run("convert date gte binds normalized datetime", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", ">=", json.Number("1710000000000"))
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` >= FROM_UNIXTIME(?/1000)" {
+		if sql != "`created_at` >= ?" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 1 || args[0] != int64(1710000000000) {
+		if len(args) != 1 || args[0] != time.UnixMilli(1710000000000).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -199,10 +193,10 @@ func TestMariaDBConnectorConvertFilterConditionIn(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "in", []any{1785295334428, 1785381734428})
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` IN (FROM_UNIXTIME(?/1000), FROM_UNIXTIME(?/1000))" {
+		if sql != "`created_at` IN (?, ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 2 || args[0] != int64(1785295334428) || args[1] != int64(1785381734428) {
+		if len(args) != 2 || args[0] != time.UnixMilli(1785295334428).UTC() || args[1] != time.UnixMilli(1785381734428).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -220,10 +214,10 @@ func TestMariaDBConnectorConvertFilterConditionNotIn(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "not_in", []any{1785295334428, 1785381734428})
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` NOT IN (FROM_UNIXTIME(?/1000), FROM_UNIXTIME(?/1000))" {
+		if sql != "`created_at` NOT IN (?, ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 2 || args[0] != int64(1785295334428) || args[1] != int64(1785381734428) {
+		if len(args) != 2 || args[0] != time.UnixMilli(1785295334428).UTC() || args[1] != time.UnixMilli(1785381734428).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -242,19 +236,12 @@ func TestMariaDBDateExpressionsKeepTimeValuesRaw(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects numeric time values", func(t *testing.T) {
-		c := &MariaDBConnector{}
-		cond := mustNewCond(t, "event_time", ">=", float64(1785295334428))
-		expr, err := c.ConvertFilterCondition(cond)
-		if err == nil {
-			t.Fatal("expected numeric time value error")
-		}
-		if expr != nil {
-			t.Fatalf("expected nil expression, got %v", expr)
-		}
-		if !strings.Contains(err.Error(), "requires a time string") {
-			t.Fatalf("unexpected error: %v", err)
-		}
+	t.Run("rejects numeric time values before conversion", func(t *testing.T) {
+		cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{
+			Name: "event_time", Operation: ">=", ValueOptCfg: interfaces.ValueOptCfg{Value: float64(1785295334428)},
+		}, testFieldsMap())
+		require.ErrorContains(t, err, "invalid time value")
+		assert.Nil(t, cond)
 	})
 }
 
@@ -355,43 +342,43 @@ func TestMariaDBConnectorConvertFilterConditionRange(t *testing.T) {
 			t.Errorf("expected 2 args, got %d", len(args))
 		}
 	})
-	t.Run("convert date range uses from unix time", func(t *testing.T) {
+	t.Run("convert date range binds normalized datetime", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "range", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
-		if !strings.Contains(sql, "`created_at` >= FROM_UNIXTIME(?/1000)") ||
-			!strings.Contains(sql, "`created_at` <= FROM_UNIXTIME(?/1000)") {
+		if !strings.Contains(sql, "`created_at` >= ?") ||
+			!strings.Contains(sql, "`created_at` <= ?") {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 2 || args[0] != int64(1710000000000) || args[1] != int64(1710003600000) {
+		if len(args) != 2 || args[0] != time.UnixMilli(1710000000000).UTC() || args[1] != time.UnixMilli(1710003600000).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
 }
 func TestMariaDBConnectorConvertFilterConditionOutRange(t *testing.T) {
-	t.Run("convert date out range uses from unix time", func(t *testing.T) {
+	t.Run("convert date out range binds normalized datetime", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "out_range", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
-		if !strings.Contains(sql, "`created_at` < FROM_UNIXTIME(?/1000)") ||
-			!strings.Contains(sql, "`created_at` > FROM_UNIXTIME(?/1000)") {
+		if !strings.Contains(sql, "`created_at` < ?") ||
+			!strings.Contains(sql, "`created_at` > ?") {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 2 || args[0] != int64(1710000000000) || args[1] != int64(1710003600000) {
+		if len(args) != 2 || args[0] != time.UnixMilli(1710000000000).UTC() || args[1] != time.UnixMilli(1710003600000).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
 }
 func TestMariaDBConnectorConvertFilterConditionBetween(t *testing.T) {
-	t.Run("convert date between uses from unix time", func(t *testing.T) {
+	t.Run("convert date between binds normalized datetime", func(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "between", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
-		if !strings.Contains(sql, "`created_at` >= FROM_UNIXTIME(?/1000)") ||
-			!strings.Contains(sql, "`created_at` <= FROM_UNIXTIME(?/1000)") {
+		if !strings.Contains(sql, "`created_at` >= ?") ||
+			!strings.Contains(sql, "`created_at` <= ?") {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 2 || args[0] != int64(1710000000000) || args[1] != int64(1710003600000) {
+		if len(args) != 2 || args[0] != time.UnixMilli(1710000000000).UTC() || args[1] != time.UnixMilli(1710003600000).UTC() {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -700,4 +687,58 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 		}
 	})
 
+}
+
+func TestMariaDBConnectorTemporalInputContract(t *testing.T) {
+	t.Setenv("TZ", "Asia/Shanghai")
+	for _, kind := range []string{interfaces.DataType_Datetime, interfaces.DataType_Date, interfaces.DataType_Time} {
+		t.Run(kind, func(t *testing.T) {
+			field := &interfaces.Property{Name: "value", OriginalName: "value", Type: kind, OriginalType: "datetime"}
+			literals := []any{"2026-10-19T00:00:00+08:00", "2026-10-19 00:00:00", json.Number("1792339200000"), "1792339200000", "2026-10-19 00:00:00.000000789", "2026-10-19T00:00:00.000000789+08:00"}
+			if kind == interfaces.DataType_Date {
+				literals = []any{"2026-10-19"}
+			}
+			if kind == interfaces.DataType_Time {
+				literals = []any{"14:30:00.123"}
+			}
+			for _, op := range []string{"==", "!=", ">", ">=", "<", "<=", "in", "not_in", "range", "out_range", "between"} {
+				t.Run(op, func(t *testing.T) {
+					for _, literal := range literals {
+						value := literal
+						count := 1
+						switch op {
+						case "in", "not_in", "range", "out_range", "between":
+							value = []any{literal, literal}
+							count = 2
+						}
+						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: value}}
+						cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
+						require.NoError(t, err)
+						expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
+						require.NoError(t, err)
+						sql, args, err := expr.ToSql()
+						require.NoError(t, err)
+						assert.NotEmpty(t, sql)
+						require.Len(t, args, count)
+						for _, bound := range args {
+							if kind == interfaces.DataType_Datetime {
+								timestamp, ok := bound.(time.Time)
+								require.True(t, ok, "bound: %T", bound)
+								assert.Equal(t, "2026-10-19 00:00:00", timestamp.Format(time.DateTime))
+								wantNanos := 0
+								if literal == "2026-10-19 00:00:00.000000789" || literal == "2026-10-19T00:00:00.000000789+08:00" {
+									wantNanos = 789
+								}
+								assert.Equal(t, wantNanos, timestamp.Nanosecond())
+								assert.Equal(t, int64(1792339200000), timestamp.UnixMilli())
+							} else {
+								assert.Equal(t, literal, bound)
+							}
+						}
+						assert.Equal(t, value, cfg.Value, "stored condition must retain its original literal")
+					}
+				})
+			}
+		})
+	}
 }

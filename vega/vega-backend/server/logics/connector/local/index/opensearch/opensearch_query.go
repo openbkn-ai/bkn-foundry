@@ -13,8 +13,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -22,7 +25,10 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
+
+const singleHavingGroup = "__vega_single_group"
 
 func openSearchInt64(value any) (int64, bool) {
 	switch value := value.(type) {
@@ -472,14 +478,30 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}
 		}
 
-		// Grouping: Nested terms/date_histogram from the inside out; The metric and HAVING are placed under the innermost bucket.
+		var havingSelector map[string]any
+		if params.Having != nil {
+			if aggAlias == "" {
+				aggAlias = "__value"
+			}
+			fields := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
+			for _, field := range resource.SchemaDefinition {
+				fields[field.Name] = field
+			}
+			selector, err := c.buildHavingBucketSelector(params.Having, aggAlias, filter_condition.HavingTemporalField(params, fields))
+			if err != nil {
+				return nil, fmt.Errorf("failed to build HAVING condition: %w", err)
+			}
+			havingSelector = selector
+		}
+
+		// HAVING 作用于分组末级；无 GROUP BY 时使用单桶 filters，仍在引擎内执行过滤。
 		if len(params.GroupBy) > 0 {
 			leafAggs := make(map[string]any)
 			if metricBody != nil {
 				leafAggs[aggAlias] = metricBody
 			}
-			if params.Having != nil && params.Aggregation != nil {
-				leafAggs["having_filter"] = c.buildHavingBucketSelector(params.Having, aggAlias)
+			if havingSelector != nil {
+				leafAggs["having_filter"] = havingSelector
 			}
 
 			innerNode := leafAggs
@@ -522,6 +544,21 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 				if node, ok := v.(map[string]any); ok {
 					c.applyTermsOrderToGroupAggNode(node, params, aggAlias)
 				}
+			}
+		} else if havingSelector != nil {
+			children := map[string]any{"having_filter": havingSelector}
+			if metricBody != nil {
+				children[aggAlias] = metricBody
+			}
+			aggs[singleHavingGroup] = map[string]any{
+				"filters": map[string]any{
+					"filters": map[string]any{
+						"all": map[string]any{
+							"match_all": map[string]any{},
+						},
+					},
+				},
+				"aggs": children,
 			}
 		} else if metricBody != nil {
 			aggs[aggAlias] = metricBody
@@ -592,6 +629,20 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			groupByAggName := "group_by_" + params.GroupBy[0].Property
 			if groupByAgg, ok := aggregations[groupByAggName].(map[string]any); ok {
 				rows = c.flattenNestedGroupByRows(groupByAgg, params, aggAlias)
+			}
+		} else if params.Having != nil {
+			if group, ok := aggregations[singleHavingGroup].(map[string]any); ok {
+				if buckets, ok := group["buckets"].(map[string]any); ok {
+					if bucket, retained := buckets["all"].(map[string]any); retained {
+						row := make(map[string]any)
+						if params.Aggregation != nil {
+							c.mergeMetricIntoRowFromBucket(bucket, row, aggAlias)
+						} else {
+							row["__value"] = bucket["doc_count"]
+						}
+						rows = append(rows, row)
+					}
+				}
 			}
 		} else {
 			// There is no grouping, only aggregation
@@ -899,6 +950,8 @@ func (c *OpenSearchConnector) collectGroupByRowsFromBucket(bucket map[string]any
 	if level == len(params.GroupBy)-1 {
 		if params.Aggregation != nil {
 			c.mergeMetricIntoRowFromBucket(bucket, row, aggAlias)
+		} else if params.Having != nil && params.Having.Field == "count(*)" {
+			row["__value"] = bucket["doc_count"]
 		}
 		return []map[string]any{row}
 	}
@@ -944,70 +997,105 @@ func (c *OpenSearchConnector) flattenNestedGroupByRows(rootAgg map[string]any, p
 	return rows
 }
 
-// BuildHavingBucketSelector building HAVING bucket_selector polymerization conditions
-func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.HavingClause, aggAlias string) map[string]any {
-	// OpenSearch implements HAVING using the bucket_selector aggregation
-	script := ""
-	switch having.Operation {
-	case "==":
-		script = fmt.Sprintf("params.%s == %v", aggAlias, having.Value)
-	case "!=":
-		script = fmt.Sprintf("params.%s != %v", aggAlias, having.Value)
-	case ">":
-		script = fmt.Sprintf("params.%s > %v", aggAlias, having.Value)
-	case ">=":
-		script = fmt.Sprintf("params.%s >= %v", aggAlias, having.Value)
-	case "<":
-		script = fmt.Sprintf("params.%s < %v", aggAlias, having.Value)
-	case "<=":
-		script = fmt.Sprintf("params.%s <= %v", aggAlias, having.Value)
-	case "in":
-		if values, ok := having.Value.([]any); ok {
-			script = fmt.Sprintf("%s.contains(params.%s.toString())", formatInValuesForScript(values), aggAlias)
-		}
-	case "not_in":
-		if values, ok := having.Value.([]any); ok {
-			script = fmt.Sprintf("!%s.contains(params.%s.toString())", formatInValuesForScript(values), aggAlias)
-		}
-	case "range":
-		if values, ok := having.Value.([]any); ok && len(values) == 2 {
-			script = fmt.Sprintf("params.%s >= %v && params.%s <= %v", aggAlias, values[0], aggAlias, values[1])
-		}
-	case "out_range":
-		if values, ok := having.Value.([]any); ok && len(values) == 2 {
-			script = fmt.Sprintf("params.%s < %v || params.%s > %v", aggAlias, values[0], aggAlias, values[1])
-		}
+// buildHavingBucketSelector 使用数值参数比较聚合结果，不把输入值或别名拼入脚本。
+func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.HavingClause, aggAlias string, temporalField *interfaces.Property) (map[string]any, error) {
+	source := ""
+	scriptParams := map[string]any{}
+	metricPath := aggAlias
+	if having.Field == "count(*)" {
+		metricPath = "_count"
+		temporalField = nil
 	}
-
+	switch having.Operation {
+	case "==", "!=", ">", ">=", "<", "<=":
+		value, err := indexHavingValue(temporalField, having.Value)
+		if err != nil {
+			return nil, err
+		}
+		source = "params.metric " + having.Operation + " params.value"
+		scriptParams["value"] = value
+	case "in", "not_in", "range", "out_range":
+		var values []any
+		switch array := having.Value.(type) {
+		case []any:
+			values = array
+		case []string:
+			values = make([]any, len(array))
+			for i, value := range array {
+				values[i] = value
+			}
+		}
+		if len(values) == 0 {
+			return nil, interfaces.NewConditionBuildError("HAVING operation %s requires a non-empty array", having.Operation)
+		}
+		if (having.Operation == "range" || having.Operation == "out_range") && len(values) != 2 {
+			return nil, interfaces.NewConditionBuildError("HAVING range requires exactly two values")
+		}
+		numeric := make([]any, len(values))
+		for i, value := range values {
+			parsed, err := indexHavingValue(temporalField, value)
+			if err != nil {
+				return nil, err
+			}
+			numeric[i] = parsed
+		}
+		switch having.Operation {
+		case "in", "not_in":
+			scriptParams["values"] = numeric
+			source = "for (def value : params.values) { if (params.metric == value) return true; } return false;"
+			if having.Operation == "not_in" {
+				source = "for (def value : params.values) { if (params.metric == value) return false; } return true;"
+			}
+		case "range", "out_range":
+			scriptParams["lower"], scriptParams["upper"] = numeric[0], numeric[1]
+			source = "params.metric >= params.lower && params.metric <= params.upper"
+			if having.Operation == "out_range" {
+				source = "params.metric < params.lower || params.metric > params.upper"
+			}
+		}
+	default:
+		return nil, interfaces.NewConditionBuildError("unsupported HAVING operation: %s", having.Operation)
+	}
 	return map[string]any{
 		"bucket_selector": map[string]any{
-			"buckets_path": map[string]any{
-				aggAlias: aggAlias,
-			},
-			"script": map[string]any{
-				"source": script,
-			},
+			"buckets_path": map[string]any{"metric": metricPath},
+			"script":       map[string]any{"source": source, "params": scriptParams},
 		},
-	}
+	}, nil
 }
 
-// formatInValuesForScript formats the list of values for IN operations into Painless script format
-func formatInValuesForScript(values []any) string {
-	if len(values) == 0 {
-		return "[]"
-	}
-
-	var strValues []string
-	for _, v := range values {
-		switch val := v.(type) {
-		case string:
-			strValues = append(strValues, fmt.Sprintf("'%s'", val))
-		default:
-			strValues = append(strValues, fmt.Sprintf("%v", val))
+// 日期聚合的数值接口使用 epoch milliseconds，包括 date_nanos 的聚合值。
+// 保留输入的亚毫秒部分；最终比较精度受 OpenSearch double 聚合值限制。
+func indexHavingValue(field *interfaces.Property, value any) (any, error) {
+	if field != nil {
+		parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
+		if err != nil {
+			return nil, err
 		}
+		var instant time.Time
+		switch field.Type {
+		case interfaces.DataType_Datetime:
+			instant = parsed.(time.Time)
+		case interfaces.DataType_Date:
+			instant, err = time.Parse(time.DateOnly, parsed.(string))
+			if err != nil {
+				return nil, err
+			}
+		default:
+			return nil, interfaces.NewConditionBuildError("OpenSearch time fields do not support temporal aggregation")
+		}
+		return float64(instant.UnixMilli()) + float64(instant.Nanosecond()%int(time.Millisecond))/float64(time.Millisecond), nil
 	}
-
-	return fmt.Sprintf("[%s]", strings.Join(strValues, ", "))
+	number, ok := common.NumberAsFloat64(value)
+	if text, isString := value.(string); isString {
+		var err error
+		number, err = strconv.ParseFloat(text, 64)
+		ok = err == nil
+	}
+	if !ok || math.IsNaN(number) || math.IsInf(number, 0) {
+		return nil, interfaces.NewConditionBuildError("HAVING value must be a finite number")
+	}
+	return number, nil
 }
 
 // stringifyJSONQueryFields 只序列化协议已解码的 JSON 字段；文本和空值保持原样。

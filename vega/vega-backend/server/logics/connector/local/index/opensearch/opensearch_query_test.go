@@ -590,36 +590,100 @@ func TestOpenSearchApplyTermsOrderToGroupAggNode(t *testing.T) {
 }
 
 func TestOpenSearchBuildHavingBucketSelector(t *testing.T) {
-	conn := &OpenSearchConnector{}
-	tests := []struct {
-		name       string
-		having     *interfaces.HavingClause
-		wantScript string
-	}{
-		{name: "eq", having: &interfaces.HavingClause{Operation: "==", Value: 10}, wantScript: "params.total == 10"},
-		{name: "gte", having: &interfaces.HavingClause{Operation: ">=", Value: 10}, wantScript: "params.total >= 10"},
-		{name: "in", having: &interfaces.HavingClause{Operation: "in", Value: []any{"a", 2}}, wantScript: "['a', 2].contains(params.total.toString())"},
-		{name: "not in", having: &interfaces.HavingClause{Operation: "not_in", Value: []any{"a", 2}}, wantScript: "!['a', 2].contains(params.total.toString())"},
-		{name: "range", having: &interfaces.HavingClause{Operation: "range", Value: []any{1, 5}}, wantScript: "params.total >= 1 && params.total <= 5"},
-		{name: "out range", having: &interfaces.HavingClause{Operation: "out_range", Value: []any{1, 5}}, wantScript: "params.total < 1 || params.total > 5"},
-		{name: "unsupported", having: &interfaces.HavingClause{Operation: "like", Value: "x"}, wantScript: ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := conn.buildHavingBucketSelector(tt.having, "total")
-
-			selector := got["bucket_selector"].(map[string]any)
-			assert.Equal(t, map[string]any{"total": "total"}, selector["buckets_path"])
-			assert.Equal(t, tt.wantScript, selector["script"].(map[string]any)["source"])
+	t.Setenv("TZ", "Asia/Shanghai")
+	connector := &OpenSearchConnector{}
+	field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}
+	for _, operation := range []string{"==", "!=", ">", ">=", "<", "<=", "in", "not_in", "range", "out_range"} {
+		t.Run(operation+" equivalent datetime inputs", func(t *testing.T) {
+			var expected map[string]any
+			for _, input := range []any{"2026-10-19T00:00:00.123+08:00", "2026-10-19 00:00:00.123", json.Number("1792339200123"), "1792339200123"} {
+				value := input
+				switch operation {
+				case "in", "not_in", "range", "out_range":
+					value = []any{input, input}
+				}
+				having := &interfaces.HavingClause{Field: "__value", Operation: operation, Value: value}
+				got, err := connector.buildHavingBucketSelector(having, "created_min", field)
+				require.NoError(t, err)
+				if expected == nil {
+					expected = got
+				} else {
+					assert.Equal(t, expected, got)
+				}
+				selector := got["bucket_selector"].(map[string]any)
+				assert.Equal(t, map[string]any{"metric": "created_min"}, selector["buckets_path"])
+				script := selector["script"].(map[string]any)
+				assert.NotContains(t, script["source"], "2026-10-19")
+				parameters := script["params"].(map[string]any)
+				switch operation {
+				case "in", "not_in":
+					assert.Equal(t, []any{float64(1792339200123), float64(1792339200123)}, parameters["values"])
+				case "range", "out_range":
+					assert.Equal(t, map[string]any{"lower": float64(1792339200123), "upper": float64(1792339200123)}, parameters)
+				default:
+					assert.Equal(t, float64(1792339200123), parameters["value"])
+				}
+				assert.Equal(t, value, having.Value)
+			}
 		})
 	}
-}
-
-func TestFormatInValuesForScript(t *testing.T) {
-	t.Run("format in values for script", func(t *testing.T) {
-		assert.Equal(t, "[]", formatInValuesForScript(nil))
-		assert.Equal(t, "['a', 2, true]", formatInValuesForScript([]any{"a", 2, true}))
+	t.Run("numeric scripts use fixed expressions", func(t *testing.T) {
+		cases := []struct {
+			operation, source string
+			value             any
+			parameters        map[string]any
+		}{
+			{">=", "params.metric >= params.value", 10, map[string]any{"value": float64(10)}},
+			{"in", "for (def value : params.values) { if (params.metric == value) return true; } return false;", []any{1, 2}, map[string]any{"values": []any{float64(1), float64(2)}}},
+			{"not_in", "for (def value : params.values) { if (params.metric == value) return false; } return true;", []any{1, 2}, map[string]any{"values": []any{float64(1), float64(2)}}},
+			{"range", "params.metric >= params.lower && params.metric <= params.upper", []any{1, 5}, map[string]any{"lower": float64(1), "upper": float64(5)}},
+			{"out_range", "params.metric < params.lower || params.metric > params.upper", []any{1, 5}, map[string]any{"lower": float64(1), "upper": float64(5)}},
+		}
+		for _, tc := range cases {
+			got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Operation: tc.operation, Value: tc.value}, "metric.with.dots", nil)
+			require.NoError(t, err)
+			selector := got["bucket_selector"].(map[string]any)
+			assert.Equal(t, map[string]any{"metric": "metric.with.dots"}, selector["buckets_path"])
+			assert.Equal(t, map[string]any{"source": tc.source, "params": tc.parameters}, selector["script"])
+		}
+	})
+	t.Run("count remains numeric", func(t *testing.T) {
+		got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 2}, "min_date", field)
+		require.NoError(t, err)
+		selector := got["bucket_selector"].(map[string]any)
+		assert.Equal(t, map[string]any{"metric": "_count"}, selector["buckets_path"])
+		assert.Equal(t, map[string]any{"value": float64(2)}, selector["script"].(map[string]any)["params"])
+	})
+	t.Run("fractional milliseconds and calendar dates", func(t *testing.T) {
+		got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Operation: ">", Value: "2026-10-19T00:00:00.1235+08:00"}, "min_date", field)
+		require.NoError(t, err)
+		script := got["bucket_selector"].(map[string]any)["script"].(map[string]any)
+		assert.Equal(t, map[string]any{"value": 1792339200123.5}, script["params"])
+		dateField := &interfaces.Property{Type: interfaces.DataType_Date}
+		got, err = connector.buildHavingBucketSelector(&interfaces.HavingClause{Operation: ">", Value: "1970-01-02"}, "min_date", dateField)
+		require.NoError(t, err)
+		script = got["bucket_selector"].(map[string]any)["script"].(map[string]any)
+		assert.Equal(t, map[string]any{"value": float64(86400000)}, script["params"])
+	})
+	for _, having := range []*interfaces.HavingClause{
+		{Operation: "like", Value: 1}, {Operation: "range", Value: []any{1}},
+		{Operation: "in", Value: []any{}}, {Operation: ">", Value: "return true"},
+	} {
+		got, err := connector.buildHavingBucketSelector(having, "total", nil)
+		var conditionErr *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &conditionErr)
+		assert.Nil(t, got)
+	}
+	t.Run("invalid temporal input and server timezone retain error types", func(t *testing.T) {
+		got, err := connector.buildHavingBucketSelector(&interfaces.HavingClause{Operation: ">", Value: "2026-10-19"}, "total", field)
+		var conditionErr *interfaces.ConditionBuildError
+		require.ErrorAs(t, err, &conditionErr)
+		assert.Nil(t, got)
+		t.Setenv("TZ", "invalid/zone")
+		got, err = connector.buildHavingBucketSelector(&interfaces.HavingClause{Operation: ">", Value: "2026-10-19 00:00:00"}, "total", field)
+		var zoneErr *interfaces.ServerTimeZoneError
+		require.ErrorAs(t, err, &zoneErr)
+		assert.Nil(t, got)
 	})
 }
 
@@ -806,5 +870,114 @@ func TestOpenSearchConnectorExecuteQueryPreservesBackendErrors(t *testing.T) {
 			_, invalid := interfaces.RequestSideQueryError(err)
 			assert.False(t, invalid, "backend errors without known index dimensions retain their original classification")
 		})
+	}
+}
+
+func TestOpenSearchConnectorExecuteQueryTemporalHaving(t *testing.T) {
+	t.Setenv("TZ", "Asia/Shanghai")
+	for _, input := range []any{"2026-10-19T00:00:00+08:00", "2026-10-19 00:00:00", json.Number("1792339200000"), "1792339200000"} {
+		requests := 0
+		client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+			Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+				requests++
+				var query map[string]any
+				require.NoError(t, json.NewDecoder(request.Body).Decode(&query))
+				groups := query["aggs"].(map[string]any)["group_by_country"].(map[string]any)
+				selector := groups["aggs"].(map[string]any)["having_filter"].(map[string]any)["bucket_selector"].(map[string]any)
+				script := selector["script"].(map[string]any)
+				assert.Equal(t, "params.metric > params.value", script["source"])
+				assert.Equal(t, map[string]any{"value": float64(1792339200000)}, script["params"])
+				assert.Equal(t, map[string]any{"metric": "min_created"}, selector["buckets_path"])
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
+					Body: io.NopCloser(strings.NewReader(`{"aggregations":{"group_by_country":{"buckets":[]}},"hits":{"total":{"value":0}}}`))}, nil
+			}),
+		})
+		require.NoError(t, err)
+		connector := &OpenSearchConnector{client: client}
+		resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
+			{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime, OriginalType: "date", Attributes: map[string]any{"format": "epoch_millis"}},
+			{Name: "country", OriginalName: "country", Type: interfaces.DataType_String},
+		}}
+		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created", Aggr: "min", Alias: "min_created"},
+			GroupBy: []*interfaces.GroupByItem{{Property: "country"}}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: input}, Paging: interfaces.PagingRequest{Limit: 10}}
+		result, err := connector.ExecuteQuery(context.Background(), "events", resource, params)
+		require.NoError(t, err)
+		assert.Empty(t, result.Entries)
+		assert.Equal(t, 1, requests)
+		assert.Equal(t, input, params.Having.Value)
+	}
+}
+
+func TestOpenSearchConnectorExecuteQueryHavingPaths(t *testing.T) {
+	for _, grouped := range []bool{false, true} {
+		for _, countOnly := range []bool{false, true} {
+			for _, retained := range []bool{false, true} {
+				requests := 0
+				client, err := osclient.NewClient(osclient.Config{Addresses: []string{"http://opensearch.test"}, DisableRetry: true,
+					Transport: countRowsTransport(func(request *http.Request) (*http.Response, error) {
+						requests++
+						var query map[string]any
+						require.NoError(t, json.NewDecoder(request.Body).Decode(&query))
+						aggs := query["aggs"].(map[string]any)
+						var parent map[string]any
+						if grouped {
+							parent = aggs["group_by_country"].(map[string]any)
+						} else {
+							parent, _ = aggs["__vega_single_group"].(map[string]any)
+							require.NotNil(t, parent)
+							assert.Equal(t, map[string]any{"filters": map[string]any{"all": map[string]any{"match_all": map[string]any{}}}}, parent["filters"])
+						}
+						children := parent["aggs"].(map[string]any)
+						selector := children["having_filter"].(map[string]any)["bucket_selector"].(map[string]any)
+						metric := "min_created"
+						if countOnly {
+							metric = "_count"
+						}
+						assert.Equal(t, map[string]any{"metric": metric}, selector["buckets_path"])
+						bucket := map[string]any{"key": "CN", "doc_count": 3, "min_created": map[string]any{"value": 1792339200000}}
+						var groupResult map[string]any
+						if grouped {
+							buckets := []any{}
+							if retained {
+								buckets = append(buckets, bucket)
+							}
+							groupResult = map[string]any{"group_by_country": map[string]any{"buckets": buckets}}
+						} else {
+							buckets := map[string]any{}
+							if retained {
+								buckets["all"] = bucket
+							}
+							groupResult = map[string]any{"__vega_single_group": map[string]any{"buckets": buckets}}
+						}
+						data, err := json.Marshal(map[string]any{"aggregations": groupResult})
+						require.NoError(t, err)
+						return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(string(data)))}, nil
+					}),
+				})
+				require.NoError(t, err)
+				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "created", OriginalName: "created", Type: interfaces.DataType_Datetime}, {Name: "country", OriginalName: "country", Type: interfaces.DataType_String}}}
+				params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created", Aggr: "min", Alias: "min_created"}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: "2026-10-19T00:00:00Z"}, Paging: interfaces.PagingRequest{Limit: 10}}
+				if countOnly {
+					params.Aggregation = nil
+					params.Having = &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 2}
+				}
+				if grouped {
+					params.GroupBy = []*interfaces.GroupByItem{{Property: "country"}}
+				}
+				result, err := (&OpenSearchConnector{client: client}).ExecuteQuery(context.Background(), "events", resource, params)
+				require.NoError(t, err)
+				if retained {
+					require.Len(t, result.Entries, 1)
+					if countOnly {
+						assert.Equal(t, json.Number("3"), result.Entries[0]["__value"])
+					} else {
+						assert.Equal(t, json.Number("1792339200000"), result.Entries[0]["min_created"])
+					}
+				} else {
+					assert.Empty(t, result.Entries)
+				}
+				assert.Equal(t, 1, requests)
+			}
+		}
 	}
 }

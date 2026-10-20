@@ -673,6 +673,9 @@ func normalizeTimestampValue(value any) any {
 
 // dateValueExpr builds a parameter expression compatible with the field's PostgreSQL date type.
 func dateValueExpr(field *interfaces.Property, value any) string {
+	if field.Type == interfaces.DataType_Date {
+		return "?::date"
+	}
 	// Type is the semantic contract and may be present even when an API-provided schema
 	// omits OriginalType. Keep this check aligned with validatePostgresqlDateValue.
 	if field.Type == interfaces.DataType_Time {
@@ -689,6 +692,9 @@ func dateValueExpr(field *interfaces.Property, value any) string {
 		}
 	}
 	if nativeTimestamp {
+		if field.Type == interfaces.DataType_Datetime && !strings.Contains(originalType, "with time zone") && originalType != "timestamptz" {
+			return "?::timestamp"
+		}
 		// Without an explicit cast PostgreSQL may infer an unknown parameter as timestamptz
 		// and shift an unzoned column through the session TimeZone. Keep native cursors in
 		// wall-clock space for timestamp-without-time-zone and date columns.
@@ -722,16 +728,24 @@ func dateValueExpr(field *interfaces.Property, value any) string {
 
 // validateDateValue checks that a value is compatible with the field's date or time type.
 func validateDateValue(field *interfaces.Property, value any) error {
-	if field.Type == interfaces.DataType_Time && value != nil {
-		if _, ok := value.(string); !ok {
-			return fmt.Errorf("PostgreSQL time field %q requires a time string, got %T", field.Name, value)
-		}
+	if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Time {
+		_, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
+		return err
 	}
+
 	return nil
 }
 
 // dateCompareExpr compares a date expression with epoch milliseconds or a time string.
 func dateCompareExpr(lhs string, field *interfaces.Property, op string, value any) (sq.Sqlizer, error) {
+	if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Datetime || field.Type == interfaces.DataType_Time {
+		parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
+		if err != nil {
+			return nil, err
+		}
+		value = parsed
+	}
+
 	if err := validateDateValue(field, value); err != nil {
 		return nil, err
 	}
@@ -746,6 +760,14 @@ func dateSetExpr(lhs string, field *interfaces.Property, op string, values []any
 	valueExprs := make([]string, len(values))
 	args := make([]any, len(values))
 	for i, value := range values {
+		if field.Type == interfaces.DataType_Date || field.Type == interfaces.DataType_Datetime || field.Type == interfaces.DataType_Time {
+			parsed, err := filter_condition.ParseTemporalValue(field.Type, value, common.ServerTimeZone())
+			if err != nil {
+				return nil, err
+			}
+			value = parsed
+		}
+
 		if err := validateDateValue(field, value); err != nil {
 			return nil, err
 		}

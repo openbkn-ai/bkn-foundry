@@ -80,10 +80,11 @@ func extractKeyValues(fields []string, document map[string]any) ([]interfaces.Ke
 	return values, nil
 }
 
-// normalizeJSONDocumentFields 将数据库 JSON 值解析为仅保存在 _source 中的 JSON 值，保留结构和数值精度。
-func normalizeJSONDocumentFields(document map[string]any, properties []*interfaces.Property) error {
+// normalizeBuildDocumentFields 规范源端 JSON、日历日期与日内时间，不套用 HTTP 过滤输入的接受集。
+// sourceTypes 来自 CDC 消息 schema；缺失逻辑类型时不猜测数字的时间单位。
+func normalizeBuildDocumentFields(document map[string]any, properties []*interfaces.Property, sourceTypes map[string]string) error {
 	for _, property := range properties {
-		if property == nil || property.Type != interfaces.DataType_Json {
+		if property == nil || (property.Type != interfaces.DataType_Json && property.Type != interfaces.DataType_Time && property.Type != interfaces.DataType_Date) {
 			continue
 		}
 		value, exists := document[property.Name]
@@ -91,11 +92,19 @@ func normalizeJSONDocumentFields(document map[string]any, properties []*interfac
 			continue
 		}
 
-		normalized, err := normalizeJSONValue(value)
-		if err != nil {
-			return fmt.Errorf("JSON field %q: %w", property.Name, err)
+		if property.Type == interfaces.DataType_Time || property.Type == interfaces.DataType_Date {
+			logicalType := sourceTypes[property.Name]
+			if logicalType == "" {
+				logicalType = sourceTypes[property.OriginalName]
+			}
+			document[property.Name] = normalizeBuildTemporalValue(property.Type, value, logicalType)
+		} else {
+			normalized, err := normalizeJSONValue(value)
+			if err != nil {
+				return fmt.Errorf("JSON field %q: %w", property.Name, err)
+			}
+			document[property.Name] = normalized
 		}
-		document[property.Name] = normalized
 	}
 	return nil
 }
