@@ -143,8 +143,7 @@ async def execute(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
-    # Only the migrated built-in chat is available initially. EE tools/agent
-    # admission belongs to the independent graph-explorer delivery.
+    # Only the built-in Agents admitted on the public surface run here.
     if req.agent_id not in PUBLIC_AGENT_IDS:
         raise not_found("agent", req.agent_id)
     agent = await dao.get_agent(session, req.agent_id)
