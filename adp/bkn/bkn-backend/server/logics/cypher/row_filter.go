@@ -36,6 +36,11 @@ func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 		}
 		subFiltered = append(subFiltered, types...)
 	}
+	if len(plan.Tables) == 0 {
+		// A plan made only of others, as an intersection of two lists is,
+		// is filtered in them.
+		return subFiltered, nil
+	}
 	refs := make([]string, 0, len(plan.Tables))
 	seen := make(map[string]struct{}, len(plan.Tables))
 	for _, table := range plan.Tables {

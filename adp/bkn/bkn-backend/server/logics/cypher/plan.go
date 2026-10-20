@@ -47,6 +47,9 @@ type Plan struct {
 	// and are then what the statement returns; see Query.Totals.
 	Totals []PlanTotal
 
+	// Intersection, when set, is the whole statement; see Query.Intersection.
+	Intersection *PlanIntersection
+
 	// SQLOnly marks a plan only the SQL path answers: totals over groups,
 	// CASE and coalesce. The bind-join executor takes no new capabilities.
 	SQLOnly bool
@@ -422,6 +425,9 @@ type CompileOptions struct {
 
 // Compile binds a query to a knowledge network and produces its plan.
 func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
+	if query.Intersection != nil {
+		return compileIntersection(query.Intersection, schema, options)
+	}
 	p := &planner{
 		schema:     schema,
 		parameters: options.Parameters,
@@ -1891,9 +1897,13 @@ func (p *planner) planSemiJoin(node SemiJoin) (PlanPredicate, error) {
 	return PlanSemiJoin{Table: table, Column: column, Property: node.Outer.Property, Sub: sub}, nil
 }
 
-// subPlans lists the plans of the semi-joins in a plan's conditions.
+// subPlans lists the plans a plan reads besides its own tables: those of the
+// semi-joins in its conditions, and the two lists of an intersection.
 func (plan *Plan) subPlans() []*Plan {
 	var subs []*Plan
+	if plan.Intersection != nil {
+		subs = append(subs, plan.Intersection.Lists[:]...)
+	}
 	var walk func(PlanPredicate)
 	walk = func(predicate PlanPredicate) {
 		switch node := predicate.(type) {

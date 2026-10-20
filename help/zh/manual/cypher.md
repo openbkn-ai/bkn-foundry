@@ -179,7 +179,7 @@ ORDER BY n DESC LIMIT 4
 
 ## 🔗 WITH：分段处理
 
-WITH 有两种用法，都只用 MATCH 前后的写法来区分。
+WITH 有三种用法，都只用 MATCH 前后的写法来区分。
 
 ### 1. 先聚合再过滤
 
@@ -235,13 +235,34 @@ RETURN count(*) AS teams_with_own_goal
 - `v` 只能用在 `=` 里，`s` 只能用在 `IN` 里，而且要作为 WHERE 顶层的一个独立条件，不能放在 OR 或 NOT 下面。`v` 也可以写在内联属性里：`{q: v}`。
 - 第二段之后不能再接 WITH。
 
+### 3. 比较两个收集的列表
+
+两段各自收集一个列表，RETURN 返回两个列表的大小，以及它们共有的元素个数：
+
+```cypher
+MATCH (p1:产品 {material_number: 'P61-000351'})-[:产品关联产品bom]->(b1:产品BOM)-[:产品bom关联物料]->(m1:物料)
+WHERE b1.alt_priority = 0
+WITH collect(DISTINCT m1.material_code) AS codes1
+MATCH (p2:产品 {material_number: 'U00-000151'})-[:产品关联产品bom]->(b2:产品BOM)-[:产品bom关联物料]->(m2:物料)
+WHERE b2.alt_priority = 0
+WITH codes1, collect(DISTINCT m2.material_code) AS codes2
+RETURN size([x IN codes1 WHERE x IN codes2]) AS common, size(codes1) AS n1, size(codes2) AS n2
+```
+
+- 两个 WITH 各收集一个属性：`collect([DISTINCT] x.p) AS 名字`；第二个 WITH 还要把第一个列表原样传下去。两个 WITH 都不能带 WHERE，第二段 MATCH 也不能使用第一个列表。
+- RETURN 只能写三种大小：`size(a)`、`size(b)`，以及共有元素个数 `size([x IN a WHERE x IN b])`（反过来写 `[x IN b WHERE x IN a]` 也可以）。结果是一行。
+- 没写 DISTINCT 的列表保留重复值，共有元素个数按被过滤那个列表的重复次数计算，和 Cypher 一致；所以两个方向同时求，要求两个列表都写 DISTINCT。
+- 第二段 MATCH 什么都没匹配到时，结果没有行；第一段没匹配到时，返回一行，第一个列表的大小和共有元素个数都是 0。
+- 不能直接返回列表本身。要列出共有的值，用上面「比较两组对象」的共享节点写法。
+
 ### 开头定义常量
 
-两种用法都可以用一个只含字面量、列表或参数的 WITH 开头，后面 MATCH 的条件按名字使用这些值（见上面「对分组再统计」的示例）。
+这几种用法都可以用一个只含字面量、列表或参数的 WITH 开头，后面 MATCH 的条件按名字使用这些值（见上面「对分组再统计」的示例）。
 
 ### WITH 仍不支持的写法
 
 - 第二个 WITH 之后再写 MATCH；
+- 第二段 MATCH 之后再接 WITH（比较两个列表除外）；
 - `WITH DISTINCT`（半连接除外）、`WITH *`；
 - WITH 上的 ORDER BY、SKIP、LIMIT；
 - WITH 的 WHERE 里写 IN 或字符串匹配；
@@ -298,7 +319,7 @@ LIMIT 3
 | `GROUP BY` | 不写，按 RETURN 里其余各列自动分组 |
 | `UNION` | 拆成两条查询 |
 | 变长路径 `[:R*1..3]`、路径变量 `p = ...` | 按跳数分别写成固定长度的路径 |
-| `UNWIND`、列表推导式 `[x IN … WHERE …]`、下标 `xs[0]` | 求两组的交集时，在一个 MATCH 里共享节点 |
+| `UNWIND`、下标 `xs[0]`；列表推导式 `[x IN … WHERE …]` 只能用在比较两个列表的 `size(...)` 里 | 数两个列表的共有元素用 `size([x IN a WHERE x IN b])`；列出共有的值，在一个 MATCH 里共享节点 |
 | 日期函数、`coalesce()`、`size()`（只用于 WITH 收集的列表）和聚合以外的函数调用 | 暂不支持 |
 | `XOR`、乘方 `^` | 用 AND / OR / NOT 改写；乘方展开为乘法 |
 | 关系属性 `r.x` | 关系没有自己的属性；读两端节点的属性 |

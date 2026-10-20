@@ -62,6 +62,9 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 	if dialect != DialectMySQL && dialect != DialectPostgres {
 		return "", fmt.Errorf("unsupported SQL dialect %q", dialect)
 	}
+	if plan.Intersection != nil {
+		return generateIntersection(plan.Intersection, dialect)
+	}
 	if len(plan.Tables) == 0 || len(plan.Select) == 0 {
 		return "", fmt.Errorf("cannot generate SQL for an empty plan")
 	}

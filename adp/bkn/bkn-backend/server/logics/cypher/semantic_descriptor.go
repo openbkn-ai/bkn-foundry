@@ -124,6 +124,9 @@ const (
 	semanticSemiJoin   = "semi_join"
 	semanticCase       = "case"
 	semanticCoalesce   = "coalesce"
+	// semanticIntersection marks the count of what two collected lists
+	// share.
+	semanticIntersection = "intersection"
 	// semanticGroups marks an aggregate over the groups a WITH made rather
 	// than over the matched rows.
 	semanticGroups = "groups"
@@ -167,6 +170,9 @@ func semanticExpressionKind(value PlanExpression) string {
 }
 
 func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescriptor, error) {
+	if plan != nil && plan.Intersection != nil {
+		return semanticIntersectionDescriptor(plan, query)
+	}
 	if plan == nil || strings.TrimSpace(plan.NetworkID) == "" || len(plan.Tables) == 0 || len(plan.Select) == 0 {
 		return nil, errors.New("semantic query descriptor requires a bound query plan")
 	}
@@ -687,4 +693,68 @@ func semanticGraphRefs(plan *Plan, value PlanGraph) ([]string, []string) {
 	}
 	walk(value)
 	return properties, relations
+}
+
+// semanticIntersectionDescriptor describes a query comparing two collected
+// lists: what each list's stage reads, under the alias prefixes list0. and
+// list1., and the sizes returned, each a count over the property its list
+// collects.
+func semanticIntersectionDescriptor(plan *Plan, query string) (*SemanticQueryDescriptor, error) {
+	if strings.TrimSpace(plan.NetworkID) == "" || len(plan.Intersection.Items) == 0 {
+		return nil, errors.New("semantic query descriptor requires a bound query plan")
+	}
+	descriptor := &SemanticQueryDescriptor{
+		Version:         "semantic-query-descriptor/v1",
+		ProducerProfile: "openbkn.bkn-backend.run_cypher@0.1.5",
+		NetworkID:       plan.NetworkID, Branch: plan.Branch,
+		QueryHash:      semanticQueryHash(query),
+		Objects:        []SemanticQueryObject{},
+		Projections:    make([]SemanticQueryProjection, 0, len(plan.Intersection.Items)),
+		EffectiveLimit: int64(interfaces.CYPHER_DEFAULT_LIMIT), LimitSource: "default",
+		ResultPointer: "$.entries",
+	}
+	var values [2]string
+	for i, list := range plan.Intersection.Lists {
+		sub, err := BuildSemanticQueryDescriptor(list, "")
+		if err != nil {
+			return nil, err
+		}
+		stage := fmt.Sprintf("list%d.", i)
+		for _, object := range sub.Objects {
+			object.Alias = stage + object.Alias
+			descriptor.Objects = append(descriptor.Objects, object)
+		}
+		for _, relation := range sub.Relations {
+			relation.SourceAlias, relation.TargetAlias = stage+relation.SourceAlias, stage+relation.TargetAlias
+			descriptor.Relations = append(descriptor.Relations, relation)
+		}
+		for _, predicate := range sub.Predicates {
+			predicate.LogicalPath = strings.TrimSuffix(stage+predicate.LogicalPath, ".")
+			descriptor.Predicates = append(descriptor.Predicates, predicate)
+		}
+		if len(sub.Projections) > 0 {
+			values[i] = sub.Projections[0].PropertyRef
+		}
+	}
+	for _, item := range plan.Intersection.Items {
+		projection := SemanticQueryProjection{
+			Alias: item.Alias, Aggregate: "count", Distinct: plan.Intersection.Distinct[item.List],
+			OutputPointer: semanticOutputPointer(item.Alias),
+		}
+		if item.Common {
+			projection.Expression = semanticIntersection
+			projection.PropertyRefs = dedupe([]string{values[item.List], values[1-item.List]})
+		} else {
+			projection.PropertyRef = values[item.List]
+		}
+		descriptor.Projections = append(descriptor.Projections, projection)
+	}
+	raw, err := json.Marshal(descriptor)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > maxSemanticDescriptorBytes {
+		return nil, fmt.Errorf("%w: exceeds %d bytes", ErrSemanticDescriptorTooLarge, maxSemanticDescriptorBytes)
+	}
+	return descriptor, nil
 }

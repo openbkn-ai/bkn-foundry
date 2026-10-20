@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher/parsing"
 )
 
-// A query with a WITH is read in one of two shapes:
+// A query with a WITH is read in one of three shapes:
 //
 //	MATCH ... WITH <grouping and aggregates> [WHERE ...] RETURN ...
 //
@@ -26,7 +26,9 @@ import (
 // where the first stage only supplies values the second filters by, which is
 // a semi-join: each row of the second stage is kept once if its value is among
 // the first stage's. In the first shape, more WITHs may follow the first one
-// (see analyzeWiths); a MATCH may follow only the first WITH.
+// (see analyzeWiths); a MATCH may follow only the first WITH. The third shape
+// collects a list in each of two stages and returns sizes of them and of what
+// they share (see analyzeIntersection).
 //
 // Either shape may open with a WITH that names values written in the query,
 // as in WITH ['a', 'b'] AS codes MATCH ... WHERE n.code IN codes: each name
@@ -43,6 +45,11 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 	for _, child := range multi.GetChildren() {
 		switch node := child.(type) {
 		case parsing.IOC_ReadingClauseContext:
+			if node.OC_Unwind() != nil {
+				// Refused before the shape of the stages is, which would
+				// otherwise speak first and point elsewhere.
+				return nil, unwindError(node)
+			}
 			current.reading = append(current.reading, node)
 		case parsing.IOC_UpdatingClauseContext:
 			return nil, unsupportedf(node, "writing", "this interface only runs read-only queries")
@@ -78,6 +85,11 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 	segment := segments[0]
 	if len(segment.reading) == 0 {
 		return nil, unsupportedf(segment.with, "a WITH before any MATCH", "start the query with MATCH")
+	}
+	if len(segments) == 2 && len(segments[1].reading) > 0 && len(after) == 0 {
+		if query, ok, err := analyzeIntersection(segments[0], segments[1], returning, constants); ok {
+			return query, err
+		}
 	}
 	// A stage after the second one would read values of a stage that is
 	// itself filtered by another, which nothing here writes as one statement.
@@ -424,9 +436,13 @@ func returnsAlias(query *Query, alias string) bool {
 	return false
 }
 
-// stages lists the earlier stages a query's semi-joins read.
+// stages lists the earlier stages a query reads: those its semi-joins read,
+// and the two an intersection compares.
 func (q *Query) stages() []*Query {
 	var stages []*Query
+	if q.Intersection != nil {
+		stages = append(stages, q.Intersection.Lists[:]...)
+	}
 	var walk func(Predicate)
 	walk = func(predicate Predicate) {
 		switch node := predicate.(type) {

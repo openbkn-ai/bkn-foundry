@@ -63,6 +63,34 @@ type Query struct {
 	// totals read, named as the WITH named them -- and the totals are what
 	// the query returns, computed over those rows.
 	Totals []Total
+
+	// Intersection, when set, is the whole query: two lists, each collected
+	// by a stage of its own, and the sizes RETURN asks of them. The other
+	// fields are then empty; see analyzeIntersection.
+	Intersection *Intersection
+}
+
+// Intersection compares two lists of values, each collected by a stage:
+//
+//	MATCH ... WITH collect(x.p) AS a
+//	MATCH ... WITH a, collect(y.q) AS b
+//	RETURN size([v IN a WHERE v IN b]) AS common, size(a) AS n
+//
+// Each of Lists returns its property as one column named "value", once per
+// matched row; Distinct says the stage collected with DISTINCT.
+type Intersection struct {
+	Lists    [2]*Query
+	Distinct [2]bool
+	Items    []IntersectionItem
+}
+
+// IntersectionItem is one size RETURN asks for: of List itself, or, when
+// Common is set, of the elements of List the other list also holds.
+type IntersectionItem struct {
+	List   int
+	Common bool
+	Alias  string
+	Pos    Position
 }
 
 // Total is one aggregate over a WITH's groups. Of names the WITH's value it
