@@ -59,6 +59,27 @@ func TestCaseAndCoalesceGenerate(t *testing.T) {
 			query: "MATCH (o:Order) RETURN CASE WHEN o.amount > 40 THEN o.region ELSE null END AS r",
 			want:  []string{"CASE WHEN t0.`f_amount` > 40 THEN t0.`f_region` ELSE NULL END AS `r`"},
 		},
+		{
+			name:  "a string coalesce against a string",
+			query: "MATCH (o:Order) WHERE coalesce(o.region, o.customer_code) = 'east' OR coalesce(o.region, 'x') = $west RETURN o.id",
+			want: []string{
+				"COALESCE(t0.`f_region`, t0.`f_cust`) = 'east'",
+				"COALESCE(t0.`f_region`, 'x') = 'west'",
+			},
+		},
+		{
+			name:  "a string coalesce against a string property",
+			query: "MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WHERE coalesce(o.region, 'x') = c.region RETURN o.id",
+			want:  []string{"COALESCE(t0.`f_region`, 'x') = t1.`f_region`"},
+		},
+		{
+			// The earlier stage is planned on its own; its CASE or coalesce
+			// still makes the whole query SQL-only, which compileCase checks.
+			name: "a coalesce in the stage before a semi-join",
+			query: "MATCH (o:Order) WHERE coalesce(o.amount, 0) > 30 WITH DISTINCT o.customer_code AS c " +
+				"MATCH (k:Customer) WHERE k.code = c RETURN k.name",
+			want: []string{"COALESCE(t0.`f_amount`, 0) > 30"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sql, err := compileCase(t, tc.query)
@@ -89,6 +110,11 @@ func TestCaseAndCoalesceRefuse(t *testing.T) {
 		{"MATCH (o:Order) RETURN CASE WHEN count(*) > 1 THEN 1 END AS k", "count(*) is not supported"},
 		{"MATCH (o:Order) RETURN CASE WHEN o.region = r THEN 1 END AS k", "referring to a node as a value"},
 		{"MATCH (o:Order) RETURN CASE WHEN 1 = 1 THEN 1 ELSE 2 END AS k", "a comparison must read a property"},
+		{"MATCH (o:Order) WHERE coalesce(o.region, 'unknown') = 0 RETURN o.id", "comparing a number with a value that is not one"},
+		{"MATCH (o:Order) WHERE coalesce(o.amount, 0) = 'x' RETURN o.id", "comparing a computed number with string"},
+		{"MATCH (o:Order) WHERE coalesce(o.region, 'x') = $flag RETURN o.id", "parameter \"flag\" is compared with a computed value"},
+		{"MATCH (o:Order) WHERE coalesce(o.region, 'x') = o.rush RETURN o.id", "o.rush, which is boolean"},
+		{"MATCH (o:Order) RETURN CASE WHEN o.amount > 1 THEN o.rush END AS k", "o.rush is boolean"},
 	} {
 		_, err := compileCase(t, tc.query)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -109,7 +135,7 @@ func compileCase(t *testing.T, query string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	plan, err := Compile(analyzed, bindJoinSchema(t), CompileOptions{Parameters: map[string]any{"west": "west"}})
+	plan, err := Compile(analyzed, bindJoinSchema(t), CompileOptions{Parameters: map[string]any{"west": "west", "flag": true}})
 	if err != nil {
 		return "", err
 	}

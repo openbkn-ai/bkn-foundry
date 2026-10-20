@@ -154,7 +154,8 @@ RETURN CASE g.own_goal WHEN '1' THEN 'own' ELSE 'normal' END AS kind,
 - 两种形式都支持：`CASE WHEN <条件> THEN … ELSE … END`，以及 `CASE x WHEN v THEN … END`。没有 ELSE 且没有命中时结果为 null，所以 `count(CASE WHEN … THEN 1 END)` 就是条件计数。
 - `coalesce(a, b, …)` 返回第一个不为 null 的值，至少两个参数。例如 `coalesce(g.penalty, -1)`，可以配合 OPTIONAL MATCH 给缺失的一侧兜底。
 - 能写在算术能写的所有地方：RETURN、WITH、ORDER BY、比较的两侧，以及聚合的参数里。
-- 各分支（或各参数）必须都是数字，或者都不是数字；null 字面量两种都可以搭配。分支结果不能是布尔值，要返回条件就直接返回条件本身。
+- 各分支（或各参数）必须都是数字，或者都不是数字；null 字面量两种都可以搭配。分支结果不能是布尔值（包括布尔类型的属性），要返回条件就直接返回条件本身。
+- 用在比较里时，另一侧要和结果同类：字符串结果和字符串字面量、参数或字符串属性比较，如 `coalesce(c.nickname, c.name) = $name`；数字结果和数字比较。字符串和数字互相比较会被拒绝，因为 MySQL 会把字符串转成数字再比，结果和 Cypher 不同。
 - 结果是字符串的 CASE 不能参与算术，也不能用 `sum`、`avg` 聚合。
 - 分支条件里不能直接写聚合（`CASE WHEN count(*) > 10`）。先用 WITH 给聚合命名，再在 CASE 里使用这个名字：
 

@@ -226,7 +226,10 @@ components:
             CASE x WHEN v THEN ...); without ELSE an unmatched row gives null. The branches of a
             CASE, and the arguments of coalesce, must all be numbers or all be other values (a
             null literal fits either), and none may be a boolean: return the condition itself
-            for that. After a WITH a branch's condition may test the names the WITH passed on,
+            for that, a boolean property included. Compared with something, a string result
+            takes a string literal, parameter or property on the other side and a number result
+            a number; a string against a number is refused, since MySQL would convert the string.
+            After a WITH a branch's condition may test the names the WITH passed on,
             including aggregates (CASE WHEN n > 10 THEN ... where n is count(*)); before one,
             aggregates belong in RETURN, not in a branch's condition. Queries using CASE or
             coalesce always run on the SQL path.

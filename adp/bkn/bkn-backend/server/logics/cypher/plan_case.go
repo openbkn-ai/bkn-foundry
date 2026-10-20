@@ -5,6 +5,12 @@
 
 package cypher
 
+import (
+	"strings"
+
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
+)
+
 // PlanCase is CASE WHEN ... THEN ... [ELSE ...] END. Else is nil when the query
 // wrote none, which gives null, as SQL does too.
 type PlanCase struct {
@@ -90,7 +96,12 @@ func (p *planner) planResult(value Expression) (PlanExpression, numberKind, erro
 		if err != nil {
 			return nil, kindUnknown, err
 		}
-		kind, _ := p.propertyKind(table, node.Property)
+		kind, declared := p.propertyKind(table, node.Property)
+		if strings.ToLower(declared) == dtype.DATATYPE_BOOLEAN {
+			// MySQL would return it as 1 or 0, as it would a boolean literal.
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"%s is boolean, which CASE and coalesce do not return; return a condition instead", node)
+		}
 		return PlanValueColumn{Table: table, Column: column, Property: node.Property}, kind, nil
 	case Literal:
 		kind := literalKind(node)

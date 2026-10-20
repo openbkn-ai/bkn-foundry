@@ -951,24 +951,70 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 	}
 }
 
-// planExpressionComparison plans a comparison with arithmetic on a side. The
-// arithmetic side is a number, so the other one has to be too: MySQL would
-// compare it against a string by converting the string, which Cypher never
-// does.
+// planExpressionComparison plans a comparison with a computed value on a side.
+// The two sides have to be the same kind of value: MySQL would compare a
+// number against a string by converting the string, which Cypher never does.
+// A CASE or coalesce may give a string, so a string literal or parameter is
+// planned as one and compared with it.
 func (p *planner) planExpressionComparison(node ExpressionComparison) (PlanPredicate, error) {
 	sides := [2]Expression{node.Left, node.Right}
 	planned := [2]PlanExpression{}
+	kinds := [2]numberKind{}
 	for i, side := range sides {
-		if literal, ok := side.(Literal); ok && literalKind(literal) == kindNotNumber {
-			return nil, planErrorf(literal.Pos, "comparing a computed number with %s", literal.describe())
-		}
-		value, _, err := p.planExpression(side)
+		value, kind, err := p.planComparedValue(side)
 		if err != nil {
 			return nil, err
 		}
-		planned[i] = value
+		planned[i], kinds[i] = value, kind
+	}
+	for i, side := range sides {
+		other := kinds[1-i]
+		if kinds[i] != kindNotNumber || (other != kindInteger && other != kindFloat) {
+			continue
+		}
+		if literal, ok := side.(Literal); ok {
+			return nil, planErrorf(literal.Pos, "comparing a computed number with %s", literal.describe())
+		}
+		return nil, planErrorf(side.expressionPosition(), "comparing a number with a value that is not one")
 	}
 	return PlanExpressionComparison{Left: planned[0], Operator: node.Operator, Right: planned[1]}, nil
+}
+
+// planComparedValue plans one side of a computed comparison. Unlike a term of
+// arithmetic it may be a string. A boolean is refused on either side: MySQL
+// stores one as 1 or 0 and would compare that.
+func (p *planner) planComparedValue(side Expression) (PlanExpression, numberKind, error) {
+	switch node := side.(type) {
+	case Literal:
+		if node.Kind == LiteralBoolean {
+			return nil, kindUnknown, planErrorf(node.Pos, "comparing a computed value with %s", node.describe())
+		}
+		return PlanValueLiteral{Value: node, InputPointer: "$.query"}, literalKind(node), nil
+	case ParameterRef:
+		literal, err := p.resolveValue(Operand{Parameter: &node}, node.Pos)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		if literal.Kind == LiteralBoolean || literal.Kind == LiteralNull {
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"parameter %q is compared with a computed value, which takes a number or a string; got %s",
+				node.Name, literal.describe())
+		}
+		return PlanValueLiteral{Value: literal, InputPointer: parameterInputPointer(node.Name)}, literalKind(literal), nil
+	case PropertyRef:
+		table, column, err := p.resolveProperty(node)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		kind, declared := p.propertyKind(table, node.Property)
+		if strings.ToLower(declared) == dtype.DATATYPE_BOOLEAN {
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"comparing a computed value with %s, which is boolean; compare it on its own", node)
+		}
+		return PlanValueColumn{Table: table, Column: column, Property: node.Property}, kind, nil
+	default:
+		return p.planExpression(side)
+	}
 }
 
 // stringMatchTypes are the property types STARTS WITH, ENDS WITH and CONTAINS
@@ -1825,6 +1871,8 @@ func (p *planner) planSemiJoin(node SemiJoin) (PlanPredicate, error) {
 		return nil, err
 	}
 	p.plan.Properties = append(p.plan.Properties, sub.Properties...)
+	// Only SQL answers the earlier stage, then only SQL answers the query.
+	p.plan.SQLOnly = p.plan.SQLOnly || sub.SQLOnly
 	value := sub.Select[0]
 	if outerType, known := p.dataPropertyType(table, node.Outer.Property); known {
 		if objectType := p.schema.objectTypesByID[sub.Tables[value.Table].ObjectTypeID]; objectType != nil {

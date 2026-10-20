@@ -154,7 +154,8 @@ RETURN CASE g.own_goal WHEN '1' THEN 'own' ELSE 'normal' END AS kind,
 - Both forms are accepted: `CASE WHEN <condition> THEN … ELSE … END` and `CASE x WHEN v THEN … END`. With no ELSE, a row no branch matches gives null, so `count(CASE WHEN … THEN 1 END)` is a conditional count.
 - `coalesce(a, b, …)` gives the first argument that is not null and takes at least two, as in `coalesce(g.penalty, -1)`, which fills in the missing side of an OPTIONAL MATCH.
 - Both stand wherever arithmetic may: in RETURN, WITH, ORDER BY, either side of a comparison and the argument of an aggregate.
-- The branches (or arguments) must all be numbers or all be something else; a null literal fits either. A branch may not give a boolean: return the condition itself for that.
+- The branches (or arguments) must all be numbers or all be something else; a null literal fits either. A branch may not give a boolean, a boolean property included: return the condition itself for that.
+- In a comparison the other side must be of the same kind: a string result is compared with a string literal, parameter or string property, as in `coalesce(c.nickname, c.name) = $name`, and a number result with a number. A string compared with a number is refused, because MySQL would convert the string to a number and answer differently from Cypher.
 - A CASE that gives strings cannot take part in arithmetic or in `sum` and `avg`.
 - A branch's condition cannot hold an aggregate directly (`CASE WHEN count(*) > 10`). Name the aggregate in a WITH and use the name:
 
