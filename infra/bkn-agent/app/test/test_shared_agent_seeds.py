@@ -254,8 +254,10 @@ def test_sql_defaults_match_the_previous_agent_and_prompt_definitions():
         # Frozen from the former JSON definitions after normal AgentSpec/PromptSpec validation.
         # studio_smart_qa: Prompt revised before the 0.2.1 release with query and
         # answer guidance learned from the first end-to-end run, then with
-        # guidance for listing every row in one query instead of pages.
-        "studio_smart_qa": "2cee40de08fa687841d5b4f5dc39d8c9493d14cba3fe03e03d39163b154a02c6",
+        # guidance for listing every row in one query instead of pages, then
+        # with the run_cypher subset as it stands after #2263 in place of a
+        # list of refusals that had stopped being true.
+        "studio_smart_qa": "ebd650e341a0b5b45a23e16de7c7005d98d42e586e44ee85b0c4e9a197b1cd1c",
         "business_provenance_optimizer": "10531cf1bf25a4ac4e52219766f507556e3544f0d9296fc2daff589fe70e7540",
         "business_provenance_claim_attribution": "9dc9e6ad9f118db0c7f890f595584048e9937413c2b60319d57ebf809ee3cb43",
     }
