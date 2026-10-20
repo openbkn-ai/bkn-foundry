@@ -7,7 +7,7 @@
 {
   "run_cypher": [
     "标签写对象类 id/名称，关系写关系类 id/名称，属性写逻辑属性名，都不是物理列名。",
-    "WITH 只能一次：在所有 MATCH 之后做聚合后过滤，或 WITH DISTINCT x.p AS v 再接 MATCH … WHERE y.q = v；无 UNION / 变长路径；不等于写 <>；OPTIONAL MATCH 只能一条关系、挂一个新节点，用 count(可选侧属性) 数 0 度。",
+    "WITH 在所有 MATCH 之后做聚合后过滤，可连写多个（只有第一个能聚合），RETURN count(*) 可对分组再统计；或 WITH DISTINCT x.p AS v 再接 MATCH … WHERE y.q = v；无 UNION / 变长路径；不等于写 <>；OPTIONAL MATCH 只能一条关系、挂一个新节点，用 count(可选侧属性) 数 0 度。",
     "不写 LIMIT 默认 1000 行。",
     "run_cypher(kn_id=\"<kn_id>\", query=\"MATCH (p:player)-[:rel_goal_player]->(g:goal) RETURN p.name AS name, count(*) AS goals ORDER BY goals DESC LIMIT 10\")"
   ],
