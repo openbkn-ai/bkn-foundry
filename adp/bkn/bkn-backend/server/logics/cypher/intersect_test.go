@@ -89,6 +89,7 @@ func TestIntersectionRefuses(t *testing.T) {
 			"RETURN size([x IN a WHERE x IN b]) AS ab, size([x IN b WHERE x IN a]) AS ba", "both ways round"},
 		{eastCustomers + "MATCH (c:Customer) WHERE c.code IN a WITH a, collect(c.name) AS b RETURN size(b) AS n",
 			"using the first list in the second MATCH"},
+		{eastCustomers + westCustomers + "UNWIND a AS x RETURN count(x) AS n", "size([x IN a WHERE x IN b])"},
 		{eastCustomers + westCustomers + "UNWIND a AS x UNWIND b AS y WITH x WHERE x = y RETURN count(DISTINCT x) AS n",
 			"size([x IN a WHERE x IN b])"},
 	} {

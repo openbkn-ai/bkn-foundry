@@ -65,6 +65,11 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 		return nil, err
 	}
 	after := final.AllOC_ReadingClause()
+	for _, clause := range after {
+		if clause.OC_Unwind() != nil {
+			return nil, unwindError(clause)
+		}
+	}
 	constants := nameScope{}
 	if len(segments[0].reading) == 0 {
 		if constants, err = analyzeConstants(segments[0].with); err != nil {
