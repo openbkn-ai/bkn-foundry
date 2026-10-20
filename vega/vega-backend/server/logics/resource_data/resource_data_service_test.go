@@ -230,7 +230,7 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 		{interfaces.OutputFieldUnknown, verrors.VegaBackend_Query_InvalidParameter_OutputField, false},
 		{interfaces.OutputFieldUnsupported, verrors.VegaBackend_Query_UnsupportedOutputField, false},
 		{interfaces.OutputFieldNoneQueryable, verrors.VegaBackend_Query_NoQueryableFields, false},
-		{interfaces.OutputFieldUnsupported, verrors.VegaBackend_Resource_InternalError, true},
+		{interfaces.OutputFieldUnsupported, "", true},
 	} {
 		t.Run(string(tc.reason), func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -249,14 +249,16 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 			connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, fmt.Errorf("build query: %w", cause))
 			rds := &resourceDataService{cs: catalogs, cf: factory}
 			rows, total, err := rds.QuerySourcePage(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-			var httpErr *rest.HTTPError
-			require.ErrorAs(t, err, &httpErr)
-			status := http.StatusBadRequest
 			if tc.stored {
-				status = http.StatusInternalServerError
+				var stored *interfaces.StoredConditionBuildError
+				require.ErrorAs(t, err, &stored)
+				require.ErrorIs(t, err, cause)
+			} else {
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+				assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
 			}
-			assert.Equal(t, status, httpErr.HTTPCode)
-			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
 			assert.Nil(t, rows)
 			assert.Zero(t, total)
 		})
@@ -626,7 +628,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
 	})
 
-	t.Run("query table with local index answers 500 for a stored condition the index cannot build", func(t *testing.T) {
+	t.Run("query table with local index preserves stored condition build failures", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
@@ -644,9 +646,11 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		rows, total, err := rds.QuerySourcePage(context.Background(), resource, params)
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
-		var httpErr *rest.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		var stored *interfaces.StoredConditionBuildError
+		require.ErrorAs(t, err, &stored)
+		var build *interfaces.ConditionBuildError
+		require.ErrorAs(t, stored, &build)
+		assert.Equal(t, "text field has no keyword feature", build.Reason)
 	})
 
 	t.Run("force source bypasses local index and returns binary metadata", func(t *testing.T) {
@@ -1331,17 +1335,22 @@ func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
 				resource.SchemaDefinition = []*interfaces.Property{{Name: "payload", Type: fieldType}}
 				cfg := &interfaces.FilterCondCfg{Name: "payload", Operation: "exist"}
 				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
-				expected := http.StatusBadRequest
 				if stored {
 					params.FixedFilterCondCfg = cfg
-					expected = http.StatusInternalServerError
 				}
 				rows, total, err := service.QuerySourcePage(context.Background(), resource, params)
 				require.Nil(t, rows)
 				assert.Zero(t, total)
+				if stored {
+					var storedErr *interfaces.StoredConditionBuildError
+					require.ErrorAs(t, err, &storedErr)
+					require.NotNil(t, storedErr.Cause)
+					assert.Contains(t, storedErr.Cause.Error(), "not found")
+					return
+				}
 				var httpErr *rest.HTTPError
 				require.ErrorAs(t, err, &httpErr)
-				assert.Equal(t, expected, httpErr.HTTPCode)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 				if !stored {
 					assert.Contains(t, httpErr.BaseError.ErrorDetails, "not found")
 				}
@@ -1433,17 +1442,22 @@ func TestResourceDataServiceQueryJSON(t *testing.T) {
 				cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL}, nil)
 				cfg := &interfaces.FilterCondCfg{Name: "payload.id", Operation: "eq", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "const", Value: "1"}}
 				params := &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg}
-				wantStatus := http.StatusBadRequest
 				if stored {
 					params.FixedFilterCondCfg = cfg
-					wantStatus = http.StatusInternalServerError
 				}
 				rows, total, err := service.QuerySourcePage(context.Background(), resource, params)
 				assert.Nil(t, rows)
 				assert.Zero(t, total)
+				if stored {
+					var storedErr *interfaces.StoredConditionBuildError
+					require.ErrorAs(t, err, &storedErr)
+					require.NotNil(t, storedErr.Cause)
+					assert.Contains(t, storedErr.Cause.Error(), "not found")
+					return
+				}
 				var httpErr *rest.HTTPError
 				require.ErrorAs(t, err, &httpErr)
-				assert.Equal(t, wantStatus, httpErr.HTTPCode)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 			})
 		}
 	}

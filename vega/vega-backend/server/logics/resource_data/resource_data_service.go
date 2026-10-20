@@ -228,8 +228,7 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		fixedActual, err := filter_condition.NewFilterCondition(ctx, params.FixedFilterCondCfg, fieldMap)
 		if err != nil {
 			otellog.LogError(ctx, "Build stored view condition failed", err)
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-				WithErrorDetails("stored view filter_condition cannot be built")
+			return nil, 0, interfaces.NewStoredConditionBuildError(err)
 		}
 		params.FixedActualFilterCond = fixedActual
 	}
@@ -276,8 +275,8 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 				otellog.LogError(ctx, "Query table data from local index failed", err)
 				var stored *interfaces.StoredConditionBuildError
 				if errors.As(err, &stored) {
-					return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
-						WithErrorDetails("stored view filter_condition cannot be built")
+					// 保留固定条件错误的来源，由视图查询层提供定义失效提示。
+					return nil, 0, err
 				}
 				if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
 					return nil, 0, httpErr
@@ -302,6 +301,10 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			otellog.LogError(ctx, "Query table data failed", err)
 			// QueryData throws the typed errors as they are. Unconditionally repackage it to 500 and it will be there
 			// The 400 (not supported by the operator) identified inside is smoothed out, and those mappings are equivalent to not being written.
+			var stored *interfaces.StoredConditionBuildError
+			if errors.As(err, &stored) {
+				return nil, 0, err
+			}
 			var httpErr *rest.HTTPError
 			if errors.As(err, &httpErr) {
 				return nil, 0, httpErr
@@ -324,6 +327,10 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 			otellog.LogError(ctx, "Query index data failed", err)
 			// QueryData throws the typed errors as they are. Unconditionally repackage it to 500 and it will be there
 			// The 400 (not supported by the operator) identified inside is smoothed out, and those mappings are equivalent to not being written.
+			var stored *interfaces.StoredConditionBuildError
+			if errors.As(err, &stored) {
+				return nil, 0, err
+			}
 			var httpErr *rest.HTTPError
 			if errors.As(err, &httpErr) {
 				return nil, 0, httpErr
@@ -640,6 +647,10 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			if errors.As(err, &sourceReadForbidden) {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
 			}
+			var stored *interfaces.StoredConditionBuildError
+			if errors.As(err, &stored) {
+				return nil, 0, err
+			}
 			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
 				return nil, 0, httpErr
 			}
@@ -669,6 +680,10 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			var sourceReadForbidden *interfaces.SourceReadForbiddenError
 			if errors.As(err, &sourceReadForbidden) {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+			}
+			var stored *interfaces.StoredConditionBuildError
+			if errors.As(err, &stored) {
+				return nil, 0, err
 			}
 			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
 				return nil, 0, httpErr

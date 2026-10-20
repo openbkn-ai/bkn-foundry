@@ -10,6 +10,7 @@ package errors
 // LogicalView error code (currently all 400 Bad Request: join/ field definition check)
 const (
 	// 400 Bad Request
+	VegaBackend_LogicalView_DefinitionInvalid                  = "VegaBackend.LogicalView.DefinitionInvalid"
 	VegaBackend_LogicalView_InvalidParameter_JoinType          = "VegaBackend.LogicalView.InvalidParameter.JoinType"
 	VegaBackend_LogicalView_InvalidParameter_LogicDefinition   = "VegaBackend.LogicalView.InvalidParameter.LogicDefinition"
 	VegaBackend_LogicalView_InvalidParameter_FieldName         = "VegaBackend.LogicalView.InvalidParameter.FieldName"
@@ -26,6 +27,7 @@ const (
 )
 
 var LogicalViewErrCodeList = []string{
+	VegaBackend_LogicalView_DefinitionInvalid,
 	// 400 Bad Request
 	VegaBackend_LogicalView_InvalidParameter_JoinType,
 	VegaBackend_LogicalView_InvalidParameter_LogicDefinition,
