@@ -891,10 +891,10 @@ func tupleKeyAs(row map[string]any, columns []string, numeric []bool) (string, b
 // returns the result in the shape the raw query route gives.
 func runBindJoin(ctx context.Context, plan *Plan, schema *Schema, read dataReader, limits bindJoinLimits,
 	defaultLimit int64) ([]interfaces.RawQueryColumn, []map[string]any, error) {
-	if len(plan.Totals) > 0 {
-		// The service sends these to SQL; answering one here would return
-		// the groups rather than their totals.
-		return nil, nil, fmt.Errorf("the bind-join executor does not aggregate a WITH's groups")
+	if plan.SQLOnly {
+		// The service sends these to SQL; answering one here would give a
+		// wrong result, such as the groups rather than their totals.
+		return nil, nil, fmt.Errorf("the bind-join executor does not run this query; the SQL path does")
 	}
 	plan, err := resolveSemiJoins(ctx, plan, schema, read, limits)
 	if err != nil {

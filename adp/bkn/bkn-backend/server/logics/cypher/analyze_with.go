@@ -114,6 +114,7 @@ func analyzeWith(query *Query, with parsing.IOC_WithContext) (withScope, error) 
 	}
 
 	scope := withScope{}
+	var written []string
 	for _, item := range items.AllOC_ProjectionItem() {
 		expression := item.OC_Expression()
 		alias, err := withAlias(item)
@@ -154,6 +155,9 @@ func analyzeWith(query *Query, with parsing.IOC_WithContext) (withScope, error) 
 			return nil, unsupportedf(item, "a name WITH uses twice", "%q is named twice; give each value its own name", alias)
 		}
 		scope[alias] = entry
+		// The grouping keys follow the order the WITH wrote them in, so
+		// the statement is the same every time it is generated.
+		written = append(written, alias)
 	}
 
 	for _, entry := range scope {
@@ -162,7 +166,8 @@ func analyzeWith(query *Query, with parsing.IOC_WithContext) (withScope, error) 
 		}
 	}
 	if query.Grouped {
-		for _, entry := range scope {
+		for _, alias := range written {
+			entry := scope[alias]
 			switch {
 			case entry.aggregates:
 			case entry.node != "":
@@ -709,6 +714,11 @@ func (w withScope) term(ctx parsing.IOC_PropertyOrLabelsExpressionContext, atom 
 	if len(lookups) == 0 {
 		if parenthesized := atom.OC_ParenthesizedExpression(); parenthesized != nil {
 			return w.expression(parenthesized.OC_Expression())
+		}
+		if caseOrCoalesce(atom) {
+			// CASE after a WITH reads the WITH's names in its conditions as
+			// well, so CASE WHEN n > 10 THEN ... can test an aggregate.
+			return analyzeCaseOrCoalesce(atom, caseReaders{value: w.expression, condition: w.predicate})
 		}
 		if invocation := atom.OC_FunctionInvocation(); invocation != nil &&
 			strings.EqualFold(identifier(invocation.OC_FunctionName().GetText()), "size") {

@@ -758,7 +758,7 @@ func analyzeSortKey(ctx parsing.IOC_ExpressionContext) (*SortKey, error) {
 			return &SortKey{Property: &value, Pos: value.Pos}, nil
 		case Aggregate:
 			return &SortKey{Aggregate: &value, Pos: value.Pos}, nil
-		case Arithmetic, Negative:
+		case Arithmetic, Negative, CaseValue, Coalesce:
 		default:
 			return nil, unsupportedf(ctx, "sorting by a constant", "sort by a property, an aggregate or a returned column")
 		}
@@ -869,7 +869,7 @@ func analyzeAggregateAtom(atom parsing.IOC_AtomContext) (*Aggregate, bool, error
 		case PropertyRef:
 			aggregate.Property = &value
 			return aggregate, true, nil
-		case Arithmetic, Negative:
+		case Arithmetic, Negative, CaseValue, Coalesce:
 		default:
 			return nil, false, unsupportedf(arguments[0], "an expression here",
 				"only variable.property references are supported")
@@ -934,7 +934,7 @@ func computedSum(sum parsing.IOC_AddOrSubtractExpressionContext) bool {
 		return false
 	}
 	atom := listOperator.OC_PropertyOrLabelsExpression().OC_Atom()
-	if atom.OC_ParenthesizedExpression() != nil {
+	if atom.OC_ParenthesizedExpression() != nil || caseOrCoalesce(atom) {
 		return true
 	}
 	return negates(unaries[0]) && atom.OC_Literal() == nil
@@ -987,7 +987,7 @@ func analyzeComputedProjection(ctx parsing.IOC_ExpressionContext) (*Projection, 
 		return &Projection{Property: &value, Alias: alias, Pos: value.Pos}, nil
 	case Aggregate:
 		return &Projection{Aggregate: &value, Alias: alias, Pos: value.Pos}, nil
-	case Arithmetic, Negative:
+	case Arithmetic, Negative, CaseValue, Coalesce:
 	default:
 		return nil, unsupportedf(ctx, "an expression here", "only variable.property references are supported")
 	}
@@ -1109,6 +1109,9 @@ func analyzeTerm(ctx parsing.IOC_PropertyOrLabelsExpressionContext, atom parsing
 		if parenthesized := atom.OC_ParenthesizedExpression(); parenthesized != nil {
 			return analyzeExpression(parenthesized.OC_Expression())
 		}
+		if caseOrCoalesce(atom) {
+			return analyzeCaseOrCoalesce(atom, patternCaseReaders())
+		}
 		aggregate, ok, err := analyzeAggregateAtom(atom)
 		if err != nil {
 			return nil, err
@@ -1222,7 +1225,15 @@ func expressionProperties(value Expression) []PropertyRef {
 	case Negative:
 		return expressionProperties(node.Operand)
 	default:
-		return nil
+		conditions, values, _ := caseParts(value)
+		var refs []PropertyRef
+		for _, condition := range conditions {
+			refs = append(refs, predicateProperties(condition)...)
+		}
+		for _, part := range values {
+			refs = append(refs, expressionProperties(part)...)
+		}
+		return refs
 	}
 }
 
@@ -1235,6 +1246,20 @@ func containsAggregate(value Expression) bool {
 	case Negative:
 		return containsAggregate(node.Operand)
 	default:
+		conditions, values, ok := caseParts(value)
+		if !ok {
+			return false
+		}
+		for _, condition := range conditions {
+			if predicateAggregates(condition) {
+				return true
+			}
+		}
+		for _, part := range values {
+			if containsAggregate(part) {
+				return true
+			}
+		}
 		return false
 	}
 }

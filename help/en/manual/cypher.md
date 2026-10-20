@@ -142,6 +142,33 @@ ORDER BY goals DESC LIMIT 10
   - A column that reads a property outside an aggregate beside one (as in `o.x - avg(o.x)`) needs that property returned as a column of its own.
 - **A condition as a value**: `g.penalty = '1' AS is_penalty` gives true, false, or null when it cannot be decided, and groups like any other column. To sort by a condition, alias it and sort by the alias.
 
+### CASE and coalesce
+
+```cypher
+MATCH (g:goals)
+RETURN CASE g.own_goal WHEN '1' THEN 'own' ELSE 'normal' END AS kind,
+       count(*) AS n,
+       sum(CASE WHEN g.penalty = '1' THEN 1 ELSE 0 END) AS penalties
+```
+
+- Both forms are accepted: `CASE WHEN <condition> THEN … ELSE … END` and `CASE x WHEN v THEN … END`. With no ELSE, a row no branch matches gives null, so `count(CASE WHEN … THEN 1 END)` is a conditional count.
+- `coalesce(a, b, …)` gives the first argument that is not null and takes at least two, as in `coalesce(g.penalty, -1)`, which fills in the missing side of an OPTIONAL MATCH.
+- Both stand wherever arithmetic may: in RETURN, WITH, ORDER BY, either side of a comparison and the argument of an aggregate.
+- The branches (or arguments) must all be numbers or all be something else; a null literal fits either. A branch may not give a boolean, a boolean property included: return the condition itself for that.
+- In a comparison the other side must be of the same kind: a string result is compared with a string literal, parameter or string property, as in `coalesce(c.nickname, c.name) = $name`, and a number result with a number. A string compared with a number is refused, because MySQL would convert the string to a number and answer differently from Cypher.
+- A CASE that gives strings cannot take part in arithmetic or in `sum` and `avg`.
+- A branch's condition cannot hold an aggregate directly (`CASE WHEN count(*) > 10`). Name the aggregate in a WITH and use the name:
+
+```cypher
+MATCH (g:goals)-[:rel_goals_team]->(t:teams)
+WITH t, count(*) AS n
+RETURN t.team_name AS team, CASE WHEN n > 200 THEN 'top' ELSE 'rest' END AS tier
+ORDER BY n DESC LIMIT 4
+```
+
+- The simple form cannot use `WHEN null`, since nothing equals null; write `CASE WHEN x IS NULL THEN …`.
+- Types are those the model declares.
+
 ### ORDER BY / SKIP / LIMIT
 
 - ORDER BY takes a property, a returned column name, an aggregate or a computed value; `DESC` reverses it.
@@ -272,7 +299,7 @@ LIMIT 3
 | `UNION` | Run two queries |
 | Variable-length paths `[:R*1..3]`, path variables `p = ...` | Write each length as a fixed path |
 | `UNWIND`, list comprehensions `[x IN … WHERE …]`, indexing `xs[0]` | To intersect two sets, share a node in one MATCH |
-| `CASE`, `coalesce`, and function calls other than `date()` | Not supported yet |
+| Function calls other than the date functions, `coalesce()`, `size()` (on a list a WITH collected) and the aggregates | Not supported yet |
 | `XOR`, exponentiation `^` | Rewrite with AND / OR / NOT; multiply out |
 | Relationship properties `r.x` | Relationships have none; read the end nodes' properties |
 | MATCH after a second WITH | Share a node between the paths in one MATCH |

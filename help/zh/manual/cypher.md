@@ -142,6 +142,33 @@ ORDER BY goals DESC LIMIT 10
   - 一个列既有聚合、又在聚合之外直接读属性时（如 `o.x - avg(o.x)`），这个属性必须同时作为单独一列返回。
 - **条件作为返回值**：`g.penalty = '1' AS is_penalty`，值为 true、false，或在无法判断时为 null；可以作为分组列。要按条件排序，先给它起别名，再按别名排序。
 
+### CASE 与 coalesce
+
+```cypher
+MATCH (g:goals)
+RETURN CASE g.own_goal WHEN '1' THEN 'own' ELSE 'normal' END AS kind,
+       count(*) AS n,
+       sum(CASE WHEN g.penalty = '1' THEN 1 ELSE 0 END) AS penalties
+```
+
+- 两种形式都支持：`CASE WHEN <条件> THEN … ELSE … END`，以及 `CASE x WHEN v THEN … END`。没有 ELSE 且没有命中时结果为 null，所以 `count(CASE WHEN … THEN 1 END)` 就是条件计数。
+- `coalesce(a, b, …)` 返回第一个不为 null 的值，至少两个参数。例如 `coalesce(g.penalty, -1)`，可以配合 OPTIONAL MATCH 给缺失的一侧兜底。
+- 能写在算术能写的所有地方：RETURN、WITH、ORDER BY、比较的两侧，以及聚合的参数里。
+- 各分支（或各参数）必须都是数字，或者都不是数字；null 字面量两种都可以搭配。分支结果不能是布尔值（包括布尔类型的属性），要返回条件就直接返回条件本身。
+- 用在比较里时，另一侧要和结果同类：字符串结果和字符串字面量、参数或字符串属性比较，如 `coalesce(c.nickname, c.name) = $name`；数字结果和数字比较。字符串和数字互相比较会被拒绝，因为 MySQL 会把字符串转成数字再比，结果和 Cypher 不同。
+- 结果是字符串的 CASE 不能参与算术，也不能用 `sum`、`avg` 聚合。
+- 分支条件里不能直接写聚合（`CASE WHEN count(*) > 10`）。先用 WITH 给聚合命名，再在 CASE 里使用这个名字：
+
+```cypher
+MATCH (g:goals)-[:rel_goals_team]->(t:teams)
+WITH t, count(*) AS n
+RETURN t.team_name AS team, CASE WHEN n > 200 THEN 'top' ELSE 'rest' END AS tier
+ORDER BY n DESC LIMIT 4
+```
+
+- 简单形式不能写 `WHEN null`，因为没有任何值等于 null，要写成 `CASE WHEN x IS NULL THEN …`。
+- 类型按模型里声明的类型判断。
+
 ### ORDER BY / SKIP / LIMIT
 
 - ORDER BY 可以用属性、返回的列名、聚合或算出来的值；加 `DESC` 倒序。
@@ -272,7 +299,7 @@ LIMIT 3
 | `UNION` | 拆成两条查询 |
 | 变长路径 `[:R*1..3]`、路径变量 `p = ...` | 按跳数分别写成固定长度的路径 |
 | `UNWIND`、列表推导式 `[x IN … WHERE …]`、下标 `xs[0]` | 求两组的交集时，在一个 MATCH 里共享节点 |
-| `CASE`、`coalesce` 及 `date()` 以外的函数调用 | 暂不支持 |
+| 日期函数、`coalesce()`、`size()`（只用于 WITH 收集的列表）和聚合以外的函数调用 | 暂不支持 |
 | `XOR`、乘方 `^` | 用 AND / OR / NOT 改写；乘方展开为乘法 |
 | 关系属性 `r.x` | 关系没有自己的属性；读两端节点的属性 |
 | 第二个 WITH 之后再 MATCH | 让两条路径在一个 MATCH 里共享节点 |

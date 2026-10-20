@@ -242,6 +242,7 @@ func bindJoinSchema(t *testing.T) *Schema {
 		typed("region", "f_region", "string"),
 		typed("amount", "f_amount", "integer"),
 		typed("placed_at", "f_placed", "datetime"),
+		typed("rush", "f_rush", "boolean"),
 	)
 	order.PrimaryKeys = []string{"id"}
 	customer := objectType("ot_customer", "Customer", resource("res_customer", "customers"),

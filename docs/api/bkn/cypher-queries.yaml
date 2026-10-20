@@ -216,7 +216,23 @@ components:
             them. XOR is not supported. Not-equal is written <>; != is not openCypher and is
             refused with a syntax error that says so. A date or time property can be compared
             with date('2026-08-13'), datetime(...) or localdatetime(...) over a string literal or
-            parameter; other functions, and date() with no argument, are refused.
+            parameter; functions other than these, coalesce and the aggregates, and date()
+            with no argument, are refused.
+
+            CASE and coalesce compute a value wherever arithmetic may stand: in RETURN, WITH,
+            ORDER BY, either side of a comparison and the argument of an aggregate, as in
+            `sum(CASE WHEN g.penalty = '1' THEN 1 ELSE 0 END)` or `coalesce(o.region, 'unknown')`.
+            Both forms of CASE are accepted (CASE WHEN <condition> THEN ... and
+            CASE x WHEN v THEN ...); without ELSE an unmatched row gives null. The branches of a
+            CASE, and the arguments of coalesce, must all be numbers or all be other values (a
+            null literal fits either), and none may be a boolean: return the condition itself
+            for that, a boolean property included. Compared with something, a string result
+            takes a string literal, parameter or property on the other side and a number result
+            a number; a string against a number is refused, since MySQL would convert the string.
+            After a WITH a branch's condition may test the names the WITH passed on,
+            including aggregates (CASE WHEN n > 10 THEN ... where n is count(*)); before one,
+            aggregates belong in RETURN, not in a branch's condition. Queries using CASE or
+            coalesce always run on the SQL path.
 
             RETURN can also return a condition, written as in WHERE, as in
             `g.tournament_name CONTAINS 'Men' AS mens`. Its value is true, false, or null when

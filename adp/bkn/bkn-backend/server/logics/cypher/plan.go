@@ -47,6 +47,10 @@ type Plan struct {
 	// and are then what the statement returns; see Query.Totals.
 	Totals []PlanTotal
 
+	// SQLOnly marks a plan only the SQL path answers: totals over groups,
+	// CASE and coalesce. The bind-join executor takes no new capabilities.
+	SQLOnly bool
+
 	// Properties lists, in the model's own terms, every property the query
 	// names: what it returns, filters on, sorts by or aggregates over. Join
 	// keys and the primary keys that keep relationships distinct are not in
@@ -210,6 +214,18 @@ func planContainsAggregate(value PlanExpression) bool {
 		return planContainsAggregate(node.Left) || planContainsAggregate(node.Right)
 	case PlanNegative:
 		return planContainsAggregate(node.Operand)
+	case PlanCase, PlanCoalesce:
+		for _, part := range caseValues(value) {
+			if planContainsAggregate(part) {
+				return true
+			}
+		}
+		for _, condition := range caseConditions(value) {
+			if planPredicateAggregates(condition) {
+				return true
+			}
+		}
+		return false
 	default:
 		return false
 	}
@@ -457,6 +473,7 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 				"column name %q is returned twice; give one of them a different alias", total.Alias)
 		}
 		totals[total.Alias] = true
+		p.plan.SQLOnly = true
 		p.plan.Totals = append(p.plan.Totals, PlanTotal{
 			Function: total.Function, Distinct: total.Distinct, Of: total.Of, Alias: total.Alias,
 		})
@@ -934,24 +951,70 @@ func (p *planner) planPredicate(predicate Predicate) (PlanPredicate, error) {
 	}
 }
 
-// planExpressionComparison plans a comparison with arithmetic on a side. The
-// arithmetic side is a number, so the other one has to be too: MySQL would
-// compare it against a string by converting the string, which Cypher never
-// does.
+// planExpressionComparison plans a comparison with a computed value on a side.
+// The two sides have to be the same kind of value: MySQL would compare a
+// number against a string by converting the string, which Cypher never does.
+// A CASE or coalesce may give a string, so a string literal or parameter is
+// planned as one and compared with it.
 func (p *planner) planExpressionComparison(node ExpressionComparison) (PlanPredicate, error) {
 	sides := [2]Expression{node.Left, node.Right}
 	planned := [2]PlanExpression{}
+	kinds := [2]numberKind{}
 	for i, side := range sides {
-		if literal, ok := side.(Literal); ok && literalKind(literal) == kindNotNumber {
-			return nil, planErrorf(literal.Pos, "comparing a computed number with %s", literal.describe())
-		}
-		value, _, err := p.planExpression(side)
+		value, kind, err := p.planComparedValue(side)
 		if err != nil {
 			return nil, err
 		}
-		planned[i] = value
+		planned[i], kinds[i] = value, kind
+	}
+	for i, side := range sides {
+		other := kinds[1-i]
+		if kinds[i] != kindNotNumber || (other != kindInteger && other != kindFloat) {
+			continue
+		}
+		if literal, ok := side.(Literal); ok {
+			return nil, planErrorf(literal.Pos, "comparing a computed number with %s", literal.describe())
+		}
+		return nil, planErrorf(side.expressionPosition(), "comparing a number with a value that is not one")
 	}
 	return PlanExpressionComparison{Left: planned[0], Operator: node.Operator, Right: planned[1]}, nil
+}
+
+// planComparedValue plans one side of a computed comparison. Unlike a term of
+// arithmetic it may be a string. A boolean is refused on either side: MySQL
+// stores one as 1 or 0 and would compare that.
+func (p *planner) planComparedValue(side Expression) (PlanExpression, numberKind, error) {
+	switch node := side.(type) {
+	case Literal:
+		if node.Kind == LiteralBoolean {
+			return nil, kindUnknown, planErrorf(node.Pos, "comparing a computed value with %s", node.describe())
+		}
+		return PlanValueLiteral{Value: node, InputPointer: "$.query"}, literalKind(node), nil
+	case ParameterRef:
+		literal, err := p.resolveValue(Operand{Parameter: &node}, node.Pos)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		if literal.Kind == LiteralBoolean || literal.Kind == LiteralNull {
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"parameter %q is compared with a computed value, which takes a number or a string; got %s",
+				node.Name, literal.describe())
+		}
+		return PlanValueLiteral{Value: literal, InputPointer: parameterInputPointer(node.Name)}, literalKind(literal), nil
+	case PropertyRef:
+		table, column, err := p.resolveProperty(node)
+		if err != nil {
+			return nil, kindUnknown, err
+		}
+		kind, declared := p.propertyKind(table, node.Property)
+		if strings.ToLower(declared) == dtype.DATATYPE_BOOLEAN {
+			return nil, kindUnknown, planErrorf(node.Pos,
+				"comparing a computed value with %s, which is boolean; compare it on its own", node)
+		}
+		return PlanValueColumn{Table: table, Column: column, Property: node.Property}, kind, nil
+	default:
+		return p.planExpression(side)
+	}
 }
 
 // stringMatchTypes are the property types STARTS WITH, ENDS WITH and CONTAINS
@@ -1111,6 +1174,17 @@ func ungroupedColumns(value PlanExpression) []PlanValueColumn {
 		return append(ungroupedColumns(node.Left), ungroupedColumns(node.Right)...)
 	case PlanNegative:
 		return ungroupedColumns(node.Operand)
+	case PlanCase, PlanCoalesce:
+		var columns []PlanValueColumn
+		for _, condition := range caseConditions(value) {
+			for _, column := range havingColumns(condition) {
+				columns = append(columns, PlanValueColumn{Table: column.Table, Column: column.Column, Property: column.Property})
+			}
+		}
+		for _, part := range caseValues(value) {
+			columns = append(columns, ungroupedColumns(part)...)
+		}
+		return columns
 	default:
 		return nil
 	}
@@ -1155,6 +1229,12 @@ func (p *planner) planAggregateOver(aggregate Aggregate) (*PlanAggregate, number
 		argument, kind, err := p.planExpression(aggregate.Argument)
 		if err != nil {
 			return nil, kindUnknown, err
+		}
+		if kind == kindNotNumber && (aggregate.Function == "SUM" || aggregate.Function == "AVG") {
+			// A CASE or coalesce that gives strings; min, max and count take
+			// those, and sum and avg do not.
+			return nil, kindUnknown, planErrorf(aggregate.Pos, "%s takes numbers; %s gives something else",
+				strings.ToLower(aggregate.Function), aggregate.ArgumentText)
 		}
 		return &PlanAggregate{Function: aggregate.Function, Distinct: aggregate.Distinct, Argument: argument}, kind, nil
 	}
@@ -1244,6 +1324,8 @@ const (
 	kindInteger
 	kindFloat
 	kindNotNumber
+	// kindNull is a null literal, which only CASE and coalesce take as a value.
+	kindNull
 )
 
 var integerTypes = map[string]struct{}{
@@ -1313,6 +1395,9 @@ func (p *planner) planExpression(value Expression) (PlanExpression, numberKind, 
 		if err != nil {
 			return nil, kindUnknown, err
 		}
+		if kind == kindNotNumber {
+			return nil, kindUnknown, planErrorf(node.Pos, "arithmetic takes numbers; this value is not one")
+		}
 		return PlanNegative{Operand: operand}, kind, nil
 
 	case Arithmetic:
@@ -1324,6 +1409,12 @@ func (p *planner) planExpression(value Expression) (PlanExpression, numberKind, 
 			return nil, kindUnknown, err
 		}
 		return PlanConditionValue{Predicate: predicate}, kindNotNumber, nil
+
+	case CaseValue:
+		return p.planCase(node)
+
+	case Coalesce:
+		return p.planCoalesce(node)
 
 	default:
 		return nil, kindUnknown, planErrorf(value.expressionPosition(), "unsupported expression %T", value)
@@ -1384,6 +1475,11 @@ func (p *planner) planArithmetic(node Arithmetic) (PlanExpression, numberKind, e
 	right, rightKind, err := p.planExpression(node.Right)
 	if err != nil {
 		return nil, kindUnknown, err
+	}
+	if leftKind == kindNotNumber || rightKind == kindNotNumber {
+		// Only CASE and coalesce get here with something else: every other
+		// term was refused as it was planned.
+		return nil, kindUnknown, planErrorf(node.Pos, "arithmetic takes numbers; a CASE or coalesce here gives something else")
 	}
 	planned := PlanArithmetic{Operator: node.Operator, Left: left, Right: right}
 	switch node.Operator {
@@ -1775,6 +1871,8 @@ func (p *planner) planSemiJoin(node SemiJoin) (PlanPredicate, error) {
 		return nil, err
 	}
 	p.plan.Properties = append(p.plan.Properties, sub.Properties...)
+	// Only SQL answers the earlier stage, then only SQL answers the query.
+	p.plan.SQLOnly = p.plan.SQLOnly || sub.SQLOnly
 	value := sub.Select[0]
 	if outerType, known := p.dataPropertyType(table, node.Outer.Property); known {
 		if objectType := p.schema.objectTypesByID[sub.Tables[value.Table].ObjectTypeID]; objectType != nil {
