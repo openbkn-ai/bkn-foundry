@@ -256,7 +256,7 @@ components:
             nodes and values computed from them; after a WITH that does not aggregate, count(*)
             may follow. After a WITH that aggregates, RETURN may instead aggregate its groups,
             as in RETURN count(*) AS groups: then it holds only such aggregates and returns one
-            row. Refused: MATCH after a second WITH (except when comparing two lists), WITH DISTINCT, WITH *, ORDER BY / SKIP /
+            row. Refused: MATCH after a second WITH, a WITH after the second MATCH other than to compare two lists, WITH DISTINCT, WITH *, ORDER BY / SKIP /
             LIMIT on WITH, IN / string predicates in its WHERE, and aggregating in a WITH after
             the first.
 

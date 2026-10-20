@@ -52,6 +52,14 @@ func intersection(stages [2]stageSegment, returning parsing.IOC_ReturnContext, c
 			return nil, unsupportedf(where, "WHERE on a WITH that collects a list",
 				"write the condition on the MATCH before it")
 		}
+		if i == 1 {
+			if use := mentionsName(stage.reading, names[0]); use != nil {
+				// Without this the use reads as an unknown variable, and the
+				// hint for that points at a property that does not exist.
+				return nil, unsupportedf(use, "using the first list in the second MATCH",
+					"each list stands on its own; compare them in RETURN, as in size([x IN %s WHERE x IN other])", names[0])
+			}
+		}
 		read, err := analyzeReading(stage.reading, stage.with, constants)
 		if err != nil {
 			return nil, err
@@ -268,6 +276,29 @@ func membershipTest(ctx parsing.IOC_ExpressionContext) (string, string, bool) {
 	}
 	list, ok := sumBareVariable(lists[0].OC_AddOrSubtractExpression())
 	return element, list, ok
+}
+
+// mentionsName returns the first use of a variable of that name in the
+// clauses, or nil.
+func mentionsName(clauses []parsing.IOC_ReadingClauseContext, name string) antlr.ParserRuleContext {
+	var find func(antlr.Tree) antlr.ParserRuleContext
+	find = func(node antlr.Tree) antlr.ParserRuleContext {
+		if variable, ok := node.(parsing.IOC_VariableContext); ok && identifier(variable.GetText()) == name {
+			return variable
+		}
+		for _, child := range node.GetChildren() {
+			if found := find(child); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	for _, clause := range clauses {
+		if found := find(clause); found != nil {
+			return found
+		}
+	}
+	return nil
 }
 
 func unwindError(clause antlr.ParserRuleContext) error {

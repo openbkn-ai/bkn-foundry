@@ -7,6 +7,7 @@ package cypher
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -86,6 +87,8 @@ func TestIntersectionRefuses(t *testing.T) {
 			"the two are never equal"},
 		{"MATCH (o:Order) WITH collect(o.customer_code) AS a MATCH (c:Customer) WITH a, collect(c.code) AS b " +
 			"RETURN size([x IN a WHERE x IN b]) AS ab, size([x IN b WHERE x IN a]) AS ba", "both ways round"},
+		{eastCustomers + "MATCH (c:Customer) WHERE c.code IN a WITH a, collect(c.name) AS b RETURN size(b) AS n",
+			"using the first list in the second MATCH"},
 		{eastCustomers + westCustomers + "UNWIND a AS x UNWIND b AS y WITH x WHERE x = y RETURN count(DISTINCT x) AS n",
 			"size([x IN a WHERE x IN b])"},
 	} {
@@ -151,5 +154,61 @@ func TestIntersectionRunsOnTheSQLPath(t *testing.T) {
 	}
 	if n.PropertyRef != "property:kn_1:ot_order:customer_code" || !n.Distinct {
 		t.Errorf("n = %+v", n)
+	}
+}
+
+// Row filters hold in both stages, in every place the statement repeats a
+// stage, and each stage's object type is reported as filtered.
+func TestIntersectionAppliesRowFiltersToBothStages(t *testing.T) {
+	east, ann := "east", "Ann"
+	permission := &stubPermission{rowFilters: map[string]interfaces.RowFilterPredicate{
+		"kn_1/ot_order":    {Kind: "in", Property: "region", Values: []interfaces.RowFilterValue{{Type: "string", String: &east}}},
+		"kn_1/ot_customer": {Kind: "in", Property: "name", Values: []interfaces.RowFilterValue{{Type: "string", String: &ann}}},
+	}}
+	vega := &recordingVega{}
+	service := relationService(vega, permission, nil)
+	order := service.schema.(*fakeSchemaSource).objectTypes[0]
+	order.DataProperties = append(order.DataProperties, dataProperty("region", "f_region"))
+
+	result, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH,
+		Query: "MATCH (o:Order) WITH collect(DISTINCT o.customer_code) AS a " +
+			"MATCH (c:Customer) WITH a, collect(DISTINCT c.code) AS b " +
+			"RETURN size([x IN a WHERE x IN b]) AS common, size(b) AS nb",
+	})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	statement := vega.request.Query
+	for resource, filtered := range map[string]string{
+		"{{.res_order}}":    "{{.res_order}} t0 WHERE t0.`f_region` IN ('east')",
+		"{{.res_customer}}": "{{.res_customer}} t0 WHERE t0.`f_name` IN ('Ann')",
+	} {
+		if all, kept := strings.Count(statement, resource), strings.Count(statement, filtered); all == 0 || all != kept {
+			t.Errorf("%s appears %d times, %d of them filtered:\n%s", resource, all, kept, statement)
+		}
+	}
+	impacted := make([]string, 0, len(result.PermissionImpacts))
+	for _, impact := range result.PermissionImpacts {
+		impacted = append(impacted, impact.ObjectTypeID)
+	}
+	if !slices.Contains(impacted, "ot_order") || !slices.Contains(impacted, "ot_customer") {
+		t.Errorf("permission impacts = %+v, want both stages' row filters reported", result.PermissionImpacts)
+	}
+}
+
+func TestIntersectionProxyBindingsCoverBothStages(t *testing.T) {
+	plan, _ := compileBindJoin(t, "MATCH (o:Order) WITH collect(o.customer_code) AS a "+
+		"MATCH (c:Customer) WITH a, collect(c.code) AS b RETURN size([x IN a WHERE x IN b]) AS n", nil)
+	resources := planResourceIDs(plan)
+	if !slices.Contains(resources, "res_order") || !slices.Contains(resources, "res_customer") {
+		t.Fatalf("resources = %v, want both stages", resources)
+	}
+	var objectTypes []string
+	for _, binding := range proxyBindings(plan) {
+		objectTypes = append(objectTypes, binding.ChildID)
+	}
+	if !slices.Contains(objectTypes, "ot_order") || !slices.Contains(objectTypes, "ot_customer") {
+		t.Fatalf("proxy bindings = %v, want both stages' object types", objectTypes)
 	}
 }

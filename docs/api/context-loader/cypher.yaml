@@ -114,7 +114,7 @@ paths:
           如 `WITH code, stock - usage * 50 AS gap WHERE gap < 0`。第一个 WITH 里的 `collect(x.p) AS s` 只能写成
           `size(s)`，即收集到的个数（如 `WHERE size(s) = 3`）。RETURN 取 WITH 的名字、传下来节点的属性或由它们算出的值；
           不聚合的 WITH 之后可以再写 `count(*)`；聚合的 WITH 之后，RETURN 也可以只写聚合（如 `RETURN count(*) AS n`、
-          `max(n)`），对分组再统计，返回一行。以下仍拒绝：第二个 WITH 之后再写 MATCH（比较两个列表除外）、`WITH DISTINCT`、`WITH *`、WITH 上的
+          `max(n)`），对分组再统计，返回一行。以下仍拒绝：第二个 WITH 之后再写 MATCH、第二段 MATCH 之后再接 WITH（比较两个列表除外）、`WITH DISTINCT`、`WITH *`、WITH 上的
           ORDER BY / SKIP / LIMIT、WITH 的 WHERE 里写 IN / 字符串谓词、第一个之后的 WITH 再聚合。
         - **开头定义常量**：查询可以用只含字面量、字面量列表或参数的 WITH 开头，如
           `WITH ['382-000005', 'P61-000351'] AS products MATCH (p:产品) WHERE p.material_number IN products …`，

@@ -261,7 +261,8 @@ RETURN size([x IN codes1 WHERE x IN codes2]) AS common, size(codes1) AS n1, size
 
 ### WITH 仍不支持的写法
 
-- 第二个 WITH 之后再写 MATCH，或者第二段 MATCH 之后再接 WITH（比较两个列表除外）；
+- 第二个 WITH 之后再写 MATCH；
+- 第二段 MATCH 之后再接 WITH（比较两个列表除外）；
 - `WITH DISTINCT`（半连接除外）、`WITH *`；
 - WITH 上的 ORDER BY、SKIP、LIMIT；
 - WITH 的 WHERE 里写 IN 或字符串匹配；
@@ -322,7 +323,7 @@ LIMIT 3
 | 日期函数、`coalesce()`、`size()`（只用于 WITH 收集的列表）和聚合以外的函数调用 | 暂不支持 |
 | `XOR`、乘方 `^` | 用 AND / OR / NOT 改写；乘方展开为乘法 |
 | 关系属性 `r.x` | 关系没有自己的属性；读两端节点的属性 |
-| 第二个 WITH 之后再 MATCH（比较两个列表除外） | 让两条路径在一个 MATCH 里共享节点 |
+| 第二个 WITH 之后再 MATCH | 让两条路径在一个 MATCH 里共享节点 |
 | `CREATE`、`MERGE`、`SET`、`DELETE`、`REMOVE`、`CALL` | 只读接口，不支持写操作和过程调用 |
 
 ---

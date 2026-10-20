@@ -261,7 +261,8 @@ Each use may open with a WITH that names literals, lists or parameters, which th
 
 ### What WITH still refuses
 
-- MATCH after a second WITH, or a WITH after the second MATCH, except when comparing two lists;
+- MATCH after a second WITH;
+- a WITH after the second MATCH, except to compare two lists;
 - `WITH DISTINCT` (outside the semi-join) and `WITH *`;
 - ORDER BY, SKIP or LIMIT on a WITH;
 - IN or string matching in a WITH's WHERE;
@@ -322,7 +323,7 @@ LIMIT 3
 | Function calls other than the date functions, `coalesce()`, `size()` (on a list a WITH collected) and the aggregates | Not supported yet |
 | `XOR`, exponentiation `^` | Rewrite with AND / OR / NOT; multiply out |
 | Relationship properties `r.x` | Relationships have none; read the end nodes' properties |
-| MATCH after a second WITH (except when comparing two lists) | Share a node between the paths in one MATCH |
+| MATCH after a second WITH | Share a node between the paths in one MATCH |
 | `CREATE`, `MERGE`, `SET`, `DELETE`, `REMOVE`, `CALL` | The interface is read-only and runs no procedures |
 
 ---
