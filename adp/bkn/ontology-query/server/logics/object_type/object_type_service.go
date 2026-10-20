@@ -52,6 +52,12 @@ type objectTypeService struct {
 	cursor         *queryCursorCodec
 }
 
+type objectAggregateSpec struct {
+	measureProperty string
+	operation       string
+	groupBy         []string
+}
+
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
 	otServiceOnce.Do(func() {
 		otService = &objectTypeService{
@@ -184,6 +190,42 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 
 func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+	return ots.getObjectsByObjectTypeID(ctx, query, false, nil)
+}
+
+// GetObjectsByObjectTypeIDForScan keeps a Vega cursor from the first page for
+// callers that will consume the entire result. Ordinary one-shot object queries
+// continue to use stateless first pages so they do not exhaust cursor sessions.
+func (ots *objectTypeService) GetObjectsByObjectTypeIDForScan(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+	return ots.getObjectsByObjectTypeID(ctx, query, true, nil)
+}
+
+// AggregateObjectsByObjectTypeID uses the same proxy, property and row-filter
+// decisions as object reads. It is intentionally an internal opt-in operation;
+// public callers cannot construct its aggregate specification.
+func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType, measureProperty, operation string,
+	groupBy []string) (interfaces.Objects, error) {
+	if query == nil || measureProperty == "" || operation != "count" || len(groupBy) > 1 {
+		return interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported object aggregate")
+	}
+	queryCopy := *query
+	queryCopy.Properties = append([]string{measureProperty}, groupBy...)
+	queryCopy.RequiredFullProperties = append([]string(nil), queryCopy.Properties...)
+	queryCopy.Cursor = ""
+	queryCopy.ResourceCursor = ""
+	queryCopy.ResourceOffset = 0
+	queryCopy.Offset = 0
+	queryCopy.Sort = nil
+	return ots.getObjectsByObjectTypeID(ctx, &queryCopy, false, &objectAggregateSpec{
+		measureProperty: measureProperty, operation: operation, groupBy: append([]string(nil), groupBy...),
+	})
+}
+
+func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
+	query *interfaces.ObjectQueryBaseOnObjectType, continuousScan bool, aggregate *objectAggregateSpec) (interfaces.Objects, error) {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询对象类的对象数据")
 	defer span.End()
@@ -292,8 +334,9 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	// rejected user operation.
 	// A missing or explicitly empty sort both need the stable default used by
 	// Vega cursor paging. JSON clients commonly encode an optional empty list
-	// as [], which must not bypass this default.
-	if len(query.Sort) == 0 {
+	// as [], which must not bypass this default. Aggregates have no object-row
+	// continuation and must not inherit this sort.
+	if len(query.Sort) == 0 && aggregate == nil {
 		query.Sort = logics.BuildViewSort(objectType)
 	}
 
@@ -325,7 +368,7 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	// an empty set directly; this is not post-query filtering.
 	if !query.RowFilterNoResults {
 		// 3. Request Vega Resource to get data.
-		err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap, plan)
+		err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap, plan, continuousScan, aggregate)
 		if err != nil {
 			return resps, err
 		}
@@ -528,7 +571,7 @@ func proxyDownstreamErrorCode(statusCode int) string {
 
 func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string,
-	plan *propertyAccessPlan) error {
+	plan *propertyAccessPlan, continuousScan bool, aggregate *objectAggregateSpec) error {
 
 	resourceSort, err := logics.MapSortFieldsForDataView(ctx, query.Sort, objectType)
 	if err != nil {
@@ -539,7 +582,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	// physical resource mapping. Its sort cannot be made total, so it keeps the
 	// historical single-page behavior and never returns a continuation.
 	stable := true
-	if query.ResourceCursor == "" {
+	if query.ResourceCursor == "" && aggregate == nil {
 		resourceSort, stable = appendResourceSortTieBreakers(resourceSort, objectType)
 	}
 
@@ -585,7 +628,32 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		FilterCondition:  logics.CondCfgToFilterMap(viewQuery.Filters),
 		OutputFields:     outputFields,
 	}
-	resp, nextOffset, err := ots.queryResourcePage(ctx, objectType.DataSource.ID, query, params, stable)
+	var resp *interfaces.DatasetQueryResponse
+	var nextOffset int
+	if aggregate == nil {
+		resp, nextOffset, err = ots.queryResourcePage(ctx, objectType.DataSource.ID, query, params, stable, continuousScan)
+	} else {
+		measure, exists := plan.properties[aggregate.measureProperty]
+		if !exists || measure.MappedField.Name == "" {
+			return unavailableOperationPropertyError(ctx)
+		}
+		params.Sort = nil
+		params.Aggregation = map[string]any{"property": measure.MappedField.Name,
+			"aggr": aggregate.operation, "alias": "__value"}
+		params.OutputFields = []string{"__value"}
+		for _, name := range aggregate.groupBy {
+			property, found := plan.properties[name]
+			if !found || property.MappedField.Name == "" {
+				return unavailableOperationPropertyError(ctx)
+			}
+			params.GroupBy = append(params.GroupBy, map[string]any{"property": property.MappedField.Name})
+			params.OutputFields = append(params.OutputFields, property.MappedField.Name)
+		}
+		params.Paging = interfaces.ResourceDataPagingRequest{
+			Mode: interfaces.ResourceDataPagingModeSingle, Limit: query.Limit,
+		}
+		resp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
+	}
 	if err != nil {
 		// When downstream identifies a caller-side issue (4xx), pass through the original status code and carry its reason upward.
 		// Upgrading everything to 500 makes self-correctable problems such as unsupported operators or resources without built indexes look
@@ -602,6 +670,19 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	if resp == nil {
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails("vega resource query returned nil")
+	}
+	if aggregate != nil {
+		resps.Datas = make([]map[string]any, 0, len(resp.Entries))
+		for _, entry := range resp.Entries {
+			row := map[string]any{"__value": entry["__value"]}
+			for _, name := range aggregate.groupBy {
+				row[name] = entry[plan.properties[name].MappedField.Name]
+			}
+			resps.Datas = append(resps.Datas, row)
+		}
+		resps.QuerySource = resp.QuerySource
+		resps.TotalCount = resp.TotalCount
+		return nil
 	}
 
 	objects := make([]map[string]any, 0, len(resp.Entries))
@@ -643,6 +724,10 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 // vegaIndexResultWindow is Vega's bound on offset+limit for index-backed reads.
 const vegaIndexResultWindow = 10000
 
+// Metric-style scans consume cursor pages immediately. A short idle lifetime
+// bounds sessions left behind if a scan stops early at its row limit or fails.
+const continuousScanCursorTTL = 2 * time.Minute
+
 // queryResourcePage reads one page and returns the stateless next-row offset,
 // if any.
 //
@@ -654,7 +739,7 @@ const vegaIndexResultWindow = 10000
 // beyond the offset window working.
 func (ots *objectTypeService) queryResourcePage(ctx context.Context, resourceID string,
 	query *interfaces.ObjectQueryBaseOnObjectType, params *interfaces.ResourceDataQueryParams,
-	stable bool) (*interfaces.DatasetQueryResponse, int, error) {
+	stable, continuousScan bool) (*interfaces.DatasetQueryResponse, int, error) {
 	if query.ResourceCursor != "" {
 		resp, err := ots.vba.QueryResourceData(ctx, resourceID, &interfaces.ResourceDataQueryParams{
 			Paging: interfaces.ResourceDataPagingRequest{Cursor: query.ResourceCursor},
@@ -662,6 +747,17 @@ func (ots *objectTypeService) queryResourcePage(ctx context.Context, resourceID 
 		return resp, 0, err
 	}
 	if query.ResourceOffset <= 0 {
+		if continuousScan && stable {
+			cursorParams := *params
+			cursorParams.Paging = interfaces.ResourceDataPagingRequest{
+				Mode: interfaces.ResourceDataPagingModeCursor, Limit: query.Limit,
+				Offset: query.Offset, KeepAliveSec: int(continuousScanCursorTTL / time.Second),
+			}
+			resp, err := ots.vba.QueryResourceData(ctx, resourceID, &cursorParams)
+			if err == nil || !isCursorPagingUnsupported(err) {
+				return resp, 0, err
+			}
+		}
 		return ots.querySingleResourcePage(ctx, resourceID, query, params, query.Offset, stable)
 	}
 
