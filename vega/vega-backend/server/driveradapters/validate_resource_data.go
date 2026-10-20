@@ -336,9 +336,16 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 		}
 		// Verify operation
 		validOps := map[string]bool{
-			"==": true, "!=": true, ">": true, ">=": true,
-			"<": true, "<=": true, "in": true, "not_in": true,
-			"range": true, "out_range": true,
+			"==":        true,
+			"!=":        true,
+			">":         true,
+			">=":        true,
+			"<":         true,
+			"<=":        true,
+			"in":        true,
+			"not_in":    true,
+			"range":     true,
+			"out_range": true,
 		}
 		if !validOps[params.Having.Operation] {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
@@ -348,6 +355,30 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 		if params.Having.Value == nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails("Having value cannot be empty")
+		}
+
+		// 集合与范围的值结构在进入连接器前统一校验。
+		switch params.Having.Operation {
+		case "in", "not_in", "range", "out_range":
+			var length int
+			switch value := params.Having.Value.(type) {
+			case []any:
+				length = len(value)
+			case []string:
+				length = len(value)
+			default:
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+					WithErrorDetails("Having operation requires an array")
+			}
+			if params.Having.Operation == "range" || params.Having.Operation == "out_range" {
+				if length != 2 {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+						WithErrorDetails("Having range requires exactly two values")
+				}
+			} else if length == 0 {
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+					WithErrorDetails("Having in/not_in requires a non-empty array")
+			}
 		}
 	}
 
