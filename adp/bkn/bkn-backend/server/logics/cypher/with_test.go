@@ -127,6 +127,23 @@ func TestWithGenerates(t *testing.T) {
 
 // The executor answers a WITH the way the SQL path does: groups by what the
 // WITH grouped by, then keeps the groups its condition holds for.
+// A WITH groups by its items in the order it writes them, every time: the keys
+// once came from ranging over a map, so the same query compiled to a different
+// GROUP BY from run to run.
+func TestWithGroupsInWrittenOrder(t *testing.T) {
+	query := "MATCH (o:Order) WITH o.amount AS a, o.region AS r, o.customer_code AS c, count(*) AS n RETURN a, r, c, n"
+	want := "GROUP BY t0.`f_amount`, t0.`f_region`, t0.`f_cust`"
+	for range 20 {
+		sql, err := compileWithClause(t, query)
+		if err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		if !strings.Contains(sql, want) {
+			t.Fatalf("SQL lacks %q:\n%s", want, sql)
+		}
+	}
+}
+
 func TestWithEvaluates(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
