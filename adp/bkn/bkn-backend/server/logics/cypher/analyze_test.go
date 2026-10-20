@@ -247,7 +247,7 @@ func TestAnalyzeRejections(t *testing.T) {
 		{"MATCH (a:Order) RETURN lower(a.id)", "function calls"},
 		{"MATCH (a:Order) WHERE a.x + 1 IN [2] RETURN a.id", "arithmetic here"},
 		{"MATCH (a:Order) RETURN a.x ^ 2", "exponentiation"},
-		{"MATCH (a:Order) RETURN CASE a.x WHEN 1 THEN 2 ELSE 3 END", "CASE"},
+		{"MATCH (a:Order) RETURN CASE WHEN a.x > 1 THEN true END", "a boolean as the result of CASE"},
 		{"MATCH (a:Order) RETURN [x IN [1, 2] | x]", "list comprehensions"},
 		{"MATCH (a:Order) RETURN [(a)-[:R]->(b:Customer) | b.id]", "pattern comprehensions"},
 		{"MATCH (a:Order) WHERE all(x IN [1] WHERE x = 1) RETURN a.id", "quantified expressions"},

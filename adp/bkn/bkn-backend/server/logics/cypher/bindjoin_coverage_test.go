@@ -164,9 +164,9 @@ func TestBindJoinRunsEveryQueryTheCompilerAccepts(t *testing.T) {
 				if err != nil {
 					continue
 				}
-				if len(plan.Totals) > 0 {
-					// Totals over a WITH's groups are the SQL path's alone;
-					// the service never hands them to this executor.
+				if plan.SQLOnly {
+					// Totals over groups, CASE and coalesce are the SQL
+					// path's alone; the service never hands them over.
 					break
 				}
 				compiled++

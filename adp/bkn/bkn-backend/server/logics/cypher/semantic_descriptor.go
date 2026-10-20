@@ -122,6 +122,8 @@ const (
 	semanticCondition  = "condition"
 	semanticComparison = "property_comparison"
 	semanticSemiJoin   = "semi_join"
+	semanticCase       = "case"
+	semanticCoalesce   = "coalesce"
 	// semanticGroups marks an aggregate over the groups a WITH made rather
 	// than over the matched rows.
 	semanticGroups = "groups"
@@ -153,8 +155,13 @@ func semanticTotals(totals []PlanTotal, groups []SemanticQueryProjection) []Sema
 
 // semanticExpressionKind names what a computed column is in the descriptor.
 func semanticExpressionKind(value PlanExpression) string {
-	if _, ok := value.(PlanConditionValue); ok {
+	switch value.(type) {
+	case PlanConditionValue:
 		return semanticCondition
+	case PlanCase:
+		return semanticCase
+	case PlanCoalesce:
+		return semanticCoalesce
 	}
 	return semanticExpression
 }
@@ -474,6 +481,13 @@ func semanticExpressionRefs(plan *Plan, value PlanExpression) []string {
 			walk(node.Right)
 		case PlanNegative:
 			walk(node.Operand)
+		case PlanCase, PlanCoalesce:
+			for _, condition := range caseConditions(value) {
+				walkPredicate(condition)
+			}
+			for _, part := range caseValues(value) {
+				walk(part)
+			}
 		}
 		if ref != "" && !seen[ref] {
 			seen[ref] = true
@@ -501,6 +515,15 @@ func semanticExpressionValues(value PlanExpression) ([]string, []string) {
 		return append(leftHashes, rightHashes...), append(leftPointers, rightPointers...)
 	case PlanNegative:
 		return semanticExpressionValues(node.Operand)
+	case PlanCase, PlanCoalesce:
+		// A branch's condition records its values as any condition does;
+		// what the branches give is hashed here.
+		var hashes, pointers []string
+		for _, part := range caseValues(value) {
+			partHashes, partPointers := semanticExpressionValues(part)
+			hashes, pointers = append(hashes, partHashes...), append(pointers, partPointers...)
+		}
+		return hashes, pointers
 	}
 	return nil, nil
 }

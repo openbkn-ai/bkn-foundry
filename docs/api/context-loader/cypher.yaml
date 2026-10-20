@@ -93,6 +93,11 @@ paths:
           `o.x - avg(o.x)`）时，该属性须同时作为单独的列返回，结果按它分组；DISTINCT 结果要按
           算出来的值排序，请在 RETURN 里给它起别名再按别名排序。没有声明类型的属性交给数据源决定。
           `IN` 列表、内联属性、`SKIP` / `LIMIT` 里仍不能写算术。
+        - **CASE 与 coalesce**：`CASE WHEN … THEN … ELSE … END`、`CASE x WHEN v THEN … END` 与
+          `coalesce(a, b, …)` 能写在算术能写的地方：RETURN、WITH、ORDER BY、比较两侧和聚合参数，如
+          `sum(CASE WHEN g.penalty = '1' THEN 1 ELSE 0 END)`、`count(CASE WHEN … THEN 1 END)`。没有 ELSE 且没命中时为 null。
+          各分支（或参数）须都是数字或都不是数字（null 字面量可搭配任一种），不能返回布尔；字符串结果不能参与算术或
+          `sum` / `avg`；分支条件里的聚合要先在 WITH 里命名再用；简单形式不能写 `WHEN null`。这类查询总走 SQL 路径。
         - **ORDER BY / SKIP / LIMIT**：ORDER BY 可用属性、返回列名或聚合。结果被聚合
           或 DISTINCT 折叠后，只能按返回的值排序。
         - **比较两组对象**：如「两个产品共用哪些物料」，在一个 MATCH 里让两条路径共享节点即可，不需要 WITH：
@@ -117,7 +122,7 @@ paths:
           `=` 使用、`s` 只能以 `IN` 使用，不能放在 OR / NOT 下；第二段之后不能再接 WITH。
 
         **不支持**（会被拒绝，报错指名是哪个语法与位置）：
-        `UNION`、变长路径 `[:R*1..3]`、`XOR`、函数调用、`^` 乘方、写操作（`CREATE` / `MERGE` / `DELETE` /
+        `UNION`、变长路径 `[:R*1..3]`、`XOR`、`date()` 与 `coalesce()` 以外的函数调用、`^` 乘方、写操作（`CREATE` / `MERGE` / `DELETE` /
         `SET` / `REMOVE`）。
 
         **行数**：不写 `LIMIT` 默认返回 1000 行；`LIMIT` 不得超过 10000。

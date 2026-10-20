@@ -445,6 +445,32 @@ type ConditionValue struct {
 
 func (c ConditionValue) expressionPosition() Position { return c.Pos }
 
+// CaseValue is CASE: the result of the first branch whose condition holds,
+// else Else, else null. The simple form, CASE x WHEN v THEN ..., is read as
+// the searched one with the conditions x = v, so every later stage sees one
+// shape.
+type CaseValue struct {
+	Whens []CaseWhen
+	Else  Expression // nil when the query wrote no ELSE
+	Pos   Position
+}
+
+// CaseWhen is one WHEN ... THEN ... branch.
+type CaseWhen struct {
+	Condition Predicate
+	Result    Expression
+}
+
+func (c CaseValue) expressionPosition() Position { return c.Pos }
+
+// Coalesce is coalesce(a, b, ...): the first argument that is not null.
+type Coalesce struct {
+	Arguments []Expression
+	Pos       Position
+}
+
+func (c Coalesce) expressionPosition() Position { return c.Pos }
+
 // SemiJoin keeps the rows whose property is among the values an earlier stage
 // produced, as in
 //

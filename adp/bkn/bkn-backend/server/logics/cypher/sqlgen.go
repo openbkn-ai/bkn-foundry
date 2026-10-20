@@ -215,9 +215,38 @@ func (g *generator) expression(value PlanExpression) string {
 	case PlanValueColumn:
 		return g.column(node.Table, node.Column)
 	case PlanValueLiteral:
-		return g.number(node.Value)
+		if node.Value.Kind == LiteralInteger || node.Value.Kind == LiteralFloat {
+			return g.number(node.Value)
+		}
+		// Only a branch of CASE or an argument of coalesce carries a string
+		// or a null; arithmetic was given numbers alone.
+		if node.Value.Kind == LiteralNull {
+			return "NULL"
+		}
+		written, err := g.literal(node.Value)
+		if err != nil {
+			g.fail(err)
+		}
+		return written
 	case PlanAggregate:
 		return g.aggregate(node)
+	case PlanCase:
+		var out strings.Builder
+		out.WriteString("CASE")
+		for _, when := range node.Whens {
+			out.WriteString(" WHEN " + g.condition(when.Condition) + " THEN " + g.expression(when.Result))
+		}
+		if node.Else != nil {
+			out.WriteString(" ELSE " + g.expression(node.Else))
+		}
+		out.WriteString(" END")
+		return out.String()
+	case PlanCoalesce:
+		arguments := make([]string, len(node.Arguments))
+		for i, argument := range node.Arguments {
+			arguments[i] = g.expression(argument)
+		}
+		return "COALESCE(" + strings.Join(arguments, ", ") + ")"
 	case PlanNegative:
 		if column, ok := node.Operand.(PlanValueColumn); ok {
 			return "-" + g.column(column.Table, column.Column)
@@ -238,16 +267,7 @@ func (g *generator) expression(value PlanExpression) string {
 		// condition cannot be decided, which the caller turns back into a
 		// boolean. The condition is written by the same code that writes WHERE,
 		// so it reads the same in both places.
-		condition := &generator{dialect: g.dialect, plan: g.plan}
-		if err := condition.writePredicate(node.Predicate, true); err != nil {
-			g.fail(err)
-			return ""
-		}
-		if condition.err != nil {
-			g.fail(condition.err)
-			return ""
-		}
-		written := condition.out.String()
+		written := g.condition(node.Predicate)
 		return "CASE WHEN " + written + " THEN 1 WHEN NOT (" + written + ") THEN 0 END"
 	default:
 		g.fail(fmt.Errorf("cannot generate a %T value", value))
@@ -258,6 +278,21 @@ func (g *generator) expression(value PlanExpression) string {
 // operand writes one side of an operation, in parentheses when the tree binds
 // it tighter than the text would: a looser operator on either side, or an
 // equal one on the right, since a - (b - c) is not a - b - c.
+// condition writes a condition where a value is being written, as CASE needs
+// one, with the same code that writes WHERE so it reads the same in both.
+func (g *generator) condition(predicate PlanPredicate) string {
+	condition := &generator{dialect: g.dialect, plan: g.plan}
+	if err := condition.writePredicate(predicate, true); err != nil {
+		g.fail(err)
+		return ""
+	}
+	if condition.err != nil {
+		g.fail(condition.err)
+		return ""
+	}
+	return condition.out.String()
+}
+
 func (g *generator) operand(value PlanExpression, parent int, right bool) string {
 	written := g.expression(value)
 	if inner, ok := value.(PlanArithmetic); ok {

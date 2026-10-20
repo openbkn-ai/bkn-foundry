@@ -47,6 +47,10 @@ type Plan struct {
 	// and are then what the statement returns; see Query.Totals.
 	Totals []PlanTotal
 
+	// SQLOnly marks a plan only the SQL path answers: totals over groups,
+	// CASE and coalesce. The bind-join executor takes no new capabilities.
+	SQLOnly bool
+
 	// Properties lists, in the model's own terms, every property the query
 	// names: what it returns, filters on, sorts by or aggregates over. Join
 	// keys and the primary keys that keep relationships distinct are not in
@@ -210,6 +214,18 @@ func planContainsAggregate(value PlanExpression) bool {
 		return planContainsAggregate(node.Left) || planContainsAggregate(node.Right)
 	case PlanNegative:
 		return planContainsAggregate(node.Operand)
+	case PlanCase, PlanCoalesce:
+		for _, part := range caseValues(value) {
+			if planContainsAggregate(part) {
+				return true
+			}
+		}
+		for _, condition := range caseConditions(value) {
+			if planPredicateAggregates(condition) {
+				return true
+			}
+		}
+		return false
 	default:
 		return false
 	}
@@ -457,6 +473,7 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 				"column name %q is returned twice; give one of them a different alias", total.Alias)
 		}
 		totals[total.Alias] = true
+		p.plan.SQLOnly = true
 		p.plan.Totals = append(p.plan.Totals, PlanTotal{
 			Function: total.Function, Distinct: total.Distinct, Of: total.Of, Alias: total.Alias,
 		})
@@ -1111,6 +1128,17 @@ func ungroupedColumns(value PlanExpression) []PlanValueColumn {
 		return append(ungroupedColumns(node.Left), ungroupedColumns(node.Right)...)
 	case PlanNegative:
 		return ungroupedColumns(node.Operand)
+	case PlanCase, PlanCoalesce:
+		var columns []PlanValueColumn
+		for _, condition := range caseConditions(value) {
+			for _, column := range havingColumns(condition) {
+				columns = append(columns, PlanValueColumn{Table: column.Table, Column: column.Column, Property: column.Property})
+			}
+		}
+		for _, part := range caseValues(value) {
+			columns = append(columns, ungroupedColumns(part)...)
+		}
+		return columns
 	default:
 		return nil
 	}
@@ -1155,6 +1183,12 @@ func (p *planner) planAggregateOver(aggregate Aggregate) (*PlanAggregate, number
 		argument, kind, err := p.planExpression(aggregate.Argument)
 		if err != nil {
 			return nil, kindUnknown, err
+		}
+		if kind == kindNotNumber && (aggregate.Function == "SUM" || aggregate.Function == "AVG") {
+			// A CASE or coalesce that gives strings; min, max and count take
+			// those, and sum and avg do not.
+			return nil, kindUnknown, planErrorf(aggregate.Pos, "%s takes numbers; %s gives something else",
+				strings.ToLower(aggregate.Function), aggregate.ArgumentText)
 		}
 		return &PlanAggregate{Function: aggregate.Function, Distinct: aggregate.Distinct, Argument: argument}, kind, nil
 	}
@@ -1244,6 +1278,8 @@ const (
 	kindInteger
 	kindFloat
 	kindNotNumber
+	// kindNull is a null literal, which only CASE and coalesce take as a value.
+	kindNull
 )
 
 var integerTypes = map[string]struct{}{
@@ -1313,6 +1349,9 @@ func (p *planner) planExpression(value Expression) (PlanExpression, numberKind, 
 		if err != nil {
 			return nil, kindUnknown, err
 		}
+		if kind == kindNotNumber {
+			return nil, kindUnknown, planErrorf(node.Pos, "arithmetic takes numbers; this value is not one")
+		}
 		return PlanNegative{Operand: operand}, kind, nil
 
 	case Arithmetic:
@@ -1324,6 +1363,12 @@ func (p *planner) planExpression(value Expression) (PlanExpression, numberKind, 
 			return nil, kindUnknown, err
 		}
 		return PlanConditionValue{Predicate: predicate}, kindNotNumber, nil
+
+	case CaseValue:
+		return p.planCase(node)
+
+	case Coalesce:
+		return p.planCoalesce(node)
 
 	default:
 		return nil, kindUnknown, planErrorf(value.expressionPosition(), "unsupported expression %T", value)
@@ -1384,6 +1429,11 @@ func (p *planner) planArithmetic(node Arithmetic) (PlanExpression, numberKind, e
 	right, rightKind, err := p.planExpression(node.Right)
 	if err != nil {
 		return nil, kindUnknown, err
+	}
+	if leftKind == kindNotNumber || rightKind == kindNotNumber {
+		// Only CASE and coalesce get here with something else: every other
+		// term was refused as it was planned.
+		return nil, kindUnknown, planErrorf(node.Pos, "arithmetic takes numbers; a CASE or coalesce here gives something else")
 	}
 	planned := PlanArithmetic{Operator: node.Operator, Left: left, Right: right}
 	switch node.Operator {
