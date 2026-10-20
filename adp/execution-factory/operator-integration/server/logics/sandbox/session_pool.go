@@ -159,12 +159,7 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
-		"language": req.Language,
-		"timeout":  req.Timeout,
-		"code":     req.Code,
-		"event":    req.Event,
-	})
+	telemetry.SetSpanAttributes(ctx, executionSpanAttributes(req))
 	sessionID, err := p.acquireSessionWithEnv(ctx, req.EnvVars)
 	if err != nil {
 		return nil, err
@@ -179,10 +174,11 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 		})
 		if err != nil {
 			p.logger.WithContext(ctx).Errorf("InstallPythonDependencies failed for session %s: %v", sessionID, err)
+			// The request itself is not echoed: its event and env vars carry the
+			// caller's bearer token, and these details travel back to the caller.
 			err = errors.NewHTTPError(ctx, http.StatusInternalServerError, errors.ErrExtPypiRepoUnavailable, map[string]any{
 				"error":            err.Error(),
 				"session_id":       sessionID,
-				"request_params":   utils.ObjectToJSON(req),
 				"dependencies":     utils.ObjectToJSON(req.Dependencies),
 				"dependencies_url": req.PythonPackageIndexURL,
 			})
@@ -196,6 +192,17 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 		return nil, err
 	}
 	return resp, nil
+}
+
+// executionSpanAttributes is what the execute span records. The event is left
+// out: run_code's event carries the caller's bearer token, and span attributes
+// are exported with the trace.
+func executionSpanAttributes(req *interfaces.ExecuteCodeReq) map[string]interface{} {
+	return map[string]interface{}{
+		"language": req.Language,
+		"timeout":  req.Timeout,
+		"code":     req.Code,
+	}
 }
 
 // AcquireSession Get available sessions.
