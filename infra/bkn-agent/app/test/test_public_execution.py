@@ -271,13 +271,13 @@ def test_public_request_rejects_config_and_lifecycle_overrides(monkeypatch, extr
     asyncio.run(run())
 
 
-def test_graph_explorer_cypher_runs_on_the_public_surface(monkeypatch):
+def test_cypher_generation_runs_on_the_public_surface(monkeypatch):
     async def run():
         async with environment(monkeypatch) as (client, factory, calls):
             async with factory() as session:
                 session.add(
                     AgentRow(
-                        f_agent_id="graph_explorer_cypher",
+                        f_agent_id="cypher_generation",
                         f_name="Cypher",
                         f_mode="chat",
                         f_prompt_id="qa-prompt",
@@ -306,15 +306,15 @@ def test_graph_explorer_cypher_runs_on_the_public_surface(monkeypatch):
                 return await allow(url, **kwargs)
 
             monkeypatch.setattr(public_auth, "_post", post)
-            body = {**BODY, "agent_id": "graph_explorer_cypher"}
+            body = {**BODY, "agent_id": "cypher_generation"}
             response = await client.post(URL, json=body, headers=AUTH)
             assert response.status_code == 200, response.text
             events = parse_sse(response.text)
-            assert events[0][1]["agent_id"] == "graph_explorer_cypher"
+            assert events[0][1]["agent_id"] == "cypher_generation"
             assert events[-1][1]["status"] == "succeeded"
-            assert [call.agent_id for call in calls] == ["graph_explorer_cypher"]
+            assert [call.agent_id for call in calls] == ["cypher_generation"]
             # The caller needs use on this Agent, not on smart Q&A.
-            assert {"resource": {"type": "agent", "id": "graph_explorer_cypher"}, "operation": "use"} in checked
+            assert {"resource": {"type": "agent", "id": "cypher_generation"}, "operation": "use"} in checked
 
     asyncio.run(run())
 

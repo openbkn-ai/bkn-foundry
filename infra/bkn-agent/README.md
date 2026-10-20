@@ -95,7 +95,7 @@ agent 只通过本服务自身的 `/api/bkn-agent/v1` 面对外，不再在执�
 
 Studio 智能问答固定 ID 为 `studio_smart_qa`，初始为 draft，模型留空继承平台默认，声明完整 Context Loader MCP。`runtime.contextLoaderMcpUrl` / `CONTEXT_LOADER_MCP_URL` 继续选择完整版 `/mcp/` 或紧凑版 `/mcp-compact/`。公共用户入口、网络范围及权限检查见下文 #2173；不创建基础数据问答占位 Agent。
 
-图探索 Cypher 生成固定 ID 为 `graph_explorer_cypher`，由 `06-seed-graph-explorer-cypher.sql` 写入缺失默认数据，同样初始为 draft、模型留空。它只加载完整版 Context Loader 的 `get_kn_detail`、`search_schema`、`get_object_types`、`get_relation_types`、`search_instance` 和 `run_cypher`：按真实属性名写查询，用 `run_cypher` 试跑，只交付试跑通过且返回节点或关系的查询，放在 cypher 代码块里由图探索页运行。
+Cypher 生成固定 ID 为 `cypher_generation`，由 `06-seed-cypher-generation.sql` 写入缺失默认数据，同样初始为 draft、模型留空。它只加载完整版 Context Loader 的 `get_kn_detail`、`search_schema`、`get_object_types`、`get_relation_types`、`search_instance` 和 `run_cypher`：按真实属性名写带 `RETURN` 和 `LIMIT` 的完整查询，用 `run_cypher` 原样试跑，只交付试跑通过的查询（优先返回节点、关系或虚拟边，用户只要统计时返回标量），放在 cypher 代码块里，调用方原样运行。
 
 业务溯源两个 Agent 保留原固定 ID、owner 和工具声明，缺失时安装当前默认 Prompt/限制；旧默认值仅按上述条件修复。SQL 登记不创建 EE 管理身份，也不开放许可证控制的 EE 入口。`python -m app.bootstrap.business_provenance` 保留为现有部署脚本的兼容命令，只验证管理主体、Agent 归属及共享 Prompt，不再调用 `/import` 或覆盖管理员修改。原 JSON 文件覆盖环境变量不再支持，显式设置时会报错；共享配置改为通过管理 API 维护。旧手工导入脚本 `scripts/import-business-provenance-optimizer.sh` 一并移除。
 
@@ -122,7 +122,7 @@ attribution. Upgrade Context Loader together with Agent for this contract.
 
 `POST /api/bkn-agent/v1/executions` 返回 SSE；`GET /api/bkn-agent/v1/executions/{run_id}` 读取运行状态与已提交结果；`POST /api/bkn-agent/v1/executions/{run_id}/cancel` 请求停止。三者均要求 `Authorization: Bearer ...`，OAuth 通过 Hydra 校验，`bak_` 通过 bkn-safe 校验，外部账号头不作为身份依据。依赖地址通过 `runtime.hydraAdminBase` / `HYDRA_ADMIN_BASE` 和 `runtime.bknSafeBase` / `BKN_SAFE_BASE` 配置，向下游继续传递原调用凭据。
 
-接入 `studio_smart_qa` 和 `graph_explorer_cypher`。调用前须由管理员完成共享配置并发布，且调用者具有该 Agent 的 `use` 和知识网络的 `view_detail` 权限；实际数据与行动权限继续由下游校验。本接口不自动发布、授予权限或修改默认配置。
+接入 `studio_smart_qa` 和 `cypher_generation`。调用前须由管理员完成共享配置并发布，且调用者具有该 Agent 的 `use` 和知识网络的 `view_detail` 权限；实际数据与行动权限继续由下游校验。本接口不自动发布、授予权限或修改默认配置。
 
 ```json
 {

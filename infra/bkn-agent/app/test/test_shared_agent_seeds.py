@@ -17,7 +17,7 @@ PROVENANCE = MIGRATIONS / "0.2.1/02-seed-business-provenance.sql"
 PROVENANCE_UPGRADE = MIGRATIONS / "0.2.1/03-upgrade-business-provenance-defaults.sql"
 SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
 VERSIONS = MIGRATIONS / "0.2.1/05-agent-versions.sql"
-CYPHER = MIGRATIONS / "0.2.1/06-seed-graph-explorer-cypher.sql"
+CYPHER = MIGRATIONS / "0.2.1/06-seed-cypher-generation.sql"
 
 
 def statements(path):
@@ -629,10 +629,10 @@ def test_version_snapshot_tolerates_null_tools_and_model_in_older_rows():
         assert (row["f_model"], row["f_tools"], row["f_initial"]) == ("", "[]", 0)
 
 
-def test_graph_explorer_cypher_seed_reads_schema_and_runs_cypher_only():
+def test_cypher_generation_seed_reads_schema_and_runs_cypher_only():
     with database() as db:
         apply(db, CYPHER)
-        item = item_from_db(db, "graph_explorer_cypher")
+        item = item_from_db(db, "cypher_generation")
         assert item["spec"]["status"] == "draft"
         assert item["spec"]["model"] == ""
         assert item["spec"]["tools"] == [
@@ -649,13 +649,21 @@ def test_graph_explorer_cypher_seed_reads_schema_and_runs_cypher_only():
                 ],
             }
         ]
-        # The page reads the query out of a cypher fence and draws only nodes
-        # and relationships, so the Prompt has to say both.
-        assert "```cypher" in item["prompt"]["content"]
-        assert "relationType" in item["prompt"]["content"]
+        # Callers read the query out of a cypher fence and run it unchanged, so
+        # the Prompt asks for complete queries only and names the virtual edge.
+        content = item["prompt"]["content"]
+        assert "```cypher" in content
+        assert "relationType" in content
+        assert "始终写完整查询" in content
+        # Complete queries draw only what RETURN lists: a node-only answer to
+        # a relationship question must not pass the Agent's own check.
+        assert "RETURN p, r, m" in content
+        assert "只有节点不算通过" in content
+        assert "片段" not in content
+        assert "图探索" not in content and "画布" not in content
         rows = db.execute(
             "SELECT f_version, f_initial, f_current, f_prompt_version FROM t_agent_version"
-            " WHERE f_agent_id='graph_explorer_cypher'"
+            " WHERE f_agent_id='cypher_generation'"
         ).fetchall()
         assert [tuple(row) for row in rows] == [(1, 1, 1, 1)]
 
@@ -673,7 +681,7 @@ def test_partial_cypher_seed_is_retryable_without_an_unfinished_agent(completed)
 def test_conflicting_cypher_prompt_is_not_taken_over():
     with database() as db:
         db.execute(
-            "INSERT INTO t_agent_prompt VALUES('graph_explorer_cypher_prompt','customer',7,'customer',1)"
+            "INSERT INTO t_agent_prompt VALUES('cypher_generation_prompt','customer',7,'customer',1)"
         )
         before = snapshot(db)
         with pytest.raises(sqlite3.IntegrityError):
