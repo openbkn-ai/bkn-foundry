@@ -121,3 +121,29 @@ func TestLocalIndexFieldContract(t *testing.T) {
 		t.Fatalf("MaxKeywordIgnoreAbove = %d, want %d", MaxKeywordIgnoreAbove, 8191)
 	}
 }
+
+func TestIsPhysicalResourceCategory(t *testing.T) {
+	for _, tc := range []struct {
+		category string
+		want     bool
+	}{
+		{ResourceCategoryTable, true},
+		{ResourceCategoryFile, true},
+		{ResourceCategoryFileset, true},
+		{ResourceCategoryAPI, true},
+		{ResourceCategoryMetric, true},
+		{ResourceCategoryTopic, true},
+		{ResourceCategoryIndex, true},
+		{ResourceCategoryDataset, false},
+		{ResourceCategoryLogicalView, false},
+		{"", false},
+		{"unknown", false},
+		{CatalogTypePhysical, false},
+	} {
+		t.Run(tc.category, func(t *testing.T) {
+			if got := IsPhysicalResourceCategory(tc.category); got != tc.want {
+				t.Errorf("IsPhysicalResourceCategory(%q) = %v, want %v", tc.category, got, tc.want)
+			}
+		})
+	}
+}

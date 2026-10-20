@@ -940,7 +940,7 @@ components:
             传部分 Feature 时仅保留源字段中匹配的条目。Feature 元数据由源字段补齐，
             vector 的只读 config.dimension 无须提交。删除 Feature 后，Index 源视图查询不能使用
             依赖该 Feature 的搜索、过滤、排序或聚合操作；Table 源的普通 SQL 字段查询不依赖 Feature。
-            定义内固定 filter_condition 仍按完整源字段执行。
+            定义内固定 filter_condition 可引用未公开的源字段，但须满足实际查询路径的过滤能力。
           type: array
           items:
             $ref: "#/components/schemas/Property"
@@ -963,7 +963,11 @@ components:
           type: string
           minLength: 1
         filter_condition:
-          description: 固定过滤条件，可引用源资源的全部字段；与查询请求条件按 AND 合并
+          description: |
+            固定过滤条件，可引用未公开的源字段；与查询请求条件按 AND 合并。
+            源物理资源已有可用平台索引时，创建和完整 PUT 更新会按索引可查询字段校验；
+            引用 JSON、binary、other 等不支持索引过滤的字段时返回 400，不保存该定义。
+            这些字段仍可作为视图输出字段；无索引源资源的固定条件仍按既有源端能力校验和执行。
           type: object
           additionalProperties: true
     ResourceIndexConfig:
