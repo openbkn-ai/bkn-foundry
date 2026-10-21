@@ -268,10 +268,10 @@ ORDER BY total DESC, name, team
 ```
 
 - In the next MATCH a node passed on may be written without its label (`(p)`) and is matched up by its primary key. Each row the WITH passes on meets the rows the next MATCH finds for its nodes; a node the next MATCH finds nothing for drops out.
-- The values the WITH named (`total` here) may be returned, sorted by and computed with in RETURN and ORDER BY, as in `count(g2) * 1.0 / total AS share`. Inside an expression with an aggregate, return the value as a column of its own as well (`RETURN ..., total, count(g2) * 1.0 / total AS share`), so it is a grouping key.
+- The values the WITH named (`total` here) may be returned, sorted by and computed with in RETURN and ORDER BY, as in `count(g2) * 1.0 / total AS share`. When the query aggregates, a value used in an expression or in ORDER BY must also be returned as a column of its own (`RETURN ..., total, count(g2) * 1.0 / total AS share`), so it is a grouping key.
 - They cannot stand in the next MATCH's WHERE; put conditions on them in the WITH's own WHERE.
 - Every node passed on must be used in the next MATCH; a node cannot be renamed (`WITH p AS q`) or passed on beside a `collect` list.
-- The next MATCH cannot be OPTIONAL MATCH, and no WITH may follow it.
+- The next MATCH cannot be OPTIONAL MATCH, and no WITH may follow it; the WITH that passes nodes on takes no DISTINCT, ORDER BY, SKIP or LIMIT.
 - RETURN may return the next MATCH's nodes and those passed on, which draws a derived relationship carrying values: `RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, count(g2) AS n, total`.
 
 ### Naming constants up front

@@ -1112,6 +1112,17 @@ func expressionType(plan *Plan, schema *Schema, value PlanExpression) string {
 		return expressionType(plan, schema, node.Operand)
 	case PlanConditionValue:
 		return "boolean"
+	case PlanCarriedValue:
+		// The value is a column the carried stage selects, typed as that
+		// stage types it.
+		if plan.Carried != nil {
+			for _, column := range plan.Carried.Stage.Select {
+				if column.Alias == node.Alias {
+					return columnType(plan.Carried.Stage, schema, column)
+				}
+			}
+		}
+		return "float"
 	case PlanArithmetic:
 		if node.Operator == "/" {
 			return "float"

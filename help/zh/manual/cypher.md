@@ -268,10 +268,10 @@ ORDER BY total DESC, name, team
 ```
 
 - 下一段 MATCH 里，传下来的节点可以不写标签（`(p)`），按主键和上一段对应起来。WITH 传下来的每一行都会和下一段匹配到的行连接，下一段没匹配到的节点不出现在结果里。
-- WITH 里命名的值（如 `total`）可以在 RETURN 和 ORDER BY 里使用和计算，例如 `count(g2) * 1.0 / total AS share`。用在含聚合的表达式里时，要把它也作为单独一列返回（`RETURN …, total, count(g2) * 1.0 / total AS share`），这样它才是分组键。
+- WITH 里命名的值（如 `total`）可以在 RETURN 和 ORDER BY 里使用和计算，例如 `count(g2) * 1.0 / total AS share`。查询含聚合时，在表达式或 ORDER BY 里用到它，都要把它也作为单独一列返回（`RETURN …, total, count(g2) * 1.0 / total AS share`），这样它才是分组键。
 - 这些值不能写在下一段 MATCH 的 WHERE 里；对它们的条件写在 WITH 自己的 WHERE 里。
 - 传下来的每个节点都必须在下一段 MATCH 里用到；节点不能改名（`WITH p AS q`），也不能和 `collect` 列表一起传。
-- 下一段不能是 OPTIONAL MATCH，之后也不能再接 WITH。
+- 下一段不能是 OPTIONAL MATCH，之后也不能再接 WITH；传节点的 WITH 不能写 DISTINCT、ORDER BY、SKIP 或 LIMIT。
 - RETURN 可以返回下一段的节点和传下来的节点，画成带数值的虚拟边：`RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, count(g2) AS n, total`。
 
 ### 开头定义常量
