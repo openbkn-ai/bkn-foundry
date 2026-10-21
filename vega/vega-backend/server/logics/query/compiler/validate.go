@@ -5,6 +5,8 @@
 package compiler
 
 import (
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/functions"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -13,7 +15,7 @@ import (
 	qt "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/compiler/querytree"
 )
 
-var resourceID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
+var resourceID = regexp.MustCompile(interfaces.RegexPattern_NonBuiltin_ID)
 var number = regexp.MustCompile(`^[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
 
 // ValidateQueryTree 同时保护内部构造的树：拒绝环、未知节点及超预算结构。
@@ -202,7 +204,7 @@ func (v *validator) expr(e *qt.Expr, depth int, allowAggregate, insideAggregate,
 		if len(e.Name) != 1 {
 			return failure(qm.ErrorInvalidTree, e.Span, "函数身份非法")
 		}
-		signature, found := lookupFunction(e.Name[0])
+		signature, found := functions.Lookup(e.Name[0])
 		if !found {
 			return failure(qm.ErrorUnsupported, e.Span, "函数未开放")
 		}
