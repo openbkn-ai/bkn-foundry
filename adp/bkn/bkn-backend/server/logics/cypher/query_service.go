@@ -156,13 +156,18 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 		return s.queryBindJoin(ctx, query, compiled)
 	}
 	span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL))
-	return s.querySQL(ctx, query, compiled)
+	return s.querySQL(ctx, query, compiled, false)
 }
 
 // querySQL runs the compiled MySQL statement through vega-backend's raw query
 // route.
+//
+// afterBindJoin says the bind-join executor already ran the query and gave up
+// on its read budget or its time. Resources SQL cannot read then have nothing
+// left to fall back to: running the same bind-join again would only double the
+// wait and the reads.
 func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.CypherQuery,
-	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	compiled *compiledQuery, afterBindJoin bool) (*interfaces.CypherQueryResult, error) {
 	// The paging limit repeats the statement's own LIMIT rather than leaving
 	// it unset. vega-backend wraps the statement and applies a page of its
 	// own, defaulting to 20 rows, so a query asking for more would come back
@@ -177,6 +182,9 @@ func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.Cyph
 		},
 		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
 	})
+	if unsupportedSource(err) && afterBindJoin {
+		return nil, outsideSQLTooLarge(ctx)
+	}
 	if unsupportedSource(err) {
 		return s.queryOutsideSQL(ctx, query, compiled)
 	}
@@ -606,12 +614,12 @@ func (s *cypherQueryService) queryBindJoin(ctx context.Context, query interfaces
 	if errors.As(err, &budget) {
 		span.SetAttributes(attribute.String(spanAttrFallback, fallbackSQLReadBudget))
 		logger.Infof("Cypher query on knowledge network %s falls back to SQL: %s", query.KNID, budget.Error())
-		return s.querySQL(ctx, query, compiled)
+		return s.querySQL(ctx, query, compiled, true)
 	}
 	if errors.Is(err, errBindJoinTimeout) {
 		span.SetAttributes(attribute.String(spanAttrFallback, fallbackSQLTimeout))
 		logger.Infof("Cypher query on knowledge network %s falls back to SQL: %v", query.KNID, err)
-		return s.querySQL(ctx, query, compiled)
+		return s.querySQL(ctx, query, compiled, true)
 	}
 	if err != nil {
 		if !vegaRefused(err) {
@@ -893,6 +901,14 @@ func (s *cypherQueryService) outsideSQL(ctx context.Context, plan *Plan) bool {
 	return len(catalogs) > 1
 }
 
+// outsideSQLTooLarge refuses a query the data API path could not finish in
+// its read budget or its time. It is the read budget's code, so a caller can
+// tell "narrow the query" from "rewrite it".
+func outsideSQLTooLarge(ctx context.Context) error {
+	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_ReadBudgetExceeded).
+		WithErrorDetails(detail(ctx, "NonSQLSourceTooLarge", nil))
+}
+
 // unsupportedSource reports a statement vega-backend could not run as SQL
 // because of where its resources live: a dataset, an index, or more than one
 // data source.
@@ -919,8 +935,7 @@ func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfac
 	columns, entries, err := s.runBindJoin(ctx, query, compiled)
 	var budget *ReadBudgetError
 	if errors.As(err, &budget) || errors.Is(err, errBindJoinTimeout) {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
-			WithErrorDetails(detail(ctx, "NonSQLSourceTooLarge", nil))
+		return nil, outsideSQLTooLarge(ctx)
 	}
 	if err != nil {
 		if !vegaRefused(err) {

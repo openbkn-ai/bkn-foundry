@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -147,5 +149,48 @@ func TestQueryOnOneSQLSourceStaysOnSQL(t *testing.T) {
 	}
 	if vega.sqlRequest == nil || len(vega.readers) != 0 {
 		t.Errorf("sql = %v, data API readers = %v", vega.sqlRequest, vega.readers)
+	}
+}
+
+// slowDatasetVega is a dataset whose data API never answers in time.
+type slowDatasetVega struct {
+	accountDataAPI
+	reads      atomic.Int32
+	statements atomic.Int32
+}
+
+func (v *slowDatasetVega) QueryResourceDataAs(ctx context.Context, _ interfaces.AccountInfo, _ string,
+	_ *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
+	v.reads.Add(1)
+	<-ctx.Done()
+	return nil, interfaces.NewDependencyError("vega", "resource_data", interfaces.DependencyTransportKind(ctx.Err()), 0)
+}
+
+func (v *slowDatasetVega) RawQuery(context.Context, *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
+	v.statements.Add(1)
+	return nil, interfaces.NewDependencyError("vega", "raw_query", interfaces.DependencyUnsupportedSource, http.StatusBadRequest)
+}
+
+// With the bind-join executor configured, a bind-join that gives up on a
+// dataset falls back to SQL, which refuses it for where it lives; it is not
+// run a second time, and the refusal is the read budget's.
+func TestBindJoinOnADatasetRunsOnce(t *testing.T) {
+	spans := recordSpans(t)
+	vega := &slowDatasetVega{}
+	service := bindJoinService(vega, nil)
+	service.bindJoinTimeout = 20 * time.Millisecond
+
+	_, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id",
+	})
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.BaseError.ErrorCode != "BknBackend.Cypher.ReadBudgetExceeded" {
+		t.Fatalf("err = %v", err)
+	}
+	if reads, statements := vega.reads.Load(), vega.statements.Load(); reads != 1 || statements != 1 {
+		t.Errorf("data API reads = %d, statements = %d; want the bind-join once and the SQL attempt once", reads, statements)
+	}
+	if spans.attrs["cypher.fallback"] != "sql_timeout" {
+		t.Errorf("span attrs = %v", spans.attrs)
 	}
 }

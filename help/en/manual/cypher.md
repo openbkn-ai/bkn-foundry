@@ -347,7 +347,7 @@ Only the basic forms are available there:
 | Returning nodes, relationships, `collect` and derived relationships | No |
 
 - A form that is not available returns 400, naming what cannot be used. explain only compiles and cannot see where an object type's data lives, so this refusal comes when the query runs.
-- Reading table by table and joining is slower than SQL; a query that reads more than the limit or runs out of time returns 400, so narrow it with conditions.
+- Reading table by table and joining is slower than SQL; a query that reads more than the limit or runs out of time returns 400 `ReadBudgetExceeded`, so narrow it with conditions.
 
 ---
 
@@ -390,7 +390,7 @@ Only the basic forms are available there:
 | 400 | `BknBackend.Cypher.InvalidQuery` | Does not match the model: an unknown label or property, a type mismatch, ... |
 | 400 | `BknBackend.Cypher.LimitExceeded` | `LIMIT` above 10000 |
 | 400 | `BknBackend.Cypher.InvalidParameter` | Empty or oversized query, or an invalid parameter |
-| 400 | `BknBackend.Cypher.ReadBudgetExceeded` | The evidence a `collect` reads reaches 10000 rows |
+| 400 | `BknBackend.Cypher.ReadBudgetExceeded` | The evidence a `collect` reads reaches 10000 rows, or a query on datasets or indexes reads more than the limit or runs out of time |
 | 403 | `BknBackend.Cypher.PropertyForbidden` | Names a masked or structure-only property |
 | 403 | `BknBackend.Cypher.Forbidden` | The data source refused a resource the query reads, and the network's proxy account could not be used |
 | 500 | `BknBackend.Cypher.QueryFailed` | The compiled statement failed to run |
