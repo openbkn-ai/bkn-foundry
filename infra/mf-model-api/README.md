@@ -49,6 +49,22 @@ lands in OpenAI's `code` field, preserving the machine-readable identity.
 
 Regression tests are in `app/test/test_openai_error.py` and `app/test/test_llm_error_contract.py`.
 
+## Claude System Messages
+
+Claude calls accept both OpenAI-style `messages` entries with `role: "system"`
+and the existing top-level `system` array of Claude text blocks. For conversations
+with multiple messages, the adapter removes system entries from the outgoing
+conversation and appends their contents to the top-level system blocks in input
+order. When both forms are supplied, explicit top-level blocks come first;
+neither source is discarded. Existing block metadata such as `cache_control`
+is preserved. No frontend request change is required.
+
+Streaming and non-streaming calls use the same conversion without mutating the
+input messages or top-level system blocks. A request containing only one system
+message retains the existing behavior of sending it as a user message.
+
+Regression tests are in `app/test/test_claude_messages.py`.
+
 ## Logging Discipline
 
 When calling third-party models, request headers carry the provider `api_key`, and the request body carries the

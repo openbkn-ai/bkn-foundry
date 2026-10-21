@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 import hashlib
 import json
 import re
@@ -1849,57 +1850,54 @@ class ClaudeClient:
         elif tool_choice is not None:
             self.tool_choice = {"type": "tool", "name": self.tool_choice["function"]["name"]}
 
-    async def chat_completion(self, messages, user_id, func_module, cache=False):
-        system = None
-        for i in range(0, len(messages)):
+    def _prepare_messages(self, messages):
+        """Adapt OpenAI messages without mutating the caller's conversation.
 
-            if messages[i]["role"] == "system":
+        Keep explicit Claude system blocks first, then append system messages
+        in conversation order. Retain the legacy system-only user fallback.
+        """
+        system = deepcopy(self.system) if self.system else []
+        converted = []
+        for original in messages:
+            message = deepcopy(original)
+            role = message["role"]
+            if role == "system":
                 if len(messages) > 1:
-                    if system is None:
-                        system = messages[i]["content"]
-                    messages.pop(i)
-                else:
-                    messages[i]["role"] = "user"
-            elif messages[i]["role"] == "tool":
-
-                tmp_message = {
+                    content = message["content"]
+                    if isinstance(content, str):
+                        if content:
+                            system.append({"type": "text", "text": content})
+                    else:
+                        system.extend(content)
+                    continue
+                message["role"] = "user"
+            elif role == "tool":
+                message = {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": messages[i]["tool_call_id"],
-                            "content": messages[i]["content"]
-                        }
-                    ]
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": message["tool_call_id"],
+                        "content": message["content"],
+                    }],
                 }
-                messages[i] = tmp_message
-            elif messages[i]["role"] == "assistant":
-                if "tool_calls" in messages[i].keys() and messages[i]["tool_calls"] is not None and len(
-                        messages[i]["tool_calls"]) > 0:
-                    tmp_message = {
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": messages[i].get("content", "")
-                            }
-                        ]
-                    }
-                    if messages[i].get("content", "") == "":
-                        tmp_message["content"] = []
-                    for j in range(0, len(messages[i]["tool_calls"])):
-                        tmp_message["content"].append(
-                            {
-                                "type": "tool_use",
-                                "id": messages[i]["tool_calls"][j]["id"],
-                                "name": messages[i]["tool_calls"][j]["function"]["name"],
-                                "input": json.loads(messages[i]["tool_calls"][j]["function"]["arguments"])
-                            })
-                    messages[i] = tmp_message
-            if "tool_calls" in messages[i].keys():
-                messages[i].pop("tool_calls")
-            if "tool_call_id" in messages[i].keys():
-                messages[i].pop("tool_call_id")
+            elif role == "assistant" and message.get("tool_calls"):
+                content = message.get("content") or ""
+                blocks = [{"type": "text", "text": content}] if content else []
+                for tool_call in message["tool_calls"]:
+                    blocks.append({
+                        "type": "tool_use",
+                        "id": tool_call["id"],
+                        "name": tool_call["function"]["name"],
+                        "input": json.loads(tool_call["function"]["arguments"]),
+                    })
+                message = {"role": "assistant", "content": blocks}
+            message.pop("tool_calls", None)
+            message.pop("tool_call_id", None)
+            converted.append(message)
+        return converted, system
+
+    async def chat_completion(self, messages, user_id, func_module, cache=False):
+        messages, system = self._prepare_messages(messages)
 
         params = {
             "messages": messages,
@@ -1910,8 +1908,8 @@ class ClaudeClient:
             "max_tokens": self.max_tokens,
             "top_k": self.top_k
         }
-        if self.system:
-            params["system"] = self.system
+        if system:
+            params["system"] = system
         if self.tools:
             params["tools"] = self.tools
         if self.tool_choice:
@@ -2008,56 +2006,7 @@ class ClaudeClient:
                         openai_error.retry_after_seconds(resp.status, resp.headers))
 
     async def chat_completion_stream_openai(self, messages, user_id, func_module, cache=False):
-        system = None
-        for i in range(0, len(messages)):
-
-            if messages[i]["role"] == "system":
-                if len(messages) > 1:
-                    if system is None:
-                        system = messages[i]["content"]
-                    messages.pop(i)
-                else:
-                    messages[i]["role"] = "user"
-            elif messages[i]["role"] == "tool":
-
-                tmp_message = {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": messages[i]["tool_call_id"],
-                            "content": messages[i]["content"]
-                        }
-                    ]
-                }
-                messages[i] = tmp_message
-            elif messages[i]["role"] == "assistant":
-                if "tool_calls" in messages[i].keys() and messages[i]["tool_calls"] is not None and len(
-                        messages[i]["tool_calls"]) > 0:
-                    tmp_message = {
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": messages[i].get("content", "")
-                            }
-                        ]
-                    }
-                    if messages[i].get("content", "") == "":
-                        tmp_message["content"] = []
-                    for j in range(0, len(messages[i]["tool_calls"])):
-                        tmp_message["content"].append(
-                            {
-                                "type": "tool_use",
-                                "id": messages[i]["tool_calls"][j]["id"],
-                                "name": messages[i]["tool_calls"][j]["function"]["name"],
-                                "input": json.loads(messages[i]["tool_calls"][j]["function"]["arguments"])
-                            })
-                    messages[i] = tmp_message
-            if "tool_calls" in messages[i].keys():
-                messages[i].pop("tool_calls")
-            if "tool_call_id" in messages[i].keys():
-                messages[i].pop("tool_call_id")
+        messages, system = self._prepare_messages(messages)
 
         params = {
             "messages": messages,
@@ -2068,8 +2017,8 @@ class ClaudeClient:
             "max_tokens": self.max_tokens,
             "top_k": self.top_k
         }
-        if self.system:
-            params["system"] = self.system
+        if system:
+            params["system"] = system
         if self.tools:
             params["tools"] = self.tools
         if self.tool_choice:
