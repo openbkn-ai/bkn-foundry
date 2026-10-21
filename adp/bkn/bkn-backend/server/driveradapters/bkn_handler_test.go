@@ -119,8 +119,9 @@ func newUnsupportedSpecBKNTar(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// newV3BKNTar creates a bkn_spec 3.0 archive whose name property carries the given Required cell.
-func newV3BKNTar(t *testing.T, required string) []byte {
+// newV3BKNTar creates a bkn_spec 3.0 archive whose name property carries the given Required cell,
+// with the extra files added.
+func newV3BKNTar(t *testing.T, required string, extra map[string]string) []byte {
 	t.Helper()
 	files := map[string]string{
 		"network.bkn": "---\ntype: knowledge_network\nid: test-net\nname: Test Network\ntags: []\nbkn_spec: \"3.0\"\n---\n\n# Test Network\n",
@@ -130,9 +131,14 @@ func newV3BKNTar(t *testing.T, required string) []byte {
 			"| id | ID | string | | | id |\n| name | 名称 | string | " + required + " | | name |\n\n" +
 			"### Keys\n\nPrimary Keys: id\nDisplay Key: name\n",
 	}
+	paths := []string{"network.bkn", "object_types/pod.bkn"}
+	for path, content := range extra {
+		files[path] = content
+		paths = append(paths, path)
+	}
 	var buf bytes.Buffer
 	w := tar.NewWriter(&buf)
-	for _, path := range []string{"network.bkn", "object_types/pod.bkn"} {
+	for _, path := range paths {
 		content := files[path]
 		if err := w.WriteHeader(&tar.Header{Name: path, Mode: 0644, Size: int64(len(content))}); err != nil {
 			t.Fatal(err)
@@ -307,16 +313,31 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 		})
 
 		Convey("Refuses a 3.0 property declaration the backend does not store yet", func() {
-			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "true"))
+			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "true", nil))
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 			So(w.Code, ShouldEqual, http.StatusBadRequest)
 			So(w.Body.String(), ShouldContainSubstring, `object type \"pod\" data property \"name\": Required is not supported by this version yet`)
 		})
 
+		Convey("Refuses 3.0 value types and aliases the backend does not store yet", func() {
+			for _, c := range []struct{ path, content, want string }{
+				{"value_types/phase.bkn", "---\ntype: value_type\nid: phase\nname: 阶段\ntags: []\n---\n\n## ValueType: 阶段\n\n### Definition\n\n```yaml\nbase_type: keyword\n```\n",
+					`value type \"phase\": value types are not supported by this version yet`},
+				{"action_types/restart.bkn", "---\ntype: action_type\nid: restart\nname: 重启\ntags: []\naliases: [重启容器组]\n---\n\n## ActionType: 重启\n",
+					`action type \"restart\": aliases is not supported by this version yet`},
+			} {
+				req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "", map[string]string{c.path: c.content}))
+				w := httptest.NewRecorder()
+				engine.ServeHTTP(w, req)
+				So(w.Code, ShouldEqual, http.StatusBadRequest)
+				So(w.Body.String(), ShouldContainSubstring, c.want)
+			}
+		})
+
 		Convey("Imports a 3.0 package without property declarations", func() {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, false).Return("kn1", nil)
-			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, ""))
+			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "", nil))
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 			So(w.Code, ShouldEqual, http.StatusOK)

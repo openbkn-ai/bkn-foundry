@@ -283,8 +283,8 @@ func parseDataSource(sectionText string) *ResourceInfo {
 	}
 }
 
-// parseDataProperties reads the Data Properties table. Under 3.0 it also reads the Semantic and
-// Required columns; explicitFalse names the properties whose Required is written false.
+// parseDataProperties reads the Data Properties table. Under 3.0 it also reads the Semantic,
+// Required and Aliases columns; explicitFalse names the properties whose Required is written false.
 func parseDataProperties(sectionText string, opts parseOptions) (props []*DataProperty, explicitFalse []string, err error) {
 	rows := parseTable(strings.Split(sectionText, "\n"))
 	for _, row := range rows {
@@ -310,6 +310,7 @@ func parseDataProperties(sectionText string, opts parseOptions) (props []*DataPr
 		}
 		if opts.v3() {
 			property.Semantic = strings.TrimSpace(row["Semantic"])
+			property.Aliases = parseAliasesCell(row["Aliases"])
 			required, isFalse, err := parseRequired(property.Name, row["Required"])
 			if err != nil {
 				return nil, nil, err
@@ -574,10 +575,11 @@ func parseObjectTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 
 	obj := &BknObjectType{
 		BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{
-			Type: "object_type",
-			ID:   header.id,
-			Name: header.name,
-			Tags: header.tags,
+			Type:    "object_type",
+			ID:      header.id,
+			Name:    header.name,
+			Tags:    header.tags,
+			Aliases: header.aliases,
 		},
 		Description: header.description(buildDescription(desc, sections, order, opts.knownObjectSections())),
 		RawContent:  text,
@@ -774,6 +776,10 @@ func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 	}
 	if opts.v3() {
 		act.ActionIntent = header.raw.str("action_intent")
+		act.Aliases = header.aliases
+		if err := ValidateActionTypeDeclarations(act); err != nil {
+			return nil, err
+		}
 	}
 	act.Summary = ExtractSummary(act.Description)
 
@@ -1124,6 +1130,7 @@ func parseCapabilities(fmData map[string]any) *BknCapabilities {
 type definitionHeader struct {
 	id, name string
 	tags     []string
+	aliases  []string
 	v3       bool
 	raw      rawFrontmatter
 }
@@ -1141,7 +1148,11 @@ func readDefinitionHeader(kind, text string, fmData map[string]any, opts parseOp
 	if err := checkDefinitionV3(kind, text, raw); err != nil {
 		return definitionHeader{}, err
 	}
-	return definitionHeader{id: raw.str("id"), name: raw.str("name"), tags: raw.list("tags"), v3: true, raw: raw}, nil
+	aliases, err := parseAliasesNode(raw.values["aliases"])
+	if err != nil {
+		return definitionHeader{}, err
+	}
+	return definitionHeader{id: raw.str("id"), name: raw.str("name"), tags: raw.list("tags"), aliases: aliases, v3: true, raw: raw}, nil
 }
 
 // description returns a definition's description as stored: under 3.0 the exporter's escape of

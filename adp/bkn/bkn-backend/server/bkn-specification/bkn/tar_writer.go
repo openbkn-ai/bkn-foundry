@@ -101,6 +101,18 @@ func WriteNetworkToTar(doc *BknNetwork, w io.Writer) error {
 		}
 	}
 
+	// Write ValueTypes: a 3.0 package only; 2.x has no place for them.
+	if opts.v3 {
+		for _, vt := range doc.ValueTypes {
+			content := serializeValueType(vt)
+			path := valueTypesDir + "/" + vt.ID + ".bkn"
+			mfs.AddFile(path, []byte(content))
+			if err := writeTarEntry(tw, path, []byte(content), now); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Preserve the complete versioned definition and metadata in each file.
 	writtenMetrics := make(map[string]struct{}, len(doc.ObjectMetrics))
 	for _, metric := range doc.ObjectMetrics {

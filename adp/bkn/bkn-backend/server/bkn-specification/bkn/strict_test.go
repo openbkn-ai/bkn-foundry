@@ -105,10 +105,7 @@ func TestLoadV3_RefusesSyntaxNotSupportedYet(t *testing.T) {
 		edit v3Edit
 		want string
 	}{
-		{"value types", v3Edit{file: "value_types/status.bkn", new: "---\ntype: value_type\nid: s\nname: s\n---\n"}, "value_types/: value types is not supported by this version yet"},
-		{"value_type reference", v3Edit{fObj, "created_at:\n  timezone: Asia/Shanghai\n", "created_at:\n  value_type: ts\n"}, `property constraints "created_at" value_type: value types is not supported by this version yet`},
-		{"object aliases", v3Edit{fObj, "tags: [k8s]\n", "tags: [k8s]\naliases: [容器组]\n"}, `frontmatter field "aliases" is not supported by this version yet`},
-		{"property Aliases column", v3Edit{fObj, "| Name | Display Name | Type | Semantic |", "| Name | Display Name | Type | Aliases |"}, `column "Aliases" is not supported by this version yet`},
+		{"relation aliases", v3Edit{fRel, "name: 同组\n", "name: 同组\naliases: [同伴]\n"}, `frontmatter field "aliases" is not supported by this version yet`},
 		{"lifecycle", v3Edit{fAct, "action_intent: modify\n", "action_intent: modify\nlifecycle:\n  status: deprecated\n  reason: x\n"}, `frontmatter field "lifecycle" is not supported by this version yet`},
 		{"reverse_name", v3Edit{fRel, "name: 同组\n", "name: 同组\nreverse_name: 同组\n"}, `frontmatter field "reverse_name" is not supported by this version yet`},
 		{"importance", v3Edit{fRel, "name: 同组\n", "name: 同组\nimportance: secondary\n"}, `frontmatter field "importance" is not supported by this version yet`},

@@ -163,6 +163,16 @@ func serializeBknNetwork(doc *BknNetwork, opts serializeOptions) string {
 		}
 	}
 
+	if opts.v3 {
+		sb.WriteString("\n### Value Types\n\n")
+		sb.WriteString("| ID | Name | File Path | Description |\n")
+		sb.WriteString("|----|------|-----------|-------------|\n")
+		sort.Slice(doc.ValueTypes, func(i, j int) bool { return doc.ValueTypes[i].ID < doc.ValueTypes[j].ID })
+		for _, vt := range doc.ValueTypes {
+			fmt.Fprintf(&sb, "| %s | %s | `value_types/%s.bkn` | %s |\n", tableCell(vt.ID), tableCell(vt.Name), tableCell(vt.ID), tableCell(vt.Summary))
+		}
+	}
+
 	sb.WriteString("\n### Object Metrics V1\n\n")
 	sb.WriteString("| ID | Name | File Path | Description |\n")
 	sb.WriteString("|----|------|-----------|-------------|\n")
@@ -215,6 +225,13 @@ func serializeBknNetwork(doc *BknNetwork, opts serializeOptions) string {
 		}
 		dirs = append(dirs, dirEntry{"concept_groups", files})
 	}
+	if opts.v3 && len(doc.ValueTypes) > 0 {
+		files := make([]string, len(doc.ValueTypes))
+		for i, vt := range doc.ValueTypes {
+			files[i] = vt.ID + ".bkn"
+		}
+		dirs = append(dirs, dirEntry{valueTypesDir, files})
+	}
 	if len(doc.ObjectMetrics) > 0 {
 		files := make([]string, len(doc.ObjectMetrics))
 		for i, metric := range doc.ObjectMetrics {
@@ -252,7 +269,7 @@ func SerializeObjectType(ot *BknObjectType) string {
 
 func serializeObjectType(ot *BknObjectType, opts serializeOptions) string {
 	var sb strings.Builder
-	writeDefinitionFrontmatter(&sb, opts, "object_type", ot.ID, ot.Name, ot.Tags)
+	writeDefinitionFrontmatter(&sb, opts, "object_type", ot.ID, ot.Name, ot.Tags, ot.Aliases...)
 
 	_, _ = fmt.Fprintf(&sb, "## ObjectType: %s\n\n", ot.Name)
 	if ot.Description != "" {
@@ -465,6 +482,9 @@ func serializeActionType(at *BknActionType, opts serializeOptions) string {
 		// 3.0 writes the intent once, as action_intent; action_type is a 2.x synonym.
 		fields := []frontmatterField{
 			scalarField("type", "action_type"), scalarField("id", at.ID), scalarField("name", at.Name), listField("tags", at.Tags),
+		}
+		if len(at.Aliases) > 0 {
+			fields = append(fields, listField("aliases", at.Aliases))
 		}
 		if intent != "" {
 			fields = append(fields, scalarField("action_intent", intent))

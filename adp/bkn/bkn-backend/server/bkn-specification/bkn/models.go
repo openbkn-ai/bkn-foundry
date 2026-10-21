@@ -98,6 +98,10 @@ type BknNetwork struct {
 	RiskTypes     []*BknRiskType
 	ConceptGroups []*BknConceptGroup
 	ObjectMetrics []json.RawMessage
+
+	// ValueTypes are the 3.0 value types of value_types/ (SPECIFICATION.md §16). A 2.x package never
+	// sets them.
+	ValueTypes []*BknValueType
 }
 
 // BknObjectTypeFrontmatter is YAML frontmatter metadata for a .bkn file.
@@ -106,6 +110,10 @@ type BknObjectTypeFrontmatter struct {
 	ID   string   `yaml:"id"`
 	Name string   `yaml:"name"`
 	Tags []string `yaml:"tags"`
+
+	// Aliases are other names of the object type, for concept search and understanding (3.0,
+	// SPECIFICATION.md §6.8). A 2.x package never sets them.
+	Aliases []string `yaml:"aliases,omitempty"`
 }
 
 // BknObjectType represents an object type definition.
@@ -147,9 +155,9 @@ type ResourceInfo struct {
 
 // DataProperty is a ### Data Properties table row.
 //
-// Semantic, Required and Constraints are 3.0 declarations (SPECIFICATION.md §6.8). They describe
-// what the data should be, for understanding and display; nothing checks the source data against
-// them. A 2.x package never sets them.
+// Semantic, Required, Aliases and Constraints are 3.0 declarations (SPECIFICATION.md §6.8). They
+// describe what the data should be, for understanding and display; nothing checks the source data
+// against them. A 2.x package never sets them.
 type DataProperty struct {
 	Name        string
 	DisplayName string
@@ -160,19 +168,22 @@ type DataProperty struct {
 
 	Semantic    string
 	Required    bool
+	Aliases     []string
 	Constraints *PropertyConstraints
 }
 
 // PropertyConstraints is one property's entry in ### Property Constraints. A nil field is not
-// declared.
+// declared. A property that references a value type takes its value rules from it, so ValueType
+// goes with none of Range, Length, Pattern and Unit.
 type PropertyConstraints struct {
-	Range    *ValueRange
-	Length   *LengthRange
-	Pattern  string
-	Unit     string
-	Unique   bool
-	CRS      string
-	Timezone string
+	ValueType string
+	Range     *ValueRange
+	Length    *LengthRange
+	Pattern   string
+	Unit      string
+	Unique    bool
+	CRS       string
+	Timezone  string
 }
 
 // ValueRange is a closed interval. Min and Max hold a number for a numeric property and the ISO
@@ -287,6 +298,10 @@ type BknActionTypeFrontmatter struct {
 	// ActionType is deprecated in favor of ActionIntent; both may appear for compatibility.
 	ActionType   string `yaml:"action_type"`
 	ActionIntent string `yaml:"action_intent"`
+
+	// Aliases are other names of the action type (3.0, SPECIFICATION.md §8.2). A 2.x package never
+	// sets them.
+	Aliases []string `yaml:"aliases,omitempty"`
 }
 
 // BknActionType represents an action type definition.
@@ -404,4 +419,40 @@ type BknConceptGroup struct {
 	RawContent string
 
 	ObjectTypes []string
+}
+
+// BknValueTypeFrontmatter is YAML frontmatter metadata for a value type file.
+type BknValueTypeFrontmatter struct {
+	Type string   `yaml:"type"`
+	ID   string   `yaml:"id"`
+	Name string   `yaml:"name"`
+	Tags []string `yaml:"tags"`
+}
+
+// BknValueType is a 3.0 value type (SPECIFICATION.md §16): a base type with a set of value rules,
+// named so that several properties can share it. A nil or empty field is not declared; Enum goes
+// with none of Range, Length and Pattern.
+type BknValueType struct {
+	BknValueTypeFrontmatter
+
+	Summary     string
+	Description string
+
+	RawContent string
+
+	BaseType string
+	Enum     []*ValueTypeEnumItem
+	Range    *ValueRange
+	Length   *LengthRange
+	Pattern  string
+	Unit     string
+}
+
+// ValueTypeEnumItem is one enum item of a value type. Value is the value as written; the value
+// type's BaseType says whether it is a number, a date or text.
+type ValueTypeEnumItem struct {
+	Value       string
+	Display     string
+	Deprecated  bool
+	Description string
 }

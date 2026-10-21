@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 	// The timezone constraint names an IANA zone; embedding the database keeps the check the same on
 	// a host or image that ships without zoneinfo.
 	_ "time/tzdata"
@@ -132,7 +133,10 @@ func parseConstraintEntry(name string, node *yaml.Node) (*PropertyConstraints, e
 		where := fmt.Sprintf("property constraints %q %s", name, key)
 		switch key {
 		case "value_type":
-			return nil, specErrorf("%s: value types %s", where, unsupportedYet)
+			if value.Kind != yaml.ScalarNode || value.Tag != "!!str" || value.Value == "" {
+				return nil, specErrorf("%s must be the id of a value type", where)
+			}
+			c.ValueType = value.Value
 		case "range":
 			r, err := parseRangeNode(where, value)
 			if err != nil {
@@ -239,6 +243,12 @@ func parseLengthNode(where string, node *yaml.Node) (*LengthRange, error) {
 // other and against the property types: the Semantic rules and every constraint's fit. Import runs
 // it on a 3.0 definition; a save through the API runs the same check.
 func ValidateObjectTypeDeclarations(ot *BknObjectType) error {
+	if err := validateAliases("object type aliases", ot.Aliases, ot.Name); err != nil {
+		return err
+	}
+	if err := validatePropertyAliases(ot.DataProperties); err != nil {
+		return err
+	}
 	semantics := map[string]*DataProperty{}
 	for _, p := range ot.DataProperties {
 		if p == nil || p.Semantic == "" {
@@ -289,29 +299,12 @@ func ValidateObjectTypeDeclarations(ot *BknObjectType) error {
 func validateConstraints(p *DataProperty) error {
 	c, typ := p.Constraints, normType(p.Type)
 	where := fmt.Sprintf("property constraints %q", p.Name)
-	if c.Range != nil {
-		if err := validateRange(where, typ, c.Range); err != nil {
-			return err
-		}
+	if c.ValueType != "" && (c.Range != nil || c.Length != nil || c.Pattern != "" || c.Unit != "") {
+		return specErrorf("%s: the property references value type %q, which holds its value rules; "+
+			"write range, length, pattern and unit in the value type, or use another value type", where, c.ValueType)
 	}
-	if c.Length != nil {
-		if !containsString(stringTypes, typ) {
-			return specErrorf("%s: length needs Type %s, got %q", where, strings.Join(stringTypes, ", "), p.Type)
-		}
-		if c.Length.Min != nil && c.Length.Max != nil && *c.Length.Min > *c.Length.Max {
-			return specErrorf("%s: length min %d is greater than max %d", where, *c.Length.Min, *c.Length.Max)
-		}
-	}
-	if c.Pattern != "" {
-		if !containsString(stringTypes, typ) {
-			return specErrorf("%s: pattern needs Type %s, got %q", where, strings.Join(stringTypes, ", "), p.Type)
-		}
-		if _, err := regexp.Compile(c.Pattern); err != nil {
-			return specErrorf("%s: pattern is not a valid RE2 expression: %v", where, err)
-		}
-	}
-	if c.Unit != "" && !containsString(numericTypes, typ) {
-		return specErrorf("%s: unit needs a numeric Type, got %q", where, p.Type)
+	if err := validateValueRules(where, typ, p.Type, c.Range, c.Length, c.Pattern, c.Unit); err != nil {
+		return err
 	}
 	if c.Unique && containsString(notUniqueTypes, typ) {
 		return specErrorf("%s: unique does not apply to Type %q", where, p.Type)
@@ -331,6 +324,36 @@ func validateConstraints(p *DataProperty) error {
 		if _, err := time.LoadLocation(c.Timezone); err != nil || c.Timezone == "Local" {
 			return specErrorf("%s: timezone %q is not an IANA time zone name such as Asia/Shanghai", where, c.Timezone)
 		}
+	}
+	return nil
+}
+
+// validateValueRules checks range, length, pattern and unit against a type: the property Type, or a
+// value type's base_type. written is the type as written, for the message.
+func validateValueRules(where, typ, written string, rng *ValueRange, length *LengthRange, pattern, unit string) error {
+	if rng != nil {
+		if err := validateRange(where, typ, rng); err != nil {
+			return err
+		}
+	}
+	if length != nil {
+		if !containsString(stringTypes, typ) {
+			return specErrorf("%s: length needs Type %s, got %q", where, strings.Join(stringTypes, ", "), written)
+		}
+		if length.Min != nil && length.Max != nil && *length.Min > *length.Max {
+			return specErrorf("%s: length min %d is greater than max %d", where, *length.Min, *length.Max)
+		}
+	}
+	if pattern != "" {
+		if !containsString(stringTypes, typ) {
+			return specErrorf("%s: pattern needs Type %s, got %q", where, strings.Join(stringTypes, ", "), written)
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			return specErrorf("%s: pattern is not a valid RE2 expression: %v", where, err)
+		}
+	}
+	if unit != "" && !containsString(numericTypes, typ) {
+		return specErrorf("%s: unit needs a numeric Type, got %q", where, written)
 	}
 	return nil
 }
@@ -388,4 +411,162 @@ func timeBound(typ string, v any) (time.Time, bool) {
 	}
 	t, err := time.Parse(time.RFC3339, s)
 	return t, err == nil
+}
+
+// Aliases are other names of an object type, a property or an action type (SPECIFICATION.md §6.8,
+// §8.2), for concept search and understanding; they take no part in queries.
+const (
+	maxAliases     = 10
+	maxAliasRunes  = 40
+	aliasSeparator = ","
+	fullWidthComma = "，"
+)
+
+// parseAliasesNode reads the aliases of a frontmatter, which checkFrontmatterV3 has made sure is a
+// list. Each alias is trimmed.
+func parseAliasesNode(node *yaml.Node) ([]string, error) {
+	if node == nil {
+		return nil, nil
+	}
+	aliases := make([]string, 0, len(node.Content))
+	for _, item := range node.Content {
+		if item.Kind != yaml.ScalarNode || item.Tag == "!!null" {
+			return nil, specErrorf("frontmatter aliases must list names, such as [病人, 就诊人]")
+		}
+		aliases = append(aliases, strings.TrimSpace(item.Value))
+	}
+	return aliases, nil
+}
+
+// parseAliasesCell reads an Aliases cell: names separated by a half-width comma, each trimmed.
+func parseAliasesCell(cell string) []string {
+	if strings.TrimSpace(cell) == "" {
+		return nil
+	}
+	aliases := strings.Split(cell, aliasSeparator)
+	for i := range aliases {
+		aliases[i] = strings.TrimSpace(aliases[i])
+	}
+	return aliases
+}
+
+// validateAliases checks one group of aliases on its own: each alias, the count, duplicates, and
+// the names the group belongs to.
+func validateAliases(where string, aliases []string, own ...string) error {
+	if len(aliases) > maxAliases {
+		return specErrorf("%s: %d aliases, at most %d", where, len(aliases), maxAliases)
+	}
+	seen := map[string]bool{}
+	for _, alias := range aliases {
+		switch {
+		case alias == "":
+			return specErrorf("%s: an alias is empty", where)
+		case strings.Contains(alias, fullWidthComma):
+			return specErrorf("%s: alias %q holds a full-width comma; separate aliases with a half-width comma ,", where, alias)
+		case strings.Contains(alias, aliasSeparator):
+			return specErrorf("%s: alias %q holds a comma", where, alias)
+		case utf8.RuneCountInString(alias) > maxAliasRunes:
+			return specErrorf("%s: alias %q is longer than %d characters", where, alias, maxAliasRunes)
+		case seen[alias]:
+			return specErrorf("%s: alias %q appears twice", where, alias)
+		case containsString(own, alias):
+			return specErrorf("%s: alias %q is the same as its own name", where, alias)
+		}
+		seen[alias] = true
+	}
+	return nil
+}
+
+// validatePropertyAliases checks the aliases of each property, and that none is the Name or Display
+// Name of another property of the object type.
+func validatePropertyAliases(props []*DataProperty) error {
+	owner := map[string]string{}
+	for _, p := range props {
+		if p == nil {
+			continue
+		}
+		for _, name := range []string{p.Name, p.DisplayName} {
+			if _, taken := owner[name]; !taken && name != "" {
+				owner[name] = p.Name
+			}
+		}
+	}
+	for _, p := range props {
+		if p == nil {
+			continue
+		}
+		where := fmt.Sprintf("data property %q aliases", p.Name)
+		if err := validateAliases(where, p.Aliases, p.Name, p.DisplayName); err != nil {
+			return err
+		}
+		for _, alias := range p.Aliases {
+			if other, taken := owner[alias]; taken && other != p.Name {
+				return specErrorf("%s: alias %q is the name of data property %q", where, alias, other)
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateActionTypeDeclarations checks the declarations of an action type on its own: its aliases.
+// Import runs it on a 3.0 definition; a save through the API runs the same check.
+func ValidateActionTypeDeclarations(at *BknActionType) error {
+	return validateAliases("action type aliases", at.Aliases, at.Name)
+}
+
+// ValidateNetworkDeclarations checks the 3.0 declarations that span definitions: value type names,
+// the value types properties reference, and aliases against the names of other definitions of the
+// same kind. Import runs it once every file of a 3.0 package is read; a save through the API runs
+// the same check on the network it would produce.
+func ValidateNetworkDeclarations(doc *BknNetwork) error {
+	valueTypes := map[string]*BknValueType{}
+	named := map[string]string{}
+	for _, vt := range doc.ValueTypes {
+		if _, dup := valueTypes[vt.ID]; dup {
+			return specErrorf("value type id %q appears twice", vt.ID)
+		}
+		if other, dup := named[vt.Name]; dup {
+			return specErrorf("value types %q and %q are both named %q; a value type name is unique in the network", other, vt.ID, vt.Name)
+		}
+		valueTypes[vt.ID], named[vt.Name] = vt, vt.ID
+	}
+	for _, ot := range doc.ObjectTypes {
+		for _, p := range ot.DataProperties {
+			if p == nil || p.Constraints == nil || p.Constraints.ValueType == "" {
+				continue
+			}
+			vt, ok := valueTypes[p.Constraints.ValueType]
+			if !ok {
+				return specErrorf("object type %q data property %q: value type %q is not defined in this network",
+					ot.ID, p.Name, p.Constraints.ValueType)
+			}
+			if normType(p.Type) != vt.BaseType {
+				return specErrorf("object type %q data property %q: value type %q has base_type %s, the property Type is %q",
+					ot.ID, p.Name, vt.ID, vt.BaseType, p.Type)
+			}
+		}
+	}
+	objectNames := map[string]string{}
+	for _, ot := range doc.ObjectTypes {
+		objectNames[ot.Name] = ot.ID
+	}
+	for _, ot := range doc.ObjectTypes {
+		for _, alias := range ot.Aliases {
+			if other, taken := objectNames[alias]; taken && other != ot.ID {
+				return specErrorf("object type %q alias %q is the name of object type %q", ot.ID, alias, other)
+			}
+		}
+	}
+	actionNames := map[string]string{}
+	for _, at := range doc.ActionTypes {
+		actionNames[at.Name] = at.ID
+	}
+	for _, at := range doc.ActionTypes {
+		for _, alias := range at.Aliases {
+			if other, taken := actionNames[alias]; taken && other != at.ID {
+				return specErrorf("action type %q alias %q is the name of action type %q", at.ID, alias, other)
+			}
+		}
+	}
+	return nil
 }
