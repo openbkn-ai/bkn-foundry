@@ -96,9 +96,11 @@ func TestCarriedStageRefuses(t *testing.T) {
 		{stage + "MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN c.name AS name, count(o2) AS n ORDER BY total DESC",
 			"add total to RETURN"},
 		{"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH DISTINCT c MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN count(o2) AS n",
-			"leave DISTINCT out"},
+			"aggregate in the WITH instead"},
 		{"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH c, count(o) AS total ORDER BY total DESC LIMIT 3 " +
 			"MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN count(o2) AS n", "filter them with the WITH's WHERE instead"},
+		{"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH c, count(o) AS total ORDER BY total DESC " +
+			"MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN count(o2) AS n", "sort in RETURN instead"},
 	} {
 		_, err := compileWithClause(t, tc.query)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {

@@ -272,6 +272,7 @@ ORDER BY total DESC, name, team
 - 这些值不能写在下一段 MATCH 的 WHERE 里；对它们的条件写在 WITH 自己的 WHERE 里。
 - 传下来的每个节点都必须在下一段 MATCH 里用到；节点不能改名（`WITH p AS q`），也不能和 `collect` 列表一起传。
 - 下一段不能是 OPTIONAL MATCH，之后也不能再接 WITH；传节点的 WITH 不能写 DISTINCT、ORDER BY、SKIP 或 LIMIT。
+- WITH 不聚合时（`WITH p`），每个节点按第一段匹配到的行数重复传下去，下一段的计数会跟着成倍增加；要每个节点只传一次，就在 WITH 里聚合，例如 `WITH p, count(*) AS n`。
 - RETURN 可以返回下一段的节点和传下来的节点，画成带数值的虚拟边：`RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, count(g2) AS n, total`。
 
 ### 开头定义常量

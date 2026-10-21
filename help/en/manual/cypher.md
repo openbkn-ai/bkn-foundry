@@ -272,6 +272,7 @@ ORDER BY total DESC, name, team
 - They cannot stand in the next MATCH's WHERE; put conditions on them in the WITH's own WHERE.
 - Every node passed on must be used in the next MATCH; a node cannot be renamed (`WITH p AS q`) or passed on beside a `collect` list.
 - The next MATCH cannot be OPTIONAL MATCH, and no WITH may follow it; the WITH that passes nodes on takes no DISTINCT, ORDER BY, SKIP or LIMIT.
+- A WITH that does not aggregate (`WITH p`) passes each node on once per row the first stage matched, which multiplies what the next MATCH counts; to pass each node on once, aggregate in the WITH, as in `WITH p, count(*) AS n`.
 - RETURN may return the next MATCH's nodes and those passed on, which draws a derived relationship carrying values: `RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, count(g2) AS n, total`.
 
 ### Naming constants up front

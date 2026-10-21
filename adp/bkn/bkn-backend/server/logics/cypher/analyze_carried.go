@@ -43,12 +43,17 @@ func analyzeCarried(stage *Query, with parsing.IOC_WithContext, after []parsing.
 	// hint to write them there does not apply.
 	body := with.OC_ProjectionBody()
 	if body.DISTINCT() != nil {
+		// Dropping DISTINCT alone would pass each node on once per row it
+		// matched, and multiply what the next MATCH counts.
 		return nil, unsupportedf(body, "WITH DISTINCT before a MATCH that a node is passed on to",
-			"leave DISTINCT out: a WITH that aggregates, as in WITH p, count(x) AS n, already passes each node on once")
+			"aggregate in the WITH instead, as in WITH p, count(*) AS n, which passes each node on once")
 	}
-	if body.OC_Order() != nil || body.OC_Skip() != nil || body.OC_Limit() != nil {
-		return nil, unsupportedf(body, "ORDER BY, SKIP or LIMIT on a WITH that passes nodes on",
+	if body.OC_Skip() != nil || body.OC_Limit() != nil {
+		return nil, unsupportedf(body, "SKIP or LIMIT on a WITH that passes nodes on",
 			"the next MATCH would meet only some of the rows; filter them with the WITH's WHERE instead")
+	}
+	if body.OC_Order() != nil {
+		return nil, unsupportedf(body, "ORDER BY on a WITH that passes nodes on", "sort in RETURN instead")
 	}
 	scope, err := analyzeWith(stage, with)
 	if err != nil {
