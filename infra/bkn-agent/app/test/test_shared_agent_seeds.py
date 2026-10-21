@@ -662,11 +662,21 @@ def test_cypher_generation_seed_reads_schema_and_runs_cypher_only():
         # a relationship question must not pass the Agent's own check.
         assert "RETURN p, r, m" in content
         assert "只有节点不算通过" in content
+        # Any graph of connected nodes needs its relationships, not only relationship questions.
+        assert "返回了两个以上相连的节点时" in content
         # Explaining an existing query is the same Agent: it must not rewrite the query
         # or squeeze the explanation into the one-line output rule.
         assert "解释查询" in content
         assert "只解释，不执行" in content
         assert "不写新查询，也不改写原查询" in content
+        # The graph dedups nodes itself; the syntax limit lives in run_cypher's description.
+        assert "不要为了图上干净而去重" in content
+        # An ambiguous question gets the common reading, not minutes of deliberation.
+        assert "按最常见的理解直接写，不反复权衡" in content
+        # Anonymous relationships return no relation values, so the graph draws no lines.
+        assert "MATCH 里的每条关系都起变量名" in content
+        # A question the network cannot answer ends early with the reason, not more attempts.
+        assert "答不了就尽早停" in content
         assert "片段" not in content
         assert "图探索" not in content and "画布" not in content
         rows = db.execute(
@@ -674,6 +684,11 @@ def test_cypher_generation_seed_reads_schema_and_runs_cypher_only():
             " WHERE f_agent_id='cypher_generation'"
         ).fetchall()
         assert [tuple(row) for row in rows] == [(1, 1, 1, 1)]
+        # A generation that cannot finish in two minutes is better given up than waited on.
+        limits = db.execute(
+            "SELECT f_limits FROM t_agent WHERE f_agent_id='cypher_generation'"
+        ).fetchone()[0]
+        assert json.loads(limits)["timeout_s"] == 120
 
 
 @pytest.mark.parametrize("completed", [1, 2])
