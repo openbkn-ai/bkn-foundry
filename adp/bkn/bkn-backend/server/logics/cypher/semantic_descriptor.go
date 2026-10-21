@@ -124,6 +124,8 @@ const (
 	semanticSemiJoin   = "semi_join"
 	semanticCase       = "case"
 	semanticCoalesce   = "coalesce"
+	// semanticCarried marks a value a carried stage named, read after it.
+	semanticCarried = "carried"
 	// semanticIntersection marks the count of what two collected lists
 	// share.
 	semanticIntersection = "intersection"
@@ -165,6 +167,8 @@ func semanticExpressionKind(value PlanExpression) string {
 		return semanticCase
 	case PlanCoalesce:
 		return semanticCoalesce
+	case PlanCarriedValue:
+		return semanticCarried
 	}
 	return semanticExpression
 }
@@ -308,6 +312,11 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 			item.PropertyRef = semanticPropertyRef(plan, order.Table, order.Property)
 		}
 		descriptor.Ordering = append(descriptor.Ordering, item)
+	}
+	if plan.Carried != nil {
+		if err := appendSemanticStage(descriptor, plan.Carried.Stage, "carried."); err != nil {
+			return nil, err
+		}
 	}
 	raw, err := json.Marshal(descriptor)
 	if err != nil {
@@ -757,4 +766,26 @@ func semanticIntersectionDescriptor(plan *Plan, query string) (*SemanticQueryDes
 		return nil, fmt.Errorf("%w: exceeds %d bytes", ErrSemanticDescriptorTooLarge, maxSemanticDescriptorBytes)
 	}
 	return descriptor, nil
+}
+
+// appendSemanticStage records what a stage the statement joins reads, under
+// an alias prefix that keeps its objects apart from the outer pattern's.
+func appendSemanticStage(descriptor *SemanticQueryDescriptor, stage *Plan, prefix string) error {
+	sub, err := BuildSemanticQueryDescriptor(stage, "")
+	if err != nil {
+		return err
+	}
+	for _, object := range sub.Objects {
+		object.Alias = prefix + object.Alias
+		descriptor.Objects = append(descriptor.Objects, object)
+	}
+	for _, relation := range sub.Relations {
+		relation.SourceAlias, relation.TargetAlias = prefix+relation.SourceAlias, prefix+relation.TargetAlias
+		descriptor.Relations = append(descriptor.Relations, relation)
+	}
+	for _, predicate := range sub.Predicates {
+		predicate.LogicalPath = strings.TrimSuffix(prefix+predicate.LogicalPath, ".")
+		descriptor.Predicates = append(descriptor.Predicates, predicate)
+	}
+	return nil
 }

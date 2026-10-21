@@ -179,7 +179,7 @@ ORDER BY n DESC LIMIT 4
 
 ## 🔗 WITH: working in stages
 
-WITH has three uses, told apart by what follows it.
+WITH has four uses, told apart by what follows it.
 
 ### 1. Filtering after aggregating
 
@@ -191,7 +191,7 @@ WITH t, count(*) AS n WHERE n > 200
 RETURN t.team_name AS team, n ORDER BY n DESC
 ```
 
-- Values in a WITH are named with `AS`. A node may be passed on as it is (`WITH t`) and groups by its primary key, so two objects that share a name stay two groups.
+- Values in a WITH are named with `AS`. A node may be passed on as it is (`WITH t`) and groups by its primary key, so two objects that share a name stay two groups. A node passed on may be returned as it is, as in `WITH p, t, count(g) AS n WHERE n > 1 RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, n` (see "Derived relationships with evidence").
 - In the WITH's WHERE, a condition on grouping keys filters rows before grouping, and one on aggregates is tested per group.
 - **WITHs may be chained.** Only the first aggregates; later ones compute from the names before them, each with its own WHERE:
 
@@ -254,6 +254,25 @@ RETURN size([x IN codes1 WHERE x IN codes2]) AS common, size(codes1) AS n1, size
 - A list collected without DISTINCT keeps its repeats, and the shared count counts the filtered list's repeats, as Cypher does; counting both ways round therefore needs DISTINCT on both lists.
 - When the second MATCH finds nothing there is no row; when the first finds nothing there is one row, with the first list's size and the shared count at 0.
 - The lists themselves cannot be returned. To list the shared values, share a node in one MATCH, as under MATCH above ("To compare two sets").
+
+### 4. Passing nodes on to the next MATCH
+
+A WITH passes nodes on, with values computed for them, and the next MATCH carries on from those nodes, so it can aggregate a second time:
+
+```cypher
+MATCH (p:players)<-[:rel_goals_player]-(g:goals)
+WITH p, count(g) AS total WHERE total >= 10
+MATCH (p)<-[:rel_goals_player]-(g2:goals)-[:rel_goals_team]->(t:teams)
+RETURN p.family_name AS name, t.team_name AS team, count(g2) AS n, total
+ORDER BY total DESC, name, team
+```
+
+- In the next MATCH a node passed on may be written without its label (`(p)`) and is matched up by its primary key. Each row the WITH passes on meets the rows the next MATCH finds for its nodes; a node the next MATCH finds nothing for drops out.
+- The values the WITH named (`total` here) may be returned, sorted by and computed with in RETURN and ORDER BY, as in `count(g2) * 1.0 / total AS share`. Inside an expression with an aggregate, return the value as a column of its own as well (`RETURN ..., total, count(g2) * 1.0 / total AS share`), so it is a grouping key.
+- They cannot stand in the next MATCH's WHERE; put conditions on them in the WITH's own WHERE.
+- Every node passed on must be used in the next MATCH; a node cannot be renamed (`WITH p AS q`) or passed on beside a `collect` list.
+- The next MATCH cannot be OPTIONAL MATCH, and no WITH may follow it.
+- RETURN may return the next MATCH's nodes and those passed on, which draws a derived relationship carrying values: `RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, count(g2) AS n, total`.
 
 ### Naming constants up front
 

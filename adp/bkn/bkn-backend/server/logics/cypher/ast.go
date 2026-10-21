@@ -68,7 +68,35 @@ type Query struct {
 	// by a stage of its own, and the sizes RETURN asks of them. The other
 	// fields are then empty; see analyzeIntersection.
 	Intersection *Intersection
+
+	// Carried, when set, is a first stage whose WITH passes nodes on to the
+	// MATCH that follows; see analyzeCarried.
+	Carried *CarriedStage
 }
+
+// CarriedStage is the stage before a WITH that passes nodes on, as in
+//
+//	MATCH (p)<-[:R]-(g) WITH p, count(g) AS total
+//	MATCH (p)<-[:R]-(g2)-[:S]->(t) RETURN p, t, count(g2) AS n, total
+//
+// Stage is that stage with its WITH folded in: grouped as the WITH grouped,
+// filtered by its WHERE, and returning the values it named (Values, in
+// order). Nodes are the nodes it passes on, which the outer pattern reuses
+// and joins on by primary key.
+type CarriedStage struct {
+	Stage  *Query
+	Nodes  []string
+	Values []string
+}
+
+// CarriedValue is a value a carried stage named, read after it, as total
+// above.
+type CarriedValue struct {
+	Name string
+	Pos  Position
+}
+
+func (v CarriedValue) expressionPosition() Position { return v.Pos }
 
 // Intersection compares two lists of values, each collected by a stage:
 //

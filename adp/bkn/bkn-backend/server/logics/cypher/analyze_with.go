@@ -464,8 +464,7 @@ func (w withScope) returned(expression parsing.IOC_ExpressionContext, grouped bo
 			return nil, w.notPassedOn(expression, name)
 		}
 		if entry.node != "" {
-			return nil, unsupportedf(expression, "returning a whole node",
-				"return its properties, as in RETURN %s.property", name)
+			return &Projection{Value: GraphVariable{Name: entry.node, Pos: positionOf(expression)}, Alias: name, Pos: positionOf(expression)}, nil
 		}
 		if entry.collected != nil {
 			return nil, collectedListError(expression, name)
@@ -473,6 +472,9 @@ func (w withScope) returned(expression parsing.IOC_ExpressionContext, grouped bo
 		projection := *entry.projection
 		projection.Alias = name
 		return &projection, nil
+	}
+	if constant, ok := literalOrParameterAtom(expression); ok {
+		return &Projection{Value: constant, Alias: sourceText(expression), Pos: constant.Pos}, nil
 	}
 	if property, ok, err := w.nodeProperty(expression); ok || err != nil {
 		if err != nil {
@@ -791,4 +793,16 @@ func conjunctsOf(predicate Predicate) []Predicate {
 		}
 	}
 	return []Predicate{predicate}
+}
+
+// literalOrParameterAtom reads a literal or a parameter written on its own as
+// a graph constant, as in RETURN 'USES' AS relationType.
+func literalOrParameterAtom(expression parsing.IOC_ExpressionContext) (GraphConstant, bool) {
+	term, single := singleExpressionAtom(expression)
+	if !single || len(term.propertyLookups) > 0 || (term.atom.OC_Literal() == nil && term.atom.OC_Parameter() == nil) ||
+		(term.atom.OC_Literal() != nil && (term.atom.OC_Literal().OC_MapLiteral() != nil || term.atom.OC_Literal().OC_ListLiteral() != nil)) {
+		return GraphConstant{}, false
+	}
+	constant, err := analyzeGraphConstant(expression)
+	return constant, err == nil
 }

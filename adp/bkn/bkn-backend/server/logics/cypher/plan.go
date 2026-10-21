@@ -50,6 +50,9 @@ type Plan struct {
 	// Intersection, when set, is the whole statement; see Query.Intersection.
 	Intersection *PlanIntersection
 
+	// Carried is a carried stage the statement joins; see Query.Carried.
+	Carried *PlanCarried
+
 	// SQLOnly marks a plan only the SQL path answers: totals over groups,
 	// CASE and coalesce. The bind-join executor takes no new capabilities.
 	SQLOnly bool
@@ -412,6 +415,8 @@ type planner struct {
 	// node variable, and snapshotUsed which of them the query returns.
 	snapshotProperties map[string][]string
 	snapshotUsed       map[string]bool
+	// carriedKinds are the kinds of the values a carried stage named.
+	carriedKinds map[string]numberKind
 }
 
 // CompileOptions carries what the query itself does not: the values its
@@ -443,6 +448,11 @@ func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error
 	}
 	if err := p.planPattern(query.Pattern); err != nil {
 		return nil, err
+	}
+	if query.Carried != nil {
+		if err := p.planCarried(query.Carried); err != nil {
+			return nil, err
+		}
 	}
 	if err := p.planWhere(query.Where); err != nil {
 		return nil, err
@@ -1167,6 +1177,13 @@ func (p *planner) refuseUngroupedProperties(projections []Projection) error {
 					projections[i].Alias, bare.Property, bare.Property)
 			}
 		}
+		for _, name := range ungroupedCarried(column.Expression) {
+			if !p.carriedProjected(name) {
+				return planErrorf(projectionPosition(projections[i]),
+					"%q reads %s outside an aggregate; return %s as a column of its own so the result is grouped by it",
+					projections[i].Alias, name, name)
+			}
+		}
 	}
 	return nil
 }
@@ -1421,6 +1438,13 @@ func (p *planner) planExpression(value Expression) (PlanExpression, numberKind, 
 
 	case Coalesce:
 		return p.planCoalesce(node)
+
+	case CarriedValue:
+		kind, known := p.carriedKinds[node.Name]
+		if !known {
+			return nil, kindUnknown, planErrorf(node.Pos, "%s is not a value the WITH passed on", node.Name)
+		}
+		return PlanCarriedValue{Alias: node.Name}, kind, nil
 
 	default:
 		return nil, kindUnknown, planErrorf(value.expressionPosition(), "unsupported expression %T", value)
@@ -1898,11 +1922,15 @@ func (p *planner) planSemiJoin(node SemiJoin) (PlanPredicate, error) {
 }
 
 // subPlans lists the plans a plan reads besides its own tables: those of the
-// semi-joins in its conditions, and the two lists of an intersection.
+// semi-joins in its conditions, the two lists of an intersection, and a
+// carried stage.
 func (plan *Plan) subPlans() []*Plan {
 	var subs []*Plan
 	if plan.Intersection != nil {
 		subs = append(subs, plan.Intersection.Lists[:]...)
+	}
+	if plan.Carried != nil {
+		subs = append(subs, plan.Carried.Stage)
 	}
 	var walk func(PlanPredicate)
 	walk = func(predicate PlanPredicate) {
