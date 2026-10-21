@@ -60,6 +60,77 @@ func temporalPropertyType(property *interfaces.Property, origin qm.Origin) (qm.L
 	return typ, native, nil
 }
 
+// sourceTemporalPropertyType 在目录类型明确后解释跨源含义不同的 TIME/TIMESTAMP。
+func sourceTemporalPropertyType(property *interfaces.Property, connector string, origin qm.Origin) (qm.LogicalType, qm.NativeType, error) {
+	typ, native, err := temporalPropertyType(property, origin)
+	if err != nil {
+		return typ, native, err
+	}
+	name := strings.ToUpper(strings.TrimSpace(property.OriginalType))
+	base := name
+	if index := strings.IndexByte(base, '('); index >= 0 {
+		base = strings.TrimSpace(base[:index])
+	}
+	if (base == "TIME" || base == "TIMESTAMP") && !temporalNativeType.MatchString(name) {
+		return typ, native, nil
+	}
+	if property.Type == interfaces.DataType_Time && base != "TIME" && base != "SECONDTIME" {
+		return typ, native, nil
+	}
+	// 显式时区限定已由通用解析器识别，不能被简写规则覆盖。
+	if strings.Contains(name, " TIME ZONE") || strings.Contains(name, "TIMESTAMPTZ") || strings.HasPrefix(name, "DATETIMEOFFSET") {
+		return typ, native, nil
+	}
+	switch connector {
+	case interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB:
+		if base == "TIMESTAMP" {
+			typ.Kind, native.TimeZone = qm.TypeInstant, qm.TimeZoneInstant
+		}
+		if base == "TIME" && property.Type == interfaces.DataType_Time {
+			typ.Kind, native.TimeZone = qm.TypeDuration, qm.TimeZoneNone
+		}
+	case interfaces.ConnectorTypePostgreSQL:
+		if base == "TIMESTAMP" {
+			typ.Kind, native.TimeZone = qm.TypeLocalDateTime, qm.TimeZoneLocal
+		}
+		if base == "TIME" && property.Type == interfaces.DataType_Time {
+			typ.Kind, native.TimeZone = qm.TypeTimeOfDay, qm.TimeZoneNone
+		}
+	case interfaces.ConnectorTypeOracle:
+		if base == "DATE" || base == "TIMESTAMP" {
+			typ.Kind, native.TimeZone = qm.TypeLocalDateTime, qm.TimeZoneLocal
+		}
+	case interfaces.ConnectorTypeHANA:
+		if base == "TIMESTAMP" || base == "LONGDATE" {
+			typ.Kind, native.TimeZone = qm.TypeLocalDateTime, qm.TimeZoneLocal
+		}
+		if base == "TIME" && property.Type == interfaces.DataType_Time {
+			typ.Kind, native.TimeZone = qm.TypeTimeOfDay, qm.TimeZoneNone
+		}
+	case interfaces.ConnectorTypeSQLServer:
+		if base == "TIME" && property.Type == interfaces.DataType_Time {
+			typ.Kind, native.TimeZone = qm.TypeTimeOfDay, qm.TimeZoneNone
+		}
+	case interfaces.ConnectorTypeDoris:
+		if base == "DATETIMEV2" {
+			copy := *property
+			copy.OriginalType = strings.Replace(name, "DATETIMEV2", "DATETIME", 1)
+			typ, native, err := temporalPropertyType(&copy, origin)
+			native.Name = property.OriginalType
+			return typ, native, err
+		}
+	case interfaces.ConnectorTypeOpenSearch:
+		if base == "DATE" {
+			precision := 3
+			typ.Kind, native.TimeZone, native.TimePrecision = qm.TypeInstant, qm.TimeZoneInstant, &precision
+		}
+	}
+	if typ.Kind != qm.TypeOther {
+		typ.TimeZone, typ.TimePrecision = native.TimeZone, native.TimePrecision
+	}
+	return typ, native, nil
+}
+
 func temporalType(typ qm.LogicalType) bool {
 	switch typ.Kind {
 	case qm.TypeDate, qm.TypeLocalDateTime, qm.TypeInstant, qm.TypeTimeOfDay:
@@ -92,7 +163,7 @@ func bindTemporalLiteral(expr *qm.BoundExpr, target qm.LogicalType, semantics qm
 	switch target.Kind {
 	case qm.TypeDate:
 		fieldType = interfaces.DataType_Date
-	case qm.TypeTimeOfDay:
+	case qm.TypeTimeOfDay, qm.TypeDuration:
 		fieldType = interfaces.DataType_Time
 	}
 	parsed, err := filter_condition.ParseTemporalValue(fieldType, raw, semantics.TimeZone)
@@ -108,12 +179,16 @@ func bindTemporalLiteral(expr *qm.BoundExpr, target qm.LogicalType, semantics qm
 			return nil, bindFailure(expr.Origin, "日期常量无效")
 		}
 		value.Data = qm.DateValue{Year: day.Year(), Month: day.Month(), Day: day.Day()}
-	case qm.TypeTimeOfDay:
+	case qm.TypeTimeOfDay, qm.TypeDuration:
 		clock, parseErr := time.Parse(common.TimeLayout, parsed.(string))
 		if parseErr != nil {
 			return nil, bindFailure(expr.Origin, "日内时间常量无效")
 		}
 		value.Data = qm.TimeOfDayValue{Hour: clock.Hour(), Minute: clock.Minute(), Second: clock.Second(), Nanosecond: clock.Nanosecond()}
+		if target.Kind == qm.TypeDuration {
+			nanos := int64(clock.Hour()*3600+clock.Minute()*60+clock.Second())*int64(time.Second) + int64(clock.Nanosecond())
+			value.Data = qm.DurationValue(strconv.FormatInt(nanos, 10))
+		}
 		value.Type.TimePrecision = &precision
 	case qm.TypeLocalDateTime:
 		instant := parsed.(time.Time).In(semantics.Location)
@@ -152,7 +227,7 @@ func (b *queryBinder) coerceComparison(expr *qm.BoundExpr, scope *bindingScope) 
 		target := expr.Args[0].Type
 		public := expressionEncoding(expr.Args[0], scope).PublicType
 		// 公共 timestamp 不自动继承 datetime 的 HTTP 输入接受集。
-		if temporalType(target) && (public == interfaces.DataType_Date || public == interfaces.DataType_Datetime || public == interfaces.DataType_Time) {
+		if (temporalType(target) || target.Kind == qm.TypeDuration) && (public == interfaces.DataType_Date || public == interfaces.DataType_Datetime || public == interfaces.DataType_Time) {
 			for i, arg := range expr.Args[1:] {
 				if arg.Kind != qm.ExprLiteral || arg.Type.Kind == qm.TypeNull {
 					continue

@@ -166,7 +166,7 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 			return nil, err
 		}
 		result.Kind = qm.ExprBetween
-		if (e.Origin.Kind == qm.OriginDTO || e.Origin.Kind == qm.OriginSavedView) && !numericType(result.Args[0].Type) && result.Args[0].Type.Kind != qm.TypeDate && result.Args[0].Type.Kind != qm.TypeLocalDateTime && result.Args[0].Type.Kind != qm.TypeInstant && result.Args[0].Type.Kind != qm.TypeTimeOfDay {
+		if (e.Origin.Kind == qm.OriginDTO || e.Origin.Kind == qm.OriginSavedView) && !numericType(result.Args[0].Type) && result.Args[0].Type.Kind != qm.TypeDate && result.Args[0].Type.Kind != qm.TypeLocalDateTime && result.Args[0].Type.Kind != qm.TypeInstant && result.Args[0].Type.Kind != qm.TypeTimeOfDay && result.Args[0].Type.Kind != qm.TypeDuration {
 			return nil, bindFailure(e.Origin, "结构化范围只接受数值或时间字段")
 		}
 		if err := b.coerceComparison(result, scope); err != nil {

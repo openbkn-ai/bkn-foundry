@@ -107,6 +107,16 @@ func propertyType(property *interfaces.Property, origin qm.Origin) (qm.LogicalTy
 	return typ, native, nil
 }
 
+// sourcePropertyType 补充可信的来源 Connector 身份；无来源上下文时保持保守绑定。
+func sourcePropertyType(property *interfaces.Property, connector string, origin qm.Origin) (qm.LogicalType, qm.NativeType, error) {
+	typ, native, err := propertyType(property, origin)
+	if err == nil && connector != "" && (property.Type == interfaces.DataType_Time || property.Type == interfaces.DataType_Datetime || property.Type == interfaces.DataType_Timestamp) {
+		typ, native, err = sourceTemporalPropertyType(property, connector, origin)
+	}
+	native.ConnectorType = connector
+	return typ, native, err
+}
+
 func outputEncoding(typ qm.LogicalType) qm.OutputEncoding {
 	kind := qm.EncodingScalar
 	if typ.Kind == qm.TypeDecimal {
@@ -282,7 +292,7 @@ func commonType(a, b qm.LogicalType, origin qm.Origin) (qm.LogicalType, error) {
 	if reflect.DeepEqual(a, b) {
 		return a, nil
 	}
-	if temporalType(a) && a.Kind == b.Kind && a.TimeZone == b.TimeZone {
+	if (temporalType(a) || a.Kind == qm.TypeDuration) && a.Kind == b.Kind && a.TimeZone == b.TimeZone {
 		merged := a
 		merged.TimePrecision = nil
 		if a.TimePrecision != nil && b.TimePrecision != nil {

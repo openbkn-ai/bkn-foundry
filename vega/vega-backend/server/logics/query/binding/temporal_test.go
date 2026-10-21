@@ -283,3 +283,33 @@ func TestBindTemporalSavedView(t *testing.T) {
 	value := temporalTestLiteral(t, boundary.Input.(*qm.BoundFilter).Predicate.Args[1])
 	assert.Equal(t, 8, value.Data.(qm.LocalDateTimeValue).Time.Hour)
 }
+
+func TestBindTemporalLiteral(t *testing.T) {
+	semantics, err := NewSemanticContext("UTC")
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		raw     string
+		want    qm.DurationValue
+		invalid bool
+	}{
+		{raw: "00:00:00", want: "0"},
+		{raw: "23:59:59.123456789", want: "86399123456789"},
+		{raw: "-01:00:00", invalid: true},
+		{raw: "24:00:00", invalid: true},
+		{raw: "12:00:00.1234567890", invalid: true},
+	} {
+		t.Run(tc.raw, func(t *testing.T) {
+			expr := &qm.BoundExpr{Kind: qm.ExprLiteral, Type: qm.LogicalType{Kind: qm.TypeString}, Literal: &qm.Value{Type: qm.LogicalType{Kind: qm.TypeString}, Data: qm.StringValue(tc.raw)}}
+			got, err := bindTemporalLiteral(expr, qm.LogicalType{Kind: qm.TypeDuration}, semantics)
+			if tc.invalid {
+				assert.Nil(t, got)
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, qm.TypeDuration, got.Type.Kind)
+			assert.Equal(t, tc.want, got.Literal.Data)
+			assert.Equal(t, qm.StringValue(tc.raw), expr.Literal.Data)
+		})
+	}
+}

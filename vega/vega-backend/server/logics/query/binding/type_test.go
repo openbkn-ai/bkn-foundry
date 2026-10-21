@@ -116,3 +116,32 @@ func TestPropertyType(t *testing.T) {
 		require.Error(t, err)
 	}
 }
+
+func TestSourcePropertyType(t *testing.T) {
+	for _, tc := range []struct {
+		name, connector, public, native string
+		want                            qm.TypeKind
+	}{
+		{"mysql timestamp", interfaces.ConnectorTypeMySQL, interfaces.DataType_Datetime, "TIMESTAMP(6)", qm.TypeInstant},
+		{"postgres timestamp", interfaces.ConnectorTypePostgreSQL, interfaces.DataType_Datetime, "TIMESTAMP(6)", qm.TypeLocalDateTime},
+		{"mysql duration", interfaces.ConnectorTypeMySQL, interfaces.DataType_Time, "TIME(6)", qm.TypeDuration},
+		{"postgres clock", interfaces.ConnectorTypePostgreSQL, interfaces.DataType_Time, "TIME(6)", qm.TypeTimeOfDay},
+		{"oracle date", interfaces.ConnectorTypeOracle, interfaces.DataType_Datetime, "DATE", qm.TypeLocalDateTime},
+		{"doris datetime", interfaces.ConnectorTypeDoris, interfaces.DataType_Datetime, "DATETIMEV2(6)", qm.TypeLocalDateTime},
+		{"binary sqlserver timestamp", interfaces.ConnectorTypeSQLServer, interfaces.DataType_Binary, "timestamp", qm.TypeBinary},
+		{"mismatched clock metadata", interfaces.ConnectorTypeMySQL, interfaces.DataType_Time, "TIMESTAMP(6)", qm.TypeOther},
+		{"malformed native timestamp", interfaces.ConnectorTypeMySQL, interfaces.DataType_Datetime, "TIMESTAMP(6) invalid", qm.TypeOther},
+		{"unknown source", "", interfaces.DataType_Datetime, "TIMESTAMP(6)", qm.TypeOther},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			typ, native, err := sourcePropertyType(&interfaces.Property{Type: tc.public, OriginalType: tc.native}, tc.connector, qm.Origin{})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, typ.Kind)
+			assert.Equal(t, tc.native, native.Name)
+			assert.Equal(t, tc.connector, native.ConnectorType)
+		})
+	}
+	typ, _, err := sourcePropertyType(&interfaces.Property{Type: interfaces.DataType_Time, OriginalType: "TIME"}, interfaces.ConnectorTypeMySQL, qm.Origin{})
+	require.NoError(t, err)
+	assert.Nil(t, typ.TimePrecision)
+}

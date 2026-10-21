@@ -11,10 +11,11 @@ import (
 )
 
 // SQLQueryResourceResolver 复用既有资源元数据契约，返回值由 Binder 转换为纯查询模型。
+// ConnectorType 来自可信目录元数据，不能从 SQL 或请求参数推断。
 // 调用方必须先授权；实现不得向未授权身份披露资源、字段或物理信息。
 type SQLQueryResourceResolver interface {
 	ResolveSQLQueryResource(ctx context.Context, resourceID string,
-		identity querymodel.ExecutionIdentity) (*Resource, error)
+		identity querymodel.ExecutionIdentity) (resource *Resource, connectorType string, err error)
 }
 
 // SQLQueryAuthorizer 返回可复核的权限依据，不把绑定结论当作永久授权。

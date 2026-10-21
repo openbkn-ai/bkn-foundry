@@ -140,7 +140,8 @@ func (b *queryBinder) source(id, alias string, origin qm.Origin) (bindingResult,
 		if basis.ResourceID != r.ResourceID || basis.Operation != interfaces.OPERATION_TYPE_QUERY_DATA {
 			return bindingResult{}, bindFailure(r.Origin, "授权依据与查询资源不一致")
 		}
-		resource, err = b.resolver.ResolveSQLQueryResource(b.ctx, r.ResourceID, b.identity)
+		var connectorType string
+		resource, connectorType, err = b.resolver.ResolveSQLQueryResource(b.ctx, r.ResourceID, b.identity)
 		if err != nil {
 			return bindingResult{}, err
 		}
@@ -150,13 +151,16 @@ func (b *queryBinder) source(id, alias string, origin qm.Origin) (bindingResult,
 		if resource == nil || resource.ID != r.ResourceID || resource.CatalogID == "" {
 			return bindingResult{}, bindFailure(r.Origin, "资源元数据不完整")
 		}
-		if !resource.Enabled || resource.Status != interfaces.ResourceStatusActive {
+		if !resource.Enabled || (resource.Status != interfaces.ResourceStatusActive && resource.Status != interfaces.ResourceStatusDeprecated) {
 			return bindingResult{}, bindFailure(r.Origin, "资源当前不可查询")
 		}
 		if !interfaces.IsPhysicalResourceCategory(resource.Category) && resource.Category != interfaces.ResourceCategoryLogicalView {
 			return bindingResult{}, bindFailure(r.Origin, "逻辑资源展开尚未接入")
 		}
-		snapshot := any(resource.SchemaDefinition)
+		snapshot := any(struct {
+			Connector string
+			Schema    []*interfaces.Property
+		}{connectorType, resource.SchemaDefinition})
 		kind := qm.DependencyResource
 		if resource.Category == interfaces.ResourceCategoryLogicalView {
 			kind = qm.DependencyView
@@ -173,6 +177,7 @@ func (b *queryBinder) source(id, alias string, origin qm.Origin) (bindingResult,
 		digest := sha256.Sum256(encoded)
 		b.dependencies = append(b.dependencies, qm.Dependency{Kind: kind, ID: r.ResourceID, Version: strconv.FormatInt(resource.UpdateTime, 10), SchemaFingerprint: hex.EncodeToString(digest[:]), Authorization: []qm.AuthorizationBasis{basis}})
 		b.resources[r.ResourceID] = resource
+		b.connectors[r.ResourceID] = connectorType
 	}
 	r.Instance = b.instanceID()
 	if resource.Category == interfaces.ResourceCategoryLogicalView {
@@ -193,7 +198,7 @@ func (b *queryBinder) source(id, alias string, origin qm.Origin) (bindingResult,
 			return bindingResult{}, bindFailure(r.Origin, "资源字段名称缺失或重复")
 		}
 		names[property.Name] = true
-		typ, native, err := propertyType(property, r.Origin)
+		typ, native, err := sourcePropertyType(property, b.connectors[r.ResourceID], r.Origin)
 		if err != nil {
 			return bindingResult{}, err
 		}
