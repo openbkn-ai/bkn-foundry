@@ -624,6 +624,8 @@ type accountDataAPI struct {
 	api         *fakeDataAPI
 	refused     map[string]bool
 	readers     []string
+	// resources is where each resource lives, as vega-backend reports it.
+	resources map[string]*interfaces.VegaResource
 }
 
 func (v *accountDataAPI) QueryResourceDataAs(ctx context.Context, account interfaces.AccountInfo, resourceID string,
@@ -635,6 +637,17 @@ func (v *accountDataAPI) QueryResourceDataAs(ctx context.Context, account interf
 		return nil, interfaces.NewDependencyError("vega", "resource_data", interfaces.DependencyForbidden, http.StatusForbidden)
 	}
 	return v.api.read(ctx, resourceID, params)
+}
+
+// GetResourcesByIDs answers the resources it was given; others stay unknown.
+func (v *accountDataAPI) GetResourcesByIDs(_ context.Context, ids []string) ([]*interfaces.VegaResource, error) {
+	var found []*interfaces.VegaResource
+	for _, id := range ids {
+		if resource, ok := v.resources[id]; ok {
+			found = append(found, resource)
+		}
+	}
+	return found, nil
 }
 
 // RawQuery serves the SQL fallback.

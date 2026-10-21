@@ -93,3 +93,59 @@ func TestQueryOutsideSQLRefusesWhatOnlySQLAnswers(t *testing.T) {
 		}
 	}
 }
+
+// Where a resource is known not to be in a SQL data source, the query goes
+// straight to the data API, and what was learned is remembered.
+func TestQueryOutsideSQLKnownFromTheResource(t *testing.T) {
+	for name, resources := range map[string]map[string]*interfaces.VegaResource{
+		"a dataset": {
+			"res_order":    {ID: "res_order", Category: "dataset", CatalogID: "cat_ds"},
+			"res_customer": {ID: "res_customer", Category: "dataset", CatalogID: "cat_ds"},
+		},
+		"two catalogs": {
+			"res_order":    {ID: "res_order", Category: "table", CatalogID: "cat_a"},
+			"res_customer": {ID: "res_customer", Category: "table", CatalogID: "cat_b"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			vega := &datasetVega{accountDataAPI: accountDataAPI{api: newFakeDataAPI(relationServiceData()), resources: resources}}
+			service := datasetService(vega)
+			for range 2 {
+				result, err := service.Query(callerContext(), interfaces.CypherQuery{
+					KNID: "kn_1", Branch: interfaces.MAIN_BRANCH,
+					Query: "MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN o.id AS id, c.name AS name",
+				})
+				if err != nil {
+					t.Fatalf("Query: %v", err)
+				}
+				if len(result.Entries) != 1 {
+					t.Fatalf("entries = %v", result.Entries)
+				}
+			}
+			if vega.statements != 0 {
+				t.Errorf("statements sent = %d, want none: the resources say SQL cannot read them", vega.statements)
+			}
+			if _, known := service.resourceSources.Load("res_order"); !known {
+				t.Error("where res_order lives was not remembered")
+			}
+		})
+	}
+}
+
+// Resources in one SQL data source keep the SQL path.
+func TestQueryOnOneSQLSourceStaysOnSQL(t *testing.T) {
+	vega := &accountDataAPI{api: newFakeDataAPI(relationServiceData()), resources: map[string]*interfaces.VegaResource{
+		"res_order":    {ID: "res_order", Category: "table", CatalogID: "cat_a"},
+		"res_customer": {ID: "res_customer", Category: "table", CatalogID: "cat_a"},
+	}}
+	service := relationService(nil, &stubPermission{}, nil)
+	service.vba = vega
+	if _, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id AS id",
+	}); err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if vega.sqlRequest == nil || len(vega.readers) != 0 {
+		t.Errorf("sql = %v, data API readers = %v", vega.sqlRequest, vega.readers)
+	}
+}

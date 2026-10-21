@@ -50,6 +50,9 @@ type cypherQueryService struct {
 	// bindJoinTimeout bounds one bind-join execution; zero means the SQL
 	// path's statement timeout.
 	bindJoinTimeout time.Duration
+	// resourceSources remembers, per resource id, the category and catalog
+	// vega-backend gave it; see outsideSQL.
+	resourceSources sync.Map
 }
 
 var (
@@ -139,6 +142,9 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	}
 	if err := s.authorizeProperties(ctx, query.KNID, compiled); err != nil {
 		return nil, err
+	}
+	if s.outsideSQL(ctx, compiled.plan) {
+		return s.queryOutsideSQL(ctx, query, compiled)
 	}
 	if compiled.graph != nil {
 		span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL), attribute.Bool(spanAttrGraph, true))
@@ -834,6 +840,59 @@ func proxyErrorCode(err error) string {
 // so only a code travels back: forbidden when vega-backend refused a resource
 // the statement reads, so a missing grant reads as one, and a query failure
 // for anything else.
+// resourceSource is where one resource lives: its category and its catalog.
+type resourceSource struct {
+	category string
+	catalog  string
+}
+
+// nonSQLCategories are the resource categories vega-backend cannot read as
+// SQL; a table or a logical view is read through a SQL connector.
+var nonSQLCategories = map[string]bool{
+	"dataset": true, "index": true, "file": true, "fileset": true, "api": true, "metric": true, "topic": true,
+}
+
+// outsideSQL reports a plan whose resources are known not to be readable as
+// one SQL statement: one of them is not in a SQL data source, or they are in
+// more than one. Where a resource lives is read from vega-backend once and
+// remembered; it only chooses the path, and the read itself is authorized as
+// any other. A resource the caller may not look up stays unknown, and the
+// statement is tried as SQL, which refuses it the same way.
+func (s *cypherQueryService) outsideSQL(ctx context.Context, plan *Plan) bool {
+	ids := planResourceIDs(plan)
+	var missing []string
+	for _, id := range ids {
+		if _, known := s.resourceSources.Load(id); !known {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		resources, err := s.vba.GetResourcesByIDs(ctx, missing)
+		if err != nil {
+			logger.Infof("Cypher could not look up where %d resources live; trying SQL: %s",
+				len(missing), common.SafeErrorSummary(err))
+		}
+		for _, resource := range resources {
+			if resource != nil {
+				s.resourceSources.Store(resource.ID, resourceSource{category: resource.Category, catalog: resource.CatalogID})
+			}
+		}
+	}
+	catalogs := map[string]bool{}
+	for _, id := range ids {
+		value, known := s.resourceSources.Load(id)
+		if !known {
+			continue
+		}
+		source := value.(resourceSource)
+		if nonSQLCategories[source.category] {
+			return true
+		}
+		catalogs[source.catalog] = true
+	}
+	return len(catalogs) > 1
+}
+
 // unsupportedSource reports a statement vega-backend could not run as SQL
 // because of where its resources live: a dataset, an index, or more than one
 // data source.
