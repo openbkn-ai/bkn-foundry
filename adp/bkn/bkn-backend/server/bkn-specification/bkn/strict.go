@@ -20,10 +20,6 @@ import (
 // form with a message that names the place and the one accepted spelling. The 2.x reader never
 // calls them.
 
-// unsupportedYet ends the message for 3.0 syntax this version knows but cannot store yet, so it is
-// refused instead of being dropped.
-const unsupportedYet = "is not supported by this version yet"
-
 // Definition kinds, spelled as the frontmatter type of each subdirectory.
 const (
 	kindNetwork      = "knowledge_network"
@@ -46,27 +42,21 @@ var headingPrefix = map[string]string{
 }
 
 // frontmatterRule lists the frontmatter fields of a kind. Renamed fields are refused with the field
-// to write instead; unsupported ones are 3.0 fields of a later phase.
+// to write instead.
 type frontmatterRule struct {
-	fields      []string
-	renamed     map[string]string
-	unsupported []string
+	fields  []string
+	renamed map[string]string
 }
 
 var frontmatterRules = map[string]frontmatterRule{
-	kindNetwork: {fields: []string{"type", "id", "name", "tags", "bkn_spec", "version", "branch", "capabilities"}},
-	kindObjectType: {
-		fields:      []string{"type", "id", "name", "tags", "aliases"},
-		unsupported: []string{"lifecycle"},
-	},
-	kindRelationType: {
-		fields:      []string{"type", "id", "name", "tags"},
-		unsupported: []string{"aliases", "lifecycle", "reverse_name", "importance", "fallback_for", "verification"},
-	},
+	kindNetwork:    {fields: []string{"type", "id", "name", "tags", "bkn_spec", "version", "branch", "capabilities"}},
+	kindObjectType: {fields: []string{"type", "id", "name", "tags", "aliases", "lifecycle"}},
+	kindRelationType: {fields: []string{
+		"type", "id", "name", "tags", "aliases", "reverse_name", "importance", "fallback_for", "verification", "lifecycle",
+	}},
 	kindActionType: {
-		fields:      []string{"type", "id", "name", "tags", "aliases", "action_intent"},
-		renamed:     map[string]string{"action_type": "action_intent"},
-		unsupported: []string{"lifecycle"},
+		fields:  []string{"type", "id", "name", "tags", "aliases", "action_intent", "lifecycle"},
+		renamed: map[string]string{"action_type": "action_intent"},
 	},
 	kindRiskType:     {fields: []string{"type", "id", "name", "tags"}},
 	kindConceptGroup: {fields: []string{"type", "id", "name", "tags"}},
@@ -84,11 +74,10 @@ const (
 
 // tableRule describes the one table a section or a logic property label may hold.
 type tableRule struct {
-	columns     []string
-	renamed     map[string]string // a column 2.x accepts as a synonym -> the 3.0 spelling
-	unsupported []string          // 3.0 columns of a later phase
-	refused     map[string]string // a column 2.x reads that 3.0 has no place for -> what to write
-	singleRow   bool
+	columns   []string
+	renamed   map[string]string // a column 2.x accepts as a synonym -> the 3.0 spelling
+	refused   map[string]string // a column 2.x reads that 3.0 has no place for -> what to write
+	singleRow bool
 	// legacyLayout marks the action parameter table, which 2.x also reads in the legacy layout
 	// Parameter | Source | Binding.
 	legacyLayout bool
@@ -106,28 +95,33 @@ var parameterTableRule = tableRule{
 	legacyLayout: true,
 }
 
+// dataPropertiesTableRule is the Data Properties table of an object type and of an indirect relation.
+var dataPropertiesTableRule = tableRule{
+	columns: []string{"Name", "Display Name", "Type", "Semantic", "Required", "Aliases", "Description", "Mapped Field", "Mask Rule"},
+}
+
 var sectionRules = map[string]map[string]sectionRule{
 	kindObjectType: {
-		"Data Source": {content: contentTable, table: tableRule{columns: []string{"Type", "ID", "Name"}, singleRow: true}},
-		"Data Properties": {content: contentTable, table: tableRule{
-			columns: []string{"Name", "Display Name", "Type", "Semantic", "Required", "Aliases", "Description", "Mapped Field", "Mask Rule"},
-		}},
+		"Data Source":          {content: contentTable, table: tableRule{columns: []string{"Type", "ID", "Name"}, singleRow: true}},
+		"Data Properties":      {content: contentTable, table: dataPropertiesTableRule},
 		"Property Constraints": {content: contentYAML},
 		"Logic Properties":     {content: contentLogic},
 		"Keys":                 {content: contentKeys},
 	},
 	kindRelationType: {
 		"Endpoint": {content: contentTable, table: tableRule{
-			columns:     []string{"Source", "Target", "Type"},
-			unsupported: []string{"Cardinality"},
-			singleRow:   true,
+			columns:   []string{"Source", "Target", "Type", "Cardinality"},
+			singleRow: true,
 		}},
-		"Mapping Rules":    {content: contentTable, table: tableRule{columns: []string{"Source Property", "Target Property"}}},
-		"Backing Resource": {content: contentTable, table: tableRule{columns: []string{"Type", "ID"}, singleRow: true}},
-		"Source Mapping":   {content: contentTable, table: tableRule{columns: []string{"Source Property", "Resource Property"}}},
-		"Target Mapping":   {content: contentTable, table: tableRule{columns: []string{"Resource Property", "Target Property"}}},
-		"Source Condition": {content: contentYAML},
-		"Target Condition": {content: contentYAML},
+		"Relation Constraints": {content: contentYAML},
+		"Data Properties":      {content: contentTable, table: dataPropertiesTableRule},
+		"Property Constraints": {content: contentYAML},
+		"Mapping Rules":        {content: contentTable, table: tableRule{columns: []string{"Source Property", "Target Property"}}},
+		"Backing Resource":     {content: contentTable, table: tableRule{columns: []string{"Type", "ID"}, singleRow: true}},
+		"Source Mapping":       {content: contentTable, table: tableRule{columns: []string{"Source Property", "Resource Property"}}},
+		"Target Mapping":       {content: contentTable, table: tableRule{columns: []string{"Resource Property", "Target Property"}}},
+		"Source Condition":     {content: contentYAML},
+		"Target Condition":     {content: contentYAML},
 	},
 	kindActionType: {
 		"Bound Object": {content: contentTable, table: tableRule{
@@ -159,11 +153,6 @@ var sectionRules = map[string]map[string]sectionRule{
 // renamedSections are 2.x section titles 3.0 refuses, with the title to write instead.
 var renamedSections = map[string]map[string]string{
 	kindActionType: {"Tool Configuration": "Action Source"},
-}
-
-// unsupportedSections are 3.0 sections of a later phase.
-var unsupportedSections = map[string][]string{
-	kindRelationType: {"Relation Constraints", "Data Properties", "Property Constraints"},
 }
 
 // relationMappingSections lists the mapping sections each relation Type uses.
@@ -205,8 +194,6 @@ func checkFrontmatterV3(kind string, fm rawFrontmatter) error {
 		case containsString(rule.fields, key):
 		case rule.renamed[key] != "":
 			return specErrorf("frontmatter field %q is not a 3.0 field; write %q", key, rule.renamed[key])
-		case containsString(rule.unsupported, key):
-			return specErrorf("frontmatter field %q %s", key, unsupportedYet)
 		default:
 			return specErrorf("frontmatter field %q is not a %s field; the fields are %s",
 				key, kind, strings.Join(rule.fields, ", "))
@@ -293,9 +280,6 @@ func checkSectionsV3(kind string, sections map[string]string, order []string) er
 		if to := renamedSections[kind][title]; to != "" {
 			return specErrorf("section %q is not a 3.0 section; write %q", "### "+title, "### "+to)
 		}
-		if containsString(unsupportedSections[kind], title) {
-			return specErrorf("section %q %s", "### "+title, unsupportedYet)
-		}
 		if _, ok := rules[title]; !ok {
 			return specErrorf("section %q is unknown; the %s sections are %s", "### "+title, kind, sectionList(rules))
 		}
@@ -324,6 +308,13 @@ func checkRelationMappingSections(sections map[string]string, order []string) er
 	used, ok := relationMappingSections[typ]
 	if !ok {
 		return nil
+	}
+	if typ != RELATION_MAPPING_TYPE_INDIRECT {
+		for _, title := range []string{"Data Properties", "Property Constraints"} {
+			if _, declared := sections[title]; declared {
+				return specErrorf("section %q: only indirect relations have relation properties, but Endpoint Type is %s", "### "+title, typ)
+			}
+		}
 	}
 	for _, title := range order {
 		for mappingType, titles := range relationMappingSections {
@@ -510,8 +501,6 @@ func checkColumns(where string, rule tableRule, header []string) error {
 			return specErrorf("%s column %q is not a 3.0 column; write %q", where, column, rule.renamed[column])
 		case rule.refused[column] != "":
 			return specErrorf("%s column %q is not a 3.0 column; write %s", where, column, rule.refused[column])
-		case containsString(rule.unsupported, column):
-			return specErrorf("%s column %q %s", where, column, unsupportedYet)
 		default:
 			return specErrorf("%s column %q is unknown; the columns are %s", where, column, strings.Join(rule.columns, ", "))
 		}

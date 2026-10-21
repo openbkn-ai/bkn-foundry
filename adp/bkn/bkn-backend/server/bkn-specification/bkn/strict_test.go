@@ -98,34 +98,6 @@ func TestLoadV3_RefusesEveryNonCanonicalForm(t *testing.T) {
 	}
 }
 
-// 3.0 syntax of a later phase is refused instead of being dropped.
-func TestLoadV3_RefusesSyntaxNotSupportedYet(t *testing.T) {
-	cases := []struct {
-		name string
-		edit v3Edit
-		want string
-	}{
-		{"relation aliases", v3Edit{fRel, "name: 同组\n", "name: 同组\naliases: [同伴]\n"}, `frontmatter field "aliases" is not supported by this version yet`},
-		{"lifecycle", v3Edit{fAct, "action_intent: modify\n", "action_intent: modify\nlifecycle:\n  status: deprecated\n  reason: x\n"}, `frontmatter field "lifecycle" is not supported by this version yet`},
-		{"reverse_name", v3Edit{fRel, "name: 同组\n", "name: 同组\nreverse_name: 同组\n"}, `frontmatter field "reverse_name" is not supported by this version yet`},
-		{"importance", v3Edit{fRel, "name: 同组\n", "name: 同组\nimportance: secondary\n"}, `frontmatter field "importance" is not supported by this version yet`},
-		{"fallback_for", v3Edit{fRel, "name: 同组\n", "name: 同组\nfallback_for: x\n"}, `frontmatter field "fallback_for" is not supported by this version yet`},
-		{"verification", v3Edit{fRel, "name: 同组\n", "name: 同组\nverification: unconfirmed\n"}, `frontmatter field "verification" is not supported by this version yet`},
-		{"Cardinality", v3Edit{fRel, "| Source | Target | Type |\n|--------|--------|------|\n| pod | pod | direct |", "| Source | Target | Type | Cardinality |\n|--------|--------|------|-------------|\n| pod | pod | direct | many_to_one |"}, `column "Cardinality" is not supported by this version yet`},
-		{"Relation Constraints", v3Edit{fRel, "### Mapping Rules", "### Relation Constraints\n\n```yaml\nrequired: [target]\n```\n\n### Mapping Rules"}, `section "### Relation Constraints" is not supported by this version yet`},
-		{"relation properties", v3Edit{fRel, "### Mapping Rules", "### Data Properties\n\n| Name | Display Name | Type |\n|------|--------------|------|\n\n### Mapping Rules"}, `section "### Data Properties" is not supported by this version yet`},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			_, err := loadV3(t, c.edit)
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), c.want)
-			var specErr *SpecError
-			assert.ErrorAs(t, err, &specErr)
-		})
-	}
-}
-
 // The exceptions of §1.3 stay readable: content the exporter generates and the synonym operators.
 func TestLoadV3_KeepsTheExceptions(t *testing.T) {
 	_, err := loadV3(t,

@@ -112,7 +112,7 @@ func parsePropertyConstraintsV3(sectionText string, props []*DataProperty) error
 		name := root.Content[i].Value
 		prop, ok := byName[name]
 		if !ok {
-			return specErrorf("property constraints: %q is not a data property of this object type", name)
+			return specErrorf("property constraints: %q is not a data property of this definition", name)
 		}
 		constraints, err := parseConstraintEntry(name, root.Content[i+1])
 		if err != nil {
@@ -246,11 +246,21 @@ func ValidateObjectTypeDeclarations(ot *BknObjectType) error {
 	if err := validateAliases("object type aliases", ot.Aliases, ot.Name); err != nil {
 		return err
 	}
-	if err := validatePropertyAliases(ot.DataProperties); err != nil {
+	if err := validateLifecycle("object type lifecycle", ot.Lifecycle, ot.ID); err != nil {
+		return err
+	}
+	return validatePropertyDeclarations(ot.DataProperties)
+}
+
+// validatePropertyDeclarations checks the declarations of the data properties of one object type or
+// one relation against each other and against the property types: the Semantic rules, aliases and
+// every constraint's fit.
+func validatePropertyDeclarations(props []*DataProperty) error {
+	if err := validatePropertyAliases(props); err != nil {
 		return err
 	}
 	semantics := map[string]*DataProperty{}
-	for _, p := range ot.DataProperties {
+	for _, p := range props {
 		if p == nil || p.Semantic == "" {
 			continue
 		}
@@ -262,13 +272,13 @@ func ValidateObjectTypeDeclarations(ot *BknObjectType) error {
 			return specErrorf("data property %q: Semantic %s needs Type %s, got %q", p.Name, p.Semantic, strings.Join(allowed, ", "), p.Type)
 		}
 		if other, dup := semantics[p.Semantic]; dup {
-			return specErrorf("data properties %q and %q both declare Semantic %s; an object type declares each value once", other.Name, p.Name, p.Semantic)
+			return specErrorf("data properties %q and %q both declare Semantic %s; each value is declared once", other.Name, p.Name, p.Semantic)
 		}
 		semantics[p.Semantic] = p
 	}
 	if _, ok := semantics[SemanticEndTime]; ok {
 		if _, ok := semantics[SemanticEventTime]; !ok {
-			return specErrorf("Semantic end_time needs an event_time property in the same object type")
+			return specErrorf("Semantic end_time needs an event_time property alongside")
 		}
 	}
 	_, hasLat := semantics[SemanticLatitude]
@@ -279,7 +289,7 @@ func ValidateObjectTypeDeclarations(ot *BknObjectType) error {
 	if _, ok := semantics[SemanticLocation]; ok && hasLat {
 		return specErrorf("Semantic location and latitude / longitude describe the same position; declare one or the other")
 	}
-	for _, p := range ot.DataProperties {
+	for _, p := range props {
 		if p == nil || p.Constraints == nil {
 			continue
 		}
@@ -511,12 +521,15 @@ func validatePropertyAliases(props []*DataProperty) error {
 // ValidateActionTypeDeclarations checks the declarations of an action type on its own: its aliases.
 // Import runs it on a 3.0 definition; a save through the API runs the same check.
 func ValidateActionTypeDeclarations(at *BknActionType) error {
-	return validateAliases("action type aliases", at.Aliases, at.Name)
+	if err := validateAliases("action type aliases", at.Aliases, at.Name); err != nil {
+		return err
+	}
+	return validateLifecycle("action type lifecycle", at.Lifecycle, at.ID)
 }
 
 // ValidateNetworkDeclarations checks the 3.0 declarations that span definitions: value type names,
-// the value types properties reference, and aliases against the names of other definitions of the
-// same kind. Import runs it once every file of a 3.0 package is read; a save through the API runs
+// the value types properties reference, aliases against the names of other definitions of the same
+// kind, lifecycle replaced_by references, deprecated endpoints and fallback paths. Import runs it once every file of a 3.0 package is read; a save through the API runs
 // the same check on the network it would produce.
 func ValidateNetworkDeclarations(doc *BknNetwork) error {
 	valueTypes := map[string]*BknValueType{}
@@ -530,20 +543,30 @@ func ValidateNetworkDeclarations(doc *BknNetwork) error {
 		}
 		valueTypes[vt.ID], named[vt.Name] = vt, vt.ID
 	}
-	for _, ot := range doc.ObjectTypes {
-		for _, p := range ot.DataProperties {
+	checkReferences := func(owner string, props []*DataProperty) error {
+		for _, p := range props {
 			if p == nil || p.Constraints == nil || p.Constraints.ValueType == "" {
 				continue
 			}
 			vt, ok := valueTypes[p.Constraints.ValueType]
 			if !ok {
-				return specErrorf("object type %q data property %q: value type %q is not defined in this network",
-					ot.ID, p.Name, p.Constraints.ValueType)
+				return specErrorf("%s data property %q: value type %q is not defined in this network", owner, p.Name, p.Constraints.ValueType)
 			}
 			if normType(p.Type) != vt.BaseType {
-				return specErrorf("object type %q data property %q: value type %q has base_type %s, the property Type is %q",
-					ot.ID, p.Name, vt.ID, vt.BaseType, p.Type)
+				return specErrorf("%s data property %q: value type %q has base_type %s, the property Type is %q",
+					owner, p.Name, vt.ID, vt.BaseType, p.Type)
 			}
+		}
+		return nil
+	}
+	for _, ot := range doc.ObjectTypes {
+		if err := checkReferences(fmt.Sprintf("object type %q", ot.ID), ot.DataProperties); err != nil {
+			return err
+		}
+	}
+	for _, rt := range doc.RelationTypes {
+		if err := checkReferences(fmt.Sprintf("relation type %q", rt.ID), rt.DataProperties); err != nil {
+			return err
 		}
 	}
 	objectNames := map[string]string{}
@@ -568,5 +591,5 @@ func ValidateNetworkDeclarations(doc *BknNetwork) error {
 			}
 		}
 	}
-	return nil
+	return validateNetworkRelations(doc)
 }

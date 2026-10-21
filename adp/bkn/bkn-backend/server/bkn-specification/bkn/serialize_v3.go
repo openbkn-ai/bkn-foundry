@@ -80,16 +80,13 @@ func writeFrontmatterV3(sb *strings.Builder, fields []frontmatterField) {
 }
 
 // writeDefinitionFrontmatter writes the type, id, name and tags every definition file starts with.
-// Under 3.0 the aliases follow when there are any; 2.x has no place for them.
-func writeDefinitionFrontmatter(sb *strings.Builder, opts serializeOptions, typ, id, name string, tags []string, aliases ...string) {
+// Under 3.0 the extra fields follow; 2.x has no place for them.
+func writeDefinitionFrontmatter(sb *strings.Builder, opts serializeOptions, typ, id, name string, tags []string, extra ...frontmatterField) {
 	if opts.v3 {
 		fields := []frontmatterField{
 			scalarField("type", typ), scalarField("id", id), scalarField("name", name), listField("tags", tags),
 		}
-		if len(aliases) > 0 {
-			fields = append(fields, listField("aliases", aliases))
-		}
-		writeFrontmatterV3(sb, fields)
+		writeFrontmatterV3(sb, append(fields, extra...))
 		return
 	}
 	_, _ = fmt.Fprintf(sb, "---\n")
@@ -109,15 +106,75 @@ func encodeYAML(node *yaml.Node) string {
 	return buf.String()
 }
 
+// aliasesField is the aliases frontmatter field, or nothing when there are none.
+func aliasesField(aliases []string) []frontmatterField {
+	if len(aliases) == 0 {
+		return nil
+	}
+	return []frontmatterField{listField("aliases", aliases)}
+}
+
+// lifecycleField is the lifecycle frontmatter field, or nothing for an active definition.
+func lifecycleField(lc *Lifecycle) []frontmatterField {
+	if lc == nil || lc.Status == LifecycleActive {
+		return nil
+	}
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	node.Content = append(node.Content, strNode("status"), strNode(lc.Status))
+	if lc.Reason != "" {
+		node.Content = append(node.Content, strNode("reason"), strNode(lc.Reason))
+	}
+	if lc.ReplacedBy != "" {
+		node.Content = append(node.Content, strNode("replaced_by"), strNode(lc.ReplacedBy))
+	}
+	return []frontmatterField{{key: "lifecycle", value: node}}
+}
+
+// relationFields are the 3.0 frontmatter fields of a relation type after tags, each written only
+// when declared; importance only when it is secondary.
+func relationFields(rt *BknRelationType) []frontmatterField {
+	importance := rt.Importance
+	if importance == ImportancePrimary {
+		importance = ""
+	}
+	fields := aliasesField(rt.Aliases)
+	for _, f := range []struct{ key, value string }{
+		{"reverse_name", rt.ReverseName},
+		{"importance", importance},
+		{"fallback_for", rt.FallbackFor},
+		{"verification", rt.Verification},
+	} {
+		if f.value != "" {
+			fields = append(fields, scalarField(f.key, f.value))
+		}
+	}
+	return append(fields, lifecycleField(rt.Lifecycle)...)
+}
+
+// writeRelationConstraintsV3 writes ### Relation Constraints when the relation declares any.
+func writeRelationConstraintsV3(sb *strings.Builder, rt *BknRelationType) {
+	if len(rt.RequiredEnds) == 0 && len(rt.Characteristics) == 0 {
+		return
+	}
+	root := &yaml.Node{Kind: yaml.MappingNode}
+	if len(rt.RequiredEnds) > 0 {
+		root.Content = append(root.Content, strNode("required"), listField("", rt.RequiredEnds).value)
+	}
+	if len(rt.Characteristics) > 0 {
+		root.Content = append(root.Content, strNode("characteristics"), listField("", rt.Characteristics).value)
+	}
+	_, _ = fmt.Fprintf(sb, "### Relation Constraints\n\n%s\n", encodeYAMLBlock(root))
+}
+
 // writeDataPropertiesV3 writes the 3.0 Data Properties table and, when a property has constraints,
 // the ### Property Constraints section after it. The columns are in a fixed order; Semantic,
 // Required, Aliases and Mask Rule are written only when a property uses them, and Required stays
-// empty for a primary key, which is required by definition.
-func writeDataPropertiesV3(sb *strings.Builder, ot *BknObjectType) {
+// empty for a primary key, which is required by definition. A relation has no primary keys.
+func writeDataPropertiesV3(sb *strings.Builder, props []*DataProperty, primaryKeys []string) {
 	var hasSemantic, hasRequired, hasAliases, hasMaskRule, hasConstraints bool
-	for _, dp := range ot.DataProperties {
+	for _, dp := range props {
 		hasSemantic = hasSemantic || dp.Semantic != ""
-		hasRequired = hasRequired || requiredCell(dp, ot.PrimaryKeys) != ""
+		hasRequired = hasRequired || requiredCell(dp, primaryKeys) != ""
 		hasAliases = hasAliases || len(dp.Aliases) > 0
 		hasMaskRule = hasMaskRule || dp.MaskRule != nil
 		hasConstraints = hasConstraints || dp.Constraints != nil
@@ -135,7 +192,7 @@ func writeDataPropertiesV3(sb *strings.Builder, ot *BknObjectType) {
 		columns = append(columns, column{"Semantic", func(dp *DataProperty) string { return dp.Semantic }})
 	}
 	if hasRequired {
-		columns = append(columns, column{"Required", func(dp *DataProperty) string { return requiredCell(dp, ot.PrimaryKeys) }})
+		columns = append(columns, column{"Required", func(dp *DataProperty) string { return requiredCell(dp, primaryKeys) }})
 	}
 	if hasAliases {
 		columns = append(columns, column{"Aliases", func(dp *DataProperty) string { return strings.Join(dp.Aliases, aliasSeparator+" ") }})
@@ -156,7 +213,7 @@ func writeDataPropertiesV3(sb *strings.Builder, ot *BknObjectType) {
 	}
 	_, _ = fmt.Fprintf(sb, "| %s |\n", strings.Join(titles, " | "))
 	_, _ = fmt.Fprintf(sb, "|%s|\n", strings.Join(rules, "|"))
-	for _, dp := range ot.DataProperties {
+	for _, dp := range props {
 		cells := make([]string, len(columns))
 		for i, c := range columns {
 			cells[i] = tableCell(c.cell(dp))
@@ -167,7 +224,7 @@ func writeDataPropertiesV3(sb *strings.Builder, ot *BknObjectType) {
 
 	if hasConstraints {
 		_, _ = fmt.Fprintf(sb, "### Property Constraints\n\n")
-		_, _ = fmt.Fprintf(sb, "%s\n", encodeYAMLBlock(propertyConstraintsNode(ot.DataProperties)))
+		_, _ = fmt.Fprintf(sb, "%s\n", encodeYAMLBlock(propertyConstraintsNode(props)))
 	}
 }
 

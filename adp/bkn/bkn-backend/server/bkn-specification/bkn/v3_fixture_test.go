@@ -58,9 +58,9 @@ bkn_spec: "3.0"
 		"### Object Types\n\n| ID | Name | Description |\n|----|------|-------------|\n| pod | Pod | Pod 描述。 |\n",
 }
 
-// loadV3 loads v3Files with edits applied. An edit replaces one exact substring of a file, or with
-// an empty old adds the file; it fails the test when the substring is not there, so a fixture
-// change cannot silently turn a refusal case into a pass.
+// loadV3 loads v3Files with edits applied. An edit replaces one exact substring of a file, with an
+// empty old adds the file, and with an empty old and new removes it; it fails the test when the
+// substring is not there, so a fixture change cannot silently turn a refusal case into a pass.
 func loadV3(t *testing.T, edits ...v3Edit) (*BknNetwork, error) {
 	t.Helper()
 	files := make(map[string]string, len(v3Files))
@@ -68,6 +68,10 @@ func loadV3(t *testing.T, edits ...v3Edit) (*BknNetwork, error) {
 		files[path] = text
 	}
 	for _, e := range edits {
+		if e.old == "" && e.new == "" {
+			delete(files, e.file)
+			continue
+		}
 		if e.old == "" {
 			files[e.file] = e.new
 			continue
