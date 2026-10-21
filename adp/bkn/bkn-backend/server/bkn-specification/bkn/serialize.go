@@ -269,7 +269,8 @@ func SerializeObjectType(ot *BknObjectType) string {
 
 func serializeObjectType(ot *BknObjectType, opts serializeOptions) string {
 	var sb strings.Builder
-	writeDefinitionFrontmatter(&sb, opts, "object_type", ot.ID, ot.Name, ot.Tags, ot.Aliases...)
+	writeDefinitionFrontmatter(&sb, opts, "object_type", ot.ID, ot.Name, ot.Tags,
+		append(aliasesField(ot.Aliases), lifecycleField(ot.Lifecycle)...)...)
 
 	_, _ = fmt.Fprintf(&sb, "## ObjectType: %s\n\n", ot.Name)
 	if ot.Description != "" {
@@ -289,7 +290,7 @@ func serializeObjectType(ot *BknObjectType, opts serializeOptions) string {
 	// Data Properties
 	_, _ = fmt.Fprintf(&sb, "### Data Properties\n\n")
 	if opts.v3 {
-		writeDataPropertiesV3(&sb, ot)
+		writeDataPropertiesV3(&sb, ot.DataProperties, ot.PrimaryKeys)
 	} else {
 		writeDataProperties(&sb, ot)
 	}
@@ -395,7 +396,11 @@ func SerializeRelationType(rt *BknRelationType) string {
 
 func serializeRelationType(rt *BknRelationType, opts serializeOptions) string {
 	var sb strings.Builder
-	writeDefinitionFrontmatter(&sb, opts, "relation_type", rt.ID, rt.Name, rt.Tags)
+	var extra []frontmatterField
+	if opts.v3 {
+		extra = relationFields(rt)
+	}
+	writeDefinitionFrontmatter(&sb, opts, "relation_type", rt.ID, rt.Name, rt.Tags, extra...)
 
 	_, _ = fmt.Fprintf(&sb, "## RelationType: %s\n\n", rt.Name)
 	if rt.Description != "" {
@@ -404,9 +409,19 @@ func serializeRelationType(rt *BknRelationType, opts serializeOptions) string {
 
 	// Endpoint
 	_, _ = fmt.Fprintf(&sb, "### Endpoint\n\n")
-	_, _ = fmt.Fprintf(&sb, "| Source | Target | Type |\n")
-	_, _ = fmt.Fprintf(&sb, "|--------|--------|------|\n")
-	_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", tableCell(rt.Endpoint.Source), tableCell(rt.Endpoint.Target), tableCell(rt.Endpoint.Type))
+	if opts.v3 && rt.Endpoint.Cardinality != "" {
+		_, _ = fmt.Fprintf(&sb, "| Source | Target | Type | Cardinality |\n")
+		_, _ = fmt.Fprintf(&sb, "|--------|--------|------|-------------|\n")
+		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s | %s |\n\n", tableCell(rt.Endpoint.Source), tableCell(rt.Endpoint.Target),
+			tableCell(rt.Endpoint.Type), tableCell(rt.Endpoint.Cardinality))
+	} else {
+		_, _ = fmt.Fprintf(&sb, "| Source | Target | Type |\n")
+		_, _ = fmt.Fprintf(&sb, "|--------|--------|------|\n")
+		_, _ = fmt.Fprintf(&sb, "| %s | %s | %s |\n\n", tableCell(rt.Endpoint.Source), tableCell(rt.Endpoint.Target), tableCell(rt.Endpoint.Type))
+	}
+	if opts.v3 {
+		writeRelationConstraintsV3(&sb, rt)
+	}
 
 	switch rt.Endpoint.Type {
 	case RELATION_MAPPING_TYPE_DIRECT:
@@ -444,6 +459,10 @@ func serializeRelationType(rt *BknRelationType, opts serializeOptions) string {
 				_, _ = fmt.Fprintf(&sb, "| %s | %s |\n", tableCell(r.SourceProperty), tableCell(r.TargetProperty))
 			}
 			_, _ = fmt.Fprintf(&sb, "\n")
+		}
+		if opts.v3 && len(rt.DataProperties) > 0 {
+			_, _ = fmt.Fprintf(&sb, "### Data Properties\n\n")
+			writeDataPropertiesV3(&sb, rt.DataProperties, nil)
 		}
 
 	case RELATION_MAPPING_TYPE_FILTERED_CROSS_JOIN:
@@ -483,12 +502,11 @@ func serializeActionType(at *BknActionType, opts serializeOptions) string {
 		fields := []frontmatterField{
 			scalarField("type", "action_type"), scalarField("id", at.ID), scalarField("name", at.Name), listField("tags", at.Tags),
 		}
-		if len(at.Aliases) > 0 {
-			fields = append(fields, listField("aliases", at.Aliases))
-		}
+		fields = append(fields, aliasesField(at.Aliases)...)
 		if intent != "" {
 			fields = append(fields, scalarField("action_intent", intent))
 		}
+		fields = append(fields, lifecycleField(at.Lifecycle)...)
 		writeFrontmatterV3(&sb, fields)
 	} else {
 		_, _ = fmt.Fprintf(&sb, "---\n")

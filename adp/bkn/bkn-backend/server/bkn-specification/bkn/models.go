@@ -114,6 +114,18 @@ type BknObjectTypeFrontmatter struct {
 	// Aliases are other names of the object type, for concept search and understanding (3.0,
 	// SPECIFICATION.md §6.8). A 2.x package never sets them.
 	Aliases []string `yaml:"aliases,omitempty"`
+
+	// Lifecycle is the 3.0 lifecycle (SPECIFICATION.md §4.3); nil is active.
+	Lifecycle *Lifecycle `yaml:"lifecycle,omitempty"`
+}
+
+// Lifecycle says whether a definition is still in use (SPECIFICATION.md §4.3). A definition without
+// one is active; an active lifecycle is held as nil, so writing status: active and leaving it out
+// read the same.
+type Lifecycle struct {
+	Status     string `yaml:"status"`
+	Reason     string `yaml:"reason,omitempty"`
+	ReplacedBy string `yaml:"replaced_by,omitempty"`
 }
 
 // BknObjectType represents an object type definition.
@@ -236,6 +248,16 @@ type BknRelationTypeFrontmatter struct {
 	ID   string   `yaml:"id"`
 	Name string   `yaml:"name"`
 	Tags []string `yaml:"tags"`
+
+	// The 3.0 relation declarations (SPECIFICATION.md §4.3, §7.6). A 2.x package never sets them.
+	// Importance is empty for primary, the default, so writing primary and leaving it out read the
+	// same.
+	ReverseName  string     `yaml:"reverse_name,omitempty"`
+	Aliases      []string   `yaml:"aliases,omitempty"`
+	Importance   string     `yaml:"importance,omitempty"`
+	FallbackFor  string     `yaml:"fallback_for,omitempty"`
+	Verification string     `yaml:"verification,omitempty"`
+	Lifecycle    *Lifecycle `yaml:"lifecycle,omitempty"`
 }
 
 // BknRelationType represents a relation type definition.
@@ -250,12 +272,21 @@ type BknRelationType struct {
 	// Endpoint
 	Endpoint     Endpoint
 	MappingRules any
+
+	// ### Relation Constraints and the relation properties of an indirect relation (3.0,
+	// SPECIFICATION.md §7.6). A 2.x package never sets them.
+	RequiredEnds    []string
+	Characteristics []string
+	DataProperties  []*DataProperty
 }
 
 type Endpoint struct {
 	Source string
 	Target string
 	Type   string // direct | indirect | filtered_cross_join
+
+	// Cardinality is the 3.0 Cardinality column (SPECIFICATION.md §7.6); empty is not declared.
+	Cardinality string
 }
 
 // MappingRule represents a property mapping between source and target.
@@ -302,6 +333,9 @@ type BknActionTypeFrontmatter struct {
 	// Aliases are other names of the action type (3.0, SPECIFICATION.md §8.2). A 2.x package never
 	// sets them.
 	Aliases []string `yaml:"aliases,omitempty"`
+
+	// Lifecycle is the 3.0 lifecycle (SPECIFICATION.md §4.3); nil is active.
+	Lifecycle *Lifecycle `yaml:"lifecycle,omitempty"`
 }
 
 // BknActionType represents an action type definition.

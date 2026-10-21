@@ -461,9 +461,10 @@ func hasArchiveSuffix(filename string) bool {
 }
 
 // unstoredDeclaration names the first 3.0 declaration in a package that the backend does not store
-// yet: a value type, an alias, or a property's Semantic, Required or ### Property Constraints. The
-// specification library reads them, but the backend stores property declarations only from #2259
-// and value types and aliases only from #2281, so importing would drop them; the upload refuses the
+// yet: a value type, an alias, a lifecycle, a relation declaration, or a property's Semantic,
+// Required or ### Property Constraints. The specification library reads them, but the backend stores
+// property declarations only from #2259, value types and aliases only from #2281, and relation
+// declarations and lifecycles only from #2284, so importing would drop them; the upload refuses the
 // package instead. It returns "" when there is none, which is always the case for a 2.x package.
 func unstoredDeclaration(net *bknsdk.BknNetwork) string {
 	if net.BknSpec != bknsdk.BknSpecV3 {
@@ -476,6 +477,9 @@ func unstoredDeclaration(net *bknsdk.BknNetwork) string {
 	for _, ot := range net.ObjectTypes {
 		if len(ot.Aliases) > 0 {
 			return fmt.Sprintf("object type %q: aliases %s", ot.ID, unsupportedYet)
+		}
+		if ot.Lifecycle != nil {
+			return fmt.Sprintf("object type %q: lifecycle %s", ot.ID, unsupportedYet)
 		}
 		for _, p := range ot.DataProperties {
 			var what string
@@ -498,6 +502,35 @@ func unstoredDeclaration(net *bknsdk.BknNetwork) string {
 		if len(at.Aliases) > 0 {
 			return fmt.Sprintf("action type %q: aliases %s", at.ID, unsupportedYet)
 		}
+		if at.Lifecycle != nil {
+			return fmt.Sprintf("action type %q: lifecycle %s", at.ID, unsupportedYet)
+		}
+	}
+	for _, rt := range net.RelationTypes {
+		var what string
+		switch {
+		case len(rt.Aliases) > 0:
+			what = "aliases"
+		case rt.ReverseName != "":
+			what = "reverse_name"
+		case rt.Importance != "":
+			what = "importance"
+		case rt.FallbackFor != "":
+			what = "fallback_for"
+		case rt.Verification != "":
+			what = "verification"
+		case rt.Lifecycle != nil:
+			what = "lifecycle"
+		case rt.Endpoint.Cardinality != "":
+			what = "Cardinality"
+		case len(rt.RequiredEnds) > 0 || len(rt.Characteristics) > 0:
+			what = "### Relation Constraints"
+		case len(rt.DataProperties) > 0:
+			what = "### Data Properties"
+		default:
+			continue
+		}
+		return fmt.Sprintf("relation type %q: %s %s", rt.ID, what, unsupportedYet)
 	}
 	return ""
 }

@@ -332,6 +332,16 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 					"### Data Properties\n\n| Name | Display Name | Type | Aliases | Mapped Field |\n|------|--------------|------|---------|--------------|\n" +
 					"| host | 主机名 | string | 主机 | host |\n",
 					`object type \"node\" data property \"host\": Aliases is not supported by this version yet`},
+				{"object_types/node.bkn", "---\ntype: object_type\nid: node\nname: 节点\ntags: []\nlifecycle: {status: deprecated, reason: 改用主机}\n---\n\n## ObjectType: 节点\n",
+					`object type \"node\": lifecycle is not supported by this version yet`},
+				{"relation_types/pod_peer.bkn", "---\ntype: relation_type\nid: pod_peer\nname: 同组\ntags: []\nverification: confirmed\n---\n\n## RelationType: 同组\n\n" +
+					"### Endpoint\n\n| Source | Target | Type |\n|--------|--------|------|\n| pod | pod | direct |\n\n" +
+					"### Mapping Rules\n\n| Source Property | Target Property |\n|-----------------|-----------------|\n| name | name |\n",
+					`relation type \"pod_peer\": verification is not supported by this version yet`},
+				{"relation_types/pod_peer.bkn", "---\ntype: relation_type\nid: pod_peer\nname: 同组\ntags: []\n---\n\n## RelationType: 同组\n\n" +
+					"### Endpoint\n\n| Source | Target | Type | Cardinality |\n|--------|--------|------|-------------|\n| pod | pod | direct | many_to_many |\n\n" +
+					"### Mapping Rules\n\n| Source Property | Target Property |\n|-----------------|-----------------|\n| name | name |\n",
+					`relation type \"pod_peer\": Cardinality is not supported by this version yet`},
 			} {
 				req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "", map[string]string{c.path: c.content}))
 				w := httptest.NewRecorder()

@@ -575,11 +575,12 @@ func parseObjectTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 
 	obj := &BknObjectType{
 		BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{
-			Type:    "object_type",
-			ID:      header.id,
-			Name:    header.name,
-			Tags:    header.tags,
-			Aliases: header.aliases,
+			Type:      "object_type",
+			ID:        header.id,
+			Name:      header.name,
+			Tags:      header.tags,
+			Aliases:   header.aliases,
+			Lifecycle: header.lifecycle,
 		},
 		Description: header.description(buildDescription(desc, sections, order, opts.knownObjectSections())),
 		RawContent:  text,
@@ -666,12 +667,14 @@ func parseRelationTypeFile(text string, sourcePath string, opts parseOptions) (*
 
 	rel := &BknRelationType{
 		BknRelationTypeFrontmatter: BknRelationTypeFrontmatter{
-			Type: "relation_type",
-			ID:   header.id,
-			Name: header.name,
-			Tags: header.tags,
+			Type:      "relation_type",
+			ID:        header.id,
+			Name:      header.name,
+			Tags:      header.tags,
+			Aliases:   header.aliases,
+			Lifecycle: header.lifecycle,
 		},
-		Description: header.description(buildDescription(desc, sections, order, knownRelationTypeSections)),
+		Description: header.description(buildDescription(desc, sections, order, opts.knownRelationSections())),
 		RawContent:  text,
 	}
 	rel.Summary = ExtractSummary(rel.Description)
@@ -684,6 +687,9 @@ func parseRelationTypeFile(text string, sourcePath string, opts parseOptions) (*
 				Source: row["Source"],
 				Target: row["Target"],
 				Type:   row["Type"],
+			}
+			if opts.v3() {
+				rel.Endpoint.Cardinality = strings.TrimSpace(row["Cardinality"])
 			}
 		}
 	}
@@ -741,8 +747,39 @@ func parseRelationTypeFile(text string, sourcePath string, opts parseOptions) (*
 		}
 		rel.MappingRules = mapping
 	}
+	if opts.v3() {
+		if err := parseRelationDeclarationsV3(rel, header.raw, sections, opts); err != nil {
+			return nil, err
+		}
+	}
 
 	return rel, nil
+}
+
+// parseRelationDeclarationsV3 reads the 3.0 relation declarations: the frontmatter fields, ### Relation
+// Constraints and the relation properties, then checks them.
+func parseRelationDeclarationsV3(rel *BknRelationType, fm rawFrontmatter, sections map[string]string, opts parseOptions) error {
+	if err := readRelationFrontmatterV3(rel, fm); err != nil {
+		return err
+	}
+	if s, ok := sections["Relation Constraints"]; ok {
+		if err := parseRelationConstraintsV3(rel, s); err != nil {
+			return err
+		}
+	}
+	if s, ok := sections["Data Properties"]; ok {
+		props, _, err := parseDataProperties(s, opts)
+		if err != nil {
+			return err
+		}
+		rel.DataProperties = props
+	}
+	if s, ok := sections["Property Constraints"]; ok {
+		if err := parsePropertyConstraintsV3(s, rel.DataProperties); err != nil {
+			return err
+		}
+	}
+	return ValidateRelationTypeDeclarations(rel)
 }
 
 // ParseActionTypeFile parses an action_type definition file by the 2.x rules.
@@ -777,6 +814,7 @@ func parseActionTypeFile(text string, sourcePath string, opts parseOptions) (*Bk
 	if opts.v3() {
 		act.ActionIntent = header.raw.str("action_intent")
 		act.Aliases = header.aliases
+		act.Lifecycle = header.lifecycle
 		if err := ValidateActionTypeDeclarations(act); err != nil {
 			return nil, err
 		}
@@ -1128,11 +1166,12 @@ func parseCapabilities(fmData map[string]any) *BknCapabilities {
 // definitionHeader is what every definition file reads from its frontmatter, by the rules of the
 // package's specification.
 type definitionHeader struct {
-	id, name string
-	tags     []string
-	aliases  []string
-	v3       bool
-	raw      rawFrontmatter
+	id, name  string
+	tags      []string
+	aliases   []string
+	lifecycle *Lifecycle
+	v3        bool
+	raw       rawFrontmatter
 }
 
 // readDefinitionHeader reads id, name and tags. Under 3.0 it first applies the structure rules of
@@ -1152,7 +1191,13 @@ func readDefinitionHeader(kind, text string, fmData map[string]any, opts parseOp
 	if err != nil {
 		return definitionHeader{}, err
 	}
-	return definitionHeader{id: raw.str("id"), name: raw.str("name"), tags: raw.list("tags"), aliases: aliases, v3: true, raw: raw}, nil
+	lifecycle, err := parseLifecycleNode(raw.str("id"), raw.values["lifecycle"])
+	if err != nil {
+		return definitionHeader{}, err
+	}
+	return definitionHeader{
+		id: raw.str("id"), name: raw.str("name"), tags: raw.list("tags"), aliases: aliases, lifecycle: lifecycle, v3: true, raw: raw,
+	}, nil
 }
 
 // description returns a definition's description as stored: under 3.0 the exporter's escape of

@@ -100,6 +100,23 @@ func (o parseOptions) knownActionSections() map[string]bool {
 	return known
 }
 
+// knownRelationSections returns the relation type sections that are parsed. 3.0 adds Relation
+// Constraints and the relation properties; under 2.x they are unknown sections and go into the
+// description, as they always did.
+func (o parseOptions) knownRelationSections() map[string]bool {
+	if !o.v3() {
+		return knownRelationTypeSections
+	}
+	known := make(map[string]bool, len(knownRelationTypeSections)+3)
+	for title := range knownRelationTypeSections {
+		known[title] = true
+	}
+	for _, title := range []string{"Relation Constraints", "Data Properties", "Property Constraints"} {
+		known[title] = true
+	}
+	return known
+}
+
 // knownObjectSections returns the object type sections that are parsed. 3.0 adds Property
 // Constraints; under 2.x it is an unknown section and goes into the description, as it always did.
 func (o parseOptions) knownObjectSections() map[string]bool {
