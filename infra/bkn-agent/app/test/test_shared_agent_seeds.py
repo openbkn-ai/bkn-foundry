@@ -679,6 +679,11 @@ def test_cypher_generation_seed_reads_schema_and_runs_cypher_only():
         # a relationship question must not pass the Agent's own check.
         assert "RETURN p, r, m" in content
         assert "只有节点不算通过" in content
+        # Explaining an existing query is the same Agent: it must not rewrite the query
+        # or squeeze the explanation into the one-line output rule.
+        assert "解释查询" in content
+        assert "只解释，不执行" in content
+        assert "不写新查询，也不改写原查询" in content
         assert "片段" not in content
         assert "图探索" not in content and "画布" not in content
         rows = db.execute(
