@@ -203,6 +203,19 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
+def test_object_metric_designer_default_is_english_and_respects_user_language():
+    with database() as db:
+        apply(db, METRIC_DESIGN)
+        seeded = item_from_db(db, "object_metric_designer")
+        assert seeded["spec"]["name"] == "Object Metric Designer"
+        assert seeded["prompt"]["name"] == "Object Metric Designer Default Prompt"
+        content = seeded["prompt"]["content"]
+        assert content.isascii()
+        assert "Respond in the language of the current user message" in content
+        assert "Do not query instance data" in content
+        assert "changes empty" in content
+
+
 @pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
