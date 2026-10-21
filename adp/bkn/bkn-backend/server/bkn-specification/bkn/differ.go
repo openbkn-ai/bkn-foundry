@@ -129,6 +129,7 @@ func DiffNetworks(oldChecksums, newChecksums map[string]string) *DiffResult {
 func ComputeNetworkChecksums(fsys FileSystem, root string) (map[string]string, error) {
 	abs := fsys.Abs(root)
 	checksums := make(map[string]string)
+	v3 := packageIsV3WithFS(fsys, abs)
 
 	err := fsys.Walk(abs, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
@@ -151,7 +152,7 @@ func ComputeNetworkChecksums(fsys FileSystem, root string) (map[string]string, e
 			}
 			return nil
 		}
-		lines := computeBknChecksumWithFS(fsys, path, checksumFormatCurrent)
+		lines := computeBknChecksumWithFS(fsys, path, checksumFormatCurrent, v3)
 		for _, line := range lines {
 			parts := splitChecksumLine(line)
 			if parts[0] != "" && parts[1] != "" {

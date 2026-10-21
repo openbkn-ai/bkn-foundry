@@ -80,11 +80,16 @@ func writeFrontmatterV3(sb *strings.Builder, fields []frontmatterField) {
 }
 
 // writeDefinitionFrontmatter writes the type, id, name and tags every definition file starts with.
-func writeDefinitionFrontmatter(sb *strings.Builder, opts serializeOptions, typ, id, name string, tags []string) {
+// Under 3.0 the aliases follow when there are any; 2.x has no place for them.
+func writeDefinitionFrontmatter(sb *strings.Builder, opts serializeOptions, typ, id, name string, tags []string, aliases ...string) {
 	if opts.v3 {
-		writeFrontmatterV3(sb, []frontmatterField{
+		fields := []frontmatterField{
 			scalarField("type", typ), scalarField("id", id), scalarField("name", name), listField("tags", tags),
-		})
+		}
+		if len(aliases) > 0 {
+			fields = append(fields, listField("aliases", aliases))
+		}
+		writeFrontmatterV3(sb, fields)
 		return
 	}
 	_, _ = fmt.Fprintf(sb, "---\n")
@@ -106,13 +111,14 @@ func encodeYAML(node *yaml.Node) string {
 
 // writeDataPropertiesV3 writes the 3.0 Data Properties table and, when a property has constraints,
 // the ### Property Constraints section after it. The columns are in a fixed order; Semantic,
-// Required and Mask Rule are written only when a property uses them, and Required stays empty for
-// a primary key, which is required by definition.
+// Required, Aliases and Mask Rule are written only when a property uses them, and Required stays
+// empty for a primary key, which is required by definition.
 func writeDataPropertiesV3(sb *strings.Builder, ot *BknObjectType) {
-	var hasSemantic, hasRequired, hasMaskRule, hasConstraints bool
+	var hasSemantic, hasRequired, hasAliases, hasMaskRule, hasConstraints bool
 	for _, dp := range ot.DataProperties {
 		hasSemantic = hasSemantic || dp.Semantic != ""
 		hasRequired = hasRequired || requiredCell(dp, ot.PrimaryKeys) != ""
+		hasAliases = hasAliases || len(dp.Aliases) > 0
 		hasMaskRule = hasMaskRule || dp.MaskRule != nil
 		hasConstraints = hasConstraints || dp.Constraints != nil
 	}
@@ -130,6 +136,9 @@ func writeDataPropertiesV3(sb *strings.Builder, ot *BknObjectType) {
 	}
 	if hasRequired {
 		columns = append(columns, column{"Required", func(dp *DataProperty) string { return requiredCell(dp, ot.PrimaryKeys) }})
+	}
+	if hasAliases {
+		columns = append(columns, column{"Aliases", func(dp *DataProperty) string { return strings.Join(dp.Aliases, aliasSeparator+" ") }})
 	}
 	columns = append(columns,
 		column{"Description", func(dp *DataProperty) string { return dp.Description }},
@@ -182,25 +191,10 @@ func propertyConstraintsNode(props []*DataProperty) *yaml.Node {
 		add := func(key string, value *yaml.Node) {
 			entry.Content = append(entry.Content, strNode(key), value)
 		}
-		if c.Range != nil {
-			add("range", boundsNode(c.Range.Min, c.Range.Max))
+		if c.ValueType != "" {
+			add("value_type", strNode(c.ValueType))
 		}
-		if c.Length != nil {
-			var lo, hi any
-			if c.Length.Min != nil {
-				lo = int64(*c.Length.Min)
-			}
-			if c.Length.Max != nil {
-				hi = int64(*c.Length.Max)
-			}
-			add("length", boundsNode(lo, hi))
-		}
-		if c.Pattern != "" {
-			add("pattern", strNode(c.Pattern))
-		}
-		if c.Unit != "" {
-			add("unit", strNode(c.Unit))
-		}
+		addValueRules(add, c.Range, c.Length, c.Pattern, c.Unit)
 		if c.Unique {
 			add("unique", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
 		}
@@ -213,6 +207,30 @@ func propertyConstraintsNode(props []*DataProperty) *yaml.Node {
 		root.Content = append(root.Content, strNode(dp.Name), entry)
 	}
 	return root
+}
+
+// addValueRules adds range, length, pattern and unit, in that order, leaving out what is not
+// declared.
+func addValueRules(add func(string, *yaml.Node), rng *ValueRange, length *LengthRange, pattern, unit string) {
+	if rng != nil {
+		add("range", boundsNode(rng.Min, rng.Max))
+	}
+	if length != nil {
+		var lo, hi any
+		if length.Min != nil {
+			lo = int64(*length.Min)
+		}
+		if length.Max != nil {
+			hi = int64(*length.Max)
+		}
+		add("length", boundsNode(lo, hi))
+	}
+	if pattern != "" {
+		add("pattern", strNode(pattern))
+	}
+	if unit != "" {
+		add("unit", strNode(unit))
+	}
 }
 
 // boundsNode writes {min: x, max: y}, leaving out an absent bound.
@@ -238,4 +256,55 @@ func boundNode(v any) *yaml.Node {
 		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: strconv.FormatFloat(n, 'g', -1, 64)}
 	}
 	return strNode(fmt.Sprint(v))
+}
+
+// serializeValueType writes a value type file. Value types exist only in 3.0.
+func serializeValueType(vt *BknValueType) string {
+	var sb strings.Builder
+	opts := serializeOptions{v3: true}
+	writeDefinitionFrontmatter(&sb, opts, kindValueType, vt.ID, vt.Name, vt.Tags)
+	_, _ = fmt.Fprintf(&sb, "## ValueType: %s\n\n", vt.Name)
+	if vt.Description != "" {
+		_, _ = fmt.Fprintf(&sb, "%s\n\n", opts.description(vt.Description))
+	}
+
+	root := &yaml.Node{Kind: yaml.MappingNode}
+	add := func(key string, value *yaml.Node) {
+		root.Content = append(root.Content, strNode(key), value)
+	}
+	add("base_type", strNode(vt.BaseType))
+	if vt.Enum != nil {
+		enum := &yaml.Node{Kind: yaml.SequenceNode}
+		for _, item := range vt.Enum {
+			entry := &yaml.Node{Kind: yaml.MappingNode, Style: yaml.FlowStyle}
+			entry.Content = append(entry.Content, strNode("value"), enumValueNode(vt.BaseType, item.Value),
+				strNode("display"), strNode(item.Display))
+			if item.Deprecated {
+				entry.Content = append(entry.Content, strNode("deprecated"), &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
+			}
+			if item.Description != "" {
+				entry.Content = append(entry.Content, strNode("description"), strNode(item.Description))
+			}
+			enum.Content = append(enum.Content, entry)
+		}
+		add("enum", enum)
+	}
+	addValueRules(add, vt.Range, vt.Length, vt.Pattern, vt.Unit)
+	_, _ = fmt.Fprintf(&sb, "### Definition\n\n%s", encodeYAMLBlock(root))
+	return sb.String()
+}
+
+// enumValueNode writes an enum value as a number for a numeric base type and as a string otherwise,
+// so that a code such as "0101" keeps its leading zero.
+func enumValueNode(baseType, value string) *yaml.Node {
+	switch baseType {
+	case "integer", "unsigned integer":
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: value}
+	case "float", "decimal":
+		if _, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: value}
+		}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!float", Value: value}
+	}
+	return strNode(value)
 }

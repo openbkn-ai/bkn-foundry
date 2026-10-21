@@ -23,8 +23,8 @@ const (
 	ExtensionBkn     = ".bkn"
 )
 
-// valueTypesDir holds the value types of a 3.0 package (SPECIFICATION.md §16). The 2.x reader never
-// looks into it.
+// valueTypesDir holds the value types of a 3.0 package (SPECIFICATION.md §16). It is not one of
+// SupportedBknSubDirs: the 2.x reader never looks into it.
 const valueTypesDir = "value_types"
 
 // Supported file extensions for BKN content.
@@ -111,7 +111,9 @@ func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
 	// network.bkn declares.
 	opts := parseOptions{spec: bknDoc.BknSpec}
 	if opts.v3() && fsys.IsDir(fsys.Join(absRoot, valueTypesDir)) {
-		return nil, specErrorf("%s/: value types %s", valueTypesDir, unsupportedYet)
+		if err := loadSubdirWithFS(fsys, fsys.Join(absRoot, valueTypesDir), valueTypesDir, bknDoc, opts); err != nil {
+			return nil, fmt.Errorf("load %s: %w", valueTypesDir, err)
+		}
 	}
 	for subdir := range SupportedBknSubDirs {
 		subdirPath := fsys.Join(absRoot, subdir)
@@ -125,6 +127,11 @@ func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
 	}
 	if fsys.IsDir(fsys.Join(absRoot, "metrics")) {
 		return nil, fmt.Errorf("legacy metrics/*.bkn is unsupported; migrate metrics to object metrics V1 before import")
+	}
+	if opts.v3() {
+		if err := ValidateNetworkDeclarations(bknDoc); err != nil {
+			return nil, err
+		}
 	}
 	if len(bknDoc.ObjectMetrics) > 0 && !checksumValid {
 		return nil, fmt.Errorf("object metric V1 archive checksum verification failed")
@@ -217,6 +224,13 @@ func loadSubdirWithFS(fsys FileSystem, subdirPath, subdirName string, result *Bk
 				return fmt.Errorf("parse %s: %w", name, err)
 			}
 			result.RiskTypes = append(result.RiskTypes, ris)
+
+		case valueTypesDir:
+			vt, err := parseValueTypeFile(string(data))
+			if err != nil {
+				return fmt.Errorf("parse %s: %w", name, err)
+			}
+			result.ValueTypes = append(result.ValueTypes, vt)
 
 		case "concept_groups":
 			// Concept groups use generic parsing for now

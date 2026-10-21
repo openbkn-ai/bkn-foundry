@@ -32,6 +32,7 @@ const (
 	kindActionType   = "action_type"
 	kindRiskType     = "risk_type"
 	kindConceptGroup = "concept_group"
+	kindValueType    = "value_type"
 )
 
 // headingPrefix is the ## definition heading prefix of each kind.
@@ -41,6 +42,7 @@ var headingPrefix = map[string]string{
 	kindActionType:   "ActionType",
 	kindRiskType:     "RiskType",
 	kindConceptGroup: "ConceptGroup",
+	kindValueType:    "ValueType",
 }
 
 // frontmatterRule lists the frontmatter fields of a kind. Renamed fields are refused with the field
@@ -54,20 +56,21 @@ type frontmatterRule struct {
 var frontmatterRules = map[string]frontmatterRule{
 	kindNetwork: {fields: []string{"type", "id", "name", "tags", "bkn_spec", "version", "branch", "capabilities"}},
 	kindObjectType: {
-		fields:      []string{"type", "id", "name", "tags"},
-		unsupported: []string{"aliases", "lifecycle"},
+		fields:      []string{"type", "id", "name", "tags", "aliases"},
+		unsupported: []string{"lifecycle"},
 	},
 	kindRelationType: {
 		fields:      []string{"type", "id", "name", "tags"},
 		unsupported: []string{"aliases", "lifecycle", "reverse_name", "importance", "fallback_for", "verification"},
 	},
 	kindActionType: {
-		fields:      []string{"type", "id", "name", "tags", "action_intent"},
+		fields:      []string{"type", "id", "name", "tags", "aliases", "action_intent"},
 		renamed:     map[string]string{"action_type": "action_intent"},
-		unsupported: []string{"aliases", "lifecycle"},
+		unsupported: []string{"lifecycle"},
 	},
 	kindRiskType:     {fields: []string{"type", "id", "name", "tags"}},
 	kindConceptGroup: {fields: []string{"type", "id", "name", "tags"}},
+	kindValueType:    {fields: []string{"type", "id", "name", "tags"}},
 }
 
 type contentKind int
@@ -107,8 +110,7 @@ var sectionRules = map[string]map[string]sectionRule{
 	kindObjectType: {
 		"Data Source": {content: contentTable, table: tableRule{columns: []string{"Type", "ID", "Name"}, singleRow: true}},
 		"Data Properties": {content: contentTable, table: tableRule{
-			columns:     []string{"Name", "Display Name", "Type", "Semantic", "Required", "Description", "Mapped Field", "Mask Rule"},
-			unsupported: []string{"Aliases"},
+			columns: []string{"Name", "Display Name", "Type", "Semantic", "Required", "Aliases", "Description", "Mapped Field", "Mask Rule"},
 		}},
 		"Property Constraints": {content: contentYAML},
 		"Logic Properties":     {content: contentLogic},
@@ -150,7 +152,8 @@ var sectionRules = map[string]map[string]sectionRule{
 	kindConceptGroup: {
 		"Object Types": {content: contentTable, table: tableRule{columns: []string{"ID", "Name", "Description"}}},
 	},
-	kindRiskType: {},
+	kindRiskType:  {},
+	kindValueType: {"Definition": {content: contentYAML}},
 }
 
 // renamedSections are 2.x section titles 3.0 refuses, with the title to write instead.
@@ -212,8 +215,10 @@ func checkFrontmatterV3(kind string, fm rawFrontmatter) error {
 	if typ := fm.str("type"); typ != kind {
 		return specErrorf("frontmatter type %q does not match the directory; write %q", typ, kind)
 	}
-	if node, ok := fm.values["tags"]; ok && node.Kind != yaml.SequenceNode {
-		return specErrorf("frontmatter tags must be a YAML list such as [a, b]")
+	for _, key := range []string{"tags", "aliases"} {
+		if node, ok := fm.values[key]; ok && node.Kind != yaml.SequenceNode {
+			return specErrorf("frontmatter %s must be a YAML list such as [a, b]", key)
+		}
 	}
 	return nil
 }

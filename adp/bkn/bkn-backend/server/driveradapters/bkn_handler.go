@@ -128,7 +128,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	if detail := unstoredPropertyDeclaration(bknNetwork); detail != "" {
+	if detail := unstoredDeclaration(bknNetwork); detail != "" {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(detail)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -460,15 +460,23 @@ func hasArchiveSuffix(filename string) bool {
 	return false
 }
 
-// unstoredPropertyDeclaration names the first 3.0 property declaration (Semantic, Required or
-// ### Property Constraints) in a package. The specification library reads them, but the backend
-// does not store them until #2259, so importing would drop them; the upload refuses the package
-// instead. It returns "" when there is none, which is always the case for a 2.x package.
-func unstoredPropertyDeclaration(net *bknsdk.BknNetwork) string {
+// unstoredDeclaration names the first 3.0 declaration in a package that the backend does not store
+// yet: a value type, an alias, or a property's Semantic, Required or ### Property Constraints. The
+// specification library reads them, but the backend stores property declarations only from #2259
+// and value types and aliases only from #2281, so importing would drop them; the upload refuses the
+// package instead. It returns "" when there is none, which is always the case for a 2.x package.
+func unstoredDeclaration(net *bknsdk.BknNetwork) string {
 	if net.BknSpec != bknsdk.BknSpecV3 {
 		return ""
 	}
+	const unsupportedYet = "is not supported by this version yet"
+	if len(net.ValueTypes) > 0 {
+		return fmt.Sprintf("value type %q: value types are not supported by this version yet", net.ValueTypes[0].ID)
+	}
 	for _, ot := range net.ObjectTypes {
+		if len(ot.Aliases) > 0 {
+			return fmt.Sprintf("object type %q: aliases %s", ot.ID, unsupportedYet)
+		}
 		for _, p := range ot.DataProperties {
 			var what string
 			switch {
@@ -478,10 +486,17 @@ func unstoredPropertyDeclaration(net *bknsdk.BknNetwork) string {
 				what = "### Property Constraints"
 			case p.Required && !slices.Contains(ot.PrimaryKeys, p.Name):
 				what = "Required"
+			case len(p.Aliases) > 0:
+				what = "Aliases"
 			default:
 				continue
 			}
-			return fmt.Sprintf("object type %q data property %q: %s is not supported by this version yet", ot.ID, p.Name, what)
+			return fmt.Sprintf("object type %q data property %q: %s %s", ot.ID, p.Name, what, unsupportedYet)
+		}
+	}
+	for _, at := range net.ActionTypes {
+		if len(at.Aliases) > 0 {
+			return fmt.Sprintf("action type %q: aliases %s", at.ID, unsupportedYet)
 		}
 	}
 	return ""

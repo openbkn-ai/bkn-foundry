@@ -161,8 +161,8 @@ func TestVerifyChecksumFileWithFS_LegacyFileStillVerifies(t *testing.T) {
 	mfs := newNetworkFS(networkFileWithCapabilities, objectTypeFile)
 
 	legacy := []string{"# BKN Directory Checksum", "# generated: 2026-08-04T17:17:22+08:00"}
-	legacy = append(legacy, computeBknChecksumWithFS(mfs, "/net/object_types/bom.bkn", checksumFormatBodyOnly)...)
-	legacy = append(legacy, computeBknChecksumWithFS(mfs, "/net/network.bkn", checksumFormatBodyOnly)...)
+	legacy = append(legacy, computeBknChecksumWithFS(mfs, "/net/object_types/bom.bkn", checksumFormatBodyOnly, false)...)
+	legacy = append(legacy, computeBknChecksumWithFS(mfs, "/net/network.bkn", checksumFormatBodyOnly, false)...)
 	require.NoError(t, mfs.WriteFile("/net/"+ChecksumFileName, []byte(strings.Join(legacy, "\n")+"\n"), 0644))
 
 	assert.Equal(t, checksumFormatBodyOnly, declaredChecksumFormat(strings.Join(legacy, "\n")))
@@ -177,7 +177,7 @@ func TestVerifyChecksumFileWithFS_RejectsBodyEditUnderLegacyFormat(t *testing.T)
 	mfs := newNetworkFS(networkFileWithCapabilities, objectTypeFile)
 
 	legacy := []string{"# BKN Directory Checksum"}
-	legacy = append(legacy, computeBknChecksumWithFS(mfs, "/net/object_types/bom.bkn", checksumFormatBodyOnly)...)
+	legacy = append(legacy, computeBknChecksumWithFS(mfs, "/net/object_types/bom.bkn", checksumFormatBodyOnly, false)...)
 	require.NoError(t, mfs.WriteFile("/net/"+ChecksumFileName, []byte(strings.Join(legacy, "\n")+"\n"), 0644))
 
 	edited := strings.Replace(objectTypeFile, "定义产品的物料清单结构。", "定义产品的物料清单结构（已修订）。", 1)
