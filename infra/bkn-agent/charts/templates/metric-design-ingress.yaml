@@ -25,4 +25,13 @@ spec:
                 name: {{ .Values.image.name }}
                 port:
                   number: {{ .Values.service.ports.port }}
+          {{- if .Values.publicIngress.adminAgentsEnabled }}
+          - path: /api/bkn-agent/v1/admin/agents
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.image.name }}
+                port:
+                  number: {{ .Values.service.ports.port }}
+          {{- end }}
 {{- end }}

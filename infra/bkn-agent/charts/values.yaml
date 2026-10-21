@@ -27,11 +27,13 @@ service:
     port: 30800
     targetPort: 30800
 
-# No blanket ingress: legacy agent management and service-call routes remain
-# internal. Enable only the credential-verified execution/recovery routes when
-# Studio needs the Object Metric Designer through the unified gateway.
+# No blanket ingress: legacy management and service-call routes remain internal.
+# Expose only the credential-verified routes required by Studio. The built-in
+# Agent settings page also needs /admin/agents; writes still require
+# admin-agent:manage in the application.
 publicIngress:
   enabled: false
+  adminAgentsEnabled: false
   className: class-443
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"

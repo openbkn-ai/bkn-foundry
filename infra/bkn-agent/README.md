@@ -2,7 +2,7 @@
 
 平台内置 Agent 运行时（Epic #202，设计文档：`docs/design/bkn-agent/features/202-bkn-agent.md`）。
 
-旧管理与服务调用接口继续面向平台内部。0.2.1 新增经过独立凭据校验的用户执行接口；统一网关只可开放这一组路由，不能把整个服务或旧接口公开。Chart 默认不创建 Ingress；Studio 需要从统一入口访问时，显式设置 `publicIngress.enabled=true`，仅开放 `/api/bkn-agent/v1/metric-design/executions` 与 `/api/bkn-agent/v1/executions`（含执行结果恢复），不会开放 `/api/bkn-agent/in/v1` 或旧管理接口。Ingress 为 SSE 关闭代理缓冲，并将读取超时设为 180 秒。
+旧管理与服务调用接口继续面向平台内部。0.2.1 新增经过独立凭据校验的用户执行接口；统一网关不能把整个服务或旧接口公开。Chart 默认不创建 Ingress；Studio 需要从统一入口访问时，显式设置 `publicIngress.enabled=true`，仅开放 `/api/bkn-agent/v1/metric-design/executions` 与 `/api/bkn-agent/v1/executions`（含执行结果恢复）。系统管理的内置 Agent 页面还需要设置 `publicIngress.adminAgentsEnabled=true`，单独开放 `/api/bkn-agent/v1/admin/agents` 子树：读取要求登录，修改要求 `admin-agent:manage`。不会开放 `/api/bkn-agent/in/v1` 或其他旧管理接口。Ingress 为 SSE 关闭代理缓冲，并将读取超时设为 180 秒。
 
 - 引擎：LangGraph（Python）
 - 模型：mf-model-api（OpenAI 兼容，集群内 `/api/private`，model 为空走系统默认）
