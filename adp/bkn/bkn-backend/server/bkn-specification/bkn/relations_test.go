@@ -260,7 +260,12 @@ func TestValidateRelationTypeDeclarations(t *testing.T) {
 // Relation properties get the per-property checks of object type properties: name, display name,
 // type and mask rule.
 func TestValidateNetwork_ChecksRelationProperties(t *testing.T) {
-	_, err := loadV3(t, withRelations(
+	valid, err := loadV3(t, withRelations()...)
+	require.NoError(t, err)
+	res := ValidateNetwork(valid)
+	assert.True(t, res.OK(), "valid relation properties pass: %+v", res.Errors)
+
+	_, err = loadV3(t, withRelations(
 		v3Edit{fLink, "| weight | 权重 | float |", "| weight | 权重 | flaot |"},
 		v3Edit{fLink, "  range: {min: 0}\n", "  unit: kg\n"},
 	)...)
