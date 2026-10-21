@@ -252,11 +252,16 @@ def test_changing_built_in_agents_needs_admin_agent_manage(monkeypatch):
                 "can_edit_shared"
             ] is False
 
-            # Reading stays open, flagged read-only.
-            read = await client.get(ADMIN, headers=AUTH)
-            assert read.status_code == 200, read.text
-            assert read.json()["can_edit"] is False
-            assert (await client.get(f"{ADMIN}/prompt", headers=AUTH)).status_code == 200
+            # Prompt content and version history must not be exposed to an
+            # authenticated account without the management permission.
+            for path in (
+                "/api/bkn-agent/v1/admin/agents",
+                ADMIN,
+                f"{ADMIN}/versions",
+                f"{ADMIN}/prompt",
+            ):
+                assert (await client.get(path, headers=AUTH)).status_code == 403
+            assert (await client.get(ADMIN)).status_code == 401
 
             # The permission, not authorship, decides: the seeded Agent belongs to
             # "admin" and the caller is still "user-1".
@@ -267,6 +272,8 @@ def test_changing_built_in_agents_needs_admin_agent_manage(monkeypatch):
             shared = (await client.get(ADMIN, headers=AUTH)).json()
             assert shared["status"] == "published"
             assert shared["can_edit"] is True
+            assert (await client.get(f"{ADMIN}/versions", headers=AUTH)).status_code == 200
+            assert (await client.get(f"{ADMIN}/prompt", headers=AUTH)).status_code == 200
             updated = await client.put(
                 ADMIN,
                 json={

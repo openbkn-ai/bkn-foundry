@@ -246,15 +246,19 @@ async def _builtin_agent(session: AsyncSession, agent_id: str) -> AgentOut:
     return agent
 
 
+async def _require_shared_admin(account: Account) -> None:
+    if not await can_manage_agents(account):
+        raise err(403, "BknAgent.Execution.Forbidden")
+
+
 async def _shared_editor(
     session: AsyncSession, account: Account, agent_id: str
 ) -> AgentOut:
     """A built-in Agent the caller may change (admin-agent:manage). Its current
     state is recorded as a version first, so the change is never the first
     thing history knows about."""
+    await _require_shared_admin(account)
     agent = await _builtin_agent(session, agent_id)
-    if not await can_manage_agents(account):
-        raise err(403, "BknAgent.Execution.Forbidden")
     await dao.record_version(session, agent_id, account.account_id)
     return agent
 
@@ -310,20 +314,19 @@ async def _shared_out(session: AsyncSession, agent: AgentOut, can_edit: bool) ->
     )
 
 
-# Reading built-in configuration only needs a verified account: the defaults
-# ship in the migrations and the console gates the page. Changing it needs
-# admin-agent:manage (_shared_editor).
+# Built-in configuration and Prompt history require admin-agent:manage for
+# both reads and writes. A client-side menu gate is not an authorization check.
 @router.get("/admin/agents", response_model=list[SharedOut])
 async def list_shared_agents(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
-    can_edit = await can_manage_agents(account)
+    await _require_shared_admin(account)
     items = []
     for agent_id in BUILTIN_AGENT_IDS:
         # A deployment may not have every built-in seeded.
         if agent := await dao.get_agent(session, agent_id):
-            items.append(await _shared_out(session, agent, can_edit))
+            items.append(await _shared_out(session, agent, True))
     return items
 
 
@@ -333,8 +336,9 @@ async def get_shared_agent(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
+    await _require_shared_admin(account)
     agent = await _builtin_agent(session, agent_id)
-    return await _shared_out(session, agent, await can_manage_agents(account))
+    return await _shared_out(session, agent, True)
 
 
 @router.put("/admin/agents/{agent_id}", response_model=SharedOut)
@@ -421,6 +425,7 @@ async def list_agent_versions(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
+    await _require_shared_admin(account)
     return await _versions_out(session, await _builtin_agent(session, agent_id))
 
 
@@ -501,6 +506,7 @@ async def get_shared_prompt(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
+    await _require_shared_admin(account)
     return await _shared_prompt(session, await _builtin_agent(session, agent_id))
 
 
