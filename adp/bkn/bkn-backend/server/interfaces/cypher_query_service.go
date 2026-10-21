@@ -46,6 +46,10 @@ type CypherQuery struct {
 	// node carries besides its identity. Each one is authorized like any
 	// property the query names.
 	ObjectProperties map[string][]string
+	// Explain asks for the query's plan instead of its rows. The query is
+	// read, authorized and compiled exactly as it would be to run, so it is
+	// refused in exactly the same cases, but nothing is read from the data.
+	Explain bool
 }
 
 // CypherQueryResult carries the rows a query produced. The generated SQL is
@@ -64,6 +68,8 @@ type CypherQueryResult struct {
 	// TraceDescriptor is returned only on the internal HTTP face. The public
 	// REST response keeps its existing shape.
 	TraceDescriptor json.RawMessage `json:"-"`
+	// Plan is set, instead of any rows, when the query asked to be explained.
+	Plan *CypherPlan `json:"plan,omitempty"`
 }
 
 // CypherPermissionImpact identifies one object type whose row or property

@@ -198,3 +198,37 @@ func TestRunCypherClassifiesFailureBoundaries(t *testing.T) {
 		})
 	}
 }
+
+// explain reaches bkn-backend, and an explained query records neither
+// evidence of a read nor a failed one: it reads nothing.
+func TestRunCypherExplainsWithoutEvidence(t *testing.T) {
+	previousEvents, previousFailure := emitRunCypherEvents, emitRunCypherFailure
+	t.Cleanup(func() { emitRunCypherEvents, emitRunCypherFailure = previousEvents, previousFailure })
+	emitted := false
+	emitRunCypherEvents = func(context.Context, interfaces.Logger, string, string, int, json.RawMessage) string {
+		emitted = true
+		return ""
+	}
+	emitRunCypherFailure = func(context.Context, interfaces.Logger, string, string, bkntrace.RunCypherFailure) string {
+		emitted = true
+		return ""
+	}
+	for _, failure := range []error{nil, errors.New("refused")} {
+		bkn := &recordingBkn{err: failure, resp: &interfaces.CypherQueryResp{Plan: json.RawMessage(`{"shape":"match"}`)}}
+		resp, err := NewKnCypherServiceWith(bkn).RunCypher(context.Background(), &RunCypherReq{
+			KnID: "kn_retail", Query: "MATCH (o:order) RETURN o.order_no", Explain: true,
+		})
+		if bkn.req == nil || !bkn.req.Explain {
+			t.Fatalf("explain did not reach bkn-backend: %+v", bkn.req)
+		}
+		if failure == nil && (err != nil || string(resp.Plan) != `{"shape":"match"}`) {
+			t.Fatalf("RunCypher() = %+v, %v", resp, err)
+		}
+		if failure != nil && err == nil {
+			t.Fatalf("RunCypher() dropped the refusal")
+		}
+	}
+	if emitted {
+		t.Fatal("an explained query emitted run evidence")
+	}
+}

@@ -32,6 +32,10 @@
         "type": "object",
         "additionalProperties": {"type": "array", "items": {"type": "string"}},
         "description": "可选。返回的节点带哪些属性，如 {\"t\": [\"team_name\"]}；变量须是返回的节点，合计最多 128 个。"
+      },
+      "explain": {
+        "type": "boolean",
+        "description": "可选。为 true 时不执行查询、不读数据，只返回 plan：查询形状、对象和关系、条件、分组、返回列及类型、行数上限、会读的属性和提醒。会被拒的写法照样返回与执行时相同的错误和改写提示，适合先校验带 WITH、多段 MATCH 或多跳的复杂查询。"
       }
     },
     "required": [
@@ -78,6 +82,11 @@
           "match_complete": {"type": "boolean"},
           "conclusions_limited": {"type": "boolean"}
         }
+      },
+      "plan": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "explain 为 true 时出现（此时 entries 为空）：shape 是查询形状（match、aggregate、totals、semi_join、list_comparison、carried）；objects、relations、conditions、grouping、ordering 描述查询；columns 列出每个返回列的 name、kind 和 type；limit 是生效的行数上限；reads 是会读的属性；row_filtered 是行范围被收窄的对象类；warnings 是执行前应知道的提醒。"
       },
       "permission_guidance": {
         "type": "array",

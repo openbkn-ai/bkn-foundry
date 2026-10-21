@@ -31,7 +31,7 @@ curl -X POST "https://<访问地址>/api/bkn-backend/v1/knowledge-networks/<kn_i
 
 ### MCP / 智能体
 
-调用 Context Loader 的 `run_cypher` 工具，参数是 `kn_id`、`query`，可选 `parameters` 和 `object_properties`。
+调用 Context Loader 的 `run_cypher` 工具，参数是 `kn_id`、`query`，可选 `parameters`、`object_properties` 和 `explain`。
 
 ### CLI
 
@@ -46,10 +46,25 @@ openbkn context tool-call <kn_id> run_cypher --args '{"query":"MATCH (g:goals) R
 | `query` | Cypher 文本，最长 8192 字符 |
 | `parameters` | `$name` 的取值。参数只能是值，不能是标签、关系或属性名；不接受 null |
 | `object_properties` | 返回节点时，每个节点变量额外带回哪些属性，例如 `{"t": ["team_name"]}`。变量必须是查询里返回的节点，属性总数最多 128 个，授权规则与查询中其他属性相同 |
+| `explain` | 为 `true` 时只返回执行计划、不读数据，见下文「先用 explain 校验」 |
 
 分支用查询参数 `branch` 指定，默认 `main`。
 
 响应里，`columns` 按 RETURN 的顺序列出列名，`entries` 是每一行（按列名取值）。返回节点或关系时，还会带上 `value_types` 和 `execution`（见下文「返回节点与关系」）。
+
+### 先用 explain 校验
+
+请求里带 `"explain": true` 时，查询照常解析、授权和编译，但不执行，也不读数据，响应里 `entries` 为空，改为返回 `plan`：
+
+```json
+{"query": "MATCH (g:goals)-[:rel_goals_team]->(t:teams) WITH t, count(*) AS n WHERE n > 200 RETURN t.team_name AS team, n", "explain": true}
+```
+
+- 会被拒的写法，返回的错误码和改写提示与执行时完全相同；能通过 explain 的查询，执行时也不会因为写法被拒。
+- `plan` 里有：`shape`（查询形状：match、aggregate、totals、semi_join、list_comparison、carried）、`objects` 和 `relations`（每个变量对应的对象类、走的关系类）、`conditions`（每个条件的运算符、读的属性，以及作用在行、分组还是前一段上）、`grouping`、`columns`（每一列的名字、怎么算出来、值类型）、`ordering`、`limit`（生效的行数上限）、`reads`（会读的属性）、`row_filtered`（行范围被访问策略收窄的对象类）和 `warnings`。
+- `warnings` 会提醒：模式里有互不相连的部分（结果是两两组合）、没写 LIMIT 时最多返回 1000 行、行范围被收窄、`collect` 的证据达到 10000 行会被拒。
+- 不返回 SQL，条件里写的值也不重复列出。权限与执行时相同：读不到的对象类和属性，explain 里同样看不到。
+- 适合先检查带 WITH、多段 MATCH 或多跳的复杂查询，确认分组、过滤和连接都符合预期，再去执行。
 
 ---
 
