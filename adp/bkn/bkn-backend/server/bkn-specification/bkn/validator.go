@@ -411,33 +411,7 @@ func validateObjectTypeDeep(result *ValidationResult, table string, ot *BknObjec
 			fmt.Sprintf("logic_properties count %d exceeds max %d", len(ot.LogicProperties), maxPropertyNum))
 	}
 
-	dataPropMap := make(map[string]*DataProperty)
-	for _, dp := range ot.DataProperties {
-		if dp == nil {
-			continue
-		}
-		if err := validatePropertyName(dp.Name); err != nil {
-			appendError(result, table, "data_properties", "invalid_property_name", err.Error())
-		}
-		if msg := validateObjectName(dp.DisplayName, ""); msg != "" {
-			appendError(result, table, "data_properties", "invalid_display_name", fmt.Sprintf("property %q: %s", dp.Name, msg))
-		}
-		if strings.TrimSpace(dp.Type) != "" {
-			nt := normType(dp.Type)
-			if !validDataPropertyTypes[nt] {
-				appendError(result, table, "data_properties", "invalid_property_type",
-					fmt.Sprintf("data property %q has invalid type %q", dp.Name, dp.Type))
-			}
-		}
-		if err := maskrule.Validate(normType(dp.Type), dp.MaskRule); err != nil {
-			appendError(result, table, "data_properties", "invalid_mask_rule",
-				fmt.Sprintf("data property %q has invalid mask_rule: %s", dp.Name, err))
-		}
-		if dp.MappedField != "" && strings.TrimSpace(dp.MappedField) == "" {
-			appendError(result, table, "data_properties", "invalid_object_type", fmt.Sprintf("mapped_field for %q must not be empty when set", dp.Name))
-		}
-		dataPropMap[dp.Name] = dp
-	}
+	dataPropMap := validateDataPropertyRows(result, table, ot.DataProperties)
 
 	if len(ot.PrimaryKeys) == 0 {
 		appendError(result, table, "primary_keys", "null_primary_keys", "primary_keys must not be empty")
@@ -559,7 +533,46 @@ func validatePropertyName(name string) error {
 	return nil
 }
 
+// validateDataPropertyRows checks each data property of an object type or a relation: its name,
+// display name, type, mask rule and mapped field. It returns the properties by name.
+func validateDataPropertyRows(result *ValidationResult, table string, props []*DataProperty) map[string]*DataProperty {
+	dataPropMap := make(map[string]*DataProperty)
+	for _, dp := range props {
+		if dp == nil {
+			continue
+		}
+		if err := validatePropertyName(dp.Name); err != nil {
+			appendError(result, table, "data_properties", "invalid_property_name", err.Error())
+		}
+		if msg := validateObjectName(dp.DisplayName, ""); msg != "" {
+			appendError(result, table, "data_properties", "invalid_display_name", fmt.Sprintf("property %q: %s", dp.Name, msg))
+		}
+		if strings.TrimSpace(dp.Type) != "" {
+			nt := normType(dp.Type)
+			if !validDataPropertyTypes[nt] {
+				appendError(result, table, "data_properties", "invalid_property_type",
+					fmt.Sprintf("data property %q has invalid type %q", dp.Name, dp.Type))
+			}
+		}
+		if err := maskrule.Validate(normType(dp.Type), dp.MaskRule); err != nil {
+			appendError(result, table, "data_properties", "invalid_mask_rule",
+				fmt.Sprintf("data property %q has invalid mask_rule: %s", dp.Name, err))
+		}
+		if dp.MappedField != "" && strings.TrimSpace(dp.MappedField) == "" {
+			appendError(result, table, "data_properties", "invalid_object_type", fmt.Sprintf("mapped_field for %q must not be empty when set", dp.Name))
+		}
+		dataPropMap[dp.Name] = dp
+	}
+	return dataPropMap
+}
+
 func validateRelationTypeDeep(result *ValidationResult, table string, rt *BknRelationType) {
+	// Relation properties exist only in 3.0 (SPECIFICATION.md §7.6); a 2.x relation has none.
+	if len(rt.DataProperties) > maxPropertyNum {
+		appendError(result, table, "data_properties", "invalid_relation_type",
+			fmt.Sprintf("data_properties count %d exceeds max %d", len(rt.DataProperties), maxPropertyNum))
+	}
+	validateDataPropertyRows(result, table, rt.DataProperties)
 	epType := strings.TrimSpace(rt.Endpoint.Type)
 	if epType != "" && !validRelationMappingTypes[epType] {
 		appendError(result, table, "endpoint.type", "invalid_relation_type",
