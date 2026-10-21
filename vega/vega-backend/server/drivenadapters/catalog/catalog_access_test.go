@@ -368,6 +368,64 @@ func TestCatalogAccessGetByName(t *testing.T) {
 }
 
 func TestCatalogAccessUpdate(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		transaction  bool
+		rowsAffected int64
+		execErr      error
+		rowsErr      error
+	}{
+		{name: "preserves newer health check and stored configuration", rowsAffected: 1},
+		{name: "updates in transaction", transaction: true, rowsAffected: 1},
+		{name: "stale version affects no rows", transaction: true},
+		{name: "propagates database failure", execErr: errors.New("update failed")},
+		{name: "propagates affected rows failure", rowsErr: errors.New("rows affected failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			access, mock, cleanup := newCatalogAccessMock(t)
+			defer cleanup()
+			catalog := sampleCatalog()
+			// 模拟读取旧快照后，健康检查先提交；检查结果不推进目录版本号。
+			mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET f_health_check_status = ?, f_last_check_time = ?, f_health_check_result = ? WHERE f_id = ?")).
+				WithArgs(interfaces.CatalogHealthStatusUnhealthy, int64(200), "new result", catalog.ID).
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			require.NoError(t, access.UpdateHealthCheckStatus(context.Background(), catalog.ID, interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy, LastCheckTime: 200, HealthCheckResult: "new result",
+			}))
+			var tx *sql.Tx
+			if tc.transaction {
+				mock.ExpectBegin()
+				var err error
+				tx, err = access.db.BeginTx(context.Background(), nil)
+				require.NoError(t, err)
+			}
+			// 精确匹配 SET 列及参数，禁止写回旧配置和健康检查快照。
+			expect := mock.ExpectExec("^"+regexp.QuoteMeta("UPDATE t_catalog SET f_name = ?, f_tags = ?, f_description = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")+"$").
+				WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID, int64(1))
+			if tc.execErr != nil {
+				expect.WillReturnError(tc.execErr)
+			} else if tc.rowsErr != nil {
+				expect.WillReturnResult(sqlmock.NewErrorResult(tc.rowsErr))
+			} else {
+				expect.WillReturnResult(sqlmock.NewResult(0, tc.rowsAffected))
+			}
+			rows, err := access.Update(context.Background(), tx, catalog, 1, false)
+			if tc.execErr != nil {
+				require.ErrorIs(t, err, tc.execErr)
+			} else if tc.rowsErr != nil {
+				require.ErrorIs(t, err, tc.rowsErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.rowsAffected, rows)
+			if tc.transaction {
+				mock.ExpectRollback()
+				require.NoError(t, tx.Rollback())
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+
 	t.Run("updates catalog", func(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
@@ -378,7 +436,7 @@ func TestCatalogAccessUpdate(t *testing.T) {
 			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, `{"host":"127.0.0.1"}`, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID, catalog.UpdateTime).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		rowsAffected, err := access.Update(context.Background(), nil, catalog, catalog.UpdateTime)
+		rowsAffected, err := access.Update(context.Background(), nil, catalog, catalog.UpdateTime, true)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -395,7 +453,7 @@ func TestCatalogAccessUpdate(t *testing.T) {
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		catalog := sampleCatalog()
-		rowsAffected, err := access.Update(context.Background(), tx, catalog, catalog.UpdateTime)
+		rowsAffected, err := access.Update(context.Background(), tx, catalog, catalog.UpdateTime, true)
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), rowsAffected)
 		mock.ExpectCommit()
@@ -412,7 +470,7 @@ func TestCatalogAccessUpdate(t *testing.T) {
 		mock.ExpectExec("UPDATE t_catalog SET .* WHERE f_id = \\? AND f_update_time = \\?").
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		rowsAffected, err := access.Update(context.Background(), nil, catalog, expectedUpdateTime)
+		rowsAffected, err := access.Update(context.Background(), nil, catalog, expectedUpdateTime, true)
 
 		require.NoError(t, err)
 		assert.Zero(t, rowsAffected)

@@ -193,18 +193,18 @@ func (mr *MockCatalogAccessMockRecorder) ListPermissionRefs(ctx, params any) *go
 }
 
 // Update mocks base method.
-func (m *MockCatalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog, expectedUpdateTime int64) (int64, error) {
+func (m *MockCatalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog, expectedUpdateTime int64, updateConnection bool) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, tx, catalog, expectedUpdateTime)
+	ret := m.ctrl.Call(m, "Update", ctx, tx, catalog, expectedUpdateTime, updateConnection)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockCatalogAccessMockRecorder) Update(ctx, tx, catalog, expectedUpdateTime any) *gomock.Call {
+func (mr *MockCatalogAccessMockRecorder) Update(ctx, tx, catalog, expectedUpdateTime, updateConnection any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogAccess)(nil).Update), ctx, tx, catalog, expectedUpdateTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockCatalogAccess)(nil).Update), ctx, tx, catalog, expectedUpdateTime, updateConnection)
 }
 
 // UpdateEnabled mocks base method.
