@@ -9,6 +9,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -914,6 +915,75 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 }
 
 func TestCatalogServiceUpdate(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		configJSON     string
+		allowUnhealthy bool
+		rowsAffected   int64
+	}{
+		{name: "omitted config preserves unhealthy connection", allowUnhealthy: true, rowsAffected: 1},
+		{name: "metadata update does not require a healthy connection", rowsAffected: 1},
+		{name: "null config preserves connection", configJSON: `,"connector_config":null`, rowsAffected: 1},
+		{name: "omitted config still respects optimistic locking", rowsAffected: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+			ps := mock_interfaces.NewMockPermissionService(ctrl)
+			cf := mock_interfaces.NewMockConnectorFactory(ctrl)
+			db, sqlMock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+
+			// 与 SDK 部分更新组装的 PUT 请求一致，名称和版本号均保留。
+			var req interfaces.CatalogRequest
+			require.NoError(t, json.Unmarshal([]byte(`{"id":"catalog-1","name":"physical-catalog","connector_type":"mariadb","enabled":false,"tags":["saved"],"description":"updated description","expected_update_time":42`+tc.configJSON+`}`), &req))
+			config := interfaces.ConnectorConfig{"host": "db.example.com", "password": "ENC:test-only-ciphertext"} //nolint:gosec // Test-only placeholder ciphertext.
+			status := interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusUnhealthy,
+				LastCheckTime:     123, HealthCheckResult: connectionTestFailedResult,
+			}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ca.EXPECT().GetByID(gomock.Any(), req.ID).Return(&interfaces.Catalog{
+				ID: req.ID, Name: req.Name, ConnectorType: req.ConnectorType,
+				ConnectorCfg: config, CatalogHealthCheckStatus: status, UpdateTime: 42,
+			}, nil)
+			sqlMock.ExpectBegin()
+			ca.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(42)).DoAndReturn(
+				func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog, _ int64) (int64, error) {
+					assert.Equal(t, config, saved.ConnectorCfg)
+					assert.Equal(t, status, saved.CatalogHealthCheckStatus)
+					assert.Equal(t, req.Name, saved.Name)
+					assert.Equal(t, req.ConnectorType, saved.ConnectorType)
+					assert.False(t, saved.Enabled)
+					assert.Equal(t, req.Tags, saved.Tags)
+					assert.Equal(t, req.Description, saved.Description)
+					return tc.rowsAffected, nil
+				})
+			if tc.rowsAffected == 0 {
+				sqlMock.ExpectRollback()
+			} else {
+				sqlMock.ExpectCommit()
+			}
+			cs := &catalogService{db: db, ca: ca, ps: ps, cf: cf, cipher: &mockCipher{
+				decryptFunc: func(string) (string, error) {
+					t.Fatal("metadata update must not decrypt saved credentials")
+					return "", nil
+				},
+			}}
+			err = cs.Update(context.Background(), &req, tc.allowUnhealthy)
+			if tc.rowsAffected == 0 {
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+				assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
+			} else {
+				require.NoError(t, err)
+			}
+			require.NoError(t, sqlMock.ExpectationsWereMet())
+		})
+	}
+
 	t.Run("does not load catalog when modify permission is denied", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
@@ -995,7 +1065,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		assert.Equal(t, verrors.VegaBackend_Catalog_NameExists, httpErr.BaseError.ErrorCode)
 	})
 
-	t.Run("does not expose connector initialization error", func(t *testing.T) {
+	t.Run("explicit empty config fails construction even when unhealthy is allowed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
@@ -1007,7 +1077,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		}, nil)
 		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", interfaces.ConnectorConfig{}).
 			Return(nil, errors.New(sensitiveError))
 		cs := &catalogService{
 			ca: mockCA,
@@ -1018,7 +1088,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ID:            "catalog-1",
 			Name:          "physical-catalog",
 			ConnectorType: "mariadb",
-		}, false)
+			ConnectorCfg:  interfaces.ConnectorConfig{},
+		}, true)
 
 		requireRedactedConnectorInitializationError(t, err, sensitiveError)
 	})
@@ -1050,6 +1121,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ID:            "catalog-1",
 			Name:          "physical-catalog",
 			ConnectorType: "mariadb",
+			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, false)
 
 		var httpErr *rest.HTTPError
@@ -1081,12 +1153,17 @@ func TestCatalogServiceUpdate(t *testing.T) {
 				HealthCheckResult: "awaiting scheduled health check",
 			},
 		}, nil)
-		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
-		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return([]string{"password"})
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", interfaces.ConnectorConfig{
+			"host": "new.example.com", "password": "test-only-plaintext",
+		}).Return(connector, nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64) (int64, error) {
+				assert.Equal(t, interfaces.ConnectorConfig{ //nolint:gosec // Test-only placeholder ciphertext.
+					"host": "new.example.com", "password": "ENC:test-only-ciphertext",
+				}, catalog.ConnectorCfg)
 				assert.Equal(t, interfaces.CatalogHealthStatusHealthy, catalog.HealthCheckStatus)
 				assert.Greater(t, catalog.LastCheckTime, int64(111))
 				assert.Equal(t, "Connection test succeeded.", catalog.HealthCheckResult)
@@ -1094,11 +1171,17 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			},
 		)
 
-		cs := &catalogService{appSetting: &common.AppSetting{}, db: db, ca: mockCA, ps: mockPS, cf: connectorFactory}
+		cs := &catalogService{appSetting: &common.AppSetting{}, db: db, ca: mockCA, ps: mockPS, cf: connectorFactory, cipher: &mockCipher{
+			decryptFunc: func(value string) (string, error) {
+				assert.Equal(t, "test-only-ciphertext", value)
+				return "test-only-plaintext", nil
+			},
+		}}
 		err = cs.Update(context.Background(), &interfaces.CatalogRequest{
 			ID:            "catalog-1",
 			Name:          "physical-catalog",
 			ConnectorType: "mariadb",
+			ConnectorCfg:  interfaces.ConnectorConfig{"host": "new.example.com", "password": "test-only-ciphertext"},
 		}, true)
 
 		require.NoError(t, err)
@@ -1139,6 +1222,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ID:            "catalog-1",
 			Name:          "physical-catalog",
 			ConnectorType: "mariadb",
+			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, true)
 
 		require.NoError(t, err)

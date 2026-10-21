@@ -329,8 +329,14 @@ paths:
         `enabled` 不能通过 PUT 切换；请求体中的 `enabled` 必须与当前 catalog 状态一致。
         如需启用/禁用，使用 `POST /catalogs/{id}/enable` 或 `POST /catalogs/{id}/disable`。
 
-        `connector_config` 可修改；修改影响发现范围的字段后，旧 Resource 会在下一次
-        discover 对齐时标记为 `stale`。
+        `connector_config` 是全量更新的例外：省略或传 `null` 时保留已存连接配置及敏感字段，
+        不执行敏感字段解密、连接器创建或连接测试，健康状态及检查结果保持不变。
+        因此只修改名称、标签或描述不要求数据源当前可连接，也不需要 `allow_unhealthy=true`。
+        其他字段仍遵循上述全量更新约定，并继续校验 `expected_update_time`。
+
+        显式提交 `connector_config` 对象时，按完整配置替换，不与已存配置合并；
+        `{}` 是显式空配置，仍须通过连接器配置校验，不等同于省略。
+        修改影响发现范围的字段后，旧 Resource 会在下一次 discover 对齐时标记为 `stale`。
 
         修改物理 Catalog 配置时会先执行连接测试。默认连接失败返回 400，且不会持久化更新；
         可传 `allow_unhealthy=true` 保存更新，并将健康状态记为 `unhealthy`。
@@ -795,8 +801,12 @@ components:
           examples:
             - sqlserver
         connector_config:
-          description: 连接器配置；字段由 ConnectorType.field_config 决定
-          type: object
+          description: |
+            连接器配置；字段由 ConnectorType.field_config 决定。
+            PUT 时省略或 null 表示保留已存配置、敏感字段和健康状态，并跳过连接测试；
+            显式对象（包括 {}）按完整配置校验和替换，不合并已存字段。
+            POST 时物理 Catalog 仍必须提供满足连接器要求的配置。
+          type: [object, "null"]
           additionalProperties: true
           examples:
             - host: sqlserver.example.com

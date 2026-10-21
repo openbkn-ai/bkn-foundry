@@ -788,11 +788,11 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 	catalog.Tags = req.Tags
 	catalog.Description = req.Description
 
-	if req.ConnectorType != "" {
+	// 未提交连接配置时只更新元数据，保留已存配置、密文及健康状态。
+	if req.ConnectorType != "" && req.ConnectorCfg != nil {
 		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
 
-		// Note: The immutability of connector_type is underpinned by the PUT handler (catalog_handler.go).
-		// Here, it will not be repeated. Just follow the req.ConnectorType to go through the decryption + trial connection + persistence process.
+		// 显式提交配置（包括空对象）时，继续执行解密、连接测试和持久化。
 
 		// Verify whether the sensitive field is a legitimate RSA ciphertext and obtain the plaintext for connection testing
 		sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
