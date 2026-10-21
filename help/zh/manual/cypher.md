@@ -179,7 +179,7 @@ ORDER BY n DESC LIMIT 4
 
 ## 🔗 WITH：分段处理
 
-WITH 有三种用法，都只用 MATCH 前后的写法来区分。
+WITH 有四种用法，都只用 MATCH 前后的写法来区分。
 
 ### 1. 先聚合再过滤
 
@@ -191,7 +191,7 @@ WITH t, count(*) AS n WHERE n > 200
 RETURN t.team_name AS team, n ORDER BY n DESC
 ```
 
-- WITH 里的值要用 `AS` 命名。节点可以直接传下去（`WITH t`），按对象的主键分组，所以同名的两个对象不会被合并。
+- WITH 里的值要用 `AS` 命名。节点可以直接传下去（`WITH t`），按对象的主键分组，所以同名的两个对象不会被合并。传下去的节点可以在 RETURN 里直接返回，例如 `WITH p, t, count(g) AS n WHERE n > 1 RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, n`（见「虚拟边与证据」）。
 - WITH 的 WHERE 里，只涉及分组键的条件在分组之前过滤，涉及聚合的条件对每个分组判断。
 - **可以连写多个 WITH 接力计算**。只有第一个 WITH 能聚合，后面的 WITH 用前面的名字算新值，并各自加条件：
 
@@ -254,6 +254,25 @@ RETURN size([x IN codes1 WHERE x IN codes2]) AS common, size(codes1) AS n1, size
 - 没写 DISTINCT 的列表保留重复值，共有元素个数按被过滤那个列表的重复次数计算，和 Cypher 一致；所以两个方向同时求，要求两个列表都写 DISTINCT。
 - 第二段 MATCH 什么都没匹配到时，结果没有行；第一段没匹配到时，返回一行，第一个列表的大小和共有元素个数都是 0。
 - 不能直接返回列表本身。要列出共有的值，用上面「比较两组对象」的共享节点写法。
+
+### 4. 把节点传给下一段 MATCH
+
+WITH 把节点和为它算出的值传下去，下一段 MATCH 从这些节点接着走，可以在第二层再聚合：
+
+```cypher
+MATCH (p:players)<-[:rel_goals_player]-(g:goals)
+WITH p, count(g) AS total WHERE total >= 10
+MATCH (p)<-[:rel_goals_player]-(g2:goals)-[:rel_goals_team]->(t:teams)
+RETURN p.family_name AS name, t.team_name AS team, count(g2) AS n, total
+ORDER BY total DESC, name, team
+```
+
+- 下一段 MATCH 里，传下来的节点可以不写标签（`(p)`），按主键和上一段对应起来。WITH 传下来的每一行都会和下一段匹配到的行连接，下一段没匹配到的节点不出现在结果里。
+- WITH 里命名的值（如 `total`）可以在 RETURN 和 ORDER BY 里使用和计算，例如 `count(g2) * 1.0 / total AS share`。用在含聚合的表达式里时，要把它也作为单独一列返回（`RETURN …, total, count(g2) * 1.0 / total AS share`），这样它才是分组键。
+- 这些值不能写在下一段 MATCH 的 WHERE 里；对它们的条件写在 WITH 自己的 WHERE 里。
+- 传下来的每个节点都必须在下一段 MATCH 里用到；节点不能改名（`WITH p AS q`），也不能和 `collect` 列表一起传。
+- 下一段不能是 OPTIONAL MATCH，之后也不能再接 WITH。
+- RETURN 可以返回下一段的节点和传下来的节点，画成带数值的虚拟边：`RETURN p AS source, 'SCORED_FOR' AS relationType, t AS target, count(g2) AS n, total`。
 
 ### 开头定义常量
 

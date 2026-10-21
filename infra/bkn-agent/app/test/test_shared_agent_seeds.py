@@ -273,8 +273,9 @@ def test_sql_defaults_match_the_previous_agent_and_prompt_definitions():
         # guidance for listing every row in one query instead of pages, then
         # with the run_cypher subset as it stands after #2263 in place of a
         # list of refusals that had stopped being true, then with CASE,
-        # coalesce and the comparison of two collected lists.
-        "studio_smart_qa": "16a5ad7bbac1557dcf919af79d3be4d2152436160140b1a27e645a5948eca072",
+        # coalesce and the comparison of two collected lists, then with
+        # nodes passed on to a second MATCH.
+        "studio_smart_qa": "22247fd4a20cee03f1a96c998df137cecb8fc17c5a44d7f5838623d78241eaff",
         "business_provenance_optimizer": "10531cf1bf25a4ac4e52219766f507556e3544f0d9296fc2daff589fe70e7540",
         "business_provenance_claim_attribution": "9dc9e6ad9f118db0c7f890f595584048e9937413c2b60319d57ebf809ee3cb43",
     }

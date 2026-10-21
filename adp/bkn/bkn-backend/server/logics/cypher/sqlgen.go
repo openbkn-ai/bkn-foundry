@@ -233,6 +233,8 @@ func (g *generator) expression(value PlanExpression) string {
 		return written
 	case PlanAggregate:
 		return g.aggregate(node)
+	case PlanCarriedValue:
+		return carriedAlias + "." + g.identifier(node.Alias)
 	case PlanCase:
 		var out strings.Builder
 		out.WriteString("CASE")
@@ -407,6 +409,7 @@ func (g *generator) writeFrom() {
 		used[join] = true
 	}
 	g.writeSemiJoins()
+	g.writeCarried()
 	g.writeOptionalJoins(joined, used)
 	// The chosen conclusions may name a node an OPTIONAL MATCH attached, so
 	// they join after every outer join.
@@ -451,6 +454,29 @@ func (g *generator) writeSemiJoins() {
 		g.out.WriteString(g.column(semiJoin.Table, semiJoin.Column))
 		g.out.WriteString(" = ")
 		g.out.WriteString(alias + "." + g.identifier(semiJoin.Sub.Select[0].Alias))
+	}
+}
+
+// writeCarried joins a carried stage on the primary keys of the nodes it
+// passed on. The stage has one row per row its WITH passed on, so each of
+// those rows meets the outer rows of its nodes, as in Cypher; it is unlimited,
+// since a LIMIT would drop some of them.
+func (g *generator) writeCarried() {
+	carried := g.plan.Carried
+	if carried == nil {
+		return
+	}
+	sub, err := Generate(carried.Stage, GenerateOptions{Dialect: g.dialect})
+	if err != nil {
+		g.fail(err)
+		return
+	}
+	g.out.WriteString(" JOIN (" + sub + ") " + carriedAlias + " ON ")
+	for i, key := range carried.Keys {
+		if i > 0 {
+			g.out.WriteString(" AND ")
+		}
+		g.out.WriteString(g.column(key.Table, key.Column) + " = " + carriedAlias + "." + g.identifier(key.Alias))
 	}
 }
 

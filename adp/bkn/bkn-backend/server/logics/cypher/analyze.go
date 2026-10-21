@@ -89,7 +89,7 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody(), nil); err != nil {
+	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody(), nil, nil); err != nil {
 		return nil, err
 	}
 	return query, nil
@@ -119,6 +119,11 @@ func analyzeReading(reading []parsing.IOC_ReadingClauseContext, at antlr.ParserR
 
 	query := &Query{}
 	builder := newPatternBuilder()
+	for name, binding := range scope {
+		if binding.label != "" {
+			builder.carried[name] = binding.label
+		}
+	}
 	var inline []Predicate
 	var lastMatch parsing.IOC_MatchContext
 
@@ -259,10 +264,13 @@ type patternBuilder struct {
 	// variable is one node wherever it is written, which is what makes several
 	// MATCH clauses one shape.
 	clause int
+	// carried labels the nodes a carried stage passed on, which a MATCH may
+	// name without writing their label again.
+	carried map[string]string
 }
 
 func newPatternBuilder() *patternBuilder {
-	return &patternBuilder{nodeOf: map[string]int{}}
+	return &patternBuilder{nodeOf: map[string]int{}, carried: map[string]string{}}
 }
 
 // addPattern reads one MATCH's worth of comma-separated paths. Everything it
@@ -430,6 +438,13 @@ func (b *patternBuilder) addNode(ctx parsing.IOC_NodePatternContext) (int, error
 			b.inline = append(b.inline, conditions...)
 			return existing, nil
 		}
+	}
+	if label, carried := b.carried[node.Variable]; carried && node.Variable != "" && !node.Anonymous {
+		if node.Label != "" && node.Label != label {
+			return 0, unsupportedf(ctx, "one variable with two labels",
+				"%q is already %q here", node.Variable, label)
+		}
+		node.Label = label
 	}
 	if node.Label == "" {
 		// A first mention has to say what it is: without a label there is no
@@ -614,8 +629,11 @@ func analyzeRelationship(ctx parsing.IOC_RelationshipPatternContext) (*EdgeRef, 
 }
 
 // analyzeProjectionBody reads RETURN. names maps a name an earlier WITH
-// introduced to the property it was found equal to, so that RETURN may use it.
-func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext, names map[string]PropertyRef) error {
+// introduced to the property it was found equal to, so that RETURN may use it;
+// carried names the values a carried stage named, which RETURN and ORDER BY
+// may use; see analyzeCarried.
+func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext, names map[string]PropertyRef,
+	carried map[string]bool) error {
 	query.Distinct = ctx.DISTINCT() != nil
 
 	items := ctx.OC_ProjectionItems()
@@ -625,8 +643,11 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext, 
 		return unsupportedf(items, "RETURN *", "list the properties to return")
 	}
 	for _, item := range items.AllOC_ProjectionItem() {
-		var projection *Projection
-		if name, ok := bareVariable(item.OC_Expression()); ok && names != nil {
+		projection, _, err := carriedProjection(item.OC_Expression(), carried)
+		if err != nil {
+			return err
+		}
+		if name, ok := bareVariable(item.OC_Expression()); ok && names != nil && projection == nil {
 			if property, known := names[name]; known {
 				projection = &Projection{Property: &property, Alias: name, Pos: positionOf(item)}
 			}
@@ -649,9 +670,14 @@ func analyzeProjectionBody(query *Query, ctx parsing.IOC_ProjectionBodyContext, 
 
 	if order := ctx.OC_Order(); order != nil {
 		for _, item := range order.AllOC_SortItem() {
-			key, err := analyzeSortKey(item.OC_Expression())
+			key, _, err := carriedSortKey(item.OC_Expression(), carried, query)
 			if err != nil {
 				return err
+			}
+			if key == nil {
+				if key, err = analyzeSortKey(item.OC_Expression()); err != nil {
+					return err
+				}
 			}
 			if property, known := names[key.Alias]; known && !returnsAlias(query, key.Alias) {
 				key = &SortKey{Property: &property, Pos: key.Pos}

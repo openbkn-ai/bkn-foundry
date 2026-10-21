@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/cypher/parsing"
 )
 
-// A query with a WITH is read in one of three shapes:
+// A query with a WITH is read in one of four shapes:
 //
 //	MATCH ... WITH <grouping and aggregates> [WHERE ...] RETURN ...
 //
@@ -28,9 +28,10 @@ import (
 // the first stage's. In the first shape, more WITHs may follow the first one
 // (see analyzeWiths); a MATCH may follow only the first WITH. The third shape
 // collects a list in each of two stages and returns sizes of them and of what
-// they share (see analyzeIntersection).
+// they share (see analyzeIntersection). The fourth passes nodes on to the
+// MATCH after the WITH, with values computed for them (see analyzeCarried).
 //
-// Either shape may open with a WITH that names values written in the query,
+// Each shape may open with a WITH that names values written in the query,
 // as in WITH ['a', 'b'] AS codes MATCH ... WHERE n.code IN codes: each name
 // stands for its value in the conditions of the MATCH that follows.
 
@@ -82,7 +83,7 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := analyzeProjectionBody(query, returning.OC_ProjectionBody(), nil); err != nil {
+		if err := analyzeProjectionBody(query, returning.OC_ProjectionBody(), nil, nil); err != nil {
 			return nil, err
 		}
 		return query, nil
@@ -135,6 +136,9 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
+	if carriesNodes(segment.with, first) {
+		return analyzeCarried(first, segment.with, after, final, returning, constants)
+	}
 	name, binding, err := analyzeStageWith(segment.with, first)
 	if err != nil {
 		return nil, err
@@ -152,7 +156,7 @@ func analyzeMultiPart(multi parsing.IOC_MultiPartQueryContext) (*Query, error) {
 	if binding.equal != nil {
 		names = map[string]PropertyRef{name: *binding.equal}
 	}
-	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody(), names); err != nil {
+	if err := analyzeProjectionBody(query, returning.OC_ProjectionBody(), names, nil); err != nil {
 		return nil, err
 	}
 	if !binding.set && !binding.distinct {
@@ -288,6 +292,10 @@ type nameBinding struct {
 	set      bool
 	distinct bool
 	used     bool
+	// label is set for a node a carried stage passed on, which the next
+	// MATCH may write without its label; carried for a value it named.
+	label   string
+	carried bool
 	// equal is the property the name was compared equal to, which RETURN
 	// reads when it names the WITH's value.
 	equal *PropertyRef
@@ -405,8 +413,11 @@ func (s nameScope) resolveTerm(predicate Predicate, top bool) (Predicate, error)
 func (s nameScope) semiJoin(name NameRef, outer PropertyRef, equality, membership, top bool, pos Position) (Predicate, error) {
 	binding, known := s[name.Name]
 	switch {
-	case !known:
+	case !known || binding.label != "":
 		return nil, unsupportedAt(name.Pos, "referring to a node as a value", "use %s.property", name.Name)
+	case binding.carried:
+		return nil, unsupportedAt(name.Pos, "a carried value in the next MATCH's conditions",
+			"test %s in the WHERE of the WITH that named it, or compute with it in RETURN", name.Name)
 	case !top:
 		return nil, unsupportedAt(name.Pos, "using a WITH's value under OR or NOT",
 			"compare with %s as a condition of its own, joined by AND", name.Name)
@@ -447,6 +458,9 @@ func (q *Query) stages() []*Query {
 	var stages []*Query
 	if q.Intersection != nil {
 		stages = append(stages, q.Intersection.Lists[:]...)
+	}
+	if q.Carried != nil {
+		stages = append(stages, q.Carried.Stage)
 	}
 	var walk func(Predicate)
 	walk = func(predicate Predicate) {
