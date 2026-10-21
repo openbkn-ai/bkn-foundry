@@ -50,6 +50,9 @@ type cypherQueryService struct {
 	// bindJoinTimeout bounds one bind-join execution; zero means the SQL
 	// path's statement timeout.
 	bindJoinTimeout time.Duration
+	// resourceSources remembers, per resource id, the category and catalog
+	// vega-backend gave it; see outsideSQL.
+	resourceSources sync.Map
 }
 
 var (
@@ -153,6 +156,9 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 			Columns: []interfaces.RawQueryColumn{}, Entries: []map[string]any{}, Plan: plan,
 		}, nil
 	}
+	if s.outsideSQL(ctx, compiled.plan) {
+		return s.queryOutsideSQL(ctx, query, compiled)
+	}
 	if compiled.graph != nil {
 		span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL), attribute.Bool(spanAttrGraph, true))
 		return s.queryGraph(ctx, query, compiled)
@@ -163,13 +169,18 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 		return s.queryBindJoin(ctx, query, compiled)
 	}
 	span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL))
-	return s.querySQL(ctx, query, compiled)
+	return s.querySQL(ctx, query, compiled, false)
 }
 
 // querySQL runs the compiled MySQL statement through vega-backend's raw query
 // route.
+//
+// afterBindJoin says the bind-join executor already ran the query and gave up
+// on its read budget or its time. Resources SQL cannot read then have nothing
+// left to fall back to: running the same bind-join again would only double the
+// wait and the reads.
 func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.CypherQuery,
-	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	compiled *compiledQuery, afterBindJoin bool) (*interfaces.CypherQueryResult, error) {
 	// The paging limit repeats the statement's own LIMIT rather than leaving
 	// it unset. vega-backend wraps the statement and applies a page of its
 	// own, defaulting to 20 rows, so a query asking for more would come back
@@ -184,6 +195,12 @@ func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.Cyph
 		},
 		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
 	})
+	if unsupportedSource(err) && afterBindJoin {
+		return nil, outsideSQLTooLarge(ctx)
+	}
+	if unsupportedSource(err) {
+		return s.queryOutsideSQL(ctx, query, compiled)
+	}
 	if err != nil {
 		return nil, executionError(ctx, err)
 	}
@@ -215,6 +232,9 @@ func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.Cy
 		},
 		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
 	})
+	if unsupportedSource(err) {
+		return s.queryOutsideSQL(ctx, query, compiled)
+	}
 	if err != nil {
 		return nil, executionError(ctx, err)
 	}
@@ -524,6 +544,9 @@ const (
 	// fallbackSQLTimeout records one that ran as SQL because the executor did
 	// not finish within its own timeout.
 	fallbackSQLTimeout = "sql_timeout"
+	// fallbackNonSQLSource records a query that ran on the bind-join
+	// executor because its resources are not in one SQL data source.
+	fallbackNonSQLSource = "non_sql_source"
 )
 
 // proxyTargetResource is the target type of a binding to a vega resource.
@@ -605,12 +628,12 @@ func (s *cypherQueryService) queryBindJoin(ctx context.Context, query interfaces
 	if errors.As(err, &budget) {
 		span.SetAttributes(attribute.String(spanAttrFallback, fallbackSQLReadBudget))
 		logger.Infof("Cypher query on knowledge network %s falls back to SQL: %s", query.KNID, budget.Error())
-		return s.querySQL(ctx, query, compiled)
+		return s.querySQL(ctx, query, compiled, true)
 	}
 	if errors.Is(err, errBindJoinTimeout) {
 		span.SetAttributes(attribute.String(spanAttrFallback, fallbackSQLTimeout))
 		logger.Infof("Cypher query on knowledge network %s falls back to SQL: %v", query.KNID, err)
-		return s.querySQL(ctx, query, compiled)
+		return s.querySQL(ctx, query, compiled, true)
 	}
 	if err != nil {
 		if !vegaRefused(err) {
@@ -839,6 +862,109 @@ func proxyErrorCode(err error) string {
 // so only a code travels back: forbidden when vega-backend refused a resource
 // the statement reads, so a missing grant reads as one, and a query failure
 // for anything else.
+// resourceSource is where one resource lives: its category and its catalog.
+type resourceSource struct {
+	category string
+	catalog  string
+}
+
+// nonSQLCategories are the resource categories vega-backend cannot read as
+// SQL; a table or a logical view is read through a SQL connector.
+var nonSQLCategories = map[string]bool{
+	"dataset": true, "index": true, "file": true, "fileset": true, "api": true, "metric": true, "topic": true,
+}
+
+// outsideSQL reports a plan whose resources are known not to be readable as
+// one SQL statement: one of them is not in a SQL data source, or they are in
+// more than one. Where a resource lives is read from vega-backend once and
+// remembered; it only chooses the path, and the read itself is authorized as
+// any other. A resource the caller may not look up stays unknown, and the
+// statement is tried as SQL, which refuses it the same way.
+func (s *cypherQueryService) outsideSQL(ctx context.Context, plan *Plan) bool {
+	ids := planResourceIDs(plan)
+	var missing []string
+	for _, id := range ids {
+		if _, known := s.resourceSources.Load(id); !known {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		resources, err := s.vba.GetResourcesByIDs(ctx, missing)
+		if err != nil {
+			logger.Infof("Cypher could not look up where %d resources live; trying SQL: %s",
+				len(missing), common.SafeErrorSummary(err))
+		}
+		for _, resource := range resources {
+			if resource != nil {
+				s.resourceSources.Store(resource.ID, resourceSource{category: resource.Category, catalog: resource.CatalogID})
+			}
+		}
+	}
+	catalogs := map[string]bool{}
+	for _, id := range ids {
+		value, known := s.resourceSources.Load(id)
+		if !known {
+			continue
+		}
+		source := value.(resourceSource)
+		if nonSQLCategories[source.category] {
+			return true
+		}
+		catalogs[source.catalog] = true
+	}
+	return len(catalogs) > 1
+}
+
+// outsideSQLTooLarge refuses a query the data API path could not finish in
+// its read budget or its time. It is the read budget's code, so a caller can
+// tell "narrow the query" from "rewrite it".
+func outsideSQLTooLarge(ctx context.Context) error {
+	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_ReadBudgetExceeded).
+		WithErrorDetails(detail(ctx, "NonSQLSourceTooLarge", nil))
+}
+
+// unsupportedSource reports a statement vega-backend could not run as SQL
+// because of where its resources live: a dataset, an index, or more than one
+// data source.
+func unsupportedSource(err error) bool {
+	var dependencyErr *interfaces.DependencyError
+	return errors.As(err, &dependencyErr) && dependencyErr.Kind == interfaces.DependencyUnsupportedSource
+}
+
+// queryOutsideSQL answers a query whose resources vega-backend cannot read as
+// SQL through the resource data API the bind-join executor reads, which
+// serves datasets and indexes and joins across data sources. That executor
+// takes no new capabilities, so what only the SQL path answers -- CASE,
+// coalesce, totals over groups, comparing two lists, passing nodes on and
+// graph values -- is refused, saying why.
+func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	if compiled.plan.SQLOnly || compiled.graph != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
+			WithErrorDetails(detail(ctx, "NonSQLSource", nil))
+	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String(spanAttrExecutor, common.CypherExecutorBindJoin),
+		attribute.String(spanAttrFallback, fallbackNonSQLSource))
+	columns, entries, err := s.runBindJoin(ctx, query, compiled)
+	var budget *ReadBudgetError
+	if errors.As(err, &budget) || errors.Is(err, errBindJoinTimeout) {
+		return nil, outsideSQLTooLarge(ctx)
+	}
+	if err != nil {
+		if !vegaRefused(err) {
+			common.LogSafeError(ctx, "Cypher query outside SQL failed", err)
+		}
+		return nil, executionError(ctx, err)
+	}
+	return &interfaces.CypherQueryResult{
+		Columns:           columns,
+		Entries:           entries,
+		TraceDescriptor:   compiled.traceDescriptor,
+		PermissionImpacts: compiled.permissionImpacts,
+	}, nil
+}
+
 func executionError(ctx context.Context, err error) error {
 	if vegaRefused(err) {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_Cypher_Forbidden)

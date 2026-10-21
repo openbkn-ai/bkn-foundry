@@ -345,6 +345,27 @@ LIMIT 3
 
 ---
 
+## 🗂️ 数据集和索引上的对象类
+
+对象类绑定的资源不在 SQL 数据源里，比如数据集（dataset）或 OpenSearch 索引，或者一条查询读到的对象类分布在多个数据源时，查询不能编译成一条 SQL，改为通过资源数据接口逐表读取，再关联起来。调用方式不变，系统会自动选择。
+
+这时只支持基础写法：
+
+| 写法 | 数据集和索引上 |
+| --- | --- |
+| MATCH、多跳关系、OPTIONAL MATCH | 支持 |
+| WHERE 条件（比较、IN、字符串匹配、IS NULL、算术） | 支持 |
+| RETURN 属性、聚合（count、sum、avg、min、max）、ORDER BY / SKIP / LIMIT | 支持 |
+| WITH 先聚合再过滤、按上一段的值过滤（半连接） | 支持 |
+| CASE、coalesce | 不支持 |
+| 对分组再统计、比较两个列表、把节点传给下一个 MATCH | 不支持 |
+| 返回节点、关系、`collect` 和虚拟边 | 不支持 |
+
+- 用到不支持的写法时返回 400，说明哪些写法不能用。explain 只做编译，看不出对象类存放在哪里，所以这类拒绝要到执行时才会出现。
+- 数据要逐表读出再关联，比 SQL 慢；要读的数据超过上限或超时会返回 400 `ReadBudgetExceeded`，请加条件缩小范围。
+
+---
+
 ## ⛔ 不支持的写法
 
 | 写法 | 改写建议 |
@@ -384,7 +405,7 @@ LIMIT 3
 | 400 | `BknBackend.Cypher.InvalidQuery` | 与模型不匹配：未知标签或属性、类型不符等 |
 | 400 | `BknBackend.Cypher.LimitExceeded` | `LIMIT` 超过 10000 |
 | 400 | `BknBackend.Cypher.InvalidParameter` | 查询为空或过长、参数不合法 |
-| 400 | `BknBackend.Cypher.ReadBudgetExceeded` | `collect` 读取的证据达到 10000 行 |
+| 400 | `BknBackend.Cypher.ReadBudgetExceeded` | `collect` 读取的证据达到 10000 行；或数据集、索引上的查询要读的数据超过上限或超时 |
 | 403 | `BknBackend.Cypher.PropertyForbidden` | 写到了脱敏或仅结构的属性 |
 | 403 | `BknBackend.Cypher.Forbidden` | 数据源拒绝了查询读取的资源，知识网络的代理账号也不可用 |
 | 500 | `BknBackend.Cypher.QueryFailed` | 编译出的语句执行失败 |

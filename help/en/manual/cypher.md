@@ -345,6 +345,27 @@ LIMIT 3
 
 ---
 
+## 🗂️ Object types on datasets and indexes
+
+When an object type is bound to a resource outside a SQL data source, such as a dataset or an OpenSearch index, or when a query reads object types from more than one data source, the query cannot become one SQL statement. It is read table by table through the resource data API and joined instead. Nothing changes for the caller; the path is chosen automatically.
+
+Only the basic forms are available there:
+
+| Form | On datasets and indexes |
+| --- | --- |
+| MATCH, multi-hop relationships, OPTIONAL MATCH | Yes |
+| WHERE conditions (comparisons, IN, string matching, IS NULL, arithmetic) | Yes |
+| Returning properties, aggregates (count, sum, avg, min, max), ORDER BY / SKIP / LIMIT | Yes |
+| WITH to filter after aggregating or by an earlier stage's values (semi-join) | Yes |
+| CASE, coalesce | No |
+| Totals over groups, comparing two lists, passing nodes on to the next MATCH | No |
+| Returning nodes, relationships, `collect` and derived relationships | No |
+
+- A form that is not available returns 400, naming what cannot be used. explain only compiles and cannot see where an object type's data lives, so this refusal comes when the query runs.
+- Reading table by table and joining is slower than SQL; a query that reads more than the limit or runs out of time returns 400 `ReadBudgetExceeded`, so narrow it with conditions.
+
+---
+
 ## ⛔ Not supported
 
 | Construct | Instead |
@@ -384,7 +405,7 @@ LIMIT 3
 | 400 | `BknBackend.Cypher.InvalidQuery` | Does not match the model: an unknown label or property, a type mismatch, ... |
 | 400 | `BknBackend.Cypher.LimitExceeded` | `LIMIT` above 10000 |
 | 400 | `BknBackend.Cypher.InvalidParameter` | Empty or oversized query, or an invalid parameter |
-| 400 | `BknBackend.Cypher.ReadBudgetExceeded` | The evidence a `collect` reads reaches 10000 rows |
+| 400 | `BknBackend.Cypher.ReadBudgetExceeded` | The evidence a `collect` reads reaches 10000 rows, or a query on datasets or indexes reads more than the limit or runs out of time |
 | 403 | `BknBackend.Cypher.PropertyForbidden` | Names a masked or structure-only property |
 | 403 | `BknBackend.Cypher.Forbidden` | The data source refused a resource the query reads, and the network's proxy account could not be used |
 | 500 | `BknBackend.Cypher.QueryFailed` | The compiled statement failed to run |

@@ -109,6 +109,12 @@ func (v *recordingVega) RawQuery(_ context.Context, req *interfaces.RawQueryRequ
 	return &interfaces.RawQueryResponse{}, nil
 }
 
+// GetResourcesByIDs answers nothing, so where a resource lives stays unknown
+// and the statement runs as SQL.
+func (v *recordingVega) GetResourcesByIDs(context.Context, []string) ([]*interfaces.VegaResource, error) {
+	return nil, nil
+}
+
 func (v *recordingVega) RawQueryAs(_ context.Context, account interfaces.AccountInfo,
 	req *interfaces.RawQueryRequest) (*interfaces.RawQueryResponse, error) {
 	v.proxyAccount, v.proxyRequest = &account, req
