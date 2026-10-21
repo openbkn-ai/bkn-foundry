@@ -256,3 +256,28 @@ func TestValidateRelationTypeDeclarations(t *testing.T) {
 	ot := &BknObjectType{BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{ID: "dept", Lifecycle: &Lifecycle{Status: LifecycleDeprecated}}}
 	assert.ErrorContains(t, ValidateObjectTypeDeclarations(ot), "status deprecated needs a reason")
 }
+
+// Relation properties get the per-property checks of object type properties: name, display name,
+// type and mask rule.
+func TestValidateNetwork_ChecksRelationProperties(t *testing.T) {
+	_, err := loadV3(t, withRelations(
+		v3Edit{fLink, "| weight | 权重 | float |", "| weight | 权重 | flaot |"},
+		v3Edit{fLink, "  range: {min: 0}\n", "  unit: kg\n"},
+	)...)
+	require.Error(t, err, "a constraint check on the misspelt type refuses it at load")
+
+	net, err := loadV3(t, withRelations(
+		v3Edit{fLink, "| weight | 权重 | float |", "| weight | 权重 | flaot |"},
+		v3Edit{fLink, "### Property Constraints\n\n```yaml\nweight:\n  range: {min: 0}\n```\n", ""},
+		v3Edit{fLink, "| since | 起始 |", "| Since! | 起始 |"},
+	)...)
+	require.NoError(t, err)
+	errs := map[string]string{}
+	for _, e := range ValidateNetwork(net).Errors {
+		if e.Table == "relation_type:pod_link" {
+			errs[e.Code] = e.Message
+		}
+	}
+	assert.Equal(t, `data property "weight" has invalid type "flaot"`, errs["invalid_property_type"])
+	assert.Contains(t, errs, "invalid_property_name")
+}
