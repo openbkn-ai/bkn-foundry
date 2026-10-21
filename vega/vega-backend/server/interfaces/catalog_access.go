@@ -31,8 +31,8 @@ type CatalogAccess interface {
 	ListPermissionRefs(ctx context.Context, params CatalogsQueryParams) ([]CatalogPermissionRef, error)
 	// ListConnectorTypePermissionRefs lists the fields needed to aggregate connector types after authorization.
 	ListConnectorTypePermissionRefs(ctx context.Context, params CatalogsQueryParams) ([]CatalogConnectorTypePermissionRef, error)
-	// Update updates a Catalog.
-	Update(ctx context.Context, tx *sql.Tx, catalog *Catalog, expectedUpdateTime int64) (int64, error)
+	// Update 更新目录基本信息；updateConnection 为 true 时同时更新连接配置及健康检查结果。
+	Update(ctx context.Context, tx *sql.Tx, catalog *Catalog, expectedUpdateTime int64, updateConnection bool) (int64, error)
 	// DeleteByID deletes a Catalog by ID.
 	DeleteByID(ctx context.Context, tx *sql.Tx, id string) error
 	// UpdateHealthCheckStatus updates Catalog health check status.

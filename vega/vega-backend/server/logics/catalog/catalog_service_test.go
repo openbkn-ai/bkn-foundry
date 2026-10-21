@@ -949,8 +949,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 				ConnectorCfg: config, CatalogHealthCheckStatus: status, UpdateTime: 42,
 			}, nil)
 			sqlMock.ExpectBegin()
-			ca.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(42)).DoAndReturn(
-				func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog, _ int64) (int64, error) {
+			ca.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(42), false).DoAndReturn(
+				func(_ context.Context, _ *sql.Tx, saved *interfaces.Catalog, _ int64, _ bool) (int64, error) {
 					assert.Equal(t, config, saved.ConnectorCfg)
 					assert.Equal(t, status, saved.CatalogHealthCheckStatus)
 					assert.Equal(t, req.Name, saved.Name)
@@ -1159,8 +1159,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		}).Return(connector, nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
-			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64) (int64, error) {
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0), true).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64, _ bool) (int64, error) {
 				assert.Equal(t, interfaces.ConnectorConfig{ //nolint:gosec // Test-only placeholder ciphertext.
 					"host": "new.example.com", "password": "ENC:test-only-ciphertext",
 				}, catalog.ConnectorCfg)
@@ -1208,8 +1208,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New("connection refused"))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
-			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64) (int64, error) {
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0), true).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64, _ bool) (int64, error) {
 				assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, catalog.HealthCheckStatus)
 				assert.Greater(t, catalog.LastCheckTime, int64(0))
 				assert.Equal(t, connectionTestFailedResult, catalog.HealthCheckResult)
@@ -1241,7 +1241,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog"}, nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0), false).Return(int64(1), nil)
 
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
 		err = cs.Update(context.Background(), &interfaces.CatalogRequest{ID: "catalog-1", Name: "catalog"}, false)
@@ -1263,8 +1263,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		sqlMock.ExpectRollback()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog"}, nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), expectedUpdateTime).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, expected int64) (int64, error) {
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), expectedUpdateTime, false).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, expected int64, _ bool) (int64, error) {
 				assert.Equal(t, expectedUpdateTime, expected)
 				assert.Greater(t, catalog.UpdateTime, expectedUpdateTime)
 				return 0, nil
@@ -1296,7 +1296,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		sqlMock.ExpectRollback()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1", Name: "catalog"}, nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(0), nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0), false).Return(int64(0), nil)
 
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
 		err = cs.Update(context.Background(), &interfaces.CatalogRequest{ID: "catalog-1", Name: "catalog"}, false)

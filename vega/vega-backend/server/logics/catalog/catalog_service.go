@@ -789,7 +789,8 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 	catalog.Description = req.Description
 
 	// 未提交连接配置时只更新元数据，保留已存配置、密文及健康状态。
-	if req.ConnectorType != "" && req.ConnectorCfg != nil {
+	updateConnection := req.ConnectorType != "" && req.ConnectorCfg != nil
+	if updateConnection {
 		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
 
 		// 显式提交配置（包括空对象）时，继续执行解密、连接测试和持久化。
@@ -856,7 +857,8 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	rowsAffected, err := cs.ca.Update(ctx, tx, catalog, req.ExpectedUpdateTime)
+	// 元数据更新不能写回读取时的连接快照，避免覆盖并发健康检查的新结果。
+	rowsAffected, err := cs.ca.Update(ctx, tx, catalog, req.ExpectedUpdateTime, updateConnection)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update catalog failed")
 		otellog.LogError(ctx, "Update catalog failed", err)

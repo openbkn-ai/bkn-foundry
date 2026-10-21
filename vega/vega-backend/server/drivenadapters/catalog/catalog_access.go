@@ -660,7 +660,7 @@ func authResourceOrderByClause(sort, direction string) string {
 }
 
 // Update updates ca Catalog.
-func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog, expectedUpdateTime int64) (int64, error) {
+func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog, expectedUpdateTime int64, updateConnection bool) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog")
 	defer span.End()
 
@@ -669,20 +669,23 @@ func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interf
 	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(catalog.Tags)
 
-	connectorConfigStr, err := sonic.MarshalString(catalog.ConnectorCfg)
-	if err != nil {
-		span.SetStatus(codes.Error, "Marshal connector config failed")
-		return 0, err
-	}
 	builder := sq.Update(CATALOG_TABLE_NAME).
 		Set("f_name", catalog.Name).
 		Set("f_tags", tagsStr).
-		Set("f_description", catalog.Description).
-		Set("f_connector_config", connectorConfigStr).
-		Set("f_health_check_status", catalog.HealthCheckStatus).
-		Set("f_last_check_time", catalog.LastCheckTime).
-		Set("f_health_check_result", catalog.HealthCheckResult).
-		Set("f_updater", catalog.Updater.ID).
+		Set("f_description", catalog.Description)
+	// 仅在本次更新并测试了连接配置时写入配置和健康结果，避免覆盖并发健康检查。
+	if updateConnection {
+		connectorConfigStr, err := sonic.MarshalString(catalog.ConnectorCfg)
+		if err != nil {
+			span.SetStatus(codes.Error, "Marshal connector config failed")
+			return 0, err
+		}
+		builder = builder.Set("f_connector_config", connectorConfigStr).
+			Set("f_health_check_status", catalog.HealthCheckStatus).
+			Set("f_last_check_time", catalog.LastCheckTime).
+			Set("f_health_check_result", catalog.HealthCheckResult)
+	}
+	builder = builder.Set("f_updater", catalog.Updater.ID).
 		Set("f_updater_type", catalog.Updater.Type).
 		Set("f_update_time", catalog.UpdateTime).
 		Where(sq.Eq{"f_id": catalog.ID}).
