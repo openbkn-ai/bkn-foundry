@@ -51,7 +51,7 @@ select 'object_metric_designer',
           and p.f_name = 'Object Metric Designer Default Prompt' and p.f_current_version = 1
           and p.f_update_user = '266c6a42-6131-4d62-8f39-853e7093701c'
           and v.f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
-    ) then 'Object Metric Designer' else null end,
+    ) then 'ObjectMetricDesigner' else null end,
     'chat', 'object_metric_designer_prompt', null, '', '[]', '[]',
     '{"max_turns":6,"max_tool_calls":0,"timeout_s":120,"max_output_tokens":4096}',
     'draft', '266c6a42-6131-4d62-8f39-853e7093701c',

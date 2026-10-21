@@ -207,7 +207,7 @@ def test_object_metric_designer_default_is_english_and_respects_user_language():
     with database() as db:
         apply(db, METRIC_DESIGN)
         seeded = item_from_db(db, "object_metric_designer")
-        assert seeded["spec"]["name"] == "Object Metric Designer"
+        assert seeded["spec"]["name"] == "ObjectMetricDesigner"
         assert seeded["prompt"]["name"] == "Object Metric Designer Default Prompt"
         content = seeded["prompt"]["content"]
         assert content.isascii()
@@ -694,7 +694,7 @@ def test_metric_designer_seed_is_tool_free_and_draft():
         assert item["spec"]["tools"] == []
         assert item["spec"]["skills"] == []
         assert item["spec"]["limits"]["max_tool_calls"] == 0
-        assert "不保存、发布、删除" in item["prompt"]["content"]
+        assert "save, publish, delete, or upgrade metrics" in item["prompt"]["content"]
         apply(db, METRIC_DESIGN)
         assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0] == 1
 
