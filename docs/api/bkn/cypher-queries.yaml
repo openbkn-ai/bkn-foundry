@@ -226,7 +226,8 @@ components:
             them. XOR is not supported. Not-equal is written <>; != is not openCypher and is
             refused with a syntax error that says so. A date or time property can be compared
             with date('2026-08-13'), datetime(...) or localdatetime(...) over a string literal or
-            parameter; functions other than these, coalesce and the aggregates, and date()
+            parameter; functions other than these, coalesce, size (of a list a WITH
+            collected) and the aggregates, and date()
             with no argument, are refused.
 
             CASE and coalesce compute a value wherever arithmetic may stand: in RETURN, WITH,
