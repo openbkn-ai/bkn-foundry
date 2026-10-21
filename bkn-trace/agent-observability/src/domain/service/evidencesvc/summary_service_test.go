@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -86,6 +87,44 @@ func TestConversationKeywordReadSkipsUnusedTraceEnrichmentAndRetainsRequestIdent
 	}
 	if reads.statsCalls != 0 || reads.traceIdentityReads != 0 {
 		t.Fatalf("conversation list discards trace enrichment: stats=%d canonicalTrace=%d", reads.statsCalls, reads.traceIdentityReads)
+	}
+}
+
+func TestInteractionListsSkipDiscardedTraceStatistics(t *testing.T) {
+	for _, canonical := range []bool{false, true} {
+		t.Run(fmt.Sprint(canonical), func(t *testing.T) {
+			base := evidencestore.New()
+			seedBusinessProvenanceRequest(t, base, "request", "trace", "conversation", "interaction",
+				"2026-08-10T08:00:00Z", "original question", "original result", "acct_demo")
+			sessions := sessionstore.New()
+			if canonical {
+				if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+					tx.SaveConversation(sessionvo.Conversation{ID: "conversation", Owner: sessionvo.Owner{
+						EffectiveSubjectID: "acct_demo", EffectiveSubjectType: sessionvo.SubjectUser,
+					}, Status: sessionvo.ConversationActive})
+					tx.SaveInteraction(sessionvo.Interaction{ID: "interaction", ConversationID: "conversation", Ordinal: 1,
+						ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete})
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			reads := &countingConversationTraceReads{Store: sessions}
+			service := New(base, WithProjectionSource(base), WithSessionStore(reads), WithTraceStatsSource(reads))
+			page, err := service.ListInteractions(context.Background(), evidencevo.SummaryQueryOptions{
+				Scope: summaryScope("acct_demo"), ConversationID: "conversation", Limit: 20,
+			})
+			if err != nil || len(page.Entries) != 1 || page.Total != 1 {
+				t.Fatalf("page=%+v err=%v", page, err)
+			}
+			entry := page.Entries[0]
+			if entry.QuestionPreview != "original question" || entry.ResultPreview != "original result" || entry.RequestCount != 1 || entry.TraceCount != 1 {
+				t.Fatalf("request facts changed: %+v", entry)
+			}
+			if reads.statsCalls != 0 || reads.traceIdentityReads != 0 {
+				t.Fatalf("discarded trace reads: stats=%d identities=%d", reads.statsCalls, reads.traceIdentityReads)
+			}
+		})
 	}
 }
 

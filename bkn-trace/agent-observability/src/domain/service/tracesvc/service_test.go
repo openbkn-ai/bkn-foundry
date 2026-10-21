@@ -77,7 +77,7 @@ func TestCountSpansByTraceIDsUsesOneAggregationQuery(t *testing.T) {
 	}
 	query := string(port.query)
 	if !strings.Contains(query, `"size":0`) || !strings.Contains(query, `"terms":{"traceId.keyword":["trace_a","trace_b"]}`) ||
-		!strings.Contains(query, `"field":"spanId.keyword"`) {
+		!strings.Contains(query, `"field":"spanId.keyword"`) || !strings.Contains(query, `"execution_hint":"map"`) {
 		t.Fatalf("expected one bounded terms aggregation query, got %s", query)
 	}
 }
