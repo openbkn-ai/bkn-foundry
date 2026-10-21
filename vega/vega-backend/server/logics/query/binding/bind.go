@@ -35,6 +35,7 @@ type queryBinder struct {
 	instances    map[qm.RelationInstanceID]bool
 	scopes       map[qm.ScopeID]bool
 	resources    map[string]*interfaces.Resource
+	connectors   map[string]string
 	dependencies []qm.Dependency
 	slots        []qm.RuntimeSlot
 	nodes, depth int
@@ -58,7 +59,7 @@ func Bind(ctx context.Context, query *qm.UnboundQuery, semantics qm.SemanticCont
 		return nil, &qm.CompileError{Kind: qm.ErrorConfiguration, Message: "查询语义上下文无效"}
 	}
 	b := queryBinder{ctx: ctx, semantics: semantics, identity: identity, resolver: resolver, authorizer: authorizer,
-		active: make(map[any]bool), instances: make(map[qm.RelationInstanceID]bool), scopes: map[qm.ScopeID]bool{query.Scope: true}, resources: make(map[string]*interfaces.Resource), nextScope: 1, views: make(map[string]bool), dependencies: []qm.Dependency{{Kind: qm.DependencyConfig, ID: "query_semantics", Version: semantics.Version, ConfigRevision: semantics.ConfigFingerprint}}}
+		active: make(map[any]bool), instances: make(map[qm.RelationInstanceID]bool), scopes: map[qm.ScopeID]bool{query.Scope: true}, resources: make(map[string]*interfaces.Resource), connectors: make(map[string]string), nextScope: 1, views: make(map[string]bool), dependencies: []qm.Dependency{{Kind: qm.DependencyConfig, ID: "query_semantics", Version: semantics.Version, ConfigRevision: semantics.ConfigFingerprint}}}
 	result, err := b.relation(query.Root)
 	if err != nil {
 		return nil, err

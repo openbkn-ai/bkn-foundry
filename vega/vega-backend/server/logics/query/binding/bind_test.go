@@ -22,8 +22,9 @@ type resourceResolverFunc func(context.Context, string, qm.ExecutionIdentity) (*
 type queryAuthorizerFunc func(context.Context, string, qm.ExecutionIdentity, string) (qm.AuthorizationBasis, error)
 type bindingTargetResolverFunc func(context.Context, qm.BoundScan, qm.ExecutionIdentity, qm.ExecutionOptions) ([]qm.TargetBinding, error)
 
-func (f resourceResolverFunc) ResolveSQLQueryResource(ctx context.Context, id string, identity qm.ExecutionIdentity) (*interfaces.Resource, error) {
-	return f(ctx, id, identity)
+func (f resourceResolverFunc) ResolveSQLQueryResource(ctx context.Context, id string, identity qm.ExecutionIdentity) (*interfaces.Resource, string, error) {
+	resource, err := f(ctx, id, identity)
+	return resource, "", err
 }
 
 func (f queryAuthorizerFunc) AuthorizeSQLQueryResource(ctx context.Context, id string, identity qm.ExecutionIdentity, operation string) (qm.AuthorizationBasis, error) {
