@@ -36,6 +36,9 @@ type CypherQueryRequest struct {
 	// ObjectProperties names, per node variable, the properties a returned
 	// node carries besides its identity.
 	ObjectProperties map[string][]string `json:"object_properties,omitempty"`
+	// Explain returns the query's plan instead of its rows; see
+	// interfaces.CypherQuery.
+	Explain bool `json:"explain,omitempty"`
 }
 
 func (r *restHandler) RunCypherQueryByEx(c *gin.Context) {
@@ -93,6 +96,7 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 		Query:            body.Query,
 		Parameters:       body.Parameters,
 		ObjectProperties: body.ObjectProperties,
+		Explain:          body.Explain,
 	})
 	if err != nil {
 		replyHandlerError(c, span, ctx, err)
@@ -108,8 +112,10 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 			Execution         *interfaces.CypherExecution            `json:"execution,omitempty"`
 			Trace             json.RawMessage                        `json:"_trace,omitempty"`
 			PermissionImpacts []interfaces.CypherPermissionImpact    `json:"permission_impacts,omitempty"`
+			Plan              *interfaces.CypherPlan                 `json:"plan,omitempty"`
 		}{Columns: result.Columns, Entries: result.Entries, ValueTypes: result.ValueTypes,
-			Execution: result.Execution, Trace: result.TraceDescriptor, PermissionImpacts: result.PermissionImpacts})
+			Execution: result.Execution, Trace: result.TraceDescriptor, PermissionImpacts: result.PermissionImpacts,
+			Plan: result.Plan})
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
