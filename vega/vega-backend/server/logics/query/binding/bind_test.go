@@ -292,7 +292,7 @@ func TestBind(t *testing.T) {
 		for _, change := range []func(*interfaces.Resource){
 			func(r *interfaces.Resource) { r.Enabled = false },
 			func(r *interfaces.Resource) { r.Category = interfaces.ResourceCategoryLogicalView },
-			func(r *interfaces.Resource) { r.SchemaDefinition[2].OriginalType = "DECIMAL" },
+			func(r *interfaces.Resource) { r.SchemaDefinition[2].OriginalType = "DECIMAL(10,11)" },
 			func(r *interfaces.Resource) { r.SchemaDefinition[1].Name = "id" },
 			func(r *interfaces.Resource) { r.ID = "other" },
 		} {

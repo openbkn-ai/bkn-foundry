@@ -198,6 +198,7 @@ func (b *queryBinder) source(id, alias string, origin qm.Origin) (bindingResult,
 			return bindingResult{}, err
 		}
 		c := qm.OutputColumn{ID: b.fieldID(), Name: property.Name, Type: typ, Nullable: true, Origin: r.Origin, Encoding: outputEncoding(typ)}
+		c.Encoding.PublicType = property.Type
 		fields = append(fields, qm.BoundSourceField{ID: c.ID, LogicalName: c.Name, NativeType: native})
 		result.schema = append(result.schema, c)
 		result.scope.columns = append(result.scope.columns, scopeColumn{column: c, qualifier: alias, domain: native.Domain})
@@ -273,7 +274,7 @@ func (b *queryBinder) projectRelation(r *qm.Project) (bindingResult, error) {
 			return bindFailure(origin, "查询输出名称重复")
 		}
 		names[name] = true
-		c := qm.OutputColumn{ID: b.fieldID(), Name: name, Type: expr.Type, Nullable: expr.Nullable, Lineage: expressionFields(expr), Origin: origin, Encoding: outputEncoding(expr.Type)}
+		c := qm.OutputColumn{ID: b.fieldID(), Name: name, Type: expr.Type, Nullable: expr.Nullable, Lineage: expressionFields(expr), Origin: origin, Encoding: expressionEncoding(expr, &input.scope)}
 		result.schema = append(result.schema, c)
 		result.scope.columns = append(result.scope.columns, scopeColumn{column: c, domain: expr.Domain})
 		project.Columns = append(project.Columns, qm.BoundNamedExpr{Output: c.ID, Expr: expr, Origin: origin})
@@ -347,7 +348,7 @@ func (b *queryBinder) aggregateRelation(r *qm.Aggregate) (bindingResult, error) 
 		if !comparableType(expr.Type) {
 			return bindingResult{}, bindFailure(key.Origin, "分组字段类型不支持")
 		}
-		c := qm.OutputColumn{ID: b.fieldID(), Type: expr.Type, Nullable: expr.Nullable, Lineage: expressionFields(expr), Origin: key.Origin, Encoding: outputEncoding(expr.Type)}
+		c := qm.OutputColumn{ID: b.fieldID(), Type: expr.Type, Nullable: expr.Nullable, Lineage: expressionFields(expr), Origin: key.Origin, Encoding: expressionEncoding(expr, &input.scope)}
 		col := scopeColumn{column: c, domain: expr.Domain}
 		if key.Kind == qm.ExprName {
 			c.Name = key.Name[len(key.Name)-1]
@@ -388,7 +389,7 @@ func (b *queryBinder) aggregateRelation(r *qm.Aggregate) (bindingResult, error) 
 		if err != nil {
 			return bindingResult{}, err
 		}
-		c := qm.OutputColumn{ID: b.fieldID(), Type: expr.Type, Nullable: expr.Nullable, Lineage: expressionFields(expr), Origin: call.Origin, Encoding: outputEncoding(expr.Type)}
+		c := qm.OutputColumn{ID: b.fieldID(), Type: expr.Type, Nullable: expr.Nullable, Lineage: expressionFields(expr), Origin: call.Origin, Encoding: expressionEncoding(expr, &input.scope)}
 		result.schema = append(result.schema, c)
 		result.scope.aggregates = append(result.scope.aggregates, columnExpr(scopeColumn{column: c, domain: expr.Domain}, call.Origin))
 		aggregate.Calls = append(aggregate.Calls, qm.BoundNamedExpr{Output: c.ID, Expr: expr, Origin: call.Origin})
@@ -457,7 +458,7 @@ func (b *queryBinder) sortRelation(r *qm.Sort) (bindingResult, error) {
 				if b.nextField >= qm.MaxNodes {
 					return bindingResult{}, &qm.CompileError{Kind: qm.ErrorLimit, Origin: key.Origin, Message: "绑定输出槽数量超限"}
 				}
-				hidden := qm.OutputColumn{ID: b.fieldID(), Type: expr.Type, Nullable: expr.Nullable, Hidden: true, Lineage: expressionFields(expr), Origin: key.Origin, Encoding: outputEncoding(expr.Type)}
+				hidden := qm.OutputColumn{ID: b.fieldID(), Type: expr.Type, Nullable: expr.Nullable, Hidden: true, Lineage: expressionFields(expr), Origin: key.Origin, Encoding: expressionEncoding(expr, &input.scope)}
 				input.schema = append(input.schema, hidden)
 				input.project.OutputSchema = input.schema
 				input.project.Columns = append(input.project.Columns, qm.BoundNamedExpr{Output: hidden.ID, Expr: expr, Origin: key.Origin})

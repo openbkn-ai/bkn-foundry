@@ -86,10 +86,31 @@ func TestPropertyType(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, typ.TimePrecision)
 	assert.Equal(t, 9, *typ.TimePrecision)
+	for _, tc := range []struct {
+		public, native string
+		kind           qm.TypeKind
+	}{
+		{interfaces.DataType_Decimal, "DECIMAL", qm.TypeOther},
+		{interfaces.DataType_Decimal, "DECIMAL(65,30)", qm.TypeOther},
+		{interfaces.DataType_Datetime, "timestamp without time zone", qm.TypeLocalDateTime},
+		{interfaces.DataType_Datetime, "timestamp(7) with time zone", qm.TypeInstant},
+		{interfaces.DataType_Datetime, "datetimeoffset(7)", qm.TypeInstant},
+		{interfaces.DataType_Datetime, "DATETIME2(7)", qm.TypeLocalDateTime},
+		{interfaces.DataType_Datetime, "date_nanos", qm.TypeInstant},
+		{interfaces.DataType_Timestamp, "TIMESTAMP", qm.TypeOther},
+		{interfaces.DataType_Time, "TIME", qm.TypeOther},
+		{interfaces.DataType_Time, "TIME WITHOUT TIME ZONE", qm.TypeTimeOfDay},
+		{interfaces.DataType_Time, "TIME WITH TIME ZONE", qm.TypeOther},
+		{interfaces.DataType_Vector, "dense_vector", qm.TypeVector},
+		{interfaces.DataType_Other, "opaque", qm.TypeOther},
+	} {
+		typ, _, err := propertyType(&interfaces.Property{Type: tc.public, OriginalType: tc.native}, qm.Origin{})
+		require.NoError(t, err, tc.native)
+		assert.Equal(t, tc.kind, typ.Kind, tc.native)
+	}
 	for _, property := range []*interfaces.Property{
-		{Type: interfaces.DataType_Decimal, OriginalType: "DECIMAL"}, {Type: interfaces.DataType_Decimal, OriginalType: "DECIMAL(39,0)"},
-		{Type: interfaces.DataType_Decimal, OriginalType: "DECIMAL(10,11)"}, {Type: interfaces.DataType_Datetime, OriginalType: "timestamp without time zone"},
-		{Type: interfaces.DataType_Time, OriginalType: "TIME"},
+		{Type: interfaces.DataType_Decimal, OriginalType: "DECIMAL(10,11)"},
+		{Type: interfaces.DataType_Datetime, OriginalType: "DATETIME(10)"},
 	} {
 		_, _, err := propertyType(property, qm.Origin{})
 		require.Error(t, err)

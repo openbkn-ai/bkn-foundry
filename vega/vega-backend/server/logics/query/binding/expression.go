@@ -138,7 +138,7 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 			}
 			result.Type.Kind = qm.TypeBoolean
 		case qm.OperatorEqual, qm.OperatorNotEqual, qm.OperatorLess, qm.OperatorLessEqual, qm.OperatorGreater, qm.OperatorGreaterEqual:
-			if err := coerceArguments(result, true); err != nil {
+			if err := b.coerceComparison(result, scope); err != nil {
 				return nil, err
 			}
 			result.Type.Kind = qm.TypeBoolean
@@ -169,7 +169,7 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 		if (e.Origin.Kind == qm.OriginDTO || e.Origin.Kind == qm.OriginSavedView) && !numericType(result.Args[0].Type) && result.Args[0].Type.Kind != qm.TypeDate && result.Args[0].Type.Kind != qm.TypeLocalDateTime && result.Args[0].Type.Kind != qm.TypeInstant && result.Args[0].Type.Kind != qm.TypeTimeOfDay {
 			return nil, bindFailure(e.Origin, "结构化范围只接受数值或时间字段")
 		}
-		if err := coerceArguments(result, true); err != nil {
+		if err := b.coerceComparison(result, scope); err != nil {
 			return nil, err
 		}
 		result.Type.Kind = qm.TypeBoolean
@@ -183,7 +183,7 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 			}
 		}
 		result.Kind = qm.ExprIn
-		if err := coerceArguments(result, true); err != nil {
+		if err := b.coerceComparison(result, scope); err != nil {
 			return nil, err
 		}
 		result.Type.Kind = qm.TypeBoolean
@@ -231,6 +231,9 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 		if err != nil {
 			return nil, err
 		}
+		if temporalType(typ) && result.Args[0].Kind == qm.ExprLiteral && result.Args[0].Type.Kind == qm.TypeString {
+			return bindTemporalCastLiteral(result.Args[0], typ, b.semantics)
+		}
 		source := result.Args[0].Type
 		if !supportedCast(source, typ) {
 			return nil, bindFailure(e.Origin, "当前类型转换尚未支持")
@@ -239,6 +242,9 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 		result.Type = typ
 		result.Nullable = result.Args[0].Nullable
 		result.Requirements = []qm.SemanticRequirement{{Name: "invalid_cast", Value: "error"}, {Name: "decimal_rounding", Value: "half_away_from_zero"}}
+		if temporalType(typ) {
+			result.Requirements = []qm.SemanticRequirement{{Name: "invalid_cast", Value: "error"}, {Name: "temporal_precision", Value: "exact"}, {Name: "time_zone", Value: b.semantics.TimeZone}}
+		}
 	default:
 		return nil, bindFailure(e.Origin, "未知表达式节点")
 	}
@@ -364,7 +370,7 @@ func (b *queryBinder) function(e *qm.Expr, scope *bindingScope, allowAggregate b
 		}
 	case "NULLIF":
 		typ := result.Args[0].Type
-		if err := coerceArguments(result, true); err != nil {
+		if err := b.coerceComparison(result, scope); err != nil {
 			return nil, err
 		}
 		result.Type = typ
@@ -443,6 +449,24 @@ func castType(e *qm.Expr) (qm.LogicalType, error) {
 		typ.Kind = qm.TypeString
 	case "BOOLEAN":
 		typ.Kind = qm.TypeBoolean
+	case "DATE":
+		typ.Kind = qm.TypeDate
+	case "DATETIME", "TIME":
+		if len(e.CastParameters) > 1 {
+			return typ, bindFailure(e.Origin, "时间 CAST 只接受一个精度参数")
+		}
+		precision := 0
+		if len(e.CastParameters) == 1 {
+			precision = e.CastParameters[0]
+		}
+		if precision < 0 || precision > 6 {
+			return typ, bindFailure(e.Origin, "MySQL 时间 CAST 精度必须为 0–6")
+		}
+		typ = qm.LogicalType{Kind: qm.TypeLocalDateTime, TimeZone: qm.TimeZoneLocal, TimePrecision: &precision}
+		if e.CastType == "TIME" {
+			typ.Kind, typ.TimeZone = qm.TypeTimeOfDay, qm.TimeZoneNone
+		}
+		return typ, nil
 	case "DECIMAL":
 		if len(e.CastParameters) < 1 || len(e.CastParameters) > 2 {
 			return typ, bindFailure(e.Origin, "DECIMAL CAST 需要明确 precision 和可选 scale")
@@ -467,6 +491,12 @@ func castType(e *qm.Expr) (qm.LogicalType, error) {
 func supportedCast(from, to qm.LogicalType) bool {
 	if from.Kind == qm.TypeNull || reflect.DeepEqual(from, to) {
 		return true
+	}
+	if temporalType(to) {
+		if from.Kind == qm.TypeString || from.Kind == qm.TypeText {
+			return true
+		}
+		return temporalType(from) && (from.Kind == to.Kind || (from.Kind != qm.TypeTimeOfDay && to.Kind != qm.TypeTimeOfDay))
 	}
 	if numericType(from) && numericType(to) {
 		return true

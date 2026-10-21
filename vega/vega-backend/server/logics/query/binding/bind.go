@@ -23,6 +23,7 @@ type bindingResult struct {
 
 type queryBinder struct {
 	ctx          context.Context
+	semantics    qm.SemanticContext
 	identity     qm.ExecutionIdentity
 	resolver     interfaces.SQLQueryResourceResolver
 	authorizer   interfaces.SQLQueryAuthorizer
@@ -56,7 +57,7 @@ func Bind(ctx context.Context, query *qm.UnboundQuery, semantics qm.SemanticCont
 		semantics.TypeRulesVersion != qm.CurrentSemanticsVersion || semantics.ConfigFingerprint == "" || semantics.TimeZoneRevision == "" || semantics.Comparison.StringRule != "utf8_binary" || !semantics.Comparison.CaseSensitive || !semantics.Comparison.TrailingSpaceSignificant {
 		return nil, &qm.CompileError{Kind: qm.ErrorConfiguration, Message: "查询语义上下文无效"}
 	}
-	b := queryBinder{ctx: ctx, identity: identity, resolver: resolver, authorizer: authorizer,
+	b := queryBinder{ctx: ctx, semantics: semantics, identity: identity, resolver: resolver, authorizer: authorizer,
 		active: make(map[any]bool), instances: make(map[qm.RelationInstanceID]bool), scopes: map[qm.ScopeID]bool{query.Scope: true}, resources: make(map[string]*interfaces.Resource), nextScope: 1, views: make(map[string]bool), dependencies: []qm.Dependency{{Kind: qm.DependencyConfig, ID: "query_semantics", Version: semantics.Version, ConfigRevision: semantics.ConfigFingerprint}}}
 	result, err := b.relation(query.Root)
 	if err != nil {
