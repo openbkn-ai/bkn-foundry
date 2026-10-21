@@ -236,7 +236,8 @@ func PromoteLegacyLeafWithSubConds(cfg *CondCfg) *CondCfg {
 		ObjectTypeID: cfg.ObjectTypeID,
 		Name:         cfg.Name,
 		Operation:    cfg.Operation,
-		ValueOptCfg:  cfg.ValueOptCfg,
+		ValueFrom:    cfg.ValueFrom,
+		Value:        cfg.Value,
 		RemainCfg:    cfg.RemainCfg,
 		NameField:    cfg.NameField,
 	}

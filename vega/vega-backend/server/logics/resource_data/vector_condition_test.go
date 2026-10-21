@@ -39,9 +39,7 @@ func TestResolveVectorConditionsResolvesModelIDBeforeVectorizing(t *testing.T) {
 	cfg := &interfaces.FilterCondCfg{
 		Name:      "content",
 		Operation: filter_condition.OperationKnnVector,
-		ValueOptCfg: interfaces.ValueOptCfg{
-			Value: "search text",
-		},
+		Value:     "search text",
 	}
 	mfs.EXPECT().GetModelByID(gomock.Any(), "model-1").Return(model, nil)
 	mfs.EXPECT().GetVector(gomock.Any(), model, []string{"search text"}).
@@ -66,9 +64,7 @@ func TestResolveVectorConditionsRejectsForcedSourceQueries(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Name:      "content",
 			Operation: filter_condition.OperationKnnVector,
-			ValueOptCfg: interfaces.ValueOptCfg{
-				Value: value,
-			},
+			Value:     value,
 		}
 
 		err := (&resourceDataService{}).resolveVectorConditions(
@@ -137,7 +133,7 @@ func TestResolveVectorConditionsRejectsModelDimensionMismatch(t *testing.T) {
 	models := mock_interfaces.NewMockModelFactoryService(ctrl)
 	model := &interfaces.SmallModel{ModelID: "model"}
 	resource := &interfaces.Resource{LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", IndexConfig: &interfaces.ResourceIndexConfig{DefaultEmbeddingModel: "model"}, SchemaDefinition: []*interfaces.Property{{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, Config: map[string]any{"dimension": 1024}}}}}}
-	cfg := &interfaces.FilterCondCfg{Name: "title", Operation: filter_condition.OperationKnnVector, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: "query text"}}
+	cfg := &interfaces.FilterCondCfg{Name: "title", Operation: filter_condition.OperationKnnVector, ValueFrom: interfaces.ValueFrom_Const, Value: "query text"}
 	models.EXPECT().GetModelByID(gomock.Any(), "model").Return(model, nil)
 	models.EXPECT().GetVector(gomock.Any(), model, []string{"query text"}).Return([]*interfaces.VectorResp{{Vector: []float32{0.1, 0.2, 0.3}}}, nil)
 	err := (&resourceDataService{mfs: models}).resolveVectorConditions(context.Background(), resource, cfg, false)

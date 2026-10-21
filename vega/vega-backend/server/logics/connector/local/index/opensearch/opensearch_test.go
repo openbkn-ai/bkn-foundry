@@ -64,10 +64,8 @@ func TestDeleteDocumentsByQueryUsesTheFilterCondition(t *testing.T) {
 	condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{
 		Name:      "kind",
 		Operation: filter_condition.OperationEqual2,
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Const,
-			Value:     "remove",
-		},
+		ValueFrom: interfaces.ValueFrom_Const,
+		Value:     "remove",
 	}, map[string]*interfaces.Property{"kind": schema[0]})
 	require.NoError(t, err)
 

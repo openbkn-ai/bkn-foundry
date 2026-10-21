@@ -7,8 +7,6 @@ package binding
 import (
 	"context"
 	"errors"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/compiler"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/planning"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,15 +14,17 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	qm "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/querymodel"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/compiler"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/planning"
 )
 
 type resourceResolverFunc func(context.Context, string, qm.ExecutionIdentity) (*interfaces.Resource, error)
+type queryAuthorizerFunc func(context.Context, string, qm.ExecutionIdentity, string) (qm.AuthorizationBasis, error)
+type bindingTargetResolverFunc func(context.Context, qm.BoundScan, qm.ExecutionIdentity, qm.ExecutionOptions) ([]qm.TargetBinding, error)
 
 func (f resourceResolverFunc) ResolveSQLQueryResource(ctx context.Context, id string, identity qm.ExecutionIdentity) (*interfaces.Resource, error) {
 	return f(ctx, id, identity)
 }
-
-type queryAuthorizerFunc func(context.Context, string, qm.ExecutionIdentity, string) (qm.AuthorizationBasis, error)
 
 func (f queryAuthorizerFunc) AuthorizeSQLQueryResource(ctx context.Context, id string, identity qm.ExecutionIdentity, operation string) (qm.AuthorizationBasis, error) {
 	return f(ctx, id, identity, operation)
@@ -140,7 +140,7 @@ func TestBind(t *testing.T) {
 		assert.Equal(t, qm.TypeInteger, aggregate.Calls[1].Expr.Type.Kind)
 		assert.Equal(t, aggregate.Calls[0].Output, project.Columns[1].Expr.Field)
 		predicate := having.Predicate.Args[0]
-		if predicate.Kind == qm.BoundCast {
+		if predicate.Kind == qm.ExprCast {
 			predicate = predicate.Args[0]
 		}
 		assert.Equal(t, aggregate.Calls[0].Output, predicate.Field)
@@ -222,7 +222,7 @@ func TestBind(t *testing.T) {
 		assert.Equal(t, 4, columns[2].Expr.Type.Scale)
 		assert.False(t, columns[3].Expr.Nullable)
 		assert.False(t, columns[4].Expr.Nullable)
-		assert.Equal(t, qm.BoundCase, columns[5].Expr.Kind)
+		assert.Equal(t, qm.ExprCase, columns[5].Expr.Kind)
 		assert.False(t, columns[5].Expr.CaseBase)
 		assert.True(t, columns[5].Expr.CaseElse)
 	})
@@ -262,6 +262,16 @@ func TestBind(t *testing.T) {
 			result, err := Bind(context.Background(), q, semantic, qm.ExecutionIdentity{}, resolver, authorizer)
 			require.Error(t, err)
 			assert.Nil(t, result)
+		}
+		for _, kind := range []qm.ExprKind{qm.ExprField, qm.ExprRuntimeSlot} {
+			query := bindingInput(t, "SELECT id FROM {{orders}}")
+			query.Root.(*qm.Project).Columns[0].Expr.Kind = kind
+			result, err := Bind(context.Background(), query, semantic, qm.ExecutionIdentity{}, resolver, authorizer)
+			require.Error(t, err)
+			assert.Nil(t, result)
+			var compileErr *qm.CompileError
+			require.ErrorAs(t, err, &compileErr)
+			assert.Equal(t, qm.ErrorBinding, compileErr.Kind)
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -375,8 +385,6 @@ func TestBind(t *testing.T) {
 		assert.Len(t, plan.TargetBinding.Relations, 2)
 	})
 }
-
-type bindingTargetResolverFunc func(context.Context, qm.BoundScan, qm.ExecutionIdentity, qm.ExecutionOptions) ([]qm.TargetBinding, error)
 
 func (f bindingTargetResolverFunc) ResolveSQLQueryTargets(ctx context.Context, scan qm.BoundScan, identity qm.ExecutionIdentity, options qm.ExecutionOptions) ([]qm.TargetBinding, error) {
 	return f(ctx, scan, identity, options)

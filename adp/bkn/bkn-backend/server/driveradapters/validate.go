@@ -235,30 +235,24 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 	knFilter := &cond.CondCfg{
 		Field:     "kn_id",
 		Operation: cond.OperationEq,
-		ValueOptCfg: cond.ValueOptCfg{
-			ValueFrom: cond.ValueFrom_Const,
-			Value:     query.KNID,
-		},
+		ValueFrom: cond.ValueFrom_Const,
+		Value:     query.KNID,
 	}
 
 	// Add the module type filter.
 	typeFilter := &cond.CondCfg{
 		Field:     "module_type",
 		Operation: cond.OperationEq,
-		ValueOptCfg: cond.ValueOptCfg{
-			ValueFrom: cond.ValueFrom_Const,
-			Value:     query.ModuleType,
-		},
+		ValueFrom: cond.ValueFrom_Const,
+		Value:     query.ModuleType,
 	}
 
 	// Add the branch filter.
 	branchFilter := &cond.CondCfg{
 		Field:     "branch",
 		Operation: cond.OperationEq,
-		ValueOptCfg: cond.ValueOptCfg{
-			ValueFrom: cond.ValueFrom_Const,
-			Value:     query.Branch,
-		},
+		ValueFrom: cond.ValueFrom_Const,
+		Value:     query.Branch,
 	}
 
 	// Include required BKN filters in the condition tree.

@@ -35,10 +35,8 @@ func TestNewMultiMatchCond(t *testing.T) {
 				RemainCfg: map[string]any{
 					"fields": "field1",
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -52,10 +50,8 @@ func TestNewMultiMatchCond(t *testing.T) {
 				RemainCfg: map[string]any{
 					"fields": []any{"field1", 123},
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -69,10 +65,8 @@ func TestNewMultiMatchCond(t *testing.T) {
 				RemainCfg: map[string]any{
 					"fields": []any{AllField},
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -89,10 +83,8 @@ func TestNewMultiMatchCond(t *testing.T) {
 				RemainCfg: map[string]any{
 					"fields": []any{"field1", "field2"},
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -106,10 +98,8 @@ func TestNewMultiMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMultiMatch,
 				RemainCfg: map[string]any{},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -126,10 +116,8 @@ func TestNewMultiMatchCond(t *testing.T) {
 					"fields":     []any{"field1"},
 					"match_type": "invalid_type",
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -144,10 +132,8 @@ func TestNewMultiMatchCond(t *testing.T) {
 					"fields":     []any{"field1"},
 					"match_type": 123,
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -162,10 +148,8 @@ func TestNewMultiMatchCond(t *testing.T) {
 					"fields":     []any{"field1"},
 					"match_type": "best_fields",
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -190,10 +174,8 @@ func TestMultiMatchCond_Convert(t *testing.T) {
 				RemainCfg: map[string]any{
 					"fields": []any{"field1"},
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -219,10 +201,8 @@ func TestMultiMatchCond_Convert(t *testing.T) {
 				RemainCfg: map[string]any{
 					"fields": []any{"field1"},
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -244,10 +224,8 @@ func TestMultiMatchCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMultiMatch,
 				RemainCfg: map[string]any{},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -272,10 +250,8 @@ func TestMultiMatchCond_Convert(t *testing.T) {
 					"fields":     []any{"field1"},
 					"match_type": "phrase",
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -300,10 +276,8 @@ func TestMultiMatchCond_Convert(t *testing.T) {
 					"fields":     []any{"field1"},
 					"match_type": "best_fields", // Valid at creation
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -341,10 +315,8 @@ func TestMultiMatchCond_Convert2SQL(t *testing.T) {
 				RemainCfg: map[string]any{
 					"fields": []any{"field1"},
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewMultiMatchCond(ctx, cfg, CUSTOM, fieldsMap)
 			multiMatchCond := cond.(*MultiMatchCond)

@@ -172,9 +172,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 				Condition: &cond.CondCfg{
 					Name:      "status",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "active",
-					},
+					Value:     "active",
 				},
 				Parameters: []interfaces.Parameter{},
 			}
@@ -721,9 +719,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 				Condition: &cond.CondCfg{
 					Name:      "status",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "active",
-					},
+					Value:     "active",
 				},
 				Parameters: []interfaces.Parameter{},
 			}
@@ -768,9 +764,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 				Condition: &cond.CondCfg{
 					Name:      "status",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "active",
-					},
+					Value:     "active",
 				},
 				Parameters: []interfaces.Parameter{},
 			}

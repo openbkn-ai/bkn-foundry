@@ -54,9 +54,7 @@ func Test_NewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "vector_field",
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -71,9 +69,7 @@ func Test_NewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -88,9 +84,7 @@ func Test_NewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "vector_field",
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -99,9 +93,7 @@ func Test_NewKnnCond(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 				},
 			}
@@ -114,9 +106,7 @@ func Test_NewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "vector_field_no_config",
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -131,9 +121,7 @@ func Test_NewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "vector_field_disabled",
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -148,9 +136,7 @@ func Test_NewKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "vector_field",
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"limit_key":   "k",
 					"limit_value": 10,
@@ -159,9 +145,7 @@ func Test_NewKnnCond(t *testing.T) {
 					{
 						Name:      "nonexistent",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 				},
 			}
@@ -186,9 +170,7 @@ func Test_KnnCond_Convert(t *testing.T) {
 		Convey("成功 - 无子条件", func() {
 			cond := &KnnCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 					NameField: &DataProperty{
 						Name: "vector_field",
 					},
@@ -221,16 +203,12 @@ func Test_KnnCond_Convert(t *testing.T) {
 			subCfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			subCond, _ := NewEqCond(ctx, subCfg, fieldsMap)
 			cond := &KnnCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 					NameField: &DataProperty{
 						Name: "vector_field",
 					},
@@ -270,24 +248,18 @@ func Test_KnnCond_Convert(t *testing.T) {
 			subCfg1 := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			subCfg2 := &CondCfg{
 				Name:      "age",
 				Operation: OperationGt,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 			}
 			subCond1, _ := NewEqCond(ctx, subCfg1, fieldsMap)
 			subCond2, _ := NewGtCond(ctx, subCfg2, fieldsMap)
 			cond := &KnnCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 					NameField: &DataProperty{
 						Name: "vector_field",
 					},
@@ -310,9 +282,7 @@ func Test_KnnCond_Convert(t *testing.T) {
 			}
 			cond := &KnnCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 					NameField: &DataProperty{
 						Name: "vector_field",
 					},
@@ -342,9 +312,7 @@ func Test_KnnCond_Convert(t *testing.T) {
 			subCfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			subCond, _ := NewEqCond(ctx, subCfg, fieldsMap)
 			// Create a vectorizer that fails during sub-condition conversion.
@@ -360,9 +328,7 @@ func Test_KnnCond_Convert(t *testing.T) {
 			}
 			cond := &KnnCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 					NameField: &DataProperty{
 						Name: "vector_field",
 					},
@@ -391,9 +357,7 @@ func Test_KnnCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 返回空字符串", func() {
 			cond := &KnnCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mFilterFieldName: "_vector_vector_field",
 				mSubConds:        []Condition{},
@@ -420,9 +384,7 @@ func Test_rewriteKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "vector_field",
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				NameField: &DataProperty{
 					Name: "vector_field",
 					Type: dtype.DATATYPE_VECTOR,
@@ -446,9 +408,7 @@ func Test_rewriteKnnCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "vector_field",
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				NameField: &DataProperty{
 					Name: "",
 				},
@@ -487,7 +447,7 @@ func Test_rewriteKnnCond_NativeVectorPropertyPassesTextDownstream(t *testing.T) 
 				Type:        dtype.DATATYPE_VECTOR,
 				MappedField: Field{Name: "embedding_col"},
 			},
-			ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
+			Value: "famous stadium",
 		}
 
 		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
@@ -515,7 +475,7 @@ func Test_rewriteKnnCond_NativeVectorPropertyDoesNotNeedLocalModel(t *testing.T)
 				Type:        dtype.DATATYPE_VECTOR,
 				MappedField: Field{Name: "embedding_col"},
 			},
-			ValueOptCfg: ValueOptCfg{Value: "x"},
+			Value: "x",
 		}
 
 		result, err := rewriteKnnCond(ctx, cfg, vectorizer)
@@ -544,7 +504,7 @@ func Test_rewriteKnnCond_PassesTextDownstream(t *testing.T) {
 				Name:        "stadium_name",
 				MappedField: Field{Name: "stadium_name_col"},
 			},
-			ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
+			Value: "famous stadium",
 		}
 
 		result, err := rewriteKnnCond(ctx, cfg, vectorizer)

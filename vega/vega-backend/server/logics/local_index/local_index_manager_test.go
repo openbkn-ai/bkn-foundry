@@ -351,10 +351,8 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 			FilterCondCfg: &interfaces.FilterCondCfg{
 				Name:      "id",
 				Operation: "==",
-				ValueOptCfg: interfaces.ValueOptCfg{
-					ValueFrom: interfaces.ValueFrom_Const,
-					Value:     1,
-				},
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     1,
 			},
 		}
 		var gotParams *interfaces.ResourceDataQueryParams

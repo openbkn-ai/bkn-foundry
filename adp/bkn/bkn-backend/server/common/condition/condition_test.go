@@ -38,10 +38,8 @@ func TestNewCondition(t *testing.T) {
 					{
 						Operation: OperationEq,
 						Field:     "field1",
-						ValueOptCfg: ValueOptCfg{
-							ValueFrom: ValueFrom_Const,
-							Value:     "value1",
-						},
+						ValueFrom: ValueFrom_Const,
+						Value:     "value1",
 					},
 				},
 			}
@@ -59,10 +57,8 @@ func TestNewCondition(t *testing.T) {
 					{
 						Operation: OperationEq,
 						Field:     "field1",
-						ValueOptCfg: ValueOptCfg{
-							ValueFrom: ValueFrom_Const,
-							Value:     "value1",
-						},
+						ValueFrom: ValueFrom_Const,
+						Value:     "value1",
 					},
 				},
 			}
@@ -77,10 +73,8 @@ func TestNewCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewCondition(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -96,10 +90,8 @@ func TestNewCondition(t *testing.T) {
 					{
 						Operation: OperationEq,
 						Field:     "nonexistent",
-						ValueOptCfg: ValueOptCfg{
-							ValueFrom: ValueFrom_Const,
-							Value:     "value1",
-						},
+						ValueFrom: ValueFrom_Const,
+						Value:     "value1",
 					},
 				},
 			}
@@ -132,10 +124,8 @@ func TestNewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "nonexistent",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -147,10 +137,8 @@ func TestNewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "binary_field",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -162,10 +150,8 @@ func TestNewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatch,
 				Field:     AllField,
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -178,10 +164,8 @@ func TestNewCondWithOpr(t *testing.T) {
 				RemainCfg: map[string]any{
 					"fields": []any{"field1"},
 				},
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -192,10 +176,8 @@ func TestNewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: "unsupported_op",
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -225,10 +207,8 @@ func TestNewCondWithOpr(t *testing.T) {
 				cfg := &CondCfg{
 					Operation: tc.operation,
 					Field:     tc.name,
-					ValueOptCfg: ValueOptCfg{
-						ValueFrom: ValueFrom_Const,
-						Value:     tc.value,
-					},
+					ValueFrom: ValueFrom_Const,
+					Value:     tc.value,
 					RemainCfg: map[string]any{},
 				}
 

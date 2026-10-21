@@ -39,9 +39,7 @@ func Test_NewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2", "test3"},
-				},
+				Value:     []any{"test1", "test2", "test3"},
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -52,9 +50,7 @@ func Test_NewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 19, 20},
-				},
+				Value:     []any{18, 19, 20},
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -65,9 +61,7 @@ func Test_NewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -78,9 +72,7 @@ func Test_NewInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", 123, "test3"},
-				},
+				Value:     []any{"test1", 123, "test3"},
 			}
 			cond, err := NewInCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -96,9 +88,7 @@ func Test_InCond_Convert(t *testing.T) {
 		Convey("成功 - 字符串数组", func() {
 			cond := &InCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{"test1", "test2"},
-					},
+					Value: []any{"test1", "test2"},
 				},
 				mValue:           []any{"test1", "test2"},
 				mFilterFieldName: "name",
@@ -112,9 +102,7 @@ func Test_InCond_Convert(t *testing.T) {
 		Convey("成功 - 整数数组", func() {
 			cond := &InCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{1, 2, 3},
-					},
+					Value: []any{1, 2, 3},
 				},
 				mValue:           []any{1, 2, 3},
 				mFilterFieldName: "age",
@@ -134,9 +122,7 @@ func Test_InCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 字符串数组", func() {
 			cond := &InCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{"test1", "test2"},
-					},
+					Value: []any{"test1", "test2"},
 				},
 				mValue:           []any{"test1", "test2"},
 				mFilterFieldName: "name",
@@ -152,9 +138,7 @@ func Test_InCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 整数数组", func() {
 			cond := &InCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{1, 2, 3},
-					},
+					Value: []any{1, 2, 3},
 				},
 				mValue:           []any{1, 2, 3},
 				mFilterFieldName: "age",
@@ -176,9 +160,7 @@ func Test_rewriteInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2"},
-				},
+				Value:     []any{"test1", "test2"},
 				NameField: &DataProperty{
 					Name: "name",
 					MappedField: Field{
@@ -197,9 +179,7 @@ func Test_rewriteInCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2"},
-				},
+				Value:     []any{"test1", "test2"},
 				NameField: &DataProperty{
 					Name: "",
 				},

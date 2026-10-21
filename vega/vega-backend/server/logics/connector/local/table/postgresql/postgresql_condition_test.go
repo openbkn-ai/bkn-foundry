@@ -44,10 +44,8 @@ func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCond
 	cfg := &interfaces.FilterCondCfg{
 		Name:      name,
 		Operation: op,
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Const,
-			Value:     value,
-		},
+		ValueFrom: interfaces.ValueFrom_Const,
+		Value:     value,
 	}
 	cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 	require.NoError(t, err)
@@ -69,7 +67,7 @@ func TestPostgresqlConnectorConvertFilterConditionPrefix(t *testing.T) {
 
 	t.Run("convert constant prefix", func(t *testing.T) {
 		cond := &filter_condition.PrefixCond{
-			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const}},
+			Cfg:    &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Const},
 			Lfield: field, Value: "ali",
 		}
 		expr, err := (&PostgresqlConnector{}).ConvertFilterConditionPrefix(cond)
@@ -81,10 +79,10 @@ func TestPostgresqlConnectorConvertFilterConditionPrefix(t *testing.T) {
 	})
 	t.Run("reject field source", func(t *testing.T) {
 		cond := &filter_condition.PrefixCond{
-			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field}},
+			Cfg:    &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Field},
 			Lfield: field, Value: "ali",
 		}
-		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Name: "name", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}}, map[string]*interfaces.Property{"name": field})
+		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Name: "name", ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}, map[string]*interfaces.Property{"name": field})
 		require.ErrorContains(t, err, "value_from")
 		assert.Nil(t, expr)
 	})
@@ -258,7 +256,7 @@ func TestPostgresqlDateExpressionsKeepTimeOfDayValuesRaw(t *testing.T) {
 	})
 
 	t.Run("rejects numeric time values before conversion", func(t *testing.T) {
-		cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "event_time", Operation: ">=", ValueOptCfg: interfaces.ValueOptCfg{Value: float64(1785295334428)}}, testFieldsMap())
+		cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "event_time", Operation: ">=", Value: float64(1785295334428)}, testFieldsMap())
 		require.ErrorContains(t, err, "invalid time value")
 		assert.Nil(t, cond)
 	})
@@ -305,7 +303,7 @@ func TestPostgresqlConnectorConvertFilterConditionBefore(t *testing.T) {
 		c := &PostgresqlConnector{}
 		cond := &filter_condition.BeforeCond{
 			Cfg: &interfaces.FilterCondCfg{
-				ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const},
+				ValueFrom: interfaces.ValueFrom_Const,
 			},
 			Lfield: testFieldsMap()["created_at"],
 			Value:  []any{json.Number("2"), "days"},
@@ -341,7 +339,7 @@ func TestPostgresqlConnectorConvertFilterConditionCurrent(t *testing.T) {
 	t.Run("returns error for unsupported format", func(t *testing.T) {
 		c := &PostgresqlConnector{}
 		cond := &filter_condition.CurrentCond{
-			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const}},
+			Cfg:    &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Const},
 			Lfield: testFieldsMap()["created_at"],
 			Value:  "quarter",
 		}
@@ -384,7 +382,7 @@ func TestPostgresqlConnectorTemporalInputContract(t *testing.T) {
 	t.Setenv("TZ", "Asia/Shanghai")
 	t.Run("timezone-aware source column retains the instant", func(t *testing.T) {
 		field := &interfaces.Property{Name: "value", OriginalName: "value", Type: interfaces.DataType_Datetime, OriginalType: "timestamp with time zone"}
-		cfg := &interfaces.FilterCondCfg{Name: "value", Operation: "==", ValueOptCfg: interfaces.ValueOptCfg{Value: "2026-10-19 00:00:00"}}
+		cfg := &interfaces.FilterCondCfg{Name: "value", Operation: "==", Value: "2026-10-19 00:00:00"}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 		require.NoError(t, err)
 		expr, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond)
@@ -417,7 +415,7 @@ func TestPostgresqlConnectorTemporalInputContract(t *testing.T) {
 							value = []any{literal, literal}
 							count = 2
 						}
-						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: value}}
+						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, Value: value}
 						cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 						require.NoError(t, err)
 						expr, err := (&PostgresqlConnector{}).ConvertFilterCondition(cond)
