@@ -44,6 +44,8 @@ type RunCypherReq struct {
 	// ObjectProperties names, per returned node variable, the properties its
 	// node value should carry besides its identity.
 	ObjectProperties map[string][]string `json:"object_properties"`
+	// Explain asks for the plan instead of the rows; nothing is read.
+	Explain bool `json:"explain"`
 }
 
 // KnCypherService runs one read-only Cypher query against a knowledge network.
@@ -101,7 +103,13 @@ func (s *knCypherService) RunCypher(ctx context.Context, req *RunCypherReq) (*in
 		Query:            query,
 		Parameters:       req.Parameters,
 		ObjectProperties: req.ObjectProperties,
+		Explain:          req.Explain,
 	})
+	if req.Explain {
+		// An explained query reads nothing, so it is no evidence of a read
+		// and no failure of one.
+		return resp, err
+	}
 	if err != nil {
 		emitRunCypherFailure(ctx, nil, knID, query, classifyRunCypherFailure(err))
 		return nil, err

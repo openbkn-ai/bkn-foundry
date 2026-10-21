@@ -31,7 +31,7 @@ curl -X POST "https://<access-address>/api/bkn-backend/v1/knowledge-networks/<kn
 
 ### MCP / agents
 
-Call the Context Loader tool `run_cypher` with `kn_id` and `query`, and optionally `parameters` and `object_properties`.
+Call the Context Loader tool `run_cypher` with `kn_id` and `query`, and optionally `parameters`, `object_properties` and `explain`.
 
 ### CLI
 
@@ -46,10 +46,25 @@ Request fields:
 | `query` | The Cypher text, at most 8192 characters |
 | `parameters` | Values for `$name`. A parameter is always a value, never a label, relationship type or property name; null is not accepted |
 | `object_properties` | Extra properties a returned node carries, per node variable, as in `{"t": ["team_name"]}`. Each variable must be a node the query returns; at most 128 properties in all, authorized like any other property the query names |
+| `explain` | When `true`, returns the plan and reads nothing; see "Checking a query with explain" below |
 
 The branch is chosen with the `branch` query parameter, `main` by default.
 
 In the response, `columns` lists the columns in RETURN order and `entries` holds the rows, keyed by column name. A query that returns nodes or relationships also gets `value_types` and `execution` (see "Returning nodes and relationships" below).
+
+### Checking a query with explain
+
+With `"explain": true` the query is read, authorized and compiled as usual but not run, and nothing is read from the data: `entries` comes back empty and `plan` is returned instead.
+
+```json
+{"query": "MATCH (g:goals)-[:rel_goals_team]->(t:teams) WITH t, count(*) AS n WHERE n > 200 RETURN t.team_name AS team, n", "explain": true}
+```
+
+- A form that would be refused gets the same error code and rewrite hint as running it; a query explain accepts is not refused for its form when it runs.
+- `plan` holds `shape` (match, aggregate, totals, semi_join, list_comparison or carried), `objects` and `relations` (the object type of each variable and the relation types walked), `conditions` (each condition's operator, the properties it reads and whether it applies to rows, groups or an earlier stage), `grouping`, `columns` (each column's name, what computes it and its value type), `ordering`, `limit` (the row limit in force), `reads` (the properties read), `row_filtered` (object types whose rows the access policy narrows) and `warnings`.
+- `warnings` points out parts of the pattern that share no node (their rows combine pairwise), the 1000-row cap without LIMIT, narrowed rows, and the 10000-row evidence cap of `collect`.
+- No SQL is returned, and the values in conditions are not repeated. Authorization is the same as running: object types and properties the caller cannot read stay out of explain too.
+- Use it to check a query with WITH, several MATCH clauses or several hops before running it: that the grouping, filters and joins are what was meant.
 
 ---
 

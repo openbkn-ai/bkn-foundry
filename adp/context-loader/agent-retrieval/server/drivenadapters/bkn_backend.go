@@ -300,6 +300,7 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 		Entries           []map[string]any                    `json:"entries"`
 		ValueTypes        json.RawMessage                     `json:"value_types"`
 		Execution         json.RawMessage                     `json:"execution"`
+		Plan              json.RawMessage                     `json:"plan"`
 		Trace             json.RawMessage                     `json:"_trace"`
 		PermissionImpacts []interfaces.ObjectPermissionImpact `json:"permission_impacts"`
 	}
@@ -308,7 +309,7 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 		return nil, err
 	}
 	resp.Columns, resp.Entries, resp.TraceDescriptor = wire.Columns, wire.Entries, wire.Trace
-	resp.ValueTypes, resp.Execution = wire.ValueTypes, wire.Execution
+	resp.ValueTypes, resp.Execution, resp.Plan = wire.ValueTypes, wire.Execution, wire.Plan
 	resp.PermissionImpacts = wire.PermissionImpacts
 	return resp, nil
 }

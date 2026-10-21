@@ -140,6 +140,19 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 	if err := s.authorizeProperties(ctx, query.KNID, compiled); err != nil {
 		return nil, err
 	}
+	if query.Explain {
+		// Everything that decides whether the query may run has run; only
+		// the read is left out.
+		plan, err := explain(compiled)
+		if err != nil {
+			common.LogSafeError(ctx, "Cypher explain failed", err)
+			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+		}
+		span.SetAttributes(attribute.Bool(spanAttrExplain, true))
+		return &interfaces.CypherQueryResult{
+			Columns: []interfaces.RawQueryColumn{}, Entries: []map[string]any{}, Plan: plan,
+		}, nil
+	}
 	if compiled.graph != nil {
 		span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorSQL), attribute.Bool(spanAttrGraph, true))
 		return s.queryGraph(ctx, query, compiled)
@@ -495,6 +508,7 @@ const (
 	spanAttrExecutor       = "cypher.executor"
 	spanAttrFallback       = "cypher.fallback"
 	spanAttrGraph          = "cypher.graph_values"
+	spanAttrExplain        = "cypher.explain"
 
 	executionPathProxy  = "proxy"
 	executionPathCaller = "caller"

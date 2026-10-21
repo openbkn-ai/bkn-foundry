@@ -154,3 +154,35 @@ func TestRunCypherQueryCarriesGraphValues(t *testing.T) {
 		t.Fatalf("response = %s, want value_types and execution passed on", out)
 	}
 }
+
+// explain goes out in the request, and the plan that comes back reaches the
+// caller: a response field this adapter does not list is dropped.
+func TestRunCypherQueryCarriesExplainAndPlan(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+	mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+	var sent *interfaces.CypherQueryReq
+	mockHTTPClient.EXPECT().
+		PostNoUnmarshal(gomock.Any(), "http://bkn/in/v1/knowledge-networks/kn-1/cypher-queries", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ map[string]string, body any) (int, []byte, error) {
+			sent, _ = body.(*interfaces.CypherQueryReq)
+			return http.StatusOK, []byte(`{"columns":[],"entries":[],"plan":{"shape":"match","limit":1000}}`), nil
+		})
+
+	client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
+	resp, err := client.RunCypherQuery(context.Background(), &interfaces.CypherQueryReq{
+		KnID: "kn-1", Query: "MATCH (t:teams) RETURN t.team_id", Explain: true,
+	})
+	if err != nil {
+		t.Fatalf("RunCypherQuery() error = %v", err)
+	}
+	body, _ := json.Marshal(sent)
+	if !strings.Contains(string(body), `"explain":true`) {
+		t.Fatalf("request body = %s, want explain", body)
+	}
+	out, _ := json.Marshal(resp)
+	if !strings.Contains(string(out), `"plan":{"shape":"match","limit":1000}`) {
+		t.Fatalf("response = %s, want the plan passed on", out)
+	}
+}

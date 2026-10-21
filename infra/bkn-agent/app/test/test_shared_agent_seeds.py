@@ -274,8 +274,9 @@ def test_sql_defaults_match_the_previous_agent_and_prompt_definitions():
         # with the run_cypher subset as it stands after #2263 in place of a
         # list of refusals that had stopped being true, then with CASE,
         # coalesce and the comparison of two collected lists, then with
-        # nodes passed on to a second MATCH.
-        "studio_smart_qa": "22247fd4a20cee03f1a96c998df137cecb8fc17c5a44d7f5838623d78241eaff",
+        # nodes passed on to a second MATCH, then with explain for checking a
+        # complex query first.
+        "studio_smart_qa": "a03cdeb687769096f3efaa3ce108af2c6fbfc41ba5d6aad5dbb5b5dd709fd568",
         "business_provenance_optimizer": "10531cf1bf25a4ac4e52219766f507556e3544f0d9296fc2daff589fe70e7540",
         "business_provenance_claim_attribution": "9dc9e6ad9f118db0c7f890f595584048e9937413c2b60319d57ebf809ee3cb43",
     }

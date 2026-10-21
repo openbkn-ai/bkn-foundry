@@ -245,3 +245,36 @@ func TestRunCypherQueryReportsAFailedExistenceCheck(t *testing.T) {
 		t.Fatalf("status = %d, want 500", recorder.Code)
 	}
 }
+
+// explain reaches the service, and its plan comes back on both faces in place
+// of rows.
+func TestRunCypherQueryPassesExplain(t *testing.T) {
+	for _, face := range []string{"", "in/"} {
+		t.Run("face "+face, func(t *testing.T) {
+			engine, cypherQueries, knowledgeNetworks := cypherTestHandler(t)
+			knowledgeNetworks.EXPECT().CheckKNExistByID(gomock.Any(), cypherKNID, interfaces.MAIN_BRANCH).
+				Return(cypherKNID, true, nil)
+			cypherQueries.EXPECT().
+				Query(gomock.Any(), interfaces.CypherQuery{
+					KNID: cypherKNID, Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id", Explain: true,
+				}).
+				Return(&interfaces.CypherQueryResult{
+					Columns: []interfaces.RawQueryColumn{}, Entries: []map[string]any{},
+					Plan: &interfaces.CypherPlan{Shape: "match", Limit: interfaces.CYPHER_DEFAULT_LIMIT, LimitSource: "default"},
+				}, nil)
+
+			recorder := postCypher(engine, cypherURL(face, cypherKNID),
+				`{"query":"MATCH (o:Order) RETURN o.id","explain":true}`,
+				map[string]string{
+					interfaces.HTTP_HEADER_ACCOUNT_ID:   "user-42",
+					interfaces.HTTP_HEADER_ACCOUNT_TYPE: "user",
+				})
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+			}
+			if !bytes.Contains(recorder.Body.Bytes(), []byte(`"plan":{"shape":"match"`)) {
+				t.Fatalf("body = %s, want the plan", recorder.Body.String())
+			}
+		})
+	}
+}
