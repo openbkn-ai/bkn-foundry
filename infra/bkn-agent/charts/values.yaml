@@ -28,9 +28,11 @@ service:
     targetPort: 30800
 
 # No blanket ingress: legacy management and service-call routes remain internal.
-# Expose only the credential-verified routes required by Studio. The built-in
-# Agent settings page also needs /admin/agents; writes still require
-# admin-agent:manage in the application.
+# Expose only the credential-verified execution and Agent-setting routes used by
+# Studio. /networks currently contains only the Agent-setting handlers; their
+# server-side Agent allowlist and knowledge-network permissions still apply.
+# The built-in Agent management page additionally needs /admin/agents; writes
+# still require admin-agent:manage in the application.
 publicIngress:
   enabled: false
   adminAgentsEnabled: false

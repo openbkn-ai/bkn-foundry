@@ -2,6 +2,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
+  # Keep the existing resource name stable during chart upgrades.
   name: {{ .Values.image.name }}-metric-design
   namespace: {{ .Values.namespace }}
   annotations:
@@ -19,6 +20,20 @@ spec:
                 port:
                   number: {{ .Values.service.ports.port }}
           - path: /api/bkn-agent/v1/executions
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.image.name }}
+                port:
+                  number: {{ .Values.service.ports.port }}
+          - path: /api/bkn-agent/v1/me/agents
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.image.name }}
+                port:
+                  number: {{ .Values.service.ports.port }}
+          - path: /api/bkn-agent/v1/networks
             pathType: Prefix
             backend:
               service:

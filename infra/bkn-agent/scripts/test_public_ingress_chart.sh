@@ -7,22 +7,28 @@
 set -euo pipefail
 
 chart_dir="${1:-charts}"
+disabled_rendered="$(helm template bkn-agent "${chart_dir}")"
 default_rendered="$(helm template bkn-agent "${chart_dir}" --set publicIngress.enabled=true)"
 admin_rendered="$(helm template bkn-agent "${chart_dir}" \
     --set publicIngress.enabled=true --set publicIngress.adminAgentsEnabled=true)"
 
-execution_path='path: /api/bkn-agent/v1/executions'
-admin_path='path: /api/bkn-agent/v1/admin/agents'
+expected_paths=$'/api/bkn-agent/v1/metric-design/executions\n/api/bkn-agent/v1/executions\n/api/bkn-agent/v1/me/agents\n/api/bkn-agent/v1/networks'
+admin_path='/api/bkn-agent/v1/admin/agents'
 
-grep -qF "${execution_path}" <<<"${default_rendered}"
-if grep -qF "${admin_path}" <<<"${default_rendered}"; then
-    echo 'Built-in Agent management route must be opt-in' >&2
+rendered_paths() {
+    awk '$1 == "-" && $2 == "path:" { print $3 }' <<<"$1"
+}
+
+if grep -qF 'kind: Ingress' <<<"${disabled_rendered}"; then
+    echo 'Public ingress must be disabled by default' >&2
     exit 1
 fi
-grep -qF "${execution_path}" <<<"${admin_rendered}"
-grep -qF "${admin_path}" <<<"${admin_rendered}"
-if grep -qE 'path: /api/bkn-agent/(in/v1|v1/?$)' <<<"${admin_rendered}"; then
-    echo 'Public ingress must not expose internal or blanket BKN Agent routes' >&2
+if [[ "$(rendered_paths "${default_rendered}")" != "${expected_paths}" ]]; then
+    echo 'Default public ingress must contain only the Studio execution and setting routes' >&2
+    exit 1
+fi
+if [[ "$(rendered_paths "${admin_rendered}")" != "${expected_paths}"$'\n'"${admin_path}" ]]; then
+    echo 'Admin ingress must add only the built-in Agent management route' >&2
     exit 1
 fi
 
