@@ -4,23 +4,6 @@
 
 package querymodel
 
-type BoundExprKind string
-
-const (
-	BoundField       BoundExprKind = "field"
-	BoundLiteral     BoundExprKind = "literal"
-	BoundUnary       BoundExprKind = "unary"
-	BoundBinary      BoundExprKind = "binary"
-	BoundCall        BoundExprKind = "call"
-	BoundCase        BoundExprKind = "case"
-	BoundCast        BoundExprKind = "cast"
-	BoundBetween     BoundExprKind = "between"
-	BoundIn          BoundExprKind = "in"
-	BoundIsNull      BoundExprKind = "is_null"
-	BoundLike        BoundExprKind = "like"
-	BoundRuntimeSlot BoundExprKind = "runtime_slot"
-)
-
 type ScalarOperator string
 
 const (
@@ -40,11 +23,12 @@ const (
 	OperatorNot          ScalarOperator = "NOT"
 )
 
-// BoundExpr 不能表达待解析名称或 wildcard，字段和运行时参数均引用稳定 ID。
+// BoundExpr 只允许绑定后的节点，不得含 name、wildcard 或 aggregate_ref。
+// 字段和运行时参数均引用稳定 ID。
 // Kind 决定有效 payload；绑定/结构验证负责检查组合、类型及输入可见性。
 // CAST 的目标类型为 Type；CASE 的 Args 排列与未绑定表达式一致。
 type BoundExpr struct {
-	Kind         BoundExprKind
+	Kind         ExprKind
 	Type         LogicalType
 	Nullable     bool
 	Origin       Origin

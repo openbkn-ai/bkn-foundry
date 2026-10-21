@@ -98,8 +98,9 @@ func rewriteMatchCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 	}
 
 	return &CondCfg{
-		Name:        fieldName,
-		Operation:   cfg.Operation,
-		ValueOptCfg: cfg.ValueOptCfg,
+		Name:      fieldName,
+		Operation: cfg.Operation,
+		ValueFrom: cfg.ValueFrom,
+		Value:     cfg.Value,
 	}, nil
 }

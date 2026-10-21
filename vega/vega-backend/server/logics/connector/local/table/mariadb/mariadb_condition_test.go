@@ -64,10 +64,8 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Name:      "name",
 			Operation: "==",
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Field,
-				Value:     "tags",
-			},
+			ValueFrom: interfaces.ValueFrom_Field,
+			Value:     "tags",
 		}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		if err != nil {
@@ -83,10 +81,8 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Name:      "alias_col",
 			Operation: "==",
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     "test",
-			},
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     "test",
 		}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		if err != nil {
@@ -238,7 +234,7 @@ func TestMariaDBDateExpressionsKeepTimeValuesRaw(t *testing.T) {
 
 	t.Run("rejects numeric time values before conversion", func(t *testing.T) {
 		cond, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{
-			Name: "event_time", Operation: ">=", ValueOptCfg: interfaces.ValueOptCfg{Value: float64(1785295334428)},
+			Name: "event_time", Operation: ">=", Value: float64(1785295334428),
 		}, testFieldsMap())
 		require.ErrorContains(t, err, "invalid time value")
 		assert.Nil(t, cond)
@@ -467,10 +463,10 @@ func TestMariaDBConnectorConvertFilterConditionPrefix(t *testing.T) {
 	t.Run("reject field source", func(t *testing.T) {
 		field := testFieldsMap()["name"]
 		cond := &filter_condition.PrefixCond{
-			Cfg:    &interfaces.FilterCondCfg{ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field}},
+			Cfg:    &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Field},
 			Lfield: field, Value: "ali",
 		}
-		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Name: "name", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}}, map[string]*interfaces.Property{"name": field})
+		expr, err := cond.New(context.Background(), &interfaces.FilterCondCfg{Name: "name", ValueFrom: interfaces.ValueFrom_Field, Value: "ali"}, map[string]*interfaces.Property{"name": field})
 		if expr != nil || err == nil || !strings.Contains(err.Error(), "value_from") {
 			t.Fatalf("expected constant-source error and nil expression, got expr=%v err=%v", expr, err)
 		}
@@ -482,8 +478,8 @@ func TestMariaDBConnectorConvertFilterConditionAnd(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Operation: "and",
 			SubConds: []*interfaces.FilterCondCfg{
-				{Name: "name", Operation: "==", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "const", Value: "alice"}},
-				{Name: "age", Operation: ">", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "const", Value: 18}},
+				{Name: "name", Operation: "==", ValueFrom: "const", Value: "alice"},
+				{Name: "age", Operation: ">", ValueFrom: "const", Value: 18},
 			},
 		}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
@@ -508,8 +504,8 @@ func TestMariaDBConnectorConvertFilterConditionOr(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Operation: "or",
 			SubConds: []*interfaces.FilterCondCfg{
-				{Name: "name", Operation: "==", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "const", Value: "alice"}},
-				{Name: "name", Operation: "==", ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "const", Value: "bob"}},
+				{Name: "name", Operation: "==", ValueFrom: "const", Value: "alice"},
+				{Name: "name", Operation: "==", ValueFrom: "const", Value: "bob"},
 			},
 		}
 		cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
@@ -579,10 +575,8 @@ func mustNewCond(t *testing.T, name, op string, value any) interfaces.FilterCond
 	cfg := &interfaces.FilterCondCfg{
 		Name:      name,
 		Operation: op,
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Const,
-			Value:     value,
-		},
+		ValueFrom: interfaces.ValueFrom_Const,
+		Value:     value,
 	}
 	cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 	if err != nil {
@@ -598,7 +592,7 @@ func TestMariaDBConnectorConvertFilterConditionCurrent(t *testing.T) {
 	} {
 		t.Run(tc.interval, func(t *testing.T) {
 			fields := map[string]*interfaces.Property{"created": {Name: "created", OriginalName: "created_at", Type: interfaces.DataType_Datetime}}
-			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationCurrent, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: tc.interval}}
+			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationCurrent, ValueFrom: interfaces.ValueFrom_Const, Value: tc.interval}
 			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
 			if err != nil {
 				t.Fatal(err)
@@ -631,7 +625,7 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 		{"negative", float64(-1), false}, {"fractional", float64(1.5), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationBefore, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: []any{tc.value, "day"}}}
+			cfg := &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationBefore, ValueFrom: interfaces.ValueFrom_Const, Value: []any{tc.value, "day"}}
 			cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"created": field})
 			if err != nil {
 				t.Fatal(err)
@@ -711,7 +705,7 @@ func TestMariaDBConnectorTemporalInputContract(t *testing.T) {
 							value = []any{literal, literal}
 							count = 2
 						}
-						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: value}}
+						cfg := &interfaces.FilterCondCfg{Name: "value", Operation: op, Value: value}
 						cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, map[string]*interfaces.Property{"value": field})
 						require.NoError(t, err)
 						expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)

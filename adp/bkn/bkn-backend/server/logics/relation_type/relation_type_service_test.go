@@ -1611,10 +1611,8 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 						{
 							Field:     "name",
 							Operation: cond.OperationEq,
-							ValueOptCfg: cond.ValueOptCfg{
-								ValueFrom: "const",
-								Value:     "rt1",
-							},
+							ValueFrom: "const",
+							Value:     "rt1",
 						},
 					},
 				},

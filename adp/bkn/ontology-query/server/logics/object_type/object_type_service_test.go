@@ -564,9 +564,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				ActualCondition: &cond.CondCfg{
 					Name:      "invalid_field",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "value1",
-					},
+					Value:     "value1",
 				},
 				PageQuery: interfaces.PageQuery{
 					Limit: 10,

@@ -179,7 +179,14 @@ func bindLiteral(literal *qm.Literal, origin qm.Origin) (*qm.BoundExpr, error) {
 	default:
 		return nil, bindFailure(origin, "未知常量类型")
 	}
-	return &qm.BoundExpr{Kind: qm.BoundLiteral, Type: value.Type, Nullable: value.Type.Kind == qm.TypeNull, Literal: &value, Domain: qm.DomainVega, Origin: origin}, nil
+	return &qm.BoundExpr{
+		Kind:     qm.ExprLiteral,
+		Type:     value.Type,
+		Nullable: value.Type.Kind == qm.TypeNull,
+		Literal:  &value,
+		Domain:   qm.DomainVega,
+		Origin:   origin,
+	}, nil
 }
 
 func decimalLiteral(text string, origin qm.Origin) (string, int, int, error) {
@@ -298,7 +305,14 @@ func implicitCast(expr *qm.BoundExpr, typ qm.LogicalType) *qm.BoundExpr {
 	if reflect.DeepEqual(expr.Type, typ) {
 		return expr
 	}
-	return &qm.BoundExpr{Kind: qm.BoundCast, Type: typ, Nullable: expr.Nullable, Args: []*qm.BoundExpr{expr}, Domain: expr.Domain, Origin: expr.Origin}
+	return &qm.BoundExpr{
+		Kind:     qm.ExprCast,
+		Type:     typ,
+		Nullable: expr.Nullable,
+		Args:     []*qm.BoundExpr{expr},
+		Domain:   expr.Domain,
+		Origin:   expr.Origin,
+	}
 }
 
 func arithmeticType(op qm.ScalarOperator, a, b qm.LogicalType, origin qm.Origin) (qm.LogicalType, error) {

@@ -32,9 +32,7 @@ func Test_NewOutRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationOutRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 65},
-				},
+				Value:     []any{18, 65},
 			}
 			cond, err := NewOutRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -45,9 +43,7 @@ func Test_NewOutRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationOutRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 			}
 			cond, err := NewOutRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -58,9 +54,7 @@ func Test_NewOutRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationOutRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18},
-				},
+				Value:     []any{18},
 			}
 			cond, err := NewOutRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -71,9 +65,7 @@ func Test_NewOutRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationOutRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, "65"},
-				},
+				Value:     []any{18, "65"},
 			}
 			cond, err := NewOutRangeCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -92,9 +84,7 @@ func Test_OutRangeCond_Convert(t *testing.T) {
 					NameField: &DataProperty{
 						Type: dtype.DATATYPE_INTEGER,
 					},
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{18, 65},
-					},
+					Value: []any{18, 65},
 				},
 				mValue:           []any{18, 65},
 				mFilterFieldName: "age",
@@ -114,9 +104,7 @@ func Test_OutRangeCond_Convert(t *testing.T) {
 					NameField: &DataProperty{
 						Type: dtype.DATATYPE_DATETIME,
 					},
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{"2023-01-01", "2023-12-31"},
-					},
+					Value: []any{"2023-01-01", "2023-12-31"},
 				},
 				mValue:           []any{"2023-01-01", "2023-12-31"},
 				mFilterFieldName: "date_field",
@@ -135,9 +123,7 @@ func Test_OutRangeCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 转换SQL", func() {
 			cond := &OutRangeCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: []any{18, 65},
-					},
+					Value: []any{18, 65},
 				},
 				mValue:           []any{18, 65},
 				mFilterFieldName: "age",
@@ -158,9 +144,7 @@ func Test_rewriteOutRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationOutRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 65},
-				},
+				Value:     []any{18, 65},
 				NameField: &DataProperty{
 					Name: "age",
 					MappedField: Field{
@@ -178,9 +162,7 @@ func Test_rewriteOutRangeCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationOutRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 65},
-				},
+				Value:     []any{18, 65},
 				NameField: &DataProperty{
 					Name: "",
 				},

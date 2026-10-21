@@ -1193,9 +1193,9 @@ func Test_knowledgeNetworkService_expandObjectPathsBatch(t *testing.T) {
 				}
 			}
 			activeOnly := &cond.CondCfg{
-				Name:        "status",
-				Operation:   cond.OperationEq,
-				ValueOptCfg: cond.ValueOptCfg{ValueFrom: "const", Value: "active"},
+				Name:      "status",
+				Operation: cond.OperationEq,
+				ValueFrom: "const", Value: "active",
 			}
 			typePath := interfaces.RelationTypePath{
 				ID: 1,
@@ -1763,9 +1763,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 				ActualCondition: &cond.CondCfg{
 					Name:      "status",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "active",
-					},
+					Value:     "active",
 				},
 				PageQuery: interfaces.PageQuery{
 					Sort: []*interfaces.SortParams{
@@ -2717,9 +2715,7 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 				{
 					Name:      "view_id",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "123",
-					},
+					Value:     "123",
 				},
 			}
 
@@ -2767,9 +2763,7 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 				{
 					Name:      "view_id",
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "123",
-					},
+					Value:     "123",
 				},
 			}
 
@@ -2806,9 +2800,7 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 				{
 					Name:      "id", // The condition field name should correspond to SourceProp.Name.
 					Operation: "==",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "123",
-					},
+					Value:     "123",
 				},
 			}
 

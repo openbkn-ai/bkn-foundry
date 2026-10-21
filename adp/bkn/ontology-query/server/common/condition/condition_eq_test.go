@@ -39,9 +39,7 @@ func Test_NewEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -52,9 +50,7 @@ func Test_NewEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 			}
 			cond, err := NewEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -65,9 +61,7 @@ func Test_NewEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2"},
-				},
+				Value:     []any{"test1", "test2"},
 			}
 			cond, err := NewEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -83,9 +77,7 @@ func Test_EqCond_Convert(t *testing.T) {
 		Convey("成功 - 字符串值", func() {
 			cond := &EqCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mFilterFieldName: "name",
 			}
@@ -99,9 +91,7 @@ func Test_EqCond_Convert(t *testing.T) {
 		Convey("成功 - 整数值", func() {
 			cond := &EqCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: 123,
-					},
+					Value: 123,
 				},
 				mFilterFieldName: "age",
 			}
@@ -121,9 +111,7 @@ func Test_EqCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 字符串值", func() {
 			cond := &EqCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mFilterFieldName: "name",
 			}
@@ -136,9 +124,7 @@ func Test_EqCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 整数值", func() {
 			cond := &EqCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: 123,
-					},
+					Value: 123,
 				},
 				mFilterFieldName: "age",
 			}
@@ -156,9 +142,7 @@ func Test_rewriteEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				NameField: &DataProperty{
 					Name: "name",
 					MappedField: Field{
@@ -177,9 +161,7 @@ func Test_rewriteEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				NameField: &DataProperty{
 					Name: "",
 				},
@@ -193,9 +175,7 @@ func Test_rewriteEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				NameField: nil,
 			}
 			result, err := rewriteEqCond(context.Background(), cfg)

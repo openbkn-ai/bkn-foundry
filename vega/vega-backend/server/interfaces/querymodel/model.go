@@ -41,22 +41,27 @@ type Literal struct {
 	Text string
 }
 
+// ExprKind 是绑定前后共享的表达式节点种类。
+// Name/Wildcard/AggregateRef 仅用于绑定前；Field/RuntimeSlot 仅用于绑定后。
 type ExprKind string
 
 const (
-	ExprName         ExprKind = "name"
-	ExprWildcard     ExprKind = "wildcard"
-	ExprLiteral      ExprKind = "literal"
-	ExprUnary        ExprKind = "unary"
-	ExprBinary       ExprKind = "binary"
-	ExprCall         ExprKind = "call"
-	ExprCase         ExprKind = "case"
-	ExprCast         ExprKind = "cast"
-	ExprBetween      ExprKind = "between"
-	ExprIn           ExprKind = "in"
-	ExprIsNull       ExprKind = "is_null"
-	ExprLike         ExprKind = "like"
-	ExprAggregateRef ExprKind = "aggregate_ref"
+	ExprName            ExprKind = "name"
+	ExprField           ExprKind = "field"
+	ExprRuntimeSlot     ExprKind = "runtime_slot"
+	ExprWildcard        ExprKind = "wildcard"
+	ExprLiteral         ExprKind = "literal"
+	ExprUnary           ExprKind = "unary"
+	ExprBinary          ExprKind = "binary"
+	ExprCall            ExprKind = "call"
+	ExprCase            ExprKind = "case"
+	ExprCast            ExprKind = "cast"
+	ExprBetween         ExprKind = "between"
+	ExprIn              ExprKind = "in"
+	ExprIsNull          ExprKind = "is_null"
+	ExprLike            ExprKind = "like"
+	ExprLiteralContains ExprKind = "literal_contains"
+	ExprAggregateRef    ExprKind = "aggregate_ref"
 )
 
 // Expr 是未绑定表达式；Name/Call 不能直接交给 Connector 执行。

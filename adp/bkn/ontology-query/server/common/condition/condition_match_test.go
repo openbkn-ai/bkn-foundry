@@ -46,9 +46,7 @@ func Test_NewMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "text_field",
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewMatchCond(ctx, cfg, CUSTOM, textFieldsMap)
 			So(err, ShouldBeNil)
@@ -59,9 +57,7 @@ func Test_NewMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "string_field",
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewMatchCond(ctx, cfg, CUSTOM, textFieldsMap)
 			So(err, ShouldBeNil)
@@ -72,9 +68,7 @@ func Test_NewMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewMatchCond(ctx, cfg, CUSTOM, textFieldsMap)
 			So(err, ShouldBeNil)
@@ -85,9 +79,7 @@ func Test_NewMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "string_field_no_fulltext",
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewMatchCond(ctx, cfg, CUSTOM, textFieldsMap)
 			So(err, ShouldBeNil)
@@ -103,9 +95,7 @@ func Test_MatchCond_Convert(t *testing.T) {
 		Convey("成功 - 转换DSL", func() {
 			cond := &MatchCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mFilterFieldNames: []string{"text_field"},
 			}
@@ -125,9 +115,7 @@ func Test_MatchCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 转换SQL（返回空）", func() {
 			cond := &MatchCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mFilterFieldNames: []string{"text_field"},
 			}
@@ -144,9 +132,7 @@ func Test_rewriteMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "text_field",
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				NameField: &DataProperty{
 					Name: "text_field",
 					MappedField: Field{
@@ -164,9 +150,7 @@ func Test_rewriteMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			result, err := rewriteMatchCond(context.Background(), cfg)
 			So(err, ShouldBeNil)
@@ -178,9 +162,7 @@ func Test_rewriteMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "text_field",
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				NameField: &DataProperty{
 					Name: "",
 				},
@@ -216,9 +198,7 @@ func Test_NewMatchPhraseCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "string_field",
 				Operation: OperationMatchPhrase,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test phrase",
-				},
+				Value:     "test phrase",
 			}
 			cond, err := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -229,9 +209,7 @@ func Test_NewMatchPhraseCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMatchPhrase,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test phrase",
-				},
+				Value:     "test phrase",
 			}
 			cond, err := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -242,9 +220,7 @@ func Test_NewMatchPhraseCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "string_field_no_fulltext",
 				Operation: OperationMatchPhrase,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test phrase",
-				},
+				Value:     "test phrase",
 			}
 			cond, err := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -260,9 +236,7 @@ func Test_MatchPhraseCond_Convert(t *testing.T) {
 		Convey("成功 - 转换DSL", func() {
 			cond := &MatchPhraseCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test phrase",
-					},
+					Value: "test phrase",
 				},
 				mFilterFieldNames: []string{"string_field"},
 			}
@@ -299,9 +273,7 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"fields": []any{"text_field"},
 				},
@@ -315,9 +287,7 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"fields": []any{AllField},
 				},
@@ -337,9 +307,7 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"fields":     []any{"text_field"},
 					"match_type": "most_fields",
@@ -354,9 +322,7 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"fields": "text_field",
 				},
@@ -370,9 +336,7 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"fields": []any{"text_field", 123},
 				},
@@ -386,9 +350,7 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 				RemainCfg: map[string]any{
 					"fields":     []any{"text_field"},
 					"match_type": "invalid_type",
@@ -409,10 +371,10 @@ func Test_NewMultiMatchCond(t *testing.T) {
 				},
 			}
 			cfg := &CondCfg{
-				Name:        AllField,
-				Operation:   OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{Value: "test"},
-				RemainCfg:   map[string]any{"fields": []any{AllField}},
+				Name:      AllField,
+				Operation: OperationMultiMatch,
+				Value:     "test",
+				RemainCfg: map[string]any{"fields": []any{AllField}},
 			}
 			cond, err := NewMultiMatchCond(ctx, cfg, CUSTOM, intOnly)
 			So(err, ShouldNotBeNil)
@@ -429,9 +391,7 @@ func Test_MultiMatchCond_Convert(t *testing.T) {
 		Convey("成功 - 转换DSL（有fields）", func() {
 			cond := &MultiMatchCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 					RemainCfg: map[string]any{
 						"match_type": "best_fields",
 					},
@@ -448,9 +408,7 @@ func Test_MultiMatchCond_Convert(t *testing.T) {
 		Convey("成功 - 转换DSL（无fields）", func() {
 			cond := &MultiMatchCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test",
-					},
+					Value: "test",
 				},
 				mFilterFieldNames: []string{},
 			}

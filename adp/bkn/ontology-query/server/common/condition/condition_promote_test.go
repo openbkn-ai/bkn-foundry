@@ -18,16 +18,12 @@ func Test_PromoteLegacyLeafWithSubConds(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "product_name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "UAV-BF-IND-H30",
-				},
+				Value:     "UAV-BF-IND-H30",
 				SubConds: []*CondCfg{
 					{
 						Name:      "customer_name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "Acme",
-						},
+						Value:     "Acme",
 					},
 				},
 			}
@@ -46,8 +42,8 @@ func Test_PromoteLegacyLeafWithSubConds(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationAnd,
 				SubConds: []*CondCfg{
-					{Name: "a", Operation: OperationEq, ValueOptCfg: ValueOptCfg{Value: 1}},
-					{Name: "b", Operation: OperationEq, ValueOptCfg: ValueOptCfg{Value: 2}},
+					{Name: "a", Operation: OperationEq, Value: 1},
+					{Name: "b", Operation: OperationEq, Value: 2},
 				},
 			}
 			got := PromoteLegacyLeafWithSubConds(cfg)
@@ -59,9 +55,7 @@ func Test_PromoteLegacyLeafWithSubConds(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "title",
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "uav",
-				},
+				Value:     "uav",
 				RemainCfg: map[string]any{
 					"fields":     []any{"title", "desc"},
 					"match_type": "best_fields",
@@ -70,9 +64,7 @@ func Test_PromoteLegacyLeafWithSubConds(t *testing.T) {
 					{
 						Name:      "status",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "active",
-						},
+						Value:     "active",
 					},
 				},
 			}

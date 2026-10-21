@@ -39,9 +39,7 @@ func Test_NewRegexCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationRegex,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test.*",
-				},
+				Value:     "test.*",
 			}
 			cfg.NameField = fieldsMap["name"]
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
@@ -53,9 +51,7 @@ func Test_NewRegexCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "nonexistent",
 				Operation: OperationRegex,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test.*",
-				},
+				Value:     "test.*",
 			}
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -66,9 +62,7 @@ func Test_NewRegexCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRegex,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test.*",
-				},
+				Value:     "test.*",
 			}
 			cfg.NameField = fieldsMap["age"]
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
@@ -80,9 +74,7 @@ func Test_NewRegexCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationRegex,
-				ValueOptCfg: ValueOptCfg{
-					Value: 123,
-				},
+				Value:     123,
 			}
 			cfg.NameField = fieldsMap["name"]
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
@@ -94,9 +86,7 @@ func Test_NewRegexCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationRegex,
-				ValueOptCfg: ValueOptCfg{
-					Value: "[invalid",
-				},
+				Value:     "[invalid",
 			}
 			cfg.NameField = fieldsMap["name"]
 			cond, err := NewRegexCond(ctx, cfg, fieldsMap)
@@ -113,9 +103,7 @@ func Test_RegexCond_Convert(t *testing.T) {
 		Convey("成功 - 转换DSL", func() {
 			cond := &RegexCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test.*",
-					},
+					Value: "test.*",
 				},
 				mValue:           "test.*",
 				mFilterFieldName: "name",
@@ -135,9 +123,7 @@ func Test_RegexCond_Convert2SQL(t *testing.T) {
 		Convey("成功 - 转换SQL（返回空）", func() {
 			cond := &RegexCond{
 				mCfg: &CondCfg{
-					ValueOptCfg: ValueOptCfg{
-						Value: "test.*",
-					},
+					Value: "test.*",
 				},
 				mValue:           "test.*",
 				mFilterFieldName: "name",
@@ -155,9 +141,7 @@ func Test_rewriteRegexCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationRegex,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test.*",
-				},
+				Value:     "test.*",
 				NameField: &DataProperty{
 					Name: "name",
 					MappedField: Field{
@@ -175,9 +159,7 @@ func Test_rewriteRegexCond(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationRegex,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test.*",
-				},
+				Value:     "test.*",
 				NameField: &DataProperty{
 					Name: "",
 				},

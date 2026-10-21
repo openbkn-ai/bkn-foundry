@@ -29,10 +29,8 @@ func TestNewEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     "value1",
 			}
 			cond, err := NewEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -44,10 +42,8 @@ func TestNewEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     []any{"value1", "value2"},
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     []any{"value1", "value2"},
 			}
 			cond, err := NewEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -59,10 +55,8 @@ func TestNewEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, err := NewEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -76,10 +70,8 @@ func TestNewEqCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, err := NewEqCond(ctx, cfg, fieldsMap)
 			So(err, ShouldBeNil)
@@ -102,10 +94,8 @@ func TestEqCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, _ := NewEqCond(ctx, cfg, fieldsMap)
 			eqCond := cond.(*EqCond)
@@ -126,10 +116,8 @@ func TestEqCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, _ := NewEqCond(ctx, cfg, fieldsMap)
 			eqCond := cond.(*EqCond)
@@ -161,10 +149,8 @@ func TestEqCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "value1",
 			}
 			cond, _ := NewEqCond(ctx, cfg, fieldsMap)
 			eqCond := cond.(*EqCond)
@@ -181,10 +167,8 @@ func TestEqCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationEq,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     123,
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     123,
 			}
 			cond, _ := NewEqCond(ctx, cfg, fieldsMap)
 			eqCond := cond.(*EqCond)

@@ -2708,10 +2708,8 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 						{
 							Field:     "name",
 							Operation: cond.OperationEq,
-							ValueOptCfg: cond.ValueOptCfg{
-								ValueFrom: "const",
-								Value:     "ot1",
-							},
+							ValueFrom: "const",
+							Value:     "ot1",
 						},
 					},
 				},
@@ -2850,10 +2848,8 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Limit:  10,
 				ActualCondition: &cond.CondCfg{
 					Operation: "knn",
-					ValueOptCfg: cond.ValueOptCfg{
-						ValueFrom: "const",
-						Value:     []string{"word1"},
-					},
+					ValueFrom: "const",
+					Value:     []string{"word1"},
 				},
 			}
 

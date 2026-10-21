@@ -45,9 +45,7 @@ func Test_NewCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondition(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -61,16 +59,12 @@ func Test_NewCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 					{
 						Name:      "age",
 						Operation: OperationGt,
-						ValueOptCfg: ValueOptCfg{
-							Value: 18,
-						},
+						Value:     18,
 					},
 				},
 			}
@@ -86,16 +80,12 @@ func Test_NewCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test1",
-						},
+						Value:     "test1",
 					},
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test2",
-						},
+						Value:     "test2",
 					},
 				},
 			}
@@ -108,9 +98,7 @@ func Test_NewCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "nonexistent",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondition(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -127,9 +115,7 @@ func Test_NewCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "binary_field",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondition(ctx, cfg, CUSTOM, binaryFieldsMap)
 			So(err, ShouldNotBeNil)
@@ -140,9 +126,7 @@ func Test_NewCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: "unsupported_op",
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondition(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -182,9 +166,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -195,9 +177,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -208,9 +188,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationGt,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -221,9 +199,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationGte,
-				ValueOptCfg: ValueOptCfg{
-					Value: 18,
-				},
+				Value:     18,
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -234,9 +210,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationLt,
-				ValueOptCfg: ValueOptCfg{
-					Value: 65,
-				},
+				Value:     65,
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -247,9 +221,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationLte,
-				ValueOptCfg: ValueOptCfg{
-					Value: 65,
-				},
+				Value:     65,
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -260,9 +232,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2"},
-				},
+				Value:     []any{"test1", "test2"},
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -273,9 +243,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotIn,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{"test1", "test2"},
-				},
+				Value:     []any{"test1", "test2"},
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -286,9 +254,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test%",
-				},
+				Value:     "test%",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -299,9 +265,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationNotLike,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test%",
-				},
+				Value:     "test%",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -312,9 +276,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 65},
-				},
+				Value:     []any{18, 65},
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -325,9 +287,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "age",
 				Operation: OperationOutRange,
-				ValueOptCfg: ValueOptCfg{
-					Value: []any{18, 65},
-				},
+				Value:     []any{18, 65},
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -358,9 +318,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationRegex,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test.*",
-				},
+				Value:     "test.*",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -380,9 +338,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "text_field",
 				Operation: OperationMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, textFieldsMap)
 			So(err, ShouldBeNil)
@@ -402,9 +358,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "text_field",
 				Operation: OperationMatchPhrase,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test phrase",
-				},
+				Value:     "test phrase",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, textFieldsMap)
 			So(err, ShouldBeNil)
@@ -415,9 +369,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -437,9 +389,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "vector_field",
 				Operation: OperationKNN,
-				ValueOptCfg: ValueOptCfg{
-					Value: []float32{0.1, 0.2, 0.3},
-				},
+				Value:     []float32{0.1, 0.2, 0.3},
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, vectorFieldsMap)
 			So(err, ShouldBeNil)
@@ -450,9 +400,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "nonexistent",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -469,9 +417,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "binary_field",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, binaryFieldsMap)
 			So(err, ShouldNotBeNil)
@@ -482,9 +428,7 @@ func Test_NewCondWithOpr(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: "unsupported",
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cond, err := NewCondWithOpr(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -609,16 +553,12 @@ func Test_RewriteCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test",
-						},
+						Value:     "test",
 					},
 					{
 						Name:      "age",
 						Operation: OperationGt,
-						ValueOptCfg: ValueOptCfg{
-							Value: 18,
-						},
+						Value:     18,
 					},
 				},
 			}
@@ -641,16 +581,12 @@ func Test_RewriteCondition(t *testing.T) {
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test1",
-						},
+						Value:     "test1",
 					},
 					{
 						Name:      "name",
 						Operation: OperationEq,
-						ValueOptCfg: ValueOptCfg{
-							Value: "test2",
-						},
+						Value:     "test2",
 					},
 				},
 			}
@@ -670,9 +606,7 @@ func Test_RewriteCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "name",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			cfg.NameField = fieldsMap["name"]
 			result, err := RewriteCondition(ctx, cfg, fieldsMap, vectorizer)
@@ -685,9 +619,7 @@ func Test_RewriteCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "nonexistent",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			result, err := RewriteCondition(ctx, cfg, fieldsMap, vectorizer)
 			So(err, ShouldNotBeNil)
@@ -706,9 +638,7 @@ func Test_RewriteCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "p",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "v",
-				},
+				Value:     "v",
 			}
 			result, err := RewriteCondition(ctx, cfg, noMap, vectorizer)
 			So(err, ShouldNotBeNil)
@@ -735,9 +665,9 @@ func Test_RewriteCondition(t *testing.T) {
 				},
 			}
 			cfg := &CondCfg{
-				Operation:   OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{Value: "q"},
-				RemainCfg:   map[string]any{"fields": []any{AllField}},
+				Operation: OperationMultiMatch,
+				Value:     "q",
+				RemainCfg: map[string]any{"fields": []any{AllField}},
 			}
 			result, err := RewriteCondition(ctx, cfg, mmMap, vectorizer)
 			So(err, ShouldBeNil)
@@ -759,9 +689,9 @@ func Test_RewriteCondition(t *testing.T) {
 				},
 			}
 			cfg := &CondCfg{
-				Operation:   OperationMultiMatch,
-				ValueOptCfg: ValueOptCfg{Value: "q"},
-				RemainCfg:   map[string]any{"fields": []any{"name"}},
+				Operation: OperationMultiMatch,
+				Value:     "q",
+				RemainCfg: map[string]any{"fields": []any{"name"}},
 			}
 			result, err := RewriteCondition(ctx, cfg, mmMap, vectorizer)
 			So(err, ShouldBeNil)
@@ -778,9 +708,7 @@ func Test_RewriteCondition(t *testing.T) {
 			cfg := &CondCfg{
 				Name:      "binary_field",
 				Operation: OperationEq,
-				ValueOptCfg: ValueOptCfg{
-					Value: "test",
-				},
+				Value:     "test",
 			}
 			result, err := RewriteCondition(ctx, cfg, binaryFieldsMap, vectorizer)
 			So(err, ShouldNotBeNil)

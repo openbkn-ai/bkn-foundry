@@ -278,3 +278,37 @@ func TestResolvePublishedBindingPreservesScanAndCloseErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAccessResolvePublishedBindingReadErrors(t *testing.T) {
+	closeErr := errors.New("close failed")
+	readErr := errors.New("read failed")
+	for _, tc := range []struct {
+		name string
+		rows *sqlmock.Rows
+		want error
+	}{
+		{"empty result close failure", sqlmock.NewRows([]string{"child"}).CloseError(closeErr), closeErr},
+		{"read error takes precedence", sqlmock.NewRows([]string{"child"}).AddRow("unused").RowError(0, readErr).CloseError(closeErr), readErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				mock.ExpectClose()
+				if err := db.Close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			mock.ExpectQuery("SELECT f_binding_type").WillReturnRows(tc.rows).RowsWillBeClosed()
+			result, err := (&access{db: db}).ResolvePublishedBinding(t.Context(), "kn-1", interfaces.KNProxyBinding{})
+			if result != nil || !errors.Is(err, tc.want) {
+				t.Fatalf("result = %v, error = %v, want %v", result, err, tc.want)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

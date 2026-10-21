@@ -84,14 +84,14 @@ func TestBuildBatchCursorFilter(t *testing.T) {
 	assert.Equal(t, &interfaces.FilterCondCfg{
 		Operation: "and",
 		SubConds: []*interfaces.FilterCondCfg{
-			{Name: "customer_id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const}},
+			{Name: "customer_id", Operation: "gt", Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const},
 		},
 	}, filter.SubConds[0])
 	assert.Equal(t, &interfaces.FilterCondCfg{
 		Operation: "and",
 		SubConds: []*interfaces.FilterCondCfg{
-			{Name: "customer_id", Operation: "==", ValueOptCfg: interfaces.ValueOptCfg{Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const}},
-			{Name: "id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: 100, ValueFrom: interfaces.ValueFrom_Const}},
+			{Name: "customer_id", Operation: "==", Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const},
+			{Name: "id", Operation: "gt", Value: 100, ValueFrom: interfaces.ValueFrom_Const},
 		},
 	}, filter.SubConds[1])
 }

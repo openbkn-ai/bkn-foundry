@@ -29,10 +29,8 @@ func TestNewMatchPhraseCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatchPhrase,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Field,
-					Value:     "value1",
-				},
+				ValueFrom: ValueFrom_Field,
+				Value:     "value1",
 			}
 			cond, err := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldNotBeNil)
@@ -44,10 +42,8 @@ func TestNewMatchPhraseCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatchPhrase,
 				Field:     AllField,
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -62,10 +58,8 @@ func TestNewMatchPhraseCond(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatchPhrase,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, err := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			So(err, ShouldBeNil)
@@ -92,10 +86,8 @@ func TestMatchPhraseCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatchPhrase,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			matchPhraseCond := cond.(*MatchPhraseCond)
@@ -116,10 +108,8 @@ func TestMatchPhraseCond_Convert(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatchPhrase,
 				Field:     AllField,
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			matchPhraseCond := cond.(*MatchPhraseCond)
@@ -152,10 +142,8 @@ func TestMatchPhraseCond_Convert2SQL(t *testing.T) {
 			cfg := &CondCfg{
 				Operation: OperationMatchPhrase,
 				Field:     "field1",
-				ValueOptCfg: ValueOptCfg{
-					ValueFrom: ValueFrom_Const,
-					Value:     "test",
-				},
+				ValueFrom: ValueFrom_Const,
+				Value:     "test",
 			}
 			cond, _ := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
 			matchPhraseCond := cond.(*MatchPhraseCond)

@@ -36,10 +36,8 @@ func constCfg(name, op string, value any) *interfaces.FilterCondCfg {
 	return &interfaces.FilterCondCfg{
 		Name:      name,
 		Operation: op,
-		ValueOptCfg: interfaces.ValueOptCfg{
-			ValueFrom: interfaces.ValueFrom_Const,
-			Value:     value,
-		},
+		ValueFrom: interfaces.ValueFrom_Const,
+		Value:     value,
 	}
 }
 
@@ -47,10 +45,10 @@ func TestNormalizeValueFrom(t *testing.T) {
 	require.NoError(t, NormalizeValueFrom(nil))
 	require.NoError(t, NormalizeValueFrom(&interfaces.FilterCondCfg{}))
 	condition := &interfaces.FilterCondCfg{Operation: OperationAnd, SubConds: []*interfaces.FilterCondCfg{
-		{Name: "age", Operation: OperationGt, ValueOptCfg: interfaces.ValueOptCfg{Value: 0}},
+		{Name: "age", Operation: OperationGt, Value: 0},
 		{Operation: OperationOr, SubConds: []*interfaces.FilterCondCfg{
-			{Name: "age", Operation: OperationEqual, ValueOptCfg: interfaces.ValueOptCfg{Value: 1}},
-			{Name: "age", Operation: OperationEqual, ValueOptCfg: interfaces.ValueOptCfg{Value: 2}},
+			{Name: "age", Operation: OperationEqual, Value: 1},
+			{Name: "age", Operation: OperationEqual, Value: 2},
 		}},
 	}}
 	require.NoError(t, NormalizeValueFrom(condition))
@@ -332,10 +330,8 @@ func TestNewFilterCondition(t *testing.T) {
 		}},
 		{name: "match uses remain fields list", cfg: &interfaces.FilterCondCfg{
 			Operation: OperationMatch,
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     "hello",
-			},
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     "hello",
 			RemainCfg: map[string]any{"fields": []any{"name", "tags"}},
 		}, assertion: func(t *testing.T, cond interfaces.FilterCondition) {
 			got := cond.(*MatchCond)
@@ -345,10 +341,8 @@ func TestNewFilterCondition(t *testing.T) {
 		}},
 		{name: "multi match stores match type", cfg: &interfaces.FilterCondCfg{
 			Operation: OperationMultiMatch,
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     "hello",
-			},
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     "hello",
 			RemainCfg: map[string]any{
 				"fields":     []any{"name", "tags"},
 				"match_type": "best_fields",
@@ -361,10 +355,8 @@ func TestNewFilterCondition(t *testing.T) {
 		{name: "knn vector accepts vector field and sub conditions", cfg: &interfaces.FilterCondCfg{
 			Name:      "embedding",
 			Operation: OperationKnnVector,
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     []float32{0.1, 0.2},
-			},
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     []float32{0.1, 0.2},
 			SubConds: []*interfaces.FilterCondCfg{
 				constCfg("is_active", OperationTrue, nil),
 			},
@@ -408,10 +400,8 @@ func TestNewFilterCondition(t *testing.T) {
 		{name: "multi match requires fields array", cfg: constCfg("", OperationMultiMatch, "hello"), errContain: "'fields' value should be an array"},
 		{name: "multi match rejects unknown match type", cfg: &interfaces.FilterCondCfg{
 			Operation: OperationMultiMatch,
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     "hello",
-			},
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     "hello",
 			RemainCfg: map[string]any{
 				"fields":     []any{"name"},
 				"match_type": "unknown",
@@ -480,10 +470,8 @@ func TestEqualCond(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Name:      "name",
 			Operation: "==",
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Field,
-				Value:     "other_name",
-			},
+			ValueFrom: interfaces.ValueFrom_Field,
+			Value:     "other_name",
 		}
 		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		if err != nil {
@@ -501,10 +489,8 @@ func TestEqualCond(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Name:      "name",
 			Operation: "==",
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Field,
-				Value:     "nonexistent",
-			},
+			ValueFrom: interfaces.ValueFrom_Field,
+			Value:     "nonexistent",
 		}
 		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		if err == nil {
@@ -563,10 +549,8 @@ func TestInCond(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{
 			Name:      "name",
 			Operation: "in",
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Field,
-				Value:     []any{"alice"},
-			},
+			ValueFrom: interfaces.ValueFrom_Field,
+			Value:     []any{"alice"},
 		}
 		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		if err == nil {
@@ -1086,7 +1070,7 @@ func TestConditionConstructorsRejectNilValues(t *testing.T) {
 	fields := testFieldsMap()
 	for _, operation := range []string{OperationEqual, OperationNotEqual, OperationGt, OperationGte, OperationLt, OperationLte} {
 		t.Run(operation, func(t *testing.T) {
-			cfg := &interfaces.FilterCondCfg{Name: "age", Operation: operation, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const}}
+			cfg := &interfaces.FilterCondCfg{Name: "age", Operation: operation, ValueFrom: interfaces.ValueFrom_Const}
 			condition, err := OperationMap[operation].New(context.Background(), cfg, fields)
 			require.ErrorContains(t, err, "must not be nil")
 			assert.Nil(t, condition)
@@ -1095,7 +1079,7 @@ func TestConditionConstructorsRejectNilValues(t *testing.T) {
 	for _, operation := range []string{OperationRange, OperationOutRange, OperationBetween} {
 		for _, values := range [][]any{{nil, 2}, {1, nil}} {
 			t.Run(operation, func(t *testing.T) {
-				cfg := &interfaces.FilterCondCfg{Name: "age", Operation: operation, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: values}}
+				cfg := &interfaces.FilterCondCfg{Name: "age", Operation: operation, ValueFrom: interfaces.ValueFrom_Const, Value: values}
 				condition, err := OperationMap[operation].New(context.Background(), cfg, fields)
 				require.ErrorContains(t, err, "must not be nil")
 				assert.Nil(t, condition)

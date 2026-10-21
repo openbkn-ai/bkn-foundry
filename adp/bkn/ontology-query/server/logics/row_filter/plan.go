@@ -56,7 +56,7 @@ func compilePredicate(predicate interfaces.RowFilterPredicate,
 			operation = cond.OperationNotIn
 		}
 		return &cond.CondCfg{Name: property.Name, Operation: operation,
-			ValueOptCfg: cond.ValueOptCfg{Value: values}}, false, nil
+			Value: values}, false, nil
 	case "gt", "gte", "lt", "lte":
 		property, exists := properties[predicate.Property]
 		if !exists || strings.TrimSpace(property.MappedField.Name) == "" {
@@ -72,7 +72,7 @@ func compilePredicate(predicate interfaces.RowFilterPredicate,
 		operations := map[string]string{"gt": cond.OperationGt, "gte": cond.OperationGte, "lt": cond.OperationLt, "lte": cond.OperationLte}
 		fields[property.Name] = struct{}{}
 		return &cond.CondCfg{Name: property.Name, Operation: operations[predicate.Kind],
-			ValueOptCfg: cond.ValueOptCfg{Value: values[0]}}, false, nil
+			Value: values[0]}, false, nil
 	case "between":
 		property, exists := properties[predicate.Property]
 		if !exists || strings.TrimSpace(property.MappedField.Name) == "" {
@@ -87,7 +87,7 @@ func compilePredicate(predicate interfaces.RowFilterPredicate,
 		}
 		fields[property.Name] = struct{}{}
 		return &cond.CondCfg{Name: property.Name, Operation: cond.OperationBetween,
-			ValueOptCfg: cond.ValueOptCfg{Value: values}}, false, nil
+			Value: values}, false, nil
 	case "and":
 		children := make([]*cond.CondCfg, 0, len(predicate.Predicates))
 		for _, child := range predicate.Predicates {

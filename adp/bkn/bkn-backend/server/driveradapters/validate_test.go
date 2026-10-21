@@ -336,9 +336,7 @@ func Test_validateCond(t *testing.T) {
 					{
 						Operation: cond.OperationEq,
 						Field:     "field1",
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:     "value1",
 					},
 				},
 			}
@@ -350,9 +348,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: "",
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -364,9 +360,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: "invalid_operation",
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -378,9 +372,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationEq,
 				Field:     "",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -392,11 +384,8 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationEq,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{"value1", "value2"},
-				},
+				Value:     []any{"value1", "value2"},
 			}
-			// ValueOptCfg is embedded, so Value can be accessed directly.
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
@@ -407,9 +396,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationIn,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -421,9 +408,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationIn,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{},
-				},
+				Value:     []any{},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -435,9 +420,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationRange,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{1},
-				},
+				Value:     []any{1},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -449,9 +432,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationRegex,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "[invalid regex",
-				},
+				Value:     "[invalid regex",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -466,9 +447,7 @@ func Test_validateCond(t *testing.T) {
 					{
 						Operation: cond.OperationEq,
 						Field:     "field1",
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:     "value1",
 					},
 				},
 			}
@@ -483,9 +462,7 @@ func Test_validateCond(t *testing.T) {
 					{
 						Operation: cond.OperationEq,
 						Field:     "field1",
-						ValueOptCfg: cond.ValueOptCfg{
-							Value: "value1",
-						},
+						Value:     "value1",
 					},
 				},
 			}
@@ -499,9 +476,7 @@ func Test_validateCond(t *testing.T) {
 				subConds[i] = &cond.CondCfg{
 					Operation: cond.OperationEq,
 					Field:     "field1",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "value1",
-					},
+					Value:     "value1",
 				}
 			}
 			cfg := &cond.CondCfg{
@@ -518,9 +493,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationMultiMatch,
 				Field:     "",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldBeNil)
@@ -530,9 +503,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationLike,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: 123,
-				},
+				Value:     123,
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -544,9 +515,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationNotLike,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: 123,
-				},
+				Value:     123,
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -558,9 +527,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationPrefix,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: 123,
-				},
+				Value:     123,
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -572,9 +539,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationNotPrefix,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: 123,
-				},
+				Value:     123,
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -586,9 +551,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationLike,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldBeNil)
@@ -598,9 +561,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -612,9 +573,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationNotIn,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{},
-				},
+				Value:     []any{},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -626,9 +585,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationOutRange,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -640,9 +597,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationOutRange,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{1},
-				},
+				Value:     []any{1},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -654,9 +609,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationBefore,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -668,9 +621,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationBefore,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{1},
-				},
+				Value:     []any{1},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -682,9 +633,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationBetween,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "value1",
-				},
+				Value:     "value1",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -696,9 +645,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationBetween,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{1},
-				},
+				Value:     []any{1},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldNotBeNil)
@@ -710,9 +657,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationRange,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{1, 2},
-				},
+				Value:     []any{1, 2},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldBeNil)
@@ -722,9 +667,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationOutRange,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{1, 2},
-				},
+				Value:     []any{1, 2},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldBeNil)
@@ -734,9 +677,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationBefore,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{1, 2},
-				},
+				Value:     []any{1, 2},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldBeNil)
@@ -746,9 +687,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationBetween,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: []any{1, 2},
-				},
+				Value:     []any{1, 2},
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldBeNil)
@@ -758,9 +697,7 @@ func Test_validateCond(t *testing.T) {
 			cfg := &cond.CondCfg{
 				Operation: cond.OperationRegex,
 				Field:     "field1",
-				ValueOptCfg: cond.ValueOptCfg{
-					Value: "^test.*",
-				},
+				Value:     "^test.*",
 			}
 			err := validateCond(ctx, cfg)
 			So(err, ShouldBeNil)
@@ -776,9 +713,7 @@ func Test_validateCond(t *testing.T) {
 				cfg := &cond.CondCfg{
 					Operation: op,
 					Field:     "field1",
-					ValueOptCfg: cond.ValueOptCfg{
-						Value: "value1",
-					},
+					Value:     "value1",
 				}
 				err := validateCond(ctx, cfg)
 				So(err, ShouldBeNil)

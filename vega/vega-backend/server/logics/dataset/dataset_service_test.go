@@ -318,10 +318,8 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
 			Name:      "id",
 			Operation: filter_condition.OperationEqual,
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     1,
-			},
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     1,
 		}}
 		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", resource, params).Return(errors.New("delete failed"))
 
@@ -341,7 +339,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			Operation: filter_condition.OperationAnd,
 			SubConds: []*interfaces.FilterCondCfg{{
 				Name: "title", Operation: filter_condition.OperationLike,
-				ValueOptCfg: interfaces.ValueOptCfg{Value: "old"},
+				Value: "old",
 			}},
 		}}
 		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", resource, params).
@@ -371,7 +369,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 				resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1"}
 				condition := &interfaces.FilterCondCfg{
 					Name: "title", Operation: tc.operation,
-					ValueOptCfg: interfaces.ValueOptCfg{Value: "old"},
+					Value: "old",
 				}
 				if tc.nested {
 					condition = &interfaces.FilterCondCfg{
@@ -399,7 +397,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		}
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
 			Name: "title", Operation: filter_condition.OperationEqual,
-			ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "unknown", Value: "old"},
+			ValueFrom: "unknown", Value: "old",
 		}}
 
 		err := ds.DeleteDocumentsByQuery(ctx, resource, params)
@@ -458,10 +456,8 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
 			Name:      "content_vector",
 			Operation: filter_condition.OperationKnnVector,
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     []float32{0.1, 0.2},
-			},
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     []float32{0.1, 0.2},
 		}}
 		lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "dataset-1", resource, params).
 			DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, got *interfaces.ResourceDataQueryParams) error {
@@ -486,10 +482,8 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{
 			Name:      "missing",
 			Operation: filter_condition.OperationEqual,
-			ValueOptCfg: interfaces.ValueOptCfg{
-				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     "value",
-			},
+			ValueFrom: interfaces.ValueFrom_Const,
+			Value:     "value",
 		}}
 
 		err := ds.DeleteDocumentsByQuery(ctx, resource, params)

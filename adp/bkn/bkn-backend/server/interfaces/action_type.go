@@ -146,10 +146,11 @@ type ActionSource struct {
 type ActionCondCfg struct {
 	ObjectTypeID string `json:"object_type_id,omitempty" mapstructure:"object_type_id"` // Object type identified by the action condition
 
-	Field            string           `json:"field,omitempty" mapstructure:"field"`
-	Operation        string           `json:"operation,omitempty" mapstructure:"operation"`
-	SubConds         []*ActionCondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
-	cond.ValueOptCfg `mapstructure:",squash"`
+	Field     string           `json:"field,omitempty" mapstructure:"field"`
+	Operation string           `json:"operation,omitempty" mapstructure:"operation"`
+	SubConds  []*ActionCondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
+	ValueFrom string           `json:"value_from,omitempty" mapstructure:"value_from"`
+	Value     any              `json:"value,omitempty" mapstructure:"value"`
 
 	RemainCfg map[string]any `json:",omitempty" mapstructure:",remain,squash"`
 
