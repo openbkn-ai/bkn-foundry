@@ -254,3 +254,23 @@ func TestChecksum_ValueTypeLineOnlyIn3(t *testing.T) {
 	ok, msgs := VerifyChecksumFileWithFS(mfs, "/net")
 	assert.True(t, ok, msgs)
 }
+
+// The frontmatter rules of §4 apply to value types as to every definition: an id such as a/b would
+// be exported as a nested file the next import skips.
+func TestValidateNetwork_ChecksValueTypeFrontmatter(t *testing.T) {
+	vt := func(id, name string) *BknValueType {
+		return &BknValueType{BknValueTypeFrontmatter: BknValueTypeFrontmatter{Type: kindValueType, ID: id, Name: name}, BaseType: "keyword"}
+	}
+	net := &BknNetwork{
+		BknNetworkFrontmatter: BknNetworkFrontmatter{Type: kindNetwork, ID: "net", Name: "Net"},
+		ValueTypes:            []*BknValueType{vt("a/b", "甲"), vt("phase", ""), vt("dup", "乙"), vt("dup", "乙")},
+	}
+	errs := map[string]string{}
+	for _, e := range ValidateNetwork(net).Errors {
+		errs[e.Table+" "+e.Code] = e.Message
+	}
+	assert.Contains(t, errs, "value_type:a/b invalid_id")
+	assert.Contains(t, errs, "value_type:phase missing_frontmatter_field")
+	assert.Contains(t, errs, "network.bkn duplicate_id")
+	assert.Contains(t, errs, "network.bkn duplicate_name")
+}

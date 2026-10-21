@@ -326,6 +326,12 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 					`value type \"phase\": value types are not supported by this version yet`},
 				{"action_types/restart.bkn", "---\ntype: action_type\nid: restart\nname: 重启\ntags: []\naliases: [重启容器组]\n---\n\n## ActionType: 重启\n",
 					`action type \"restart\": aliases is not supported by this version yet`},
+				{"object_types/node.bkn", "---\ntype: object_type\nid: node\nname: 节点\ntags: []\naliases: [主机]\n---\n\n## ObjectType: 节点\n",
+					`object type \"node\": aliases is not supported by this version yet`},
+				{"object_types/node.bkn", "---\ntype: object_type\nid: node\nname: 节点\ntags: []\n---\n\n## ObjectType: 节点\n\n" +
+					"### Data Properties\n\n| Name | Display Name | Type | Aliases | Mapped Field |\n|------|--------------|------|---------|--------------|\n" +
+					"| host | 主机名 | string | 主机 | host |\n",
+					`object type \"node\" data property \"host\": Aliases is not supported by this version yet`},
 			} {
 				req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "", map[string]string{c.path: c.content}))
 				w := httptest.NewRecorder()

@@ -419,7 +419,7 @@ const (
 	maxAliases     = 10
 	maxAliasRunes  = 40
 	aliasSeparator = ","
-	fullWidthComma = "，"
+	fullWidthComma = "\uff0c"
 )
 
 // parseAliasesNode reads the aliases of a frontmatter, which checkFrontmatterV3 has made sure is a
@@ -431,7 +431,7 @@ func parseAliasesNode(node *yaml.Node) ([]string, error) {
 	aliases := make([]string, 0, len(node.Content))
 	for _, item := range node.Content {
 		if item.Kind != yaml.ScalarNode || item.Tag == "!!null" {
-			return nil, specErrorf("frontmatter aliases must list names, such as [病人, 就诊人]")
+			return nil, specErrorf("frontmatter aliases must list names, such as [patient, inpatient]")
 		}
 		aliases = append(aliases, strings.TrimSpace(item.Value))
 	}

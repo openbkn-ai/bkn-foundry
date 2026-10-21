@@ -115,7 +115,7 @@ func parseValueTypeDefinition(vt *BknValueType, sectionText string) error {
 
 func parseEnumNode(where string, node *yaml.Node) ([]*ValueTypeEnumItem, error) {
 	if node.Kind != yaml.SequenceNode {
-		return nil, specErrorf("%s must be a list of items such as - { value: N, display: 已开单 }", where)
+		return nil, specErrorf("%s must be a list of items such as - { value: N, display: Open }", where)
 	}
 	items := make([]*ValueTypeEnumItem, 0, len(node.Content))
 	for n, itemNode := range node.Content {

@@ -232,6 +232,14 @@ func ValidateNetwork(doc *BknNetwork) *ValidationResult {
 	duplicateIDs(cgIDs, "concept_group")
 	duplicateNames(cgNames, "concept_group")
 
+	var vtIDs, vtNames []string
+	for _, vt := range doc.ValueTypes {
+		vtIDs = append(vtIDs, vt.ID)
+		vtNames = append(vtNames, vt.Name)
+	}
+	duplicateIDs(vtIDs, kindValueType)
+	duplicateNames(vtNames, kindValueType)
+
 	objectIDs := make(map[string]struct{})
 	for _, ot := range doc.ObjectTypes {
 		objectIDs[ot.ID] = struct{}{}
@@ -331,6 +339,15 @@ func ValidateNetwork(doc *BknNetwork) *ValidationResult {
 			if _, ok := objectIDs[oid]; !ok {
 				appendError(result, t, "Object Types", "invalid_concept_group_ref", fmt.Sprintf("concept group lists unknown object type id %q", oid))
 			}
+		}
+	}
+
+	// Value types exist only in 3.0; a 2.x network has none.
+	for _, vt := range doc.ValueTypes {
+		t := tableName(kindValueType, vt.ID)
+		validateDefFrontmatter(result, t, vt.Type, vt.ID, vt.Name)
+		if err := validateTags(vt.Tags); err != nil {
+			appendError(result, t, "tags", "invalid_tags", err.Error())
 		}
 	}
 
