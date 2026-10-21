@@ -35,7 +35,8 @@ const (
 )
 
 // LogicalType 不包含可空性。TimePrecision=nil 表示未知，不能当作秒精度。
-// Precision/Scale 用于 decimal，BitWidth/Unsigned 用于数值，VectorDimensions 用于向量。
+// Precision/Scale 用于 decimal，BitWidth/Unsigned 用于数值。
+// VectorDimensions=0 表示维数未知，仅允许原值投影，不能据此开放向量计算。
 type LogicalType struct {
 	Kind             TypeKind
 	BitWidth         int

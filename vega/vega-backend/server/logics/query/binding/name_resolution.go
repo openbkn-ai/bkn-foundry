@@ -86,3 +86,20 @@ func sameGroupingExpr(a, b *qm.Expr, scope *bindingScope) bool {
 	}
 	return true
 }
+
+// expressionEncoding 保留字段原有的展示类型；运算类型不能反向改写公共字段契约。
+func expressionEncoding(expr *qm.BoundExpr, scope *bindingScope) qm.OutputEncoding {
+	if expr.Kind == qm.ExprField {
+		for current := scope; current != nil; current = current.fallback {
+			for _, column := range current.columns {
+				if column.column.ID == expr.Field {
+					return column.column.Encoding
+				}
+			}
+		}
+	}
+	if len(expr.Args) == 1 && ((expr.Kind == qm.ExprCast && len(expr.Requirements) == 0 && expr.Type.Kind == expr.Args[0].Type.Kind) || (expr.Kind == qm.ExprCall && (expr.Function == "MIN" || expr.Function == "MAX"))) {
+		return expressionEncoding(expr.Args[0], scope)
+	}
+	return outputEncoding(expr.Type)
+}

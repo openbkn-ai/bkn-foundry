@@ -18,6 +18,9 @@ import (
 	qm "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/querymodel"
 )
 
+var decimalNativeType = regexp.MustCompile(`(?i)^(?:DECIMAL|NUMERIC|NUMBER)\s*\(\s*([0-9]+)\s*(?:,\s*([0-9]+)\s*)?\)(?:\s+UNSIGNED)?$`)
+var signedNumber = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
+
 // NewSemanticContext 解析编排层传入的服务 TZ，不读取环境变量，不接受客户端时区。
 // 无效 TZ 属于服务配置错误；空值按已批准规则回退 UTC。
 func NewSemanticContext(zone string) (qm.SemanticContext, error) {
@@ -35,10 +38,6 @@ func NewSemanticContext(zone string) (qm.SemanticContext, error) {
 		Comparison: qm.ComparisonPolicy{StringRule: "utf8_binary", CaseSensitive: true, TrailingSpaceSignificant: true}, TypeRulesVersion: qm.CurrentSemanticsVersion, ConfigFingerprint: fingerprint}, nil
 }
 
-var decimalNativeType = regexp.MustCompile(`(?i)^(?:DECIMAL|NUMERIC|NUMBER)\s*\(\s*([0-9]+)\s*(?:,\s*([0-9]+)\s*)?\)(?:\s+UNSIGNED)?$`)
-var datetimeNativeType = regexp.MustCompile(`(?i)^DATETIME(?:\(([0-9]+)\))?$`)
-var signedNumber = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
-
 func propertyType(property *interfaces.Property, origin qm.Origin) (qm.LogicalType, qm.NativeType, error) {
 	native := qm.NativeType{Name: property.OriginalType, Domain: qm.DomainVega}
 	var typ qm.LogicalType
@@ -52,6 +51,11 @@ func propertyType(property *interfaces.Property, origin qm.Origin) (qm.LogicalTy
 	case interfaces.DataType_Decimal:
 		parts := decimalNativeType.FindStringSubmatch(strings.TrimSpace(property.OriginalType))
 		if parts == nil {
+			name := strings.ToUpper(strings.TrimSpace(property.OriginalType))
+			if name == "DECIMAL" || name == "NUMERIC" || name == "NUMBER" {
+				typ.Kind, native.Domain = qm.TypeOther, qm.DomainNativeNumeric
+				return typ, native, nil
+			}
 			return typ, native, bindFailure(origin, "缺少明确的 decimal 精度与 scale")
 		}
 		precision, err := strconv.Atoi(parts[1])
@@ -65,12 +69,15 @@ func propertyType(property *interfaces.Property, origin qm.Origin) (qm.LogicalTy
 				return typ, native, bindFailure(origin, "decimal scale 无效")
 			}
 		}
-		if precision < 1 || precision > 38 || scale < 0 || scale > precision {
+		if precision < 1 || scale < 0 || scale > precision {
 			return typ, native, bindFailure(origin, "decimal 精度超出当前语义范围")
 		}
 		typ = qm.LogicalType{Kind: qm.TypeDecimal, Precision: precision, Scale: scale}
 		native.Precision = &precision
 		native.Scale = &scale
+		if precision > 38 {
+			typ.Kind, native.Domain = qm.TypeOther, qm.DomainNativeNumeric
+		}
 	case interfaces.DataType_String:
 		typ.Kind = qm.TypeString
 	case interfaces.DataType_Text:
@@ -79,29 +86,16 @@ func propertyType(property *interfaces.Property, origin qm.Origin) (qm.LogicalTy
 		typ.Kind = qm.TypeBoolean
 	case interfaces.DataType_Date:
 		typ.Kind = qm.TypeDate
-	case interfaces.DataType_Datetime:
-		parts := datetimeNativeType.FindStringSubmatch(strings.TrimSpace(property.OriginalType))
-		if parts == nil {
-			return typ, native, bindFailure(origin, "源时间类型缺少明确的墙上时间语义")
-		}
-		typ = qm.LogicalType{Kind: qm.TypeLocalDateTime, TimeZone: qm.TimeZoneLocal}
-		native.TimeZone = qm.TimeZoneLocal
-		if parts[1] != "" {
-			precision, err := strconv.Atoi(parts[1])
-			if err != nil || precision > 9 {
-				return typ, native, bindFailure(origin, "源时间精度无效")
-			}
-			typ.TimePrecision = &precision
-			native.TimePrecision = &precision
-		}
-	case interfaces.DataType_Time:
-		return typ, native, bindFailure(origin, "源 TIME 的日内时间或时长语义尚未接入")
+	case interfaces.DataType_Datetime, interfaces.DataType_Timestamp, interfaces.DataType_Time:
+		return temporalPropertyType(property, origin)
 	case interfaces.DataType_Binary:
 		typ.Kind = qm.TypeBinary
 	case interfaces.DataType_Json:
 		typ.Kind = qm.TypeJSON
 	case interfaces.DataType_Vector:
-		return typ, native, bindFailure(origin, "向量字段维数绑定尚未接入")
+		typ.Kind = qm.TypeVector
+	case interfaces.DataType_Other, interfaces.DataType_Ip, interfaces.DataType_Point, interfaces.DataType_Shape:
+		typ.Kind = qm.TypeOther
 	default:
 		return typ, native, bindFailure(origin, "源字段类型尚未支持")
 	}
@@ -121,7 +115,20 @@ func outputEncoding(typ qm.LogicalType) qm.OutputEncoding {
 	if typ.Kind == qm.TypeOther {
 		kind = qm.EncodingNativeOther
 	}
-	return qm.OutputEncoding{Kind: kind, PublicType: string(typ.Kind)}
+	public := string(typ.Kind)
+	switch typ.Kind {
+	case qm.TypeInteger:
+		if typ.Unsigned {
+			public = interfaces.DataType_UnsignedInteger
+		}
+	case qm.TypeLocalDateTime:
+		public = interfaces.DataType_Datetime
+	case qm.TypeInstant:
+		public = interfaces.DataType_Timestamp
+	case qm.TypeTimeOfDay:
+		public = interfaces.DataType_Time
+	}
+	return qm.OutputEncoding{Kind: kind, PublicType: public}
 }
 
 func bindLiteral(literal *qm.Literal, origin qm.Origin) (*qm.BoundExpr, error) {
@@ -263,6 +270,9 @@ func decimalType(typ qm.LogicalType) qm.LogicalType {
 	return qm.LogicalType{Kind: qm.TypeDecimal, Precision: digits}
 }
 func commonType(a, b qm.LogicalType, origin qm.Origin) (qm.LogicalType, error) {
+	if a.Kind == qm.TypeOther || b.Kind == qm.TypeOther || a.Kind == qm.TypeVector || b.Kind == qm.TypeVector {
+		return qm.LogicalType{}, bindFailure(origin, "原生投影或向量类型不支持此标量运算")
+	}
 	if a.Kind == qm.TypeNull {
 		return b, nil
 	}
@@ -271,6 +281,15 @@ func commonType(a, b qm.LogicalType, origin qm.Origin) (qm.LogicalType, error) {
 	}
 	if reflect.DeepEqual(a, b) {
 		return a, nil
+	}
+	if temporalType(a) && a.Kind == b.Kind && a.TimeZone == b.TimeZone {
+		merged := a
+		merged.TimePrecision = nil
+		if a.TimePrecision != nil && b.TimePrecision != nil {
+			precision := max(*a.TimePrecision, *b.TimePrecision)
+			merged.TimePrecision = &precision
+		}
+		return merged, nil
 	}
 	if (a.Kind == qm.TypeString || a.Kind == qm.TypeText) && (b.Kind == qm.TypeString || b.Kind == qm.TypeText) {
 		return qm.LogicalType{Kind: qm.TypeText}, nil
