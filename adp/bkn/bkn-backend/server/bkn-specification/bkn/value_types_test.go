@@ -116,7 +116,7 @@ func TestLoadV3_RefusesWrongValueTypesAndAliases(t *testing.T) {
 		{"range min above max", []v3Edit{definition("base_type: keyword\n"+enumBlock, "base_type: integer\nrange: { min: 5, max: 1 }\n"), {fObj, dpPhase, "| phase | 阶段 | integer | | | | phase |"}}, "range min 5 is greater than max 1"},
 		{"value type field", []v3Edit{definition("tags: [k8s]\n", "tags: [k8s]\naliases: [阶段]\n")}, `frontmatter field "aliases" is not a value_type field`},
 		{"value type heading", []v3Edit{definition("## ValueType: Pod 阶段", "## Pod 阶段")}, `write "## ValueType: Pod 阶段"`},
-		{"value type name twice", []v3Edit{{file: "value_types/other.bkn", new: strings.ReplaceAll(valueTypeFile, "id: pod_phase", "id: other")}}, `value types "other" and "pod_phase" are both named "Pod 阶段"`},
+		{"value type name twice", []v3Edit{{file: "value_types/other.bkn", new: strings.ReplaceAll(valueTypeFile, "id: pod_phase", "id: other")}}, `are both named "Pod 阶段"; a value type name is unique in the network`},
 		// value_type references
 		{"value type not defined", []v3Edit{{fObj, pcPhase, "phase:\n  value_type: node_phase\n"}}, `object type "pod" data property "phase": value type "node_phase" is not defined in this network`},
 		{"base_type differs from Type", []v3Edit{{fObj, dpPhase, "| phase | 阶段 | string | | | | phase |"}}, `value type "pod_phase" has base_type keyword, the property Type is "string"`},
