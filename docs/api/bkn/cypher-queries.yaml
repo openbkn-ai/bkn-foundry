@@ -275,10 +275,11 @@ components:
             Passing nodes on joins each row the WITH passed on to the rows the next MATCH finds
             for its nodes, matched up by primary key; the nodes may be written there without
             their labels. The WITH's named values may be returned, sorted by and computed with;
-            inside an expression with an aggregate they must also be returned on their own, as a
-            grouping key. They cannot be tested in the next MATCH's WHERE (test them in the WITH's
+            when the query aggregates, those read in an expression or ORDER BY must also be
+            returned on their own, as grouping keys. They cannot be tested in the next MATCH's WHERE (test them in the WITH's
             WHERE). Every node passed on must be used in the next MATCH, nodes cannot be renamed
-            or passed beside a collected list, and the next MATCH cannot be OPTIONAL. After any
+            or passed beside a collected list, the next MATCH cannot be OPTIONAL, and that
+            WITH takes no DISTINCT, ORDER BY, SKIP or LIMIT. After any
             WITH, RETURN may return the nodes it passed on. Such a query always runs on the SQL
             path.
 

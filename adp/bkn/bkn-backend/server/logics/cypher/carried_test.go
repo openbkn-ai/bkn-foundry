@@ -93,6 +93,14 @@ func TestCarriedStageRefuses(t *testing.T) {
 		{stage + "MATCH (o2:Order)-[:PLACED_BY]->(c) WITH c, total RETURN total", "a WITH after the MATCH that follows a WITH"},
 		{stage + "MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN c.name AS name, count(o2) * 1.0 / total AS share",
 			"return total as a column of its own"},
+		{stage + "MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN c.name AS name, count(o2) AS n ORDER BY total DESC",
+			"add total to RETURN"},
+		{"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH DISTINCT c MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN count(o2) AS n",
+			"aggregate in the WITH instead"},
+		{"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH c, count(o) AS total ORDER BY total DESC LIMIT 3 " +
+			"MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN count(o2) AS n", "filter them with the WITH's WHERE instead"},
+		{"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH c, count(o) AS total ORDER BY total DESC " +
+			"MATCH (o2:Order)-[:PLACED_BY]->(c) RETURN count(o2) AS n", "sort in RETURN instead"},
 	} {
 		_, err := compileWithClause(t, tc.query)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -133,6 +141,9 @@ func TestCarriedStageReturnsNodesOnTheSQLPath(t *testing.T) {
 		}
 		if result.ValueTypes["source"] == nil || result.ValueTypes["source"].Kind != "object" {
 			t.Errorf("value types = %+v", result.ValueTypes)
+		}
+		if total := result.ValueTypes["total"]; total != nil && total.Kind != "integer" {
+			t.Errorf("total is a count, typed %+v", total)
 		}
 		impacted := make([]string, 0, len(result.PermissionImpacts))
 		for _, impact := range result.PermissionImpacts {

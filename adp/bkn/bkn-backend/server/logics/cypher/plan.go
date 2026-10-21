@@ -1643,6 +1643,13 @@ func (p *planner) planSortExpression(key SortKey) (*PlanOrder, error) {
 					bare.Property, bare.Property)
 			}
 		}
+		for _, name := range ungroupedCarried(value) {
+			if !p.carriedProjected(name) {
+				return nil, planErrorf(key.Pos,
+					"this sort key reads %s outside an aggregate, and a query with an aggregate can only be sorted by a returned value; add %s to RETURN",
+					name, name)
+			}
+		}
 	}
 	return &PlanOrder{Expression: value}, nil
 }

@@ -38,6 +38,23 @@ func carriesNodes(with parsing.IOC_WithContext, stage *Query) bool {
 // with there.
 func analyzeCarried(stage *Query, with parsing.IOC_WithContext, after []parsing.IOC_ReadingClauseContext,
 	at antlr.ParserRuleContext, returning parsing.IOC_ReturnContext, constants nameScope) (*Query, error) {
+	// DISTINCT, ORDER BY and LIMIT change which rows the next MATCH meets,
+	// and moved to RETURN they would mean something else, so the general
+	// hint to write them there does not apply.
+	body := with.OC_ProjectionBody()
+	if body.DISTINCT() != nil {
+		// Dropping DISTINCT alone would pass each node on once per row it
+		// matched, and multiply what the next MATCH counts.
+		return nil, unsupportedf(body, "WITH DISTINCT before a MATCH that a node is passed on to",
+			"aggregate in the WITH instead, as in WITH p, count(*) AS n, which passes each node on once")
+	}
+	if body.OC_Skip() != nil || body.OC_Limit() != nil {
+		return nil, unsupportedf(body, "SKIP or LIMIT on a WITH that passes nodes on",
+			"the next MATCH would meet only some of the rows; filter them with the WITH's WHERE instead")
+	}
+	if body.OC_Order() != nil {
+		return nil, unsupportedf(body, "ORDER BY on a WITH that passes nodes on", "sort in RETURN instead")
+	}
 	scope, err := analyzeWith(stage, with)
 	if err != nil {
 		return nil, err
