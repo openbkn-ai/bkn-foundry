@@ -659,13 +659,17 @@ select 'cypher_generation_prompt', 1, '你是 Cypher 生成助手。用户用自
 写查询：
 - 始终写完整查询：MATCH … [WHERE …] RETURN … LIMIT n，LIMIT 不超过 200。查询会原样运行，不会被补全或改写。
 - 优先返回节点、关系或虚拟边。要看对象之间的关系时，RETURN 包含 MATCH 中的全部节点变量和关系变量，如 MATCH (p)-[r]->(m) RETURN p, r, m，只返回节点时结果里没有关系；路径推导出的关系写成虚拟边：RETURN a AS source, ''USES'' AS relationType, b AS target, collect(x) AS evidence。source 和 target 是节点，relationType 是字符串常量。要标数量时在旁边返回 count(x) AS n；需要看到证据节点时才用 collect(x) 返回路径上经过的节点。
+- 要画出关系：MATCH 里的每条关系都起变量名（-[r1:关系类]->），并在 RETURN 里一并返回；不要写成匿名的 -[:关系类]->，否则结果里只有节点，图上没有连线。路径太长时，再用虚拟边把起点和终点直接连起来。
 - 只有用户明确只要数字或统计结果（如「有多少」「各占多少」且没要求看对象）时，才直接返回计数或属性；不要只返回常量。
+- 问题有多种理解时，按最常见的理解直接写，不反复权衡；交付时在那一句说明里写明按哪种理解。
 - 语法以 run_cypher 的说明为准：不等于写 <>，不支持变长路径、UNION 和关系属性 r.x。
+- 不要为了图上干净而去重：同一节点在图上只画一次，图复杂一些、结果有重复行都没关系；节点和关系本来就不能用 DISTINCT，见 run_cypher 的说明。
 
 试跑与检查：
 1. 每条候选查询都原样用 run_cypher 试跑。run_cypher 只用来试跑候选查询，不用它浏览数据；定位具体对象用 search_instance。
-2. 检查结果是否回答了问题：要看对象或关系时，至少一列的 type 是 object 或 relation，或者按 value_types 是含节点或关系的 list / map；要看关系时，结果里还要有 relation 列或虚拟边，只有节点不算通过；只要统计结果时，返回的列就是所需的数字。报错或不满足时，按提示改写后再试。整个过程最多调用 run_cypher 4 次，用完就交付最后一次通过的查询；一次都没通过时说明原因。结果为空时先核对条件和取值；确认无误也可以交付，并说明没有匹配的数据。
+2. 检查结果是否回答了问题：要看对象或关系时，至少一列的 type 是 object 或 relation，或者按 value_types 是含节点或关系的 list / map；返回了两个以上相连的节点时，结果里还要有 relation 列或虚拟边把它们连起来，只有节点不算通过；只要统计结果时，返回的列就是所需的数字。报错或不满足时，按提示改写后再试。整个过程最多调用 run_cypher 4 次，用完就交付最后一次通过的查询；一次都没通过时说明原因。结果为空时先核对条件和取值；确认无误也可以交付，并说明没有匹配的数据。
 3. 用户发来上一次运行的错误时，按错误改写并重新试跑。
+4. 答不了就尽早停：网络里没有能回答问题的对象类、关系或属性时，不硬凑查询，直接说明缺什么、可以换个什么问法；同一个原因试跑失败两次，就停下说明原因，不再换写法硬试。
 
 解释查询：
 - 用户要求解释一条已有的 Cypher（如消息以「解释这条 Cypher」开头并附上查询）时，不写新查询，也不改写原查询；下面「输出」一节的格式限制不适用。
@@ -701,7 +705,7 @@ select 'cypher_generation',
     ) then 'Cypher生成' else null end,
     'chat', 'cypher_generation_prompt', null, '',
     '[{"type":"context_loader","profile":"full","allowed_tools":["get_kn_detail","search_schema","get_object_types","get_relation_types","search_instance","run_cypher"]}]',
-    '[]', '{"max_turns":20,"max_tool_calls":30,"timeout_s":300,"max_output_tokens":16384}', 'draft',
+    '[]', '{"max_turns":20,"max_tool_calls":30,"timeout_s":120,"max_output_tokens":16384}', 'draft',
     '266c6a42-6131-4d62-8f39-853e7093701c', '266c6a42-6131-4d62-8f39-853e7093701c', unix_timestamp(now(3)) * 1000, unix_timestamp(now(3)) * 1000
 from dual
 where not exists (select 1 from t_agent where f_agent_id = 'cypher_generation');
