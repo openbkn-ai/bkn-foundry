@@ -7,10 +7,10 @@
 set -euo pipefail
 
 chart_dir="${1:-charts}"
-disabled_rendered="$(helm template bkn-agent "${chart_dir}")"
-default_rendered="$(helm template bkn-agent "${chart_dir}" --set publicIngress.enabled=true)"
+disabled_rendered="$(helm template bkn-agent "${chart_dir}" --set publicIngress.enabled=false)"
+default_rendered="$(helm template bkn-agent "${chart_dir}")"
 admin_rendered="$(helm template bkn-agent "${chart_dir}" \
-    --set publicIngress.enabled=true --set publicIngress.adminAgentsEnabled=true)"
+    --set publicIngress.adminAgentsEnabled=true)"
 
 expected_paths=$'/api/bkn-agent/v1/metric-design/executions\n/api/bkn-agent/v1/executions\n/api/bkn-agent/v1/me/agents\n/api/bkn-agent/v1/networks'
 admin_path='/api/bkn-agent/v1/admin/agents'
@@ -20,7 +20,7 @@ rendered_paths() {
 }
 
 if grep -qF 'kind: Ingress' <<<"${disabled_rendered}"; then
-    echo 'Public ingress must be disabled by default' >&2
+    echo 'Public ingress must be disabled when explicitly turned off' >&2
     exit 1
 fi
 if [[ "$(rendered_paths "${default_rendered}")" != "${expected_paths}" ]]; then

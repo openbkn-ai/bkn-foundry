@@ -34,7 +34,7 @@ service:
 # The built-in Agent management page additionally needs /admin/agents; writes
 # still require admin-agent:manage in the application.
 publicIngress:
-  enabled: false
+  enabled: true
   adminAgentsEnabled: false
   className: class-443
   annotations:
