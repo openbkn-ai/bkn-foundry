@@ -266,6 +266,12 @@ components:
             LIMIT on WITH, IN / string predicates in its WHERE, and aggregating in a WITH after
             the first.
 
+            Object types bound to a resource outside a SQL data source (a dataset or an index),
+            or read from more than one data source, are read through the resource data API and
+            joined instead of as one SQL statement. There only the basic forms run: CASE,
+            coalesce, totals over groups, comparing two lists, passing nodes on and returning
+            graph values are refused with 400, and a read too large or too slow is refused too.
+
             In the semi-join form each row of the second stage is kept once if its value is
             among the first stage's, however often the first stage produced it; v may also be
             an inline property value ({property: v}). The first stage's properties and rows are

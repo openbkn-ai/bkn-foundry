@@ -171,6 +171,9 @@ func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.Cyph
 		},
 		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
 	})
+	if unsupportedSource(err) {
+		return s.queryOutsideSQL(ctx, query, compiled)
+	}
 	if err != nil {
 		return nil, executionError(ctx, err)
 	}
@@ -202,6 +205,9 @@ func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.Cy
 		},
 		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
 	})
+	if unsupportedSource(err) {
+		return s.queryOutsideSQL(ctx, query, compiled)
+	}
 	if err != nil {
 		return nil, executionError(ctx, err)
 	}
@@ -510,6 +516,9 @@ const (
 	// fallbackSQLTimeout records one that ran as SQL because the executor did
 	// not finish within its own timeout.
 	fallbackSQLTimeout = "sql_timeout"
+	// fallbackNonSQLSource records a query that ran on the bind-join
+	// executor because its resources are not in one SQL data source.
+	fallbackNonSQLSource = "non_sql_source"
 )
 
 // proxyTargetResource is the target type of a binding to a vega resource.
@@ -825,6 +834,49 @@ func proxyErrorCode(err error) string {
 // so only a code travels back: forbidden when vega-backend refused a resource
 // the statement reads, so a missing grant reads as one, and a query failure
 // for anything else.
+// unsupportedSource reports a statement vega-backend could not run as SQL
+// because of where its resources live: a dataset, an index, or more than one
+// data source.
+func unsupportedSource(err error) bool {
+	var dependencyErr *interfaces.DependencyError
+	return errors.As(err, &dependencyErr) && dependencyErr.Kind == interfaces.DependencyUnsupportedSource
+}
+
+// queryOutsideSQL answers a query whose resources vega-backend cannot read as
+// SQL through the resource data API the bind-join executor reads, which
+// serves datasets and indexes and joins across data sources. That executor
+// takes no new capabilities, so what only the SQL path answers -- CASE,
+// coalesce, totals over groups, comparing two lists, passing nodes on and
+// graph values -- is refused, saying why.
+func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	if compiled.plan.SQLOnly || compiled.graph != nil {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
+			WithErrorDetails(detail(ctx, "NonSQLSource", nil))
+	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String(spanAttrExecutor, common.CypherExecutorBindJoin),
+		attribute.String(spanAttrFallback, fallbackNonSQLSource))
+	columns, entries, err := s.runBindJoin(ctx, query, compiled)
+	var budget *ReadBudgetError
+	if errors.As(err, &budget) || errors.Is(err, errBindJoinTimeout) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
+			WithErrorDetails(detail(ctx, "NonSQLSourceTooLarge", nil))
+	}
+	if err != nil {
+		if !vegaRefused(err) {
+			common.LogSafeError(ctx, "Cypher query outside SQL failed", err)
+		}
+		return nil, executionError(ctx, err)
+	}
+	return &interfaces.CypherQueryResult{
+		Columns:           columns,
+		Entries:           entries,
+		TraceDescriptor:   compiled.traceDescriptor,
+		PermissionImpacts: compiled.permissionImpacts,
+	}, nil
+}
+
 func executionError(ctx context.Context, err error) error {
 	if vegaRefused(err) {
 		return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_Cypher_Forbidden)

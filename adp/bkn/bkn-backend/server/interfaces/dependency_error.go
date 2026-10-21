@@ -20,6 +20,10 @@ const (
 	DependencyUnavailable     DependencyErrorKind = "unavailable"
 	DependencyDownstreamError DependencyErrorKind = "downstream_error"
 	DependencyInvalidResponse DependencyErrorKind = "invalid_response"
+	// DependencyUnsupportedSource is a raw query vega-backend cannot run as
+	// SQL: a resource that is not in a SQL data source, such as a dataset or
+	// an index, or resources in more than one data source.
+	DependencyUnsupportedSource DependencyErrorKind = "unsupported_source"
 )
 
 // DependencyError carries only a safe machine-readable category. Raw response

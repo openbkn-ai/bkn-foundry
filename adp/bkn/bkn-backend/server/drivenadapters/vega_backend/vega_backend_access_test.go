@@ -651,3 +651,24 @@ func TestRawQueryDoesNotReturnDependencyDetail(t *testing.T) {
 		})
 	}
 }
+
+// A raw query refused for where its resources live is told apart from one
+// refused for what it says, by error code alone.
+func TestRawQuerySourceUnsupported(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		body   string
+		want   bool
+	}{
+		{http.StatusBadRequest, `{"error_code":"VegaBackend.Query.InvalidParameter","error_details":"unsupported connector type: "}`, true},
+		{http.StatusBadRequest, `{"error_code":"VegaBackend.Query.InvalidParameter","error_details":"unsupported connector type: opensearch"}`, true},
+		{http.StatusNotImplemented, `{"error_code":"VegaBackend.Query.MultiCatalogNotSupported","error_details":"x"}`, true},
+		{http.StatusBadRequest, `{"error_code":"VegaBackend.Query.InvalidParameter","error_details":"syntax error near t0"}`, false},
+		{http.StatusBadRequest, `not json`, false},
+		{http.StatusInternalServerError, `{"error_code":"VegaBackend.Query.MultiCatalogNotSupported"}`, false},
+	} {
+		if got := rawQuerySourceUnsupported(tc.status, []byte(tc.body)); got != tc.want {
+			t.Errorf("%d %s: got %v, want %v", tc.status, tc.body, got, tc.want)
+		}
+	}
+}

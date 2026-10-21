@@ -372,6 +372,30 @@ func (vba *vegaBackendAccess) GetResourceSchema(ctx context.Context, id, operati
 	}, nil
 }
 
+// rawQuerySourceUnsupported reports a raw query refused for where its
+// resources live rather than for what it says: a resource outside a SQL data
+// source, whose catalog has no SQL connector, or resources in more than one
+// data source. Only the error code and the start of its details are read; the
+// rest of the body never leaves this adapter.
+func rawQuerySourceUnsupported(status int, body []byte) bool {
+	var refusal struct {
+		ErrorCode    string `json:"error_code"`
+		ErrorDetails any    `json:"error_details"`
+	}
+	if json.Unmarshal(body, &refusal) != nil {
+		return false
+	}
+	switch {
+	case status == http.StatusNotImplemented && refusal.ErrorCode == "VegaBackend.Query.MultiCatalogNotSupported":
+		return true
+	case status == http.StatusBadRequest && refusal.ErrorCode == "VegaBackend.Query.InvalidParameter":
+		details, _ := refusal.ErrorDetails.(string)
+		return strings.HasPrefix(details, "unsupported connector type")
+	default:
+		return false
+	}
+}
+
 func dependencyKindForStatus(status int) interfaces.DependencyErrorKind {
 	switch status {
 	case http.StatusOK:
@@ -800,7 +824,11 @@ func (vba *vegaBackendAccess) rawQuery(ctx context.Context, span trace.Span, hea
 	}
 
 	if respCode != http.StatusOK {
-		err := interfaces.NewDependencyError("vega", "raw_query", dependencyKindForStatus(respCode), respCode)
+		kind := dependencyKindForStatus(respCode)
+		if rawQuerySourceUnsupported(respCode, respData) {
+			kind = interfaces.DependencyUnsupportedSource
+		}
+		err := interfaces.NewDependencyError("vega", "raw_query", kind, respCode)
 		common.LogSafeError(ctx, fmt.Sprintf("RawQuery returned HTTP %d", respCode), err)
 		logger.Debugf("RawQuery response: %s", common.SafeTextSummary("response", string(respData)))
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
