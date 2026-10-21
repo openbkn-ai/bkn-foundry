@@ -5,6 +5,7 @@
 package compiler
 
 import (
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/functions"
 	"slices"
 	"strings"
 
@@ -26,7 +27,7 @@ type irConverter struct {
 	nextInstance qm.RelationInstanceID
 }
 
-func origin(span qm.Span) qm.Origin { return qm.Origin{Span: span} }
+func origin(span qm.Span) qm.Origin { return qm.Origin{Kind: qm.OriginSQL, Span: span} }
 
 func (b *irConverter) query(q *qt.Select) *qm.UnboundQuery {
 	b.nextScope++
@@ -102,7 +103,7 @@ func expression(e *qt.Expr, calls *[]*qm.Expr) *qm.Expr {
 	isAggregate := false
 	if e.Kind == qt.Call {
 		result.Name[0] = strings.ToUpper(result.Name[0])
-		signature, _ := lookupFunction(result.Name[0])
+		signature, _ := functions.Lookup(result.Name[0])
 		isAggregate = signature.Evaluation == qm.EvaluationAggregate
 	}
 	for _, arg := range e.Args {

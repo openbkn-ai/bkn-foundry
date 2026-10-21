@@ -7,10 +7,13 @@ package querymodel
 type ErrorKind string
 
 const (
-	ErrorSyntax      ErrorKind = "syntax"
-	ErrorUnsupported ErrorKind = "unsupported_syntax"
-	ErrorLimit       ErrorKind = "input_limit"
-	ErrorInvalidTree ErrorKind = "invalid_tree"
+	ErrorSyntax              ErrorKind = "syntax"
+	ErrorUnsupported         ErrorKind = "unsupported_syntax"
+	ErrorLimit               ErrorKind = "input_limit"
+	ErrorInvalidTree         ErrorKind = "invalid_tree"
+	ErrorPlanningUnsupported ErrorKind = "planning_unsupported"
+	ErrorBinding             ErrorKind = "binding"
+	ErrorConfiguration       ErrorKind = "configuration"
 )
 
 // CompileError 仅包含可公开的分类和位置，不包含 SQL 原文或目标信息。
