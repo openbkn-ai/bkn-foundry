@@ -18,6 +18,7 @@ PROVENANCE_UPGRADE = MIGRATIONS / "0.2.1/03-upgrade-business-provenance-defaults
 SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
 VERSIONS = MIGRATIONS / "0.2.1/05-agent-versions.sql"
 CYPHER = MIGRATIONS / "0.2.1/06-seed-cypher-generation.sql"
+METRIC_DESIGN = MIGRATIONS / "0.2.1/07-seed-object-metric-designer.sql"
 
 
 def statements(path):
@@ -172,6 +173,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
         + SETTINGS.read_text()
         + VERSIONS.read_text()
         + CYPHER.read_text()
+        + METRIC_DESIGN.read_text()
     )
     assert "alter table" not in deltas.lower()
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
@@ -187,8 +189,9 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         apply(upgraded, PROVENANCE_UPGRADE)
         apply(upgraded, VERSIONS)
         apply(upgraded, CYPHER)
+        apply(upgraded, METRIC_DESIGN)
         assert snapshot(fresh) == snapshot(upgraded)
-        assert len(snapshot(fresh)[0]) == 6
+        assert len(snapshot(fresh)[0]) == 7
         for table_before, table_after in zip(original, snapshot(upgraded)):
             assert all(row in table_after for row in table_before)
         versions = dict(
@@ -200,7 +203,20 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER])
+def test_object_metric_designer_default_is_english_and_respects_user_language():
+    with database() as db:
+        apply(db, METRIC_DESIGN)
+        seeded = item_from_db(db, "object_metric_designer")
+        assert seeded["spec"]["name"] == "ObjectMetricDesigner"
+        assert seeded["prompt"]["name"] == "Object Metric Designer Default Prompt"
+        content = seeded["prompt"]["content"]
+        assert content.isascii()
+        assert "Respond in the language of the current user message" in content
+        assert "Do not query instance data" in content
+        assert "changes empty" in content
+
+
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         apply(db, path)
@@ -314,6 +330,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(SETTINGS),
                     str(VERSIONS),
                     str(CYPHER),
+                    str(METRIC_DESIGN),
                 ],
             ]
         ],
@@ -669,6 +686,20 @@ def test_cypher_generation_seed_reads_schema_and_runs_cypher_only():
             " WHERE f_agent_id='cypher_generation'"
         ).fetchall()
         assert [tuple(row) for row in rows] == [(1, 1, 1, 1)]
+
+
+def test_metric_designer_seed_is_tool_free_and_draft():
+    with database() as db:
+        apply(db, METRIC_DESIGN)
+        item = item_from_db(db, "object_metric_designer")
+        assert item["spec"]["status"] == "draft"
+        assert item["spec"]["model"] == ""
+        assert item["spec"]["tools"] == []
+        assert item["spec"]["skills"] == []
+        assert item["spec"]["limits"]["max_tool_calls"] == 0
+        assert "save, publish, delete, or upgrade metrics" in item["prompt"]["content"]
+        apply(db, METRIC_DESIGN)
+        assert db.execute("SELECT COUNT(*) FROM t_agent WHERE f_agent_id='object_metric_designer'").fetchone()[0] == 1
 
 
 @pytest.mark.parametrize("completed", [1, 2])

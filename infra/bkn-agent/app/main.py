@@ -19,6 +19,7 @@ from app.routers import (
     chat,
     executions,
     impex,
+    metric_design,
     prompts,
     tasks,
     threads,
@@ -80,6 +81,7 @@ setup_otel(app)
 app.include_router(agents.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(chat.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(executions.router, prefix=API_PREFIX, tags=["BknAgentExecution"], responses=_ERRORS)
+app.include_router(metric_design.router, prefix=API_PREFIX, tags=["BknAgentMetricDesign"], responses=_ERRORS)
 app.include_router(agent_settings.router, prefix=API_PREFIX, tags=["BknAgentExecution"], responses=_ERRORS)
 app.include_router(tasks.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 app.include_router(prompts.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)

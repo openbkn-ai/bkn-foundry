@@ -27,9 +27,20 @@ service:
     port: 30800
     targetPort: 30800
 
-# No blanket ingress: legacy agent management and service-call routes remain
-# internal. Only the credential-verified /api/bkn-agent/v1/executions surface may
-# be exposed through the unified gateway after deployment review (#2173).
+# No blanket ingress: legacy management and service-call routes remain internal.
+# Expose only the credential-verified execution and Agent-setting routes used by
+# Studio. /networks currently contains only the Agent-setting handlers; their
+# server-side Agent allowlist and knowledge-network permissions still apply.
+# The built-in Agent management page additionally needs /admin/agents; writes
+# still require admin-agent:manage in the application.
+publicIngress:
+  enabled: true
+  adminAgentsEnabled: false
+  className: class-443
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
 
 depServices:
   rds:
