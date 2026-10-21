@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
+	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
@@ -157,6 +158,151 @@ func TestResourceContinuationBeyondIndexWindowReplaysFromFirstPage(t *testing.T)
 	}
 }
 
+func TestContinuousObjectScanDoesNotReplayFirstPage(t *testing.T) {
+	const firstPageSize = 10000
+	firstPage := make([]map[string]any, firstPageSize)
+	for i := range firstPage {
+		firstPage[i] = map[string]any{"customer_id": fmt.Sprintf("customer-%d", i)}
+	}
+	sessionID := "session-1"
+	lastPage := make([]map[string]any, 2190)
+	for i := range lastPage {
+		lastPage[i] = map[string]any{"customer_id": fmt.Sprintf("customer-%d", firstPageSize+i)}
+	}
+	vega := &vegaStubForOTQuery{responses: []*interfaces.DatasetQueryResponse{
+		{Entries: firstPage, TotalCount: 12190, Paging: &interfaces.ResourceDataPagingResponse{NextCursor: &sessionID}},
+		{Entries: lastPage, TotalCount: 12190,
+			Paging: &interfaces.ResourceDataPagingResponse{}},
+	}}
+	service := resourcePagingService(t, vega, 2)
+	ctx := resourcePagingContext()
+	firstQuery := resourcePagingQuery(firstPageSize)
+	firstQuery.NeedTotal = false
+	first, err := service.GetObjectsByObjectTypeIDForScan(ctx, firstQuery)
+	if err != nil || len(first.Datas) != firstPageSize || first.Cursor == "" {
+		t.Fatalf("first page = %d rows, cursor %q, error %v", len(first.Datas), first.Cursor, err)
+	}
+	next := resourcePagingQuery(firstPageSize)
+	next.NeedTotal = false
+	next.Cursor = first.Cursor
+	second, err := service.GetObjectsByObjectTypeIDForScan(ctx, next)
+	if err != nil || len(second.Datas) != 2190 || second.Cursor != "" || second.Datas[0]["id"] != "customer-10000" {
+		t.Fatalf("second page = %d rows, cursor %q, error %v", len(second.Datas), second.Cursor, err)
+	}
+	if len(vega.paramsHistory) != 2 ||
+		vega.paramsHistory[0].Paging.Mode != interfaces.ResourceDataPagingModeCursor ||
+		vega.paramsHistory[0].Paging.Offset != 0 ||
+		vega.paramsHistory[1].Paging.Cursor != sessionID {
+		t.Fatalf("continuous scan sent unexpected Vega requests: %#v", vega.paramsHistory)
+	}
+}
+
+func TestContinuousObjectScanBoundaryRowCounts(t *testing.T) {
+	for _, total := range []int{9999, 10000, 10001} {
+		t.Run(fmt.Sprint(total), func(t *testing.T) {
+			firstSize := min(total, 10000)
+			firstRows := make([]map[string]any, firstSize)
+			for index := range firstRows {
+				firstRows[index] = map[string]any{"customer_id": fmt.Sprintf("customer-%d", index)}
+			}
+			var nextCursor *string
+			responses := []*interfaces.DatasetQueryResponse{{Entries: firstRows, TotalCount: int64(total),
+				Paging: &interfaces.ResourceDataPagingResponse{}}}
+			if total >= 10000 {
+				session := "session-1"
+				nextCursor = &session
+				responses[0].Paging.NextCursor = nextCursor
+				lastRows := make([]map[string]any, total-10000)
+				for index := range lastRows {
+					lastRows[index] = map[string]any{"customer_id": fmt.Sprintf("customer-%d", 10000+index)}
+				}
+				responses = append(responses, &interfaces.DatasetQueryResponse{Entries: lastRows,
+					TotalCount: int64(total), Paging: &interfaces.ResourceDataPagingResponse{}})
+			}
+			vega := &vegaStubForOTQuery{responses: responses}
+			service := resourcePagingService(t, vega, len(responses))
+			query := resourcePagingQuery(10000)
+			query.NeedTotal = false
+			first, err := service.GetObjectsByObjectTypeIDForScan(resourcePagingContext(), query)
+			if err != nil || len(first.Datas) != firstSize || (first.Cursor != "") != (nextCursor != nil) {
+				t.Fatalf("first page: rows=%d cursor=%q err=%v", len(first.Datas), first.Cursor, err)
+			}
+			counted := len(first.Datas)
+			if first.Cursor != "" {
+				next := resourcePagingQuery(10000)
+				next.NeedTotal = false
+				next.Cursor = first.Cursor
+				second, nextErr := service.GetObjectsByObjectTypeIDForScan(resourcePagingContext(), next)
+				if nextErr != nil || second.Cursor != "" {
+					t.Fatalf("last page: rows=%d cursor=%q err=%v", len(second.Datas), second.Cursor, nextErr)
+				}
+				counted += len(second.Datas)
+				if len(second.Datas) > 0 && second.Datas[0]["id"] != "customer-10000" {
+					t.Fatalf("continuation repeated or skipped first row: %#v", second.Datas[0])
+				}
+			}
+			if counted != total || len(vega.paramsHistory) != len(responses) ||
+				vega.paramsHistory[0].Paging.Mode != interfaces.ResourceDataPagingModeCursor {
+				t.Fatalf("counted=%d requests=%#v", counted, vega.paramsHistory)
+			}
+		})
+	}
+}
+
+func TestContinuousObjectScanFallsBackWhenCursorIsUnsupported(t *testing.T) {
+	vega := &vegaStubForOTQuery{
+		errors: []error{interfaces.NewVegaDownstreamError(http.StatusNotImplemented,
+			`{"error_code":"VegaBackend.Query.InvalidParameter"}`)},
+		responses: []*interfaces.DatasetQueryResponse{{Entries: []map[string]any{{"customer_id": "customer-1"}},
+			Paging: &interfaces.ResourceDataPagingResponse{}}},
+	}
+	service := resourcePagingService(t, vega, 1)
+	result, err := service.GetObjectsByObjectTypeIDForScan(resourcePagingContext(), resourcePagingQuery(10000))
+	if err != nil || len(result.Datas) != 1 || len(vega.paramsHistory) != 2 ||
+		vega.paramsHistory[0].Paging.Mode != interfaces.ResourceDataPagingModeCursor ||
+		vega.paramsHistory[1].Paging.Mode != interfaces.ResourceDataPagingModeSingle {
+		t.Fatalf("cursor fallback: rows=%d requests=%#v err=%v", len(result.Datas), vega.paramsHistory, err)
+	}
+}
+
+func TestObjectAggregateUsesAuthorizedResourceQuery(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{
+		Entries:     []map[string]any{{"customer_id": "customer-1", "__value": int64(4)}},
+		QuerySource: "local_index", Paging: &interfaces.ResourceDataPagingResponse{},
+	}}
+	service := resourcePagingService(t, vega, 1)
+	query := resourcePagingQuery(10000)
+	query.ActualCondition = &cond.CondCfg{Name: "id", Operation: cond.OperationEq,
+		ValueOptCfg: cond.ValueOptCfg{Value: "customer-1"}}
+	result, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), query, "id", "count", []string{"id"})
+	if err != nil || len(result.Datas) != 1 || result.Datas[0]["id"] != "customer-1" ||
+		result.Datas[0]["__value"] != int64(4) || result.QuerySource != "local_index" {
+		t.Fatalf("authorized aggregate = %#v, error %v", result, err)
+	}
+	params := vega.lastParams
+	if params == nil || params.FilterCondition == nil || params.Paging.Mode != interfaces.ResourceDataPagingModeSingle ||
+		params.Aggregation["property"] != "customer_id" || len(params.GroupBy) != 1 ||
+		params.GroupBy[0]["property"] != "customer_id" {
+		t.Fatalf("aggregate request = %#v", params)
+	}
+}
+
+func TestObjectAggregateRejectsMaskedMeasureBeforeVega(t *testing.T) {
+	vega := &vegaStubForOTQuery{resp: &interfaces.DatasetQueryResponse{}}
+	service := resourcePagingService(t, vega, 1)
+	service.propertyAccess = propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+		"id":     interfaces.PropertyAccessMasked,
+		"mobile": interfaces.PropertyAccessMasked,
+		"notes":  interfaces.PropertyAccessSchema,
+		"secret": interfaces.PropertyAccessNone,
+	}}
+	_, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(100), "id", "count", nil)
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest || len(vega.paramsHistory) != 0 {
+		t.Fatalf("masked aggregate error = %v, Vega requests = %d", err, len(vega.paramsHistory))
+	}
+}
+
 func TestResourceContinuationBeyondIndexWindowEndsWhenDataShrank(t *testing.T) {
 	const limit = 6000
 	fullPage := make([]map[string]any, limit)
@@ -201,7 +347,7 @@ func TestUnstableResourceSortNeverReturnsContinuation(t *testing.T) {
 	service := &objectTypeService{vba: vega}
 	var result interfaces.Objects
 	if err := service.getObjectsFromResource(context.Background(), query, objectType, &result,
-		plan.fieldPropertyMap(), plan); err != nil {
+		plan.fieldPropertyMap(), plan, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if vega.lastParams.Paging.Mode != interfaces.ResourceDataPagingModeSingle || result.ResourceNextOffset != 0 {

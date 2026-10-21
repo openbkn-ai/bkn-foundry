@@ -15,11 +15,11 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	"go.uber.org/mock/gomock"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/maskrule"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
+	"go.uber.org/mock/gomock"
 )
 
 type propertyAccessStub struct {
@@ -77,7 +77,7 @@ func TestVegaUsesPropertyProjection(t *testing.T) {
 	}}}
 	service := &objectTypeService{vba: vega}
 	var vegaResult interfaces.Objects
-	if err := service.getObjectsFromResource(context.Background(), query, objectType, &vegaResult, plan.fieldPropertyMap(), plan); err != nil {
+	if err := service.getObjectsFromResource(context.Background(), query, objectType, &vegaResult, plan.fieldPropertyMap(), plan, false, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(vegaResult.Datas) != 1 || vegaResult.Datas[0]["id"] != "customer-1" ||
