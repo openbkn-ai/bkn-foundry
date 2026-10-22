@@ -335,7 +335,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
 			WithErrorDetails(err.Error())
 	}
-	if patternParts(plan) > 1 && unnarrowedParts(plan) > 1 {
+	if crossProduct(plan) {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
 			WithErrorDetails(detail(ctx, "CartesianProduct", nil))
 	}

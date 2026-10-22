@@ -37,6 +37,10 @@ func TestTwoWholeTablesAreRefused(t *testing.T) {
 		"MATCH (o:Order), (c:Customer) WHERE c.name = 'Acme' RETURN o.id LIMIT 5": false,
 		// So are two narrowed sides.
 		"MATCH (o:Order {id: 1}), (c:Customer {code: 'A'}) RETURN o.id, c.name": false,
+		// Nodes a WITH passed on meet in the same row of the carried stage.
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH o, c, count(*) AS n MATCH (o), (c) RETURN o.id, c.name, n": false,
+		// A stage read first is checked as well.
+		"MATCH (o:Order), (c:Customer) WITH collect(o.id) AS ids MATCH (p:Order) WHERE p.id IN ids RETURN count(*) AS n": true,
 	} {
 		vega := &recordingVega{}
 		_, err := sqlService(vega).Query(callerContext(), interfaces.CypherQuery{
@@ -50,6 +54,10 @@ func TestTwoWholeTablesAreRefused(t *testing.T) {
 		gotRefused := strings.Contains(details, "a.code = b.code")
 		if gotRefused != refused {
 			t.Errorf("%s: refused = %v, err = %v", query, gotRefused, err)
+		}
+		// An allowed query must run, not fail for some other reason.
+		if !refused && err != nil {
+			t.Errorf("%s: err = %v", query, err)
 		}
 		if refused && vega.request != nil {
 			t.Errorf("%s: a refused query reached vega-backend", query)

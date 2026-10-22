@@ -152,6 +152,16 @@ func TestExplainWarns(t *testing.T) {
 		}
 	}
 
+	// Nodes a WITH passed on meet in the carried stage's row: not disconnected.
+	plan, _, err = explainQuery(t, graphService(&recordingVega{}),
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH o, c, count(*) AS n MATCH (o), (c) RETURN o.id, c.name, n LIMIT 5")
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	if slices.Contains(plan.WarningCodes, "disconnected_parts") {
+		t.Errorf("carried nodes: warnings = %v", plan.Warnings)
+	}
+
 	plan, _, err = explainQuery(t, graphService(&recordingVega{}),
 		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN c AS source, 'X' AS relationType, c AS target, collect(o) AS evidence LIMIT 5")
 	if err != nil {

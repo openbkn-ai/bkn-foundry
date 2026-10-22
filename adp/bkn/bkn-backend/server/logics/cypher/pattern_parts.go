@@ -8,7 +8,8 @@ package cypher
 // patternComponents gives each table of a pattern the part it belongs to:
 // tables a relationship or an equality between their properties connects
 // share a part. An equality connects only when every row must meet it, so
-// one under OR or NOT does not.
+// one under OR or NOT does not. Nodes a WITH passed on are joined to the
+// same row of the carried stage, so they share a part too.
 func patternComponents(plan *Plan) []int {
 	parent := make([]int, len(plan.Tables))
 	for i := range parent {
@@ -28,6 +29,11 @@ func patternComponents(plan *Plan) []int {
 	for _, term := range conjuncts(plan.Where) {
 		if node, ok := term.(PlanColumnComparison); ok && node.Operator == "=" && node.LeftTable != node.RightTable {
 			parent[find(node.LeftTable)] = find(node.RightTable)
+		}
+	}
+	if plan.Carried != nil {
+		for _, key := range plan.Carried.Keys {
+			parent[find(key.Table)] = find(plan.Carried.Keys[0].Table)
 		}
 	}
 	for i := range parent {
@@ -56,6 +62,12 @@ func patternParts(plan *Plan) int {
 func unnarrowedParts(plan *Plan) int {
 	part := patternComponents(plan)
 	narrowed := map[int]bool{}
+	// The carried stage's rows bound the nodes passed on.
+	if plan.Carried != nil {
+		for _, key := range plan.Carried.Keys {
+			narrowed[part[key.Table]] = true
+		}
+	}
 	for _, term := range conjuncts(plan.Where) {
 		tables := predicateTables(term)
 		if len(tables) == 0 {
@@ -79,4 +91,35 @@ func unnarrowedParts(plan *Plan) int {
 		}
 	}
 	return len(open)
+}
+
+// crossProduct reports a plan, or a stage it reads first, whose pattern has
+// two parts that nothing connects and no condition narrows.
+func crossProduct(plan *Plan) bool {
+	if plan == nil {
+		return false
+	}
+	if patternParts(plan) > 1 && unnarrowedParts(plan) > 1 {
+		return true
+	}
+	if plan.Carried != nil && crossProduct(plan.Carried.Stage) {
+		return true
+	}
+	if plan.Intersection != nil && (crossProduct(plan.Intersection.Lists[0]) || crossProduct(plan.Intersection.Lists[1])) {
+		return true
+	}
+	found := false
+	var walk func(PlanPredicate)
+	walk = func(predicate PlanPredicate) {
+		switch node := predicate.(type) {
+		case PlanSemiJoin:
+			found = found || crossProduct(node.Sub)
+		case PlanLogical:
+			for _, operand := range node.Operands {
+				walk(operand)
+			}
+		}
+	}
+	walk(plan.Where)
+	return found
 }
