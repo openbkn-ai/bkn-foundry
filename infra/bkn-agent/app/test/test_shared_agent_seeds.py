@@ -210,6 +210,8 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         apply(upgraded, VERSIONS)
         apply(upgraded, CYPHER)
         apply(upgraded, METRIC_DESIGN)
+        history = snapshot(upgraded)[3]
+        assert history, "Historical Agent snapshots must exist before comparison"
         apply(upgraded, SEMANTIC_LANGUAGE)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
@@ -227,10 +229,13 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
             else:
                 assert row == match
         assert all(row in updated[2] for row in original[2])
-        # Only the initial/current markers change on historical Agent snapshots.
-        for row in original[3]:
+        # Only the upgraded Agent may change its historical initial/current markers.
+        for row in history:
             match = next(after for after in updated[3] if after[:2] == row[:2])
-            assert row[:7] + row[9:] == match[:7] + match[9:]
+            if row[0] == "resource-semantic-understanding":
+                assert row[:7] + row[9:] == match[:7] + match[9:]
+            else:
+                assert row == match
         versions = dict(
             upgraded.execute(
                 "SELECT f_prompt_id, f_current_version FROM t_agent_prompt"
