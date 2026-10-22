@@ -356,7 +356,7 @@ jobs:
               ["gh", "api", "repos/%s/pulls/%s/reviews" % (repo, pr),
                "--paginate", "--jq",
                '[.[] | select((.body // "") != "") '
-               '| {id, state, body, commit_id, login: .user.login}] | @json'],
+               '| {id, state, body, commit_id, user_type: .user.type}] | @json'],
               capture_output=True, text=True)
           rounds = []
           if prior.returncode == 0:
@@ -460,24 +460,30 @@ jobs:
               if got.returncode != 0:
                   return None
               try:
-                  files = json.loads(got.stdout).get("files")
+                  data = json.loads(got.stdout)
+                  files = data.get("files")
+                  merge_base = (data.get("merge_base_commit") or {}).get("sha")
               except (ValueError, AttributeError):
                   return None
-              if not isinstance(files, list) or len(files) >= 300:
+              if not isinstance(files, list) or len(files) >= 300 or not merge_base:
                   return None
               out = {}
               for f in files:
                   if isinstance(f, dict) and isinstance(f.get("filename"), str):
                       out[f["filename"]] = f
-              return out
+              return merge_base, out
 
-          # approve 之后 PR 补丁有变化的文件；看不清时返回 None。同一文件内容（blob sha）
-          # 没变，或去掉 hunk 头行号后补丁逐字相同，就算没变——后者覆盖 rebase：main 在
-          # 别处加了几行，PR 的 hunk 只是整体挪了位置。
+          # approve 之后 PR 补丁有变化的文件；看不清时返回 None。去掉 hunk 头行号后补丁
+          # 逐字相同就算没变——这覆盖 rebase：main 在别处加了几行，PR 的 hunk 只是整体
+          # 挪了位置。文件内容（blob sha）相同的短路只在两次 merge-base 相同时可用：
+          # merge-base 前移后，作者解冲突时把某个文件整份按自己一侧处理，blob 与 approve
+          # 时一样，补丁却已经变成「回退 main 对它的改动」，按 blob 判会漏掉（#2380 评审）。
           def changed_since(old_sha):
               old, new = pr_files_at(old_sha), pr_files_at(head_sha)
               if old is None or new is None:
                   return None
+              same_base = old[0] == new[0]
+              old, new = old[1], new[1]
               changed = []
               for name in sorted(set(old) | set(new)):
                   a, b = old.get(name), new.get(name)
@@ -488,7 +494,7 @@ jobs:
                           b.get("status"), b.get("previous_filename")):
                       changed.append(name)
                       continue
-                  if a.get("sha") and a.get("sha") == b.get("sha"):
+                  if same_base and a.get("sha") and a.get("sha") == b.get("sha"):
                       continue
                   pa, pb = a.get("patch"), b.get("patch")
                   if isinstance(pa, str) and isinstance(pb, str) and (
@@ -521,13 +527,16 @@ jobs:
           # 放行与否只认本轮结论。不撤的话，从推送到 verdict 出结论的七八分钟里旧 approve
           # 照样有效，这段时间里合并的就是没人看过的提交；对同一版回 /review 也一样撤——
           # 有人要复评，说明对上一次的放行有疑问。这一轮若被取消或跑挂，PR 停在
-          # REVIEW_REQUIRED，回 /review 或重跑即可——宁可卡住也不放过。只撤 bot 自己的：
-          # 人工 approve 是人的判断，不归这里管。
+          # REVIEW_REQUIRED，回 /review 或重跑即可——宁可卡住也不放过。只撤本 workflow
+          # 自己的：人工 approve 是人的判断，不归这里管。认「Bot 作者 + 正文带状态块」而不
+          # 认 login——配了 REVIEW_APP_ID 时 verdict 以 App 身份表态，login 不是
+          # github-actions[bot]；状态块则是 verdict 每次表态都写的。
           # 被撤的 review 正文保留，状态块照样读得回；但它的 state 变成 DISMISSED，
           # 下一轮不会再按「上一轮已放行」跳过——被撤说明那一轮复评没走完，复评本就该补上。
           stale = [] if skip else [
               r.get("id") for r in rounds
-              if r.get("login") == "github-actions[bot]" and r.get("state") == "APPROVED"
+              if r.get("user_type") == "Bot" and r.get("state") == "APPROVED"
+              and STATE_RE.search(str(r.get("body") or ""))
               and isinstance(r.get("id"), int)]
           print("stale_approvals=" + json.dumps(stale))
           print("skip_round=%s" % ("true" if skip else "false"))
