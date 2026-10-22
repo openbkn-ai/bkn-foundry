@@ -423,7 +423,26 @@ func CompareValues(a, b interface{}) bool {
 func CheckViewDataMatchesCondition(viewData map[string]any,
 	condition *cond.CondCfg, mappingRules []interfaces.Mapping, isForward bool) bool {
 
-	// Simplified implementation: check view data by mapping rules.
+	if condition == nil {
+		return false
+	}
+
+	if condition.Operation == cond.OperationAnd {
+		if len(condition.SubConds) == 0 {
+			return false
+		}
+		for _, subCondition := range condition.SubConds {
+			if !CheckViewDataMatchesCondition(viewData, subCondition, mappingRules, isForward) {
+				return false
+			}
+		}
+		return true
+	}
+
+	if condition.Operation != cond.OperationEq {
+		return false
+	}
+
 	for _, mapping := range mappingRules {
 		var fieldName string
 		if isForward {
@@ -431,21 +450,19 @@ func CheckViewDataMatchesCondition(viewData map[string]any,
 		} else {
 			fieldName = mapping.SourceProp.Name
 		}
+		if condition.Name != fieldName {
+			continue
+		}
 
-		expectedValue, exists := viewData[fieldName]
+		actualValue, exists := viewData[fieldName]
 		if !exists {
 			return false
 		}
 
-		// Compare values for equality. Relation associations are equality relations, so compare values directly.
-		// Read values from conditions; do not take only one value, because multi-field associations must also be considered.
-		conditionValue := condition.Value
-		if !CompareValues(expectedValue, conditionValue) {
-			return false
-		}
+		return CompareValues(actualValue, condition.Value)
 	}
 
-	return true
+	return false
 }
 
 // Use view data to check indirect mapping conditions.
