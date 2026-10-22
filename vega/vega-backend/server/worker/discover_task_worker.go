@@ -654,18 +654,18 @@ func (dtw *DiscoverTaskWorker) enrichResourceLogicalViewRowCount(ctx context.Con
 	}
 	if err != nil {
 		recordCountQueryFailure(result, view, err)
-		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", view.ID, err)
+		logCountFailure(view.ID, err)
 		return nil
 	}
 	if counted == nil || !counted.NeedTotal || counted.TotalCount < 0 {
 		recordCountQueryFailure(result, view, errInvalidExactCount)
-		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", view.ID, errInvalidExactCount)
+		logCountFailure(view.ID, errInvalidExactCount)
 		return nil
 	}
 
 	if err := dtw.rs.InternalUpdateRowCount(ctx, nil, view, counted.TotalCount, time.Now().UnixMilli()); err != nil {
 		recordCountSaveFailure(result, view)
-		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", view.ID, err)
+		logCountFailure(view.ID, err)
 		return nil
 	}
 	result.UpdatedCount++
@@ -709,4 +709,18 @@ func recordCountSaveFailure(result *interfaces.DiscoverResult, resource *interfa
 		Code:         "save_failed",
 		Message:      "Failed to save the exact count. The previous count is retained; retry the task.",
 	})
+}
+
+// logCountFailure 在诊断日志中展开内存限制错误的源端原因，不改变对外错误文案。
+func logCountFailure(resourceID string, err error) {
+	var memoryLimit *interfaces.SourceMemoryLimitError
+	if errors.As(err, &memoryLimit) {
+		sourceErr := memoryLimit.Cause
+		for cause := errors.Unwrap(sourceErr); cause != nil; cause = errors.Unwrap(sourceErr) {
+			sourceErr = cause
+		}
+		logger.Warnf("Resource exact count failed: resource_id=%s error=%v source_error=%v", resourceID, err, sourceErr)
+		return
+	}
+	logger.Warnf("Resource exact count failed: resource_id=%s error=%v", resourceID, err)
 }

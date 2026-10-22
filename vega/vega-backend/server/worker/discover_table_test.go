@@ -10,11 +10,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -546,7 +551,7 @@ func TestDiscoverTaskWorkerEnrichResourceTableRowCount(t *testing.T) {
 		countErr, saveErr error
 		code              string
 	}{
-		{name: "source memory limit", countErr: interfaces.NewSourceMemoryLimitError(errors.New("private-value")), code: "source_memory_limit"},
+		{name: "source memory limit", countErr: fmt.Errorf("read row count: %w", interfaces.NewSourceMemoryLimitError(&testCountDiagnosticError{cause: errors.New("[MEM_ALLOC_FAILED] private-value")})), code: "source_memory_limit"},
 		{name: "timeout", countErr: context.DeadlineExceeded, code: "timeout"},
 		{name: "unknown source failure", countErr: errors.New("mysql://user:private-value@source.invalid/db"), code: "count_failed"},
 		{name: "save failure", count: 5, saveErr: errors.New("database private-value"), code: "save_failed"},
@@ -557,6 +562,15 @@ func TestDiscoverTaskWorkerEnrichResourceTableRowCount(t *testing.T) {
 		{name: "empty table", count: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			var observed *observer.ObservedLogs
+			if tc.name == "source memory limit" {
+				core, logs := observer.New(zap.WarnLevel)
+				observed = logs
+				sharedLogger := logger.GetLogger()
+				original := *sharedLogger
+				*sharedLogger = *zap.New(core).Sugar()
+				t.Cleanup(func() { *sharedLogger = original })
+			}
 			ctrl := gomock.NewController(t)
 			rs := vmock.NewMockResourceService(ctrl)
 			connector := vmock.NewMockTableConnector(ctrl)
@@ -601,8 +615,21 @@ func TestDiscoverTaskWorkerEnrichResourceTableRowCount(t *testing.T) {
 			assert.Equal(t, tc.code, failure["code"])
 			assert.NotEmpty(t, failure["message"])
 			assert.NotContains(t, string(encoded), "private-value")
+			if observed != nil {
+				require.Len(t, observed.All(), 1)
+				message := observed.All()[0].Message
+				assert.Contains(t, message, "resource_id=r1")
+				assert.Contains(t, message, "[MEM_ALLOC_FAILED] private-value")
+				assert.NotContains(t, tc.countErr.Error(), "private-value")
+			}
 			assert.Equal(t, int64(7), *resource.RowCount)
 			assert.Equal(t, int64(10), *resource.RowCountTime)
 		})
 	}
 }
+
+// testCountDiagnosticError 模拟连接器对外安全、但可解包取得原始诊断的错误。
+type testCountDiagnosticError struct{ cause error }
+
+func (e *testCountDiagnosticError) Error() string { return "source query failed" }
+func (e *testCountDiagnosticError) Unwrap() error { return e.cause }

@@ -439,7 +439,7 @@ components:
           type: integer
           format: int64
         result:
-          description: Execution result, non-empty only when status is `completed`
+          description: Persisted execution result for completed tasks and failed exact count tasks; inspect failures even when status is `failed`
           $ref: "#/components/schemas/DiscoverResult"
         creator:
           $ref: "#/components/schemas/AccountInfo"
