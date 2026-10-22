@@ -28,8 +28,8 @@
     },
     {
       "name": "limited marks a result cut at the default",
-      "zh": "\\blimited\\b",
-      "en": "\\blimited\\b"
+      "zh": "\\blimited:\\s*(?:true|type:\\s*boolean)",
+      "en": "\\blimited:\\s*(?:true|type:\\s*boolean)"
     }
   ]
 }
