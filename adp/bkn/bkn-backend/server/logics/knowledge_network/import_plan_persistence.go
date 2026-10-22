@@ -115,6 +115,7 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 	}
 	if references, ok := logics.OMA.(interfaces.ObjectMetricLogicPropertyReferenceAccessV1); ok {
 		if err := references.RebuildObjectTypeMetricReferences(ctx, tx, plan.KNID, plan.Branch); err != nil {
+			logger.Errorf("Rebuild object metric logical-property references failed: %v", err)
 			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError).
 				WithErrorDetails("object metric logical-property reference rebuild failed")

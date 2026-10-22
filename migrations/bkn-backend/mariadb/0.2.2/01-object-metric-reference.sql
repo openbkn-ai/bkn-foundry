@@ -69,15 +69,31 @@ INSERT IGNORE INTO t_object_metric_reference (
 )
 SELECT
   object_type.f_kn_id, object_type.f_branch, 'logic_property', object_type.f_id, 0,
-  CONCAT('logic_properties.', property.property_name, '.metric_ref'), property.property_name,
-  property.metric_id, property.metric_version
+  CASE
+    WHEN property.data_source_id REGEXP '^object_metric_v1:[^@]+@[1-9][0-9]*$'
+      THEN CONCAT('logic_properties.', property.property_name, '.data_source.id')
+    ELSE CONCAT('logic_properties.', property.property_name, '.metric_binding.metric_ref')
+  END,
+  property.property_name,
+  CASE
+    WHEN property.data_source_id REGEXP '^object_metric_v1:[^@]+@[1-9][0-9]*$'
+      THEN SUBSTRING_INDEX(SUBSTRING(property.data_source_id, 18), '@', 1)
+    ELSE property.binding_metric_id
+  END,
+  CASE
+    WHEN property.data_source_id REGEXP '^object_metric_v1:[^@]+@[1-9][0-9]*$'
+      THEN CAST(SUBSTRING_INDEX(property.data_source_id, '@', -1) AS UNSIGNED)
+    ELSE property.binding_metric_version
+  END
 FROM t_object_type AS object_type
 JOIN JSON_TABLE(
   COALESCE(object_type.f_logic_properties, '[]'),
   '$[*]' COLUMNS (
     property_name VARCHAR(40) PATH '$.name',
-    metric_id VARCHAR(40) PATH '$.metric_binding.metric_ref.metric_id',
-    metric_version INT PATH '$.metric_binding.metric_ref.version'
+    data_source_id VARCHAR(128) PATH '$.data_source.id',
+    binding_metric_id VARCHAR(40) PATH '$.metric_binding.metric_ref.metric_id',
+    binding_metric_version INT PATH '$.metric_binding.metric_ref.version'
   )
 ) AS property
-WHERE property.metric_id <> '' AND property.metric_version > 0;
+WHERE property.data_source_id REGEXP '^object_metric_v1:[^@]+@[1-9][0-9]*$'
+  OR (property.binding_metric_id <> '' AND property.binding_metric_version > 0);
