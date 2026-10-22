@@ -364,9 +364,9 @@ def test_admin_lists_tools_by_source():
         ]
     )
     graph = sources[0].definitions
-    assert [d["name"] for d in graph] == sorted(
-        ["search_instances", "query_instances", "show_instances", "run_cypher", "canvas_state", "view_state"]
-    )
+    from app.core.graph_explorer_tools import TOOL_NAMES
+
+    assert [d["name"] for d in graph] == sorted(TOOL_NAMES)
     canvas_state = next(d for d in graph if d["name"] == "canvas_state")
     assert set(canvas_state["parameters"]["properties"]) == {"object_types", "offset", "limit"}
     assert [d["name"] for d in sources[1].definitions] == ["show_instances"]

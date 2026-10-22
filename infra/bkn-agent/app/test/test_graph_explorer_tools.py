@@ -344,3 +344,97 @@ def test_large_networks_list_object_types_by_page_and_say_relations_are_unlisted
     assert any("too large to list its relation types" in w for w in run.state["warnings"])
     text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
     assert "- teams (球队)" in text and "too large to list its relation types" in text
+# ---- expand_neighbours ----
+
+
+def _expand_run(counts: dict[int, int], threshold=20, max_nodes=500, nodes=None):
+    """A run whose run_cypher answers count and fetch queries for teams-9 via rel_home (in)."""
+
+    def cypher(kwargs):
+        query = kwargs["query"]
+        seeds = list(kwargs.get("parameters", {}).values())
+        if "count(" in query:
+            return {"entries": [{"s__key_id": s, "n": counts.get(s, 0)} for s in seeds]}
+        limit = int(query.rsplit("LIMIT", 1)[1])
+        rows = [
+            {"s__key_id": s, "t__key_id": str(100 * s + i), "t__match_name": f"M-{s}-{i}"}
+            for s in seeds
+            for i in range(counts.get(s, 0))
+        ]
+        return {"entries": rows[:limit]}
+
+    run, tools, calls = _run(
+        nodes=nodes if nodes is not None else [{"id": "teams-9", "object_type_id": "teams"}],
+        cypher=cypher,
+    )
+    run.context.limits.expand_threshold = threshold
+    run.context.limits.max_nodes = max_nodes
+    return run, tools, calls
+
+
+def test_expand_counts_then_draws_small_groups():
+    run, tools, calls = _expand_run({9: 3})
+    out = _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")
+    assert out["planned_added"] == {"nodes": 3, "edges": 3}
+    count, fetch = [c[1] for c in calls if c[0] == "run_cypher"]
+    assert count["query"].startswith("MATCH (s:`teams`)<-[:`rel_home`]-(t:`matches`)")
+    assert count["parameters"] == {"p0": 9}
+    assert "LIMIT 3" in fetch["query"]
+    result = builtin_tools.get("graph_explorer").result(run)
+    assert {e["id"] for e in result["edges"]} == {f"matches-{900 + i}|rel_home|teams-9" for i in range(3)}
+    # Keys come back as text and are typed by their declaration; labels prefer a name.
+    node = next(n for n in result["nodes"] if n["id"] == "matches-900")
+    assert node["identity"] == {"key_id": 900} and node["label"] == "M-9-0"
+    assert result["actions"][0]["anchor_id"] == "teams-9"
+
+
+def test_expand_folds_large_groups_into_aggregates():
+    run, tools, calls = _expand_run({9: 50}, threshold=20)
+    out = _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")
+    assert out["aggregated"] == [{"seed": "teams-9", "relation": "主队", "target_type": "比赛", "total": 50}]
+    assert out["planned_added"] == {"nodes": 0, "edges": 0}
+    # Counted, not fetched.
+    assert len([c for c in calls if c[0] == "run_cypher"]) == 1
+    result = builtin_tools.get("graph_explorer").result(run)
+    assert result["aggregates"] == [
+        {
+            "id": "agg|teams-9|rel_home|in",
+            "seed_id": "teams-9",
+            "relation_type_id": "rel_home",
+            "relation_type_name": "主队",
+            "walk": "in",
+            "peer_object_type_id": "matches",
+            "total": 50,
+        }
+    ]
+    assert result["actions"][0]["aggregate_ids"] == ["agg|teams-9|rel_home|in"]
+
+
+def test_expand_without_room_falls_back_to_an_aggregate():
+    run, tools, _ = _expand_run({9: 5}, threshold=20, max_nodes=3)
+    out = _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")
+    assert out["aggregated"][0]["total"] == 5 and out["planned_added"]["nodes"] == 0
+
+
+def test_expand_reports_no_neighbours_and_unknown_seeds():
+    _, tools, _ = _expand_run({})
+    assert _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")["note"]
+    with pytest.raises(Exception, match="Unknown instance ids"):
+        asyncio.run(tools["expand_neighbours"].coroutine(ids=["teams-404"], direction="in"))
+
+
+def test_expanding_a_candidate_puts_it_on_the_canvas_too():
+    run, tools, _ = _expand_run({9: 2}, nodes=[])
+    _invoke(tools["search_instances"], query="巴西")
+    out = _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")
+    assert out["planned_added"] == {"nodes": 3, "edges": 2}
+
+
+def test_plan_space_matches_the_ee_rules():
+    rel = data.IncidentRelation("r", "r", "out", "a", "b")
+    groups = [data.ExpandGroup("a-1", rel, 30), data.ExpandGroup("a-2", rel, 4), data.ExpandGroup("a-3", rel, 8)]
+    plan = data.plan_space(groups, threshold=20, room=10, existing=set())
+    assert [g.seed_id for g in plan.aggregate] == ["a-1", "a-3"]
+    assert [g.seed_id for g in plan.draw] == ["a-2"]
+    refreshed = data.plan_space(groups[:1], threshold=20, room=0, existing={"agg|a-1|r|out"})
+    assert [g.seed_id for g in refreshed.refresh] == ["a-1"]
