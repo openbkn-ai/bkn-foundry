@@ -157,8 +157,8 @@ func buildPropertyAccessPlan(ctx context.Context, resolver interfaces.PropertyAc
 		!logics.ShouldExcludeSystemProperty(interfaces.SORT_FIELD_SCORE, query.ExcludeSystemProperties)
 
 	if len(plan.returnData) == 0 && len(plan.returnLogic) == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails("the request has no returnable properties")
+		return nil, withPropertyUnavailableReason(rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails("the request has no returnable properties"))
 	}
 	return plan, nil
 }
@@ -384,14 +384,20 @@ func (plan *propertyAccessPlan) filterResourceSchema(response *interfaces.Resour
 	response.EffectivePermissions = plan.effective
 }
 
-func unavailablePropertyError(ctx context.Context) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-		WithErrorDetails("the request contains an unavailable property")
+func unavailablePropertyError(ctx context.Context) *rest.HTTPError {
+	return withPropertyUnavailableReason(rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		WithErrorDetails("the request contains an unavailable property"))
 }
 
-func unavailableOperationPropertyError(ctx context.Context) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-		WithErrorDetails("the request contains a property unavailable for this operation")
+func unavailableOperationPropertyError(ctx context.Context) *rest.HTTPError {
+	return withPropertyUnavailableReason(rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		WithErrorDetails("the request contains a property unavailable for this operation"))
+}
+
+// A missing property and a denied property must remain indistinguishable to callers.
+// The reason identifies an unavailable input without exposing whether it exists.
+func withPropertyUnavailableReason(err *rest.HTTPError) *rest.HTTPError {
+	return err.WithMetadata(map[string]any{"reason": "property_unavailable"})
 }
 
 func propertyDecisionUnavailable(ctx context.Context, err error) error {

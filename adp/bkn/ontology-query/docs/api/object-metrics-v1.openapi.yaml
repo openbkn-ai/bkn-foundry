@@ -31,8 +31,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricData" }
-        "400": { description: "Invalid definition, runtime input, or time range." }
-        "403": { description: The caller cannot read the knowledge network or its mounted data. }
+        "400": { description: "Invalid definition, runtime input, or time range. An inaccessible or unknown input property retains this status and includes metadata.reason=property_unavailable; the response does not distinguish the two cases." }
+        "403": { description: "The caller cannot read the knowledge network or its mounted data. When no property can be returned, metadata.reason=property_unavailable." }
         "409": { description: Result changed between pages; restart pagination from the first page. }
         "422": { description: "The definition cannot be executed, or HAVING was requested on an incomplete result." }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data:
@@ -67,8 +67,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricData" }
-        "400": { description: "Invalid runtime filter, dimension, time range, or version." }
-        "403": { description: The caller cannot query this metric. }
+        "400": { description: "Invalid runtime filter, dimension, time range, or version. An inaccessible or unknown input property retains this status and includes metadata.reason=property_unavailable; the response does not distinguish the two cases." }
+        "403": { description: "The caller cannot query this metric, or no source property can be returned. The latter includes metadata.reason=property_unavailable." }
         "404": { description: Metric or referenced ontology element not found. }
         "409": { description: The requested version is not published, or the result changed between pages. }
         "422": { description: The immutable definition cannot be executed against current data, or HAVING was requested on an incomplete result. }
