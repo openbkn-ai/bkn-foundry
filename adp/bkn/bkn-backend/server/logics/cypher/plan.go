@@ -49,6 +49,8 @@ type Plan struct {
 
 	// Intersection, when set, is the whole statement; see Query.Intersection.
 	Intersection *PlanIntersection
+	// Union, when set, is the whole statement; see Query.Union.
+	Union *PlanUnion
 
 	// Carried is a carried stage the statement joins; see Query.Carried.
 	Carried *PlanCarried
@@ -442,6 +444,9 @@ type CompileOptions struct {
 func Compile(query *Query, schema *Schema, options CompileOptions) (*Plan, error) {
 	if query.Intersection != nil {
 		return compileIntersection(query.Intersection, schema, options)
+	}
+	if query.Union != nil {
+		return compileUnion(query.Union, schema, options)
 	}
 	p := &planner{
 		schema:     schema,
@@ -1960,6 +1965,9 @@ func (plan *Plan) subPlans() []*Plan {
 	}
 	if plan.Carried != nil {
 		subs = append(subs, plan.Carried.Stage)
+	}
+	if plan.Union != nil {
+		subs = append(subs, plan.Union.Parts...)
 	}
 	var walk func(PlanPredicate)
 	walk = func(predicate PlanPredicate) {

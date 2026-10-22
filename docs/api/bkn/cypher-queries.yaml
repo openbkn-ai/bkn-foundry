@@ -395,7 +395,7 @@ components:
       properties:
         shape:
           type: string
-          enum: [match, aggregate, totals, semi_join, list_comparison, carried]
+          enum: [match, aggregate, totals, semi_join, list_comparison, carried, union]
           description: The query's form; see the WITH section above.
         graph:
           type: boolean

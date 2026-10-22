@@ -177,6 +177,9 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 	if plan != nil && plan.Intersection != nil {
 		return semanticIntersectionDescriptor(plan, query)
 	}
+	if plan != nil && plan.Union != nil {
+		return semanticUnionDescriptor(plan, query)
+	}
 	if plan == nil || strings.TrimSpace(plan.NetworkID) == "" || len(plan.Tables) == 0 || len(plan.Select) == 0 {
 		return nil, errors.New("semantic query descriptor requires a bound query plan")
 	}

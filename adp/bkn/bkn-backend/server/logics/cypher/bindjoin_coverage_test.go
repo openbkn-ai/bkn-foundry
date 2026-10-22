@@ -164,20 +164,27 @@ func TestBindJoinRunsEveryQueryTheCompilerAccepts(t *testing.T) {
 				if err != nil {
 					continue
 				}
-				if plan.SQLOnly {
-					// Totals over groups, CASE and coalesce are the SQL
-					// path's alone; the service never hands them over.
-					break
+				// The parts of a UNION run one by one, each as its own query.
+				parts := []*Plan{plan}
+				if plan.Union != nil {
+					parts = plan.Union.Parts
 				}
-				compiled++
-				api := newFakeDataAPI(model.data())
-				_, _, err = runBindJoin(context.Background(), plan, schema, api.read, defaultBindJoinLimits,
-					interfaces.CYPHER_DEFAULT_LIMIT)
-				var budget *ReadBudgetError
-				if err != nil && !errors.As(err, &budget) {
-					failures = append(failures, model.name+": "+query+": "+err.Error())
-				} else {
-					ran++
+				for _, part := range parts {
+					if part.SQLOnly {
+						// Totals over groups, CASE and coalesce are the SQL
+						// path's alone; the service never hands them over.
+						continue
+					}
+					compiled++
+					api := newFakeDataAPI(model.data())
+					_, _, err = runBindJoin(context.Background(), part, schema, api.read, defaultBindJoinLimits,
+						interfaces.CYPHER_DEFAULT_LIMIT)
+					var budget *ReadBudgetError
+					if err != nil && !errors.As(err, &budget) {
+						failures = append(failures, model.name+": "+query+": "+err.Error())
+					} else {
+						ran++
+					}
 				}
 				break
 			}

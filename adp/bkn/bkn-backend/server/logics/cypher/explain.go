@@ -78,6 +78,8 @@ func explain(compiled *compiledQuery) (*interfaces.CypherPlan, error) {
 // planShape names the form of a query, most specific first.
 func planShape(plan *Plan) string {
 	switch {
+	case plan.Union != nil:
+		return "union"
 	case plan.Intersection != nil:
 		return "list_comparison"
 	case plan.Carried != nil:
@@ -130,6 +132,10 @@ func columnTypes(compiled *compiledQuery) map[string]*interfaces.CypherValueType
 			types[item.Alias] = integer
 		}
 		return types
+	}
+	if plan.Union != nil {
+		// Every part returns the same columns; the first names their types.
+		plan = plan.Union.Parts[0]
 	}
 	selected := graphValueTypes(plan, compiled.schema)
 	if len(plan.Totals) == 0 {
@@ -269,5 +275,6 @@ func conditionPlace(path string) string {
 
 // isStagePrefix reports a descriptor prefix naming an earlier stage.
 func isStagePrefix(segment string) bool {
-	return segment == "carried" || strings.HasPrefix(segment, "stage") || strings.HasPrefix(segment, "list")
+	return segment == "carried" || strings.HasPrefix(segment, "stage") || strings.HasPrefix(segment, "list") ||
+		strings.HasPrefix(segment, "union")
 }

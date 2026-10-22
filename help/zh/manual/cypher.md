@@ -61,7 +61,7 @@ openbkn context tool-call <kn_id> run_cypher --args '{"query":"MATCH (g:goals) R
 ```
 
 - 会被拒的写法，返回的错误码和改写提示与执行时完全相同；能通过 explain 的查询，执行时也不会因为写法被拒。
-- `plan` 里有：`shape`（查询形状：match、aggregate、totals、semi_join、list_comparison、carried）、`objects` 和 `relations`（每个变量对应的对象类、走的关系类）、`conditions`（每个条件的运算符、读的属性，以及作用在行、分组还是前一段上）、`grouping`、`columns`（每一列的名字、怎么算出来、值类型）、`ordering`、`limit`（生效的行数上限）、`reads`（会读的属性）、`row_filtered`（行范围被访问策略收窄的对象类）和 `warnings`。
+- `plan` 里有：`shape`（查询形状：match、aggregate、totals、semi_join、list_comparison、carried、union）、`objects` 和 `relations`（每个变量对应的对象类、走的关系类）、`conditions`（每个条件的运算符、读的属性，以及作用在行、分组还是前一段上）、`grouping`、`columns`（每一列的名字、怎么算出来、值类型）、`ordering`、`limit`（生效的行数上限）、`reads`（会读的属性）、`row_filtered`（行范围被访问策略收窄的对象类）和 `warnings`。
 - `warnings` 会提醒：模式里有既没有关系、共享节点，也没有 `a.code = b.code` 这类相等条件连起来的部分（结果是两两组合）、没写 LIMIT 时最多返回 1000 行、行范围被收窄、`collect` 的证据达到 10000 行会被拒。每条提醒在 `warning_codes` 里有对应的编号（`disconnected_parts`、`default_limit`、`row_filtered`、`collect_cap`），顺序相同，方便按编号显示成自己的语言。
 - explain 不读数据，也看不出对象类绑定的是什么数据源：绑定数据集或索引的对象类上，「数据集和索引上的对象类」一节里不支持的写法 explain 照样通过，执行时才被拒。
 - 不返回 SQL，条件里写的值也不重复列出。权限与执行时相同：读不到的对象类和属性，explain 里同样看不到。
@@ -190,6 +190,19 @@ ORDER BY n DESC LIMIT 4
 - ORDER BY 可以用属性、返回的列名、聚合或算出来的值；加 `DESC` 倒序。
 - 结果被聚合或 `DISTINCT` 折叠后，只能按返回的值排序。
 - 不写 `LIMIT` 时最多返回 **1000** 行，返回满 1000 行时结果带 `limited: true`，说明可能还有更多；`LIMIT` 不能超过 **10000**，超过会被拒绝，不会悄悄截断。分页用 `SKIP n LIMIT m`。
+
+### UNION / UNION ALL
+
+```cypher
+MATCH (o:Order) WHERE o.status = 'open' RETURN o.code AS code, 'open' AS kind
+UNION ALL
+MATCH (o:Order) WHERE o.amount > 1000 RETURN o.code AS code, 'large' AS kind
+```
+
+- 把几段查询的结果合在一起。`UNION ALL` 保留所有行，`UNION` 去掉重复的行；同一条查询里不能混用两者。
+- 每一段返回同样的列：列名和顺序都要一致，用 `AS` 对齐。
+- 每一段可以有自己的 `ORDER BY`、`SKIP`、`LIMIT`，只作用于这一段；不写 `LIMIT` 的段最多返回 1000 行。
+- 只能返回值，不能返回节点、关系和 `collect`。数据集和索引上也能用，每段各自读取。
 
 ---
 
@@ -375,7 +388,6 @@ LIMIT 3
 | --- | --- |
 | `LIKE` | 用 `CONTAINS`、`STARTS WITH`、`ENDS WITH` |
 | `GROUP BY` | 不写，按 RETURN 里其余各列自动分组 |
-| `UNION` | 拆成两条查询 |
 | 变长路径 `[:R*1..3]`、路径变量 `p = ...` | 按跳数分别写成固定长度的路径 |
 | `UNWIND`、下标 `xs[0]`；列表推导式 `[x IN … WHERE …]` 只能用在比较两个列表的 `size(...)` 里 | 数两个列表的共有元素用 `size([x IN a WHERE x IN b])`；列出共有的值，在一个 MATCH 里共享节点 |
 | 日期函数、`coalesce()`、`size()`（只用于 WITH 收集的列表）和聚合以外的函数调用 | 暂不支持 |

@@ -61,7 +61,7 @@ With `"explain": true` the query is read, authorized and compiled as usual but n
 ```
 
 - A form that would be refused gets the same error code and rewrite hint as running it; a query explain accepts is not refused for its form when it runs.
-- `plan` holds `shape` (match, aggregate, totals, semi_join, list_comparison or carried), `objects` and `relations` (the object type of each variable and the relation types walked), `conditions` (each condition's operator, the properties it reads and whether it applies to rows, groups or an earlier stage), `grouping`, `columns` (each column's name, what computes it and its value type), `ordering`, `limit` (the row limit in force), `reads` (the properties read), `row_filtered` (object types whose rows the access policy narrows) and `warnings`.
+- `plan` holds `shape` (match, aggregate, totals, semi_join, list_comparison, carried or union), `objects` and `relations` (the object type of each variable and the relation types walked), `conditions` (each condition's operator, the properties it reads and whether it applies to rows, groups or an earlier stage), `grouping`, `columns` (each column's name, what computes it and its value type), `ordering`, `limit` (the row limit in force), `reads` (the properties read), `row_filtered` (object types whose rows the access policy narrows) and `warnings`.
 - `warnings` points out parts of the pattern that no relationship, shared node or equality such as `a.code = b.code` joins (their rows combine pairwise), the 1000-row cap without LIMIT, narrowed rows, and the 10000-row evidence cap of `collect`. `warning_codes` names each warning in the same order (`disconnected_parts`, `default_limit`, `row_filtered`, `collect_cap`), so a caller can word it in its own language.
 - explain reads no data and does not see where an object type's data lives: on object types bound to a dataset or an index, a form that "Object types on datasets and indexes" lists as unsupported passes explain and is refused only when run.
 - No SQL is returned, and the values in conditions are not repeated. Authorization is the same as running: object types and properties the caller cannot read stay out of explain too.
@@ -190,6 +190,19 @@ ORDER BY n DESC LIMIT 4
 - ORDER BY takes a property, a returned column name, an aggregate or a computed value; `DESC` reverses it.
 - A result collapsed by aggregation or `DISTINCT` can only be sorted by a value it returns.
 - Without `LIMIT` at most **1000** rows come back, and a result that reaches 1000 carries `limited: true`: more may match. `LIMIT` may not exceed **10000**: a larger one is refused, not quietly reduced. Page with `SKIP n LIMIT m`.
+
+### UNION / UNION ALL
+
+```cypher
+MATCH (o:Order) WHERE o.status = 'open' RETURN o.code AS code, 'open' AS kind
+UNION ALL
+MATCH (o:Order) WHERE o.amount > 1000 RETURN o.code AS code, 'large' AS kind
+```
+
+- Puts the rows of several queries together. `UNION ALL` keeps every row and `UNION` returns repeated rows once; one query does not mix the two.
+- Every part returns the same columns, by name and in order; align them with `AS`.
+- Each part may have its own `ORDER BY`, `SKIP` and `LIMIT`, which apply to that part; a part without `LIMIT` returns at most 1000 rows.
+- Parts return values only, not nodes, relationships or `collect`. It works on datasets and indexes too, each part read on its own.
 
 ---
 
@@ -375,7 +388,6 @@ Only the basic forms are available there:
 | --- | --- |
 | `LIKE` | Use `CONTAINS`, `STARTS WITH` or `ENDS WITH` |
 | `GROUP BY` | Leave it out: aggregation groups by the other returned columns |
-| `UNION` | Run two queries |
 | Variable-length paths `[:R*1..3]`, path variables `p = ...` | Write each length as a fixed path |
 | `UNWIND`, indexing `xs[0]`; list comprehensions `[x IN … WHERE …]` outside the `size(...)` that compares two lists | Count what two lists share with `size([x IN a WHERE x IN b])`; to list the shared values, share a node in one MATCH |
 | Function calls other than the date functions, `coalesce()`, `size()` (on a list a WITH collected) and the aggregates | Not supported yet |
