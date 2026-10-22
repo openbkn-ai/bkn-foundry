@@ -131,7 +131,7 @@ When nothing matches, the row stays and the optional side's columns are null, so
 
 Notes:
 
-- **Not-equal is `<>`.** `!=` is not openCypher; it is a syntax error that says so.
+- **Not-equal is `<>`**, as openCypher writes it; `!=` is read as `<>` too.
 - **`IN $list`** takes the whole list as one parameter: a non-empty array of scalars of one kind, at most 500 elements.
 - **String matching** is a literal substring match: `%` and `_` are not wildcards. It applies to string properties only, case sensitivity follows the data source's collation, and a null property never matches. `LIKE` is not openCypher; the error suggests these three instead.
 - **Dates**: `date(...)`, `datetime(...)` and `localdatetime(...)` apply to date and time properties, over a string literal or a parameter. A property the model declares as a string is compared with a string, as in `m.match_date >= '2014-06-12'`.
@@ -373,7 +373,6 @@ Only the basic forms are available there:
 
 | Construct | Instead |
 | --- | --- |
-| `!=` | Write `<>` |
 | `LIKE` | Use `CONTAINS`, `STARTS WITH` or `ENDS WITH` |
 | `GROUP BY` | Leave it out: aggregation groups by the other returned columns |
 | `UNION` | Run two queries |

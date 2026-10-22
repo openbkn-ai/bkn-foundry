@@ -63,7 +63,8 @@ func (c *collector) SyntaxError(_ antlr.Recognizer, _ any, line, column int,
 
 // hintAt names the standard spelling of what is written at an error, for
 // spellings a query author brings from SQL. They stay errors: openCypher has
-// neither, and the hint says what to write instead.
+// neither, and the hint says what to write instead. != never reaches here:
+// it is read as <> before parsing.
 func (c *collector) hintAt(line, column int) string {
 	if line < 1 || line > len(c.lines) {
 		return ""
@@ -74,8 +75,6 @@ func (c *collector) hintAt(line, column int) string {
 	}
 	rest := strings.TrimLeft(string(runes[column:]), " \t")
 	switch {
-	case strings.HasPrefix(rest, "!="):
-		return "openCypher writes not-equal as <>, as in n.property <> 'value'; != is not supported"
 	case len(rest) >= 5 && strings.EqualFold(rest[:5], "GROUP"):
 		return "openCypher has no GROUP BY: aggregating in RETURN groups by the other columns RETURN lists, " +
 			"as in RETURN n.property, count(*)"
@@ -106,7 +105,7 @@ func startsWithWord(text, word string) bool {
 func Parse(query string) (parsing.IOC_CypherContext, error) {
 	c := &collector{lines: strings.Split(query, "\n")}
 
-	lexer := parsing.NewCypherLexer(antlr.NewInputStream(query))
+	lexer := parsing.NewCypherLexer(antlr.NewInputStream(notEqualAsStandard(query)))
 	lexer.RemoveErrorListeners()
 	lexer.AddErrorListener(c)
 
@@ -119,4 +118,49 @@ func Parse(query string) (parsing.IOC_CypherContext, error) {
 		return nil, c.errs
 	}
 	return tree, nil
+}
+
+// notEqualAsStandard reads != as <>, the not-equal openCypher spells, so a
+// query written the way most languages write it runs as written. Only the
+// operator is rewritten: != inside a string, a quoted name or a comment is
+// left alone. Both spellings are two characters, so every position an error
+// reports still points into the query as written.
+func notEqualAsStandard(query string) string {
+	if !strings.Contains(query, "!=") {
+		return query
+	}
+	out := []byte(query)
+	for i := 0; i < len(out); i++ {
+		switch c := out[i]; {
+		case c == '\'' || c == '"':
+			// A string ends at its unescaped closing quote.
+			for i++; i < len(out) && out[i] != c; i++ {
+				if out[i] == '\\' {
+					i++
+				}
+			}
+		case c == '`':
+			// A quoted name doubles a backtick to hold one.
+			for i++; i < len(out); i++ {
+				if out[i] == '`' {
+					if i+1 < len(out) && out[i+1] == '`' {
+						i++
+						continue
+					}
+					break
+				}
+			}
+		case c == '/' && i+1 < len(out) && out[i+1] == '/':
+			for i += 2; i < len(out) && out[i] != '\n'; i++ {
+			}
+		case c == '/' && i+1 < len(out) && out[i+1] == '*':
+			for i += 2; i+1 < len(out) && !(out[i] == '*' && out[i+1] == '/'); i++ {
+			}
+			i++
+		case c == '!' && i+1 < len(out) && out[i+1] == '=':
+			out[i], out[i+1] = '<', '>'
+			i++
+		}
+	}
+	return string(out)
 }
