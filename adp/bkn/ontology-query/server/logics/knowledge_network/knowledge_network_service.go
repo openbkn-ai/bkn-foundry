@@ -780,14 +780,7 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 		},
 	}
 
-	if len(conditions) > 1 {
-		nextObjectQuery.ActualCondition = &cond.CondCfg{
-			Operation: "or", // Combine multiple objects with OR.
-			SubConds:  conditions,
-		}
-	} else if len(conditions) == 1 {
-		nextObjectQuery.ActualCondition = conditions[0]
-	}
+	nextObjectQuery.ActualCondition = groupConditions(cond.OperationOr, conditions)
 
 	// Add filter conditions configured on the object type.
 	if objectType.ActualCondition != nil {
@@ -970,6 +963,7 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 
 		// Keep each backing row's composite key grouped with AND, then join rows with OR.
 		recordConditions := []*cond.CondCfg{}
+		seenTargetKeys := make(map[string]struct{}, len(objectViewData))
 		for _, viewData := range objectViewData {
 			viewConditions, targetField, inValue := logics.BuildCondition(nil, targetMappingRules, isForward, viewData)
 			if len(targetMappingRules) == 1 {
@@ -977,6 +971,12 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 				inField = targetField
 				continue
 			}
+
+			targetKey := conditionTupleKey(viewConditions)
+			if _, exists := seenTargetKeys[targetKey]; exists {
+				continue
+			}
+			seenTargetKeys[targetKey] = struct{}{}
 
 			recordCondition := groupConditions(cond.OperationAnd, viewConditions)
 			if recordCondition != nil {
@@ -1011,12 +1011,39 @@ func groupConditions(operation string, conditions []*cond.CondCfg) *cond.CondCfg
 		return nil
 	case 1:
 		return conditions[0]
-	default:
+	}
+
+	if len(conditions) <= cond.MaxSubCondition {
 		return &cond.CondCfg{
 			Operation: operation,
 			SubConds:  conditions,
 		}
 	}
+
+	grouped := make([]*cond.CondCfg, 0, (len(conditions)+cond.MaxSubCondition-1)/cond.MaxSubCondition)
+	for start := 0; start < len(conditions); start += cond.MaxSubCondition {
+		end := start + cond.MaxSubCondition
+		if end > len(conditions) {
+			end = len(conditions)
+		}
+		grouped = append(grouped, groupConditions(operation, conditions[start:end]))
+	}
+
+	return groupConditions(operation, grouped)
+}
+
+func conditionTupleKey(conditions []*cond.CondCfg) string {
+	var key strings.Builder
+	for _, condition := range conditions {
+		fmt.Fprintf(&key, "%d:%s", len(condition.Name), condition.Name)
+		if condition.Value == nil {
+			key.WriteString("N;")
+			continue
+		}
+		value := fmt.Sprint(condition.Value)
+		fmt.Fprintf(&key, "V%d:%s;", len(value), value)
+	}
+	return key.String()
 }
 
 // Batch-fetch view data.
@@ -1085,16 +1112,11 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			inValues = append(inValues, inValue)
 			inField = targetField
 
-			if len(objectConditions) > 1 {
-				batchConditions = append(batchConditions, &cond.CondCfg{
-					Operation: "and",
-					SubConds:  objectConditions,
-				})
-			} else if len(objectConditions) == 1 {
-				batchConditions = append(batchConditions, objectConditions[0])
-			} else {
+			objectCondition := groupConditions(cond.OperationAnd, objectConditions)
+			if objectCondition == nil {
 				continue
 			}
+			batchConditions = append(batchConditions, objectCondition)
 			objectMapping[len(batchConditions)-1] = levelObj.ObjectID
 		}
 
@@ -1118,14 +1140,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 				},
 			}
 		} else {
-			if len(batchConditions) > 1 {
-				viewQuery.Filters = &cond.CondCfg{
-					Operation: "or",
-					SubConds:  batchConditions,
-				}
-			} else {
-				viewQuery.Filters = batchConditions[0]
-			}
+			viewQuery.Filters = groupConditions(cond.OperationOr, batchConditions)
 		}
 
 		// Build sorting by association fields.

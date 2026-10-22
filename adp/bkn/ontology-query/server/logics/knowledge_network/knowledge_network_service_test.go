@@ -21,6 +21,7 @@ import (
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
+	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
 	omock "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 )
@@ -2315,6 +2316,82 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				"org_code":     "A",
 			}), ShouldBeFalse)
 		})
+
+		Convey("成功 - 复合键条件去重并按子条件上限分组", func() {
+			uniqueTargetCount := cond.MaxSubCondition + 1
+			entries := make([]map[string]any, 0, uniqueTargetCount+1)
+			for i := 0; i < uniqueTargetCount; i++ {
+				entries = append(entries, map[string]any{
+					"membership_employee_code": "U001",
+					"membership_employee_org":  "A",
+					"membership_project_code":  fmt.Sprintf("PR%03d", i),
+					"membership_project_org":   fmt.Sprintf("ORG%03d", i),
+				})
+			}
+			entries = append(entries, map[string]any{
+				"membership_employee_code": "U001",
+				"membership_employee_org":  "A",
+				"membership_project_code":  "PR000",
+				"membership_project_org":   "ORG000",
+			})
+
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{Entries: entries},
+			}
+			conditions, viewDataMap, err := service.buildIndirectBatchConditions(
+				ctx,
+				&interfaces.SubGraphQueryBaseOnSource{KNID: knID},
+				[]interfaces.LevelObject{
+					{
+						ObjectID: "employee-E01",
+						ObjectData: map[string]any{
+							"employee_code": "U001",
+							"org_code":      "A",
+						},
+					},
+				},
+				&interfaces.TypeEdge{
+					RelationType: interfaces.RelationType{
+						RTName:       "employee-project",
+						MappingRules: compositeEmployeeProjectMappingRules(),
+					},
+				},
+				true,
+			)
+			So(err, ShouldBeNil)
+			So(viewDataMap["employee-E01"], ShouldHaveLength, uniqueTargetCount+1)
+			So(conditions, ShouldHaveLength, 1)
+			So(maxConditionFanOut(conditions[0]), ShouldBeLessThanOrEqualTo, cond.MaxSubCondition)
+			So(countConditionOperations(conditions[0], cond.OperationAnd), ShouldEqual, uniqueTargetCount)
+
+			So(matchesTestCondition(conditions[0], map[string]any{
+				"project_code": "PR000",
+				"org_code":     "ORG000",
+			}), ShouldBeTrue)
+			So(matchesTestCondition(conditions[0], map[string]any{
+				"project_code": fmt.Sprintf("PR%03d", uniqueTargetCount-1),
+				"org_code":     fmt.Sprintf("ORG%03d", uniqueTargetCount-1),
+			}), ShouldBeTrue)
+			So(matchesTestCondition(conditions[0], map[string]any{
+				"project_code": "PR000",
+				"org_code":     "ORG001",
+			}), ShouldBeFalse)
+
+			fieldsMap := map[string]*cond.DataProperty{
+				"project_code": {
+					Name:        "project_code",
+					Type:        dtype.DATATYPE_STRING,
+					MappedField: cond.Field{Name: "project_code"},
+				},
+				"org_code": {
+					Name:        "org_code",
+					Type:        dtype.DATATYPE_STRING,
+					MappedField: cond.Field{Name: "org_code"},
+				},
+			}
+			_, err = cond.RewriteCondition(ctx, conditions[0], fieldsMap, nil)
+			So(err, ShouldBeNil)
+		})
 	})
 }
 
@@ -2806,6 +2883,35 @@ func compositeEmployeeProjectMappingRules() *interfaces.InDirectMapping {
 			},
 		},
 	}
+}
+
+func maxConditionFanOut(condition *cond.CondCfg) int {
+	if condition == nil {
+		return 0
+	}
+
+	maxFanOut := len(condition.SubConds)
+	for _, subCondition := range condition.SubConds {
+		if subFanOut := maxConditionFanOut(subCondition); subFanOut > maxFanOut {
+			maxFanOut = subFanOut
+		}
+	}
+	return maxFanOut
+}
+
+func countConditionOperations(condition *cond.CondCfg, operation string) int {
+	if condition == nil {
+		return 0
+	}
+
+	count := 0
+	if condition.Operation == operation {
+		count++
+	}
+	for _, subCondition := range condition.SubConds {
+		count += countConditionOperations(subCondition, operation)
+	}
+	return count
 }
 
 // matchesTestCondition evaluates the and/or/==/in subset of conditions the
