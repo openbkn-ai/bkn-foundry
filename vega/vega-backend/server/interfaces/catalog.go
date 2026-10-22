@@ -34,6 +34,8 @@ var CATALOG_SORT = map[string]struct{}{
 	CatalogSortUpdateTime: {},
 }
 
+// CatalogDeletionTaskImpact 统计全部关联任务记录，包括待执行任务和终态历史。
+// 存在阻断任务时，整个目录均不可删除。
 type CatalogDeletionTaskImpact struct {
 	WillDelete int64 `json:"will_delete"`
 	Blocking   int64 `json:"blocking"`
