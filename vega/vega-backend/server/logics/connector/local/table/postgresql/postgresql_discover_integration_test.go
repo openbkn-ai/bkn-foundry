@@ -42,14 +42,17 @@ func TestPostgresqlConnectorPrimaryKeysIntegration(t *testing.T) {
  CREATE ROLE issue2308_reader NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
  CREATE SCHEMA issue2308_pk;
  CREATE SCHEMA issue2308_other;
+ CREATE SCHEMA issue2308_hidden;
  CREATE TABLE issue2308_pk.tickets (ticket_id integer PRIMARY KEY, body text);
  CREATE TABLE issue2308_pk.orders (a integer, b integer, PRIMARY KEY (b, a));
  CREATE TABLE issue2308_other.orders (a integer PRIMARY KEY, b integer);
  CREATE TABLE issue2308_pk.unique_only (id integer UNIQUE);
  CREATE TABLE issue2308_pk.denied (id integer PRIMARY KEY);
+ CREATE TABLE issue2308_hidden.tickets (id integer PRIMARY KEY);
  GRANT USAGE ON SCHEMA issue2308_pk, issue2308_other TO issue2308_reader;
  GRANT SELECT ON issue2308_pk.tickets, issue2308_pk.orders,
-   issue2308_other.orders, issue2308_pk.unique_only TO issue2308_reader;
+   issue2308_other.orders, issue2308_pk.unique_only,
+   issue2308_hidden.tickets TO issue2308_reader;
  SET LOCAL ROLE issue2308_reader;
  `)
 	require.NoError(t, err)
@@ -66,6 +69,30 @@ func TestPostgresqlConnectorPrimaryKeysIntegration(t *testing.T) {
  WHERE table_schema = 'issue2308_pk' AND table_name = 'tickets' AND constraint_type = 'PRIMARY KEY'`).Scan(&hiddenConstraints))
 	require.Zero(t, hiddenConstraints, "fixture must reproduce SELECT-only constraint filtering")
 	connector := &PostgresqlConnector{db: db, connected: true, config: &postgresqlConfig{}, compatibility: compatibility}
+	t.Run("discovery excludes tables without schema usage", func(t *testing.T) {
+		var tableReadable, schemaUsable bool
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT
+			has_table_privilege(c.oid, 'SELECT'),
+			has_schema_privilege(n.oid, 'USAGE')
+			FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE n.nspname = 'issue2308_hidden' AND c.relname = 'tickets'`).Scan(&tableReadable, &schemaUsable))
+		require.True(t, tableReadable)
+		require.False(t, schemaUsable)
+		tables, err := connector.ListTables(ctx)
+		require.NoError(t, err)
+		var names []string
+		for _, table := range tables {
+			names = append(names, table.Schema+"."+table.Name)
+		}
+		assert.ElementsMatch(t, []string{"issue2308_pk.tickets", "issue2308_pk.orders", "issue2308_pk.unique_only", "issue2308_other.orders"}, names)
+		schemas, err := connector.listSchemas(ctx)
+		require.NoError(t, err)
+		assert.ElementsMatch(t, []string{"issue2308_pk", "issue2308_other"}, schemas)
+		// 单资源刷新仍显式报错，避免将已失去权限的旧资源当成无主键表。
+		keys, err := connector.fetchPrimaryKeyColumns(ctx, "issue2308_hidden", "tickets")
+		require.ErrorContains(t, err, "privileges")
+		assert.Nil(t, keys)
+	})
 	for _, tc := range []struct {
 		schema, table string
 		want          []string

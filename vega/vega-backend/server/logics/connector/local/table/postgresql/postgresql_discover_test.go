@@ -83,7 +83,8 @@ func TestPostgresqlConnectorListTables(t *testing.T) {
 			AddRow("analytics", "orders_view", "v", "view").
 			AddRow("public", "undocumented", "r", nil)
 
-		mock.ExpectQuery("(?s).*pg_catalog\\.pg_inherits.*i\\.inhrelid = c\\.oid.*n\\.nspname IN.*").
+		mock.ExpectQuery("(?s).*has_table_privilege.*has_schema_privilege.*pg_catalog\\.pg_inherits.*i\\.inhrelid = c\\.oid.*n\\.nspname IN.*").
+			WithArgs("r", "v", "f", "m", "p", "t", "SELECT", "USAGE", "information_schema", "pg_catalog", "pg_toast", "public", "analytics").
 			WillReturnRows(rows)
 
 		tables, err := connector.ListTables(context.Background())
@@ -187,8 +188,8 @@ func TestPostgresqlConnectorListSchemas(t *testing.T) {
 		connector, mock, cleanup := newPostgresqlConnectorMock(t, nil)
 		defer cleanup()
 		connector.connected = true
-		mock.ExpectQuery(`(?s)SELECT DISTINCT n\.nspname FROM pg_catalog\.pg_class c JOIN pg_catalog\.pg_namespace n.*c\.relkind IN.*has_table_privilege.*NOT pg_is_other_temp_schema.*NOT EXISTS.*pg_catalog\.pg_inherits.*ORDER BY n\.nspname`).
-			WithArgs("r", "v", "f", "m", "p", "t", "SELECT", "information_schema", "pg_catalog", "pg_toast").
+		mock.ExpectQuery(`(?s)SELECT DISTINCT n\.nspname FROM pg_catalog\.pg_class c JOIN pg_catalog\.pg_namespace n.*c\.relkind IN.*has_table_privilege.*has_schema_privilege.*NOT pg_is_other_temp_schema.*NOT EXISTS.*pg_catalog\.pg_inherits.*ORDER BY n\.nspname`).
+			WithArgs("r", "v", "f", "m", "p", "t", "SELECT", "USAGE", "information_schema", "pg_catalog", "pg_toast").
 			WillReturnRows(sqlmock.NewRows([]string{"nspname"}).AddRow("analytics").AddRow("public"))
 
 		schemas, err := connector.listSchemas(context.Background())

@@ -171,6 +171,7 @@ func discoverableRelationsBuilder() sq.SelectBuilder {
 		// relpersistence: p=permanent, u=unlogged, t=temporary.
 		Where(sq.NotEq{"c.relpersistence": "t"}).
 		Where(sq.Expr("has_table_privilege(c.oid, ?)", "SELECT")).
+		Where(sq.Expr("has_schema_privilege(n.oid, ?)", "USAGE")).
 		Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
 		Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)")).
 		Where(sq.Expr("NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid = c.oid)"))
