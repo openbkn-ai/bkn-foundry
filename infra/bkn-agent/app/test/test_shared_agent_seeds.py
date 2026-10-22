@@ -1,14 +1,17 @@
 """Execute shared SQL defaults in isolated SQLite; live MariaDB is separate validation."""
 
+import asyncio
 import hashlib
 import json
 import re
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
-from app.models import AgentSpec, PromptSpec
+from app.models import AgentLimits, AgentSpec, PromptSpec
 
 ROOT = Path(__file__).resolve().parents[4]
 MIGRATIONS = ROOT / "migrations/bkn-agent/mariadb"
@@ -43,21 +46,23 @@ def database():
     db.create_function(
         "sha2", 2, lambda value, bits: hashlib.sha256(value.encode()).hexdigest()
     )
-    # Only flat limits objects are compared by this migration.
-    db.create_function(
-        "json_contains",
-        2,
-        lambda document, candidate: (
-            None
-            if document is None or candidate is None
-            else int(
-                all(
-                    key in json.loads(document) and json.loads(document)[key] == value
-                    for key, value in json.loads(candidate).items()
-                )
+
+    # Migrations compare flat limits objects and lists of changed field names.
+    def json_contains(document, candidate):
+        if document is None or candidate is None:
+            return None
+        document, candidate = json.loads(document), json.loads(candidate)
+        if isinstance(candidate, list):
+            return int(
+                isinstance(document, list)
+                and all(value in document for value in candidate)
             )
-        ),
-    )
+        return int(
+            isinstance(document, dict)
+            and all(document.get(key) == value for key, value in candidate.items())
+        )
+
+    db.create_function("json_contains", 2, json_contains)
     db.executescript("""
         CREATE TABLE dual(dummy INTEGER); INSERT INTO dual VALUES(1);
         CREATE TABLE t_agent(f_agent_id TEXT PRIMARY KEY, f_name TEXT NOT NULL UNIQUE,
@@ -222,10 +227,10 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
             else:
                 assert row == match
         assert all(row in updated[2] for row in original[2])
-        # Only the current marker changes on historical Agent snapshots.
+        # Only the initial/current markers change on historical Agent snapshots.
         for row in original[3]:
             match = next(after for after in updated[3] if after[:2] == row[:2])
-            assert row[:8] + row[9:] == match[:8] + match[9:]
+            assert row[:7] + row[9:] == match[:7] + match[9:]
         versions = dict(
             upgraded.execute(
                 "SELECT f_prompt_id, f_current_version FROM t_agent_prompt"
@@ -854,12 +859,17 @@ def test_semantic_output_language_upgrade_preserves_operator_prompt_choices(
         assert snapshot(db) == before
 
 
-@pytest.mark.parametrize("limit", [1, 2, 3, 4])
-def test_semantic_output_language_upgrade_resumes_between_statements(limit):
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize("limit", range(1, 8))
+def test_semantic_output_language_upgrade_resumes_between_statements(limit, customized):
     with database() as db, database() as expected:
         for connection in (db, expected):
             apply(connection, MIGRATIONS / "0.2.0/init.sql")
             apply(connection, VERSIONS)
+            if customized:
+                connection.execute(
+                    "UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='resource-semantic-understanding'"
+                )
         apply(expected, SEMANTIC_LANGUAGE)
         apply(db, SEMANTIC_LANGUAGE, limit=limit)
         apply(db, SEMANTIC_LANGUAGE)
@@ -904,3 +914,159 @@ def test_current_init_only_initializes_the_latest_semantic_defaults():
         before = snapshot(db)
         apply(db, init)
         assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customized", [False, True])
+def test_semantic_upgrade_advances_restore_baseline_without_replacing_custom_settings(
+    customized,
+):
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.0/init.sql")
+        apply(db, VERSIONS)
+        initial = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_initial=1"
+            ).fetchone()
+        )
+        if customized:
+            db.execute(
+                "UPDATE t_agent SET f_model='custom-model',f_tools='[]',f_limits=? WHERE f_agent_id='resource-semantic-understanding'",
+                ('{"max_turns":17}',),
+            )
+        apply(db, SEMANTIC_LANGUAGE)
+        baseline = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_initial=1"
+            ).fetchone()
+        )
+        current = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_current=1"
+            ).fetchone()
+        )
+        assert baseline["f_prompt_version"] == 4
+        for field in ("f_model", "f_tools", "f_limits"):
+            assert baseline[field] == initial[field]
+        assert bool(baseline["f_current"]) is not customized
+        assert current["f_prompt_version"] == 4
+        if customized:
+            assert current["f_model"] == "custom-model"
+            assert current["f_tools"] == "[]"
+            assert json.loads(current["f_limits"]) == {"max_turns": 17}
+        historical = dict(
+            db.execute(
+                "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_version=1"
+            ).fetchone()
+        )
+        for field in (
+            "f_model",
+            "f_tools",
+            "f_limits",
+            "f_prompt_version",
+            "f_changes",
+        ):
+            assert historical[field] == initial[field]
+        before = snapshot(db)
+        apply(db, SEMANTIC_LANGUAGE)
+        assert snapshot(db) == before
+
+        async def restore():
+            from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+            from app import dao
+            from app.models import (
+                AgentRow,
+                AgentVersionRow,
+                Base,
+                PromptRow,
+                PromptVersionRow,
+            )
+            from app.routers.agent_settings import _shared_out
+
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            try:
+                async with engine.begin() as connection:
+                    await connection.run_sync(Base.metadata.create_all)
+                async with async_sessionmaker(
+                    engine, expire_on_commit=False
+                )() as session:
+                    for table, model in (
+                        ("t_agent", AgentRow),
+                        ("t_agent_prompt", PromptRow),
+                        ("t_agent_prompt_version", PromptVersionRow),
+                        ("t_agent_version", AgentVersionRow),
+                    ):
+                        for row in db.execute(f"SELECT * FROM {table}"):
+                            values = dict(row)
+                            for field in (
+                                "f_tools",
+                                "f_skills",
+                                "f_limits",
+                                "f_changes",
+                                "f_vars_schema",
+                                "f_prompt_vars_schema",
+                            ):
+                                if field in values and values[field] is not None:
+                                    values[field] = json.loads(values[field])
+                            session.add(model(**values))
+                    await session.commit()
+                    target = await dao.initial_version(
+                        session, "resource-semantic-understanding"
+                    )
+                    assert target.f_prompt_version == 4
+                    restored = await dao.activate_version(
+                        session, target.f_agent_id, target.f_version, "operator"
+                    )
+                    assert restored is not None
+                    agent = await dao.get_agent(session, target.f_agent_id)
+                    shared = await _shared_out(session, agent, True)
+                    assert shared.prompt_version == 4
+                    assert shared.modified is False
+                    assert shared.version == shared.initial_version
+                    assert agent.model == initial["f_model"]
+                    assert agent.tools == json.loads(initial["f_tools"])
+                    assert agent.limits == AgentLimits.model_validate(
+                        json.loads(initial["f_limits"])
+                    )
+            finally:
+                await engine.dispose()
+
+        asyncio.run(restore())
+
+
+def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
+    from app.routers import agent_settings
+
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.0/init.sql")
+        apply(db, VERSIONS)
+        apply(db, SEMANTIC_LANGUAGE)
+        versions = []
+        for row in db.execute(
+            "SELECT * FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding'"
+        ):
+            values = dict(row)
+            for field in ("f_tools", "f_limits", "f_changes"):
+                values[field] = json.loads(values[field]) if values[field] else None
+            versions.append(SimpleNamespace(**values))
+        monkeypatch.setattr(
+            agent_settings.dao, "list_versions", AsyncMock(return_value=versions)
+        )
+        monkeypatch.setattr(
+            agent_settings.dao, "list_prompt_versions", AsyncMock(return_value=[])
+        )
+        output = asyncio.run(
+            agent_settings._versions_out(
+                None,
+                SimpleNamespace(
+                    agent_id="resource-semantic-understanding", prompt_id=None
+                ),
+            )
+        )
+        upgraded = [
+            version
+            for version in output
+            if version.prompt_version == 4 and version.current
+        ]
+        assert upgraded
+        assert all(version.changes == ["prompt_version"] for version in upgraded)

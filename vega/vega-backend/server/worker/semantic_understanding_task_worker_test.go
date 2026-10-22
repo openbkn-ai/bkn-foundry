@@ -674,8 +674,7 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, mode != "dry_run", got.Applied)
 				if mode == "dry_run" {
-					assert.Equal(t, "Existing description", resource.Description)
-					assert.Empty(t, resource.SchemaDefinition[0].DisplayName)
+					assert.JSONEq(t, `{"reason":"dry_run","apply_mode":"dry_run","scope":"resource"}`, got.DetailJSON)
 				}
 			})
 		}
