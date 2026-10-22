@@ -18,6 +18,8 @@ import (
 // IsFeatureSupported reports whether a Property type can generate a Feature type.
 func IsFeatureSupported(propertyType string, featureType string) bool {
 	switch propertyType {
+	case interfaces.DataType_LargeInteger:
+		return featureType == interfaces.PropertyFeatureType_Keyword
 	case interfaces.DataType_String:
 		return featureType == interfaces.PropertyFeatureType_Keyword ||
 			featureType == interfaces.PropertyFeatureType_Fulltext ||

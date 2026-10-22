@@ -325,7 +325,7 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		assert.ErrorContains(t, err, "feature name is null")
 	})
 
-	for _, dataType := range []string{interfaces.DataType_Binary, interfaces.DataType_Other} {
+	for _, dataType := range []string{interfaces.DataType_Binary, interfaces.DataType_Other, interfaces.DataType_LargeInteger} {
 		t.Run("ValidateResourceRequest rejects unsupported dataset type "+dataType, func(t *testing.T) {
 			err := ValidateResourceRequest(ctx, baseReq([]*interfaces.Property{
 				{Name: "unsupported", Type: dataType},

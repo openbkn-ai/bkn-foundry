@@ -845,6 +845,17 @@ func TestValidateTaskEmbeddingFeatures(t *testing.T) {
 }
 
 func TestValidateBuildTaskSchemaFeatures(t *testing.T) {
+	t.Run("large integer supports only keyword features", func(t *testing.T) {
+		for _, kind := range []string{interfaces.PropertyFeatureType_Keyword, interfaces.PropertyFeatureType_Fulltext, interfaces.PropertyFeatureType_Vector} {
+			schema := []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_LargeInteger, OriginalType: "LARGEINT", Features: []interfaces.PropertyFeature{{FeatureName: kind, FeatureType: kind, IsDefault: true}}}}
+			err := validateBuildTaskSchemaFeatures(interfaces.ResourceCategoryTable, schema)
+			if kind == interfaces.PropertyFeatureType_Keyword {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "does not support feature type")
+			}
+		}
+	})
 	tests := []struct {
 		name     string
 		category string

@@ -11,6 +11,9 @@ const (
 	DataType_Integer         = "integer"
 	DataType_UnsignedInteger = "unsigned integer"
 
+	// 超出 64 位的整数，以十进制字符串无损传输。
+	DataType_LargeInteger = "large_integer"
+
 	// Floating-point type
 	DataType_Float = "float"
 
@@ -58,6 +61,7 @@ var (
 
 	NUMBER_TYPES = map[string]struct{}{
 		DataType_Integer:         {},
+		DataType_LargeInteger:    {},
 		DataType_UnsignedInteger: {},
 		DataType_Float:           {},
 		DataType_Decimal:         {},

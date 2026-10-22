@@ -5,6 +5,14 @@ info:
   description: |
     Vega Backend Resource 数据子资源（`/resources/{id}/data`）相关 API。
 
+    large_integer 字段通过十进制字符串无损传输。Doris 源端比较、range、out_range、between、
+    分组、排序和 MIN/MAX 使用数值语义；SUM/AVG 暂不支持。
+    托管本地索引将其作为 string/keyword 存储和查询，复用既有字符串操作规则，
+    不支持 large_integer 数值范围或聚合语义；例如 "0100" 不匹配存储文本 "100"。
+    Dataset 不允许声明 large_integer 字段。
+    输入推荐使用整数字符串（可含正负号及前导零）；非法及越界常量遵循源端 CAST 设置。
+    区间不重排边界，range/between 为闭区间，out_range 为两端严格外部区间；NULL 边界拒绝。
+
     本规范覆盖两类语义：
 
     1. **通用资源数据查询**：`POST /resources/{id}/data` + `X-HTTP-Method-Override: GET`，

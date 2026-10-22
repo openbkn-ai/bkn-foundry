@@ -273,6 +273,10 @@ func SchemaForQuery(schema []*interfaces.Property) []*interfaces.Property {
 		}
 		cloned := *property
 		cloned.OriginalName = property.Name
+		// 查询使用索引的物理字符串语义，不继承源端大整数能力。
+		if cloned.Type == interfaces.DataType_LargeInteger {
+			cloned.Type = interfaces.DataType_String
+		}
 		result = append(result, &cloned)
 	}
 	return result

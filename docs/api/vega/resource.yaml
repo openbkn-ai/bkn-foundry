@@ -550,8 +550,9 @@ components:
         type:
           description: |
             VEGA 统一类型，取值见 [vega-backend/CLAUDE.md]:
-            integer / unsigned integer / float / decimal / string / text /
+            integer / large_integer / unsigned integer / float / decimal / string / text /
             date / datetime / time / boolean / binary / json / vector
+            large_integer 表示大整数，JSON 值以十进制字符串无损传输；具体范围由源类型决定。
           type: string
         display_name:
           description: |
