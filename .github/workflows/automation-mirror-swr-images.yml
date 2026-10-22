@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   mirror:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       SWR_REGISTRY: swr.cn-east-3.myhuaweicloud.com
       SWR_NAMESPACE: openbkn-ai

@@ -43,7 +43,7 @@ jobs:
 
   authz-unit:
     if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container:
       image: ghcr.io/openbkn-ai/model-factory-base:v2
       credentials:

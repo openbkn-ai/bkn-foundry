@@ -40,7 +40,7 @@ jobs:
   # 就得有人盯着它别过期：漂了只在调用失败时才暴露，而那时错误里看不出根因。
   bkn-tools:
     if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
