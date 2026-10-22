@@ -513,8 +513,9 @@ components:
           description: |
             文档条目。table、index 等外部数据源已声明的 `json` 字段以普通字符串返回，
             包括 table 本地索引查询。字段类型元数据仍为 `json`。
-            表源查询中的顶层 JSON null 与 SQL NULL 统一返回 null，预览均显示 NULL；
+            表源明细查询中的顶层 JSON null 与 SQL NULL 统一返回 null，预览均显示 NULL；
             JSON 字符串 "null" 与空字符串属于实际内容，不归一化为空值。
+            上述统一空值约定不覆盖 GROUP BY、HAVING 或聚合查询；其结果遵循连接器的类型转换规则。
             除上述空值归一化外，源端 JSON 文本不转换为对象、数组或数值。
             本地索引构建使用结构化 JSON 值；查询时序列化非文本值、保留字符串内容。
             查询不承诺完整还原源端 JSON 类型，源端 IS NULL 筛选仍遵循数据库语义。
