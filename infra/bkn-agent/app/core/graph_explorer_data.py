@@ -55,6 +55,9 @@ class ObjectTypeMeta:
     primary_keys: list[str]
     # Property name -> declared type.
     property_types: dict[str, str] = field(default_factory=dict)
+    # Properties the caller may read in full; None when the platform did not say.
+    # Naming any other one in a Cypher RETURN makes bkn-backend refuse the query.
+    readable: set[str] | None = None
 
 
 def text(value: Any) -> str:
@@ -87,11 +90,15 @@ def meta_from(raw: Any) -> ObjectTypeMeta | None:
         for p in raw.get("data_properties") or []
         if isinstance(p, dict) and isinstance(p.get("name"), str)
     }
+    permissions = raw.get("effective_permissions")
     return ObjectTypeMeta(
         id=raw["id"],
         name=raw.get("name") if isinstance(raw.get("name"), str) and raw.get("name") else raw["id"],
         primary_keys=keys,
         property_types=types,
+        readable={name for name, level in permissions.items() if level == "full"}
+        if isinstance(permissions, dict)
+        else None,
     )
 
 
@@ -118,6 +125,24 @@ def identity_key(primary_keys: list[str], identity: dict) -> str | None:
             return None
         parts.append(text(value))
     return "\x1f".join(parts)
+
+
+def typed(meta: ObjectTypeMeta, prop: str, value: Any) -> Any:
+    """A value read back as text (a Cypher column) in its declared type, so an
+    identity matches the one other queries return. Like key_value, a number that
+    would lose digits (a snowflake id) stays text."""
+    declared = meta.property_types.get(prop, "")
+    if isinstance(value, str) and _NUMERIC_TYPE.search(declared):
+        try:
+            number = float(value)
+        except ValueError:
+            return value
+        if math.isfinite(number) and abs(number) <= _MAX_SAFE_INTEGER:
+            if number.is_integer() and "." not in value and "e" not in value.lower():
+                return int(number)
+            if not _INTEGER_TYPE.match(declared):
+                return number
+    return value
 
 
 def key_value_for(meta: ObjectTypeMeta, key: str) -> Any:
@@ -167,6 +192,11 @@ def label_of(properties: dict, fallback: str) -> str:
     for key in _LABEL_CHAIN:
         if _non_empty(by_lower.get(key)):
             return text(by_lower[key])
+    # Rows fetched by column carry no _display; `confederation_name` still reads
+    # better than a key.
+    for key, value in properties.items():
+        if not key.startswith("_") and "name" in key.lower() and _non_empty(value):
+            return text(value)
     for key, value in properties.items():
         if not key.startswith("_") and _non_empty(value):
             return text(value)
@@ -519,3 +549,230 @@ def graph_from_cypher(
         node_cells = [c for c in dict.fromkeys(k for r in leftover_rows for k in r) if c not in leftover_columns]
         table = {"columns": node_cells + leftover_columns, "rows": leftover_rows}
     return CypherGraph(list(nodes.values()), list(edges.values()), table, holds_graph)
+
+
+# ---- controlled expansion (EE controlled-expand.ts / cypher-expand.ts) ----
+
+SEED = "s"
+PEER = "t"
+SEED_BATCH = 50
+MAX_FETCH_LIMIT = 10000
+
+
+@dataclass(frozen=True)
+class IncidentRelation:
+    """One relation type a seed can be expanded through, in one direction."""
+
+    relation_type_id: str
+    relation_type_name: str
+    walk: str  # "out" follows source -> target, "in" goes against it
+    seed_ot: str
+    peer_ot: str
+
+
+@dataclass
+class ExpandGroup:
+    seed_id: str
+    rel: IncidentRelation
+    total: int
+
+    @property
+    def aggregate_id(self) -> str:
+        return aggregate_id(self.seed_id, self.rel.relation_type_id, self.rel.walk)
+
+
+@dataclass
+class SpacePlan:
+    draw: list[ExpandGroup] = field(default_factory=list)
+    aggregate: list[ExpandGroup] = field(default_factory=list)
+    refresh: list[ExpandGroup] = field(default_factory=list)
+    skipped: list[ExpandGroup] = field(default_factory=list)
+
+
+def aggregate_id(seed_id: str, relation_type_id: str, walk: str) -> str:
+    return f"agg|{seed_id}|{relation_type_id}|{walk}"
+
+
+def incident_relations(ot_id: str, direction: str, relation_types: dict[str, dict]) -> list[IncidentRelation]:
+    """direction: out, in or both."""
+    out = []
+    for rel_id, rel in relation_types.items():
+        name = rel.get("name") or rel_id
+        if direction != "in" and rel.get("source") == ot_id:
+            out.append(IncidentRelation(rel_id, name, "out", ot_id, rel["target"]))
+        if direction != "out" and rel.get("target") == ot_id:
+            out.append(IncidentRelation(rel_id, name, "in", ot_id, rel["source"]))
+    return out
+
+
+def plan_space(groups: list[ExpandGroup], threshold: int, room: int, existing: set[str]) -> SpacePlan:
+    """Groups above the threshold reserve one slot each for an aggregate; the rest
+    are drawn smallest first while they fit, and fall back to an aggregate when
+    they do not. Totals bound the new nodes from above, so the plan never
+    overruns the room."""
+    plan = SpacePlan()
+    room = max(0, room)
+    small, large = [], []
+    for group in groups:
+        if group.total <= 0:
+            continue
+        if group.aggregate_id in existing:
+            plan.refresh.append(group)
+        elif group.total > threshold:
+            large.append(group)
+        else:
+            small.append(group)
+    for group in large:
+        if room >= 1:
+            plan.aggregate.append(group)
+            room -= 1
+        else:
+            plan.skipped.append(group)
+    for group in sorted(small, key=lambda g: g.total):
+        if room >= group.total:
+            plan.draw.append(group)
+            room -= group.total
+        elif room >= 1:
+            plan.aggregate.append(group)
+            room -= 1
+        else:
+            plan.skipped.append(group)
+    return plan
+
+
+def quote(identifier: str) -> str:
+    if not identifier or "`" in identifier:
+        raise ValueError(f"identifier {identifier!r} cannot be quoted")
+    return f"`{identifier}`"
+
+
+_NUMERIC_TEXT = re.compile(r"^-?\d+(\.\d+)?$")
+
+
+class Parameters:
+    """Bound Cypher parameters; run_cypher takes scalars only, so a list is
+    written as a literal of parameters."""
+
+    def __init__(self) -> None:
+        self.values: dict[str, Any] = {}
+
+    def add(self, value: Any, declared: str = "") -> str:
+        if value is None:
+            raise ValueError("a null key value cannot be compared")
+        bound = value
+        if _NUMERIC_TYPE.search(declared or "") or (not declared and not isinstance(value, str)):
+            raw = text(value)
+            if isinstance(value, bool):
+                bound = value
+            elif _NUMERIC_TEXT.match(raw):
+                number = float(raw)
+                bound = int(number) if "." not in raw else number
+                if text(bound) != raw:
+                    bound = raw
+        else:
+            bound = text(value)
+        name = f"p{len(self.values)}"
+        self.values[name] = bound
+        return f"${name}"
+
+
+def _match(rel: IncidentRelation) -> str:
+    seed, peer = f"({SEED}:{quote(rel.seed_ot)})", f"({PEER}:{quote(rel.peer_ot)})"
+    edge = f"[:{quote(rel.relation_type_id)}]"
+    return f"MATCH {seed}-{edge}->{peer}" if rel.walk == "out" else f"MATCH {seed}<-{edge}-{peer}"
+
+
+def _seed_condition(meta: ObjectTypeMeta, identities: list[dict], params: Parameters) -> str:
+    keys = meta.primary_keys
+    if not keys or not identities:
+        raise ValueError(f"object type {meta.id} has no seed to query")
+    if len(keys) == 1:
+        declared = meta.property_types.get(keys[0], "")
+        values = ", ".join(params.add(i[keys[0]], declared) for i in identities)
+        return f"{SEED}.{quote(keys[0])} IN [{values}]"
+    tuples = [
+        "(" + " AND ".join(
+            f"{SEED}.{quote(k)} = {params.add(i[k], meta.property_types.get(k, ''))}" for k in keys
+        ) + ")"
+        for i in identities
+    ]
+    return tuples[0] if len(tuples) == 1 else "(" + " OR ".join(tuples) + ")"
+
+
+def _seed_columns(meta: ObjectTypeMeta) -> list[str]:
+    return [f"{SEED}.{quote(k)} AS {quote(f'{SEED}__{k}')}" for k in meta.primary_keys]
+
+
+def count_query(rel: IncidentRelation, seed: ObjectTypeMeta, peer: ObjectTypeMeta, identities: list[dict]) -> tuple[str, dict]:
+    params = Parameters()
+    keys = peer.primary_keys
+    counted = f"count(DISTINCT {PEER}.{quote(keys[0])})" if len(keys) == 1 else "count(*)"
+    query = "\n".join(
+        [
+            _match(rel),
+            f"WHERE {_seed_condition(seed, identities, params)}",
+            f"RETURN {', '.join([*_seed_columns(seed), f'{counted} AS {quote(chr(110))}'])}",
+        ]
+    )
+    return query, params.values
+
+
+def fetch_query(
+    rel: IncidentRelation, seed: ObjectTypeMeta, peer: ObjectTypeMeta, identities: list[dict], limit: int
+) -> tuple[str, dict]:
+    params = Parameters()
+    # Only what the caller may read in full: one masked property refuses the whole query.
+    readable = [p for p in peer.property_types if peer.readable is None or p in peer.readable]
+    properties = list(dict.fromkeys([*peer.primary_keys, *readable]))
+    peer_columns = [f"{PEER}.{quote(p)} AS {quote(f'{PEER}__{p}')}" for p in properties]
+    order = [quote(f"{SEED}__{k}") for k in seed.primary_keys] + [quote(f"{PEER}__{k}") for k in peer.primary_keys]
+    query = "\n".join(
+        [
+            _match(rel),
+            f"WHERE {_seed_condition(seed, identities, params)}",
+            f"RETURN DISTINCT {', '.join([*_seed_columns(seed), *peer_columns])}",
+            f"ORDER BY {', '.join(order)}",
+            f"LIMIT {min(MAX_FETCH_LIMIT, max(1, limit))}",
+        ]
+    )
+    return query, params.values
+
+
+def _seed_key(seed: ObjectTypeMeta, row: dict) -> str | None:
+    return identity_key(seed.primary_keys, {k: row.get(f"{SEED}__{k}") for k in seed.primary_keys})
+
+
+def parse_counts(seed: ObjectTypeMeta, entries: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in entries:
+        key = _seed_key(seed, row)
+        try:
+            n = int(row.get("n"))
+        except (TypeError, ValueError):
+            continue
+        if key is not None:
+            counts[key] = counts.get(key, 0) + n
+    return counts
+
+
+def rows_to_graph(
+    rel: IncidentRelation, seed: ObjectTypeMeta, peer: ObjectTypeMeta, entries: list[dict], seed_ids: dict[str, str]
+) -> tuple[list[dict], list[dict]]:
+    nodes: dict[str, dict] = {}
+    edges: dict[str, dict] = {}
+    prefix = f"{PEER}__"
+    for row in entries:
+        key = _seed_key(seed, row)
+        seed_id = seed_ids.get(key) if key is not None else None
+        if not seed_id:
+            continue
+        props = {c[len(prefix):]: typed(peer, c[len(prefix):], v) for c, v in row.items() if c.startswith(prefix)}
+        identity = {k: props.get(k) for k in peer.primary_keys}
+        node_id = instance_id(peer.id, peer.primary_keys, identity) if identity_key(peer.primary_keys, identity) else None
+        if not node_id:
+            continue
+        nodes.setdefault(node_id, _node(node_id, peer.id, identity, props))
+        source, target = (seed_id, node_id) if rel.walk == "out" else (node_id, seed_id)
+        edge = relation_edge(source, rel.relation_type_id, target, rel.relation_type_name)
+        edges.setdefault(edge["id"], edge)
+    return list(nodes.values()), list(edges.values())
