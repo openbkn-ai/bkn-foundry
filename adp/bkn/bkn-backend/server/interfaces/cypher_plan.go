@@ -35,6 +35,10 @@ type CypherPlan struct {
 	// policy narrows.
 	RowFiltered []string `json:"row_filtered,omitempty"`
 	Warnings    []string `json:"warnings,omitempty"`
+	// WarningCodes names each warning, in the same order, so a caller can
+	// word it in its own language: disconnected_parts, default_limit,
+	// row_filtered or collect_cap.
+	WarningCodes []string `json:"warning_codes,omitempty"`
 }
 
 // CypherPlanObject is one node of a pattern. Alias is its variable; a node of

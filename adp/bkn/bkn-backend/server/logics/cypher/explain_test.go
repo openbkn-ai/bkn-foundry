@@ -80,6 +80,7 @@ func TestExplainRefusesWhatRunningRefuses(t *testing.T) {
 		"MATCH (o:Nope) RETURN o.id",
 		"MATCH (o:Order) RETURN o.nope",
 		"MATCH (o:Order) RETURN o.amount / 0",
+		"MATCH (o:Order), (c:Customer) RETURN o.id, c.name LIMIT 5",
 	} {
 		_, _, explained := explainQuery(t, graphService(&recordingVega{}), query)
 		_, ran := graphService(&recordingVega{}).Query(callerContext(), interfaces.CypherQuery{
@@ -123,11 +124,12 @@ func TestExplainNamesEachShape(t *testing.T) {
 }
 
 func TestExplainWarns(t *testing.T) {
-	plan, _, err := explainQuery(t, graphService(&recordingVega{}), "MATCH (o:Order), (c:Customer) RETURN o.id, c.name LIMIT 5")
+	plan, _, err := explainQuery(t, graphService(&recordingVega{}), "MATCH (o:Order), (c:Customer) WHERE c.name = 'Acme' RETURN o.id, c.name LIMIT 5")
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}
-	if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "no relationship or equality joins") }) ||
+	if !slices.Equal(plan.WarningCodes, []string{"disconnected_parts"}) ||
+		!slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "no relationship or equality joins") }) ||
 		slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.HasPrefix(w, "no LIMIT") }) {
 		t.Errorf("warnings = %v", plan.Warnings)
 	}
@@ -135,10 +137,10 @@ func TestExplainWarns(t *testing.T) {
 	// An equality between their properties joins two parts, as a
 	// relationship would; one under OR does not.
 	for query, cartesian := range map[string]bool{
-		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code RETURN o.id, c.name LIMIT 5":                  false,
-		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code OR o.amount > 3 RETURN o.id, c.name LIMIT 5":  true,
-		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code AND o.amount > 3 RETURN o.id, c.name LIMIT 5": false,
-		"MATCH (o:Order), (c:Customer) WHERE o.customer_code <> c.code RETURN o.id, c.name LIMIT 5":                 true,
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code RETURN o.id, c.name LIMIT 5":                                       false,
+		"MATCH (o:Order), (c:Customer) WHERE (o.customer_code = c.code OR o.amount > 3) AND c.name = 'Acme' RETURN o.id, c.name LIMIT 5": true,
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code AND o.amount > 3 RETURN o.id, c.name LIMIT 5":                      false,
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code <> c.code AND c.name = 'Acme' RETURN o.id, c.name LIMIT 5":                  true,
 	} {
 		plan, _, err := explainQuery(t, graphService(&recordingVega{}), query)
 		if err != nil {
@@ -148,6 +150,16 @@ func TestExplainWarns(t *testing.T) {
 		if warned != cartesian {
 			t.Errorf("%s: warnings = %v", query, plan.Warnings)
 		}
+	}
+
+	// Nodes a WITH passed on meet in the carried stage's row: not disconnected.
+	plan, _, err = explainQuery(t, graphService(&recordingVega{}),
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH o, c, count(*) AS n MATCH (o), (c) RETURN o.id, c.name, n LIMIT 5")
+	if err != nil {
+		t.Fatalf("explain: %v", err)
+	}
+	if slices.Contains(plan.WarningCodes, "disconnected_parts") {
+		t.Errorf("carried nodes: warnings = %v", plan.Warnings)
 	}
 
 	plan, _, err = explainQuery(t, graphService(&recordingVega{}),

@@ -334,8 +334,10 @@ components:
 
             A MATCH may contain several comma-separated paths, and a query may contain several
             MATCH clauses; both mean one shape. A variable written twice is the node it named
-            the first time, which is how two paths meet, and paths that share no variable are
-            a cartesian product. The first mention of a node names its object type; a later
+            the first time, which is how two paths meet, and paths that share no variable
+            combine pairwise. Two parts that are neither connected nor narrowed by any condition
+            (every row of one table against every row of another) are refused with 400
+            Unsupported. The first mention of a node names its object type; a later
             one may omit the label but must not contradict it.
 
             A path may contain several relationships. Each names exactly one relation type and
@@ -379,6 +381,11 @@ components:
           $ref: "#/components/schemas/CypherExecution"
         plan:
           $ref: "#/components/schemas/CypherPlan"
+        limited:
+          type: boolean
+          description: >-
+            True when the query wrote no LIMIT and returned the default 1000 rows, so more may
+            match. Absent otherwise.
     CypherPlan:
       type: object
       description: >-
@@ -464,6 +471,12 @@ components:
           description: >-
             What to know before running: parts of the pattern that no relationship or equality
             joins, the default row cap, row filters, and the evidence cap of collect.
+        warning_codes:
+          type: array
+          items:
+            type: string
+            enum: [disconnected_parts, default_limit, row_filtered, collect_cap]
+          description: The code of each warning, in the same order, for wording it in another language.
     CypherValueType:
       type: object
       properties:

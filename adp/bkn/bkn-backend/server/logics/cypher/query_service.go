@@ -156,6 +156,22 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 			Columns: []interfaces.RawQueryColumn{}, Entries: []map[string]any{}, Plan: plan,
 		}, nil
 	}
+	result, err := s.run(ctx, query, compiled)
+	if err != nil {
+		return nil, err
+	}
+	// A query that wrote no LIMIT and filled the default may have more rows;
+	// saying so keeps a caller from taking the page for the whole answer.
+	if compiled.plan.Limit == nil && len(result.Entries) >= interfaces.CYPHER_DEFAULT_LIMIT {
+		result.Limited = true
+	}
+	return result, nil
+}
+
+// run sends a compiled query down the path that answers it.
+func (s *cypherQueryService) run(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	span := trace.SpanFromContext(ctx)
 	if s.outsideSQL(ctx, compiled.plan) {
 		return s.queryOutsideSQL(ctx, query, compiled)
 	}
@@ -318,6 +334,10 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
 			WithErrorDetails(err.Error())
+	}
+	if crossProduct(plan) {
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
+			WithErrorDetails(detail(ctx, "CartesianProduct", nil))
 	}
 	// The semantic descriptor records the caller's query, not policy internals.
 	// In particular, a filter-only policy property may be invisible to the

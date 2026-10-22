@@ -186,3 +186,27 @@ func TestRunCypherQueryCarriesExplainAndPlan(t *testing.T) {
 		t.Fatalf("response = %s, want the plan passed on", out)
 	}
 }
+
+// limited says a query without LIMIT stopped at the default; it reaches the
+// caller only if this adapter lists it.
+func TestRunCypherQueryCarriesLimited(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+	mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
+	mockHTTPClient.EXPECT().
+		PostNoUnmarshal(gomock.Any(), "http://bkn/in/v1/knowledge-networks/kn-1/cypher-queries", gomock.Any(), gomock.Any()).
+		Return(http.StatusOK, []byte(`{"columns":[{"name":"id"}],"entries":[{"id":1}],"limited":true}`), nil)
+
+	client := &bknBackendAccess{logger: mockLogger, baseURL: "http://bkn", httpClient: mockHTTPClient}
+	resp, err := client.RunCypherQuery(context.Background(), &interfaces.CypherQueryReq{
+		KnID: "kn-1", Query: "MATCH (t:teams) RETURN t.team_id AS id",
+	})
+	if err != nil {
+		t.Fatalf("RunCypherQuery() error = %v", err)
+	}
+	out, _ := json.Marshal(resp)
+	if !strings.Contains(string(out), `"limited":true`) {
+		t.Fatalf("response = %s, want limited passed on", out)
+	}
+}

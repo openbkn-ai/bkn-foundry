@@ -62,7 +62,7 @@ openbkn context tool-call <kn_id> run_cypher --args '{"query":"MATCH (g:goals) R
 
 - 会被拒的写法，返回的错误码和改写提示与执行时完全相同；能通过 explain 的查询，执行时也不会因为写法被拒。
 - `plan` 里有：`shape`（查询形状：match、aggregate、totals、semi_join、list_comparison、carried）、`objects` 和 `relations`（每个变量对应的对象类、走的关系类）、`conditions`（每个条件的运算符、读的属性，以及作用在行、分组还是前一段上）、`grouping`、`columns`（每一列的名字、怎么算出来、值类型）、`ordering`、`limit`（生效的行数上限）、`reads`（会读的属性）、`row_filtered`（行范围被访问策略收窄的对象类）和 `warnings`。
-- `warnings` 会提醒：模式里有既没有关系、共享节点，也没有 `a.code = b.code` 这类相等条件连起来的部分（结果是两两组合）、没写 LIMIT 时最多返回 1000 行、行范围被收窄、`collect` 的证据达到 10000 行会被拒。
+- `warnings` 会提醒：模式里有既没有关系、共享节点，也没有 `a.code = b.code` 这类相等条件连起来的部分（结果是两两组合）、没写 LIMIT 时最多返回 1000 行、行范围被收窄、`collect` 的证据达到 10000 行会被拒。每条提醒在 `warning_codes` 里有对应的编号（`disconnected_parts`、`default_limit`、`row_filtered`、`collect_cap`），顺序相同，方便按编号显示成自己的语言。
 - explain 不读数据，也看不出对象类绑定的是什么数据源：绑定数据集或索引的对象类上，「数据集和索引上的对象类」一节里不支持的写法 explain 照样通过，执行时才被拒。
 - 不返回 SQL，条件里写的值也不重复列出。权限与执行时相同：读不到的对象类和属性，explain 里同样看不到。
 - 适合先检查带 WITH、多段 MATCH 或多跳的复杂查询，确认分组、过滤和连接都符合预期，再去执行。
@@ -87,7 +87,7 @@ RETURN count(*) AS goals
 
 - 一条路径可以有多跳；关系可以写成 `-[:R]->`、`<-[:R]-`，或无向的 `-[:R]-`。每条关系必须写明且只写一个关系类，每个节点第一次出现时必须写明且只写一个对象类。
 - 节点可以带内联属性 `(t:teams {team_name: 'Brazil'})`，等价于 WHERE 里的相等条件。
-- **同名变量指同一个节点**。可以用逗号写多条路径，也可以写多个 MATCH，它们描述的是同一个形状；两条路径共享一个变量就是在这个节点处相交，不共享变量则是笛卡尔积。
+- **同名变量指同一个节点**。可以用逗号写多条路径，也可以写多个 MATCH，它们描述的是同一个形状；两条路径共享一个变量就是在这个节点处相交，不共享变量则两两组合。只要有两部分既没连起来、又都没有任何条件限制（结果是两张表所有行的两两组合），查询就会被拒（`Unsupported`）；用关系类或 `a.code = b.code` 这类相等条件连起来，或者给其中一边加条件，比如 `(c:Customer {code: 'A'})`。
 - **比较两组对象**（例如两个产品共用哪些物料）不需要 WITH，让两条路径共享节点即可：
 
 ```cypher
@@ -189,7 +189,7 @@ ORDER BY n DESC LIMIT 4
 
 - ORDER BY 可以用属性、返回的列名、聚合或算出来的值；加 `DESC` 倒序。
 - 结果被聚合或 `DISTINCT` 折叠后，只能按返回的值排序。
-- 不写 `LIMIT` 时最多返回 **1000** 行；`LIMIT` 不能超过 **10000**，超过会被拒绝，不会悄悄截断。分页用 `SKIP n LIMIT m`。
+- 不写 `LIMIT` 时最多返回 **1000** 行，返回满 1000 行时结果带 `limited: true`，说明可能还有更多；`LIMIT` 不能超过 **10000**，超过会被拒绝，不会悄悄截断。分页用 `SKIP n LIMIT m`。
 
 ---
 
@@ -403,7 +403,7 @@ LIMIT 3
 | HTTP | error_code | 含义 |
 | --- | --- | --- |
 | 400 | `BknBackend.Cypher.SyntaxError` | 无法解析 |
-| 400 | `BknBackend.Cypher.Unsupported` | 合法的 openCypher，但不在支持的子集内 |
+| 400 | `BknBackend.Cypher.Unsupported` | 合法的 openCypher，但不在支持的子集内；或模式里有两部分既没连起来、又都没有条件 |
 | 400 | `BknBackend.Cypher.InvalidQuery` | 与模型不匹配：未知标签或属性、类型不符等 |
 | 400 | `BknBackend.Cypher.LimitExceeded` | `LIMIT` 超过 10000 |
 | 400 | `BknBackend.Cypher.InvalidParameter` | 查询为空或过长、参数不合法 |
