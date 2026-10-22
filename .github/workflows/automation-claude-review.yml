@@ -226,7 +226,7 @@ jobs:
           meta = pull()
           head_repo = ((meta.get("head") or {}).get("repo") or {}).get("full_name")
           if meta.get("state") != "open" or head_repo != repo:
-              pathlib.Path("skip-notice.txt").write_text(
+              pathlib.Path("plan-notice.txt").write_text(
                   "PR #%s 不在评审范围（state=%s，head 仓=%s），只评审本仓的 open PR，跳过。"
                   % (pr, meta.get("state"), head_repo), encoding="utf-8")
               print("has_shards=false")
@@ -355,7 +355,8 @@ jobs:
           prior = subprocess.run(
               ["gh", "api", "repos/%s/pulls/%s/reviews" % (repo, pr),
                "--paginate", "--jq",
-               '[.[] | select((.body // "") != "") | {state, body}] | @json'],
+               '[.[] | select((.body // "") != "") '
+               '| {id, state, body, commit_id, login: .user.login}] | @json'],
               capture_output=True, text=True)
           rounds = []
           if prior.returncode == 0:
@@ -423,14 +424,17 @@ jobs:
           print("carried=" + json.dumps(carried, ensure_ascii=False))
           print("dismissed=" + json.dumps(sorted(dismissed)))
 
-          # 已经 approve 过之后，作者多半在打磨（补测试、改注释、rebase）。本周实测：
+          # 已经 approve 过之后，作者多半在打磨（补测试、改注释、rebase）。8 月初实测：
           # 首次 approve 之后的重复 approve 占全部结论轮的 18%，#683 与 #695 各浪费四五轮，
-          # 每轮都在重复确认同一个结论。这些轮次不自动跑，作者要复评回一句 /review 即可
-          # ——上一轮 approve 的正文里就写着这句。
+          # 每轮都在重复确认同一个结论。
           #
-          # 例外：新提交碰了高危面照跑。这几类是「改一行毁一个环境」的地方，而 main 的
-          # ruleset 是 dismiss_stale_reviews_on_push: false——approve 不会因为推送而失效，
-          # 所以这里跳过就等于门也不拦、人也不看。
+          # 但 main 的 ruleset 是 dismiss_stale_reviews_on_push: false——approve 不会因为
+          # 推送而失效，跳过就等于门也不拦、人也不看。此前只按「整个 PR 有没有碰高危面」
+          # 决定跳不跳，普通服务的 PR 拿到 approve 之后再推任何逻辑改动都被静默放过：
+          # #970 的 de4f1da6 删了一个下游参数、改了 REST 入口的接受集，三个 job 全 skipped。
+          # 所以改成看 approve 之后**这个 PR 自己的补丁**变了什么：没变（纯 rebase、只改
+          # 提交信息）或只动了文档，才跳过；其余一律复评。测试不算文档——改测试可能是在
+          # 放宽断言；.lock/.sum 也不算——那是依赖升级。
           #
           # CHANGES_REQUESTED 之后不受影响：那时作者在修问题，正是最该盯的阶段。
           RISKY = ("migrations/", "/helm/", "bkn-safe/")
@@ -439,26 +443,120 @@ jobs:
           # 文件清单被 FILE_CAP 截断时不跳过：截掉的那部分里可能正有 migrations
           # 或 helm 改动，按「未触及高危面」放过就是拿看不见的东西赌。
           truncated = total > len(paths)
+
+          def doc_like(path):
+              return path.startswith(("docs/", "examples/")) or path.endswith(".md")
+
+          # PR 在某个提交上相对 base 的逐文件补丁。三点 compare 从 merge-base 起算，
+          # 所以 approve 时的提交与现在的 head 各自只含 PR 自己的改动，rebase 带进来的
+          # main 改动不会算到这个 PR 头上。compare 最多回 300 个文件、大文件不带 patch，
+          # 拿不全就返回 None，由调用方按「看不清就复评」处理。
+          HUNK_RE = re.compile(r"^@@[^\n]*?@@", re.M)
+
+          def pr_files_at(sha):
+              got = subprocess.run(
+                  ["gh", "api", "repos/%s/compare/%s...%s?per_page=1" % (repo, base_sha, sha)],
+                  capture_output=True, text=True)
+              if got.returncode != 0:
+                  return None
+              try:
+                  files = json.loads(got.stdout).get("files")
+              except (ValueError, AttributeError):
+                  return None
+              if not isinstance(files, list) or len(files) >= 300:
+                  return None
+              out = {}
+              for f in files:
+                  if isinstance(f, dict) and isinstance(f.get("filename"), str):
+                      out[f["filename"]] = f
+              return out
+
+          # approve 之后 PR 补丁有变化的文件；看不清时返回 None。同一文件内容（blob sha）
+          # 没变，或去掉 hunk 头行号后补丁逐字相同，就算没变——后者覆盖 rebase：main 在
+          # 别处加了几行，PR 的 hunk 只是整体挪了位置。
+          def changed_since(old_sha):
+              old, new = pr_files_at(old_sha), pr_files_at(head_sha)
+              if old is None or new is None:
+                  return None
+              changed = []
+              for name in sorted(set(old) | set(new)):
+                  a, b = old.get(name), new.get(name)
+                  if a is None or b is None:
+                      changed.append(name)
+                      continue
+                  if (a.get("status"), a.get("previous_filename")) != (
+                          b.get("status"), b.get("previous_filename")):
+                      changed.append(name)
+                      continue
+                  if a.get("sha") and a.get("sha") == b.get("sha"):
+                      continue
+                  pa, pb = a.get("patch"), b.get("patch")
+                  if isinstance(pa, str) and isinstance(pb, str) and (
+                          HUNK_RE.sub("@@", pa) == HUNK_RE.sub("@@", pb)):
+                      continue
+                  changed.append(name)
+              return changed
+
+          last = rounds[-1] if rounds else {}
+          approved_sha = (last.get("commit_id") if last.get("state") == "APPROVED"
+                          else None)
           # `not carried` 是兜底：approve 轮本就不该留下遗留项，真留下了说明状态块与
           # 表态不一致，此时跳过等于把它永久藏起来。
-          skip = (os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
-                  and states and states[-1] == "APPROVED"
-                  and not risky and not truncated and not carried)
+          skip = bool(os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
+                      and isinstance(approved_sha, str) and approved_sha
+                      and not risky and not truncated and not carried)
+          delta = changed_since(approved_sha) if skip else None
+          skip = skip and delta is not None and all(doc_like(p_) for p_ in delta)
           # 这个块的 stdout 整个重定向进 $GITHUB_OUTPUT，任何不含 = 的行都会让 runner
           # 以 Invalid format 报错、plan 步骤失败——所以 ::notice:: 不能从这里打，
           # 落成文件由下面的 shell 发出。
           if skip:
-              pathlib.Path("skip-notice.txt").write_text(
-                  "PR #%s 上一轮已放行，且本次改动未触及高危面，跳过自动复评。"
-                  "需要复评请回复 /review。" % pr, encoding="utf-8")
+              pathlib.Path("plan-notice.txt").write_text(
+                  "PR #%s 上一轮已放行，放行之后的改动%s，跳过自动复评。需要复评请回复 /review。"
+                  % (pr, "只涉及文档（%s）" % "、".join(delta[:5]) if delta
+                     else "没有改变 PR 自身的补丁（rebase 或只改提交信息）"),
+                  encoding="utf-8")
+
+          # 要复评时，先撤掉 bot 落在旧提交上的 approve（下面的 Dismiss 步骤执行）。
+          # 不撤的话，从推送到 verdict 出结论的七八分钟里旧 approve 照样有效，这段时间
+          # 里合并的就是没人看过的提交；这一轮若被取消或跑挂，PR 停在 REVIEW_REQUIRED，
+          # 回 /review 或重跑即可——宁可卡住也不放过。只撤 bot 自己的：人工 approve 是
+          # 人的判断，不归这里管。落在当前 head 上的不撤：对同一版回 /review 时它仍然成立。
+          # 被撤的 review 正文保留，状态块照样读得回；但它的 state 变成 DISMISSED，
+          # 下一轮不会再按「上一轮已放行」跳过——被撤说明那一轮复评没走完，复评本就该补上。
+          stale = [] if skip else [
+              r.get("id") for r in rounds
+              if r.get("login") == "github-actions[bot]" and r.get("state") == "APPROVED"
+              and r.get("commit_id") != head_sha and isinstance(r.get("id"), int)]
+          print("stale_approvals=" + json.dumps(stale))
           print("skip_round=%s" % ("true" if skip else "false"))
           print("file_total=%d" % total)
           print("file_listed=%d" % len(paths))
           PY
           # 跳过提示在这里发：上面的 stdout 是 $GITHUB_OUTPUT，发不了 workflow command。
-          if [ -f skip-notice.txt ]; then
-            echo "::notice::$(cat skip-notice.txt)"
+          if [ -f plan-notice.txt ]; then
+            echo "::notice::$(cat plan-notice.txt)"
           fi
+
+      # 撤销失败不让本轮失败：评审照跑、旧 approve 照旧有效，与改动前一样，但要在
+      # 日志里留警告——continue-on-error 会把失败咽成绿色，看不出门没关上。
+      - name: Dismiss stale bot approval
+        if: >
+          steps.plan.outputs.has_shards == 'true' &&
+          steps.plan.outputs.skip_round != 'true' &&
+          steps.plan.outputs.stale_approvals != '' &&
+          steps.plan.outputs.stale_approvals != '[]'
+        env:
+          STALE: ${{ steps.plan.outputs.stale_approvals }}
+          HEAD_SHA: ${{ steps.plan.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          msg="放行之后有新提交（当前 ${HEAD_SHA:0:12}），这些提交未经评审，撤销这条放行；本轮复评结束后重新表态。"
+          for id in $(jq -r '.[]' <<<"$STALE"); do
+            gh api -X PUT "repos/${GH_REPO}/pulls/${PR_NUMBER}/reviews/${id}/dismissals" \
+              -f message="$msg" -f event=DISMISS >/dev/null \
+              || echo "::warning::撤销 review ${id} 失败，旧 approve 仍然有效，复评结束前 PR 可被合并。"
+          done
 
       # 跳过这一轮时 verdict 不跑，进度评论的清理也就不跑——上一轮被 concurrency 取消
       # 后残留的那条会永久停在「评审进行中」，与它自己写的「结论落地后这条会自动消失」
