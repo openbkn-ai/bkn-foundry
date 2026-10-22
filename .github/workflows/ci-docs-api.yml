@@ -53,7 +53,7 @@ jobs:
   lint:
     # PR 时校验 OpenAPI YAML
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     concurrency:
       group: ci-docs-api-lint-${{ github.ref }}
       cancel-in-progress: true
@@ -78,7 +78,7 @@ jobs:
     # HTML，按版本累积到 gh-pages 分支的 versions/<ver>/，重建带版本下拉的顶层入口，
     # 再发布 Pages。历史版本一旦发布即固定，不再重渲。
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 全局串行：这个 job 会读改 gh-pages 上累积的 versions/，并发会互相覆盖，
     # 所以按单一组排队且不取消在跑的（cancel 会丢掉刚发布版本的归档）。
     concurrency:

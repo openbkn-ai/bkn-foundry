@@ -157,7 +157,7 @@ jobs:
        github.event.sender.login != 'github-actions[bot]' &&
        (contains(github.event.comment.body, '/review') || contains(github.event.comment.body, '@claude')) &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # write 是为了贴那条进度评论：分片模式关掉了 claude-code-action 的
@@ -637,7 +637,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
     name: review (${{ matrix.shard.label }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # agent 卡住时不能让 job 一路跑到 runner 的 6 小时上限：verdict 在 needs 上等着，
     # 一片挂死会把整轮评审的结论一起拖到没人再看的时候。
     timeout-minutes: 30
@@ -1117,7 +1117,7 @@ jobs:
   progress:
     needs: [plan, review]
     if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     continue-on-error: true
     permissions:
@@ -1206,7 +1206,7 @@ jobs:
     timeout-minutes: 20
     needs: [plan, review]
     if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 同 review：读不可信内容的 job 只读，不要 id-token。
     permissions:
       contents: read
@@ -1483,7 +1483,7 @@ jobs:
     # 「跑挂了 PR 上什么都没有」正是分片要消掉的失败模式，这里是它的落点。
     needs: [plan, review, verify]
     if: always() && needs.plan.result == 'success' && needs.plan.outputs.has_shards == 'true' && needs.plan.outputs.skip_round != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write

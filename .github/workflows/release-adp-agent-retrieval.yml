@@ -39,7 +39,7 @@ jobs:
   # 不到，所以判据落在产物上。背景与判据依据见内部文档。
   no-dev-gate:
     if: (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))) && !(github.event_name == 'push' && github.ref_type == 'branch' && github.event.created && startsWith(github.ref_name, 'release/'))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

@@ -27,7 +27,7 @@ permissions:
 jobs:
   no-ee-import:
     name: core must not reference ee
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
