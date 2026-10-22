@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -522,6 +523,9 @@ func TestDiscoverTaskWorkerCountResources(t *testing.T) {
 			require.NoError(t, err)
 			switch scenario {
 			case "mixed":
+				require.Len(t, result.Failures, 1)
+				assert.Equal(t, "bad", result.Failures[0].ResourceID)
+				assert.Equal(t, "timeout", result.Failures[0].Code)
 				require.Equal(t, 1, result.UpdatedCount)
 				require.Equal(t, 1, result.FailedCount)
 				require.Equal(t, 1, result.SkippedCount)
@@ -641,6 +645,17 @@ func TestDiscoverTaskWorkerCountResourcesIndexes(t *testing.T) {
 			result, err = worker.countResources(ctx, catalog, task)
 			require.NoError(t, err)
 			if scenario == "query failure" || scenario == "save failure" || scenario == "cancelled during query" {
+				require.Len(t, result.Failures, 1)
+				assert.Equal(t, "index", result.Failures[0].ResourceID)
+				switch scenario {
+				case "save failure":
+					assert.Equal(t, "save_failed", result.Failures[0].Code)
+				case "query failure":
+					assert.Equal(t, "timeout", result.Failures[0].Code)
+				default:
+					assert.Equal(t, "count_failed", result.Failures[0].Code)
+				}
+
 				require.True(t, result.Failed)
 				require.Equal(t, 1, result.FailedCount)
 				require.Zero(t, result.UpdatedCount)
@@ -992,6 +1007,16 @@ func TestDiscoverTaskWorkerCountLogicalView(t *testing.T) {
 				require.Zero(t, result.FailedCount)
 			} else {
 				require.Equal(t, 1, result.FailedCount)
+				require.Len(t, result.Failures, 1)
+				assert.Equal(t, "view", result.Failures[0].ResourceID)
+				switch scenario {
+				case "save failure":
+					assert.Equal(t, "save_failed", result.Failures[0].Code)
+				case "query failure":
+					assert.Equal(t, "count_failed", result.Failures[0].Code)
+				default:
+					assert.Equal(t, "invalid_count", result.Failures[0].Code)
+				}
 				require.Equal(t, int64(99), view.SourceMetadata["properties"].(map[string]any)["row_count"])
 			}
 			if scenario == "catalog" {
@@ -1134,5 +1159,50 @@ func TestDiscoverTaskWorkerDiscoverResource(t *testing.T) {
 				assert.Zero(t, result.FailedCount)
 			}
 		})
+	}
+}
+
+func TestRecordCountQueryFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name, code string
+		err        error
+	}{
+		{"wrapped timeout", "timeout", fmt.Errorf("source query: %w", context.DeadlineExceeded)},
+		{"unavailable", "count_unavailable", interfaces.ErrRowCountUnavailable},
+		{"invalid", "invalid_count", errInvalidExactCount},
+		{"forbidden", "source_read_forbidden", interfaces.NewSourceReadForbiddenError(errors.New("private-value"))},
+		{"wrapped memory error", "source_memory_limit", fmt.Errorf("count query: %w", interfaces.NewSourceMemoryLimitError(errors.New("private-value")))},
+		{"unknown", "count_failed", errors.New("private-value")},
+		{"unclassified source text", "count_failed", errors.New("[MEM_ALLOC_FAILED] private-value")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &interfaces.DiscoverResult{UpdatedCount: 1}
+			recordCountQueryFailure(result, &interfaces.Resource{ID: "r1", Name: "Orders"}, tc.err)
+			recordCountQueryFailure(result, &interfaces.Resource{ID: "r2", Name: "Items"}, tc.err)
+			require.Len(t, result.Failures, 2)
+			assert.Equal(t, 2, result.FailedCount)
+			assert.Equal(t, 1, result.UpdatedCount)
+			assert.Equal(t, "r2", result.Failures[1].ResourceID)
+			assert.Equal(t, tc.code, result.Failures[0].Code)
+			assert.NotContains(t, result.Failures[0].Message, "private-value")
+			assert.NotEmpty(t, result.Failures[0].Message)
+		})
+	}
+}
+
+func TestRecordCountSaveFailure(t *testing.T) {
+	result := &interfaces.DiscoverResult{UpdatedCount: 1}
+	recordCountSaveFailure(result, &interfaces.Resource{ID: "r1", Name: "Orders"})
+	recordCountSaveFailure(result, &interfaces.Resource{ID: "r2", Name: "Items"})
+	require.Len(t, result.Failures, 2)
+	assert.Equal(t, 2, result.FailedCount)
+	assert.Equal(t, 1, result.UpdatedCount)
+	assert.Equal(t, "r1", result.Failures[0].ResourceID)
+	assert.Equal(t, "Orders", result.Failures[0].ResourceName)
+	assert.Equal(t, "r2", result.Failures[1].ResourceID)
+	assert.Equal(t, "Items", result.Failures[1].ResourceName)
+	for _, failure := range result.Failures {
+		assert.Equal(t, "save_failed", failure.Code)
+		assert.NotEmpty(t, failure.Message)
 	}
 }

@@ -10,11 +10,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
@@ -536,3 +541,95 @@ func TestEnrichTableMetadataJSON(t *testing.T) {
 	err := (&DiscoverTaskWorker{rs: rs}).enrichTableMetadata(context.Background(), &interfaces.DiscoverTask{}, connector, []tableDiscoverItem{{resource: resource, tableMeta: table}}, &interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
 	require.NoError(t, err)
 }
+
+func TestDiscoverTaskWorkerEnrichResourceTableRowCount(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		batch             bool
+		skipped           int
+		count             int64
+		countErr, saveErr error
+		code              string
+	}{
+		{name: "source memory limit", countErr: fmt.Errorf("read row count: %w", interfaces.NewSourceMemoryLimitError(&testCountDiagnosticError{cause: errors.New("[MEM_ALLOC_FAILED] private-value")})), code: "source_memory_limit"},
+		{name: "timeout", countErr: context.DeadlineExceeded, code: "timeout"},
+		{name: "unknown source failure", countErr: errors.New("mysql://user:private-value@source.invalid/db"), code: "count_failed"},
+		{name: "save failure", count: 5, saveErr: errors.New("database private-value"), code: "save_failed"},
+		{name: "negative count", count: -1, code: "invalid_count"},
+		{name: "unsupported single resource", countErr: interfaces.ErrRowCountUnavailable, code: "count_unavailable"},
+		{name: "unsupported batch resource is skipped", batch: true, countErr: interfaces.ErrRowCountUnavailable, skipped: 1},
+		{name: "batch save failure is not skipped", batch: true, count: 5, saveErr: interfaces.ErrRowCountUnavailable, code: "save_failed"},
+		{name: "empty table", count: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var observed *observer.ObservedLogs
+			if tc.name == "source memory limit" {
+				core, logs := observer.New(zap.WarnLevel)
+				observed = logs
+				sharedLogger := logger.GetLogger()
+				original := *sharedLogger
+				*sharedLogger = *zap.New(core).Sugar()
+				t.Cleanup(func() { *sharedLogger = original })
+			}
+			ctrl := gomock.NewController(t)
+			rs := vmock.NewMockResourceService(ctrl)
+			connector := vmock.NewMockTableConnector(ctrl)
+			oldCount, oldTime := int64(7), int64(10)
+			resource := &interfaces.Resource{ID: "r1", Name: "Orders", SourceIdentifier: "orders", RowCount: &oldCount, RowCountTime: &oldTime}
+			connector.EXPECT().CountRows(gomock.Any(), "orders").Return(tc.count, tc.countErr)
+			if tc.countErr == nil && tc.count >= 0 {
+				rs.EXPECT().InternalUpdateRowCount(gomock.Any(), nil, resource, tc.count, gomock.Any()).Return(tc.saveErr)
+			}
+			result := &interfaces.DiscoverResult{}
+			task := &interfaces.DiscoverTask{ResourceID: "r1"}
+			if tc.batch {
+				task.ResourceID = ""
+			}
+			require.NoError(t, (&DiscoverTaskWorker{rs: rs}).enrichResourceTableRowCount(context.Background(), task, resource, connector, result))
+			assert.Equal(t, tc.skipped, result.SkippedCount)
+			encoded, err := json.Marshal(result)
+			require.NoError(t, err)
+			var payload map[string]any
+			require.NoError(t, json.Unmarshal(encoded, &payload))
+			if tc.skipped > 0 {
+				assert.Zero(t, result.UpdatedCount)
+				assert.Zero(t, result.FailedCount)
+				assert.NotContains(t, payload, "failures")
+				return
+			}
+			if tc.code == "" {
+				assert.Equal(t, 1, result.UpdatedCount)
+				assert.Zero(t, result.FailedCount)
+				assert.NotContains(t, payload, "failures")
+				return
+			}
+			assert.Equal(t, 1, result.FailedCount)
+			assert.Zero(t, result.UpdatedCount)
+			require.Contains(t, payload, "failures")
+			failures := payload["failures"].([]any)
+			require.Len(t, failures, 1)
+			failure := failures[0].(map[string]any)
+			assert.Equal(t, "r1", failure["resource_id"])
+			assert.Equal(t, "Orders", failure["resource_name"])
+			assert.NotContains(t, failure, "stage")
+			assert.Equal(t, tc.code, failure["code"])
+			assert.NotEmpty(t, failure["message"])
+			assert.NotContains(t, string(encoded), "private-value")
+			if observed != nil {
+				require.Len(t, observed.All(), 1)
+				message := observed.All()[0].Message
+				assert.Contains(t, message, "resource_id=r1")
+				assert.Contains(t, message, "[MEM_ALLOC_FAILED] private-value")
+				assert.NotContains(t, tc.countErr.Error(), "private-value")
+			}
+			assert.Equal(t, int64(7), *resource.RowCount)
+			assert.Equal(t, int64(10), *resource.RowCountTime)
+		})
+	}
+}
+
+// testCountDiagnosticError 模拟连接器对外安全、但可解包取得原始诊断的错误。
+type testCountDiagnosticError struct{ cause error }
+
+func (e *testCountDiagnosticError) Error() string { return "source query failed" }
+func (e *testCountDiagnosticError) Unwrap() error { return e.cause }

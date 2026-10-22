@@ -9,6 +9,7 @@ package discover_task
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -166,6 +167,34 @@ func TestDiscoverTaskAccessCreate(t *testing.T) {
 		require.NoError(t, access.Create(context.Background(), task))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestDiscoverTaskAccessCountFailuresPersistence(t *testing.T) {
+	for _, failed := range []bool{true, false} {
+		t.Run(fmt.Sprint(failed), func(t *testing.T) {
+			access, mock, cleanup := newDiscoverTaskAccessMock(t)
+			defer cleanup()
+			result := &interfaces.DiscoverResult{CatalogID: "catalog-1", Failed: failed, FailedCount: 1, Message: "count finished", Failures: []interfaces.DiscoverResourceFailure{{ResourceID: "r1", ResourceName: "Orders", Code: "source_memory_limit", Message: "Source memory limit reached."}}}
+			status := interfaces.DiscoverTaskStatusFailed
+			if !failed {
+				status = interfaces.DiscoverTaskStatusCompleted
+				result.UpdatedCount = 1
+			}
+			encoded, err := sonic.MarshalString(result)
+			require.NoError(t, err)
+			mock.ExpectExec("UPDATE t_discover_task SET f_finish_time = ?, f_message = ?, f_progress = ?, f_result = ?, f_status = ? WHERE f_id = ? AND f_status = ?").WithArgs(int64(999), result.Message, 100, encoded, status, "task-1", interfaces.DiscoverTaskStatusRunning).WillReturnResult(sqlmock.NewResult(0, 1))
+			updated, err := access.MarkCompleted(context.Background(), "task-1", result, 999)
+			require.NoError(t, err)
+			assert.True(t, updated)
+			mock.ExpectQuery("SELECT " + strings.Join(discoverTaskColumns(), ", ") + " FROM t_discover_task WHERE f_id = ?").WithArgs("task-1").WillReturnRows(discoverTaskRows().AddRow("task-1", "catalog-1", "", "", "count_only", interfaces.DiscoverTaskTriggerManual, interfaces.DiscoverTaskQueuePriorityNormal, status, 100, result.Message, int64(10), int64(999), int64(15), encoded, "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
+			got, err := access.GetByID(context.Background(), "task-1")
+			require.NoError(t, err)
+			require.NotNil(t, got.Result)
+			assert.Equal(t, result.Failures, got.Result.Failures)
+			assert.Equal(t, result.UpdatedCount, got.Result.UpdatedCount)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
 
 func TestDiscoverTaskAccessGetScheduledTaskStrategy(t *testing.T) {

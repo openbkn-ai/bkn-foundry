@@ -28,6 +28,17 @@ func (e *SourceReadForbiddenError) Error() string {
 }
 func (e *SourceReadForbiddenError) Unwrap() error { return e.Cause }
 
+// SourceMemoryLimitError 表示源数据库达到内存限制，原始错误仅通过错误链保留。
+type SourceMemoryLimitError struct{ Cause error }
+
+// NewSourceMemoryLimitError 将连接器识别到的源端内存限制转换为公共错误类型。
+func NewSourceMemoryLimitError(cause error) *SourceMemoryLimitError {
+	return &SourceMemoryLimitError{Cause: cause}
+}
+
+func (e *SourceMemoryLimitError) Error() string { return "source memory limit exceeded" }
+func (e *SourceMemoryLimitError) Unwrap() error { return e.Cause }
+
 // SourceQueryInvalidParameterReason identifies a client-safe source query failure category.
 type SourceQueryInvalidParameterReason string
 

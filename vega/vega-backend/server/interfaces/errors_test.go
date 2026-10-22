@@ -28,6 +28,18 @@ func TestSourceReadForbiddenError(t *testing.T) {
 	}
 }
 
+func TestSourceMemoryLimitError(t *testing.T) {
+	cause := errors.New("private source diagnostics")
+	err := fmt.Errorf("execute query: %w", NewSourceMemoryLimitError(cause))
+	var limited *SourceMemoryLimitError
+	if !errors.As(err, &limited) || !errors.Is(err, cause) {
+		t.Fatalf("wrapped source memory error lost its type or cause: %v", err)
+	}
+	if strings.Contains(err.Error(), cause.Error()) {
+		t.Fatalf("source memory error exposes private source diagnostics: %v", err)
+	}
+}
+
 func TestSourceQueryInvalidParameterError(t *testing.T) {
 	cause := errors.New("unknown column in source query")
 	err := fmt.Errorf("execute query: %w", NewSourceQueryInvalidParameterError(SourceQueryInvalidParameterUnknownColumn, cause))
