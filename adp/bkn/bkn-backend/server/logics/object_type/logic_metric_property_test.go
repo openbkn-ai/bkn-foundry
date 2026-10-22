@@ -156,6 +156,7 @@ func TestObjectMetricV1PropertyUniquenessAppliesWithoutStrictMode(t *testing.T) 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		ota := bmock.NewMockObjectTypeAccess(ctrl)
 		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "orders").Return("Orders", true, nil)
+		ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "orders").Return(nil, nil)
 		service := &objectTypeService{ps: ps, ota: ota}
 		assertConflict(t, service.UpdateObjectType(context.Background(), nil, newObjectType(), false))
 	})

@@ -312,12 +312,19 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, "unsupported bkn_spec")
 		})
 
-		Convey("Refuses a 3.0 property declaration the backend does not store yet", func() {
+		Convey("Imports the property declarations of a 3.0 package", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, false).
+				DoAndReturn(func(_ context.Context, kn *interfaces.KN, _ string, _ bool) (string, error) {
+					props := kn.ObjectTypes[0].DataProperties
+					if len(props) != 2 || props[1].Name != "name" || !props[1].Required {
+						t.Fatalf("Required of the name property did not reach the import: %#v", props)
+					}
+					return "kn1", nil
+				})
 			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "true", nil))
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
-			So(w.Code, ShouldEqual, http.StatusBadRequest)
-			So(w.Body.String(), ShouldContainSubstring, `object type \"pod\" data property \"name\": Required is not supported by this version yet`)
+			So(w.Code, ShouldEqual, http.StatusOK)
 		})
 
 		Convey("Refuses 3.0 value types and aliases the backend does not store yet", func() {

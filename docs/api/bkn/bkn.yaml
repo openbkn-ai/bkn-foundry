@@ -86,6 +86,16 @@ paths:
             type: string
             enum: [preserve, detach]
             default: preserve
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
+            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
+            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
+            the declarations; pass true to clear them.
+          schema:
+            type: boolean
+            default: false
         - name: import_mode
           description: |
             Import mode. normal reports an error for duplicate concept IDs or names; overwrite updates

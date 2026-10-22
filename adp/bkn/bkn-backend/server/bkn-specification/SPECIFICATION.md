@@ -67,7 +67,7 @@ bkn_spec: "3.0"
 | 关系声明：`reverse_name`、`Cardinality`、`### Relation Constraints`、关系属性（§7.6） | 新字段忽略，小节并入描述 | 解析为声明，写错时拒绝 |
 | 值类型 `value_types/`（§16） | 目录忽略 | 解析为值类型定义 |
 | 同义写法、未知内容、被忽略的多余内容（§1.3） | 静默接受、忽略或并入描述 | 每样东西只有一种写法，其余拒绝并指出位置 |
-| bkn-backend 尚未存储的 3.0 声明（上表的属性声明、别名、生命周期与关系声明、值类型） | — | 规范库照常解析与校验；上传接口拒绝，错误信息以 `is not supported by this version yet`（此版本尚不支持）结尾并指出位置，不入库后丢失。存储分别随 bkn-foundry#2259、#2281、#2284 实现 |
+| bkn-backend 尚未存储的 3.0 声明（上表的别名、生命周期与关系声明、值类型） | — | 规范库照常解析与校验；上传接口拒绝，错误信息以 `is not supported by this version yet`（此版本尚不支持）结尾并指出位置，不入库后丢失。存储分别随 bkn-foundry#2281、#2284 实现；属性声明已存储 |
 
 3.0 的拒绝原因会出现在上传接口的错误详情中。
 
@@ -532,7 +532,7 @@ Incremental Key: updated_at
 
 ### 6.8 属性声明（3.0）
 
-> **状态：3.0。** `Semantic`、`Required`、`Aliases`、对象类的 `aliases` 与 `### Property Constraints` 的全部键（含 `value_type`，§16）已在规范库实现。bkn-backend 存储属性声明为设计中（bkn-foundry#2259），存储值类型与别名为设计中（bkn-foundry#2281）；在此之前上传含这些声明的 3.0 包时按「此版本尚不支持」拒绝并指出位置，不入库后丢失。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** `Semantic`、`Required`、`Aliases`、对象类的 `aliases` 与 `### Property Constraints` 的全部键（含 `value_type`，§16）已在规范库实现。bkn-backend 存储属性声明（`Semantic`、`Required`、`### Property Constraints` 中除 `value_type` 外的键），对象类接口读写它们，保存时按本节规则校验；存储值类型与别名为设计中（bkn-foundry#2281），在此之前上传含它们的 3.0 包时按「此版本尚不支持」拒绝并指出位置，接口写 `value_type` 时同样拒绝。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 属性声明描述数据应当满足的要求，只用于理解与展示，**不校验源数据**；声明本身写错时在导入和保存时拒绝。
 
@@ -1281,8 +1281,8 @@ BKN 包只携带对工具的**引用**，不携带工具的实现：
 - 逻辑属性的 Source 表在来源为 `tool` 时输出 6 列，否则输出 3 列。
 - **（3.0）** 网络中存在任一 3.0 专有声明（§4.3、§6.8、§7.6、§8.2 的 `aliases`、§16）时，`network.bkn` 写
   `bkn_spec: "3.0"` 并输出新列、新小节与 `value_types/`，全部内容按 §1.3 的唯一写法输出（只写 `action_intent`，列顺序固定，`Affect Object` 只在有内容时输出）；否则导出与现在逐字节相同，不写 `bkn_spec`。
-  目前导出器只按 `network.bkn` 的 `bkn_spec` 选择：声明 3.0 的网络按 3.0 导出，其余网络（包括后端导出的网络）一律按 2.x 导出；按声明自动选择 3.0 随升级预检一起实现（**设计中**，bkn-backend）。
-  （**设计中**，bkn-backend）按 3.0 导出前，平台先做升级预检：`Source` 为 `property` / `input` / `const`（不区分大小写）的参数视为疑似错位，按旧参数表转换预填建议值（`ValueFrom` 转小写，`input` 行与 `-` 的 `Value` 为空），由人工确认；修正前不按 3.0 导出，但可以显式选择按 2.x 导出（不含 3.0 声明）。预检不阻止在平台上保存声明。同一检查也可随时对 2.x 网络运行。
+  bkn-backend 导出时可用 `bkn_spec` 参数指定：不传即按上面的规则自动选择；`2.0` 按 2.x 导出，不含 3.0 声明，结果与从未有过声明的网络逐字节相同；`3.0` 按 3.0 导出。
+  按 3.0 导出前，bkn-backend 先做升级预检（即网络体检，`GET /bkns/{kn_id}/check`）：`Source` 为 `property` / `input` / `const`（不区分大小写）的参数视为疑似错位，按旧参数表转换预填建议值（`ValueFrom` 转小写，`input` 行与 `-` 的 `Value` 为空），由人工确认；`ValueFrom` 不是 `property` / `input` / `const`、`Source` 也不是值来源的参数一并列出，没有建议值；写出的包还会按 3.0 规则读回一遍，读不回时拒绝并给出原因。修正前不按 3.0 导出，但可以显式选择按 2.x 导出（不含 3.0 声明）。预检不阻止在平台上保存声明。同一检查也可随时对 2.x 网络运行。
 - **（3.0）** **描述中的 `#` 行首转义。** 描述（网络、定义的描述文字）里以 `#` 开头的行会被当成标题，打乱小节结构。3.0 导出时，行首若是零个或多个 `\` 后接 `#`，在行首再加一个 `\`；3.0 导入时，行首若是一个或多个 `\` 后接 `#`，去掉一个 `\`。这一变换可逆：存储中的描述原样不动，往返逐字节不变，用户在 Studio 里写的标题也不必改写。2.x 导出不转义；旧后端读到 `\#` 时会原样保留反斜杠，只影响显示。
 - **（3.0）** 按 3.0 导出时，frontmatter 使用保留字符串类型的 YAML 序列化（`id`、`name`、`tags`、`aliases`、`reverse_name` 等需要时加引号）；3.0 导入按原文读取这些字段。2.x 导出不变（附录 A-3）。
 
@@ -1418,7 +1418,7 @@ unit: 元
 | # | 问题 | 现状 | 影响 |
 |---|------|------|------|
 | A-1 | `### Tool Configuration` 不在行动类已知小节中 | 2.x 现状：能被解析为 Action Source，但整节同时并入描述。3.0 拒绝旧标题，错误信息给出 `### Action Source` | 按 SDK 模板写的行动，描述里多出一段工具表 |
-| A-2 | 旧列名 `Binding` 映射到 `ValueFrom` | 2.x 现状：旧布局把 `property` 等写在 `Source`、属性名写在 `Binding`，读取后值的来源错位。3.0 拒绝旧布局，错误信息给出改写 | 按 SDK 模板写的行动参数在执行时被静默丢弃；已入库的数据不会自动修复，3.0 升级预检会列出疑似错位的参数并预填建议值（**设计中**，§14.2） |
+| A-2 | 旧列名 `Binding` 映射到 `ValueFrom` | 2.x 现状：旧布局把 `property` 等写在 `Source`、属性名写在 `Binding`，读取后值的来源错位。3.0 拒绝旧布局，错误信息给出改写 | 按 SDK 模板写的行动参数在执行时被静默丢弃；已入库的数据不会自动修复，3.0 升级预检（网络体检）会列出疑似错位的参数并预填建议值（§14.2） |
 | A-3 | 导出时 frontmatter 由字符串拼接生成 | 值不加引号；2.x 保持现状，3.0 导出保留字符串类型（§14.2） | 名称含 `: ` 时导出文件无法再导入；`001`、`1.0` 等读回后变成 `1` |
 | A-4 | 当前列布局下把值的来源写进 `Source` | 2.x 现状：`Source` 写 `property`、属性名写在 `ValueFrom` 的表（bkn-sdk 的 `SPECIFICATION.llm.md` 对逻辑属性就是这样教的）按字面读取。3.0 拒绝导入 | 2.x 下该参数在执行时被静默丢弃；SDK 文档需修正 |
 | A-5 | 未知的 frontmatter 字段与 `###` 小节都被静默处理 | 2.x 现状：字段被丢弃，小节并入描述，都不提示。3.0 拒绝（§1.3） | 拼错的小节名、`enabled` / `risk_level` / `requires_approval` 等字段写了无效且没人知道 |

@@ -203,3 +203,13 @@ PropertyNamesLengthMismatch = "property_names 和 data_properties 的长度必�
 DataPropertyMissingFromURL = "URL 中未包含数据属性 {{.property}}。"
 KeywordIgnoreAboveLenInvalid = "keyword_config.ignore_above_len 必须大于 0。"
 VectorModelIDRequired = "必须提供 vector_config.model_id。"
+
+[BknBackend.ObjectType.InvalidParameter.Declarations]
+Description = "属性声明不合法"
+Solution = "按错误详情修正 semantic、required 或 constraints 后重试。"
+ErrorLink = ""
+
+[BknBackend.ObjectType.DeclarationsWouldBeCleared]
+Description = "本次覆盖会清掉已有的属性声明"
+Solution = "错误详情列出了将被清掉的声明。确认要清掉时，带上 confirm_clear_declarations=true 重新提交；不想清掉时，在文件中保留这些声明。"
+ErrorLink = ""

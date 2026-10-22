@@ -8,6 +8,8 @@ package interfaces
 
 import (
 	"encoding/json"
+	"fmt"
+	"slices"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/data_type"
@@ -186,7 +188,112 @@ type DataProperty struct {
 	// accepted from or written to the object type definition.
 	IndexFeatures []ObjectTypeIndexFeature `json:"index_features,omitempty" mapstructure:"-"`
 
+	// The BKN spec 3.0 property declarations (SPECIFICATION.md §6.8). They describe what the data
+	// should be, for understanding and display; nothing checks the source data against them. A
+	// property without them reads and stores exactly as before.
+	Semantic    string               `json:"semantic,omitempty" mapstructure:"semantic,omitempty"`
+	Required    bool                 `json:"required,omitempty" mapstructure:"required,omitempty"`
+	Constraints *PropertyConstraints `json:"constraints,omitempty" mapstructure:"constraints,omitempty"`
+
 	retiredIndexConfigProvided bool
+	// declared names the declaration fields the JSON carried, null included. An interactive update
+	// keeps the stored value of a declaration field the request leaves out, so an old client that
+	// edits a display name does not clear declarations it does not know.
+	declared map[string]bool
+}
+
+// Declaration fields of a data property, as they are named in JSON.
+const (
+	DECLARATION_SEMANTIC    = "semantic"
+	DECLARATION_REQUIRED    = "required"
+	DECLARATION_CONSTRAINTS = "constraints"
+)
+
+// DeclarationFields lists the declaration fields of a data property.
+var DeclarationFields = []string{DECLARATION_SEMANTIC, DECLARATION_REQUIRED, DECLARATION_CONSTRAINTS}
+
+// PropertyConstraints is a property's entry in ### Property Constraints (SPECIFICATION.md §6.8). An
+// empty field is not declared.
+type PropertyConstraints struct {
+	ValueType string       `json:"value_type,omitempty" mapstructure:"value_type,omitempty"`
+	Range     *ValueRange  `json:"range,omitempty" mapstructure:"range,omitempty"`
+	Length    *LengthRange `json:"length,omitempty" mapstructure:"length,omitempty"`
+	Pattern   string       `json:"pattern,omitempty" mapstructure:"pattern,omitempty"`
+	Unit      string       `json:"unit,omitempty" mapstructure:"unit,omitempty"`
+	Unique    bool         `json:"unique,omitempty" mapstructure:"unique,omitempty"`
+	CRS       string       `json:"crs,omitempty" mapstructure:"crs,omitempty"`
+	Timezone  string       `json:"timezone,omitempty" mapstructure:"timezone,omitempty"`
+}
+
+// ValueRange is a closed interval: numbers for a numeric property, ISO 8601 text for a date or time
+// property. Either bound may be absent.
+type ValueRange struct {
+	Min any `json:"min,omitempty" mapstructure:"min,omitempty"`
+	Max any `json:"max,omitempty" mapstructure:"max,omitempty"`
+}
+
+// LengthRange is a closed interval on the number of characters.
+type LengthRange struct {
+	Min *int `json:"min,omitempty" mapstructure:"min,omitempty"`
+	Max *int `json:"max,omitempty" mapstructure:"max,omitempty"`
+}
+
+// ClearedDeclaration is a stored declaration an overwrite would clear: the file the definition is
+// overwritten with does not carry it.
+type ClearedDeclaration struct {
+	ObjectTypeID string   `json:"object_type_id"`
+	Property     string   `json:"property"`
+	Fields       []string `json:"fields"`
+}
+
+// EncodeIndexedConstraints rewrites data_properties[].constraints of an object type document for
+// the concept index as a JSON string. The index maps unknown paths dynamically, and a range bound
+// is a number on a numeric property but text on a date property: stored as they are, the first
+// document would fix the field's type and every later one with the other kind would be refused.
+// DecodeIndexedConstraints reverses it. A document without constraints is left as it is.
+func EncodeIndexedConstraints(doc map[string]any) error {
+	props, _ := doc["data_properties"].([]any)
+	for _, prop := range props {
+		p, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		if c, exists := p[DECLARATION_CONSTRAINTS]; exists && c != nil {
+			if _, done := c.(string); done {
+				continue
+			}
+			encoded, err := json.Marshal(c)
+			if err != nil {
+				return err
+			}
+			p[DECLARATION_CONSTRAINTS] = string(encoded)
+		}
+	}
+	return nil
+}
+
+// DecodeIndexedConstraints reads back what EncodeIndexedConstraints wrote.
+func DecodeIndexedConstraints(entry map[string]any) error {
+	props, _ := entry["data_properties"].([]any)
+	for _, prop := range props {
+		p, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		if encoded, isText := p[DECLARATION_CONSTRAINTS].(string); isText {
+			constraints := &PropertyConstraints{}
+			if err := json.Unmarshal([]byte(encoded), constraints); err != nil {
+				return fmt.Errorf("data property %v constraints in the concept index: %w", p["name"], err)
+			}
+			p[DECLARATION_CONSTRAINTS] = constraints
+		}
+	}
+	return nil
+}
+
+// IsEmpty reports whether the constraints declare nothing; {} in a request clears them.
+func (c *PropertyConstraints) IsEmpty() bool {
+	return c == nil || *c == (PropertyConstraints{})
 }
 
 // UnmarshalJSON records the removed index_config field without reintroducing it to the public model.
@@ -204,7 +311,51 @@ func (p *DataProperty) UnmarshalJSON(data []byte) error {
 	if rawIndexConfig, ok := raw["index_config"]; ok && string(rawIndexConfig) != "null" {
 		p.retiredIndexConfigProvided = true
 	}
+	for _, field := range DeclarationFields {
+		if _, ok := raw[field]; ok {
+			if p.declared == nil {
+				p.declared = map[string]bool{}
+			}
+			p.declared[field] = true
+		}
+	}
 	return nil
+}
+
+// Declares reports whether the JSON this property was read from carried a declaration field, null
+// included.
+func (p *DataProperty) Declares(field string) bool {
+	return p != nil && p.declared[field]
+}
+
+// HasDeclarations reports whether the property carries any declaration. Required on a primary key
+// is implied and does not count.
+func (p *DataProperty) HasDeclarations(primaryKeys []string) bool {
+	if p == nil {
+		return false
+	}
+	return p.Semantic != "" || !p.Constraints.IsEmpty() || (p.Required && !slices.Contains(primaryKeys, p.Name))
+}
+
+// KeepUndeclared copies from stored the declaration fields this property's JSON left out, the
+// merge an interactive update makes. A field the JSON carried keeps the JSON's value, null and {}
+// included, which clear it.
+func (p *DataProperty) KeepUndeclared(stored *DataProperty) {
+	if p == nil || stored == nil {
+		return
+	}
+	if !p.Declares(DECLARATION_SEMANTIC) {
+		p.Semantic = stored.Semantic
+	}
+	if !p.Declares(DECLARATION_REQUIRED) {
+		p.Required = stored.Required
+	}
+	if !p.Declares(DECLARATION_CONSTRAINTS) {
+		p.Constraints = stored.Constraints
+	}
+	if p.Constraints.IsEmpty() {
+		p.Constraints = nil
+	}
 }
 
 // HasRetiredIndexConfig reports whether the request contained the retired property-level index_config field.

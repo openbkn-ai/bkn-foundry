@@ -233,6 +233,9 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
 			return []string{}, err
 		}
+		if err := validateDeclarations(ctx, objectType); err != nil {
+			return []string{}, err
+		}
 		if strictMode {
 			if err := ots.validateObjectTypeStrictExternalDeps(ctx, objectType); err != nil {
 				return []string{}, err
@@ -294,6 +297,11 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			interfaces.OPERATION_TYPE_MODIFY); err != nil {
 			return []string{}, err
 		}
+	}
+	// After the permission check: the refusal lists stored declarations, which only a caller allowed
+	// to modify these object types may see.
+	if err = ots.checkOverwriteKeepsDeclarations(ctx, tx, updateObjectTypes, false); err != nil {
+		return []string{}, err
 	}
 
 	// Create.
@@ -376,7 +384,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	// Update.
 	if len(updateObjectTypes) == 1 {
 		err = ots.updateObjectType(ctx, tx, updateObjectTypes[0], strictMode,
-			needCreateConceptGroupRelation)
+			needCreateConceptGroupRelation, false)
 		if err != nil {
 			return []string{}, err
 		}
@@ -441,8 +449,13 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 	}
 	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 
-	_, _, err = ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
+	_, updates, err := ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
 	if err != nil {
+		return err
+	}
+	// Validation has checked modify on the network only; the object types being overwritten are
+	// checked before their declarations are listed.
+	if err = ots.checkOverwriteKeepsDeclarations(ctx, nil, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
 		return err
 	}
 
@@ -450,6 +463,9 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 		objectType.KNID = knID
 		objectType.Branch = branch
 		if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
+			return err
+		}
+		if err := validateDeclarations(ctx, objectType); err != nil {
 			return err
 		}
 		if strictMode {
@@ -1104,12 +1120,17 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 }
 
 // Update object types.
+// UpdateObjectType is the interactive update. A data property of the request keeps the stored
+// declarations it leaves out, so an old client that edits a display name does not clear them; an
+// import overwrite goes through CreateObjectTypes, where the file is the whole state.
 func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType, strictMode bool) error {
-	return ots.updateObjectType(ctx, tx, objectType, strictMode, true)
+	return ots.updateObjectType(ctx, tx, objectType, strictMode, true, true)
 }
 
+// updateObjectType saves an object type over the stored one. keepStoredDeclarations is set for an
+// interactive update, which keeps the stored declarations its request leaves out.
 func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
-	objectType *interfaces.ObjectType, strictMode bool, syncConceptGroupRelations bool) error {
+	objectType *interfaces.ObjectType, strictMode bool, syncConceptGroupRelations bool, keepStoredDeclarations bool) error {
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update object type")
 	defer span.End()
@@ -1130,8 +1151,19 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 	if err != nil {
 		return err
 	}
+	if keepStoredDeclarations {
+		stored, err := ots.ota.GetObjectTypeByID(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID)
+		if err != nil {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
+				WithErrorDetails(err.Error())
+		}
+		keepUndeclared(objectType, stored)
+	}
 
 	if err := validateObjectMetricV1PropertyUniqueness(ctx, objectType); err != nil {
+		return err
+	}
+	if err := validateDeclarations(ctx, objectType); err != nil {
 		return err
 	}
 	if strictMode {
@@ -1249,10 +1281,15 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	}
 	for _, prop := range dataProperties {
 		if idx, ok := propMap[prop.Name]; ok {
+			// An interactive update: the stored declarations the request leaves out are kept.
+			prop.KeepUndeclared(objectType.DataProperties[idx])
 			objectType.DataProperties[idx] = prop // Update an existing data property.
 		} else {
 			objectType.DataProperties = append(objectType.DataProperties, prop) // Add a new data property.
 		}
+	}
+	if err := validateDeclarations(ctx, objectType); err != nil {
+		return err
 	}
 
 	bknObj := logics.ToBKNObjectType(objectType)
@@ -1729,6 +1766,9 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			return err
 		}
 		delete(document.Document, "data_source_metadata_unavailable")
+		if err := interfaces.EncodeIndexedConstraints(document.Document); err != nil {
+			return err
+		}
 		if properties, ok := document.Document["logic_properties"].([]any); ok {
 			for _, property := range properties {
 				if value, ok := property.(map[string]any); ok {
@@ -1946,6 +1986,10 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 
 		// 5. Process query results.
 		for _, entry := range datasetResp.Entries {
+			if err := interfaces.DecodeIndexedConstraints(entry); err != nil {
+				return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_InternalError_UnMarshalDataFailed).WithErrorDetails(err.Error())
+			}
 			// Deserialize logic_properties[].parameters from JSON string
 			if logicProps, exists := entry["logic_properties"]; exists {
 				if logicPropsArr, ok := logicProps.([]any); ok {

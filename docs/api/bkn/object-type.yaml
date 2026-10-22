@@ -637,6 +637,16 @@ paths:
             type: string
             default: main
           in: query
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
+            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
+            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
+            the declarations; pass true to clear them.
+          schema:
+            type: boolean
+            default: false
         - name: import_mode
           description: |
             Import mode. normal returns an error for a concept with the same name; overwrite replaces it;
@@ -1619,6 +1629,16 @@ paths:
             type: boolean
             default: true
           in: query
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
+            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
+            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
+            the declarations; pass true to clear them.
+          schema:
+            type: boolean
+            default: false
         - name: import_mode
           description: "Same as the create object type API. Defines validation semantics for persisted object type ID or name conflicts: normal, ignore, or overwrite."
           schema:
@@ -1746,6 +1766,20 @@ components:
         mask_rule:
           $ref: "#/components/schemas/MaskRule"
           description: Optional Column Masking rule used when the effective property access level is `masked`. It applies only to query results and never modifies source data.
+        semantic:
+          description: |
+            BKN spec 3.0 property declaration: what the property means. One of event_time, end_time,
+            valid_from, valid_to, location, latitude, longitude, status, severity; each value at most once
+            per object type. An update that leaves the field out keeps the stored value; null or "" clears it.
+          type: string
+        required:
+          description: |
+            BKN spec 3.0 property declaration: every instance has a value. A primary key is required by
+            definition and refuses false. An update that leaves the field out keeps the stored value;
+            null clears it.
+          type: boolean
+        constraints:
+          $ref: "#/components/schemas/PropertyConstraints"
         condition_operations:
           description: |
             Supported filter operations for this property. They are inferred from the property type, such as
@@ -1756,6 +1790,43 @@ components:
           type: array
           items:
             type: string
+    PropertyConstraints:
+      description: |
+        BKN spec 3.0 property constraints (SPECIFICATION.md §6.8). They describe the data for understanding
+        and display; nothing checks the source data against them. An update that leaves the field out keeps
+        the stored value; a value replaces it whole; null or {} clears it. value_type is not supported yet.
+      type: object
+      properties:
+        range:
+          description: Closed interval; numbers for a numeric property, ISO 8601 text for date, datetime and timestamp.
+          type: object
+          properties:
+            min: {}
+            max: {}
+        length:
+          description: Closed interval on the number of characters of a string, keyword or text property.
+          type: object
+          properties:
+            min:
+              type: integer
+            max:
+              type: integer
+        pattern:
+          description: RE2 regular expression for a string, keyword or text property.
+          type: string
+        unit:
+          description: Unit of a numeric property.
+          type: string
+        unique:
+          description: The values are unique, apart from the primary key.
+          type: boolean
+        crs:
+          description: Coordinate system of a location, latitude or longitude property.
+          type: string
+          enum: [wgs84, gcj02, bd09]
+        timezone:
+          description: IANA time zone a datetime value without an offset is read in.
+          type: string
     MaskRule:
       description: |
         Strongly typed Column Masking rule for a data property. String rules keep string output, round keeps JSON number

@@ -7,6 +7,7 @@
 package interfaces
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/audit"
@@ -26,6 +27,11 @@ const (
 	HTTP_HEADER_BKN_CALLER_ID   = "x-bkn-caller-id"
 
 	ACCOUNT_INFO_KEY contextKey = "x-account-info" // Avoid using a raw string directly.
+
+	// CONFIRM_CLEAR_DECLARATIONS_KEY marks a request that confirmed, with the query parameter
+	// QueryParam_ConfirmClearDeclarations, that an overwrite may clear stored property
+	// declarations.
+	CONFIRM_CLEAR_DECLARATIONS_KEY contextKey = "x-confirm-clear-declarations"
 
 	OBJECT_NAME_MAX_LENGTH = 40
 	DEFAULT_NAME_PATTERN   = ""
@@ -1090,4 +1096,20 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 	}
 
 	return datasetProp
+}
+
+// QueryParam_ConfirmClearDeclarations=true lets an overwrite clear stored property declarations.
+const QueryParam_ConfirmClearDeclarations = "confirm_clear_declarations"
+
+// WithClearDeclarationsConfirmed marks ctx as confirming that an overwrite may clear stored property
+// declarations.
+func WithClearDeclarationsConfirmed(ctx context.Context) context.Context {
+	return context.WithValue(ctx, CONFIRM_CLEAR_DECLARATIONS_KEY, true)
+}
+
+// ClearDeclarationsConfirmed reports whether ctx confirms that an overwrite may clear stored
+// property declarations.
+func ClearDeclarationsConfirmed(ctx context.Context) bool {
+	confirmed, _ := ctx.Value(CONFIRM_CLEAR_DECLARATIONS_KEY).(bool)
+	return confirmed
 }
