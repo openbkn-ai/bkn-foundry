@@ -9,6 +9,7 @@ import (
 
 func TestPublisherPreservesExplicitSemanticMetadata(t *testing.T) {
 	event := publisherTestEvent()
+	event.OperationID, event.Attempt = "op-1", 1
 	// Decode the proposed optional transport fields so this regression also
 	// compiles against the old Event contract, where they were silently lost.
 	metadata := []byte(`{"business_refs":[{"ref_type":"object_type","ref_id":"object:kn:stock","version":"unversioned"}],"operation_business_edges":[{"operation_id":"op-1","business_ref":{"ref_type":"object_type","ref_id":"object:kn:stock","version":"unversioned"},"role":"read","observed_at":"2026-09-22T08:00:01Z"}],"causation_event_ids":["evt-parent"]}`)
