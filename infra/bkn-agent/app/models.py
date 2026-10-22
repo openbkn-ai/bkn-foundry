@@ -190,8 +190,30 @@ class ContextLoaderToolRef(_ToolRefBase):
     profile: Optional[Literal["full", "compact"]] = None
 
 
+class BuiltinToolRef(_ToolRefBase):
+    """Tools implemented inside bkn-agent (app/core/builtin_tools.py), built per
+    execution from its request context. Independent of MCP and the execution
+    factory; the provider is registered in code, not addressed by url."""
+
+    type: Literal["builtin"]
+    provider: str = Field(min_length=1, max_length=100)
+    # The provider's tools this Agent mounts; omit it to mount all of them.
+    tools: Optional[list[Annotated[str, Field(min_length=1, max_length=128)]]] = Field(
+        default=None, max_length=100
+    )
+
+    @model_validator(mode="after")
+    def _known(self):
+        from app.core import builtin_tools
+
+        reason = builtin_tools.unknown_reason(self.model_dump())
+        if reason:
+            raise ValueError(reason)
+        return self
+
+
 ToolRef = Annotated[
-    McpToolRef | ToolboxToolRef | AgentToolRef | ContextLoaderToolRef,
+    McpToolRef | ToolboxToolRef | AgentToolRef | ContextLoaderToolRef | BuiltinToolRef,
     Field(discriminator="type"),
 ]
 
@@ -358,6 +380,10 @@ ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_
 class ExecutionScope(BaseModel):
     model_config = {"extra": "forbid"}
     kn_id: str = Field(min_length=1, max_length=50, pattern=_ID_PATTERN)
+    # The graph explorer's canvas: snapshot, selection, canvas_id and revision.
+    # Required by an Agent that mounts the graph_explorer builtin provider, which
+    # validates it; other Agents must not receive it.
+    canvas: Optional[dict[str, Any]] = None
 
 
 class ExecutionRequest(BaseModel):

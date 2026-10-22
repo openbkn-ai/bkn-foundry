@@ -36,6 +36,27 @@ error_messages = {
         "detail": "This agent requires capabilities not supported by the public execution scope.",
         "solution": "Use the supported built-in Agent configuration.",
     },
+    "BknAgent.Execution.ContextMissing": {
+        "code": "BknAgent.Execution.ContextMissing",
+        "description_template": "This agent needs context.{field}.",
+        "description": "This agent needs more request context.",
+        "detail_template": "This agent needs context.{field}.",
+        "detail": "This agent needs more request context.",
+        "solution": "Send the context the agent's built-in tools require.",
+    },
+    "BknAgent.Execution.ContextInvalid": {
+        "code": "BknAgent.Execution.ContextInvalid",
+        "description": "The request context is invalid for this agent.",
+        "detail_template": "Invalid or unexpected context: {field}",
+        "detail": "The request context is invalid for this agent.",
+        "solution": "Send only the context this agent uses, in its documented shape.",
+    },
+    "BknAgent.Execution.ResultInvalid": {
+        "code": "BknAgent.Execution.ResultInvalid",
+        "description": "The execution produced a result that failed validation.",
+        "detail": "The execution produced a result that failed validation.",
+        "solution": "Retry with a new request ID; report it if it persists.",
+    },
     "BknAgent.Execution.Conflict": {
         "code": "BknAgent.Execution.Conflict",
         "description": "The request conflicts with an existing execution or thread scope.",
@@ -187,6 +208,13 @@ error_messages = {
         "detail_template": "{ref}",
         "detail": "Unknown tool reference type.",
         "solution": "",
+    },
+    "BknAgent.ToolRef.BuiltinUnknown": {
+        "code": "BknAgent.ParamError.ToolRef",
+        "description": "The builtin tool reference names an unknown provider or tool.",
+        "detail_template": "{ref}",
+        "detail": "The builtin tool reference names an unknown provider or tool.",
+        "solution": "Use a provider registered in bkn-agent and only its tool names.",
     },
     "BknAgent.ToolRef.BoxIdMissing": {
         "code": "BknAgent.ParamError.ToolRef",

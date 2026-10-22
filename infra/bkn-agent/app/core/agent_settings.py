@@ -45,6 +45,9 @@ class EffectiveSettings:
     instructions: list[tuple[str, str]] = field(default_factory=list)
     # None means every tool the shared definition loads.
     allowed_tools: Optional[set[str]] = None
+    # Built-in tools narrowed by the layers; the shared definition's builtin
+    # reference already chose which ones the Agent mounts.
+    allowed_builtin_tools: Optional[set[str]] = None
     versions: dict[str, int] = field(default_factory=dict)
 
 
@@ -105,18 +108,21 @@ def merge(
         if any(ref.get("type") == "context_loader" for ref in refs)
         else None
     )
+    allowed_builtin: Optional[set[str]] = None
     instructions: list[tuple[str, str]] = []
     for name, layer in (("network", network), ("user", user)):
         if layer is None:
             continue
         limits = _narrow_limits(limits, layer.limits)
         allowed = _narrow_tools(allowed, layer.allowed_tools)
+        allowed_builtin = _narrow_tools(allowed_builtin, layer.allowed_tools)
         if layer.instruction and layer.instruction.strip():
             instructions.append((name, layer.instruction.strip()))
     return EffectiveSettings(
         agent=agent.model_copy(update={"limits": limits}),
         instructions=instructions,
         allowed_tools=allowed,
+        allowed_builtin_tools=allowed_builtin,
         versions={"network": network_version, "user": user_version},
     )
 

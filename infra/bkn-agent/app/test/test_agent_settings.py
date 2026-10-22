@@ -389,6 +389,8 @@ def test_admin_lists_only_seeded_built_in_agents(monkeypatch):
             assert qa["can_edit"] is True and qa["prompt_version"] == 1
             assert catalog["layered"] is False
             assert catalog["uses_context_loader"] is False
+            assert [t["type"] for t in qa["tools"]] == ["context_loader"]
+            assert catalog["tools"] == []
             assert catalog["can_edit"] is True
 
             # Built-ins outside the public surface are editable here too.
