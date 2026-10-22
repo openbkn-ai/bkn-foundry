@@ -157,3 +157,8 @@ ErrorLink = ""
 Description = "资源已不再处于失效且探查缺失状态"
 Solution = "请重新加载资源后再删除"
 ErrorLink = ""
+
+[VegaBackend.Resource.QueryValueExceedsKeywordLimit]
+Description = "查询值超过关键词最大索引长度"
+Solution = "请缩短筛选值，或在支持时主动选择查询原始数据。"
+ErrorLink = ""

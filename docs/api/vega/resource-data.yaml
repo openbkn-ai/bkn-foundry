@@ -75,6 +75,12 @@ paths:
         `fields`（源字段名数组；输出绑定使用 original_name，过滤条件使用 field 名称）及 `reason`
         （`source_field_mismatch`、`source_feature_mismatch`、`filter_field_missing` 或 `filter_incompatible`）。
         普通查询条件非法仍返回 400 查询参数错误；不因条件来自已保存定义而改为 500。
+        本地索引精确查询值超过 keyword `ignore_above` 时，返回 HTTP 400
+        `VegaBackend.Resource.QueryValueExceedsKeywordLimit`。`metadata.field` 为请求字段名，
+        `metadata.limit` 为正整数长度上限，单位为 UTF-16 code units。
+        客户端按 `error_code` 判断错误类型，使用 metadata 生成本地化提示，不解析 `error_details`。
+        此错误不会自动回源或降级为空结果；调用方可缩短值，或主动设置 `ignore_local_index=true`
+        （仅支持源查询的资源）。旧版后端的通用 InvalidParameter 错误仍按通用错误处理。
         非过滤条件的视图存储结构损坏、源读取及模型服务故障仍按原有错误处理。
         已保存的复合逻辑视图在首次查询和 cursor 续页时也暂时返回 501。
 
@@ -261,6 +267,7 @@ components:
         - `VegaBackend.InvalidParameter.OverrideMethod`：POST 缺/错 Override 头
         - `VegaBackend.InvalidParameter.RequestBody`：body schema / 必填字段不合法
         - `VegaBackend.InvalidParameter.FilterCondition`：filter_condition 解析失败
+        - `VegaBackend.Resource.QueryValueExceedsKeywordLimit`：精确查询值超过索引长度上限，metadata 包含 field 和 limit
         - `VegaBackend.LogicalView.DefinitionInvalid`：已保存视图与当前源字段不匹配；请编辑视图重新配置输出字段或固定过滤条件
         - `VegaBackend.Resource.InternalError.InvalidCategory`：写/删/单条 GET 操作针对非 dataset resource
       content:

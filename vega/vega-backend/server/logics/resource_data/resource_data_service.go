@@ -31,6 +31,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/model_factory"
 	querylogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/query_error"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/rate"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
@@ -302,6 +303,9 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 					return nil, 0, err
 				}
 				if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
+					return nil, 0, httpErr
+				}
+				if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
 					return nil, 0, httpErr
 				}
 				if reason, ok := interfaces.RequestSideQueryError(err); ok {
@@ -677,6 +681,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
 				return nil, 0, httpErr
 			}
+			if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
+				return nil, 0, httpErr
+			}
 			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails(reason)
@@ -711,6 +718,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
 				return nil, 0, httpErr
 			}
+			if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
+				return nil, 0, httpErr
+			}
 			if reason, ok := interfaces.RequestSideQueryError(err); ok {
 				return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 					WithErrorDetails(reason)
@@ -743,6 +753,9 @@ func (rds *resourceDataService) QueryData(ctx context.Context, catalog *interfac
 			// The same typing as the table/index branches: The unimplemented operators of anyshare are problems on the request side
 			// The caller can pass by simply changing the operator. If everything is uniformly packaged as 500, ontology-query will be judged as a dependency fault.
 			if httpErr, ok := outputFieldHTTPError(ctx, err); ok {
+				return nil, 0, httpErr
+			}
+			if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
 				return nil, 0, httpErr
 			}
 			if reason, ok := interfaces.RequestSideQueryError(err); ok {

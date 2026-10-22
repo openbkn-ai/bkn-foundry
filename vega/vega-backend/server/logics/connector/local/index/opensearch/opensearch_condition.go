@@ -257,7 +257,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionEqual(condition interfaces.F
 	}
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+		if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
 			return nil, err
 		}
 		if cond.Lfield.Type == interfaces.DataType_Time {
@@ -306,7 +306,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotEqual(condition interface
 	}
 	switch cond.Cfg.ValueFrom {
 	case interfaces.ValueFrom_Const:
-		if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+		if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
 			return nil, err
 		}
 		if cond.Lfield.Type == interfaces.DataType_Time {
@@ -456,7 +456,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionIn(condition interfaces.Filt
 	if err != nil {
 		return nil, err
 	}
-	if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+	if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -491,7 +491,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionNotIn(condition interfaces.F
 	if err != nil {
 		return nil, err
 	}
-	if err := validateKeywordValues(fieldName, cond.Value, schemaDefinition); err != nil {
+	if err := validateKeywordValues(fieldName, cond.Cfg.Name, cond.Value, schemaDefinition); err != nil {
 		return nil, err
 	}
 
@@ -1230,8 +1230,9 @@ func (c *OpenSearchConnector) exactMatchFieldName(fieldName string, schemaDefini
 	return "", interfaces.NewConditionBuildError("text field %s has no keyword feature; re-save the resource configuration and rebuild the local index, or use match", fieldName)
 }
 
-func validateKeywordValues(fieldName string, value any, schemaDefinition []*interfaces.Property) error {
-	prop := exactMatchProperty(fieldName, schemaDefinition)
+// validateKeywordValues 使用物理字段配置校验，超限错误保留调用方请求的字段名。
+func validateKeywordValues(physicalFieldName, requestFieldName string, value any, schemaDefinition []*interfaces.Property) error {
+	prop := exactMatchProperty(physicalFieldName, schemaDefinition)
 	if prop == nil || (prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text) {
 		return nil
 	}
@@ -1252,8 +1253,7 @@ func validateKeywordValues(fieldName string, value any, schemaDefinition []*inte
 			// OpenSearch compares ignore_above with Java String.length(), whose
 			// unit is UTF-16 code units rather than Unicode code points.
 			if ok && len(utf16.Encode([]rune(text))) > limit {
-				return interfaces.NewConditionBuildError(
-					"value for %s field %s exceeds keyword ignore_above %d and cannot be compared exactly", prop.Type, fieldName, limit)
+				return interfaces.NewKeywordLimitError(requestFieldName, limit)
 			}
 		}
 		return nil
