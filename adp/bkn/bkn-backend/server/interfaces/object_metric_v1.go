@@ -62,15 +62,16 @@ type ObjectMetricLogicPropertyV1 struct {
 	Comment      string `json:"comment,omitempty"`
 }
 
-// ObjectMetricRecordV1 adds persistence metadata around an immutable metric definition version.
+// ObjectMetricRecordV1 adds persistence metadata and read projections around an immutable metric definition version.
 type ObjectMetricRecordV1 struct {
-	Definition ObjectMetricDefinitionV1 `json:"definition"`
-	KNID       string                   `json:"kn_id"`
-	Branch     string                   `json:"branch"`
-	Creator    AccountInfo              `json:"creator"`
-	Updater    AccountInfo              `json:"updater"`
-	CreateTime int64                    `json:"create_time"`
-	UpdateTime int64                    `json:"update_time"`
+	Definition          ObjectMetricDefinitionV1 `json:"definition"`
+	OwnerObjectTypeName string                   `json:"owner_object_type_name,omitempty"`
+	KNID                string                   `json:"kn_id"`
+	Branch              string                   `json:"branch"`
+	Creator             AccountInfo              `json:"creator"`
+	Updater             AccountInfo              `json:"updater"`
+	CreateTime          int64                    `json:"create_time"`
+	UpdateTime          int64                    `json:"update_time"`
 }
 
 type ObjectMetricListQueryV1 struct {

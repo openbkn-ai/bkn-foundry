@@ -103,6 +103,54 @@ func parseObjectMetricVersion(c *gin.Context) (int, bool) {
 	return version, true
 }
 
+// populateObjectMetricOwnerNames projects only the owner object-type name after
+// metric authorization has succeeded. It deliberately bypasses object-type
+// authorization and does not expose the object-type definition or properties.
+func (r *restHandler) populateObjectMetricOwnerNames(
+	ctx context.Context,
+	knID string,
+	branch string,
+	records []*interfaces.ObjectMetricRecordV1,
+) ([]*interfaces.ObjectMetricRecordV1, error) {
+	ownerIDs := make([]string, 0, len(records))
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if record == nil || record.Definition.OwnerObjectTypeID == "" {
+			continue
+		}
+		ownerID := record.Definition.OwnerObjectTypeID
+		if _, exists := seen[ownerID]; exists {
+			continue
+		}
+		seen[ownerID] = struct{}{}
+		ownerIDs = append(ownerIDs, ownerID)
+	}
+	if len(ownerIDs) == 0 {
+		return records, nil
+	}
+	objectTypeService := r.ots
+	if objectTypeService == nil {
+		objectTypeService = object_type.NewObjectTypeService(r.appSetting)
+	}
+	owners, err := objectTypeService.GetObjectTypesMapByIDs(ctx, knID, branch, ownerIDs, false)
+	if err != nil {
+		return nil, err
+	}
+	projected := make([]*interfaces.ObjectMetricRecordV1, len(records))
+	for index, record := range records {
+		if record == nil {
+			continue
+		}
+		copy := *record
+		copy.OwnerObjectTypeName = ""
+		if owner := owners[copy.Definition.OwnerObjectTypeID]; owner != nil {
+			copy.OwnerObjectTypeName = owner.OTName
+		}
+		projected[index] = &copy
+	}
+	return projected, nil
+}
+
 func parseRequiredObjectMetricVersion(c *gin.Context) (int, bool) {
 	if c.Query("version") == "" {
 		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
@@ -194,25 +242,34 @@ func (r *restHandler) getObjectMetric(c *gin.Context, vis hydra.Visitor) {
 	if !ok {
 		return
 	}
-	record, err := r.oms.Get(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	ctx := objectMetricContext(c, vis)
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	record, err := r.oms.Get(ctx, c.Param("kn_id"), branch, c.Param("metric_id"), version)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
 	}
-	rest.ReplyOK(c, http.StatusOK, record)
+	projected, err := r.populateObjectMetricOwnerNames(ctx, c.Param("kn_id"), branch, []*interfaces.ObjectMetricRecordV1{record})
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, projected[0])
 }
 
 func (r *restHandler) ListObjectMetricsByEx(c *gin.Context) {
-	r.objectMetricExternal(c, r.listObjectMetrics)
+	r.objectMetricExternal(c, func(c *gin.Context, vis hydra.Visitor) {
+		r.listObjectMetrics(c, vis, true)
+	})
 }
 
 // ListObjectMetricsByIn preserves the caller identity from internal headers;
 // the service applies the same metric view permissions as the public list.
 func (r *restHandler) ListObjectMetricsByIn(c *gin.Context) {
-	r.listObjectMetrics(c, visitor.GenerateVisitor(c))
+	r.listObjectMetrics(c, visitor.GenerateVisitor(c), false)
 }
 
-func (r *restHandler) listObjectMetrics(c *gin.Context, vis hydra.Visitor) {
+func (r *restHandler) listObjectMetrics(c *gin.Context, vis hydra.Visitor, includeOwnerNames bool) {
 	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	if err != nil || offset < 0 {
 		offset = 0
@@ -221,13 +278,26 @@ func (r *restHandler) listObjectMetrics(c *gin.Context, vis hydra.Visitor) {
 	if err != nil || limit < 1 || limit > 500 {
 		limit = 20
 	}
-	result, err := r.oms.List(objectMetricContext(c, vis), interfaces.ObjectMetricListQueryV1{
-		KNID: c.Param("kn_id"), Branch: c.DefaultQuery("branch", interfaces.MAIN_BRANCH),
+	ctx := objectMetricContext(c, vis)
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	result, err := r.oms.List(ctx, interfaces.ObjectMetricListQueryV1{
+		KNID: c.Param("kn_id"), Branch: branch,
 		OwnerObjectTypeID: c.Query("owner_object_type_id"), MetricType: c.Query("metric_type"),
 		Status: c.Query("status"), Keyword: c.Query("keyword"), Offset: offset, Limit: limit,
 	})
 	if err != nil {
 		replyObjectMetricError(c, err)
+		return
+	}
+	if includeOwnerNames {
+		projected, err := r.populateObjectMetricOwnerNames(ctx, c.Param("kn_id"), branch, result.Entries)
+		if err != nil {
+			replyObjectMetricError(c, err)
+			return
+		}
+		response := *result
+		response.Entries = projected
+		rest.ReplyOK(c, http.StatusOK, &response)
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, result)
@@ -281,12 +351,19 @@ func (r *restHandler) ListObjectMetricVersionsByEx(c *gin.Context) {
 }
 
 func (r *restHandler) listObjectMetricVersions(c *gin.Context, vis hydra.Visitor) {
-	entries, err := r.oms.ListVersions(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"))
+	ctx := objectMetricContext(c, vis)
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	entries, err := r.oms.ListVersions(ctx, c.Param("kn_id"), branch, c.Param("metric_id"))
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
 	}
-	rest.ReplyOK(c, http.StatusOK, entries)
+	projected, err := r.populateObjectMetricOwnerNames(ctx, c.Param("kn_id"), branch, entries)
+	if err != nil {
+		replyObjectMetricError(c, err)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, projected)
 }
 
 func (r *restHandler) createObjectMetricVersion(c *gin.Context, vis hydra.Visitor) {

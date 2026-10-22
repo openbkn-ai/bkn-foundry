@@ -403,6 +403,9 @@ components:
       required: [definition, kn_id, branch, creator, updater, create_time, update_time]
       properties:
         definition: { $ref: "#/components/schemas/ObjectMetricDefinition" }
+        owner_object_type_name:
+          type: string
+          description: Name-only projection of the owning object type for callers authorized to view the metric. This does not grant object-type detail access.
         kn_id: { type: string }
         branch: { type: string }
         creator: { type: object, additionalProperties: true }
