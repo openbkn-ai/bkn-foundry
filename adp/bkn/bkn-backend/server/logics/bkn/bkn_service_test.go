@@ -555,3 +555,70 @@ func Test_bknService_CheckNetwork(t *testing.T) {
 		So(result.MisplacedParameters, ShouldNotBeNil) // an empty list, not null, in the response
 	})
 }
+
+// declaredKN has an object type with property declarations.
+func declaredKN(knID string, declared bool) *interfaces.KN {
+	props := []*interfaces.DataProperty{
+		{Name: "id", DisplayName: "编号", Type: "string", MappedField: &interfaces.Field{Name: "id"}},
+		{Name: "placed_at", DisplayName: "下单时间", Type: "datetime", MappedField: &interfaces.Field{Name: "placed_at"}},
+		{Name: "amount", DisplayName: "金额", Type: "decimal", MappedField: &interfaces.Field{Name: "amount"}},
+	}
+	if declared {
+		props[1].Semantic, props[1].Required = "event_time", true
+		props[2].Constraints = &interfaces.PropertyConstraints{Range: &interfaces.ValueRange{Min: float64(0)}, Unit: "元"}
+	}
+	return &interfaces.KN{KNID: knID, KNName: "订单", ObjectTypes: []*interfaces.ObjectType{{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+			OTID: "order", OTName: "订单", PrimaryKeys: []string{"id"}, DisplayKey: "id", DataProperties: props,
+		},
+	}}}
+}
+
+// exportedFiles reads every file of an exported archive except CHECKSUM, whose header carries the
+// time it was generated.
+func exportedFiles(t *testing.T, data []byte) map[string]string {
+	t.Helper()
+	mfs, root, err := bknsdk.ExtractTarToMemory(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{}
+	for _, path := range []string{"network.bkn", "object_types/order.bkn", "SKILL.md"} {
+		content, err := mfs.ReadFile(mfs.Join(root, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[path] = string(content)
+	}
+	return files
+}
+
+func Test_bknService_ExportDeclarations(t *testing.T) {
+	Convey("Test bknService ExportToTar with stored property declarations\n", t, func() {
+		svc, mockCtrl, kns := newTestBKNService(t)
+		defer mockCtrl.Finish()
+
+		Convey("A network with declarations is written as 3.0 and keeps them\n", func() {
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", true), nil)
+			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+			So(err, ShouldBeNil)
+			So(network.BknSpec, ShouldEqual, bknsdk.BknSpecV3)
+			props := network.ObjectTypes[0].DataProperties
+			So(props[1].Semantic, ShouldEqual, "event_time")
+			So(props[1].Required, ShouldBeTrue)
+			So(props[2].Constraints, ShouldResemble, &bknsdk.PropertyConstraints{Range: &bknsdk.ValueRange{Min: int64(0)}, Unit: "元"})
+		})
+
+		Convey("2.0 leaves the declarations out, byte for byte as a network that never had them\n", func() {
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", true), nil)
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
+			declared, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_2)
+			So(err, ShouldBeNil)
+			plain, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			So(exportedFiles(t, declared), ShouldResemble, exportedFiles(t, plain))
+		})
+	})
+}

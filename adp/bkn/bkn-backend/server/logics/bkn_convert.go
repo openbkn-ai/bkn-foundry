@@ -7,7 +7,9 @@
 package logics
 
 import (
+	"encoding/json"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"math"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
@@ -82,6 +84,9 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 			Type:        dp.Type,
 			Comment:     dp.Description,
 			MaskRule:    dp.MaskRule,
+			Semantic:    dp.Semantic,
+			Required:    dp.Required,
+			Constraints: toADPConstraints(dp.Constraints),
 		}
 
 		if dp.MappedField != "" {
@@ -173,6 +178,9 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 			Type:        adpDP.Type,
 			Description: adpDP.Comment,
 			MaskRule:    adpDP.MaskRule,
+			Semantic:    adpDP.Semantic,
+			Required:    adpDP.Required,
+			Constraints: toBKNConstraints(adpDP.Constraints),
 		}
 
 		if adpDP.MappedField != nil {
@@ -695,4 +703,58 @@ func toBKNActionCondCfg(adpCond *interfaces.ActionCondCfg) *bknsdk.ActionCondCfg
 	}
 
 	return bknCond
+}
+
+// toADPConstraints carries a property's ### Property Constraints into the stored model.
+func toADPConstraints(c *bknsdk.PropertyConstraints) *interfaces.PropertyConstraints {
+	if c == nil {
+		return nil
+	}
+	out := &interfaces.PropertyConstraints{
+		ValueType: c.ValueType, Pattern: c.Pattern, Unit: c.Unit, Unique: c.Unique, CRS: c.CRS, Timezone: c.Timezone,
+	}
+	if c.Range != nil {
+		out.Range = &interfaces.ValueRange{Min: c.Range.Min, Max: c.Range.Max}
+	}
+	if c.Length != nil {
+		out.Length = &interfaces.LengthRange{Min: c.Length.Min, Max: c.Length.Max}
+	}
+	return out
+}
+
+// toBKNConstraints carries stored constraints into the specification model. A bound read from JSON
+// is a float64; a whole number goes back as an integer, so a 3.0 export writes 0, not 0.0.
+func toBKNConstraints(c *interfaces.PropertyConstraints) *bknsdk.PropertyConstraints {
+	if c.IsEmpty() {
+		return nil
+	}
+	out := &bknsdk.PropertyConstraints{
+		ValueType: c.ValueType, Pattern: c.Pattern, Unit: c.Unit, Unique: c.Unique, CRS: c.CRS, Timezone: c.Timezone,
+	}
+	if c.Range != nil {
+		out.Range = &bknsdk.ValueRange{Min: rangeBound(c.Range.Min), Max: rangeBound(c.Range.Max)}
+	}
+	if c.Length != nil {
+		out.Length = &bknsdk.LengthRange{Min: c.Length.Min, Max: c.Length.Max}
+	}
+	return out
+}
+
+func rangeBound(v any) any {
+	switch n := v.(type) {
+	case float64:
+		if n == math.Trunc(n) && math.Abs(n) < 1<<53 {
+			return int64(n)
+		}
+	case int:
+		return int64(n)
+	case json.Number:
+		if i, err := n.Int64(); err == nil {
+			return i
+		}
+		if f, err := n.Float64(); err == nil {
+			return f
+		}
+	}
+	return v
 }
