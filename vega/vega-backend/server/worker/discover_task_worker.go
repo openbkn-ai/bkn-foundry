@@ -8,6 +8,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,8 @@ const (
 	defaultDiscoverWorkerCount = 1
 	resourceCountTimeout       = 5 * time.Minute
 )
+
+var errInvalidExactCount = errors.New("source did not return a valid exact count")
 
 type discoverTaskQueueItem struct {
 	taskID    string
@@ -576,7 +579,7 @@ func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *inte
 			if tableConnector, ok := connector.(interfaces.TableConnector); ok {
 				err = dtw.enrichResourceTableRowCount(ctx, task, resource, tableConnector, result)
 			} else if singleResource {
-				result.FailedCount++
+				recordCountQueryFailure(result, resource, interfaces.ErrRowCountUnavailable)
 			} else {
 				return nil, fmt.Errorf("connector does not support table count")
 			}
@@ -584,13 +587,13 @@ func (dtw *DiscoverTaskWorker) countResources(ctx context.Context, catalog *inte
 			if indexConnector, ok := connector.(interfaces.IndexConnector); ok {
 				err = dtw.enrichResourceIndexRowCount(ctx, task, resource, indexConnector, &interfaces.IndexMeta{Name: resource.SourceIdentifier}, result)
 			} else if singleResource {
-				result.FailedCount++
+				recordCountQueryFailure(result, resource, interfaces.ErrRowCountUnavailable)
 			} else {
 				return nil, fmt.Errorf("connector does not support index count")
 			}
 		default:
 			if singleResource {
-				result.FailedCount++
+				recordCountQueryFailure(result, resource, interfaces.ErrRowCountUnavailable)
 			} else {
 				result.SkippedCount++
 			}
@@ -649,17 +652,61 @@ func (dtw *DiscoverTaskWorker) enrichResourceLogicalViewRowCount(ctx context.Con
 	if parentErr := ctx.Err(); parentErr != nil {
 		return parentErr
 	}
-	if err == nil && (counted == nil || !counted.NeedTotal || counted.TotalCount < 0) {
-		err = fmt.Errorf("logical view did not return an exact total count")
-	}
-	if err == nil {
-		err = dtw.rs.InternalUpdateRowCount(ctx, nil, view, counted.TotalCount, time.Now().UnixMilli())
-	}
 	if err != nil {
-		result.FailedCount++
+		recordCountQueryFailure(result, view, err)
 		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", view.ID, err)
-	} else {
-		result.UpdatedCount++
+		return nil
 	}
+	if counted == nil || !counted.NeedTotal || counted.TotalCount < 0 {
+		recordCountQueryFailure(result, view, errInvalidExactCount)
+		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", view.ID, errInvalidExactCount)
+		return nil
+	}
+
+	if err := dtw.rs.InternalUpdateRowCount(ctx, nil, view, counted.TotalCount, time.Now().UnixMilli()); err != nil {
+		recordCountSaveFailure(result, view)
+		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", view.ID, err)
+		return nil
+	}
+	result.UpdatedCount++
 	return nil
+}
+
+// recordCountQueryFailure 记录计数查询失败及资源快照。
+func recordCountQueryFailure(result *interfaces.DiscoverResult, resource *interfaces.Resource, err error) {
+	var code, message string
+	var forbidden *interfaces.SourceReadForbiddenError
+	var memoryLimit *interfaces.SourceMemoryLimitError
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		code, message = "timeout", "The exact count query timed out. Check source workload and retry."
+	case errors.Is(err, interfaces.ErrRowCountUnavailable):
+		code, message = "count_unavailable", "Exact counting is not supported for this resource."
+	case errors.Is(err, errInvalidExactCount):
+		code, message = "invalid_count", "The source did not return a valid exact count."
+	case errors.As(err, &forbidden):
+		code, message = "source_read_forbidden", "The source account does not have permission to read this resource."
+	case errors.As(err, &memoryLimit):
+		code, message = "source_memory_limit", "The source database reached its memory limit. Reduce source workload or ask an administrator to review its memory limit, then retry."
+	default:
+		code, message = "count_failed", "Failed to read the exact count from the source. Contact an administrator to check the task logs."
+	}
+	result.FailedCount++
+	result.Failures = append(result.Failures, interfaces.DiscoverResourceFailure{
+		ResourceID:   resource.ID,
+		ResourceName: resource.Name,
+		Code:         code,
+		Message:      message,
+	})
+}
+
+// recordCountSaveFailure 记录计数结果保存失败及资源快照。
+func recordCountSaveFailure(result *interfaces.DiscoverResult, resource *interfaces.Resource) {
+	result.FailedCount++
+	result.Failures = append(result.Failures, interfaces.DiscoverResourceFailure{
+		ResourceID:   resource.ID,
+		ResourceName: resource.Name,
+		Code:         "save_failed",
+		Message:      "Failed to save the exact count. The previous count is retained; retry the task.",
+	})
 }

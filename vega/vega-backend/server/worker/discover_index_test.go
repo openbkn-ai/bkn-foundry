@@ -350,3 +350,52 @@ func TestEnrichIndexMetadataResolvesAliasWithoutLosingSourceType(t *testing.T) {
 		&interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
 	require.NoError(t, err)
 }
+
+func TestDiscoverTaskWorkerEnrichResourceIndexRowCount(t *testing.T) {
+	for _, tc := range []struct {
+		name                     string
+		single                   bool
+		count                    int64
+		countErr, saveErr        error
+		failed, skipped, updated int
+		code                     string
+	}{
+		{name: "query failure does not save", countErr: context.DeadlineExceeded, failed: 1, code: "timeout"},
+		{name: "unsupported batch resource is skipped", countErr: interfaces.ErrRowCountUnavailable, skipped: 1},
+		{name: "unsupported single resource fails", single: true, countErr: interfaces.ErrRowCountUnavailable, failed: 1, code: "count_unavailable"},
+		{name: "negative count does not save", count: -1, failed: 1, code: "invalid_count"},
+		{name: "save failure is not skipped", count: 4, saveErr: interfaces.ErrRowCountUnavailable, failed: 1, code: "save_failed"},
+		{name: "save failure", count: 4, saveErr: errors.New("write failed"), failed: 1, code: "save_failed"},
+		{name: "empty index is successfully saved", updated: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			connector := vmock.NewMockIndexConnector(ctrl)
+			rs := vmock.NewMockResourceService(ctrl)
+			oldCount, oldTime := int64(9), int64(10)
+			resource := &interfaces.Resource{ID: "r1", Name: "Products", RowCount: &oldCount, RowCountTime: &oldTime}
+			meta := &interfaces.IndexMeta{Name: "products"}
+			task := &interfaces.DiscoverTask{}
+			if tc.single {
+				task.ResourceID = resource.ID
+			}
+			connector.EXPECT().CountRows(gomock.Any(), meta).Return(tc.count, tc.countErr)
+			if tc.countErr == nil && tc.count >= 0 {
+				rs.EXPECT().InternalUpdateRowCount(gomock.Any(), nil, resource, tc.count, gomock.Any()).Return(tc.saveErr)
+			}
+			result := &interfaces.DiscoverResult{}
+			err := (&DiscoverTaskWorker{rs: rs}).enrichResourceIndexRowCount(context.Background(), task, resource, connector, meta, result)
+			require.NoError(t, err)
+			assert.Equal(t, tc.failed, result.FailedCount)
+			assert.Equal(t, tc.skipped, result.SkippedCount)
+			assert.Equal(t, tc.updated, result.UpdatedCount)
+			require.Len(t, result.Failures, tc.failed)
+			if tc.failed > 0 {
+				assert.Equal(t, tc.code, result.Failures[0].Code)
+				assert.Equal(t, resource.ID, result.Failures[0].ResourceID)
+				assert.Equal(t, oldCount, *resource.RowCount)
+				assert.Equal(t, oldTime, *resource.RowCountTime)
+			}
+		})
+	}
+}

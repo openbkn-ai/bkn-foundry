@@ -39,18 +39,27 @@ var (
 	}
 )
 
+// DiscoverResourceFailure 保存可对外展示的资源级失败快照，不包含源端原始错误。
+type DiscoverResourceFailure struct {
+	ResourceID   string `json:"resource_id"`
+	ResourceName string `json:"resource_name"`
+	Code         string `json:"code"`
+	Message      string `json:"message"`
+}
+
 // DiscoverResult represents the result of a discover operation.
 type DiscoverResult struct {
-	Failed         bool   `json:"-"`
-	CatalogID      string `json:"catalog_id"`
-	NewCount       int    `json:"new_count"`
-	StaleCount     int    `json:"stale_count"`
-	UnchangedCount int    `json:"unchanged_count"`
-	UpdatedCount   int    `json:"updated_count"`
-	RestoredCount  int    `json:"restored_count"`
-	FailedCount    int    `json:"failed_count"`
-	SkippedCount   int    `json:"skipped_count,omitempty"`
-	Message        string `json:"message"`
+	Failures       []DiscoverResourceFailure `json:"failures,omitempty"`
+	Failed         bool                      `json:"-"`
+	CatalogID      string                    `json:"catalog_id"`
+	NewCount       int                       `json:"new_count"`
+	StaleCount     int                       `json:"stale_count"`
+	UnchangedCount int                       `json:"unchanged_count"`
+	UpdatedCount   int                       `json:"updated_count"`
+	RestoredCount  int                       `json:"restored_count"`
+	FailedCount    int                       `json:"failed_count"`
+	SkippedCount   int                       `json:"skipped_count,omitempty"`
+	Message        string                    `json:"message"`
 }
 
 // DiscoverTask represents a discover task entity.

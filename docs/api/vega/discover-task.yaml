@@ -300,7 +300,7 @@ components:
           description: Display name
           type: string
     DiscoverResult:
-      description: Discovery task result, meaningful only when `status=completed`.
+      description: Persisted discovery result, available for completed tasks and resource-level count failures.
       type: object
       required:
         - catalog_id
@@ -322,7 +322,7 @@ components:
           description: Number of unchanged resources in this discovery run
           type: integer
         updated_count:
-          description: Number of resources whose changed attributes were updated
+          description: Number of resources updated; for count_only, resources successfully counted (not the source row count)
           type: integer
         restored_count:
           description: Number of invalid resources restored to available
@@ -333,9 +333,28 @@ components:
         failed_count:
           description: Number of resources that failed during discovery
           type: integer
+        failures:
+          type: array
+          description: Exact count failures; omitted for historical results or when no resource failed. Available on task detail only.
+          items:
+            $ref: "#/components/schemas/DiscoverResourceFailure"
         message:
           description: Execution details
           type: string
+    DiscoverResourceFailure:
+      type: object
+      description: Safe resource-level exact count failure snapshot. Raw source errors remain in controlled logs.
+      required: [resource_id, resource_name, code, message]
+      properties:
+        resource_id: { type: string }
+        resource_name: { type: string }
+        code:
+          type: string
+          description: Stable failure category; clients must tolerate unknown codes
+          examples: [source_memory_limit, timeout, count_unavailable, invalid_count, source_read_forbidden, count_failed, save_failed]
+        message:
+          type: string
+          description: Caller-safe explanation without raw SQL, connection credentials or stack traces
     DiscoverTask:
       description: Discovery task entity
       type: object

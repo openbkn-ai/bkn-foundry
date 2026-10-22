@@ -409,21 +409,26 @@ func (dtw *DiscoverTaskWorker) enrichResourceIndexRowCount(ctx context.Context,
 	count, err := connector.CountRows(queryCtx, meta)
 	cancel()
 
-	if err == nil && count < 0 {
-		err = fmt.Errorf("invalid negative row count")
-	}
-	if err == nil {
-		err = dtw.rs.InternalUpdateRowCount(ctx, nil, resource, count, time.Now().UnixMilli())
-	}
 	if err != nil {
 		if errors.Is(err, interfaces.ErrRowCountUnavailable) && task.ResourceID == "" {
 			result.SkippedCount++
 		} else {
-			result.FailedCount++
+			recordCountQueryFailure(result, resource, err)
 		}
 		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", resource.ID, err)
-	} else {
-		result.UpdatedCount++
+		return nil
 	}
+	if count < 0 {
+		recordCountQueryFailure(result, resource, errInvalidExactCount)
+		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", resource.ID, errInvalidExactCount)
+		return nil
+	}
+
+	if err := dtw.rs.InternalUpdateRowCount(ctx, nil, resource, count, time.Now().UnixMilli()); err != nil {
+		recordCountSaveFailure(result, resource)
+		logger.Warnf("Resource exact count failed: resource_id=%s error=%v", resource.ID, err)
+		return nil
+	}
+	result.UpdatedCount++
 	return nil
 }
