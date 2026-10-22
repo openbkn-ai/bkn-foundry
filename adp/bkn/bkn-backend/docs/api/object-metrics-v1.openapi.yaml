@@ -111,9 +111,35 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ObjectMetricRecord" }
     delete:
-      operationId: deleteObjectMetricDraft
+      operationId: deleteObjectMetricVersion
+      parameters:
+        - $ref: "#/components/parameters/RequiredVersion"
+      description: >-
+        Deletes exactly one version in the requested knowledge-network branch. Metric references are
+        branch-local because a metric reference does not carry a branch. Published versions and versions
+        referenced by any retained metric version or logical property cannot be deleted.
       responses:
-        "204": { description: Draft removed. Published versions cannot be deleted. }
+        "204": { description: "Draft, validated, or unreferenced deprecated version removed." }
+        "404": { description: The requested metric version does not exist (including a repeated delete). }
+        "409": { description: Published version or a version retained by metric/property references. }
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deletion-check:
+    parameters:
+      - $ref: "#/components/parameters/KnowledgeNetworkId"
+      - $ref: "#/components/parameters/MetricId"
+      - $ref: "#/components/parameters/Branch"
+      - $ref: "#/components/parameters/RequiredVersion"
+    get:
+      operationId: checkObjectMetricVersionDeletion
+      description: >-
+        Checks the same branch-local constraints enforced atomically by DELETE. Blocker details are filtered
+        by view permission; hidden blockers are reported only as a count.
+      responses:
+        "200":
+          description: Permission-filtered deletion eligibility and blockers.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObjectMetricVersionDeletionCheck" }
+        "404": { description: The requested metric version does not exist. }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/versions:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
@@ -389,6 +415,29 @@ components:
       properties:
         entries: { type: array, items: { $ref: "#/components/schemas/ObjectMetricRecord" } }
         total_count: { type: integer, minimum: 0 }
+    ObjectMetricDeletionBlocker:
+      type: object
+      required: [resource_type, resource_id, field]
+      properties:
+        resource_type: { type: string, enum: [metric_version, logic_property] }
+        resource_id: { type: string }
+        version: { type: integer, minimum: 1 }
+        name: { type: string }
+        field: { type: string }
+        property_name: { type: string }
+    ObjectMetricVersionDeletionCheck:
+      type: object
+      required: [metric_id, metric_name, version, status, deletable, blockers, hidden_blocker_count]
+      properties:
+        metric_id: { type: string }
+        metric_name: { type: string }
+        version: { type: integer, minimum: 1 }
+        status: { $ref: "#/components/schemas/LifecycleStatus" }
+        deletable: { type: boolean }
+        blockers:
+          type: array
+          items: { $ref: "#/components/schemas/ObjectMetricDeletionBlocker" }
+        hidden_blocker_count: { type: integer, minimum: 0 }
     ValidationIssue:
       type: object
       required: [code, field, message]

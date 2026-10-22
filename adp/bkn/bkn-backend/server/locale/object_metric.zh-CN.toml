@@ -23,6 +23,11 @@ Description = "对象指标依赖不合法"
 Solution = "请检查依赖版本、对象对齐、时间窗口和循环依赖。"
 ErrorLink = ""
 
+[BknBackend.ObjectMetric.DeleteBlocked]
+Description = "该对象指标版本仍被引用"
+Solution = "请先删除或升级所有指标及逻辑属性引用，再删除该版本。"
+ErrorLink = ""
+
 [BknBackend.ObjectMetric.InternalError]
 Description = "对象指标服务内部错误"
 Solution = "请稍后重试；若问题持续，请联系管理员。"

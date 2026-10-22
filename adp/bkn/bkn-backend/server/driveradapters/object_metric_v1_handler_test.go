@@ -7,6 +7,7 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -51,6 +52,55 @@ func (s *objectMetricBindServiceStub) UpgradeLogicProperty(_ context.Context, _,
 type objectMetricUpdateServiceStub struct {
 	interfaces.ObjectMetricServiceV1
 	updateCalls int
+}
+
+type objectMetricDeleteServiceStub struct {
+	interfaces.ObjectMetricServiceV1
+	called  bool
+	version int
+	err     error
+}
+
+func (s *objectMetricDeleteServiceStub) DeleteVersion(_ context.Context, _, _, _ string, version int) (*interfaces.ObjectMetricRecordV1, error) {
+	s.called = true
+	s.version = version
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &interfaces.ObjectMetricRecordV1{Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Name: "Metric one", Version: version}}, nil
+}
+
+func TestDeleteObjectMetricVersionRequiresExplicitVersion(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	service := &objectMetricDeleteServiceStub{}
+	handler := &restHandler{oms: service}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/m-1", nil)
+	c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "m-1"}}
+
+	handler.deleteObjectMetricVersion(c, hydra.Visitor{})
+	if recorder.Code != http.StatusBadRequest || service.called {
+		t.Fatalf("status=%d called=%v body=%s", recorder.Code, service.called, recorder.Body.String())
+	}
+}
+
+func TestDeleteObjectMetricVersionAuditsExactVersionOnFailure(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	service := &objectMetricDeleteServiceStub{err: errors.New("blocked")}
+	handler := &restHandler{oms: service}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics/m-1?version=3", nil)
+	c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}, {Key: "metric_id", Value: "m-1"}}
+
+	handler.deleteObjectMetricVersion(c, hydra.Visitor{})
+	targets, _ := c.Get("operation_audit_target_ids")
+	if !service.called || service.version != 3 || !reflect.DeepEqual(targets, []string{"m-1@3"}) {
+		t.Fatalf("called=%v version=%d audit targets=%#v", service.called, service.version, targets)
+	}
 }
 
 func (s *objectMetricUpdateServiceStub) UpdateDraft(context.Context, string, string, string, *interfaces.ObjectMetricDefinitionV1) (*interfaces.ObjectMetricRecordV1, error) {

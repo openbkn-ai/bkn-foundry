@@ -7,6 +7,7 @@ package object_type
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"reflect"
@@ -21,6 +22,47 @@ import (
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 )
+
+type objectMetricReferenceAccessStub struct {
+	interfaces.ObjectMetricAccessV1
+	replaceCalls int
+}
+
+func (stub *objectMetricReferenceAccessStub) ReplaceObjectTypeMetricReferences(context.Context, *sql.Tx, *interfaces.ObjectType) error {
+	stub.replaceCalls++
+	return nil
+}
+
+func (*objectMetricReferenceAccessStub) DeleteObjectTypeMetricReferences(context.Context, *sql.Tx, string, string, []string) error {
+	return nil
+}
+
+func (*objectMetricReferenceAccessStub) RebuildObjectTypeMetricReferences(context.Context, *sql.Tx, string, string) error {
+	return nil
+}
+
+func TestWholeNetworkImportDefersObjectTypeMetricReferences(t *testing.T) {
+	previous := logics.OMA
+	t.Cleanup(func() { logics.OMA = previous })
+	access := &objectMetricReferenceAccessStub{}
+	logics.OMA = access
+	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order"}}
+
+	if err := replaceObjectTypeMetricReferences(
+		interfaces.WithObjectMetricReferenceSyncDeferred(context.Background()), nil, objectType,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if access.replaceCalls != 0 {
+		t.Fatalf("whole-network import wrote references before metrics: calls=%d", access.replaceCalls)
+	}
+	if err := replaceObjectTypeMetricReferences(context.Background(), nil, objectType); err != nil {
+		t.Fatal(err)
+	}
+	if access.replaceCalls != 1 {
+		t.Fatalf("ordinary object-type mutation did not synchronize references: calls=%d", access.replaceCalls)
+	}
+}
 
 func TestObjectMetricV1PropertyUniquenessAcrossVersions(t *testing.T) {
 	objectType := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -151,8 +193,11 @@ func (stub *objectMetricAccessStub) ListObjectMetricIDs(context.Context, interfa
 func (stub *objectMetricAccessStub) ListObjectMetricVersions(context.Context, string, string, string) ([]*interfaces.ObjectMetricRecordV1, error) {
 	return nil, nil
 }
-func (stub *objectMetricAccessStub) DeleteObjectMetricDraft(context.Context, string, string, string, int) error {
-	return nil
+func (stub *objectMetricAccessStub) GetObjectMetricVersionDeletion(context.Context, string, string, string, int) (*interfaces.ObjectMetricVersionDeletionStateV1, error) {
+	return nil, nil
+}
+func (stub *objectMetricAccessStub) DeleteObjectMetricVersion(context.Context, string, string, string, int) (*interfaces.ObjectMetricVersionDeletionStateV1, error) {
+	return nil, nil
 }
 func (stub *objectMetricAccessStub) PublishObjectMetric(context.Context, *interfaces.ObjectMetricRecordV1) error {
 	return nil
