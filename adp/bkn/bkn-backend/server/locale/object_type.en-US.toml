@@ -203,3 +203,13 @@ PropertyNamesLengthMismatch = "property_names and data_properties must have the 
 DataPropertyMissingFromURL = "Data property {{.property}} is not present in the URL."
 KeywordIgnoreAboveLenInvalid = "keyword_config.ignore_above_len must be greater than 0."
 VectorModelIDRequired = "vector_config.model_id is required."
+
+[BknBackend.ObjectType.InvalidParameter.Declarations]
+Description = "Invalid property declarations"
+Solution = "Fix semantic, required or constraints as the error details say and try again."
+ErrorLink = ""
+
+[BknBackend.ObjectType.DeclarationsWouldBeCleared]
+Description = "This overwrite would clear existing property declarations"
+Solution = "The error details list the declarations it would clear. Submit again with confirm_clear_declarations=true to clear them, or keep them in the file."
+ErrorLink = ""

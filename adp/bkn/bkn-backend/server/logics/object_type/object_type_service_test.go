@@ -798,6 +798,8 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			smock.ExpectBegin()
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).Times(2)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
+			// The overwrite precheck reads the stored definition; it has no declarations to clear.
+			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ot1"}).Return(nil, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
@@ -826,6 +828,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 					{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot1", OTName: "object_type1"}},
 					{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "ot2", OTName: "object_type2"}},
 				}, nil)
+			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 			ota.EXPECT().UpdateObjectTypes(gomock.Any(), gomock.Any(), objectTypes).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			smock.ExpectCommit()
@@ -1790,6 +1793,8 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 				Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 				ID:   interfaces.KNChildResourceID("kn1", "ot1"),
 			}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil)
+			// The interactive update reads the stored definition to keep its declarations.
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "ot1").Return(nil, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1827,6 +1832,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
@@ -1846,6 +1852,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
@@ -1866,6 +1873,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,9 +122,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	bknApiV1 := c.Group("/api/bkn-backend/v1")
 	bknApiV2 := c.Group("/api/bkn-backend/v2")
 	otlApiV1 := c.Group("/api/ontology-manager/v1")
-	bknApiV1.Use(rest.PrivateNoCacheMiddleware())
-	bknApiV2.Use(rest.PrivateNoCacheMiddleware())
-	otlApiV1.Use(rest.PrivateNoCacheMiddleware())
+	bknApiV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
+	bknApiV2.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
+	otlApiV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
 	bknApiV1.GET("/proxy-accounts", r.ListKNProxiesByEx)
 	bknApiV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxyByEx)
 	bknApiV1.GET("/knowledge-networks/:kn_id/proxy-account/plan", r.PlanKNProxySyncByEx)
@@ -224,8 +225,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	bknApiInV1 := c.Group("/api/bkn-backend/in/v1")
 	otlApiInV1 := c.Group("/api/ontology-manager/in/v1")
-	bknApiInV1.Use(rest.PrivateNoCacheMiddleware())
-	otlApiInV1.Use(rest.PrivateNoCacheMiddleware())
+	bknApiInV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
+	otlApiInV1.Use(rest.PrivateNoCacheMiddleware(), confirmClearDeclarations())
 	bknApiInV1.GET("/trace/projection/knowledge-networks/:kn_id", r.GetKNByProjectionGrant)
 	bknApiInV1.GET("/knowledge-networks/:kn_id/proxy-account", r.GetKNProxy)
 	bknApiInV1.POST("/knowledge-networks/:kn_id/proxy-account/resolve", r.verifyJsonContentType(), r.ResolveKNProxyBinding)
@@ -370,4 +371,17 @@ func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Vi
 	c.Set(operationAuditVisitorKey, visitor)
 
 	return visitor, nil
+}
+
+// confirmClearDeclarations carries the confirm_clear_declarations=true query parameter into the
+// request context. An overwrite that would clear stored property declarations is refused without
+// it, whichever import endpoint the request came in through, so the parameter is read once here
+// rather than by each of them.
+func confirmClearDeclarations() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if confirmed, _ := strconv.ParseBool(c.Query(interfaces.QueryParam_ConfirmClearDeclarations)); confirmed {
+			c.Request = c.Request.WithContext(interfaces.WithClearDeclarationsConfirmed(c.Request.Context()))
+		}
+		c.Next()
+	}
 }

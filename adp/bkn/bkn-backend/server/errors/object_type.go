@@ -15,6 +15,8 @@ const (
 	BknBackend_ObjectType_InvalidParameter_ConceptCondition = "BknBackend.ObjectType.InvalidParameter.ConceptCondition"
 	BknBackend_ObjectType_InvalidParameter_PropertyName     = "BknBackend.ObjectType.InvalidParameter.PropertyName"
 	BknBackend_ObjectType_InvalidParameter_SmallModel       = "BknBackend.ObjectType.InvalidParameter.SmallModel"
+	BknBackend_ObjectType_InvalidParameter_Declarations     = "BknBackend.ObjectType.InvalidParameter.Declarations"
+	BknBackend_ObjectType_DeclarationsWouldBeCleared        = "BknBackend.ObjectType.DeclarationsWouldBeCleared"
 	BknBackend_ObjectType_LengthExceeded_Name               = "BknBackend.ObjectType.LengthExceeded.Name"
 	BknBackend_ObjectType_NullParameter_Name                = "BknBackend.ObjectType.NullParameter.Name"
 	BknBackend_ObjectType_NullParameter_PrimaryKeys         = "BknBackend.ObjectType.NullParameter.PrimaryKeys"
@@ -52,6 +54,8 @@ var (
 		BknBackend_ObjectType_InvalidParameter_ConceptCondition,
 		BknBackend_ObjectType_InvalidParameter_PropertyName,
 		BknBackend_ObjectType_InvalidParameter_SmallModel,
+		BknBackend_ObjectType_InvalidParameter_Declarations,
+		BknBackend_ObjectType_DeclarationsWouldBeCleared,
 		BknBackend_ObjectType_LengthExceeded_Name,
 		BknBackend_ObjectType_NullParameter_Name,
 		BknBackend_ObjectType_NullParameter_PrimaryKeys,
