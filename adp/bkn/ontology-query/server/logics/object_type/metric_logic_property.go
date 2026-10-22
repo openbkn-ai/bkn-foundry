@@ -174,7 +174,7 @@ func buildObjectMetricQueryFromLogicProperty(objectType interfaces.ObjectType, f
 		query.Filter = &interfaces.ObjectMetricConditionV1{NodeType: "group", BooleanOperator: "and", Children: predicates}
 	}
 	for _, dimension := range params.AnalysisDimensions {
-		query.AnalysisDimensions = append(query.AnalysisDimensions, interfaces.ObjectMetricPropertyRefV1{
+		query.GroupBy = append(query.GroupBy, interfaces.ObjectMetricPropertyRefV1{
 			ObjectTypeID: objectType.OTID, PropertyName: dimension,
 		})
 	}

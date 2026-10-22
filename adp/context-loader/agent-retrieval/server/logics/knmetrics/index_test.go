@@ -42,6 +42,7 @@ type stubOntologyQuery struct {
 	gotVersion int
 	gotReq     *interfaces.ObjectMetricQuery
 	calls      int
+	drillCalls int
 }
 
 func (s *stubOntologyQuery) QueryMetricData(_ context.Context, knID, metricID string, version int, req *interfaces.ObjectMetricQuery) (*interfaces.MetricQueryDownstreamResp, error) {
@@ -51,6 +52,7 @@ func (s *stubOntologyQuery) QueryMetricData(_ context.Context, knID, metricID st
 }
 
 func (s *stubOntologyQuery) DrillThroughMetricData(_ context.Context, _, _ string, _ int, _ *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
+	s.drillCalls++
 	return s.drillResp, s.err
 }
 
@@ -96,20 +98,25 @@ func TestQueryMetric_PinsVersionAndPreservesV1Status(t *testing.T) {
 		Model:   map[string]any{"metric_id": "m1", "version": 2},
 		Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Value: 431}},
 		Status:  "partial", Warnings: []string{"missing source"}, OverallMs: 12,
+		TotalCount: 7, NextCursor: "next-page",
 	}}
 	query := interfaces.ObjectMetricQuery{
 		InstanceIdentities: []map[string]any{{"id": "i1"}},
-		AnalysisDimensions: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "ot1", PropertyName: "region"}},
+		GroupBy:            []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "ot1", PropertyName: "region"}},
+		Having:             &interfaces.ObjectMetricHaving{Operator: "gte", Value: 100},
+		OrderBy:            []interfaces.ObjectMetricOrderBy{{Field: "value", Direction: "desc"}},
+		PageSize:           2,
 		Time:               &interfaces.ObjectMetricTimeRange{Start: 1000, End: 2000},
 	}
 	resp, err := NewKnMetricsServiceWith(nil, nil, oq).QueryMetric(context.Background(), &interfaces.QueryMetricReq{KnID: " kn1 ", MetricID: " m1 ", Version: 2, Query: query})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if oq.gotKnID != "kn1" || oq.gotMetric != "m1" || oq.gotVersion != 2 || oq.gotReq.Time.Start != 1000 {
+	if oq.gotKnID != "kn1" || oq.gotMetric != "m1" || oq.gotVersion != 2 || oq.gotReq.Time.Start != 1000 ||
+		len(oq.gotReq.GroupBy) != 1 || oq.gotReq.Having == nil || len(oq.gotReq.OrderBy) != 1 || oq.gotReq.PageSize != 2 {
 		t.Fatalf("downstream: %+v", oq)
 	}
-	if resp.Version != 2 || resp.Status != "partial" || len(resp.Entries) != 1 || len(resp.Warnings) != 1 || resp.OverallMs != 12 {
+	if resp.Version != 2 || resp.Status != "partial" || len(resp.Entries) != 1 || len(resp.Warnings) != 1 || resp.OverallMs != 12 || resp.TotalCount != 7 || resp.NextCursor != "next-page" {
 		t.Fatalf("response: %+v", resp)
 	}
 }
@@ -137,6 +144,42 @@ func TestQueryMetric_RejectsInvalidInputsBeforeDownstream(t *testing.T) {
 	})
 	if err == nil || oq.calls != 0 {
 		t.Fatalf("err=%v calls=%d", err, oq.calls)
+	}
+}
+
+func TestMetricRuntimeQueryRejectsInvalidPagingAndDrillDepthBeforeDownstream(t *testing.T) {
+	tooDeep := interfaces.ObjectMetricQuery{}
+	for range 9 {
+		tooDeep = interfaces.ObjectMetricQuery{BucketSelection: &interfaces.ObjectMetricBucketSelection{ParentQuery: tooDeep}}
+	}
+	for _, tc := range []struct {
+		name  string
+		query interfaces.ObjectMetricQuery
+	}{
+		{name: "negative page size", query: interfaces.ObjectMetricQuery{PageSize: -1}},
+		{name: "page size above limit", query: interfaces.ObjectMetricQuery{PageSize: 1001}},
+		{name: "cursor without page size", query: interfaces.ObjectMetricQuery{Cursor: "next"}},
+		{name: "parent cursor without page size", query: interfaces.ObjectMetricQuery{BucketSelection: &interfaces.ObjectMetricBucketSelection{
+			ParentQuery: interfaces.ObjectMetricQuery{Cursor: "parent-next"},
+		}}},
+		{name: "drill depth above limit", query: tooDeep},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			downstream := &stubOntologyQuery{}
+			service := NewKnMetricsServiceWith(nil, nil, downstream)
+			_, err := service.QueryMetric(context.Background(), &interfaces.QueryMetricReq{
+				KnID: "kn1", MetricID: "m1", Version: 1, Query: tc.query,
+			})
+			if err == nil || downstream.calls != 0 {
+				t.Fatalf("query should be rejected before downstream: err=%v calls=%d", err, downstream.calls)
+			}
+			_, err = service.DrillThroughMetric(context.Background(), &interfaces.MetricDrillThroughReq{
+				KnID: "kn1", MetricID: "m1", Version: 1, BucketKey: "selected", Query: tc.query,
+			})
+			if err == nil || downstream.drillCalls != 0 {
+				t.Fatalf("drill-through should be rejected before downstream: err=%v calls=%d", err, downstream.drillCalls)
+			}
+		})
 	}
 }
 

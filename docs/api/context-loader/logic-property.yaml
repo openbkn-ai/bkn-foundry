@@ -154,7 +154,7 @@ paths:
                   metric_id: metric_product_total
                   version: 1
                   query:
-                    analysis_dimensions:
+                    group_by:
                       - object_type_id: product
                         property_name: region
                     time:
@@ -258,10 +258,40 @@ components:
               type: object
               additionalProperties: true
               description: 对象指标 V1 条件 AST。
-            analysis_dimensions:
+            group_by:
               type: array
               items:
                 $ref: '#/components/schemas/ObjectMetricPropertyRef'
+            having:
+              type: object
+              required: [operator]
+              properties:
+                operator:
+                  type: string
+                  enum: [eq, ne, gt, gte, lt, lte, is_null, is_not_null]
+                value: {}
+                unit_code:
+                  type: string
+            order_by:
+              type: array
+              items:
+                type: object
+                required: [field, direction]
+                properties:
+                  field:
+                    type: string
+                    enum: [value, time, dimension]
+                  dimension:
+                    $ref: '#/components/schemas/ObjectMetricPropertyRef'
+                  direction:
+                    type: string
+                    enum: [asc, desc]
+            page_size:
+              type: integer
+              minimum: 1
+              maximum: 1000
+            cursor:
+              type: string
             time:
               type: object
               required:
@@ -299,6 +329,7 @@ components:
         - model
         - entries
         - status
+        - total_count
         - overall_ms
       properties:
         kn_id:
@@ -317,6 +348,13 @@ components:
         status:
           type: string
           enum: [ok, no_data, unavailable, partial]
+        empty_reason:
+          type: string
+          enum: [filtered_out]
+        total_count:
+          type: integer
+        next_cursor:
+          type: string
         warnings:
           type: array
           items:

@@ -139,7 +139,7 @@ func TestArtifactContentHashUsesCoreCanonicalJSON(t *testing.T) {
 
 func TestBuildQueryMetricEventsRecordsDimensionsValuesConditionsAndCompleteness(t *testing.T) {
 	selection := &interfaces.ObjectMetricBucketSelection{BucketKey: "selected-bucket", ParentQuery: interfaces.ObjectMetricQuery{Filter: map[string]any{"field": "region", "value": "east"}}}
-	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Query: interfaces.ObjectMetricQuery{AnalysisDimensions: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "warehouse", PropertyName: "name"}}, Filter: map[string]any{"field": "material_id", "operation": "eq", "value": "M-1001"}, BucketSelection: selection}}
+	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Query: interfaces.ObjectMetricQuery{GroupBy: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "warehouse", PropertyName: "name"}}, Filter: map[string]any{"field": "material_id", "operation": "eq", "value": "M-1001"}, BucketSelection: selection}}
 	resp := &interfaces.QueryMetricResp{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Status: "ok", Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Dimensions: map[string]any{"warehouse": "WH-01"}, Value: 677}}}
 	events := BuildQueryMetricEvents(testTraceContext(), req, resp)
 	if len(events) != 1 {
@@ -158,6 +158,36 @@ func TestBuildQueryMetricEventsRecordsDimensionsValuesConditionsAndCompleteness(
 	}
 	if payload["bucket_selection"] != selection {
 		t.Fatalf("metric parent bucket selection lost: %#v", payload)
+	}
+}
+
+func TestBuildQueryMetricEventsDistinguishesPagedAndPartialResults(t *testing.T) {
+	req := &interfaces.QueryMetricReq{
+		KnID: "kn-supply", MetricID: "available_inventory", Version: 2,
+		Query: interfaces.ObjectMetricQuery{PageSize: 10, Cursor: "current-page"},
+	}
+	for _, tc := range []struct {
+		name       string
+		resp       *interfaces.QueryMetricResp
+		complete   bool
+		truncated  bool
+		nextCursor string
+	}{
+		{name: "next page", resp: &interfaces.QueryMetricResp{Status: "ok", NextCursor: "next-page"}, truncated: true, nextCursor: "next-page"},
+		{name: "last page", resp: &interfaces.QueryMetricResp{Status: "ok"}, complete: true},
+		{name: "partial source result", resp: &interfaces.QueryMetricResp{Status: "partial"}, truncated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			events := BuildQueryMetricEvents(testTraceContext(), req, tc.resp)
+			if len(events) != 1 {
+				t.Fatalf("metric events = %d", len(events))
+			}
+			payload := events[0]["payload"].(map[string]any)
+			if payload["complete"] != tc.complete || payload["truncated"] != tc.truncated ||
+				payload["page_size"] != 10 || payload["cursor"] != "current-page" || payload["next_cursor"] != tc.nextCursor {
+				t.Fatalf("metric paging evidence = %#v", payload)
+			}
+		})
 	}
 }
 

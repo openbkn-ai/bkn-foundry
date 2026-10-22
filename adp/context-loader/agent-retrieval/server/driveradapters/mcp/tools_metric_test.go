@@ -170,13 +170,13 @@ func TestHandleDrillThroughMetric(t *testing.T) {
 	handler := handleDrillThroughMetric(knmetrics.NewKnMetricsServiceWith(nil, nil, oq))
 	result, err := handler(context.Background(), mcpReq(map[string]any{
 		"kn_id": "kn-001", "metric_id": "m-001", "version": 2,
-		"query":      map[string]any{"analysis_dimensions": []any{map[string]any{"object_type_id": "order", "property_name": "status"}}},
+		"query":      map[string]any{"group_by": []any{map[string]any{"object_type_id": "order", "property_name": "status"}}},
 		"bucket_key": "opaque-key", "page_size": 25, "response_format": "json",
 	}))
 	if err != nil || result.IsError {
 		t.Fatalf("drill-through failed: %v, %#v", err, result)
 	}
-	if oq.gotDrillMetric != "m-001" || oq.gotDrillReq.BucketKey != "opaque-key" || oq.gotDrillReq.PageSize != 25 {
+	if oq.gotDrillMetric != "m-001" || oq.gotDrillReq.BucketKey != "opaque-key" || oq.gotDrillReq.PageSize != 25 || len(oq.gotDrillReq.Query.GroupBy) != 1 {
 		t.Fatalf("drill-through request lost its selection: %#v", oq.gotDrillReq)
 	}
 	got := resultToMap(t, result)

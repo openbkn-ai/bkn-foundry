@@ -176,7 +176,7 @@ func TestAuthorizeObjectMetricTrialRequiresFullPropertyAccess(t *testing.T) {
 		Filter: &interfaces.ObjectMetricConditionV1{Left: &interfaces.ObjectMetricOperandV1{
 			PropertyRef: &interfaces.ObjectMetricPropertyRefV1{ObjectTypeID: "orders", PropertyName: "status"},
 		}},
-		AnalysisDimensions: []interfaces.ObjectMetricPropertyRefV1{{ObjectTypeID: "customers", PropertyName: "region"}},
+		GroupBy: []interfaces.ObjectMetricPropertyRefV1{{ObjectTypeID: "customers", PropertyName: "region"}},
 	})
 	if err != nil {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v", err)
@@ -262,8 +262,10 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullQueryFilterProperty(t *testing.
 
 func TestAuthorizeObjectMetricTrialRejectsNonFullParentQueryProperties(t *testing.T) {
 	for _, test := range []struct {
-		name        string
-		parentQuery interfaces.ObjectMetricQueryRequestV1
+		name          string
+		parentQuery   interfaces.ObjectMetricQueryRequestV1
+		topLevelQuery *interfaces.ObjectMetricQueryRequestV1
+		allow         bool
 	}{
 		{
 			name: "parent filter",
@@ -275,9 +277,26 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullParentQueryProperties(t *testin
 		},
 		{
 			name: "parent analysis dimension",
-			parentQuery: interfaces.ObjectMetricQueryRequestV1{AnalysisDimensions: []interfaces.ObjectMetricPropertyRefV1{{
+			parentQuery: interfaces.ObjectMetricQueryRequestV1{GroupBy: []interfaces.ObjectMetricPropertyRefV1{{
 				ObjectTypeID: "orders", PropertyName: "status",
 			}}},
+		},
+		{
+			name: "top-level order dimension",
+			topLevelQuery: &interfaces.ObjectMetricQueryRequestV1{OrderBy: []interfaces.ObjectMetricOrderByV1{{
+				Field: "dimension", Direction: "asc", Dimension: &interfaces.ObjectMetricPropertyRefV1{ObjectTypeID: "orders", PropertyName: "status"},
+			}}},
+		},
+		{
+			name: "parent order dimension",
+			parentQuery: interfaces.ObjectMetricQueryRequestV1{OrderBy: []interfaces.ObjectMetricOrderByV1{{
+				Field: "dimension", Direction: "asc", Dimension: &interfaces.ObjectMetricPropertyRefV1{ObjectTypeID: "orders", PropertyName: "status"},
+			}}},
+		},
+		{
+			name:          "value order needs no additional property",
+			topLevelQuery: &interfaces.ObjectMetricQueryRequestV1{OrderBy: []interfaces.ObjectMetricOrderByV1{{Field: "value", Direction: "asc"}}},
+			allow:         true,
 		},
 		{
 			name: "ancestor filter",
@@ -304,14 +323,15 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullParentQueryProperties(t *testin
 				{Type: "knowledge_network", ID: "kn-a"},
 				{Type: "object_type", ID: "kn-a/orders"},
 			}).Return(nil)
+			decisions := []interfaces.PropertyAccessDecision{
+				{Name: "amount", Level: interfaces.PropertyAccessFull},
+				{Name: "status", Level: interfaces.PropertyAccessSchema},
+			}
 			properties.EXPECT().ResolvePropertyLevels(gomock.Any(), []interfaces.PropertyLevelsRequestItem{
 				{ObjectTypeRef: "kn-a/orders", Properties: []string{"amount", "status"}},
 			}).Return([]interfaces.PropertyLevelsDecisionEntry{{
 				ObjectTypeRef: "kn-a/orders",
-				Properties: []interfaces.PropertyAccessDecision{
-					{Name: "amount", Level: interfaces.PropertyAccessFull},
-					{Name: "status", Level: interfaces.PropertyAccessSchema},
-				},
+				Properties:    decisions,
 			}}, nil)
 
 			definition := &interfaces.ObjectMetricDefinitionV1{
@@ -326,7 +346,16 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullParentQueryProperties(t *testin
 				ParentQuery: test.parentQuery,
 				BucketKey:   "server-issued-key",
 			}}
+			if test.topLevelQuery != nil {
+				query = test.topLevelQuery
+			}
 			err := service.AuthorizeObjectMetricTrial(context.Background(), "kn-a", "main", definition, query)
+			if test.allow {
+				if err != nil {
+					t.Fatalf("ordering by value should not require property access: %v", err)
+				}
+				return
+			}
 			var httpErr *rest.HTTPError
 			if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 				t.Fatalf("parent query must require full property access: %v", err)

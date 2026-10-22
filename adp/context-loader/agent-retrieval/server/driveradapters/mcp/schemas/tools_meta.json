@@ -129,7 +129,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 250,
-    "description": "按已发布对象指标 V1 的固定口径取数。先在 get_object_types 的 related_metrics 中选择 metric_id 与 version。query 可传受控筛选、分析维度和时间范围；逐层下钻时把上一层完整 query 与返回的 bucket_key 放入 bucket_selection，并至多追加一个已开放分析维度。只对 available_actions 允许的结果桶操作；participants 请调用 drill_through_metric。"
+    "description": "按已发布对象指标 V1 的固定口径取数。先在 get_object_types 的 related_metrics 中选择 metric_id 与 version。query 可传受控 filter、group_by、having、order_by、分页和时间范围；逐层下钻时把上一层完整 query 与返回的 bucket_key 放入 bucket_selection，并至多追加一个已开放分组维度。只对 available_actions 允许的结果桶操作；participants 请调用 drill_through_metric。"
   },
   "drill_through_metric": {
     "name": "drill_through_metric",
