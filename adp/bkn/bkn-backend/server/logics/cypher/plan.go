@@ -160,6 +160,16 @@ type PlanAggregate struct {
 	Column   string
 	Property string
 	Argument PlanExpression
+	// Keys are the further primary key columns of a node counted with
+	// Column, when its object type has more than one: count(DISTINCT n)
+	// counts each combination once.
+	Keys []PlanAggregateKey
+}
+
+// PlanAggregateKey is one further primary key column of a counted node.
+type PlanAggregateKey struct {
+	Column   string
+	Property string
 }
 
 func (PlanAggregate) planExpression() {}
@@ -1790,9 +1800,9 @@ func (p *planner) planNodeCount(aggregate Aggregate) (*PlanAggregate, error) {
 	}
 	keys := p.objectType[table].PrimaryKeys
 	switch {
-	case aggregate.Distinct && len(keys) != 1:
+	case aggregate.Distinct && len(keys) == 0:
 		return nil, planErrorf(aggregate.Pos,
-			"count(DISTINCT %s) needs the object type to have exactly one primary key property; "+
+			"count(DISTINCT %s) needs the object type to have a primary key to tell its objects apart; "+
 				"count a property that identifies %s instead, as in count(DISTINCT %s.property)",
 			aggregate.Variable, aggregate.Variable, aggregate.Variable)
 	case len(keys) == 0 && p.plan.Tables[table].Optional:
@@ -1807,10 +1817,22 @@ func (p *planner) planNodeCount(aggregate Aggregate) (*PlanAggregate, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &PlanAggregate{
+	planned := &PlanAggregate{
 		Function: aggregate.Function, Distinct: aggregate.Distinct,
 		Table: table, Column: column, Property: keys[0],
-	}, nil
+	}
+	// The first key column says whether the node is there; DISTINCT tells
+	// objects apart by all of them.
+	if aggregate.Distinct {
+		for _, property := range keys[1:] {
+			_, column, err := p.resolveProperty(PropertyRef{Variable: aggregate.Variable, Property: property, Pos: aggregate.Pos})
+			if err != nil {
+				return nil, err
+			}
+			planned.Keys = append(planned.Keys, PlanAggregateKey{Column: column, Property: property})
+		}
+	}
+	return planned, nil
 }
 
 // planGroupKeys resolves what a WITH grouped by. A node groups by its primary

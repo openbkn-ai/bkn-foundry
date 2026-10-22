@@ -490,6 +490,12 @@ func semanticExpressionRefs(plan *Plan, value PlanExpression) []string {
 				walk(node.Argument)
 			} else if !node.Star {
 				ref = semanticPropertyRef(plan, node.Table, node.Property)
+				for _, key := range node.Keys {
+					if more := semanticPropertyRef(plan, node.Table, key.Property); more != "" && !seen[more] {
+						seen[more] = true
+						refs = append(refs, more)
+					}
+				}
 			}
 		case PlanArithmetic:
 			walk(node.Left)

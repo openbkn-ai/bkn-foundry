@@ -421,6 +421,11 @@ func TestBindJoinResults(t *testing.T) {
 			want:  [][]any{{2, 3}},
 		},
 		{
+			name:  "count distinct nodes over a key of two columns",
+			query: "MATCH (c:Customer) RETURN count(DISTINCT c) AS customers, count(DISTINCT c.code) AS codes",
+			want:  [][]any{{4, 2}},
+		},
+		{
 			name:  "ends with is evaluated in memory",
 			query: "MATCH (c:Customer) WHERE c.name ENDS WITH 'ice' RETURN c.name",
 			want:  [][]any{{"Alice"}},

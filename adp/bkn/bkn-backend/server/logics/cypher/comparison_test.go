@@ -102,7 +102,6 @@ func TestComparisonsRefuse(t *testing.T) {
 		{query: "MATCH (o:Order) WHERE o.placed_at < date(1) RETURN o.id", want: "something other than a string"},
 		{query: "MATCH (o:Order) WHERE o.placed_at < date($d) RETURN o.id", parameters: map[string]any{"d": 5}, want: "takes a date string"},
 		{query: "MATCH (o:Order) WHERE toLower(o.region) = 'east' RETURN o.id", want: "function calls"},
-		{query: "MATCH (c:Customer) RETURN count(DISTINCT c) AS n", want: "exactly one primary key"},
 		{query: "MATCH (o:Order) RETURN sum(o) AS n", want: "sum over a whole node"},
 		{query: "MATCH (o:Order) RETURN count(x) AS n", want: `variable "x" is not defined`},
 	} {
