@@ -53,21 +53,16 @@ class Fact:
     en: str
 
 
-# Each pattern is searched case-insensitively, with "." matching newlines.
-FACTS = (
-    Fact("default and largest LIMIT", r"1000.*10000", r"1000.*10000"),
-    Fact("!= is refused", r"!=", r"!="),
-    Fact(
-        "datasets and indexes take the basic forms only",
-        r"数据集.{0,30}索引.*CASE.*coalesce",
-        r"dataset.{0,40}index.*CASE.*coalesce",
-    ),
-    Fact(
-        "explain does not see dataset-only refusals",
-        r"explain[^。]{0,60}照样通过",
-        r"passes (?:explain|the plan)",
-    ),
-)
+FACTS_FILE = REPOSITORY_ROOT / "tools/cypher_doc_facts.json"
+
+
+def load_facts(path: Path = FACTS_FILE) -> tuple[Fact, ...]:
+    """The rules to check, kept in JSON beside this script."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return tuple(Fact(item["name"], item["zh"], item["en"]) for item in data["facts"])
+
+
+FACTS = load_facts()
 
 
 def strings(value: object) -> list[str]:

@@ -1,0 +1,25 @@
+{
+  "_comment": "run_cypher rules checked by tools/check_cypher_docs.py: each pattern is searched case-insensitively, with . matching newlines, in every place of its language.",
+  "facts": [
+    {
+      "name": "default and largest LIMIT",
+      "zh": "1000.*10000",
+      "en": "1000.*10000"
+    },
+    {
+      "name": "!= is refused",
+      "zh": "!=",
+      "en": "!="
+    },
+    {
+      "name": "datasets and indexes take the basic forms only",
+      "zh": "数据集.{0,30}索引.*CASE.*coalesce",
+      "en": "dataset.{0,40}index.*CASE.*coalesce"
+    },
+    {
+      "name": "explain does not see dataset-only refusals",
+      "zh": "explain[^。]{0,60}照样通过",
+      "en": "passes (?:explain|the plan)"
+    }
+  ]
+}
