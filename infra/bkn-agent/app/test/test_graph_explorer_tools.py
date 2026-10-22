@@ -305,8 +305,15 @@ def test_a_relation_path_covers_every_pair_of_its_ends():
     path = next(c[1] for c in calls if c[0] == "query_instance_subgraph")["relation_type_paths"][0]
     assert path["limit"] == 30
     assert shown["planned_added"]["edges"] == 30
-    # Reaching the limit is said, not hidden.
-    assert any("may be incomplete" in w for w in run.state["warnings"])
+    # Every pair was asked for, so a full answer is not a truncated one.
+    assert not any("may be incomplete" in w for w in run.state.get("warnings", []))
+
+
+def test_a_path_cut_at_the_backend_limit_says_it_may_be_incomplete(monkeypatch):
+    monkeypatch.setattr(graph, "PATH_LIMIT", 1)
+    run, tools, _ = _run()
+    _invoke(tools["show_instances"], ids=["teams-9", "matches-1", "matches-2"])
+    assert any("reached the 1 limit" in w for w in run.state["warnings"])
 
 
 def test_a_context_loader_transport_failure_is_the_tools_error():
@@ -325,9 +332,15 @@ def test_large_networks_list_object_types_by_page_and_say_relations_are_unlisted
     run.state["context_loader"]["get_kn_detail"] = _tool(
         "get_kn_detail", calls, {"object_types": None, "relation_types": None, "notice": "too large"}
     )
+    pages = {0: {"object_types": OBJECT_TYPES["object_types"][:1], "next_offset": 5}, 5: {"object_types": OBJECT_TYPES["object_types"][1:]}}
+    run.state["context_loader"]["get_object_types"] = _tool(
+        "get_object_types", calls, lambda kwargs: pages[kwargs["offset"]] if "offset" in kwargs else OBJECT_TYPES
+    )
     shown = _invoke(tools["show_instances"], ids=["teams-9"])
     assert shown["planned_added"] == {"nodes": 1, "edges": 0}
-    assert any(c[0] == "get_object_types" and "offset" in c[1] for c in calls)
+    # Paged by next_offset, not by how many came back.
+    assert [c[1]["offset"] for c in calls if c[0] == "get_object_types" and "offset" in c[1]] == [0, 5]
+    assert set(run.state["network"]["object_types"]) == {"teams", "matches"}
     assert any("too large to list its relation types" in w for w in run.state["warnings"])
     text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
     assert "- teams (球队)" in text and "too large to list its relation types" in text

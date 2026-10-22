@@ -188,12 +188,13 @@ async def _network(run: builtin_tools.Run) -> dict:
             # Past 200 object types or 600 relation types get_kn_detail leaves
             # both out; object types can still be listed page by page.
             listed = []
-            while len(listed) < MAX_OBJECT_TYPES:
-                page = await _call(run, "get_object_types", offset=len(listed), limit=OBJECT_TYPE_PAGE)
-                items = [t for t in page.get("object_types") or [] if isinstance(t, dict)]
-                listed.extend(items)
-                if len(items) < OBJECT_TYPE_PAGE:
-                    break
+            offset: Any = 0
+            # Follow next_offset: a page may hold fewer entries than it scanned.
+            while offset is not None and len(listed) < MAX_OBJECT_TYPES:
+                page = await _call(run, "get_object_types", offset=offset, limit=OBJECT_TYPE_PAGE)
+                listed.extend(t for t in page.get("object_types") or [] if isinstance(t, dict))
+                following = page.get("next_offset")
+                offset = following if isinstance(following, int) and following > offset else None
             detail = {**detail, "object_types": listed}
         object_types = {
             t["id"]: {
@@ -391,6 +392,10 @@ async def _fetch_by_identity(
     return nodes
 
 
+def _pairs(by_ot: dict[str, list], rel: dict) -> int:
+    return len(by_ot[rel["source"]]) * len(by_ot[rel["target"]])
+
+
 async def _edges_among(run: builtin_tools.Run, nodes: list[dict], metas) -> list[dict]:
     """Relations among the given nodes: one query_instance_subgraph path per
     relation type whose two ends are both in the set, five paths a request; a
@@ -425,7 +430,7 @@ async def _edges_among(run: builtin_tools.Run, nodes: list[dict], metas) -> list
                     ],
                     # The path's limit caps the relations it returns in total,
                     # so it must cover every pair of the two ends.
-                    "limit": min(PATH_LIMIT, len(by_ot[rel["source"]]) * len(by_ot[rel["target"]])),
+                    "limit": min(PATH_LIMIT, _pairs(by_ot, rel)),
                 }
             )
     edges: dict[str, dict] = {}
@@ -446,7 +451,10 @@ async def _edges_among(run: builtin_tools.Run, nodes: list[dict], metas) -> list
                     edges.setdefault(edge["id"], edge)
         for path in group:
             rel_id = path["relation_types"][0]["relation_type_id"]
-            if returned.get(rel_id, 0) >= path["limit"]:
+            # Only a limit cut below the number of pairs can drop relations;
+            # one that covers every pair is reached when all of them exist.
+            capped = path["limit"] < _pairs(by_ot, network["relation_types"][rel_id])
+            if capped and returned.get(rel_id, 0) >= path["limit"]:
                 _warn(run, f"Relations of type {rel_id} reached the {path['limit']} limit and may be incomplete.")
         return True
 
