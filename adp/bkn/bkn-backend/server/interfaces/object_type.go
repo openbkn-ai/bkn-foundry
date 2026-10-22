@@ -8,6 +8,7 @@ package interfaces
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
@@ -243,6 +244,51 @@ type ClearedDeclaration struct {
 	ObjectTypeID string   `json:"object_type_id"`
 	Property     string   `json:"property"`
 	Fields       []string `json:"fields"`
+}
+
+// EncodeIndexedConstraints rewrites data_properties[].constraints of an object type document for
+// the concept index as a JSON string. The index maps unknown paths dynamically, and a range bound
+// is a number on a numeric property but text on a date property: stored as they are, the first
+// document would fix the field's type and every later one with the other kind would be refused.
+// DecodeIndexedConstraints reverses it. A document without constraints is left as it is.
+func EncodeIndexedConstraints(doc map[string]any) error {
+	props, _ := doc["data_properties"].([]any)
+	for _, prop := range props {
+		p, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		if c, exists := p[DECLARATION_CONSTRAINTS]; exists && c != nil {
+			if _, done := c.(string); done {
+				continue
+			}
+			encoded, err := json.Marshal(c)
+			if err != nil {
+				return err
+			}
+			p[DECLARATION_CONSTRAINTS] = string(encoded)
+		}
+	}
+	return nil
+}
+
+// DecodeIndexedConstraints reads back what EncodeIndexedConstraints wrote.
+func DecodeIndexedConstraints(entry map[string]any) error {
+	props, _ := entry["data_properties"].([]any)
+	for _, prop := range props {
+		p, ok := prop.(map[string]any)
+		if !ok {
+			continue
+		}
+		if encoded, isText := p[DECLARATION_CONSTRAINTS].(string); isText {
+			constraints := &PropertyConstraints{}
+			if err := json.Unmarshal([]byte(encoded), constraints); err != nil {
+				return fmt.Errorf("data property %v constraints in the concept index: %w", p["name"], err)
+			}
+			p[DECLARATION_CONSTRAINTS] = constraints
+		}
+	}
+	return nil
 }
 
 // IsEmpty reports whether the constraints declare nothing; {} in a request clears them.

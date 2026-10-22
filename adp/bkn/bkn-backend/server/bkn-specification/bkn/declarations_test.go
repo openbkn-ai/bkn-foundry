@@ -115,6 +115,15 @@ func TestValidateObjectTypeDeclarations(t *testing.T) {
 	assert.ErrorContains(t, ValidateObjectTypeDeclarations(ot), "is later than max")
 	ot.DataProperties[0].Constraints.Range.Max = "2020/12/31"
 	assert.ErrorContains(t, ValidateObjectTypeDeclarations(ot), `range of a date property takes ISO 8601 dates such as "2020-01-01"`)
+
+	// Shapes the parser refuses are refused on a model built directly, as a save through the API does.
+	ot.DataProperties[0].Constraints.Range = &ValueRange{}
+	assert.ErrorContains(t, ValidateObjectTypeDeclarations(ot), "range must have min, max or both")
+	ot.DataProperties[0].Constraints.Range = nil
+	ot.DataProperties[1].Constraints.Length = &LengthRange{}
+	assert.ErrorContains(t, ValidateObjectTypeDeclarations(ot), "length must have min, max or both")
+	ot.DataProperties[1].Constraints.Length = &LengthRange{Min: intPtr(-1)}
+	assert.ErrorContains(t, ValidateObjectTypeDeclarations(ot), "length min must be a non-negative integer")
 }
 
 func intPtr(n int) *int { return &n }

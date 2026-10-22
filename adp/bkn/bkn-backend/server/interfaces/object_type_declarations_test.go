@@ -89,3 +89,49 @@ func TestDataPropertyHasDeclarations(t *testing.T) {
 		t.Fatal("empty constraints declare nothing")
 	}
 }
+
+// In the concept index constraints travel as text: a range bound is a number on one property and a
+// string on another, and the index would fix the field's type by the first document it saw.
+func TestIndexedConstraintsRoundTrip(t *testing.T) {
+	ot := ObjectType{ObjectTypeWithKeyField: ObjectTypeWithKeyField{OTID: "order", DataProperties: []*DataProperty{
+		{Name: "amount", Type: "decimal", Constraints: &PropertyConstraints{Range: &ValueRange{Min: float64(0)}, Unit: "元"}},
+		{Name: "placed_at", Type: "datetime", Constraints: &PropertyConstraints{Range: &ValueRange{Min: "2020-01-01T00:00:00Z"}}},
+		{Name: "id", Type: "string"},
+	}}}
+	data, err := json.Marshal(ot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if err := EncodeIndexedConstraints(doc); err != nil {
+		t.Fatal(err)
+	}
+	props := doc["data_properties"].([]any)
+	for i, want := range []string{`{"range":{"min":0},"unit":"元"}`, `{"range":{"min":"2020-01-01T00:00:00Z"}}`} {
+		if got := props[i].(map[string]any)["constraints"]; got != want {
+			t.Fatalf("property %d constraints indexed as %#v, want the text %s", i, got, want)
+		}
+	}
+	if _, exists := props[2].(map[string]any)["constraints"]; exists {
+		t.Fatal("a property without constraints gains no key")
+	}
+
+	if err := DecodeIndexedConstraints(doc); err != nil {
+		t.Fatal(err)
+	}
+	data, err = json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back ObjectType
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(back.DataProperties[0].Constraints, ot.DataProperties[0].Constraints) ||
+		!reflect.DeepEqual(back.DataProperties[1].Constraints, ot.DataProperties[1].Constraints) {
+		t.Fatalf("constraints did not read back: %+v %+v", back.DataProperties[0].Constraints, back.DataProperties[1].Constraints)
+	}
+}

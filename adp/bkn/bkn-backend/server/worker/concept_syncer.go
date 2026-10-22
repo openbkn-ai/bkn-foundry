@@ -564,6 +564,10 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 			return err
 		}
 
+		if err := interfaces.EncodeIndexedConstraints(doc); err != nil {
+			logger.Errorf("Failed to encode data_properties constraints: %s", err.Error())
+			return err
+		}
 		// Serialize logic_properties[].parameters to JSON string
 		if logicProps, ok := doc["logic_properties"].([]any); ok {
 			for _, lp := range logicProps {
@@ -952,6 +956,10 @@ func (cs *ConceptSyncer) getAllObjectTypesFromDatasetByKnID(ctx context.Context,
 
 	objectTypes := map[string]*interfaces.ObjectType{}
 	for _, entry := range entries {
+		if err := interfaces.DecodeIndexedConstraints(entry); err != nil {
+			logger.Errorf("Failed to decode data_properties constraints: %s", err.Error())
+			return map[string]*interfaces.ObjectType{}, err
+		}
 		// Deserialize logic_properties[].parameters from JSON string
 		if logicProps, ok := entry["logic_properties"].([]any); ok {
 			for _, lp := range logicProps {

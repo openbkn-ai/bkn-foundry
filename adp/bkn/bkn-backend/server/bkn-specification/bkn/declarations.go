@@ -341,6 +341,23 @@ func validateConstraints(p *DataProperty) error {
 // validateValueRules checks range, length, pattern and unit against a type: the property Type, or a
 // value type's base_type. written is the type as written, for the message.
 func validateValueRules(where, typ, written string, rng *ValueRange, length *LengthRange, pattern, unit string) error {
+	// The parser refuses these shapes already; a save through the API builds the model directly.
+	if rng != nil && rng.Min == nil && rng.Max == nil {
+		return specErrorf("%s: range must have min, max or both", where)
+	}
+	if length != nil {
+		if length.Min == nil && length.Max == nil {
+			return specErrorf("%s: length must have min, max or both", where)
+		}
+		for _, bound := range []struct {
+			name  string
+			value *int
+		}{{"min", length.Min}, {"max", length.Max}} {
+			if bound.value != nil && *bound.value < 0 {
+				return specErrorf("%s: length %s must be a non-negative integer", where, bound.name)
+			}
+		}
+	}
 	if rng != nil {
 		if err := validateRange(where, typ, rng); err != nil {
 			return err

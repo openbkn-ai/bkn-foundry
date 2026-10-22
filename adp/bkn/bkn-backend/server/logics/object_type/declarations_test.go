@@ -166,3 +166,29 @@ func TestUpdateObjectTypeKeepsStoredDeclarations(t *testing.T) {
 	assert.True(t, saved.DataProperties[1].Required, "left out, so kept")
 	assert.Nil(t, saved.DataProperties[2].Constraints, "null clears")
 }
+
+// An overwrite by a caller who may not modify the object type is refused for that, before the
+// precheck reads the stored declarations it would list.
+func TestOverwritePrecheckRunsAfterThePermissionCheck(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+	ps := bmock.NewMockPermissionService(mockCtrl)
+	db, smock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	require.NoError(t, err)
+	service := &objectTypeService{appSetting: &common.AppSetting{}, db: db, ota: ota, ps: ps}
+
+	smock.ExpectBegin()
+	smock.ExpectRollback()
+	ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "order").Return("订单", true, nil)
+	ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "订单").Return("order", true, nil)
+	ps.EXPECT().RequirePermissions(gomock.Any(), gomock.Any()).
+		Return(rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ObjectType_InvalidParameter))
+	// No GetObjectTypesByIDs: the stored definition is never read.
+
+	file := declaredObjectType()
+	file.DataProperties = []*interfaces.DataProperty{{Name: "id", Type: "string"}}
+	_, err = service.CreateObjectTypes(ctx, nil, []*interfaces.ObjectType{file}, interfaces.ImportMode_Overwrite, false, false)
+	require.Error(t, err)
+	assert.Equal(t, http.StatusForbidden, err.(*rest.HTTPError).HTTPCode)
+}

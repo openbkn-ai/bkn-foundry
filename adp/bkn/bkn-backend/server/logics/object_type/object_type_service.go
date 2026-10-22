@@ -279,9 +279,6 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	if err != nil {
 		return []string{}, err
 	}
-	if err = ots.checkOverwriteKeepsDeclarations(ctx, tx, updateObjectTypes); err != nil {
-		return []string{}, err
-	}
 	if !permission.KNImportPermissionPrechecked(ctx) {
 		if len(createObjectTypes) > 0 {
 			if err = ots.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -300,6 +297,11 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			interfaces.OPERATION_TYPE_MODIFY); err != nil {
 			return []string{}, err
 		}
+	}
+	// After the permission check: the refusal lists stored declarations, which only a caller allowed
+	// to modify these object types may see.
+	if err = ots.checkOverwriteKeepsDeclarations(ctx, tx, updateObjectTypes); err != nil {
+		return []string{}, err
 	}
 
 	// Create.
@@ -1762,6 +1764,9 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			return err
 		}
 		delete(document.Document, "data_source_metadata_unavailable")
+		if err := interfaces.EncodeIndexedConstraints(document.Document); err != nil {
+			return err
+		}
 		if properties, ok := document.Document["logic_properties"].([]any); ok {
 			for _, property := range properties {
 				if value, ok := property.(map[string]any); ok {
@@ -1979,6 +1984,10 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 
 		// 5. Process query results.
 		for _, entry := range datasetResp.Entries {
+			if err := interfaces.DecodeIndexedConstraints(entry); err != nil {
+				return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_InternalError_UnMarshalDataFailed).WithErrorDetails(err.Error())
+			}
 			// Deserialize logic_properties[].parameters from JSON string
 			if logicProps, exists := entry["logic_properties"]; exists {
 				if logicPropsArr, ok := logicProps.([]any); ok {
