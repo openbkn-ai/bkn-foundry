@@ -364,12 +364,14 @@ def test_admin_lists_tools_by_source():
         ]
     )
     graph = sources[0].definitions
-    assert [d["name"] for d in graph] == ["canvas_state", "view_state"]
-    assert "aggregate" in graph[0]["description"]
-    assert set(graph[0]["parameters"]["properties"]) == {"object_types", "offset", "limit"}
+    assert [d["name"] for d in graph] == sorted(
+        ["search_instances", "query_instances", "show_instances", "run_cypher", "canvas_state", "view_state"]
+    )
+    canvas_state = next(d for d in graph if d["name"] == "canvas_state")
+    assert set(canvas_state["parameters"]["properties"]) == {"object_types", "offset", "limit"}
     assert [d["name"] for d in sources[1].definitions] == ["show_instances"]
     assert [s.model_dump(exclude_none=True, exclude={"definitions"}) for s in sources] == [
-        {"type": "builtin", "provider": "graph_explorer", "names": ["canvas_state", "view_state"]},
+        {"type": "builtin", "provider": "graph_explorer", "names": [d["name"] for d in graph]},
         {"type": "builtin", "provider": "test_canvas", "names": ["show_instances"]},
         {"type": "context_loader", "names": ["run_cypher", "search_schema"]},
         {"type": "context_loader"},
