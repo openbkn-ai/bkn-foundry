@@ -46,7 +46,8 @@ paths:
         编译并执行一条只读 Cypher 语句。**支持的子集**：
 
         - **MATCH**：一个或多个 MATCH 子句；一个 MATCH 里可以写逗号分隔的多条路径。
-          同名变量指同一个节点；不共享变量的两部分是笛卡尔积。
+          同名变量指同一个节点；不共享变量的部分两两组合，但有两部分既没连起来、又都没有任何条件时，
+          查询会被拒（400 `Unsupported`）。
         - **节点**：变量首次出现时必须带标签（对象类 id 或名称），可带内联属性
           `{prop: value}`。
         - **关系**：`-[:R]->`、`<-[:R]-`、无向 `-[:R]-`，每条必须指名一个关系类；
@@ -277,7 +278,11 @@ components:
           description: |
             请求带 `explain: true` 时出现：`shape`（match、aggregate、totals、semi_join、list_comparison、carried）、
             `objects`、`relations`、`conditions`、`grouping`、`columns`（name、kind、type）、`ordering`、`limit`、
-            `reads`、`row_filtered`、`warnings`。结构见 bkn-backend 的 CypherPlan。
+            `reads`、`row_filtered`、`warnings`、`warning_codes`（每条提醒的编号，顺序与 `warnings` 相同）。
+            结构见 bkn-backend 的 CypherPlan。
+        limited:
+          type: boolean
+          description: 查询没写 LIMIT、返回满默认的 1000 行时为 true，说明可能还有更多；否则不出现。
         columns:
           type: array
           description: 输出列，顺序与 `RETURN` 一致。

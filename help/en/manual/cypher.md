@@ -62,7 +62,7 @@ With `"explain": true` the query is read, authorized and compiled as usual but n
 
 - A form that would be refused gets the same error code and rewrite hint as running it; a query explain accepts is not refused for its form when it runs.
 - `plan` holds `shape` (match, aggregate, totals, semi_join, list_comparison or carried), `objects` and `relations` (the object type of each variable and the relation types walked), `conditions` (each condition's operator, the properties it reads and whether it applies to rows, groups or an earlier stage), `grouping`, `columns` (each column's name, what computes it and its value type), `ordering`, `limit` (the row limit in force), `reads` (the properties read), `row_filtered` (object types whose rows the access policy narrows) and `warnings`.
-- `warnings` points out parts of the pattern that no relationship, shared node or equality such as `a.code = b.code` joins (their rows combine pairwise), the 1000-row cap without LIMIT, narrowed rows, and the 10000-row evidence cap of `collect`.
+- `warnings` points out parts of the pattern that no relationship, shared node or equality such as `a.code = b.code` joins (their rows combine pairwise), the 1000-row cap without LIMIT, narrowed rows, and the 10000-row evidence cap of `collect`. `warning_codes` names each warning in the same order (`disconnected_parts`, `default_limit`, `row_filtered`, `collect_cap`), so a caller can word it in its own language.
 - explain reads no data and does not see where an object type's data lives: on object types bound to a dataset or an index, a form that "Object types on datasets and indexes" lists as unsupported passes explain and is refused only when run.
 - No SQL is returned, and the values in conditions are not repeated. Authorization is the same as running: object types and properties the caller cannot read stay out of explain too.
 - Use it to check a query with WITH, several MATCH clauses or several hops before running it: that the grouping, filters and joins are what was meant.
@@ -87,7 +87,7 @@ RETURN count(*) AS goals
 
 - A path may take several hops. A relationship is written `-[:R]->`, `<-[:R]-`, or undirected `-[:R]-`, and names exactly one relation type. A node names exactly one object type where its variable first appears.
 - A node may carry inline properties, `(t:teams {team_name: 'Brazil'})`, which mean the same equalities in WHERE.
-- **A variable written twice is the same node.** Several comma-separated paths, or several MATCH clauses, describe one shape: two paths that share a variable meet at that node, and paths that share none are a cartesian product.
+- **A variable written twice is the same node.** Several comma-separated paths, or several MATCH clauses, describe one shape: two paths that share a variable meet at that node, and paths that share none combine pairwise. When two parts are neither connected nor narrowed by any condition (every row of one table against every row of another), the query is refused (`Unsupported`); connect them with a relation type or an equality such as `a.code = b.code`, or add a condition to one side, as in `(c:Customer {code: 'A'})`.
 - **To compare two sets** (the materials two products have in common, say), no WITH is needed. Let the two paths share a node:
 
 ```cypher
@@ -189,7 +189,7 @@ ORDER BY n DESC LIMIT 4
 
 - ORDER BY takes a property, a returned column name, an aggregate or a computed value; `DESC` reverses it.
 - A result collapsed by aggregation or `DISTINCT` can only be sorted by a value it returns.
-- Without `LIMIT` at most **1000** rows come back. `LIMIT` may not exceed **10000**: a larger one is refused, not quietly reduced. Page with `SKIP n LIMIT m`.
+- Without `LIMIT` at most **1000** rows come back, and a result that reaches 1000 carries `limited: true`: more may match. `LIMIT` may not exceed **10000**: a larger one is refused, not quietly reduced. Page with `SKIP n LIMIT m`.
 
 ---
 
@@ -403,7 +403,7 @@ Only the basic forms are available there:
 | HTTP | error_code | Meaning |
 | --- | --- | --- |
 | 400 | `BknBackend.Cypher.SyntaxError` | Could not be parsed |
-| 400 | `BknBackend.Cypher.Unsupported` | Valid openCypher outside the supported subset |
+| 400 | `BknBackend.Cypher.Unsupported` | Valid openCypher outside the supported subset, or two parts of the pattern neither connected nor narrowed by any condition |
 | 400 | `BknBackend.Cypher.InvalidQuery` | Does not match the model: an unknown label or property, a type mismatch, ... |
 | 400 | `BknBackend.Cypher.LimitExceeded` | `LIMIT` above 10000 |
 | 400 | `BknBackend.Cypher.InvalidParameter` | Empty or oversized query, or an invalid parameter |

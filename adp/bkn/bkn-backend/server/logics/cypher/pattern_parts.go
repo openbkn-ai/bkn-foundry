@@ -1,0 +1,82 @@
+// Copyright openbkn.ai
+//
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
+
+package cypher
+
+// patternComponents gives each table of a pattern the part it belongs to:
+// tables a relationship or an equality between their properties connects
+// share a part. An equality connects only when every row must meet it, so
+// one under OR or NOT does not.
+func patternComponents(plan *Plan) []int {
+	parent := make([]int, len(plan.Tables))
+	for i := range parent {
+		parent[i] = i
+	}
+	var find func(int) int
+	find = func(i int) int {
+		for parent[i] != i {
+			parent[i] = parent[parent[i]]
+			i = parent[i]
+		}
+		return i
+	}
+	for _, join := range plan.Joins {
+		parent[find(join.Left)] = find(join.Right)
+	}
+	for _, term := range conjuncts(plan.Where) {
+		if node, ok := term.(PlanColumnComparison); ok && node.Operator == "=" && node.LeftTable != node.RightTable {
+			parent[find(node.LeftTable)] = find(node.RightTable)
+		}
+	}
+	for i := range parent {
+		parent[i] = find(i)
+	}
+	return parent
+}
+
+// patternParts counts the parts of a pattern that neither a relationship nor
+// an equality between their properties connects.
+func patternParts(plan *Plan) int {
+	parts := map[int]bool{}
+	for _, part := range patternComponents(plan) {
+		parts[part] = true
+	}
+	return len(parts)
+}
+
+// unnarrowedParts counts the parts of a pattern that no condition narrows. A
+// part is narrowed by a condition every row must meet that reads its nodes
+// and no others, such as an inline property or a WHERE term under AND.
+//
+// Rows of parts that nothing connects combine pairwise. One part read whole
+// against narrowed ones is a listing the query asks for; two parts read whole
+// are every row of one table against every row of another, which is refused.
+func unnarrowedParts(plan *Plan) int {
+	part := patternComponents(plan)
+	narrowed := map[int]bool{}
+	for _, term := range conjuncts(plan.Where) {
+		tables := predicateTables(term)
+		if len(tables) == 0 {
+			continue
+		}
+		own := part[tables[0]]
+		for _, table := range tables[1:] {
+			if part[table] != own {
+				own = -1
+				break
+			}
+		}
+		if own >= 0 {
+			narrowed[own] = true
+		}
+	}
+	open := map[int]bool{}
+	for _, p := range part {
+		if !narrowed[p] {
+			open[p] = true
+		}
+	}
+	return len(open)
+}

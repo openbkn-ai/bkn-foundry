@@ -70,6 +70,9 @@ type CypherQueryResult struct {
 	TraceDescriptor json.RawMessage `json:"-"`
 	// Plan is set, instead of any rows, when the query asked to be explained.
 	Plan *CypherPlan `json:"plan,omitempty"`
+	// Limited says the query wrote no LIMIT and returned as many rows as the
+	// default allows, so more may match.
+	Limited bool `json:"limited,omitempty"`
 }
 
 // CypherPermissionImpact identifies one object type whose row or property

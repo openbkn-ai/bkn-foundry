@@ -781,7 +781,10 @@ type CypherQueryResp struct {
 	Execution  json.RawMessage `json:"execution,omitempty"`
 	// Plan comes back instead of rows when the query asked to be explained,
 	// as bkn-backend wrote it.
-	Plan               json.RawMessage          `json:"plan,omitempty"`
+	Plan json.RawMessage `json:"plan,omitempty"`
+	// Limited says the query wrote no LIMIT and stopped at the default
+	// number of rows, so more may match.
+	Limited            bool                     `json:"limited,omitempty"`
 	TraceDescriptor    json.RawMessage          `json:"-"`
 	PermissionImpacts  []ObjectPermissionImpact `json:"-"`
 	PermissionGuidance []*PermissionGuidance    `json:"permission_guidance,omitempty"`
