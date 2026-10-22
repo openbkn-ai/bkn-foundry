@@ -517,17 +517,18 @@ jobs:
                      else "没有改变 PR 自身的补丁（rebase 或只改提交信息）"),
                   encoding="utf-8")
 
-          # 要复评时，先撤掉 bot 落在旧提交上的 approve（下面的 Dismiss 步骤执行）。
-          # 不撤的话，从推送到 verdict 出结论的七八分钟里旧 approve 照样有效，这段时间
-          # 里合并的就是没人看过的提交；这一轮若被取消或跑挂，PR 停在 REVIEW_REQUIRED，
-          # 回 /review 或重跑即可——宁可卡住也不放过。只撤 bot 自己的：人工 approve 是
-          # 人的判断，不归这里管。落在当前 head 上的不撤：对同一版回 /review 时它仍然成立。
+          # 只要开新一轮评审，就先撤掉 bot 之前的 approve（下面的 Dismiss 步骤执行），
+          # 放行与否只认本轮结论。不撤的话，从推送到 verdict 出结论的七八分钟里旧 approve
+          # 照样有效，这段时间里合并的就是没人看过的提交；对同一版回 /review 也一样撤——
+          # 有人要复评，说明对上一次的放行有疑问。这一轮若被取消或跑挂，PR 停在
+          # REVIEW_REQUIRED，回 /review 或重跑即可——宁可卡住也不放过。只撤 bot 自己的：
+          # 人工 approve 是人的判断，不归这里管。
           # 被撤的 review 正文保留，状态块照样读得回；但它的 state 变成 DISMISSED，
           # 下一轮不会再按「上一轮已放行」跳过——被撤说明那一轮复评没走完，复评本就该补上。
           stale = [] if skip else [
               r.get("id") for r in rounds
               if r.get("login") == "github-actions[bot]" and r.get("state") == "APPROVED"
-              and r.get("commit_id") != head_sha and isinstance(r.get("id"), int)]
+              and isinstance(r.get("id"), int)]
           print("stale_approvals=" + json.dumps(stale))
           print("skip_round=%s" % ("true" if skip else "false"))
           print("file_total=%d" % total)
@@ -551,7 +552,7 @@ jobs:
           HEAD_SHA: ${{ steps.plan.outputs.head_sha }}
         run: |
           set -euo pipefail
-          msg="放行之后有新提交（当前 ${HEAD_SHA:0:12}），这些提交未经评审，撤销这条放行；本轮复评结束后重新表态。"
+          msg="新一轮评审已开始（评审 ${HEAD_SHA:0:12}），撤销上一次放行；本轮结论落地后重新表态。"
           for id in $(jq -r '.[]' <<<"$STALE"); do
             gh api -X PUT "repos/${GH_REPO}/pulls/${PR_NUMBER}/reviews/${id}/dismissals" \
               -f message="$msg" -f event=DISMISS >/dev/null \
