@@ -163,8 +163,10 @@ paths:
             BKN spec 3.0 can hold is written as 3.0 and every other network as 2.x, byte for byte as
             before. `2.0` writes 2.x and leaves 3.0 declarations out; `3.0` writes 3.0. A 3.0 export
             first runs the network check and is refused with
-            `BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck` while it finds misplaced
-            parameters; the error details are the check result.
+            `BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck` while it finds misplaced or invalid
+            parameters (the error details are the check result), then reads the written package
+            back under the 3.0 rules and is refused with
+            `BknBackend.KnowledgeNetwork.ExportNotReadableAsV3` and the reason if it does not.
           schema:
             type: string
             enum: ['2.0', '3.0']
@@ -188,10 +190,12 @@ paths:
         - BKN Import/Export
       summary: Check the definitions of a knowledge network
       description: |
-        Read-only. Reports parameters of action types and logic properties whose value source sits
-        in `source`, as the legacy parameter table (Parameter | Type | Source | Binding) wrote it;
-        execution drops them. Each comes with the suggested rewrite the BKN spec 3.0 refusal shows.
-        Works on any network, 2.x included. It reads the definitions only, not source data.
+        Read-only. Reports the parameters of action types and logic properties that execution drops
+        and a BKN spec 3.0 package refuses: misplaced ones, whose value source sits in `source` as
+        the legacy parameter table (Parameter | Type | Source | Binding) wrote it, each with the
+        rewrite the 3.0 refusal shows; and invalid ones, whose `value_from` is not property, input or
+        const and which have no rewrite to suggest. Works on any network, 2.x included. It reads the
+        definitions only, not source data.
       operationId: checkBKN
       security:
         - OAuth2: []
@@ -487,13 +491,18 @@ components:
   schemas:
     NetworkCheckResult:
       type: object
-      required: [misplaced_parameters]
+      required: [misplaced_parameters, invalid_parameters]
       properties:
         misplaced_parameters:
           type: array
           description: Misplaced parameters, action types first, then object types, each by id.
           items:
             $ref: '#/components/schemas/NetworkCheckParameter'
+        invalid_parameters:
+          type: array
+          description: Parameters whose value source is neither in value_from nor in source, in the same order.
+          items:
+            $ref: '#/components/schemas/NetworkCheckInvalidParameter'
     NetworkCheckParameter:
       type: object
       required: [parameter, current, suggested, conflict]
@@ -515,6 +524,20 @@ components:
         conflict:
           type: boolean
           description: The parameter already has a value that the suggested rewrite would replace.
+    NetworkCheckInvalidParameter:
+      type: object
+      required: [parameter, current]
+      properties:
+        action_type_id:
+          type: string
+        object_type_id:
+          type: string
+        logic_property:
+          type: string
+        parameter:
+          type: string
+        current:
+          $ref: '#/components/schemas/NetworkCheckParameterValue'
     NetworkCheckParameterValue:
       type: object
       properties:

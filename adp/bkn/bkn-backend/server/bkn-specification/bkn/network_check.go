@@ -28,19 +28,53 @@ type MisplacedParameter struct {
 	Conflict  bool
 }
 
+// InvalidParameter is a stored parameter whose ValueFrom is not property, input or const and whose
+// Source does not hold one either, so there is no rewrite to suggest. Execution drops it, and a 3.0
+// package refuses it.
+type InvalidParameter struct {
+	ActionTypeID  string
+	ObjectTypeID  string
+	LogicProperty string
+
+	Parameter string
+	Current   Parameter
+}
+
 // FindMisplacedParameters checks the parameters of every action type and every logic property of
 // a network, of any bkn_spec, and returns the misplaced ones: action types first, then object types,
 // each by id, parameters in their order.
 func FindMisplacedParameters(doc *BknNetwork) []MisplacedParameter {
 	var found []MisplacedParameter
+	eachParameter(doc, func(at, ot, lp string, p Parameter) {
+		if m, ok := misplacedParameter(p); ok {
+			m.ActionTypeID, m.ObjectTypeID, m.LogicProperty = at, ot, lp
+			found = append(found, m)
+		}
+	})
+	return found
+}
+
+// FindInvalidParameters returns the parameters a 3.0 package refuses that FindMisplacedParameters
+// has no rewrite for, in the same order. Together the two are every parameter a 3.0 import refuses.
+func FindInvalidParameters(doc *BknNetwork) []InvalidParameter {
+	var found []InvalidParameter
+	eachParameter(doc, func(at, ot, lp string, p Parameter) {
+		if hasValueSource(p.ValueFrom) || hasValueSource(p.Source) {
+			return
+		}
+		found = append(found, InvalidParameter{ActionTypeID: at, ObjectTypeID: ot, LogicProperty: lp, Parameter: p.Name, Current: p})
+	})
+	return found
+}
+
+// eachParameter visits the parameters of the action types, then of the logic properties of the
+// object types, each by id.
+func eachParameter(doc *BknNetwork, visit func(actionTypeID, objectTypeID, logicProperty string, p Parameter)) {
 	actions := append([]*BknActionType(nil), doc.ActionTypes...)
 	sort.SliceStable(actions, func(i, j int) bool { return actions[i].ID < actions[j].ID })
 	for _, at := range actions {
 		for _, p := range at.Parameters {
-			if m, ok := misplacedParameter(p); ok {
-				m.ActionTypeID = at.ID
-				found = append(found, m)
-			}
+			visit(at.ID, "", "", p)
 		}
 	}
 	objects := append([]*BknObjectType(nil), doc.ObjectTypes...)
@@ -51,19 +85,23 @@ func FindMisplacedParameters(doc *BknNetwork) []MisplacedParameter {
 				continue
 			}
 			for _, p := range lp.Parameters {
-				if m, ok := misplacedParameter(p); ok {
-					m.ObjectTypeID, m.LogicProperty = ot.ID, lp.Name
-					found = append(found, m)
-				}
+				visit("", ot.ID, lp.Name, p)
 			}
 		}
 	}
-	return found
+}
+
+func hasValueSource(s string) bool {
+	return parameterValueSources[strings.ToLower(strings.TrimSpace(s))]
 }
 
 // misplacedParameter rebuilds the legacy row a stored parameter came from and rewrites it the way
-// the 3.0 refusal does.
+// the 3.0 refusal does. A parameter whose ValueFrom already holds a value source is accepted by 3.0
+// and is not misplaced, whatever its Source says.
 func misplacedParameter(p Parameter) (MisplacedParameter, bool) {
+	if hasValueSource(p.ValueFrom) {
+		return MisplacedParameter{}, false
+	}
 	row := map[string]string{
 		"Source":      p.Source,
 		"Binding":     p.ValueFrom,

@@ -76,6 +76,33 @@ func TestFindMisplacedParameters(t *testing.T) {
 	assert.Equal(t, "", found[4].Suggested.Source, "the rewrite leaves Source empty, as the legacy table had no position")
 }
 
+// Every parameter a 3.0 import refuses is reported once: misplaced with a rewrite, or invalid without
+// one. A ValueFrom that already holds a value source is accepted, whatever Source says.
+func TestFindInvalidParameters(t *testing.T) {
+	param := func(name, source, valueFrom string) Parameter {
+		return Parameter{Name: name, Source: source, ValueFrom: valueFrom}
+	}
+	net := &BknNetwork{ActionTypes: []*BknActionType{{
+		BknActionTypeFrontmatter: BknActionTypeFrontmatter{ID: "a"},
+		Parameters: []Parameter{
+			param("empty", "Body", ""),
+			param("name", "", "pod_name"),
+			param("misplaced", "property", "pod_name"),
+			param("fine", "Body", "input"),
+			param("odd but accepted", "property", "const"),
+		},
+	}}}
+	invalid := FindInvalidParameters(net)
+	require.Len(t, invalid, 2)
+	assert.Equal(t, "empty", invalid[0].Parameter)
+	assert.Equal(t, "a", invalid[0].ActionTypeID)
+	assert.Equal(t, "name", invalid[1].Parameter)
+
+	misplaced := FindMisplacedParameters(net)
+	require.Len(t, misplaced, 1)
+	assert.Equal(t, "misplaced", misplaced[0].Parameter)
+}
+
 func TestHasV3Declarations(t *testing.T) {
 	plain := func() *BknNetwork {
 		return &BknNetwork{

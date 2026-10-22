@@ -16,6 +16,7 @@ const (
 	BknBackend_KnowledgeNetwork_InvalidParameter_IncludeStatistics = "BknBackend.KnowledgeNetwork.InvalidParameter.IncludeStatistics"
 	BknBackend_KnowledgeNetwork_InvalidParameter_BknSpec           = "BknBackend.KnowledgeNetwork.InvalidParameter.BknSpec"
 	BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck            = "BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck"
+	BknBackend_KnowledgeNetwork_ExportNotReadableAsV3              = "BknBackend.KnowledgeNetwork.ExportNotReadableAsV3"
 	BknBackend_KnowledgeNetwork_InvalidParameter_IncludeTypeInfo   = "BknBackend.KnowledgeNetwork.InvalidParameter.IncludeTypeInfo"
 	BknBackend_KnowledgeNetwork_InvalidParameter_PathLength        = "BknBackend.KnowledgeNetwork.InvalidParameter.PathLength"
 	BknBackend_KnowledgeNetwork_ProxyTargetInvalid                 = "BknBackend.KnowledgeNetwork.Proxy.TargetInvalid"
@@ -72,6 +73,7 @@ var (
 		BknBackend_KnowledgeNetwork_InvalidParameter_IncludeStatistics,
 		BknBackend_KnowledgeNetwork_InvalidParameter_BknSpec,
 		BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck,
+		BknBackend_KnowledgeNetwork_ExportNotReadableAsV3,
 		BknBackend_KnowledgeNetwork_InvalidParameter_IncludeTypeInfo,
 		BknBackend_KnowledgeNetwork_InvalidParameter_PathLength,
 		BknBackend_KnowledgeNetwork_ProxyTargetInvalid,

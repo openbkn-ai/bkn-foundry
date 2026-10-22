@@ -489,6 +489,37 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			So(found.MisplacedParameters[0].ActionTypeID, ShouldEqual, "restart_pod")
 		})
 
+		Convey("3.0 is refused for a parameter whose value source is invalid, which has no rewrite\n", func() {
+			kn := misplacedKN("kn3")
+			kn.ActionTypes[0].Parameters[0] = interfaces.Parameter{Name: "pod", Type: "string", Source: "Body"}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn3", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
+			_, err := svc.ExportToTar(context.Background(), "kn3", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
+			var httpErr *rest.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
+			found := httpErr.BaseError.ErrorDetails.(*interfaces.NetworkCheckResult)
+			So(found.MisplacedParameters, ShouldBeEmpty)
+			So(found.InvalidParameters, ShouldResemble, []interfaces.NetworkCheckInvalidParameter{{
+				ActionTypeID: "restart_pod", Parameter: "pod", Current: interfaces.NetworkCheckParameterValue{Source: "Body"},
+			}})
+		})
+
+		Convey("3.0 is refused when the written package does not read back under 3.0\n", func() {
+			kn := &interfaces.KN{KNID: "kn4", KNName: "空属性名", ObjectTypes: []*interfaces.ObjectType{{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID: "pod", OTName: "Pod",
+					DataProperties: []*interfaces.DataProperty{{Name: "", Type: "string"}},
+				},
+			}}}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn4", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
+			data, err := svc.ExportToTar(context.Background(), "kn4", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
+			So(data, ShouldBeNil)
+			var httpErr *rest.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3)
+			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "pod")
+		})
+
 		Convey("3.0 is written as 3.0 when the check finds nothing\n", func() {
 			kn := misplacedKN("kn2")
 			kn.ActionTypes[0].Parameters[0] = interfaces.Parameter{Name: "pod", Type: "string", Source: "Body", ValueFrom: "property", Value: "pod_name"}

@@ -41,6 +41,25 @@ type NetworkCheckResult struct {
 	// MisplacedParameters are parameters whose value source sits in Source, as the legacy parameter
 	// table wrote it. Execution drops them; a 3.0 export is refused until they are fixed.
 	MisplacedParameters []NetworkCheckParameter `json:"misplaced_parameters"`
+	// InvalidParameters are the other parameters whose value_from is not property, input or const.
+	// There is no rewrite to suggest; execution drops them and a 3.0 export is refused until they
+	// are fixed.
+	InvalidParameters []NetworkCheckInvalidParameter `json:"invalid_parameters"`
+}
+
+// NeedsFix reports whether the check found anything a 3.0 package refuses.
+func (r *NetworkCheckResult) NeedsFix() bool {
+	return len(r.MisplacedParameters) > 0 || len(r.InvalidParameters) > 0
+}
+
+// NetworkCheckInvalidParameter is one parameter whose value source is neither in value_from nor in
+// source.
+type NetworkCheckInvalidParameter struct {
+	ActionTypeID  string                     `json:"action_type_id,omitempty"`
+	ObjectTypeID  string                     `json:"object_type_id,omitempty"`
+	LogicProperty string                     `json:"logic_property,omitempty"`
+	Parameter     string                     `json:"parameter"`
+	Current       NetworkCheckParameterValue `json:"current"`
 }
 
 // NetworkCheckParameter is one misplaced parameter: where it is, what is stored and the suggested

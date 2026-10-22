@@ -235,6 +235,11 @@ Solution = "不传表示自动选择；按 2.x 导出传 2.0，按 3.0 导出传
 ErrorLink = ""
 
 [BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck]
-Description = "网络体检发现错位的参数，暂不能按 3.0 导出"
-Solution = "按错误详情中的建议值修正这些参数后重新导出；也可以传 bkn_spec=2.0 按 2.x 导出，导出结果不含 3.0 声明。"
+Description = "网络体检发现值来源错位或不合法的参数，暂不能按 3.0 导出"
+Solution = "按错误详情修正这些参数后重新导出（错位的参数附有建议值）；也可以传 bkn_spec=2.0 按 2.x 导出，导出结果不含 3.0 声明。"
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.ExportNotReadableAsV3]
+Description = "按 3.0 写出的包无法按 3.0 规则读回，已拒绝导出"
+Solution = "按错误详情修正对应的定义后重新导出；也可以传 bkn_spec=2.0 按 2.x 导出。"
 ErrorLink = ""

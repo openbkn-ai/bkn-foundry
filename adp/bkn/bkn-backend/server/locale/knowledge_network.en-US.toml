@@ -235,6 +235,11 @@ Solution = "Leave it out to choose automatically, pass 2.0 to export as 2.x, or 
 ErrorLink = ""
 
 [BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck]
-Description = "The network check found misplaced parameters, so the network cannot be exported as 3.0 yet"
-Solution = "Fix the parameters with the suggested values in the error details and export again, or pass bkn_spec=2.0 to export as 2.x without the 3.0 declarations."
+Description = "The network check found parameters with a misplaced or invalid value source, so the network cannot be exported as 3.0 yet"
+Solution = "Fix the parameters listed in the error details (misplaced ones come with suggested values) and export again, or pass bkn_spec=2.0 to export as 2.x without the 3.0 declarations."
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.ExportNotReadableAsV3]
+Description = "The package written as 3.0 does not read back under the 3.0 rules, so the export was refused"
+Solution = "Fix the definition named in the error details and export again, or pass bkn_spec=2.0 to export as 2.x."
 ErrorLink = ""
