@@ -278,8 +278,9 @@ components:
             Object types bound to a resource outside a SQL data source (a dataset or an index),
             or read from more than one data source, are read through the resource data API and
             joined instead of as one SQL statement. There only the basic forms run: CASE,
-            coalesce, totals over groups, comparing two lists, passing nodes on and returning
-            graph values are refused with 400, and a read too large or too slow is refused too.
+            coalesce, totals over groups, comparing two lists, passing nodes on and collect are
+            refused with 400, and a read too large or too slow is refused too. Nodes,
+            relationships and derived relationships are returned as on a SQL data source.
 
             In the semi-join form each row of the second stage is kept once if its value is
             among the first stage's, however often the first stage produced it; v may also be

@@ -261,7 +261,14 @@ func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.Cy
 	}
 
 	conditionsAsBooleans(compiled.plan, response.Columns, response.Entries)
-	entries, limited, err := assembleGraphRows(compiled.plan, read, response.Entries)
+	return s.graphResult(ctx, compiled, response.Entries)
+}
+
+// graphResult builds the graph values of a query from the flat rows its graph
+// read returned, whichever executor read them.
+func (s *cypherQueryService) graphResult(ctx context.Context, compiled *compiledQuery,
+	rows []map[string]any) (*interfaces.CypherQueryResult, error) {
+	entries, limited, err := assembleGraphRows(compiled.plan, compiled.graph, rows)
 	var missingKey *missingKeyError
 	if errors.As(err, &missingKey) {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidQuery).
@@ -276,7 +283,7 @@ func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.Cy
 		Entries:    entries,
 		ValueTypes: graphValueTypes(compiled.plan, compiled.schema),
 		Execution: &interfaces.CypherExecution{
-			MatchRows: len(response.Entries), MatchComplete: true, ConclusionsLimited: limited,
+			MatchRows: len(rows), MatchComplete: true, ConclusionsLimited: limited,
 		},
 		TraceDescriptor:   compiled.traceDescriptor,
 		PermissionImpacts: compiled.permissionImpacts,
@@ -643,7 +650,7 @@ func (s *cypherQueryService) queryBindJoin(ctx context.Context, query interfaces
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.String(spanAttrExecutor, common.CypherExecutorBindJoin))
 
-	columns, entries, err := s.runBindJoin(ctx, query, compiled)
+	columns, entries, err := s.runBindJoin(ctx, query, compiled, compiled.plan)
 	var budget *ReadBudgetError
 	if errors.As(err, &budget) {
 		span.SetAttributes(attribute.String(spanAttrFallback, fallbackSQLReadBudget))
@@ -674,7 +681,7 @@ func (s *cypherQueryService) queryBindJoin(ctx context.Context, query interfaces
 // answer, again under the proxy. The whole execution shares the timeout the
 // SQL path gives its one statement.
 func (s *cypherQueryService) runBindJoin(ctx context.Context, query interfaces.CypherQuery,
-	compiled *compiledQuery) ([]interfaces.RawQueryColumn, []map[string]any, error) {
+	compiled *compiledQuery, plan *Plan) ([]interfaces.RawQueryColumn, []map[string]any, error) {
 	span := trace.SpanFromContext(ctx)
 	timeout := s.bindJoinTimeout
 	if timeout <= 0 {
@@ -701,7 +708,7 @@ func (s *cypherQueryService) runBindJoin(ctx context.Context, query interfaces.C
 	}
 
 	caller, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
-	columns, entries, err := runBindJoin(ctx, compiled.plan, compiled.schema, readAs(caller),
+	columns, entries, err := runBindJoin(ctx, plan, compiled.schema, readAs(caller),
 		defaultBindJoinLimits, interfaces.CYPHER_DEFAULT_LIMIT)
 	if err == nil || !vegaRefused(err) {
 		span.SetAttributes(attribute.String(spanAttrExecutionPath, executionPathCaller))
@@ -720,7 +727,7 @@ func (s *cypherQueryService) runBindJoin(ctx context.Context, query interfaces.C
 		"caller %s, proxy account %s, resources %s",
 		query.KNID, caller.ID, proxy.account.ID, strings.Join(proxy.resourceIDs, ","))
 	span.SetAttributes(attribute.String(spanAttrExecutionPath, executionPathProxy))
-	columns, entries, err = runBindJoin(ctx, compiled.plan, compiled.schema, readAs(proxy.account),
+	columns, entries, err = runBindJoin(ctx, plan, compiled.schema, readAs(proxy.account),
 		defaultBindJoinLimits, interfaces.CYPHER_DEFAULT_LIMIT)
 	return columns, entries, timedOut(err)
 }
@@ -959,14 +966,22 @@ func unsupportedSource(err error) bool {
 // graph values -- is refused, saying why.
 func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfaces.CypherQuery,
 	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
-	if compiled.plan.SQLOnly || compiled.graph != nil {
+	if compiled.plan.SQLOnly || !graphOutsideSQL(compiled.graph) {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
 			WithErrorDetails(detail(ctx, "NonSQLSource", nil))
 	}
 	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.String(spanAttrExecutor, common.CypherExecutorBindJoin),
-		attribute.String(spanAttrFallback, fallbackNonSQLSource))
-	columns, entries, err := s.runBindJoin(ctx, query, compiled)
+		attribute.String(spanAttrFallback, fallbackNonSQLSource),
+		attribute.Bool(spanAttrGraph, compiled.graph != nil))
+	plan := compiled.plan
+	if compiled.graph != nil {
+		// The statement a graph value is read through is a plan of plain
+		// columns; the values are built from them as the SQL path builds
+		// them, so the executor runs nothing it does not already run.
+		plan = compiled.graph.flat
+	}
+	columns, entries, err := s.runBindJoin(ctx, query, compiled, plan)
 	var budget *ReadBudgetError
 	if errors.As(err, &budget) || errors.Is(err, errBindJoinTimeout) {
 		return nil, outsideSQLTooLarge(ctx)
@@ -977,12 +992,22 @@ func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfac
 		}
 		return nil, executionError(ctx, err)
 	}
+	if compiled.graph != nil {
+		return s.graphResult(ctx, compiled, entries)
+	}
 	return &interfaces.CypherQueryResult{
 		Columns:           columns,
 		Entries:           entries,
 		TraceDescriptor:   compiled.traceDescriptor,
 		PermissionImpacts: compiled.permissionImpacts,
 	}, nil
+}
+
+// graphOutsideSQL reports a graph read the bind-join executor can serve: none,
+// or one read as flat rows. One with collect selects its conclusions through a
+// derived table first, which only the SQL path has.
+func graphOutsideSQL(read *graphRead) bool {
+	return read == nil || (!read.evidence && read.flat != nil && !read.flat.SQLOnly)
 }
 
 func executionError(ctx context.Context, err error) error {
