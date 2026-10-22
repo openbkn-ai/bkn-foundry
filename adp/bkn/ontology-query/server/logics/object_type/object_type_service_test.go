@@ -1175,48 +1175,70 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(httpErr.BaseError.ErrorDetails, ShouldEqual, details)
 		})
 
-		Convey("keyword limit errors preserve safe parameters and guidance", func() {
-			objectType := interfaces.ObjectType{
-				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-					OTID:        objectTypeID,
-					PrimaryKeys: []string{"id"},
-					DataProperties: []cond.DataProperty{
-						{Name: "prop1", MappedField: cond.Field{Name: "field1"}},
+		for _, tc := range []struct {
+			name             string
+			field            string
+			ambiguous        bool
+			expectedProperty string
+		}{
+			{name: "keyword limits name the caller property", field: "field1", expectedProperty: "prop1"},
+			{name: "keyword limits omit ambiguous property names", field: "field1", ambiguous: true},
+			{name: "keyword limits omit unknown property names", field: "unknown_field"},
+		} {
+			Convey(tc.name, func() {
+				objectType := interfaces.ObjectType{
+					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+						OTID:        objectTypeID,
+						PrimaryKeys: []string{"id"},
+						DataProperties: []cond.DataProperty{
+							{Name: "prop1", MappedField: cond.Field{Name: "field1"}},
+						},
+						DataSource: &interfaces.ResourceInfo{
+							Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+							ID:   "res1",
+						},
 					},
-					DataSource: &interfaces.ResourceInfo{
-						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
-						ID:   "res1",
-					},
-				},
-			}
+				}
 
-			query := &interfaces.ObjectQueryBaseOnObjectType{
-				KNID:         knID,
-				Branch:       branch,
-				ObjectTypeID: objectTypeID,
-				PageQuery:    interfaces.PageQuery{Limit: 10},
-			}
+				if tc.ambiguous {
+					objectType.DataProperties = append(objectType.DataProperties, cond.DataProperty{Name: "prop2", MappedField: cond.Field{Name: "field1"}})
+				}
+				query := &interfaces.ObjectQueryBaseOnObjectType{
+					KNID:         knID,
+					Branch:       branch,
+					ObjectTypeID: objectTypeID,
+					PageQuery:    interfaces.PageQuery{Limit: 10},
+				}
 
-			service.vba = &vegaStubForOTQuery{
-				err: interfaces.NewVegaDownstreamError(http.StatusBadRequest,
-					`{"error_code":"VegaBackend.Resource.QueryValueExceedsKeywordLimit","error_details":"private diagnostic","metadata":{"field":"status","limit":256,"private":"secret"}}`),
-			}
+				downstream := interfaces.NewVegaDownstreamError(http.StatusBadRequest,
+					fmt.Sprintf(`{"error_code":"VegaBackend.Resource.QueryValueExceedsKeywordLimit","error_details":"private diagnostic","metadata":{"field":%q,"limit":256,"private":"secret"}}`, tc.field))
+				service.vba = &vegaStubForOTQuery{err: downstream}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
+				omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 
-			_, err := service.GetObjectsByObjectTypeID(ctx, query)
-			So(err, ShouldNotBeNil)
+				_, err := service.GetObjectsByObjectTypeID(ctx, query)
+				So(err, ShouldNotBeNil)
 
-			httpErr, ok := err.(*rest.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "status")
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "256 UTF-16")
-			So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "private")
-			So(httpErr.BaseError.Metadata["field"], ShouldEqual, "status")
-			So(httpErr.BaseError.Metadata["limit"], ShouldEqual, float64(256))
-			So(len(httpErr.BaseError.Metadata), ShouldEqual, 2)
-		})
+				httpErr, ok := err.(*rest.HTTPError)
+				So(ok, ShouldBeTrue)
+				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+				if tc.expectedProperty != "" {
+					So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, tc.expectedProperty)
+					So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "256 UTF-16")
+					So(httpErr.BaseError.Metadata["field"], ShouldEqual, tc.expectedProperty)
+					So(len(httpErr.BaseError.Metadata), ShouldEqual, 2)
+				} else {
+					_, hasField := httpErr.BaseError.Metadata["field"]
+					So(hasField, ShouldBeFalse)
+					So(len(httpErr.BaseError.Metadata), ShouldEqual, 1)
+				}
+				So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, tc.field)
+				So(downstream.Metadata["field"], ShouldEqual, tc.field)
+				So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "private")
+				So(httpErr.BaseError.Metadata["limit"], ShouldEqual, float64(256))
+			})
+
+		}
 
 		Convey("vega 返回 5xx 时仍认定为依赖故障", func() {
 			objectType := interfaces.ObjectType{

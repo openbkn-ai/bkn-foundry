@@ -928,8 +928,10 @@ paths:
           description: >-
             Query validation failed (`OntologyQuery.ObjectType.InvalidParameter`).
             When Vega reports an indexed keyword length violation, error_details contains
-            safe guidance and metadata contains the validated field name and positive integer
-            limit in UTF-16 code units. Other downstream metadata is not forwarded.
+            safe guidance and metadata contains the positive integer limit in UTF-16 code units.
+            metadata.field is the object property name, translated from the resource field
+            when exactly one property maps to it; ambiguous or unknown mappings omit field
+            and use generic guidance. Other downstream metadata is not forwarded.
           content:
             application/json:
               schema:
