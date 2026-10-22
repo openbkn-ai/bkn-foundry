@@ -384,12 +384,12 @@ func TestSchemaForQueryUsesManagedFieldNames(t *testing.T) {
 		assert.Equal(t, "source_wide", source.OriginalName)
 		fields := map[string]*interfaces.Property{"wide": got[0]}
 		for _, op := range []string{"==", "like", "prefix"} {
-			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "wide", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: "0100"}}, fields)
+			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "wide", Operation: op, Value: "0100"}, fields)
 			require.NoError(t, err)
 			assert.Equal(t, op, actual.GetOperation())
 		}
 		for _, op := range []string{"range", "out_range", "between"} {
-			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "wide", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: []any{"-09", "010"}}}, fields)
+			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "wide", Operation: op, Value: []any{"-09", "010"}}, fields)
 			require.Error(t, err)
 			assert.Nil(t, actual)
 		}

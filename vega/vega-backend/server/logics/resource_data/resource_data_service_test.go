@@ -1417,7 +1417,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 			ignore := true
 			bounds := []any{"-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"}
 			params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, NeedTotal: true,
-				FilterCondCfg: &interfaces.FilterCondCfg{Name: "wide", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: bounds}}}
+				FilterCondCfg: &interfaces.FilterCondCfg{Name: "wide", Operation: op, Value: bounds}}
 			cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeDoris}, nil)
 			cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeDoris, gomock.Any()).Return(conn, nil)
 			conn.EXPECT().Connect(gomock.Any()).Return(nil)
