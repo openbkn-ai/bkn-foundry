@@ -179,6 +179,10 @@ components:
       properties:
         scope: { type: string, enum: [resource] }
         resource_id: { type: string }
+        language:
+          type: string
+          enum: [zh-CN, en-US, ""]
+          description: 新生成业务名称、描述和警告的输出语言；省略或为空时使用 Accept-Language 解析结果；请求头未提供受支持的语言时，使用服务器部署时配置的默认语言。创建时写入任务输入快照，后续界面语言变化不影响已创建任务。
         apply_mode: { type: string, enum: [dry_run, fill_empty, force], default: fill_empty }
         confidence_threshold: { type: number, format: double, default: 0.75 }
         include_sample_rows:

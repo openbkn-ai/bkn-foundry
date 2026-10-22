@@ -28,7 +28,7 @@ func TestBknAgentServiceRun(t *testing.T) {
 		Run(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.BknAgentRunRequest{})).
 		DoAndReturn(func(_ context.Context, req *interfaces.BknAgentRunRequest) (*interfaces.BknAgentRunResponse, error) {
 			assert.Equal(t, interfaces.SemanticUnderstandingResourceAgentID, req.AgentID)
-			assert.JSONEq(t, `{"resource":{"id":"resource-1"}}`, req.Message)
+			assert.JSONEq(t, `{"resource":{"id":"resource-1"},"options":{"language":"en-US"}}`, req.Message)
 			assert.Equal(t, "object", req.ResponseFormat["type"])
 			assert.Equal(t, []string{"confidence", "resource", "fields", "warnings"}, req.ResponseFormat["required"])
 			return &interfaces.BknAgentRunResponse{TaskID: "agent-task-1"}, nil
@@ -36,7 +36,7 @@ func TestBknAgentServiceRun(t *testing.T) {
 
 	got, err := service.Run(context.Background(), &interfaces.SemanticUnderstandingTask{
 		AgentID: interfaces.SemanticUnderstandingResourceAgentID,
-		Input:   `{"resource":{"id":"resource-1"}}`,
+		Input:   `{"resource":{"id":"resource-1"},"options":{"language":"en-US"}}`,
 		Scope:   interfaces.SemanticUnderstandingTaskScopeResource,
 	})
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -66,8 +67,10 @@ func Test_SemanticUnderstandingTaskRestHandler_CreateTask(t *testing.T) {
 	t.Run("creates resource task", func(t *testing.T) {
 		engine, suts := setupSemanticUnderstandingTaskHandlerTest(t)
 		suts.EXPECT().CreateResourceTask(gomock.Any(), "res-1", gomock.Any()).
-			DoAndReturn(func(_ context.Context, resourceID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
+			DoAndReturn(func(ctx context.Context, resourceID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 				assert.Equal(t, "res-1", resourceID)
+				assert.Equal(t, "zh-CN", req.Language)
+				assert.Equal(t, "en-US", rest.GetLanguageByCtx(ctx))
 				assert.Equal(t, interfaces.SemanticUnderstandingApplyModeDryRun, req.ApplyMode)
 				require.NotNil(t, req.ConfidenceThreshold)
 				assert.Equal(t, 0.9, *req.ConfidenceThreshold)
@@ -82,9 +85,10 @@ func Test_SemanticUnderstandingTaskRestHandler_CreateTask(t *testing.T) {
 				}, nil
 			})
 
-		body := `{"scope":"resource","resource_id":"res-1","apply_mode":"dry_run","confidence_threshold":0.9}`
+		body := `{"scope":"resource","resource_id":"res-1","language":"zh-CN","apply_mode":"dry_run","confidence_threshold":0.9}`
 		req := httptest.NewRequest(http.MethodPost, semanticUnderstandingTaskURL, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept-Language", "en-US")
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

@@ -162,6 +162,51 @@ func TestMarshalSemanticUnderstandingInput(t *testing.T) {
 }
 
 func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
+	for _, tc := range []struct {
+		name, language, contextLanguage, expected string
+	}{
+		{"English request", "en-US", "zh-CN", "en-US"},
+		{"Chinese request", "zh-CN", "en-US", "zh-CN"},
+		{"request language fallback", "", "en-US", "en-US"},
+		{"Chinese context fallback", "", "zh-CN", "zh-CN"},
+		{"invalid explicit language", "fr-FR", "en-US", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+			resourceService := mock_interfaces.NewMockResourceService(ctrl)
+			catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+			service := &semanticUnderstandingTaskService{suta: taskAccess, rs: resourceService, cs: catalogService}
+			ctx := rest.WithLanguage(context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
+				interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER}), tc.contextLanguage)
+			resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(sampleSemanticResource(), nil)
+			catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), "catalog-1", gomock.Any(), true).Return(true, nil, nil)
+			if tc.expected != "" {
+				taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
+				taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, task *interfaces.SemanticUnderstandingTask) error {
+					var input interfaces.SemanticUnderstandingResourceAgentInput
+					require.NoError(t, sonic.Unmarshal([]byte(task.Input), &input))
+					assert.Equal(t, tc.expected, input.Options.Language)
+					assert.Equal(t, "order_id", input.Resource.SchemaDefinition[0].Name)
+					return nil
+				})
+			}
+			var req interfaces.CreateSemanticUnderstandingTaskRequest
+			require.NoError(t, sonic.Unmarshal([]byte(fmt.Sprintf(`{"language":%q,"apply_mode":"dry_run"}`, tc.language)), &req))
+			got, err := service.CreateResourceTask(ctx, "resource-1", &req)
+			if tc.expected == "" {
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+				assert.Nil(t, got)
+				return
+			}
+			require.NoError(t, err)
+			assert.False(t, got.Applied)
+			assert.Equal(t, "dry_run", got.ApplyMode)
+		})
+	}
+
 	t.Run("creates pending resource task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
@@ -261,7 +306,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		resource := sampleSemanticResource()
-		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
@@ -304,7 +349,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			OriginalType: "knn_vector",
 			Type:         interfaces.DataType_Vector,
 		})
-		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
@@ -364,7 +409,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			OriginalType: "enum",
 			Type:         interfaces.DataType_String,
 		})
-		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
@@ -393,7 +438,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			{Name: "shape", OriginalName: "shape", Type: interfaces.DataType_Other},
 			{Name: "embedding", OriginalName: "embedding", Type: interfaces.DataType_Vector},
 		}
-		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
@@ -413,7 +458,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		resource := sampleSemanticResource()
-		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
@@ -442,7 +487,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		resource := sampleSemanticResource()
-		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
@@ -470,7 +515,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 			OriginalName: "payload",
 			Type:         interfaces.DataType_Json,
 		})
-		task, err := normalizeResourceSemanticUnderstandingRequest(resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
+		task, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},
 		})
@@ -1140,8 +1185,41 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 }
 
 func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
+	t.Run("language is captured and included in the input hash for all apply modes", func(t *testing.T) {
+		for _, mode := range []string{"dry_run", "fill_empty", "force"} {
+			resource := sampleSemanticResource()
+			var previousHash string
+			for _, language := range []string{"en-US", "zh-CN"} {
+				req := &interfaces.CreateSemanticUnderstandingTaskRequest{Language: language, ApplyMode: mode}
+				got, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), resource, req)
+				require.NoError(t, err)
+				var input interfaces.SemanticUnderstandingResourceAgentInput
+				require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+				assert.Equal(t, language, input.Options.Language)
+				assert.Equal(t, mode, input.Options.ApplyMode)
+				assert.Equal(t, resource.ID, input.Resource.ID)
+				assert.Equal(t, resource.SchemaDefinition[0].Name, input.Resource.SchemaDefinition[0].Name)
+				assert.Equal(t, "order table", input.Resource.Description)
+				assert.Nil(t, req.ConfidenceThreshold)
+				assert.NotEqual(t, previousHash, got.InputHash)
+				previousHash = got.InputHash
+			}
+		}
+	})
+
+	t.Run("falls back to configured service language without a request context language", func(t *testing.T) {
+		previous := rest.DefaultLanguage
+		t.Cleanup(func() { rest.DefaultLanguage = previous })
+		rest.DefaultLanguage = rest.AmericanEnglish
+		got, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), sampleSemanticResource(), nil)
+		require.NoError(t, err)
+		var input interfaces.SemanticUnderstandingResourceAgentInput
+		require.NoError(t, sonic.Unmarshal([]byte(got.Input), &input))
+		assert.Equal(t, "en-US", input.Options.Language)
+	})
+
 	t.Run("defaults optional values", func(t *testing.T) {
-		got, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), nil)
+		got, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), sampleSemanticResource(), nil)
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.SemanticUnderstandingTaskScopeResource, got.Scope)
@@ -1158,7 +1236,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 	})
 
 	t.Run("accepts unmasked sample policy when including samples", func(t *testing.T) {
-		got, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
+		got, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 20},
 		})
@@ -1171,7 +1249,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 	})
 
 	t.Run("rejects sample rows beyond the semantic understanding limit", func(t *testing.T) {
-		got, err := normalizeResourceSemanticUnderstandingRequest(sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
+		got, err := normalizeResourceSemanticUnderstandingRequest(context.Background(), sampleSemanticResource(), &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy: &interfaces.SemanticUnderstandingSamplePolicy{
 				Masked:  false,
