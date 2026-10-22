@@ -55,7 +55,9 @@ func (s *TraceQueryService) CountSpansByTraceIDs(ctx context.Context, traceIDs [
 		"query": map[string]any{"terms": map[string]any{"traceId.keyword": unique}},
 		"aggs": map[string]any{
 			"by_trace": map[string]any{
-				"terms": map[string]any{"field": "traceId.keyword", "size": len(unique)},
+				// The selected trace IDs are a small set. Avoid building global
+				// ordinals for every trace in the index after each refresh.
+				"terms": map[string]any{"field": "traceId.keyword", "size": len(unique), "execution_hint": "map"},
 				"aggs": map[string]any{"span_count": map[string]any{
 					"cardinality": map[string]any{"field": "spanId.keyword"},
 				}},

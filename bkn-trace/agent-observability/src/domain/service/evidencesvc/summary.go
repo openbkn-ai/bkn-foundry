@@ -108,7 +108,7 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	}
 	loadOptions := options
 	loadOptions.Status = ""
-	requests, metadata, err := s.loadConversationExecutionSummaries(ctx, loadOptions, candidateLimit)
+	requests, metadata, err := s.loadProvenanceRequestSummaries(ctx, loadOptions, candidateLimit)
 	if err != nil {
 		return evidencevo.ConversationSummaryPage{}, err
 	}
@@ -205,7 +205,7 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 
 // Preserve execution facts used by legacy business-reference and network filters.
 // First-turn previews are loaded independently so operation artifacts cannot hide them.
-func (s *Service) loadConversationExecutionSummaries(ctx context.Context, options evidencevo.SummaryQueryOptions, limit int) ([]evidencevo.RequestSummary, summaryLoadMetadata, error) {
+func (s *Service) loadProvenanceRequestSummaries(ctx context.Context, options evidencevo.SummaryQueryOptions, limit int) ([]evidencevo.RequestSummary, summaryLoadMetadata, error) {
 	if !trustedQueryScope(options.Scope) {
 		return []evidencevo.RequestSummary{}, summaryLoadMetadata{}, nil
 	}
@@ -232,7 +232,7 @@ func (s *Service) loadConversationExecutionSummaries(ctx context.Context, option
 	if err := s.applyCanonicalRequestIdentity(ctx, requests); err != nil {
 		return nil, summaryLoadMetadata{}, err
 	}
-	// Conversation filters consume request facts only; trace identity and span
+	// Provenance lists consume request facts only; trace identity and span
 	// statistics belong to the trace list and must not add discarded reads here.
 	return requests, metadata, nil
 }
@@ -304,7 +304,10 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 	candidateLimit := summaryCandidateLimit(options)
 	loadOptions := options
 	loadOptions.Status = ""
-	requests, _, metadata, err := s.loadExecutionSummariesWithCandidateLimit(ctx, loadOptions, candidateLimit)
+	// Preserve the legacy interaction-level authorization and scan window.
+	// Conversation filtering still happens after request aggregation below.
+	loadOptions.ConversationID = ""
+	requests, metadata, err := s.loadProvenanceRequestSummaries(ctx, loadOptions, candidateLimit)
 	if err != nil {
 		return evidencevo.InteractionSummaryPage{}, err
 	}
@@ -434,10 +437,10 @@ func (s *Service) listCanonicalConversationInteractions(
 	metadata := summaryLoadMetadata{}
 	for _, interaction := range selection.Entries {
 		canonical := canonicalInteractionListSummary(conversation, interaction)
-		facts, _, factMetadata, loadErr := s.loadExecutionSummaries(ctx, evidencevo.SummaryQueryOptions{
-			Scope: options.Scope, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		facts, factMetadata, loadErr := s.loadProvenanceRequestSummaries(ctx, evidencevo.SummaryQueryOptions{
+			Scope: options.Scope, InteractionID: interaction.ID,
 			Limit: MaxSummaryQueryLimit,
-		})
+		}, MaxSummaryScanEntries)
 		if loadErr != nil {
 			return evidencevo.InteractionSummaryPage{}, false, loadErr
 		}

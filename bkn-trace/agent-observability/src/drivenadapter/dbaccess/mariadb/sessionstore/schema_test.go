@@ -18,6 +18,8 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 	schema := sessionstore.SchemaSQL()
 	required := []string{
 		"bkn_trace_conversations",
+		"idx_bkn_trace_receipt_conversation_summary",
+		"idx_bkn_trace_call_fact_conversation_summary",
 		"agent_name VARCHAR(128)",
 		"actor_name_snapshot VARCHAR(255)",
 		"creation_auth_method VARCHAR(32)",
@@ -92,6 +94,7 @@ func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 		"033": "61724a6fc17222f903dd3c51974cd3ecd21ed6b5364d11a3885d23b4fc3cbf6f",
 		"034": "1b14bac1b8b381371e1d1a11c202f5ff2237986e327445a2feeb2541795515dd",
 		"035": "23762452351bdc3dc29a7d08596753252856a27b4b3a40b461ac07907acf2f40",
+		"036": "b394167924a39fec1ea535939b1592fff70fe1d22e6cc4ca7b98330e68c3495f",
 	}
 	migrations := sessionstore.Migrations()
 	if len(migrations) != len(expectedChecksums) {
