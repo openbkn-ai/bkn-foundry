@@ -1406,6 +1406,36 @@ func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
 }
 
 func TestResourceDataServiceQueryDoris(t *testing.T) {
+	t.Run("large integer source ranges reach connector", func(t *testing.T) {
+		for _, op := range []string{"range", "out_range", "between"} {
+			ctrl := gomock.NewController(t)
+			cs := mock_interfaces.NewMockCatalogService(ctrl)
+			cf := mock_interfaces.NewMockConnectorFactory(ctrl)
+			conn := mock_interfaces.NewMockTableConnector(ctrl)
+			service := &resourceDataService{cs: cs, cf: cf}
+			resource := &interfaces.Resource{ID: "large-resource", CatalogID: "catalog", Category: interfaces.ResourceCategoryTable,
+				LocalIndexName: "index", LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+				SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_LargeInteger, OriginalType: "LARGEINT"}}}
+			ignore := true
+			bounds := []any{"-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"}
+			params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, NeedTotal: true,
+				FilterCondCfg: &interfaces.FilterCondCfg{Name: "wide", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: bounds}}}
+			cs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeDoris}, nil)
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeDoris, gomock.Any()).Return(conn, nil)
+			conn.EXPECT().Connect(gomock.Any()).Return(nil)
+			conn.EXPECT().Close(gomock.Any()).Return(nil)
+			conn.EXPECT().ExecuteQuery(gomock.Any(), resource, params).DoAndReturn(func(_ context.Context, _ *interfaces.Resource, prepared *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
+				require.NotNil(t, prepared.ActualFilterCond)
+				assert.Equal(t, op, prepared.ActualFilterCond.GetOperation())
+				assert.Equal(t, bounds, prepared.FilterCondCfg.Value)
+				return &interfaces.QueryResult{Entries: []map[string]any{{"wide": bounds[1]}}, Total: 1}, nil
+			})
+			rows, total, err := service.QuerySourcePage(context.Background(), resource, params)
+			require.NoError(t, err)
+			assert.Equal(t, int64(1), total)
+			assert.Equal(t, bounds[1], rows[0]["wide"])
+		}
+	})
 	for _, connectorType := range []string{interfaces.ConnectorTypeDoris, interfaces.ConnectorTypeMariaDB} {
 		for _, indexed := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s indexed=%v", connectorType, indexed), func(t *testing.T) {
@@ -1414,7 +1444,11 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 				cf := mock_interfaces.NewMockConnectorFactory(ctrl)
 				lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
 				service := &resourceDataService{cs: cs, cf: cf, lim: lim}
-				resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_String, OriginalType: "LARGEINT", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}, {Name: "payload", Type: interfaces.DataType_Json}}}
+				resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_String, OriginalType: "VARCHAR", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword}}}, {Name: "payload", Type: interfaces.DataType_Json}}}
+				if connectorType == interfaces.ConnectorTypeDoris {
+					resource.SchemaDefinition[0].Type = interfaces.DataType_LargeInteger
+					resource.SchemaDefinition[0].OriginalType = "LARGEINT"
+				}
 				if indexed {
 					resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 					resource.LocalIndexName = "test-index"
@@ -1428,6 +1462,11 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 					actual, ok := prepared.ActualFilterCond.(*filter_condition.EqualCond)
 					require.True(t, ok)
 					assert.Equal(t, wantValue, actual.Value)
+					if connectorType == interfaces.ConnectorTypeDoris && !indexed {
+						assert.Equal(t, interfaces.DataType_LargeInteger, actual.Lfield.Type)
+					} else {
+						assert.Equal(t, interfaces.DataType_String, actual.Lfield.Type)
+					}
 				}
 				if indexed {
 					lim.EXPECT().ListDocuments(gomock.Any(), resource.LocalIndexName, resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, _ *interfaces.Resource, prepared *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
@@ -1465,7 +1504,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			cs := mock_interfaces.NewMockCatalogService(ctrl)
 			service := &resourceDataService{cs: cs, cf: mock_interfaces.NewMockConnectorFactory(ctrl), lim: mock_interfaces.NewMockLocalIndexManager(ctrl)}
-			resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "test-index", SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_String, OriginalType: "LARGEINT"}, {Name: "payload", Type: interfaces.DataType_Json}}}
+			resource := &interfaces.Resource{ID: "resource-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "test-index", SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_LargeInteger, OriginalType: "LARGEINT"}, {Name: "payload", Type: interfaces.DataType_Json}}}
 			cs.EXPECT().InternalGetByID(gomock.Any(), resource.CatalogID, true).Return(&interfaces.Catalog{Enabled: true, ConnectorType: interfaces.ConnectorTypeDoris}, nil)
 			rows, total, err := service.QuerySourcePage(context.Background(), resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg})
 			assert.Nil(t, rows)

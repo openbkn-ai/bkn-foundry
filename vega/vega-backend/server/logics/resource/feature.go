@@ -18,6 +18,8 @@ import (
 // IsFeatureSupported reports whether a Property type can generate a Feature type.
 func IsFeatureSupported(propertyType string, featureType string) bool {
 	switch propertyType {
+	case interfaces.DataType_LargeInteger:
+		return featureType == interfaces.PropertyFeatureType_Keyword
 	case interfaces.DataType_String:
 		return featureType == interfaces.PropertyFeatureType_Keyword ||
 			featureType == interfaces.PropertyFeatureType_Fulltext ||
@@ -64,10 +66,13 @@ func AddDefaultStringAndTextFeatures(props []*interfaces.Property, indexConfig *
 		ignoreAbove = *indexConfig.DefaultKeywordIgnoreAbove
 	}
 	for _, prop := range props {
-		if prop.Type != interfaces.DataType_String && prop.Type != interfaces.DataType_Text {
+		if prop.Type != interfaces.DataType_String &&
+			prop.Type != interfaces.DataType_Text &&
+			prop.Type != interfaces.DataType_LargeInteger {
 			continue
 		}
-		if !hasFeature(prop.Features, interfaces.PropertyFeatureType_Keyword) {
+		if prop.Type != interfaces.DataType_LargeInteger &&
+			!hasFeature(prop.Features, interfaces.PropertyFeatureType_Keyword) {
 			prop.Features = append(prop.Features, interfaces.PropertyFeature{
 				FeatureName: interfaces.LocalIndexKeywordSubfieldName,
 				FeatureType: interfaces.PropertyFeatureType_Keyword,

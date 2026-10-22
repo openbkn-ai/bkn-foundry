@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
 func TestLocalIndexManagerGetIndexCapabilities(t *testing.T) {
@@ -374,6 +375,26 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 }
 
 func TestSchemaForQueryUsesManagedFieldNames(t *testing.T) {
+	t.Run("large integer uses the physical string query contract", func(t *testing.T) {
+		source := &interfaces.Property{Name: "wide", OriginalName: "source_wide", Type: interfaces.DataType_LargeInteger, OriginalType: "LARGEINT"}
+		got := SchemaForQuery([]*interfaces.Property{source})
+		require.Len(t, got, 1)
+		assert.Equal(t, interfaces.DataType_String, got[0].Type)
+		assert.Equal(t, "wide", got[0].OriginalName)
+		assert.Equal(t, interfaces.DataType_LargeInteger, source.Type)
+		assert.Equal(t, "source_wide", source.OriginalName)
+		fields := map[string]*interfaces.Property{"wide": got[0]}
+		for _, op := range []string{"==", "like", "prefix"} {
+			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "wide", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: "0100"}}, fields)
+			require.NoError(t, err)
+			assert.Equal(t, op, actual.GetOperation())
+		}
+		for _, op := range []string{"range", "out_range", "between"} {
+			actual, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "wide", Operation: op, ValueOptCfg: interfaces.ValueOptCfg{Value: []any{"-09", "010"}}}, fields)
+			require.Error(t, err)
+			assert.Nil(t, actual)
+		}
+	})
 	schema := []*interfaces.Property{{
 		Name:         "body",
 		OriginalName: "source_body",

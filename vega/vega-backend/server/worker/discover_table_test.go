@@ -488,13 +488,13 @@ func TestEnrichTableMetadataDoris(t *testing.T) {
 	connector := vmock.NewMockTableConnector(ctrl)
 	worker := &DiscoverTaskWorker{rs: rs}
 	reference := "`hive`.`sales.eu`.`order.items`"
-	resource := &interfaces.Resource{ID: "r1", SourceIdentifier: reference, SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true}}}}
+	resource := &interfaces.Resource{ID: "r1", SourceIdentifier: reference, SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": true}}, {Name: "wide", Type: interfaces.DataType_LargeInteger, OriginalType: "LARGEINT", Features: []interfaces.PropertyFeature{{FeatureName: "keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, IsDefault: true}}}}}
 	table := &interfaces.TableMeta{SourceCatalog: "hive", Database: "sales.eu", Schema: "sales.eu", Name: "order.items"}
 	connector.EXPECT().GetTableMeta(gomock.Any(), table, false).DoAndReturn(func(_ context.Context, meta *interfaces.TableMeta, _ bool) error {
 		meta.Columns = []interfaces.TableColumnMeta{{Name: "wide", Type: "LARGEINT"}, {Name: "payload", Type: "JSON"}, {Name: "new_payload", Type: "JSON"}}
 		return nil
 	})
-	connector.EXPECT().MapType("LARGEINT").Return(interfaces.DataType_String)
+	connector.EXPECT().MapType("LARGEINT").Return(interfaces.DataType_LargeInteger)
 	connector.EXPECT().MapType("JSON").Return(interfaces.DataType_Json).Times(2)
 	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *sql.Tx, saved *interfaces.Resource, _ int64) error {
 		assert.Equal(t, reference, saved.SourceIdentifier)
@@ -504,7 +504,10 @@ func TestEnrichTableMetadataDoris(t *testing.T) {
 		require.Len(t, saved.SchemaDefinition, 3)
 		assert.Equal(t, false, saved.SchemaDefinition[1].Attributes["enabled"])
 		assert.Equal(t, false, saved.SchemaDefinition[2].Attributes["enabled"])
-		assert.Equal(t, interfaces.DataType_String, saved.SchemaDefinition[0].Type)
+		assert.Equal(t, interfaces.DataType_LargeInteger, saved.SchemaDefinition[0].Type)
+		require.Len(t, saved.SchemaDefinition[0].Features, 1)
+		assert.Equal(t, interfaces.PropertyFeatureType_Keyword, saved.SchemaDefinition[0].Features[0].FeatureType)
+		require.NoError(t, validateBuildTaskSchemaFeatures(interfaces.ResourceCategoryTable, saved.SchemaDefinition))
 		assert.Equal(t, "LARGEINT", saved.SchemaDefinition[0].OriginalType)
 		return nil
 	})

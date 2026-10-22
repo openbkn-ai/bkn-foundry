@@ -84,7 +84,7 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 
 func validateDatasetSchemaTypes(ctx context.Context, props []*interfaces.Property) error {
 	for _, prop := range props {
-		if prop.Type == interfaces.DataType_Binary || prop.Type == interfaces.DataType_Other {
+		if prop.Type == interfaces.DataType_Binary || prop.Type == interfaces.DataType_Other || prop.Type == interfaces.DataType_LargeInteger {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_InvalidParameter_FieldType).
 				WithErrorDetails(fmt.Sprintf("Dataset field %q type %q is not supported", prop.Name, prop.Type))
 		}
@@ -230,7 +230,7 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 
 func isValidDataType(t string) bool {
 	switch t {
-	case interfaces.DataType_Integer, interfaces.DataType_UnsignedInteger,
+	case interfaces.DataType_Integer, interfaces.DataType_LargeInteger, interfaces.DataType_UnsignedInteger,
 		interfaces.DataType_Float, interfaces.DataType_Decimal,
 		interfaces.DataType_String, interfaces.DataType_Text,
 		interfaces.DataType_Date, interfaces.DataType_Time,

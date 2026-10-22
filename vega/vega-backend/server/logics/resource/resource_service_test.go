@@ -2014,6 +2014,44 @@ func updateResourceForTest(t *testing.T, rs *resourceService, resource *interfac
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
+	t.Run("persists the inherited keyword limit for large integer fields", func(t *testing.T) {
+		for _, limit := range []int{interfaces.DefaultTextKeywordIgnoreAbove, 512} {
+			t.Run(fmt.Sprint(limit), func(t *testing.T) {
+				rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
+				expectResourceServiceTransaction(t, rs, true)
+				mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+				mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+				mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
+				mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).
+					DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) (int64, error) {
+						require.Len(t, got.SchemaDefinition, 1)
+						require.Len(t, got.SchemaDefinition[0].Features, 1)
+						keyword := got.SchemaDefinition[0].Features[0]
+						assert.Equal(t, "raw", keyword.FeatureName)
+						assert.Equal(t, limit, keyword.Config["ignore_above"])
+						return 1, nil
+					})
+				resource := &interfaces.Resource{
+					ID: "r1", CatalogID: "cat1", Category: interfaces.ResourceCategoryTable,
+					Name: "table", SourceIdentifier: "public.materials",
+					SchemaDefinition: []*interfaces.Property{{Name: "wide", Type: interfaces.DataType_LargeInteger}},
+				}
+				if limit != interfaces.DefaultTextKeywordIgnoreAbove {
+					resource.IndexConfig = &interfaces.ResourceIndexConfig{DefaultKeywordIgnoreAbove: &limit}
+				}
+				err := updateResourceForTest(t, rs, resource, &interfaces.ResourceRequest{
+					CatalogID: "cat1", Category: interfaces.ResourceCategoryTable,
+					Name: "table", SourceIdentifier: "public.materials",
+					SchemaDefinition: []*interfaces.Property{{
+						Name: "wide", Type: interfaces.DataType_LargeInteger,
+						Features: []interfaces.PropertyFeature{{FeatureName: "raw", FeatureType: interfaces.PropertyFeatureType_Keyword}},
+					}},
+				})
+				require.NoError(t, err)
+			})
+		}
+	})
+
 	// Prepare owns definition validation; this test checks propagation and prevents persistence.
 	t.Run("propagates prepare temporal validation error before persistence", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

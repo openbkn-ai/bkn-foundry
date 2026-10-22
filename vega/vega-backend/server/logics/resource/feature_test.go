@@ -101,6 +101,9 @@ func TestIsFeatureSupported(t *testing.T) {
 		{interfaces.DataType_String, interfaces.PropertyFeatureType_Fulltext, true},
 		{interfaces.DataType_Integer, interfaces.PropertyFeatureType_Fulltext, false},
 		{interfaces.DataType_String, interfaces.PropertyFeatureType_Keyword, true},
+		{interfaces.DataType_LargeInteger, interfaces.PropertyFeatureType_Keyword, true},
+		{interfaces.DataType_LargeInteger, interfaces.PropertyFeatureType_Fulltext, false},
+		{interfaces.DataType_LargeInteger, interfaces.PropertyFeatureType_Vector, false},
 		{interfaces.DataType_Text, interfaces.PropertyFeatureType_Keyword, true},
 		{interfaces.DataType_String, interfaces.PropertyFeatureType_Vector, true},
 		{interfaces.DataType_Text, interfaces.PropertyFeatureType_Vector, true},
@@ -154,6 +157,29 @@ func TestNormalizeSelfReferencingFeatures(t *testing.T) {
 }
 
 func TestAddDefaultStringAndTextFeatures(t *testing.T) {
+	t.Run("fills declared large integer keyword limits without adding features", func(t *testing.T) {
+		limit := 512
+		props := []*interfaces.Property{
+			{Name: "plain", Type: interfaces.DataType_LargeInteger},
+			{Name: "wide", Type: interfaces.DataType_LargeInteger, Features: []interfaces.PropertyFeature{{
+				FeatureName: "raw", FeatureType: interfaces.PropertyFeatureType_Keyword,
+			}}},
+			{Name: "custom", Type: interfaces.DataType_LargeInteger, Features: []interfaces.PropertyFeature{{
+				FeatureName: "raw", FeatureType: interfaces.PropertyFeatureType_Keyword,
+				Config: map[string]any{"ignore_above": 128},
+			}}},
+		}
+
+		AddDefaultStringAndTextFeatures(props, &interfaces.ResourceIndexConfig{DefaultKeywordIgnoreAbove: &limit})
+
+		assert.Empty(t, props[0].Features)
+		require.Len(t, props[1].Features, 1)
+		assert.Equal(t, "raw", props[1].Features[0].FeatureName)
+		assert.Equal(t, 512, props[1].Features[0].Config["ignore_above"])
+		require.Len(t, props[2].Features, 1)
+		assert.Equal(t, 128, props[2].Features[0].Config["ignore_above"])
+	})
+
 	t.Run("adds keyword to string and keyword plus fulltext to text", func(t *testing.T) {
 		limit := 512
 		props := []*interfaces.Property{

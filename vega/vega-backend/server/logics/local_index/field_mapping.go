@@ -36,7 +36,7 @@ func buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any
 			fieldType = "double"
 		case interfaces.DataType_Decimal:
 			fieldType = "scaled_float"
-		case interfaces.DataType_String:
+		case interfaces.DataType_String, interfaces.DataType_LargeInteger:
 			fieldType = "keyword"
 		case interfaces.DataType_Datetime, interfaces.DataType_Timestamp:
 			fieldType = "date"

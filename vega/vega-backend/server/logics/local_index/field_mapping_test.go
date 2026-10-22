@@ -18,6 +18,7 @@ func TestBuildFieldMappings(t *testing.T) {
 	t.Run("maps resource types and user-defined feature fields", func(t *testing.T) {
 		properties, err := buildFieldMappings([]*interfaces.Property{
 			{Name: "id", Type: interfaces.DataType_Integer},
+			{Name: "wide", Type: interfaces.DataType_LargeInteger},
 			{Name: "unsigned_id", Type: interfaces.DataType_UnsignedInteger},
 			{Name: "amount", Type: interfaces.DataType_Decimal},
 			{Name: "payload", Type: interfaces.DataType_Json, Attributes: map[string]any{"enabled": false}},
@@ -44,6 +45,7 @@ func TestBuildFieldMappings(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, map[string]any{"type": "long"}, properties["id"])
+		assert.Equal(t, map[string]any{"type": "keyword"}, properties["wide"])
 		assert.Equal(t, map[string]any{"type": "unsigned_long"}, properties["unsigned_id"])
 		assert.Equal(t, map[string]any{"type": "object", "enabled": false}, properties["payload"])
 		assert.Equal(t, map[string]any{"type": "geo_point"}, properties["location"])

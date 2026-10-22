@@ -90,6 +90,17 @@ func TestNormalizeValueFrom(t *testing.T) {
 }
 
 func TestNewFilterCondition(t *testing.T) {
+	t.Run("large integer ranges preserve exact bounds", func(t *testing.T) {
+		fields := map[string]*interfaces.Property{"wide": {Name: "wide", Type: "large_integer"}}
+		bounds := []any{"-170141183460469231731687303715884105728", "170141183460469231731687303715884105727"}
+		for _, op := range []string{OperationRange, OperationOutRange, OperationBetween} {
+			cond, err := NewFilterCondition(context.Background(), constCfg("wide", op, bounds), fields)
+			require.NoError(t, err)
+			assert.Equal(t, op, cond.GetOperation())
+			_, err = NewFilterCondition(context.Background(), constCfg("wide", op, []any{nil, "1"}), fields)
+			require.ErrorContains(t, err, "nil")
+		}
+	})
 	t.Run("nanosecond precision", func(t *testing.T) {
 		for _, kind := range []string{interfaces.DataType_Datetime, interfaces.DataType_Time} {
 			field := &interfaces.Property{Name: "value", Type: kind}
