@@ -59,6 +59,11 @@ type Event struct {
 	ObservedAt     string
 	EmittedAt      string
 	Envelope       json.RawMessage
+	// Optional semantic metadata is supplied by the trusted producer, never
+	// inferred by the transport from arbitrary business payloads.
+	BusinessRefs           json.RawMessage `json:"business_refs,omitempty"`
+	OperationBusinessEdges json.RawMessage `json:"operation_business_edges,omitempty"`
+	CausationEventIDs      []string        `json:"causation_event_ids,omitempty"`
 	// PreviousResult is local admission metadata for an operation-scoped retry.
 	// It is never serialized into a Record or used as a Ledger confirmation.
 	PreviousResult *PublishResult `json:"-"`

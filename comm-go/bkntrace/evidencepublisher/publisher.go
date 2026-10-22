@@ -102,6 +102,15 @@ func (p *Publisher) TryPublishForPolicyRevision(event Event, capturePolicyRevisi
 		"emitted_at":               event.EmittedAt,
 		"envelope":                 json.RawMessage(event.Envelope),
 	}
+	if len(event.BusinessRefs) > 0 {
+		value["business_refs"] = event.BusinessRefs
+	}
+	if len(event.OperationBusinessEdges) > 0 {
+		value["operation_business_edges"] = event.OperationBusinessEdges
+	}
+	if len(event.CausationEventIDs) > 0 {
+		value["causation_event_ids"] = event.CausationEventIDs
+	}
 	for key, candidate := range map[string]any{
 		"operation_id": event.OperationID,
 		"attempt":      event.Attempt,
