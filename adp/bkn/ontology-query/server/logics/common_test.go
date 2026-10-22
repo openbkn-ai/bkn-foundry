@@ -1144,6 +1144,133 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 			result := CheckViewDataMatchesCondition(viewData, condition, mappingRules, false)
 			So(result, ShouldBeFalse)
 		})
+
+		Convey("成功 - 日期和业务键的AND条件全部匹配", func() {
+			viewData := map[string]any{
+				"membership_date": "2026-10-19",
+				"business_key":    "ORDER-001",
+			}
+			condition := &cond.CondCfg{
+				Operation: cond.OperationAnd,
+				SubConds: []*cond.CondCfg{
+					{
+						Name:        "membership_date",
+						Operation:   cond.OperationEq,
+						ValueOptCfg: cond.ValueOptCfg{Value: "2026-10-19"},
+					},
+					{
+						Name:        "business_key",
+						Operation:   cond.OperationEq,
+						ValueOptCfg: cond.ValueOptCfg{Value: "ORDER-001"},
+					},
+				},
+			}
+			mappingRules := []interfaces.Mapping{
+				{
+					SourceProp: interfaces.SimpleProperty{Name: "object_date"},
+					TargetProp: interfaces.SimpleProperty{Name: "membership_date"},
+				},
+				{
+					SourceProp: interfaces.SimpleProperty{Name: "object_business_key"},
+					TargetProp: interfaces.SimpleProperty{Name: "business_key"},
+				},
+			}
+
+			result := CheckViewDataMatchesCondition(viewData, condition, mappingRules, true)
+			So(result, ShouldBeTrue)
+		})
+
+		Convey("失败 - AND条件任一子条件不匹配", func() {
+			viewData := map[string]any{
+				"employee_code":     "U001",
+				"employee_org_code": "B",
+			}
+			condition := &cond.CondCfg{
+				Operation: cond.OperationAnd,
+				SubConds: []*cond.CondCfg{
+					{
+						Name:        "employee_code",
+						Operation:   cond.OperationEq,
+						ValueOptCfg: cond.ValueOptCfg{Value: "U001"},
+					},
+					{
+						Name:        "employee_org_code",
+						Operation:   cond.OperationEq,
+						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+					},
+				},
+			}
+			mappingRules := []interfaces.Mapping{
+				{TargetProp: interfaces.SimpleProperty{Name: "employee_code"}},
+				{TargetProp: interfaces.SimpleProperty{Name: "employee_org_code"}},
+			}
+
+			result := CheckViewDataMatchesCondition(viewData, condition, mappingRules, true)
+			So(result, ShouldBeFalse)
+		})
+
+		Convey("失败 - AND条件的中间表字段缺失", func() {
+			viewData := map[string]any{
+				"employee_code": "U001",
+			}
+			condition := &cond.CondCfg{
+				Operation: cond.OperationAnd,
+				SubConds: []*cond.CondCfg{
+					{
+						Name:        "employee_code",
+						Operation:   cond.OperationEq,
+						ValueOptCfg: cond.ValueOptCfg{Value: "U001"},
+					},
+					{
+						Name:        "employee_org_code",
+						Operation:   cond.OperationEq,
+						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+					},
+				},
+			}
+			mappingRules := []interfaces.Mapping{
+				{TargetProp: interfaces.SimpleProperty{Name: "employee_code"}},
+				{TargetProp: interfaces.SimpleProperty{Name: "employee_org_code"}},
+			}
+
+			result := CheckViewDataMatchesCondition(viewData, condition, mappingRules, true)
+			So(result, ShouldBeFalse)
+		})
+
+		Convey("成功 - 反向多字段AND条件匹配", func() {
+			viewData := map[string]any{
+				"project_code":     "PR001",
+				"project_org_code": "A",
+			}
+			condition := &cond.CondCfg{
+				Operation: cond.OperationAnd,
+				SubConds: []*cond.CondCfg{
+					{
+						Name:        "project_code",
+						Operation:   cond.OperationEq,
+						ValueOptCfg: cond.ValueOptCfg{Value: "PR001"},
+					},
+					{
+						Name:        "project_org_code",
+						Operation:   cond.OperationEq,
+						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+					},
+				},
+			}
+			mappingRules := []interfaces.Mapping{
+				{
+					SourceProp: interfaces.SimpleProperty{Name: "project_code"},
+					TargetProp: interfaces.SimpleProperty{Name: "object_project_code"},
+				},
+				{
+					SourceProp: interfaces.SimpleProperty{Name: "project_org_code"},
+					TargetProp: interfaces.SimpleProperty{Name: "object_org_code"},
+				},
+			}
+
+			result := CheckViewDataMatchesCondition(viewData, condition, mappingRules, false)
+			So(result, ShouldBeTrue)
+		})
 	})
 }
 

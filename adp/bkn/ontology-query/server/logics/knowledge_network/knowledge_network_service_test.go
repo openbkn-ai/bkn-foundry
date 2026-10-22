@@ -1436,6 +1436,102 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 			So(len(result), ShouldEqual, 1)
 		})
 
+		Convey("成功 - 复合键候选在limit前按记录分组", func() {
+			query := &interfaces.SubGraphQueryBaseOnSource{
+				KNID:   knID,
+				Branch: branch,
+				PageQuery: interfaces.PageQuery{
+					Limit: 1,
+				},
+			}
+			batch := []interfaces.LevelObject{
+				{
+					ObjectID: "employee-E01",
+					ObjectData: map[string]any{
+						"employee_code": "U001",
+						"org_code":      "A",
+					},
+				},
+			}
+			mappingRules := compositeEmployeeProjectMappingRules()
+			edge := &interfaces.TypeEdge{
+				RelationTypeId:     "employee-project",
+				SourceObjectTypeId: "employee",
+				TargetObjectTypeId: "project",
+				Direction:          interfaces.DIRECTION_FORWARD,
+				RelationType: interfaces.RelationType{
+					RTID:               "employee-project",
+					SourceObjectTypeID: "employee",
+					TargetObjectTypeID: "project",
+					MappingRules:       mappingRules,
+				},
+			}
+			service.proxy = &knowledgeNetworkProxyResolverStub{}
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"membership_employee_code": "U001",
+							"membership_employee_org":  "A",
+							"membership_project_code":  "PR001",
+							"membership_project_org":   "A",
+						},
+						{
+							"membership_employee_code": "U001",
+							"membership_employee_org":  "A",
+							"membership_project_code":  "PR002",
+							"membership_project_org":   "B",
+						},
+					},
+				},
+			}
+
+			candidates := []map[string]any{
+				{"project_code": "PR001", "org_code": "B"},
+				{"project_code": "PR001", "org_code": "A"},
+				{"project_code": "PR002", "org_code": "B"},
+			}
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, q *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
+					So(q.Limit, ShouldEqual, 1)
+					So(matchesTestCondition(q.ActualCondition, candidates[0]), ShouldBeFalse)
+					So(matchesTestCondition(q.ActualCondition, candidates[1]), ShouldBeTrue)
+					So(matchesTestCondition(q.ActualCondition, candidates[2]), ShouldBeTrue)
+
+					var hits []map[string]any
+					for _, candidate := range candidates {
+						if matchesTestCondition(q.ActualCondition, candidate) {
+							hits = append(hits, candidate)
+						}
+						if len(hits) == q.Limit {
+							break
+						}
+					}
+					return interfaces.Objects{
+						Datas: hits,
+						ObjectType: &interfaces.ObjectType{
+							ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+								OTID:        "project",
+								PrimaryKeys: []string{"project_code", "org_code"},
+							},
+						},
+					}, nil
+				})
+
+			result, err := service.getNextObjectsBatchByRelation(
+				ctx,
+				query,
+				batch,
+				edge,
+				interfaces.ObjectTypeWithKeyField{OTID: "project"},
+			)
+			So(err, ShouldBeNil)
+			So(result, ShouldContainKey, "employee-E01")
+			So(result["employee-E01"].Datas, ShouldResemble, []map[string]any{
+				{"project_code": "PR001", "org_code": "A"},
+			})
+		})
+
 		Convey("成功 - 反向关系获取下一层对象-1", func() {
 			query := &interfaces.SubGraphQueryBaseOnSource{
 				KNID:   knID,
@@ -2151,6 +2247,153 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 			So(conditions[0].Operation, ShouldEqual, "in")
 			So(viewDataMap, ShouldNotBeNil)
 		})
+
+		Convey("成功 - 复合键按中间表记录生成OR包含AND", func() {
+			query := &interfaces.SubGraphQueryBaseOnSource{KNID: knID}
+			currentLevelObjects := []interfaces.LevelObject{
+				{
+					ObjectID: "employee-E01",
+					ObjectData: map[string]any{
+						"employee_code": "U001",
+						"org_code":      "A",
+					},
+				},
+			}
+			edge := &interfaces.TypeEdge{
+				RelationType: interfaces.RelationType{
+					RTName:       "employee-project",
+					MappingRules: compositeEmployeeProjectMappingRules(),
+				},
+			}
+			service.vba = &vegaStubForKNQuery{
+				resp: &interfaces.DatasetQueryResponse{
+					Entries: []map[string]any{
+						{
+							"membership_employee_code": "U001",
+							"membership_employee_org":  "A",
+							"membership_project_code":  "PR001",
+							"membership_project_org":   "A",
+						},
+						{
+							"membership_employee_code": "U001",
+							"membership_employee_org":  "A",
+							"membership_project_code":  "PR002",
+							"membership_project_org":   "B",
+						},
+					},
+				},
+			}
+
+			conditions, viewDataMap, err := service.buildIndirectBatchConditions(
+				ctx,
+				query,
+				currentLevelObjects,
+				edge,
+				true,
+			)
+			So(err, ShouldBeNil)
+			So(viewDataMap["employee-E01"], ShouldHaveLength, 2)
+			So(conditions, ShouldHaveLength, 1)
+			So(conditions[0].Operation, ShouldEqual, cond.OperationOr)
+			So(conditions[0].SubConds, ShouldHaveLength, 2)
+			So(conditions[0].SubConds[0].Operation, ShouldEqual, cond.OperationAnd)
+			So(conditions[0].SubConds[1].Operation, ShouldEqual, cond.OperationAnd)
+			So(matchesTestCondition(conditions[0], map[string]any{
+				"project_code": "PR001",
+				"org_code":     "A",
+			}), ShouldBeTrue)
+			So(matchesTestCondition(conditions[0], map[string]any{
+				"project_code": "PR002",
+				"org_code":     "B",
+			}), ShouldBeTrue)
+			So(matchesTestCondition(conditions[0], map[string]any{
+				"project_code": "PR001",
+				"org_code":     "B",
+			}), ShouldBeFalse)
+			So(matchesTestCondition(conditions[0], map[string]any{
+				"project_code": "PR999",
+				"org_code":     "A",
+			}), ShouldBeFalse)
+		})
+	})
+}
+
+func Test_knowledgeNetworkService_compositeIndirectRelationFixture(t *testing.T) {
+	Convey("Test composite indirect relation fixture", t, func() {
+		service := &knowledgeNetworkService{
+			appSetting: &common.AppSetting{},
+			proxy:      &knowledgeNetworkProxyResolverStub{},
+		}
+		service.vba = &vegaStubForKNQuery{
+			resp: &interfaces.DatasetQueryResponse{
+				Entries: []map[string]any{
+					{"membership_id": "M01", "membership_employee_code": "U001", "membership_employee_org": "A", "membership_project_code": "PR001", "membership_project_org": "A"},
+					{"membership_id": "M02", "membership_employee_code": "U001", "membership_employee_org": "A", "membership_project_code": "PR002", "membership_project_org": "A"},
+					{"membership_id": "M03", "membership_employee_code": "U001", "membership_employee_org": "B", "membership_project_code": "PR001", "membership_project_org": "B"},
+					{"membership_id": "M04", "membership_employee_code": "U002", "membership_employee_org": "A", "membership_project_code": "PR001", "membership_project_org": "A"},
+					{"membership_id": "M05", "membership_employee_code": "U001", "membership_employee_org": "Z", "membership_project_code": "PR003", "membership_project_org": "C"},
+					{"membership_id": "M06", "membership_employee_code": "U999", "membership_employee_org": "A", "membership_project_code": "PR003", "membership_project_org": "C"},
+					{"membership_id": "M07", "membership_employee_code": "U001", "membership_employee_org": "A", "membership_project_code": "PR003", "membership_project_org": "Z"},
+					{"membership_id": "M08", "membership_employee_code": "U001", "membership_employee_org": "A", "membership_project_code": "PR999", "membership_project_org": "C"},
+					{"membership_id": "M09", "membership_employee_code": "U999", "membership_employee_org": "Z", "membership_project_code": "PR999", "membership_project_org": "Z"},
+					{"membership_id": "M10", "membership_employee_code": "U003", "membership_employee_org": "C", "membership_project_code": "PR003", "membership_project_org": "C"},
+					{"membership_id": "M11", "membership_employee_code": "U001", "membership_employee_org": "B", "membership_project_code": "PR003", "membership_project_org": "C"},
+					{"membership_id": "M12", "membership_employee_code": "U002", "membership_employee_org": "A", "membership_project_code": "PR001", "membership_project_org": "B"},
+				},
+			},
+		}
+		currentLevelObjects := []interfaces.LevelObject{
+			{ObjectID: "E01", ObjectData: map[string]any{"employee_code": "U001", "org_code": "A"}},
+			{ObjectID: "E02", ObjectData: map[string]any{"employee_code": "U001", "org_code": "B"}},
+			{ObjectID: "E03", ObjectData: map[string]any{"employee_code": "U002", "org_code": "A"}},
+			{ObjectID: "E04", ObjectData: map[string]any{"employee_code": "U003", "org_code": "C"}},
+		}
+		edge := &interfaces.TypeEdge{
+			RelationType: interfaces.RelationType{
+				RTName:       "employee-project",
+				MappingRules: compositeEmployeeProjectMappingRules(),
+			},
+		}
+
+		conditions, viewDataMap, err := service.buildIndirectBatchConditions(
+			context.Background(),
+			&interfaces.SubGraphQueryBaseOnSource{KNID: "kn1"},
+			currentLevelObjects,
+			edge,
+			true,
+		)
+		So(err, ShouldBeNil)
+		So(conditions, ShouldHaveLength, 4)
+		So(conditions[3].Operation, ShouldEqual, cond.OperationAnd)
+		So(conditions[3].SubConds, ShouldHaveLength, 2)
+		So(viewDataMap["E01"], ShouldHaveLength, 4)
+		So(viewDataMap["E02"], ShouldHaveLength, 2)
+		So(viewDataMap["E03"], ShouldHaveLength, 2)
+		So(viewDataMap["E04"], ShouldHaveLength, 1)
+
+		nextObjects := interfaces.Objects{
+			Datas: []map[string]any{
+				{"project_uid": "P01", "project_code": "PR001", "org_code": "A"},
+				{"project_uid": "P02", "project_code": "PR001", "org_code": "B"},
+				{"project_uid": "P03", "project_code": "PR002", "org_code": "A"},
+				{"project_uid": "P04", "project_code": "PR003", "org_code": "C"},
+			},
+		}
+		result := make(map[string]interfaces.Objects)
+		service.mapResultsToObjects(currentLevelObjects, nextObjects, result, edge, true, viewDataMap)
+
+		projectIDs := func(objects interfaces.Objects) []string {
+			ids := make([]string, 0, len(objects.Datas))
+			for _, project := range objects.Datas {
+				ids = append(ids, project["project_uid"].(string))
+			}
+			return ids
+		}
+		So(projectIDs(result["E01"]), ShouldResemble, []string{"P01", "P03"})
+		So(projectIDs(result["E02"]), ShouldResemble, []string{"P02", "P04"})
+		So(projectIDs(result["E03"]), ShouldResemble, []string{"P01", "P02"})
+		So(projectIDs(result["E04"]), ShouldResemble, []string{"P04"})
+		So(result["E01"].TotalCount+result["E02"].TotalCount+result["E03"].TotalCount+result["E04"].TotalCount, ShouldEqual, int64(7))
 	})
 }
 
@@ -2536,6 +2779,32 @@ func resourceBacking(id string) *interfaces.ResourceInfo {
 	return &interfaces.ResourceInfo{
 		Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
 		ID:   id,
+	}
+}
+
+func compositeEmployeeProjectMappingRules() *interfaces.InDirectMapping {
+	return &interfaces.InDirectMapping{
+		BackingDataSource: resourceBacking("membership-resource"),
+		SourceMappingRules: []interfaces.Mapping{
+			{
+				SourceProp: interfaces.SimpleProperty{Name: "employee_code"},
+				TargetProp: interfaces.SimpleProperty{Name: "membership_employee_code"},
+			},
+			{
+				SourceProp: interfaces.SimpleProperty{Name: "org_code"},
+				TargetProp: interfaces.SimpleProperty{Name: "membership_employee_org"},
+			},
+		},
+		TargetMappingRules: []interfaces.Mapping{
+			{
+				SourceProp: interfaces.SimpleProperty{Name: "membership_project_code"},
+				TargetProp: interfaces.SimpleProperty{Name: "project_code"},
+			},
+			{
+				SourceProp: interfaces.SimpleProperty{Name: "membership_project_org"},
+				TargetProp: interfaces.SimpleProperty{Name: "org_code"},
+			},
+		},
 	}
 }
 

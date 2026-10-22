@@ -968,22 +968,25 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 		// Save view data mappings for later object association checks.
 		viewDataMap[levelObj.ObjectID] = objectViewData
 
-		// Traverse view data, build filter conditions one by one, and finally join them with OR.
-		multiConds := []*cond.CondCfg{}
+		// Keep each backing row's composite key grouped with AND, then join rows with OR.
+		recordConditions := []*cond.CondCfg{}
 		for _, viewData := range objectViewData {
 			viewConditions, targetField, inValue := logics.BuildCondition(nil, targetMappingRules, isForward, viewData)
-			multiConds = append(multiConds, viewConditions...)
-			inValues = append(inValues, inValue)
-			inField = targetField
+			if len(targetMappingRules) == 1 {
+				inValues = append(inValues, inValue)
+				inField = targetField
+				continue
+			}
+
+			recordCondition := groupConditions(cond.OperationAnd, viewConditions)
+			if recordCondition != nil {
+				recordConditions = append(recordConditions, recordCondition)
+			}
 		}
 
-		if len(multiConds) > 1 {
-			conditions = append(conditions, &cond.CondCfg{
-				Operation: "or",
-				SubConds:  multiConds,
-			})
-		} else if len(multiConds) == 1 {
-			conditions = append(conditions, multiConds[0])
+		objectCondition := groupConditions(cond.OperationOr, recordConditions)
+		if objectCondition != nil {
+			conditions = append(conditions, objectCondition)
 		}
 	}
 
@@ -1000,6 +1003,20 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 		}, viewDataMap, nil
 	}
 	return conditions, viewDataMap, nil
+}
+
+func groupConditions(operation string, conditions []*cond.CondCfg) *cond.CondCfg {
+	switch len(conditions) {
+	case 0:
+		return nil
+	case 1:
+		return conditions[0]
+	default:
+		return &cond.CondCfg{
+			Operation: operation,
+			SubConds:  conditions,
+		}
+	}
 }
 
 // Batch-fetch view data.
