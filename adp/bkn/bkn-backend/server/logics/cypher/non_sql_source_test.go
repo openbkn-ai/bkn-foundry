@@ -114,12 +114,23 @@ func TestQueryOutsideSQLReturnsNodesAndRelationships(t *testing.T) {
 			`"object_type_id":"ot_customer"`, `"n":1`,
 		},
 	} {
-		vega := &datasetVega{accountDataAPI: accountDataAPI{api: newFakeDataAPI(relationServiceData())}}
+		// The resources say they are datasets, so the query goes straight to
+		// the data API, the route that has to mark the span itself.
+		vega := &datasetVega{accountDataAPI: accountDataAPI{
+			api: newFakeDataAPI(relationServiceData()),
+			resources: map[string]*interfaces.VegaResource{
+				"res_order":    {ID: "res_order", Category: "dataset", CatalogID: "cat_ds"},
+				"res_customer": {ID: "res_customer", Category: "dataset", CatalogID: "cat_ds"},
+			},
+		}}
 		result, err := datasetService(vega).Query(callerContext(), interfaces.CypherQuery{
 			KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: query,
 		})
 		if err != nil {
 			t.Fatalf("%s: %v", query, err)
+		}
+		if vega.statements != 0 {
+			t.Errorf("%s: statements sent = %d, want none", query, vega.statements)
 		}
 		body, _ := json.Marshal(result.Entries)
 		for _, part := range want {
