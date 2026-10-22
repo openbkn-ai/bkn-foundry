@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
@@ -135,6 +136,26 @@ func TestNormalizeBuildDocumentFields(t *testing.T) {
 		{Name: "name", Type: interfaces.DataType_String},
 	}
 
+	t.Run("normalizes nulls and preserves string contents through storage and preview", func(t *testing.T) {
+		for _, tc := range []struct{ source, stored, preview any }{
+			{nil, nil, nil}, {"null", nil, nil}, {[]byte("null"), nil, nil},
+			{`"null"`, "null", "null"}, {`""`, "", ""}, {"", "", ""},
+			{`"scalar"`, "scalar", "scalar"}, {`42`, json.Number("42"), "42"},
+		} {
+			document := map[string]any{"payload": tc.source}
+			require.NoError(t, normalizeBuildDocumentFields(document, schema, nil))
+			assert.Equal(t, tc.stored, document["payload"])
+			encoded, err := json.Marshal(document)
+			require.NoError(t, err)
+			var stored map[string]any
+			require.NoError(t, common.UnmarshalPreciseJSON(encoded, &stored))
+			assert.Contains(t, stored, "payload")
+			preview, err := common.JSONQueryValueText(stored["payload"])
+			require.NoError(t, err)
+			assert.Equal(t, tc.preview, preview)
+		}
+	})
+
 	t.Run("normalizes objects JSON text bytes null and empty values", func(t *testing.T) {
 		document := map[string]any{
 			"object":  map[string]any{"region": "cn"},
@@ -157,7 +178,7 @@ func TestNormalizeBuildDocumentFields(t *testing.T) {
 		assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
 		assert.Equal(t, map[string]any{"tier": json.Number("2")}, document["bytes"])
 		assert.Nil(t, document["null_value"])
-		assert.Nil(t, document["empty_value"])
+		assert.Equal(t, "  ", document["empty_value"])
 		assert.Equal(t, "unchanged", document["name"])
 	})
 

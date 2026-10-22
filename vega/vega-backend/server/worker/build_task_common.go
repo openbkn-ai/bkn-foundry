@@ -125,7 +125,7 @@ func normalizeJSONValue(value any) (any, error) {
 		return value, nil
 	}
 	if strings.TrimSpace(text) == "" {
-		return nil, nil //nolint:nilnil // Nil represents an absent database JSON value.
+		return text, nil // 空字符串是内容，不用空值替代。
 	}
 	var parsed any
 	if err := common.UnmarshalPreciseJSON([]byte(text), &parsed); err != nil {

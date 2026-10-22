@@ -356,7 +356,13 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		lim.EXPECT().CheckIndexExist(gomock.Any(), "current-index").Return(true, nil)
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
-		payloads := []string{`{"items":[{"sku":"BOX-01","count":2}]}`, `{"items":["SENSOR-A","SENSOR-B"]}`, `{"items":[]}`, `{"items":null}`}
+		payloads := []struct{ source, stored any }{
+			{`{"items":[{"sku":"BOX-01","count":2}]}`, map[string]any{"items": []any{map[string]any{"sku": "BOX-01", "count": json.Number("2")}}}},
+			{`{"items":["SENSOR-A","SENSOR-B"]}`, map[string]any{"items": []any{"SENSOR-A", "SENSOR-B"}}},
+			{`{"items":[]}`, map[string]any{"items": []any{}}},
+			{`{"items":null}`, map[string]any{"items": nil}},
+			{"null", nil}, {nil, nil}, {`"null"`, "null"}, {`"scalar"`, "scalar"}, {`""`, ""},
+		}
 		queryCount := 0
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Times(73).DoAndReturn(
 			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
@@ -372,7 +378,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 				for index := range entries {
 					entries[index] = map[string]any{
 						"id":      firstID + int64(index),
-						"payload": payloads[(index+queryCount)%len(payloads)],
+						"payload": payloads[(index+queryCount)%len(payloads)].source,
 					}
 				}
 				result := &interfaces.QueryResult{Entries: entries}
@@ -394,11 +400,9 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {
 				require.Len(t, documents, 1000)
 				for _, document := range documents {
-					encoded, err := json.Marshal(document["payload"])
-					require.NoError(t, err)
 					id := document["id"].(int64)
-					expected := payloads[(int(id-8001)%1000+indexedBatches+1)%len(payloads)]
-					assert.JSONEq(t, expected, string(encoded))
+					expected := payloads[(int(id-8001)%1000+indexedBatches+1)%len(payloads)].stored
+					assert.Equal(t, expected, document["payload"])
 				}
 				indexedBatches++
 				return nil, nil

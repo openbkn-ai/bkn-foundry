@@ -79,6 +79,28 @@ func TestConvertValue(t *testing.T) {
 }
 
 func TestNormalizeQueryResult(t *testing.T) {
+	t.Run("JSON null normalizes without changing string content", func(t *testing.T) {
+		for _, binaryMode := range []*string{nil, new(interfaces.BinaryModeContent)} {
+			for _, outputFields := range [][]string{nil, {"payload", "label"}} {
+				result := &interfaces.QueryResult{Entries: []map[string]any{
+					{"payload": nil, "label": "null"},
+					{"payload": "null", "label": "null"},
+					{"payload": []byte(" \nnull\t"), "label": "null"},
+					{"payload": `"null"`, "label": "null"},
+					{"payload": `""`, "label": ""},
+				}}
+				resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}, {Name: "label", Type: interfaces.DataType_String}}}
+				NormalizeQueryResult(result, resource, &interfaces.ResourceDataQueryParams{OutputFields: outputFields, BinaryMode: binaryMode})
+				assert.Equal(t, []map[string]any{
+					{"payload": nil, "label": "null"},
+					{"payload": nil, "label": "null"},
+					{"payload": nil, "label": "null"},
+					{"payload": `"null"`, "label": "null"},
+					{"payload": `""`, "label": ""},
+				}, result.Entries)
+			}
+		}
+	})
 	metadata := interfaces.BinaryModeMetadata
 	resource := &interfaces.Resource{SchemaDefinition: []*interfaces.Property{
 		{Name: "id", Type: interfaces.DataType_Integer},

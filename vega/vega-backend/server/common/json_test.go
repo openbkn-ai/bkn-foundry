@@ -55,6 +55,7 @@ func TestJSONQueryValueText(t *testing.T) {
 		invalid     bool
 	}{
 		{"null", nil, nil, false},
+		{"decoded string null is content", "null", "null", false},
 		{"empty", "", "", false},
 		{"incomplete text", "{incomplete", "{incomplete", false},
 		{"string content", `"scalar"`, `"scalar"`, false},
@@ -84,6 +85,26 @@ func TestJSONQueryValueText(t *testing.T) {
 			default:
 				assert.Equal(t, tc.want, got)
 			}
+		})
+	}
+}
+
+func TestJSONSourceValueText(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		value, want any
+	}{
+		{"SQL NULL", nil, nil},
+		{"JSON null", "null", nil},
+		{"JSON null bytes", []byte(" \nnull\t"), nil},
+		{"string null", `"null"`, `"null"`},
+		{"empty JSON string", `""`, `""`},
+		{"empty source text", "", ""},
+		{"object", []byte(`{"n":null}`), `{"n":null}`},
+		{"opaque text", "incomplete", "incomplete"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, JSONSourceValueText(tc.value))
 		})
 	}
 }
