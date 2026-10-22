@@ -127,6 +127,19 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		assert.Equal(t, int64(42), total)
 	})
 
+	t.Run("list documents preserves keyword limit code and metadata", func(t *testing.T) {
+		ds, lim := newDatasetServiceMock(t)
+		lim.EXPECT().ListDocuments(gomock.Any(), "dataset-1", resource, params).Return(nil, int64(0), fmt.Errorf("build: %w", interfaces.NewKeywordLimitError("status", 256)))
+		rows, total, err := ds.ListDocuments(ctx, resource, params)
+		assert.Nil(t, rows)
+		assert.Zero(t, total)
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+		assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", httpErr.BaseError.ErrorCode)
+		assert.Equal(t, map[string]any{"field": "status", "limit": 256}, httpErr.BaseError.Metadata)
+	})
+
 	t.Run("list documents answers 400 for a condition the index cannot build", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
 		cause := fmt.Errorf("failed to build filter query: %w",

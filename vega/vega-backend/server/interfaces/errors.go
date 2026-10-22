@@ -89,6 +89,25 @@ func NewConditionBuildError(format string, args ...any) *ConditionBuildError {
 func (e *ConditionBuildError) Error() string { return e.Reason }
 func (e *ConditionBuildError) Unwrap() error { return e.Cause }
 
+// KeywordLimitError 表示精确查询值超过字段的 keyword 索引长度上限。
+// 字段与上限独立保存，调用方无需解析错误文案。
+type KeywordLimitError struct {
+	Field string
+	Limit int
+	*ConditionBuildError
+}
+
+func NewKeywordLimitError(field string, limit int) *KeywordLimitError {
+	return &KeywordLimitError{
+		Field: field, Limit: limit,
+		ConditionBuildError: NewConditionBuildError("value for field %s exceeds keyword ignore_above %d and cannot be compared exactly", field, limit),
+	}
+}
+
+func (e *KeywordLimitError) Error() string { return e.ConditionBuildError.Error() }
+
+func (e *KeywordLimitError) Unwrap() error { return e.ConditionBuildError }
+
 // StoredConditionBuildError identifies a saved view condition that can no
 // longer be compiled against the current source schema or index configuration.
 type StoredConditionBuildError struct{ Cause error }

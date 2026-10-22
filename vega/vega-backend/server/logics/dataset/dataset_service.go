@@ -27,6 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/local_index"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/model_factory"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/query_error"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 )
 
@@ -132,6 +133,9 @@ func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Res
 	documents, total, err := ds.lim.ListDocuments(ctx, res.LocalIndexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List dataset documents failed")
+		if httpErr := query_error.KeywordLimitHTTPError(ctx, err); httpErr != nil {
+			return nil, 0, httpErr
+		}
 		if reason, ok := interfaces.RequestSideQueryError(err); ok {
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(reason)

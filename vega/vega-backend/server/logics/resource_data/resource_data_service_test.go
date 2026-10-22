@@ -1717,3 +1717,36 @@ func TestQuerySourcePageHavingTemporalErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestResourceDataServiceQuerySourcePageKeywordLimit(t *testing.T) {
+	for _, stored := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stored=%v", stored), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			catalogs := mock_interfaces.NewMockCatalogService(ctrl)
+			index := mock_interfaces.NewMockLocalIndexManager(ctrl)
+			catalogs.EXPECT().InternalGetByID(gomock.Any(), "catalog", true).Return(&interfaces.Catalog{Enabled: true}, nil)
+			resource := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "status", Type: interfaces.DataType_String}}}
+			params := &interfaces.ResourceDataQueryParams{}
+			var cause error = interfaces.NewKeywordLimitError("status", 256)
+			if stored {
+				cause = interfaces.NewStoredConditionBuildError(cause)
+			}
+			index.EXPECT().ListDocuments(gomock.Any(), "index", resource, params).Return(nil, int64(0), fmt.Errorf("build: %w", cause))
+			rows, total, err := (&resourceDataService{cs: catalogs, lim: index}).QuerySourcePage(context.Background(), resource, params)
+			assert.Nil(t, rows)
+			assert.Zero(t, total)
+			if stored {
+				require.ErrorIs(t, err, cause)
+				return
+			}
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+			assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", httpErr.BaseError.ErrorCode)
+			assert.Equal(t, map[string]any{"field": "status", "limit": 256}, httpErr.BaseError.Metadata)
+			body, marshalErr := json.Marshal(httpErr.BaseError)
+			require.NoError(t, marshalErr)
+			assert.Contains(t, string(body), `"metadata":{"field":"status","limit":256}`)
+		})
+	}
+}

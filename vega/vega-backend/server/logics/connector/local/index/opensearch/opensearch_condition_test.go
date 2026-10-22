@@ -306,7 +306,7 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 		target := &interfaces.Property{Name: "title", OriginalName: "physical.title", Type: interfaces.DataType_Text,
 			Features: []interfaces.PropertyFeature{{FeatureName: "raw", FeatureType: interfaces.PropertyFeatureType_Keyword,
 				Config: map[string]any{"ignore_above": 8}}}}
-		alias := &interfaces.Property{Name: "title_alias", OriginalName: "title_alias", OriginalType: "alias",
+		alias := &interfaces.Property{Name: "title_alias", OriginalName: "physical.alias", OriginalType: "alias",
 			Type: interfaces.DataType_Text, Attributes: map[string]any{"path": "physical.title"}}
 		schema := []*interfaces.Property{target, alias}
 		fields := map[string]*interfaces.Property{target.Name: target, alias.Name: alias}
@@ -332,22 +332,28 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 				assert.NotContains(t, string(encoded), "title_alias")
 			})
 		}
-		for _, operation := range []string{filter_condition.OperationEqual, filter_condition.OperationNotEqual,
-			filter_condition.OperationIn, filter_condition.OperationNotIn} {
-			t.Run(operation+" enforces target ignore_above", func(t *testing.T) {
-				var value any = "too-long-value"
-				if operation == filter_condition.OperationIn || operation == filter_condition.OperationNotIn {
-					value = []any{value}
-				}
-				cfg := &interfaces.FilterCondCfg{Name: alias.Name, Operation: operation,
-					ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: value}}
-				condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
-				require.NoError(t, err)
-				dsl, err := conn.ConvertFilterCondition(condition, schema)
-				require.ErrorContains(t, err, "ignore_above")
-				assert.Nil(t, dsl)
-			})
+		for _, field := range []string{target.Name, alias.Name} {
+			for _, operation := range []string{filter_condition.OperationEqual, filter_condition.OperationNotEqual,
+				filter_condition.OperationIn, filter_condition.OperationNotIn} {
+				t.Run(field+"/"+operation+" preserves the request field on keyword overflow", func(t *testing.T) {
+					var value any = "too-long-value"
+					if operation == filter_condition.OperationIn || operation == filter_condition.OperationNotIn {
+						value = []any{value}
+					}
+					cfg := &interfaces.FilterCondCfg{Name: field, Operation: operation,
+						ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: value}}
+					condition, err := filter_condition.NewFilterCondition(t.Context(), cfg, fields)
+					require.NoError(t, err)
+					dsl, err := conn.ConvertFilterCondition(condition, schema)
+					var limitErr *interfaces.KeywordLimitError
+					require.ErrorAs(t, err, &limitErr)
+					assert.Nil(t, dsl)
+					assert.Equal(t, field, limitErr.Field)
+					assert.Equal(t, 8, limitErr.Limit)
+				})
+			}
 		}
+
 		t.Run("field comparisons resolve aliases on both sides", func(t *testing.T) {
 			cfg := &interfaces.FilterCondCfg{Name: alias.Name, Operation: filter_condition.OperationEqual,
 				ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Field, Value: alias.Name}}
@@ -775,6 +781,10 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "exceeds keyword ignore_above 256")
+		var limitErr *interfaces.KeywordLimitError
+		require.ErrorAs(t, err, &limitErr)
+		assert.Equal(t, "body", limitErr.Field)
+		assert.Equal(t, 256, limitErr.Limit)
 		var buildErr *interfaces.ConditionBuildError
 		require.ErrorAs(t, err, &buildErr)
 	})
@@ -810,6 +820,10 @@ func TestOpenSearchConnectorConvertFilterConditionEqual(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "exceeds keyword ignore_above 256")
+		var limitErr *interfaces.KeywordLimitError
+		require.ErrorAs(t, err, &limitErr)
+		assert.Equal(t, "body", limitErr.Field)
+		assert.Equal(t, 256, limitErr.Limit)
 		var buildErr *interfaces.ConditionBuildError
 		require.ErrorAs(t, err, &buildErr)
 	})
@@ -1023,5 +1037,38 @@ func TestOpenSearchConnectorExactMatchFieldName(t *testing.T) {
 		field, err := conn.exactMatchFieldName(name, schema)
 		require.NoError(t, err)
 		assert.Equal(t, name, field)
+	}
+}
+
+func TestValidateKeywordValues(t *testing.T) {
+	for _, typ := range []string{interfaces.DataType_String, interfaces.DataType_Text} {
+		for _, tc := range []struct {
+			name     string
+			value    any
+			rejected bool
+		}{
+			{"at ASCII limit", strings.Repeat("X", 256), false},
+			{"above ASCII limit", strings.Repeat("X", 257), true},
+			{"at Unicode limit", strings.Repeat("字", 256), false},
+			{"at supplementary limit", strings.Repeat("😀", 128), false},
+			{"above supplementary limit", strings.Repeat("😀", 129), true},
+			{"set with oversized candidate", []any{"CLOSED", strings.Repeat("X", 257)}, true},
+			{"valid set", []any{"CLOSED", "OPEN"}, false},
+		} {
+			t.Run(typ+"/"+tc.name, func(t *testing.T) {
+				schema := []*interfaces.Property{{Name: "status", Type: typ, Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Keyword, Config: map[string]any{"ignore_above": 256}}}}}
+				err := validateKeywordValues("status", "status", tc.value, schema)
+				if !tc.rejected {
+					require.NoError(t, err)
+					return
+				}
+				var limit *interfaces.KeywordLimitError
+				require.ErrorAs(t, err, &limit)
+				assert.Equal(t, "status", limit.Field)
+				assert.Equal(t, 256, limit.Limit)
+				var condition *interfaces.ConditionBuildError
+				require.ErrorAs(t, err, &condition)
+			})
+		}
 	}
 }

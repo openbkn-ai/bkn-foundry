@@ -92,6 +92,25 @@ func TestConditionBuildErrorCause(t *testing.T) {
 	}
 }
 
+func TestKeywordLimitError(t *testing.T) {
+	if _, ok := any(KeywordLimitError{}).(error); ok {
+		t.Fatal("only *KeywordLimitError should implement error")
+	}
+	cause := NewKeywordLimitError("status", 256)
+	wrapped := fmt.Errorf("build query: %w", cause)
+	var limit *KeywordLimitError
+	if !errors.As(wrapped, &limit) || limit.Field != "status" || limit.Limit != 256 {
+		t.Fatalf("wrapped keyword limit error lost its type or parameters: %v", wrapped)
+	}
+	var build *ConditionBuildError
+	if !errors.As(wrapped, &build) || !errors.Is(wrapped, cause.ConditionBuildError) {
+		t.Fatalf("wrapped keyword limit error lost its condition build cause: %v", wrapped)
+	}
+	if cause.Error() != build.Error() {
+		t.Fatal("keyword limit error changed its condition build explanation")
+	}
+}
+
 func TestStoredConditionBuildError(t *testing.T) {
 	cause := NewConditionBuildError("field needs keyword")
 	stored := NewStoredConditionBuildError(cause)

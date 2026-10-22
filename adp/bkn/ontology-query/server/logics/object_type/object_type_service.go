@@ -569,6 +569,30 @@ func proxyDownstreamErrorCode(statusCode int) string {
 	return downstreamErrorCode(statusCode)
 }
 
+// resourceQueryClientError reports keyword-limit fields in the object's property namespace.
+func resourceQueryClientError(ctx context.Context, downstream *interfaces.VegaDownstreamError, properties []cond.DataProperty) *rest.HTTPError {
+	mapped := *downstream
+	metadata := downstream.ClientMetadata()
+	if metadata != nil {
+		name, matches := "", 0
+		for _, property := range properties {
+			if property.MappedField.Name == metadata["field"] {
+				name = property.Name
+				matches++
+			}
+		}
+		if matches == 1 && name != "" {
+			metadata["field"] = name
+		} else {
+			// Ambiguous or unknown bindings cannot identify a caller property reliably.
+			delete(metadata, "field")
+		}
+		mapped.Metadata = metadata
+	}
+	return rest.NewHTTPError(ctx, downstream.StatusCode, proxyDownstreamErrorCode(downstream.StatusCode)).
+		WithErrorDetails(mapped.ClientMessage()).WithMetadata(metadata)
+}
+
 func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType,
 	objectType interfaces.ObjectType, resps *interfaces.Objects, fieldPropMap map[string]string,
 	plan *propertyAccessPlan, continuousScan bool, aggregate *objectAggregateSpec) error {
@@ -659,9 +683,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		// Upgrading everything to 500 makes self-correctable problems such as unsupported operators or resources without built indexes look
 		// like service failures, preventing callers from self-correcting and sending manual investigation in the wrong direction.
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
-			return rest.NewHTTPError(ctx, downstream.StatusCode,
-				proxyDownstreamErrorCode(downstream.StatusCode)).
-				WithErrorDetails(downstream.ClientMessage())
+			return resourceQueryClientError(ctx, downstream, objectType.DataProperties)
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).

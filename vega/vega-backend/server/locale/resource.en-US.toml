@@ -157,3 +157,8 @@ ErrorLink = ""
 Description = "The resource is no longer stale and missing"
 Solution = "Reload the resource before deleting it"
 ErrorLink = ""
+
+[VegaBackend.Resource.QueryValueExceedsKeywordLimit]
+Description = "The query value exceeds the maximum indexed keyword length"
+Solution = "Use a shorter value or explicitly query the original data when available."
+ErrorLink = ""
