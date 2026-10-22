@@ -1,0 +1,52 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+name: ci-cypher-docs
+
+# run_cypher's rules are stated in the manuals, the API definitions and the
+# Context Loader texts agents read; this keeps them in agreement.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'help/*/manual/cypher.md'
+      - 'docs/api/bkn/cypher-queries.yaml'
+      - 'docs/api/context-loader/cypher.yaml'
+      - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
+      - 'tools/check_cypher_docs.py'
+      - 'tools/test_check_cypher_docs.py'
+      - '.github/workflows/ci-cypher-docs.yml'
+  pull_request:
+    paths:
+      - 'help/*/manual/cypher.md'
+      - 'docs/api/bkn/cypher-queries.yaml'
+      - 'docs/api/context-loader/cypher.yaml'
+      - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
+      - 'tools/check_cypher_docs.py'
+      - 'tools/test_check_cypher_docs.py'
+      - '.github/workflows/ci-cypher-docs.yml'
+
+concurrency:
+  group: ci-cypher-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  agree:
+    name: run_cypher texts agree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check run_cypher texts
+        run: |
+          python3 -m unittest tools/test_check_cypher_docs.py
+          python3 tools/check_cypher_docs.py
