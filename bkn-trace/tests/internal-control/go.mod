@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability v0.0.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261016053435-798abfaea9a7
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261022221530-ef7e5149db8f
 )
 
 require (
