@@ -9,6 +9,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"io"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -16,7 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// exportFiles writes a network to tar and returns its files by path.
+// exportFiles writes a network to tar and returns its files by path. The generated-at line of
+// CHECKSUM is left out: two exports a second apart would differ in it alone.
 func exportFiles(t *testing.T, doc *BknNetwork) map[string]string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -33,8 +35,13 @@ func exportFiles(t *testing.T, doc *BknNetwork) map[string]string {
 		require.NoError(t, err)
 		files[hdr.Name] = string(data)
 	}
+	if checksum, ok := files[ChecksumFileName]; ok {
+		files[ChecksumFileName] = checksumGeneratedLine.ReplaceAllString(checksum, "")
+	}
 	return files
 }
+
+var checksumGeneratedLine = regexp.MustCompile(`(?m)^# generated: .*\n`)
 
 // A 3.0 export reads back under 3.0 and exports again byte for byte.
 func TestWriteV3_RoundTripIsByteIdentical(t *testing.T) {
