@@ -114,6 +114,7 @@ type eventContext struct {
 	claimID           string
 	attempt           int
 	observedAt        string
+	businessRefs      []BusinessRef
 }
 
 // HashValue is ConfigStd, not the default sonic config, and the difference is not cosmetic: the
@@ -1431,6 +1432,7 @@ func baseEventContext(ctx context.Context) (eventContext, bool) {
 		claimID:           strings.TrimSpace(traceContext.ClaimID),
 		attempt:           traceContext.Attempt,
 		observedAt:        observedAt,
+		businessRefs:      requestDerivedBusinessRefsFromContext(ctx),
 	}, true
 }
 
