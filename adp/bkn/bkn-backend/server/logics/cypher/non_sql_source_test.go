@@ -102,6 +102,7 @@ func TestQueryOutsideSQLRefusesWhatOnlySQLAnswers(t *testing.T) {
 // the executor reads their keys and properties as plain columns, and the
 // values are built from them.
 func TestQueryOutsideSQLReturnsNodesAndRelationships(t *testing.T) {
+	spans := recordSpans(t)
 	for query, want := range map[string][]string{
 		"MATCH (o:Order)-[r:PLACED_BY]->(c:Customer) RETURN o, r, c": {
 			`"object_type_id":"ot_order","key":{"id"`, `"kind":"relation"`, `"object_type_id":"ot_customer","key":{"code"`,
@@ -131,6 +132,10 @@ func TestQueryOutsideSQLReturnsNodesAndRelationships(t *testing.T) {
 		}
 		if len(vega.readers) == 0 {
 			t.Errorf("%s: did not read the data API", query)
+		}
+		// Marked as a graph query, as the SQL path marks one.
+		if spans.attrs["cypher.graph_values"] != "true" || spans.attrs["cypher.executor"] != "bindjoin" {
+			t.Errorf("%s: span attrs = %v", query, spans.attrs)
 		}
 	}
 }

@@ -972,7 +972,8 @@ func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfac
 	}
 	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.String(spanAttrExecutor, common.CypherExecutorBindJoin),
-		attribute.String(spanAttrFallback, fallbackNonSQLSource))
+		attribute.String(spanAttrFallback, fallbackNonSQLSource),
+		attribute.Bool(spanAttrGraph, compiled.graph != nil))
 	plan := compiled.plan
 	if compiled.graph != nil {
 		// The statement a graph value is read through is a plan of plain
