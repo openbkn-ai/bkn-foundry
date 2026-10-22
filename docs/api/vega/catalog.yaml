@@ -641,7 +641,10 @@ components:
         will_delete:
           type: integer
           format: int64
-          description: 真实删除通过阻断检查后将级联删除的关联任务记录总数，包括 pending 和终态历史记录；存在阻断时不执行删除。
+          description: >-
+            不区分状态的全部关联任务记录数，包括 pending、终态历史及 blocking 中统计的执行中任务。
+            blocking 是其中的子集（will_delete >= blocking），两者不可相加。
+            仅真实删除通过阻断检查后才级联删除这些记录；存在阻断时不执行删除。
         blocking:
           type: integer
           format: int64
