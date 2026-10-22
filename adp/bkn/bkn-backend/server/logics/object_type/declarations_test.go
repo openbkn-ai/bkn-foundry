@@ -107,7 +107,7 @@ func TestCheckOverwriteKeepsDeclarations(t *testing.T) {
 
 	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
 		Return([]*interfaces.ObjectType{declaredObjectType()}, nil)
-	err := service.checkOverwriteKeepsDeclarations(ctx, nil, []*interfaces.ObjectType{file})
+	err := service.checkOverwriteKeepsDeclarations(ctx, nil, []*interfaces.ObjectType{file}, false)
 	require.Error(t, err)
 	httpErr := err.(*rest.HTTPError)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
@@ -117,12 +117,42 @@ func TestCheckOverwriteKeepsDeclarations(t *testing.T) {
 	assert.Equal(t, "confirm_clear_declarations=true", details["confirm_with"])
 
 	// Confirmed, it reads nothing and lets the overwrite through.
-	require.NoError(t, service.checkOverwriteKeepsDeclarations(interfaces.WithClearDeclarationsConfirmed(ctx), nil, []*interfaces.ObjectType{file}))
+	require.NoError(t, service.checkOverwriteKeepsDeclarations(interfaces.WithClearDeclarationsConfirmed(ctx), nil, []*interfaces.ObjectType{file}, false))
 
 	// Nothing stored to clear.
 	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
 		Return([]*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order"}}}, nil)
-	require.NoError(t, service.checkOverwriteKeepsDeclarations(ctx, nil, []*interfaces.ObjectType{file}))
+	require.NoError(t, service.checkOverwriteKeepsDeclarations(ctx, nil, []*interfaces.ObjectType{file}, false))
+}
+
+// Validation checks modify on the network only. Before it lists the declarations an overwrite would
+// clear, it checks modify on those object types; with nothing to list it asks nothing more, so an
+// overwrite of object types without declarations validates as before.
+func TestCheckOverwriteKeepsDeclarationsChecksPermission(t *testing.T) {
+	ctx := context.Background()
+	mockCtrl := gomock.NewController(t)
+	ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+	ps := bmock.NewMockPermissionService(mockCtrl)
+	service := &objectTypeService{ota: ota, ps: ps}
+	file := &interfaces.ObjectType{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", DataProperties: []*interfaces.DataProperty{{Name: "id"}}},
+		KNID:                   "kn1", Branch: interfaces.MAIN_BRANCH,
+	}
+
+	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
+		Return([]*interfaces.ObjectType{declaredObjectType()}, nil)
+	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{{
+		Resource:  interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: interfaces.KNChildResourceID("kn1", "order")},
+		Operation: interfaces.OPERATION_TYPE_MODIFY,
+	}}).Return(rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ObjectType_InvalidParameter))
+	err := service.checkOverwriteKeepsDeclarations(ctx, nil, []*interfaces.ObjectType{file}, true)
+	require.Error(t, err)
+	assert.Equal(t, http.StatusForbidden, err.(*rest.HTTPError).HTTPCode, "403, not the list")
+
+	// Nothing stored to clear: no permission call at all.
+	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
+		Return([]*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order"}}}, nil)
+	require.NoError(t, service.checkOverwriteKeepsDeclarations(ctx, nil, []*interfaces.ObjectType{file}, true))
 }
 
 // An old client that sends an object type without the declaration fields keeps them; one that

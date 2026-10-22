@@ -18,6 +18,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
 // The property declarations of BKN spec 3.0 (SPECIFICATION.md §6.8) ride in the data properties of
@@ -108,8 +109,13 @@ func clearedDeclarations(stored, incoming *interfaces.ObjectType) []interfaces.C
 // the request confirmed it, and lists what it would clear. A file is the whole state of what it
 // defines, so a declaration it does not carry is cleared; a 2.x package or an old JSON export never
 // carries one, and clearing them silently would undo work nobody asked to undo.
+//
+// The list shows stored declarations, so only a caller who may modify those object types sees it.
+// checkPermission asks for that check here, for a caller that has not made it yet; it runs only when
+// there is something to list, so an overwrite of object types without declarations costs nothing
+// more than before.
 func (ots *objectTypeService) checkOverwriteKeepsDeclarations(ctx context.Context, tx *sql.Tx,
-	updates []*interfaces.ObjectType) error {
+	updates []*interfaces.ObjectType, checkPermission bool) error {
 	if len(updates) == 0 || interfaces.ClearDeclarationsConfirmed(ctx) {
 		return nil
 	}
@@ -132,6 +138,18 @@ func (ots *objectTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 	}
 	if len(cleared) == 0 {
 		return nil
+	}
+	if checkPermission {
+		var ids []string
+		for _, c := range cleared {
+			if !slices.Contains(ids, c.ObjectTypeID) {
+				ids = append(ids, c.ObjectTypeID)
+			}
+		}
+		if err := permission.CheckKNChildBatchPermission(ctx, ots.ps, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			updates[0].KNID, ids, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+			return err
+		}
 	}
 	return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared).
 		WithErrorDetails(map[string]any{

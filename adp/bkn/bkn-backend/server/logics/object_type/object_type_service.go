@@ -300,7 +300,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	}
 	// After the permission check: the refusal lists stored declarations, which only a caller allowed
 	// to modify these object types may see.
-	if err = ots.checkOverwriteKeepsDeclarations(ctx, tx, updateObjectTypes); err != nil {
+	if err = ots.checkOverwriteKeepsDeclarations(ctx, tx, updateObjectTypes, false); err != nil {
 		return []string{}, err
 	}
 
@@ -453,7 +453,9 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 	if err != nil {
 		return err
 	}
-	if err = ots.checkOverwriteKeepsDeclarations(ctx, nil, updates); err != nil {
+	// Validation has checked modify on the network only; the object types being overwritten are
+	// checked before their declarations are listed.
+	if err = ots.checkOverwriteKeepsDeclarations(ctx, nil, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
 		return err
 	}
 
