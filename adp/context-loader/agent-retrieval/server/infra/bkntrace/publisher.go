@@ -74,7 +74,38 @@ func publishEvidenceEventWithPrevious(event Event, ec eventContext, previous *ev
 		conversationID = ec.conversationID
 	}
 	attempt, _ := event["attempt"].(int)
-	return publisher.TryPublish(evidencepublisher.Event{EventID: get("event_id"), EventType: get("event_type"), ConversationID: conversationID, InteractionID: get("interaction_id"), OperationID: get("operation_id"), Attempt: attempt, RequestID: get("bkn.request.id"), TraceID: get("trace_id"), SpanID: get("span_id"), StartedAt: startedAt, ObservedAt: observedAt, EmittedAt: emittedAt, Envelope: envelope, PreviousResult: previous})
+	refs := trace30BusinessRefs(event, ec.businessRefs)
+	var refsJSON, edgesJSON json.RawMessage
+	if len(refs) > 0 {
+		refsJSON, err = json.Marshal(refs)
+		if err != nil {
+			return evidencepublisher.PublishResult{Disposition: evidencepublisher.Dropped, Reason: evidencepublisher.ReasonSerialization}
+		}
+		// Interaction artifacts have no Operation. Do not manufacture an edge
+		// with an empty operation identity for those events.
+		if operationID := get("operation_id"); operationID != "" {
+			edges := make([]trace30OperationEdge, 0, len(refs))
+			for _, ref := range refs {
+				edges = append(edges, trace30OperationEdge{OperationID: operationID, BusinessRef: ref, Role: "read", ObservedAt: observedAt})
+			}
+			edgesJSON, err = json.Marshal(edges)
+			if err != nil {
+				return evidencepublisher.PublishResult{Disposition: evidencepublisher.Dropped, Reason: evidencepublisher.ReasonSerialization}
+			}
+		}
+	}
+	var causes []string
+	if cause := get("causation_event_id"); cause != "" {
+		causes = []string{cause}
+	}
+	return publisher.TryPublish(evidencepublisher.Event{
+		EventID: get("event_id"), EventType: get("event_type"), ConversationID: conversationID,
+		InteractionID: get("interaction_id"), OperationID: get("operation_id"), Attempt: attempt,
+		RequestID: get("bkn.request.id"), TraceID: get("trace_id"), SpanID: get("span_id"),
+		StartedAt: startedAt, ObservedAt: observedAt, EmittedAt: emittedAt, Envelope: envelope,
+		BusinessRefs: refsJSON, OperationBusinessEdges: edgesJSON, CausationEventIDs: causes,
+		PreviousResult: previous,
+	})
 }
 
 func FlushEvidencePublisher(ctx context.Context) evidencepublisher.DrainResult {

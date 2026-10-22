@@ -106,6 +106,7 @@ func (g *Guard) Begin(
 		return ClearManagedTraceContext(ctx), GuardState{CaptureDisabled: true}, GuardExecute, nil, nil
 	}
 	if err != nil || apiErr != nil {
+		logLifecycleIOFailure(ctx, GuardState{}, "ensure_operation", 0, apiErr, err)
 		return ctx, GuardState{}, "", apiErr, err
 	}
 	state := GuardState{Result: result, ArtifactRefs: append([]string(nil), result.PayloadArtifactRefs...)}
@@ -240,11 +241,16 @@ func (g *Guard) Finish(
 			g.emitFinalizedOutcome(ctx, failed)
 			return result, nil, nil
 		}
-		if apiErr != nil && !apiErr.Retryable && apiErr.Code != "receipt_pending" {
+		logLifecycleIOFailure(ctx, state, "finalize", attempt, apiErr, err)
+		// Core storage failures use internal_error without retryable=true.
+		// Keep infrastructure recovery consistent with Begin while preserving
+		// domain refusals and the existing shared post budget.
+		if apiErr != nil && !apiErr.Retryable && apiErr.Code != "receipt_pending" && !IsTraceInfrastructureFailure(apiErr, nil) {
 			return OperationResult{}, apiErr, nil
 		}
 
 		receipt, receiptErr, pollErr := g.client.GetReceipt(finishContext, input.ReceiptID)
+		logLifecycleIOFailure(ctx, state, "receipt_read", attempt, receiptErr, pollErr)
 		if pollErr == nil && receiptErr == nil {
 			lastResult.Receipt = receipt
 			switch receipt.ReceiptStatus {
@@ -255,6 +261,7 @@ func (g *Guard) Finish(
 				operation, operationErr, getOperationErr := g.client.GetOperation(
 					finishContext, input.OperationID,
 				)
+				logLifecycleIOFailure(ctx, state, "operation_read", attempt, operationErr, getOperationErr)
 				if getOperationErr == nil && operationErr == nil {
 					if conflict := validateRecoveredOperation(input, operation, failed); conflict != nil {
 						return lastResult, conflict, nil
@@ -263,7 +270,7 @@ func (g *Guard) Finish(
 					g.emitFinalizedOutcome(ctx, failed)
 					return lastResult, nil, nil
 				}
-				if operationErr != nil && !operationErr.Retryable {
+				if operationErr != nil && !operationErr.Retryable && !IsTraceInfrastructureFailure(operationErr, nil) {
 					return lastResult, operationErr, nil
 				}
 			}
