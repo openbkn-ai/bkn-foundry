@@ -527,13 +527,15 @@ func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq,
 		}
 	}
 	metricRef := fmt.Sprintf("metric:%s:%s:v%d", strings.TrimSpace(req.KnID), strings.TrimSpace(req.MetricID), req.Version)
+	truncated := resp != nil && (resp.NextCursor != "" || resp.Status == "partial")
 	payload := map[string]any{
 		"metric_ref": metricRef, "network_ref": "kn:" + strings.TrimSpace(req.KnID),
 		"version": req.Version, "dimensions": req.Query.GroupBy, "conditions": req.Query.Filter,
 		"having": req.Query.Having, "order_by": req.Query.OrderBy,
+		"page_size": req.Query.PageSize, "cursor": req.Query.Cursor,
 		"time": req.Query.Time, "status": status,
 		"aggregation_definition": "defined_by_metric", "rows": rows, "row_count": len(rows),
-		"complete": resp != nil, "cardinality": "object_metric_entries",
+		"complete": resp != nil && !truncated, "truncated": truncated, "cardinality": "object_metric_entries",
 		"source_refs": []map[string]any{
 			controlledRef("kn:"+strings.TrimSpace(req.KnID), "knowledge_network"),
 			controlledRef(metricRef, "metric"),
@@ -542,6 +544,7 @@ func BuildQueryMetricEvents(ctx context.Context, req *interfaces.QueryMetricReq,
 	if resp != nil {
 		payload["total_count"] = resp.TotalCount
 		payload["empty_reason"] = resp.EmptyReason
+		payload["next_cursor"] = resp.NextCursor
 	}
 	if req.Query.BucketSelection != nil {
 		payload["bucket_selection"] = req.Query.BucketSelection

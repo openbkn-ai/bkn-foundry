@@ -161,6 +161,36 @@ func TestBuildQueryMetricEventsRecordsDimensionsValuesConditionsAndCompleteness(
 	}
 }
 
+func TestBuildQueryMetricEventsDistinguishesPagedAndPartialResults(t *testing.T) {
+	req := &interfaces.QueryMetricReq{
+		KnID: "kn-supply", MetricID: "available_inventory", Version: 2,
+		Query: interfaces.ObjectMetricQuery{PageSize: 10, Cursor: "current-page"},
+	}
+	for _, tc := range []struct {
+		name       string
+		resp       *interfaces.QueryMetricResp
+		complete   bool
+		truncated  bool
+		nextCursor string
+	}{
+		{name: "next page", resp: &interfaces.QueryMetricResp{Status: "ok", NextCursor: "next-page"}, truncated: true, nextCursor: "next-page"},
+		{name: "last page", resp: &interfaces.QueryMetricResp{Status: "ok"}, complete: true},
+		{name: "partial source result", resp: &interfaces.QueryMetricResp{Status: "partial"}, truncated: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			events := BuildQueryMetricEvents(testTraceContext(), req, tc.resp)
+			if len(events) != 1 {
+				t.Fatalf("metric events = %d", len(events))
+			}
+			payload := events[0]["payload"].(map[string]any)
+			if payload["complete"] != tc.complete || payload["truncated"] != tc.truncated ||
+				payload["page_size"] != 10 || payload["cursor"] != "current-page" || payload["next_cursor"] != tc.nextCursor {
+				t.Fatalf("metric paging evidence = %#v", payload)
+			}
+		})
+	}
+}
+
 func TestBuildSchemaSnapshotEventsDistinguishesCompleteEmptyFromUnknown(t *testing.T) {
 	events := BuildSchemaSnapshotEvents(testTraceContext(), "network", "kn-empty", nil, map[string]any{"mounted_capabilities": map[string]any{"total": 0, "function": 0}}, true)
 	if len(events) != 1 {
