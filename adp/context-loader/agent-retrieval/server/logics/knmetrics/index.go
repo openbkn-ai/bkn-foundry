@@ -16,6 +16,7 @@ package knmetrics
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -152,6 +153,10 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, ErrVersionRequired
 	}
+	if err := validateMetricRuntimeQuery(req.Query, 0); err != nil {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
+		return nil, err
+	}
 	if req.Query.Time != nil && req.Query.Time.Start > req.Query.Time.End {
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, errors.New("query.time.start must be <= query.time.end")
@@ -168,6 +173,9 @@ func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.Quer
 		}
 		out.Model = resp.Model
 		out.Status = resp.Status
+		out.EmptyReason = resp.EmptyReason
+		out.TotalCount = resp.TotalCount
+		out.NextCursor = resp.NextCursor
 		out.Warnings = resp.Warnings
 		out.OverallMs = resp.OverallMs
 		out.EvaluatedAt = resp.EvaluatedAt
@@ -186,6 +194,10 @@ func (s *knMetricsService) DrillThroughMetric(ctx context.Context, req *interfac
 		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
 		return nil, errors.New("page_size must be between 0 and 100")
 	}
+	if err := validateMetricRuntimeQuery(req.Query, 0); err != nil {
+		bkntrace.RecordToolFailure(ctx, "invalid_arguments", "input_validation")
+		return nil, err
+	}
 	resp, err := s.ontologyQuery.DrillThroughMetricData(ctx, strings.TrimSpace(req.KnID), strings.TrimSpace(req.MetricID), req.Version, req)
 	if err != nil {
 		return nil, err
@@ -200,6 +212,22 @@ func (s *knMetricsService) DrillThroughMetric(ctx context.Context, req *interfac
 	resp.MetricID = strings.TrimSpace(req.MetricID)
 	resp.Version = req.Version
 	return resp, nil
+}
+
+func validateMetricRuntimeQuery(query interfaces.ObjectMetricQuery, depth int) error {
+	if query.PageSize < 0 || query.PageSize > 1000 {
+		return errors.New("query.page_size must be between 0 and 1000")
+	}
+	if query.Cursor != "" && query.PageSize == 0 {
+		return errors.New("query.page_size is required with cursor")
+	}
+	if query.BucketSelection != nil {
+		if depth >= 8 {
+			return fmt.Errorf("metric drill depth exceeds 8")
+		}
+		return validateMetricRuntimeQuery(query.BucketSelection.ParentQuery, depth+1)
+	}
+	return nil
 }
 
 //nolint:unused // Retained for metric diagnostics.

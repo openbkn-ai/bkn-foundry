@@ -176,7 +176,7 @@ func TestAuthorizeObjectMetricTrialRequiresFullPropertyAccess(t *testing.T) {
 		Filter: &interfaces.ObjectMetricConditionV1{Left: &interfaces.ObjectMetricOperandV1{
 			PropertyRef: &interfaces.ObjectMetricPropertyRefV1{ObjectTypeID: "orders", PropertyName: "status"},
 		}},
-		AnalysisDimensions: []interfaces.ObjectMetricPropertyRefV1{{ObjectTypeID: "customers", PropertyName: "region"}},
+		GroupBy: []interfaces.ObjectMetricPropertyRefV1{{ObjectTypeID: "customers", PropertyName: "region"}},
 	})
 	if err != nil {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v", err)
@@ -275,7 +275,7 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullParentQueryProperties(t *testin
 		},
 		{
 			name: "parent analysis dimension",
-			parentQuery: interfaces.ObjectMetricQueryRequestV1{AnalysisDimensions: []interfaces.ObjectMetricPropertyRefV1{{
+			parentQuery: interfaces.ObjectMetricQueryRequestV1{GroupBy: []interfaces.ObjectMetricPropertyRefV1{{
 				ObjectTypeID: "orders", PropertyName: "status",
 			}}},
 		},

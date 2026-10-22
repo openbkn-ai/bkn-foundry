@@ -96,20 +96,25 @@ func TestQueryMetric_PinsVersionAndPreservesV1Status(t *testing.T) {
 		Model:   map[string]any{"metric_id": "m1", "version": 2},
 		Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Value: 431}},
 		Status:  "partial", Warnings: []string{"missing source"}, OverallMs: 12,
+		TotalCount: 7, NextCursor: "next-page",
 	}}
 	query := interfaces.ObjectMetricQuery{
 		InstanceIdentities: []map[string]any{{"id": "i1"}},
-		AnalysisDimensions: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "ot1", PropertyName: "region"}},
+		GroupBy:            []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "ot1", PropertyName: "region"}},
+		Having:             &interfaces.ObjectMetricHaving{Operator: "gte", Value: 100},
+		OrderBy:            []interfaces.ObjectMetricOrderBy{{Field: "value", Direction: "desc"}},
+		PageSize:           2,
 		Time:               &interfaces.ObjectMetricTimeRange{Start: 1000, End: 2000},
 	}
 	resp, err := NewKnMetricsServiceWith(nil, nil, oq).QueryMetric(context.Background(), &interfaces.QueryMetricReq{KnID: " kn1 ", MetricID: " m1 ", Version: 2, Query: query})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if oq.gotKnID != "kn1" || oq.gotMetric != "m1" || oq.gotVersion != 2 || oq.gotReq.Time.Start != 1000 {
+	if oq.gotKnID != "kn1" || oq.gotMetric != "m1" || oq.gotVersion != 2 || oq.gotReq.Time.Start != 1000 ||
+		len(oq.gotReq.GroupBy) != 1 || oq.gotReq.Having == nil || len(oq.gotReq.OrderBy) != 1 || oq.gotReq.PageSize != 2 {
 		t.Fatalf("downstream: %+v", oq)
 	}
-	if resp.Version != 2 || resp.Status != "partial" || len(resp.Entries) != 1 || len(resp.Warnings) != 1 || resp.OverallMs != 12 {
+	if resp.Version != 2 || resp.Status != "partial" || len(resp.Entries) != 1 || len(resp.Warnings) != 1 || resp.OverallMs != 12 || resp.TotalCount != 7 || resp.NextCursor != "next-page" {
 		t.Fatalf("response: %+v", resp)
 	}
 }

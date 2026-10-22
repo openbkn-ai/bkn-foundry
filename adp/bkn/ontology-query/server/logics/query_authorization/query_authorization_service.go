@@ -327,8 +327,11 @@ func objectMetricPropertyRequirements(definition *interfaces.ObjectMetricDefinit
 			break
 		}
 		walkCondition(query.Filter)
-		for index := range query.AnalysisDimensions {
-			add(&query.AnalysisDimensions[index])
+		for index := range query.GroupBy {
+			add(&query.GroupBy[index])
+		}
+		for index := range query.OrderBy {
+			add(query.OrderBy[index].Dimension)
 		}
 		if query.BucketSelection == nil {
 			break

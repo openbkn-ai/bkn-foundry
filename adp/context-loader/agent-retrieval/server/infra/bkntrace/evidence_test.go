@@ -139,7 +139,7 @@ func TestArtifactContentHashUsesCoreCanonicalJSON(t *testing.T) {
 
 func TestBuildQueryMetricEventsRecordsDimensionsValuesConditionsAndCompleteness(t *testing.T) {
 	selection := &interfaces.ObjectMetricBucketSelection{BucketKey: "selected-bucket", ParentQuery: interfaces.ObjectMetricQuery{Filter: map[string]any{"field": "region", "value": "east"}}}
-	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Query: interfaces.ObjectMetricQuery{AnalysisDimensions: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "warehouse", PropertyName: "name"}}, Filter: map[string]any{"field": "material_id", "operation": "eq", "value": "M-1001"}, BucketSelection: selection}}
+	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Query: interfaces.ObjectMetricQuery{GroupBy: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "warehouse", PropertyName: "name"}}, Filter: map[string]any{"field": "material_id", "operation": "eq", "value": "M-1001"}, BucketSelection: selection}}
 	resp := &interfaces.QueryMetricResp{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Status: "ok", Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Dimensions: map[string]any{"warehouse": "WH-01"}, Value: 677}}}
 	events := BuildQueryMetricEvents(testTraceContext(), req, resp)
 	if len(events) != 1 {

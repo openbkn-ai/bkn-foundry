@@ -67,7 +67,7 @@
   "query_metric": {
     "title": "Query Metrics",
     "group_title": "Instance Queries",
-    "description": "Query an immutable published Object Metric V1 definition. Select metric_id and version from get_object_types.related_metrics. To drill down, pass the prior complete query and returned bucket_key as bucket_selection, appending at most one allowed analysis dimension. Follow available_actions; use drill_through_metric to page through participants. Read entries and status together."
+    "description": "Query an immutable published Object Metric V1 definition. Select metric_id and version from get_object_types.related_metrics. Runtime query supports filter, group_by, having, order_by, and result pagination. To drill down, pass the prior complete query and returned bucket_key as bucket_selection, appending at most one allowed group_by dimension. Follow available_actions; use drill_through_metric to page through participants. Read entries and status together."
   },
   "drill_through_metric": {
     "title": "Metric Participants",

@@ -16,9 +16,25 @@ type QueryMetricReq struct {
 type ObjectMetricQuery struct {
 	InstanceIdentities []map[string]any             `json:"instance_identities,omitempty"`
 	Filter             map[string]any               `json:"filter,omitempty"`
-	AnalysisDimensions []ObjectMetricPropertyRef    `json:"analysis_dimensions,omitempty"`
+	GroupBy            []ObjectMetricPropertyRef    `json:"group_by,omitempty"`
+	Having             *ObjectMetricHaving          `json:"having,omitempty"`
+	OrderBy            []ObjectMetricOrderBy        `json:"order_by,omitempty"`
+	PageSize           int                          `json:"page_size,omitempty"`
+	Cursor             string                       `json:"cursor,omitempty"`
 	Time               *ObjectMetricTimeRange       `json:"time,omitempty"`
 	BucketSelection    *ObjectMetricBucketSelection `json:"bucket_selection,omitempty"`
+}
+
+type ObjectMetricHaving struct {
+	Operator string `json:"operator"`
+	Value    any    `json:"value,omitempty"`
+	UnitCode string `json:"unit_code,omitempty"`
+}
+
+type ObjectMetricOrderBy struct {
+	Field     string                   `json:"field"`
+	Dimension *ObjectMetricPropertyRef `json:"dimension,omitempty"`
+	Direction string                   `json:"direction"`
 }
 
 type ObjectMetricBucketSelection struct {
@@ -45,6 +61,9 @@ type QueryMetricResp struct {
 	Model           map[string]any          `json:"model"`
 	Entries         []ObjectMetricDataEntry `json:"entries"`
 	Status          string                  `json:"status"`
+	EmptyReason     string                  `json:"empty_reason,omitempty"`
+	TotalCount      int                     `json:"total_count"`
+	NextCursor      string                  `json:"next_cursor,omitempty"`
 	Warnings        []string                `json:"warnings,omitempty"`
 	OverallMs       int64                   `json:"overall_ms"`
 	EvaluatedAt     int64                   `json:"evaluated_at,omitempty"`
@@ -73,6 +92,9 @@ type MetricQueryDownstreamResp struct {
 	Model           map[string]any          `json:"model"`
 	Entries         []ObjectMetricDataEntry `json:"entries"`
 	Status          string                  `json:"status"`
+	EmptyReason     string                  `json:"empty_reason,omitempty"`
+	TotalCount      int                     `json:"total_count"`
+	NextCursor      string                  `json:"next_cursor,omitempty"`
 	Warnings        []string                `json:"warnings,omitempty"`
 	OverallMs       int64                   `json:"overall_ms"`
 	EvaluatedAt     int64                   `json:"evaluated_at,omitempty"`

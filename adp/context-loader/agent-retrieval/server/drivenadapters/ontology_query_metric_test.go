@@ -116,3 +116,31 @@ func TestQueryMetricData_ForwardsVersion(t *testing.T) {
 			"/in/v1/knowledge-networks/kn1/object-metrics/m1/data?version=2")
 	})
 }
+
+func TestQueryMetricData_ForwardsFinalResultOperationsAndPage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	logger := mocks.NewMockLogger(ctrl)
+	logger.EXPECT().WithContext(gomock.Any()).Return(logger).AnyTimes()
+	httpClient := mocks.NewMockHTTPClient(ctrl)
+	client := &ontologyQueryClient{logger: logger, baseURL: "http://ontology-query:13018/api/ontology-query", httpClient: httpClient}
+	httpClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ map[string]string, body any) (int, []byte, error) {
+			encoded, err := json.Marshal(body)
+			if err != nil || !strings.Contains(string(encoded), `"group_by"`) ||
+				!strings.Contains(string(encoded), `"having":{"operator":"gte","value":10}`) ||
+				!strings.Contains(string(encoded), `"order_by":[{"field":"value","direction":"desc"}]`) ||
+				!strings.Contains(string(encoded), `"page_size":2`) {
+				t.Fatalf("metric query lost final-result operations: %s (%v)", encoded, err)
+			}
+			return 200, []byte(`{"entries":[],"status":"no_data","empty_reason":"filtered_out","total_count":7,"next_cursor":"next"}`), nil
+		})
+	result, err := client.QueryMetricData(context.Background(), "kn-1", "metric-1", 2, &interfaces.ObjectMetricQuery{
+		GroupBy:  []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "order", PropertyName: "region"}},
+		Having:   &interfaces.ObjectMetricHaving{Operator: "gte", Value: 10},
+		OrderBy:  []interfaces.ObjectMetricOrderBy{{Field: "value", Direction: "desc"}},
+		PageSize: 2,
+	})
+	if err != nil || result.EmptyReason != "filtered_out" || result.TotalCount != 7 || result.NextCursor != "next" {
+		t.Fatalf("metric result metadata was lost: %#v, %v", result, err)
+	}
+}

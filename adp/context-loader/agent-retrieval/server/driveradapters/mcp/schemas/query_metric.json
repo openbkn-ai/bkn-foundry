@@ -36,7 +36,7 @@
             "additionalProperties": true,
             "description": "符合对象指标 V1 条件 AST 的运行时过滤条件。"
           },
-          "analysis_dimensions": {
+          "group_by": {
             "type": "array",
             "items": {
               "type": "object",
@@ -50,6 +50,33 @@
             },
             "description": "从已发布定义的 query_capabilities.analysis_dimensions 选择属性引用。"
           },
+          "having": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["operator"],
+            "properties": {
+              "operator": {"type": "string", "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "is_null", "is_not_null"]},
+              "value": {"description": "最终指标值的比较值；is_null/is_not_null 时省略。"},
+              "unit_code": {"type": "string", "description": "可选；必须与指标结果单位一致。"}
+            },
+            "description": "聚合完成后筛选最终指标值，不筛选源行或依赖指标。"
+          },
+          "order_by": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "direction"],
+              "properties": {
+                "field": {"type": "string", "enum": ["value", "time", "dimension"]},
+                "dimension": {"type": "object", "required": ["object_type_id", "property_name"], "properties": {"object_type_id": {"type": "string"}, "property_name": {"type": "string"}, "relation_path_alias": {"type": "string"}}},
+                "direction": {"type": "string", "enum": ["asc", "desc"]}
+              }
+            },
+            "description": "对最终指标结果排序，空值排在最后。"
+          },
+          "page_size": {"type": "integer", "minimum": 1, "maximum": 1000, "description": "可选的结果页大小；省略时返回全部结果。"},
+          "cursor": {"type": "string", "description": "上一页 next_cursor；数据变化时需从第一页重试。"},
           "time": {
             "type": "object",
             "required": ["start", "end"],
@@ -77,7 +104,7 @@
   },
   "output_schema": {
     "type": "object",
-    "required": ["kn_id", "metric_id", "version", "model", "entries", "status", "overall_ms"],
+    "required": ["kn_id", "metric_id", "version", "model", "entries", "status", "total_count", "overall_ms"],
     "properties": {
       "kn_id": {"type": "string", "description": "知识网络 ID。"},
       "metric_id": {"type": "string", "description": "对象指标 ID。"},
@@ -103,6 +130,9 @@
         }
       },
       "status": {"type": "string", "enum": ["ok", "no_data", "unavailable", "partial"], "description": "整体查询状态。"},
+      "empty_reason": {"type": "string", "enum": ["filtered_out"], "description": "结果被 having 全部筛除时返回。"},
+      "total_count": {"type": "integer", "description": "最终筛选后的完整结果行数。"},
+      "next_cursor": {"type": "string", "description": "下一页游标。"},
       "warnings": {"type": "array", "items": {"type": "string"}, "description": "部分成功或不可用时的警告。"},
       "overall_ms": {"type": "integer", "description": "查询耗时，单位毫秒。"},
       "evaluated_at": {"type": "integer", "description": "结果计算时间，Unix 毫秒。"},

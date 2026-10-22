@@ -11,7 +11,11 @@ package interfaces
 type ObjectMetricQueryRequestV1 struct {
 	InstanceIdentities []map[string]any               `json:"instance_identities,omitempty"`
 	Filter             *ObjectMetricConditionV1       `json:"filter,omitempty"`
-	AnalysisDimensions []ObjectMetricPropertyRefV1    `json:"analysis_dimensions,omitempty"`
+	GroupBy            []ObjectMetricPropertyRefV1    `json:"group_by,omitempty"`
+	Having             *ObjectMetricHavingV1          `json:"having,omitempty"`
+	OrderBy            []ObjectMetricOrderByV1        `json:"order_by,omitempty"`
+	PageSize           int                            `json:"page_size,omitempty"`
+	Cursor             string                         `json:"cursor,omitempty"`
 	Time               *ObjectMetricQueryTimeRangeV1  `json:"time,omitempty"`
 	BucketSelection    *ObjectMetricBucketSelectionV1 `json:"bucket_selection,omitempty"`
 	// RuntimeAnchor and WindowOverride are execution-plan fields. They are never
@@ -20,6 +24,20 @@ type ObjectMetricQueryRequestV1 struct {
 	RuntimeAnchor   *int64                           `json:"-"`
 	WindowOverride  *ObjectMetricTimeWindowV1        `json:"-"`
 	SelectedBuckets []ObjectMetricBucketDescriptorV1 `json:"-"`
+}
+
+// ObjectMetricHavingV1 filters the final metric value, never source rows.
+type ObjectMetricHavingV1 struct {
+	Operator string `json:"operator"`
+	Value    any    `json:"value,omitempty"`
+	UnitCode string `json:"unit_code,omitempty"`
+}
+
+// ObjectMetricOrderByV1 names only a final result field or a selected dimension.
+type ObjectMetricOrderByV1 struct {
+	Field     string                     `json:"field"`
+	Dimension *ObjectMetricPropertyRefV1 `json:"dimension,omitempty"`
+	Direction string                     `json:"direction"`
 }
 
 // A selection is resolved against a freshly re-evaluated parent query. The key
@@ -53,6 +71,9 @@ type ObjectMetricDataV1 struct {
 	Model           ObjectMetricResultModelV1     `json:"model"`
 	Entries         []ObjectMetricDataEntryV1     `json:"entries"`
 	Status          string                        `json:"status"`
+	EmptyReason     string                        `json:"empty_reason,omitempty"`
+	NextCursor      string                        `json:"next_cursor,omitempty"`
+	TotalCount      int                           `json:"total_count"`
 	Warnings        []string                      `json:"warnings,omitempty"`
 	OverallMs       int64                         `json:"overall_ms"`
 	EvaluatedAt     int64                         `json:"evaluated_at"`
