@@ -20,6 +20,16 @@
       "name": "explain does not see dataset-only refusals",
       "zh": "explain[^。]{0,60}照样通过",
       "en": "passes (?:explain|the plan)"
+    },
+    {
+      "name": "two unconnected parts without conditions are refused",
+      "zh": "两部分.{0,40}(没有任何条件|都没有条件)",
+      "en": "two (?:of (?:them|its parts)|parts)[^.]{0,80}(?:no condition|narrowed by any condition)"
+    },
+    {
+      "name": "limited marks a result cut at the default",
+      "zh": "\\blimited:\\s*(?:true|type:\\s*boolean)",
+      "en": "\\blimited:\\s*(?:true|type:\\s*boolean)"
     }
   ]
 }
