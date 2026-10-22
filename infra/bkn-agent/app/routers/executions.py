@@ -13,12 +13,14 @@ import uuid
 import anyio
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account
 from app.commons.i18n import build_error_content
 from app.config import config
+from app.core import builtin_tools
 from app.core.graph import stream_chat
 from app.core.public_chat import PublicChat
 from app.db import SessionLocal, get_session
@@ -184,8 +186,15 @@ async def _execute_impl(
         await authorize_execution(account, agent.agent_id, req.context.kn_id)
     if metric_request and (agent.tools or agent.skills):
         raise err(409, "BknAgent.Execution.Unsupported")
-    if not metric_request and any(ref.get("type") != "context_loader" for ref in agent.tools):
+    if not metric_request and any(
+        ref.get("type") not in ("context_loader", "builtin") for ref in agent.tools
+    ):
         raise err(409, "BknAgent.Execution.Unsupported")
+    try:
+        provider = builtin_tools.provider_of(agent.tools)
+    except ValueError:
+        raise err(409, "BknAgent.Execution.Unsupported")
+    provider_context = _provider_context(req, provider)
     network_row = await dao.get_network_setting(session, agent.agent_id, req.context.kn_id)
     user_row = await dao.get_user_setting(session, agent.agent_id, account.account_id)
     effective = merge(
@@ -266,6 +275,18 @@ async def _execute_impl(
     public = PublicChat(run_id, req.context.kn_id)
     public.instructions = effective.instructions
     public.allowed_tools = effective.allowed_tools
+    public.allowed_builtin_tools = effective.allowed_builtin_tools
+    run = (
+        builtin_tools.Run(
+            provider=provider,
+            kn_id=req.context.kn_id,
+            context=provider_context,
+            account_id=account.account_id,
+            account_type=account.account_type,
+        )
+        if provider
+        else None
+    )
 
     async def events():
         _active[run_id] = asyncio.current_task()
@@ -273,6 +294,7 @@ async def _execute_impl(
         upstream = None
         stream = None
         proposal = None
+        fragment = None
         try:
             timeout_s = (
                 agent.limits.timeout_s
@@ -286,6 +308,8 @@ async def _execute_impl(
                 if not await dao.begin_execution(execution_session, run_id):
                     yield public.event("terminal", {"status": "cancelled"})
                     return
+                # load_tools builds this run's built-in tools from it.
+                builtin_tools.set_current(run)
                 stream = await stream_chat(
                     execution_session,
                     agent,
@@ -317,6 +341,12 @@ async def _execute_impl(
             if status == "succeeded":
                 if metric_request and proposal is None:
                     raise ValueError("metric designer did not return a proposal")
+                if run is not None:
+                    try:
+                        fragment = provider.result(run)
+                    except ValueError:
+                        logger.exception("public execution %s returned an invalid %s", run_id, provider.result_key)
+                        raise err(500, "BknAgent.Execution.ResultInvalid")
                 output = json.dumps(
                     {
                         "answer": public.final
@@ -326,6 +356,7 @@ async def _execute_impl(
                         "prompt_version": public.prompt_version,
                         "usage": public.usage or None,
                         **({"proposal": proposal} if metric_request else {}),
+                        **({provider.result_key: fragment} if run is not None else {}),
                     },
                     ensure_ascii=False,
                 )
@@ -397,6 +428,32 @@ async def _execute_impl(
         )
 
     return _response(events())
+
+
+def _provider_context(req: ExecutionRequest, provider):
+    """The request context a builtin provider needs, validated; other Agents
+    must not be sent provider context at all."""
+    given = {
+        name
+        for name in type(req.context).model_fields
+        if name != "kn_id" and getattr(req.context, name) is not None
+    }
+    expected = {provider.context_key} if provider else set()
+    if given - expected:
+        raise err(400, "BknAgent.Execution.ContextInvalid", field=", ".join(sorted(given - expected)))
+    if provider is None:
+        return None
+    value = getattr(req.context, provider.context_key)
+    if value is None:
+        raise err(400, "BknAgent.Execution.ContextMissing", field=provider.context_key)
+    try:
+        return provider.context_model.model_validate(value)
+    except ValidationError as exc:
+        raise err(
+            400,
+            "BknAgent.Execution.ContextInvalid",
+            field=f"{provider.context_key}: {exc.errors()[0].get('msg', '')}"[:300],
+        )
 
 
 def _response(events):

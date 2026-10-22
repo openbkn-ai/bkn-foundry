@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account
+from app.core import builtin_tools
 from app.core.agent_settings import merge, shared_limits
 from app.core.context_loader import profile_of
 from app.db import get_session
@@ -263,6 +264,55 @@ async def _shared_editor(
     return agent
 
 
+class ToolSourceOut(BaseModel):
+    """One entry of an Agent's tools as configured, for display."""
+
+    type: str
+    # builtin: the provider; agent: the Agent it calls; toolbox: the box.
+    provider: Optional[str] = None
+    agent_id: Optional[str] = None
+    box_id: Optional[str] = None
+    name: Optional[str] = None
+    # Tool names this source mounts; null means all it offers (Context Loader
+    # without an allow-list) or names known only at execution time.
+    names: Optional[list[str]] = None
+    # What each tool tells the model, when known before execution (built-in
+    # tools): name, description and parameter schema.
+    definitions: Optional[list[dict]] = None
+
+
+def _tool_sources(tool_refs: list) -> list[ToolSourceOut]:
+    sources = []
+    for ref in tool_refs:
+        if not isinstance(ref, dict) or not isinstance(ref.get("type"), str):
+            continue
+        kind = ref["type"]
+        names = None
+        definitions = None
+        if kind == "builtin":
+            provider = builtin_tools.get(ref.get("provider") or "")
+            chosen = ref.get("tools") or (provider.tool_names if provider else None)
+            names = sorted(chosen) if chosen else None
+            if provider and names:
+                definitions = [
+                    d for d in builtin_tools.definitions(provider) if d["name"] in names
+                ]
+        elif kind == "context_loader" and ref.get("allowed_tools") is not None:
+            names = sorted(ref["allowed_tools"])
+        sources.append(
+            ToolSourceOut(
+                type=kind,
+                provider=ref.get("provider") if kind == "builtin" else None,
+                agent_id=ref.get("agent_id") if kind == "agent" else None,
+                box_id=ref.get("box_id") if kind == "toolbox" else None,
+                name=ref.get("name"),
+                names=names,
+                definitions=definitions,
+            )
+        )
+    return sources
+
+
 class SharedOut(BaseModel):
     agent_id: str
     name: str
@@ -273,6 +323,8 @@ class SharedOut(BaseModel):
     # Whether the Agent loads Context Loader at all; the MCP surface choice
     # means nothing otherwise.
     uses_context_loader: bool
+    # The tools the Agent mounts, by source; read-only here.
+    tools: list[ToolSourceOut] = []
     # Whether network and personal settings apply (the public execution
     # surface); the others are configured here only.
     layered: bool
@@ -302,6 +354,7 @@ async def _shared_out(session: AsyncSession, agent: AgentOut, can_edit: bool) ->
             isinstance(ref, dict) and ref.get("type") == "context_loader"
             for ref in agent.tools
         ),
+        tools=_tool_sources(agent.tools),
         layered=agent.agent_id in PUBLIC_AGENT_IDS,
         can_edit=can_edit,
         prompt_version=prompt.current_version if prompt else None,

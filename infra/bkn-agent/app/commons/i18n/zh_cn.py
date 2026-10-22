@@ -44,6 +44,27 @@ error_messages = {
         "detail": "此 Agent 使用了公共执行范围尚不支持的能力。",
         "solution": "请使用已支持的内置 Agent 配置。",
     },
+    "BknAgent.Execution.ContextMissing": {
+        "code": "BknAgent.Execution.ContextMissing",
+        "description_template": "此 Agent 需要 context.{field}。",
+        "description": "此 Agent 需要更多请求上下文。",
+        "detail_template": "此 Agent 需要 context.{field}。",
+        "detail": "此 Agent 需要更多请求上下文。",
+        "solution": "请提供该 Agent 内置工具所需的上下文。",
+    },
+    "BknAgent.Execution.ContextInvalid": {
+        "code": "BknAgent.Execution.ContextInvalid",
+        "description": "请求上下文不符合此 Agent 的要求。",
+        "detail_template": "上下文无效或不应提供：{field}",
+        "detail": "请求上下文不符合此 Agent 的要求。",
+        "solution": "只提供该 Agent 使用的上下文，并符合其格式。",
+    },
+    "BknAgent.Execution.ResultInvalid": {
+        "code": "BknAgent.Execution.ResultInvalid",
+        "description": "执行结果未通过校验。",
+        "detail": "执行结果未通过校验。",
+        "solution": "请使用新的请求 ID 重试；持续出现请反馈。",
+    },
     "BknAgent.Execution.Conflict": {
         "code": "BknAgent.Execution.Conflict",
         "description": "请求与已有执行或会话范围冲突。",
@@ -195,6 +216,13 @@ error_messages = {
         "detail_template": "{ref}",
         "detail": "未知的工具引用类型",
         "solution": "",
+    },
+    "BknAgent.ToolRef.BuiltinUnknown": {
+        "code": "BknAgent.ParamError.ToolRef",
+        "description": "内置工具引用的 provider 或工具不存在",
+        "detail_template": "{ref}",
+        "detail": "内置工具引用的 provider 或工具不存在",
+        "solution": "请使用 bkn-agent 已注册的 provider 及其工具名。",
     },
     "BknAgent.ToolRef.BoxIdMissing": {
         "code": "BknAgent.ParamError.ToolRef",

@@ -1819,10 +1819,12 @@ components:
             - $ref: '#/components/schemas/ToolboxToolRef'
             - $ref: '#/components/schemas/AgentToolRef'
             - $ref: '#/components/schemas/ContextLoaderToolRef'
+            - $ref: '#/components/schemas/BuiltinToolRef'
             discriminator:
               propertyName: type
               mapping:
                 agent: '#/components/schemas/AgentToolRef'
+                builtin: '#/components/schemas/BuiltinToolRef'
                 context_loader: '#/components/schemas/ContextLoaderToolRef'
                 mcp: '#/components/schemas/McpToolRef'
                 toolbox: '#/components/schemas/ToolboxToolRef'
@@ -1934,6 +1936,51 @@ components:
       - create_user
       - create_time
       title: AgentVersionOut
+    BuiltinToolRef:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 100
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Description
+        type:
+          type: string
+          const: builtin
+          title: Type
+        provider:
+          type: string
+          maxLength: 100
+          minLength: 1
+          title: Provider
+        tools:
+          anyOf:
+          - items:
+              type: string
+              maxLength: 128
+              minLength: 1
+            type: array
+            maxItems: 100
+          - type: 'null'
+          title: Tools
+      additionalProperties: true
+      type: object
+      required:
+      - type
+      - provider
+      title: BuiltinToolRef
+      description: 'Tools implemented inside bkn-agent (app/core/builtin_tools.py),
+        built per
+
+        execution from its request context. Independent of MCP and the execution
+
+        factory; the provider is registered in code, not addressed by url.'
     ChatRequest:
       properties:
         agent_id:
@@ -2182,6 +2229,12 @@ components:
           minLength: 1
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
+        canvas:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Canvas
       additionalProperties: false
       type: object
       required:
@@ -2927,6 +2980,12 @@ components:
         uses_context_loader:
           type: boolean
           title: Uses Context Loader
+        tools:
+          items:
+            $ref: '#/components/schemas/ToolSourceOut'
+          type: array
+          title: Tools
+          default: []
         layered:
           type: boolean
           title: Layered
@@ -3082,6 +3141,51 @@ components:
       - update_time
       - messages
       title: ThreadOut
+    ToolSourceOut:
+      properties:
+        type:
+          type: string
+          title: Type
+        provider:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Provider
+        agent_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Agent Id
+        box_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Box Id
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        names:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Names
+        definitions:
+          anyOf:
+          - items:
+              additionalProperties: true
+              type: object
+            type: array
+          - type: 'null'
+          title: Definitions
+      type: object
+      required:
+      - type
+      title: ToolSourceOut
+      description: One entry of an Agent's tools as configured, for display.
     ToolboxToolRef:
       properties:
         name:

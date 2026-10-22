@@ -55,6 +55,8 @@ class PublicChat:
     # (None keeps every tool the shared definition loads).
     instructions: list[tuple[str, str]] = field(default_factory=list)
     allowed_tools: set[str] | None = None
+    # Built-in tools as the network and user layers narrow them; None keeps all.
+    allowed_builtin_tools: set[str] | None = None
     usage: dict = field(default_factory=dict)
     tool_starts: dict[str, float] = field(default_factory=dict)
     # Reasoning arrives a token or two per chunk; it is sent in pieces instead.
@@ -226,8 +228,20 @@ class PublicChat:
                     )
 
     def guard_tools(self, tools: list) -> list:
+        from app.core import builtin_tools
+
         guarded = []
         for tool in tools:
+            if builtin_tools.is_builtin(tool):
+                # Built here for this run and already bound to its network;
+                # network and user layers can still narrow them by name.
+                if (
+                    self.allowed_builtin_tools is None
+                    or tool.name in self.allowed_builtin_tools
+                ):
+                    tool.handle_tool_error = True
+                    guarded.append(tool)
+                continue
             # Only the Context Loader wrapper carries this unforgeable local
             # receipt marker; an arbitrary MCP/toolbox schema is not a boundary.
             from app.core.context_loader import _MCP_RECEIPT_TRUST_TOKEN

@@ -8,7 +8,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from app import evidence, observability
 from app.commons import locale
 from app.config import config
-from app.core import context_loader
+from app.core import builtin_tools, context_loader
 from app.core.skills import normalize_skill_id
 from app.core.toolbox import _safe_name, load_toolbox_tools
 from app.errors import bad_request
@@ -77,10 +77,11 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
                 "url": url,
                 "headers": headers,
             }
-        elif kind in ("agent", "toolbox", "context_loader"):
+        elif kind in ("agent", "toolbox", "context_loader", "builtin"):
             # agent-as-tool: see _agent_tool. toolbox: see _toolbox_tools.
             # context_loader: see app/core/context_loader.py, whose endpoint
             # comes from configuration and needs a handshake first.
+            # builtin: see app/core/builtin_tools.py, built in-process.
             continue
         else:
             raise bad_request("BknAgent.ToolRef.UnknownType", ref=str(ref))
@@ -229,7 +230,17 @@ async def load_tools(
     parent_thread_id: str | None = None,
     skill_ids: list[str] | None = None,
 ) -> list[Any]:
-    tools: list[Any] = await _toolbox_tools(tool_refs, account_id, account_type)
+    # Built-in tools come first so they win name collisions: they are the
+    # platform's own and must not be displaced by an external tool of the same
+    # name.
+    tools: list[Any] = []
+    for ref in tool_refs:
+        if isinstance(ref, dict) and ref.get("type") == "builtin":
+            reason = builtin_tools.unknown_reason(ref)
+            if reason:
+                raise bad_request("BknAgent.ToolRef.BuiltinUnknown", ref=reason)
+            tools.extend(builtin_tools.tools_for(ref))
+    tools.extend(await _toolbox_tools(tool_refs, account_id, account_type))
     if context_loader.wanted(tool_refs):
         # Only use the session the caller (runner or graph) already opened; never
         # open one here.
@@ -264,7 +275,7 @@ async def load_tools(
     # empty tool call — exactly the shape of #447.
     mount_skill_reader = bool(tools) or bool(skill_ids)
 
-    # Deduplicate name collisions, first one wins: toolbox > mcp > agent.
+    # Deduplicate name collisions, first one wins: builtin > toolbox > mcp > agent.
     # When mounted, read_skill_file claims its name up front: it is a first-class
     # part of skill loading and a design invariant, so a user tool of the same
     # name must not displace it — the user tool is dropped instead, with a
