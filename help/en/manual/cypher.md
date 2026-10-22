@@ -360,7 +360,8 @@ Only the basic forms are available there:
 | WITH to filter after aggregating or by an earlier stage's values (semi-join) | Yes |
 | CASE, coalesce | No |
 | Totals over groups, comparing two lists, passing nodes on to the next MATCH | No |
-| Returning nodes, relationships, `collect` and derived relationships | No |
+| Returning nodes, relationships and derived relationships | Yes, drawn as on SQL sources |
+| `collect` | No |
 
 - A form that is not available returns 400, naming what cannot be used. explain only compiles and cannot see where an object type's data lives, so this refusal comes when the query runs.
 - Reading table by table and joining is slower than SQL; a query that reads more than the limit or runs out of time returns 400 `ReadBudgetExceeded`, so narrow it with conditions.

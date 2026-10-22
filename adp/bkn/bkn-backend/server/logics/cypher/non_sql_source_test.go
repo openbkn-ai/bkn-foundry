@@ -7,6 +7,7 @@ package cypher
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"reflect"
@@ -75,7 +76,8 @@ func TestQueryOutsideSQLRefusesWhatOnlySQLAnswers(t *testing.T) {
 	for _, query := range []string{
 		"MATCH (o:Order) RETURN sum(CASE WHEN o.amount > 3 THEN 1 ELSE 0 END) AS n",
 		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH c, count(o) AS n RETURN count(*) AS groups",
-		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN c, count(o) AS n",
+		// collect picks its conclusions through a derived table first.
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN c, collect(o) AS orders",
 	} {
 		vega := &datasetVega{accountDataAPI: accountDataAPI{api: newFakeDataAPI(relationServiceData())}}
 		_, err := datasetService(vega).Query(callerContext(), interfaces.CypherQuery{
@@ -92,6 +94,43 @@ func TestQueryOutsideSQLRefusesWhatOnlySQLAnswers(t *testing.T) {
 		}
 		if len(vega.readers) != 0 {
 			t.Errorf("%s: read the data API, %v", query, vega.readers)
+		}
+	}
+}
+
+// Nodes and relationships come back over the data API as they do over SQL:
+// the executor reads their keys and properties as plain columns, and the
+// values are built from them.
+func TestQueryOutsideSQLReturnsNodesAndRelationships(t *testing.T) {
+	for query, want := range map[string][]string{
+		"MATCH (o:Order)-[r:PLACED_BY]->(c:Customer) RETURN o, r, c": {
+			`"object_type_id":"ot_order","key":{"id"`, `"kind":"relation"`, `"object_type_id":"ot_customer","key":{"code"`,
+		},
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN c AS source, 'ORDERED' AS relationType, o AS target, count(*) AS n": {
+			`"relationType":"ORDERED"`, `"source":{"kind":"object"`, `"target":{"kind":"object"`,
+		},
+		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) RETURN c, count(o) AS n": {
+			`"object_type_id":"ot_customer"`, `"n":1`,
+		},
+	} {
+		vega := &datasetVega{accountDataAPI: accountDataAPI{api: newFakeDataAPI(relationServiceData())}}
+		result, err := datasetService(vega).Query(callerContext(), interfaces.CypherQuery{
+			KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: query,
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		body, _ := json.Marshal(result.Entries)
+		for _, part := range want {
+			if !strings.Contains(string(body), part) {
+				t.Errorf("%s: entries = %s, want %s", query, body, part)
+			}
+		}
+		if len(result.Entries) != 1 || result.ValueTypes == nil || result.Execution == nil {
+			t.Errorf("%s: result = %+v", query, result)
+		}
+		if len(vega.readers) == 0 {
+			t.Errorf("%s: did not read the data API", query)
 		}
 	}
 }
