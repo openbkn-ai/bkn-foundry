@@ -7,9 +7,9 @@
       "en": "(?<!\\d)1000(?!\\d)\\D{0,120}LIMIT[^\\d,，]{0,25}10000(?!\\d)"
     },
     {
-      "name": "!= is refused",
-      "zh": "!=",
-      "en": "!="
+      "name": "!= is read as <>",
+      "zh": "!=\\W{0,3}\\s*也接受",
+      "en": "!=\\W{0,3}\\s*is read as"
     },
     {
       "name": "datasets and indexes take the basic forms only",

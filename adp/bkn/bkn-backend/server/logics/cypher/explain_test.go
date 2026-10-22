@@ -75,7 +75,7 @@ func TestExplainDescribesWithoutReading(t *testing.T) {
 // error, code and hint alike.
 func TestExplainRefusesWhatRunningRefuses(t *testing.T) {
 	for _, query := range []string{
-		"MATCH (o:Order) RETURN o.amount != 3",
+		"MATCH (o:Order) WHERE o.region LIKE 'e%' RETURN o.id",
 		"MATCH (o:Order) WITH collect(o.id) AS a UNWIND a AS x RETURN x",
 		"MATCH (o:Nope) RETURN o.id",
 		"MATCH (o:Order) RETURN o.nope",

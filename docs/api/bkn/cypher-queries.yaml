@@ -232,8 +232,8 @@ components:
             substring match (% and _ are not wildcards), a null property never matches, case
             sensitivity follows the column collation, and using them on a non-string property
             is refused with 400. Conditions combine with AND, OR and NOT, and parentheses group
-            them. XOR is not supported. Not-equal is written <>; != is not openCypher and is
-            refused with a syntax error that says so. A date or time property can be compared
+            them. XOR is not supported. Not-equal is written <>; != is read as <> too. A date or
+            time property can be compared
             with date('2026-08-13'), datetime(...) or localdatetime(...) over a string literal or
             parameter; functions other than these, coalesce, size (of a list a WITH
             collected) and the aggregates, and date()
