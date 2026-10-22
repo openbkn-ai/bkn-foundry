@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"math"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin/binding"
@@ -23,6 +24,18 @@ func DecodePreciseJSON(reader io.Reader, target any) error {
 // UnmarshalPreciseJSON preserves number literals in byte-backed dynamic JSON.
 func UnmarshalPreciseJSON(data []byte, target any) error {
 	return precisionJSON.Unmarshal(data, target)
+}
+
+// JSONSourceValueText 归一化数据库返回的完整 JSON 文本中的顶层 null。
+// 不用于已解码的字符串值；带引号的 JSON 字符串和空字符串保持为内容。
+func JSONSourceValueText(value any) any {
+	if raw, ok := value.([]byte); ok {
+		value = string(raw)
+	}
+	if text, ok := value.(string); ok && strings.TrimSpace(text) == "null" {
+		return nil
+	}
+	return value
 }
 
 // JSONQueryValueText 保留文本和空值，仅将协议已解码的 JSON 值序列化为文本。

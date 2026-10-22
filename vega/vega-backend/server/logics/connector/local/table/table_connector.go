@@ -10,6 +10,7 @@ package table
 import (
 	"database/sql"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -58,10 +59,10 @@ func ScanRows(rows *sql.Rows) (*interfaces.QueryResult, error) {
 	return result, nil
 }
 
-// NormalizeQueryResult 仅标记内部查询未请求读取的 Binary，其他字段保留源端结果。
+// NormalizeQueryResult 归一化 JSON 空值，并标记内部查询未请求读取的 Binary。
 func NormalizeQueryResult(result *interfaces.QueryResult, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) {
-	if result == nil || resource == nil || params == nil || params.BinaryMode != nil || params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
+	if result == nil || resource == nil || params == nil || params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
 		return
 	}
 	selected := make(map[string]bool, len(params.OutputFields))
@@ -69,8 +70,19 @@ func NormalizeQueryResult(result *interfaces.QueryResult, resource *interfaces.R
 		selected[name] = true
 	}
 	for _, field := range resource.SchemaDefinition {
-		if field == nil || field.Type != interfaces.DataType_Binary ||
+		if field == nil ||
 			(len(selected) > 0 && !selected[field.Name]) {
+			continue
+		}
+		if field.Type == interfaces.DataType_Json {
+			for _, entry := range result.Entries {
+				if value, exists := entry[field.Name]; exists {
+					entry[field.Name] = common.JSONSourceValueText(value)
+				}
+			}
+			continue
+		}
+		if field.Type != interfaces.DataType_Binary || params.BinaryMode != nil {
 			continue
 		}
 		for _, entry := range result.Entries {
