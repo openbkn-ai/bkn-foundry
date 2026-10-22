@@ -62,7 +62,8 @@ openbkn context tool-call <kn_id> run_cypher --args '{"query":"MATCH (g:goals) R
 
 - 会被拒的写法，返回的错误码和改写提示与执行时完全相同；能通过 explain 的查询，执行时也不会因为写法被拒。
 - `plan` 里有：`shape`（查询形状：match、aggregate、totals、semi_join、list_comparison、carried）、`objects` 和 `relations`（每个变量对应的对象类、走的关系类）、`conditions`（每个条件的运算符、读的属性，以及作用在行、分组还是前一段上）、`grouping`、`columns`（每一列的名字、怎么算出来、值类型）、`ordering`、`limit`（生效的行数上限）、`reads`（会读的属性）、`row_filtered`（行范围被访问策略收窄的对象类）和 `warnings`。
-- `warnings` 会提醒：模式里有互不相连的部分（结果是两两组合）、没写 LIMIT 时最多返回 1000 行、行范围被收窄、`collect` 的证据达到 10000 行会被拒。
+- `warnings` 会提醒：模式里有既没有关系、共享节点，也没有 `a.code = b.code` 这类相等条件连起来的部分（结果是两两组合）、没写 LIMIT 时最多返回 1000 行、行范围被收窄、`collect` 的证据达到 10000 行会被拒。
+- explain 不读数据，也看不出对象类绑定的是什么数据源：绑定数据集或索引的对象类上，「数据集和索引上的对象类」一节里不支持的写法 explain 照样通过，执行时才被拒。
 - 不返回 SQL，条件里写的值也不重复列出。权限与执行时相同：读不到的对象类和属性，explain 里同样看不到。
 - 适合先检查带 WITH、多段 MATCH 或多跳的复杂查询，确认分组、过滤和连接都符合预期，再去执行。
 

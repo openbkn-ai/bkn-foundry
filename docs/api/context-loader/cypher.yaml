@@ -260,10 +260,23 @@ components:
             返回的节点除标识外还要带哪些属性，按节点变量给出，如 `{"t": ["team_name"]}`。
             变量必须是 RETURN 里返回的节点，所有变量合计最多 128 个属性；这些属性和查询里其他属性一样
             受授权约束。不传时节点只带标识。
+        explain:
+          type: boolean
+          description: |
+            为 true 时不执行查询、不读数据，只返回 `plan`（此时 `entries` 为空）：查询形状、对象和关系、条件、
+            分组、返回列及类型、行数上限、会读的属性、行范围被收窄的对象类和提醒。查询的解析、授权和编译与执行时
+            完全相同，所以会被拒的写法返回与执行时相同的错误和改写提示。不返回 SQL。
 
     RunCypherResponse:
       type: object
       properties:
+        plan:
+          type: object
+          additionalProperties: true
+          description: |
+            请求带 `explain: true` 时出现：`shape`（match、aggregate、totals、semi_join、list_comparison、carried）、
+            `objects`、`relations`、`conditions`、`grouping`、`columns`（name、kind、type）、`ordering`、`limit`、
+            `reads`、`row_filtered`、`warnings`。结构见 bkn-backend 的 CypherPlan。
         columns:
           type: array
           description: 输出列，顺序与 `RETURN` 一致。
