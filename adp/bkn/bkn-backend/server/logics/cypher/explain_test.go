@@ -135,8 +135,10 @@ func TestExplainWarns(t *testing.T) {
 	// An equality between their properties joins two parts, as a
 	// relationship would; one under OR does not.
 	for query, cartesian := range map[string]bool{
-		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code RETURN o.id, c.name LIMIT 5":                 false,
-		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code OR o.amount > 3 RETURN o.id, c.name LIMIT 5": true,
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code RETURN o.id, c.name LIMIT 5":                  false,
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code OR o.amount > 3 RETURN o.id, c.name LIMIT 5":  true,
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code AND o.amount > 3 RETURN o.id, c.name LIMIT 5": false,
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code <> c.code RETURN o.id, c.name LIMIT 5":                 true,
 	} {
 		plan, _, err := explainQuery(t, graphService(&recordingVega{}), query)
 		if err != nil {

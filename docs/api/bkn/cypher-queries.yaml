@@ -182,9 +182,11 @@ components:
           type: boolean
           description: |-
             Return the query's plan instead of its rows. The query is read, authorized and
-            compiled exactly as it would be to run, so it is refused in exactly the same cases
-            and with the same error, but nothing is read from the data and no SQL is returned.
-            entries is then empty and plan is set.
+            compiled exactly as it would be to run, so it is refused in the same cases and with
+            the same error, but nothing is read from the data and no SQL is returned. entries is
+            then empty and plan is set. One exception: explain does not see where the data lives,
+            so a form refused only on datasets, indexes or across data sources (see the query
+            description) passes explain and is refused when run.
         query:
           type: string
           maxLength: 8192

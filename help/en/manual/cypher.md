@@ -364,6 +364,7 @@ Only the basic forms are available there:
 
 - A form that is not available returns 400, naming what cannot be used. explain only compiles and cannot see where an object type's data lives, so this refusal comes when the query runs.
 - Reading table by table and joining is slower than SQL; a query that reads more than the limit or runs out of time returns 400 `ReadBudgetExceeded`, so narrow it with conditions.
+- Only relation types join by key here. Two nodes connected only by an equality such as `a.code = b.code` are read in full, combined pairwise and then filtered, which easily exceeds the limit; use a relation type where there is one. explain gives no warning for this.
 
 ---
 
