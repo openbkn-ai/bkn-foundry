@@ -74,8 +74,14 @@ jobs:
             # Dots become dashes too: a kept dot splits the branch into separate
             # SemVer prerelease identifiers, and a numeric one with a leading zero
             # (`ubuntu-24.04` -> `04`) or an empty one (`a..b`) is invalid, so helm
-            # refuses every chart. One alphanumeric-and-dash identifier is always valid.
+            # refuses every chart. The result is a single identifier; it is still
+            # invalid when empty (a branch named only with non-ASCII or `_`) or
+            # all digits with a leading zero (`0815`), so prefix those. Branch-name
+            # lint runs only on PRs and cannot stop such a push.
             SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-z-]+#-#g; s#-+#-#g; s#^-+##; s#-+$##')"
+            if [[ -z "$SANITIZED_BRANCH" || "$SANITIZED_BRANCH" =~ ^[0-9]+$ ]]; then
+              SANITIZED_BRANCH="b$SANITIZED_BRANCH"
+            fi
             # The VERSION prefix already identifies the release line; keeping
             # its number in the branch token would duplicate it in the tag.
             if [[ "$REF_NAME" == release/* ]]; then SANITIZED_BRANCH=release; fi
