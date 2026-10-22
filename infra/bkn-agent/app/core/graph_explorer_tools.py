@@ -44,7 +44,12 @@ VALUE_CAP = 120
 # Identities per query_object_instance request, paths per query_instance_subgraph.
 ID_BATCH = 50
 PATH_BATCH = 5
+# ontology-query's largest limit (interfaces.MAX_LIMIT).
+PATH_LIMIT = 10000
 CYPHER_LIMIT = 200
+# get_object_types paging when get_kn_detail cannot list object types.
+OBJECT_TYPE_PAGE = 200
+MAX_OBJECT_TYPES = 2000
 # Properties listed per object type in the schema the prompt carries.
 SCHEMA_PROPERTIES = 12
 
@@ -154,7 +159,14 @@ async def _call(run: builtin_tools.Run, name: str, **arguments) -> dict:
     tool = tools.get(name) if tools else None
     if tool is None:
         raise ToolException(f"Context Loader is unavailable, so {name} cannot run")
-    raw = await tool.coroutine(kn_id=run.kn_id, response_format="json", **arguments)
+    try:
+        raw = await tool.coroutine(kn_id=run.kn_id, response_format="json", **arguments)
+    except ToolException:
+        raise
+    except Exception as exc:
+        # A timeout or a dropped connection is this call's failure, not the
+        # run's: the model hears about it and can work around it.
+        raise ToolException(f"{name} could not reach Context Loader: {type(exc).__name__}: {exc}"[:1000]) from exc
     content = raw[0] if isinstance(raw, tuple) else raw
     body = _text_of(content).strip()
     try:
@@ -171,6 +183,18 @@ async def _network(run: builtin_tools.Run) -> dict:
     cached = run.state.get("network")
     if cached is None:
         detail = await _call(run, "get_kn_detail")
+        listed = detail.get("object_types")
+        if listed is None:
+            # Past 200 object types or 600 relation types get_kn_detail leaves
+            # both out; object types can still be listed page by page.
+            listed = []
+            while len(listed) < MAX_OBJECT_TYPES:
+                page = await _call(run, "get_object_types", offset=len(listed), limit=OBJECT_TYPE_PAGE)
+                items = [t for t in page.get("object_types") or [] if isinstance(t, dict)]
+                listed.extend(items)
+                if len(items) < OBJECT_TYPE_PAGE:
+                    break
+            detail = {**detail, "object_types": listed}
         object_types = {
             t["id"]: {
                 "name": t.get("name") or t["id"],
@@ -195,6 +219,8 @@ async def _network(run: builtin_tools.Run) -> dict:
         cached = run.state["network"] = {
             "object_types": object_types,
             "relation_types": relation_types,
+            # get_kn_detail could not list them: the network is too large.
+            "relations_unlisted": detail.get("relation_types") is None,
         }
     return cached
 
@@ -371,6 +397,9 @@ async def _edges_among(run: builtin_tools.Run, nodes: list[dict], metas) -> list
     refused batch is retried path by path so one relation type costs only its own
     edges."""
     network = await _network(run)
+    if network.get("relations_unlisted"):
+        _warn(run, "This network is too large to list its relation types, so relations among shown instances are not drawn.")
+        return []
     by_ot: dict[str, list[dict]] = {}
     for node in nodes:
         by_ot.setdefault(node["object_type_id"], []).append(node["identity"])
@@ -394,7 +423,9 @@ async def _edges_among(run: builtin_tools.Run, nodes: list[dict], metas) -> list
                             "target_object_type_id": rel["target"],
                         }
                     ],
-                    "limit": min(1000, max(10, len(by_ot[rel["source"]]))),
+                    # The path's limit caps the relations it returns in total,
+                    # so it must cover every pair of the two ends.
+                    "limit": min(PATH_LIMIT, len(by_ot[rel["source"]]) * len(by_ot[rel["target"]])),
                 }
             )
     edges: dict[str, dict] = {}
@@ -404,13 +435,19 @@ async def _edges_among(run: builtin_tools.Run, nodes: list[dict], metas) -> list
             payload = await _call(run, "query_instance_subgraph", relation_type_paths=group)
         except ToolException:
             return False
+        returned: dict[str, int] = {}
         for entry in payload.get("entries") or []:
             for edge in data.edges_from_subgraph(entry):
+                returned[edge["relation_type_id"]] = returned.get(edge["relation_type_id"], 0) + 1
                 if edge["source"] in ids and edge["target"] in ids:
                     rel = network["relation_types"].get(edge["relation_type_id"])
                     if rel:
                         edge["relation_type_name"] = rel["name"]
                     edges.setdefault(edge["id"], edge)
+        for path in group:
+            rel_id = path["relation_types"][0]["relation_type_id"]
+            if returned.get(rel_id, 0) >= path["limit"]:
+                _warn(run, f"Relations of type {rel_id} reached the {path['limit']} limit and may be incomplete.")
         return True
 
     for start in range(0, len(paths), PATH_BATCH):
@@ -683,6 +720,8 @@ async def _instructions(run: builtin_tools.Run) -> str:
         f"- {rel_id} ({r['name']}): {r['source']} -> {r['target']}"
         for rel_id, r in network["relation_types"].items()
     ]
+    if network.get("relations_unlisted"):
+        relations = ["(This network is too large to list its relation types here; ask the user which relation to use.)"]
     return "\n".join(
         [
             "Object types of this network (id, name):",

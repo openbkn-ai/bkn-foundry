@@ -14,6 +14,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from langchain_core.tools import ToolException
 
 from app.core import builtin_tools
 from app.core import graph_explorer_data as data
@@ -281,3 +282,52 @@ def test_without_context_loader_the_tools_say_so():
     run.state.pop("context_loader")
     with pytest.raises(Exception, match="Context Loader is unavailable"):
         asyncio.run(tools["search_instances"].coroutine(query="x"))
+
+
+def test_a_relation_path_covers_every_pair_of_its_ends():
+    """Regression: the path limit capped the relations returned in total, so one
+    team and thirty matches came back with ten edges."""
+    run, tools, calls = _run()
+    ROWS["matches"] = [{"key_id": i, "_display": f"M-{i}"} for i in range(1, 31)]
+    try:
+        relations = [
+            {"source_object_id": f"matches-{i}", "target_object_id": "teams-9", "relation_type_id": "rel_home"}
+            for i in range(1, 31)
+        ]
+        run.state["context_loader"]["query_instance_subgraph"] = _tool(
+            "query_instance_subgraph",
+            calls,
+            lambda kwargs: {"entries": [{"relation_paths": [{"relations": relations[: kwargs["relation_type_paths"][0]["limit"]]}]}]},
+        )
+        shown = _invoke(tools["show_instances"], ids=["teams-9", *[f"matches-{i}" for i in range(1, 31)]])
+    finally:
+        ROWS["matches"] = [{"key_id": 1, "_display": "M-1"}, {"key_id": 2, "_display": "M-2"}]
+    path = next(c[1] for c in calls if c[0] == "query_instance_subgraph")["relation_type_paths"][0]
+    assert path["limit"] == 30
+    assert shown["planned_added"]["edges"] == 30
+    # Reaching the limit is said, not hidden.
+    assert any("may be incomplete" in w for w in run.state["warnings"])
+
+
+def test_a_context_loader_transport_failure_is_the_tools_error():
+    run, tools, _ = _run()
+
+    async def broken(**kwargs):
+        raise TimeoutError("read timed out")
+
+    run.state["context_loader"]["search_instance"] = SimpleNamespace(name="search_instance", coroutine=broken)
+    with pytest.raises(ToolException, match="could not reach Context Loader: TimeoutError"):
+        asyncio.run(tools["search_instances"].coroutine(query="x"))
+
+
+def test_large_networks_list_object_types_by_page_and_say_relations_are_unlisted():
+    run, tools, calls = _run()
+    run.state["context_loader"]["get_kn_detail"] = _tool(
+        "get_kn_detail", calls, {"object_types": None, "relation_types": None, "notice": "too large"}
+    )
+    shown = _invoke(tools["show_instances"], ids=["teams-9"])
+    assert shown["planned_added"] == {"nodes": 1, "edges": 0}
+    assert any(c[0] == "get_object_types" and "offset" in c[1] for c in calls)
+    assert any("too large to list its relation types" in w for w in run.state["warnings"])
+    text = asyncio.run(builtin_tools.get("graph_explorer").instructions(run))
+    assert "- teams (球队)" in text and "too large to list its relation types" in text
