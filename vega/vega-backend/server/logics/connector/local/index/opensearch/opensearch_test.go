@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -126,8 +127,8 @@ func assertDatasetDocumentPrecision(t *testing.T, document map[string]any, id st
 	}
 	assert.Equal(t, expected, document)
 
-	// HTTP JSON 序列化后仍须保留数值和类型，不能只验证 Go 内存中的值。
-	encoded, err := json.Marshal(document)
+	// 使用生产响应所用的 Sonic 编码器，验证序列化后仍保留数值和类型。
+	encoded, err := sonic.Marshal(document)
 	require.NoError(t, err)
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.UseNumber()
