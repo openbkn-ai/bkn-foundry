@@ -55,6 +55,9 @@ class ObjectTypeMeta:
     primary_keys: list[str]
     # Property name -> declared type.
     property_types: dict[str, str] = field(default_factory=dict)
+    # Properties the caller may read in full; None when the platform did not say.
+    # Naming any other one in a Cypher RETURN makes bkn-backend refuse the query.
+    readable: set[str] | None = None
 
 
 def text(value: Any) -> str:
@@ -87,11 +90,15 @@ def meta_from(raw: Any) -> ObjectTypeMeta | None:
         for p in raw.get("data_properties") or []
         if isinstance(p, dict) and isinstance(p.get("name"), str)
     }
+    permissions = raw.get("effective_permissions")
     return ObjectTypeMeta(
         id=raw["id"],
         name=raw.get("name") if isinstance(raw.get("name"), str) and raw.get("name") else raw["id"],
         primary_keys=keys,
         property_types=types,
+        readable={name for name, level in permissions.items() if level == "full"}
+        if isinstance(permissions, dict)
+        else None,
     )
 
 
@@ -122,16 +129,19 @@ def identity_key(primary_keys: list[str], identity: dict) -> str | None:
 
 def typed(meta: ObjectTypeMeta, prop: str, value: Any) -> Any:
     """A value read back as text (a Cypher column) in its declared type, so an
-    identity matches the one other queries return."""
-    if isinstance(value, str) and _NUMERIC_TYPE.search(meta.property_types.get(prop, "")):
+    identity matches the one other queries return. Like key_value, a number that
+    would lose digits (a snowflake id) stays text."""
+    declared = meta.property_types.get(prop, "")
+    if isinstance(value, str) and _NUMERIC_TYPE.search(declared):
         try:
             number = float(value)
         except ValueError:
             return value
-        if math.isfinite(number):
-            if number.is_integer() and abs(number) <= _MAX_SAFE_INTEGER and "." not in value:
+        if math.isfinite(number) and abs(number) <= _MAX_SAFE_INTEGER:
+            if number.is_integer() and "." not in value and "e" not in value.lower():
                 return int(number)
-            return number
+            if not _INTEGER_TYPE.match(declared):
+                return number
     return value
 
 
@@ -711,7 +721,9 @@ def fetch_query(
     rel: IncidentRelation, seed: ObjectTypeMeta, peer: ObjectTypeMeta, identities: list[dict], limit: int
 ) -> tuple[str, dict]:
     params = Parameters()
-    properties = list(dict.fromkeys([*peer.primary_keys, *peer.property_types]))
+    # Only what the caller may read in full: one masked property refuses the whole query.
+    readable = [p for p in peer.property_types if peer.readable is None or p in peer.readable]
+    properties = list(dict.fromkeys([*peer.primary_keys, *readable]))
     peer_columns = [f"{PEER}.{quote(p)} AS {quote(f'{PEER}__{p}')}" for p in properties]
     order = [quote(f"{SEED}__{k}") for k in seed.primary_keys] + [quote(f"{PEER}__{k}") for k in peer.primary_keys]
     query = "\n".join(

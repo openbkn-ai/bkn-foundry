@@ -554,10 +554,18 @@ async def _expand(run: builtin_tools.Run, ids: list[str], direction: str) -> dic
     """The EE explorer's controlled expansion: count every incident relation type
     per seed batch, plan the canvas room, fetch the groups that fit and fold the
     rest into aggregates."""
-    seeds = [n for i in dict.fromkeys(ids) if (n := _known_node(run, i))][:EXPAND_SEEDS]
-    if not seeds:
+    wanted = list(dict.fromkeys(ids))
+    known = [n for i in wanted if (n := _known_node(run, i))]
+    if not known:
         raise ToolException(f"Unknown instance ids: {', '.join(ids[:5])}; find them first")
+    seeds = known[:EXPAND_SEEDS]
     network = await _network(run)
+    if network.get("relations_unlisted"):
+        # Without the relation types there is nothing to count; "no neighbours" would be false.
+        raise ToolException(
+            "This network is too large to list its relation types, so neighbours cannot be counted here. "
+            "Use run_cypher with a named relation type instead."
+        )
     rels_by_ot = {
         ot: data.incident_relations(ot, direction, network["relation_types"])
         for ot in {s["object_type_id"] for s in seeds}
@@ -689,6 +697,14 @@ async def _expand(run: builtin_tools.Run, ids: list[str], direction: str) -> dic
         out["failed"] = [{"relation": r, "walk": w, "error": e} for (r, w), e in failures.items()]
     if skipped_seeds:
         out["skipped_seeds"] = skipped_seeds
+    not_found = [i for i in wanted if not _known_node(run, i)]
+    if not_found:
+        out["not_found"] = not_found
+    if len(known) > EXPAND_SEEDS:
+        out["not_expanded"] = {
+            "count": len(known) - EXPAND_SEEDS,
+            "note": f"At most {EXPAND_SEEDS} seeds per call; expand the rest in another call.",
+        }
     if not groups and not failures:
         out["note"] = "No neighbours in that direction."
     return out
@@ -897,6 +913,13 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
              "target": e["target"], "planned": True}
             for e in planned_edges.values()
         ]
+        # Aggregates this run planned count too; a refreshed one carries its new total.
+        planned_aggregates = _planned_aggregates(run)
+        on_canvas = {a.id for a in canvas.aggregates}
+        aggregates = [
+            {**a.model_dump(), **({"total": planned_aggregates[a.id]["total"], "planned": True} if a.id in planned_aggregates else {})}
+            for a in canvas.aggregates
+        ] + [{**a, "planned": True} for i, a in planned_aggregates.items() if i not in on_canvas]
         return _dump(
             {
                 "canvas_id": canvas.canvas_id,
@@ -904,10 +927,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
                 "total_nodes": len(every),
                 "nodes": {"count": len(nodes), "items": page, "next_offset": end if end < len(nodes) else None},
                 "edges": {"total": len(edges), "items": edges[:SAMPLE]},
-                "aggregates": {
-                    "total": len(canvas.aggregates),
-                    "items": [a.model_dump() for a in canvas.aggregates[:SAMPLE]],
-                },
+                "aggregates": {"total": len(aggregates), "items": aggregates[:SAMPLE]},
                 "selected_ids": canvas.selected_ids[:SAMPLE],
             }
         )

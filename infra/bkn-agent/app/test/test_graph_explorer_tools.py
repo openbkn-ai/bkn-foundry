@@ -438,3 +438,47 @@ def test_plan_space_matches_the_ee_rules():
     assert [g.seed_id for g in plan.draw] == ["a-2"]
     refreshed = data.plan_space(groups[:1], threshold=20, room=0, existing={"agg|a-1|r|out"})
     assert [g.seed_id for g in refreshed.refresh] == ["a-1"]
+
+
+def test_fetch_reads_only_properties_the_caller_may_see_in_full():
+    # One masked property in RETURN makes bkn-backend refuse the whole query.
+    peer = data.meta_from(
+        {
+            "id": "matches",
+            "primary_keys": ["key_id"],
+            "data_properties": [{"name": "key_id", "type": "integer"}, {"name": "match_name"}, {"name": "phone"}],
+            "effective_permissions": {"key_id": "full", "match_name": "full", "phone": "masked"},
+        }
+    )
+    rel = data.IncidentRelation("rel_home", "主队", "in", "teams", "matches")
+    query, _ = data.fetch_query(rel, TEAMS, peer, [{"key_id": 9}], 10)
+    assert "match_name" in query and "phone" not in query
+    # Without permissions in the answer every property is read, as before.
+    assert data.meta_from({"id": "x", "data_properties": [{"name": "a"}]}).readable is None
+
+
+def test_keys_beyond_exact_numbers_stay_text():
+    meta = data.ObjectTypeMeta("orders", "订单", ["id"], {"id": "integer"})
+    assert data.typed(meta, "id", "1234567890123456789") == "1234567890123456789"
+    assert data.typed(meta, "id", "42") == 42
+
+
+def test_expand_refuses_when_the_network_lists_no_relations():
+    run, tools, _ = _expand_run({9: 3})
+    run.state["network"] = {"object_types": {}, "relation_types": {}, "relations_unlisted": True}
+    with pytest.raises(ToolException, match="too large"):
+        asyncio.run(tools["expand_neighbours"].coroutine(ids=["teams-9"], direction="in"))
+
+
+def test_expand_says_which_ids_it_left_out():
+    run, tools, _ = _expand_run({9: 3})
+    out = _invoke(tools["expand_neighbours"], ids=["teams-9", "teams-404"], direction="in")
+    assert out["not_found"] == ["teams-404"]
+
+
+def test_the_canvas_reads_aggregates_this_run_planned():
+    run, tools, _ = _expand_run({9: 50}, threshold=20)
+    _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")
+    aggregates = _invoke(tools["canvas_state"])["aggregates"]
+    assert aggregates["total"] == 1
+    assert aggregates["items"][0]["total"] == 50 and aggregates["items"][0]["planned"]
