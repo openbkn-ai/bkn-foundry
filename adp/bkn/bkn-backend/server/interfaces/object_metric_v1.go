@@ -90,6 +90,51 @@ type ObjectMetricListV1 struct {
 	TotalCount int                     `json:"total_count"`
 }
 
+const (
+	ObjectMetricReferenceMetricVersion = "metric_version"
+	ObjectMetricReferenceLogicProperty = "logic_property"
+)
+
+// ObjectMetricReferenceV1 identifies one stored reference to an immutable
+// object-metric version. SourceName is populated only after the caller's view
+// permission has been checked.
+type ObjectMetricReferenceV1 struct {
+	SourceType         string `json:"source_type"`
+	SourceID           string `json:"source_id"`
+	SourceVersion      int    `json:"source_version,omitempty"`
+	SourceName         string `json:"source_name,omitempty"`
+	SourceField        string `json:"source_field"`
+	SourcePropertyName string `json:"source_property_name,omitempty"`
+}
+
+// ObjectMetricVersionDeletionStateV1 is the persistence result used by the
+// service for both deletion preflight and the final atomic delete.
+type ObjectMetricVersionDeletionStateV1 struct {
+	Record     *ObjectMetricRecordV1
+	References []ObjectMetricReferenceV1
+	Deleted    bool
+}
+
+// ObjectMetricDeletionBlockerV1 is safe, permission-filtered API output.
+type ObjectMetricDeletionBlockerV1 struct {
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	Version      int    `json:"version,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Field        string `json:"field"`
+	PropertyName string `json:"property_name,omitempty"`
+}
+
+type ObjectMetricVersionDeletionCheckV1 struct {
+	MetricID           string                          `json:"metric_id"`
+	MetricName         string                          `json:"metric_name"`
+	Version            int                             `json:"version"`
+	Status             string                          `json:"status"`
+	Deletable          bool                            `json:"deletable"`
+	Blockers           []ObjectMetricDeletionBlockerV1 `json:"blockers"`
+	HiddenBlockerCount int                             `json:"hidden_blocker_count"`
+}
+
 // ObjectMetricValidationIssueV1 is stable validation output for UI, save, and publish flows.
 type ObjectMetricValidationIssueV1 struct {
 	Code    string `json:"code"`
@@ -149,11 +194,32 @@ type ObjectMetricAccessV1 interface {
 	ListObjectMetrics(ctx context.Context, query ObjectMetricListQueryV1) ([]*ObjectMetricRecordV1, int, error)
 	ListObjectMetricIDs(ctx context.Context, query ObjectMetricListQueryV1) ([]string, error)
 	ListObjectMetricVersions(ctx context.Context, knID, branch, metricID string) ([]*ObjectMetricRecordV1, error)
-	DeleteObjectMetricDraft(ctx context.Context, knID, branch, metricID string, version int) error
+	GetObjectMetricVersionDeletion(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricVersionDeletionStateV1, error)
+	DeleteObjectMetricVersion(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricVersionDeletionStateV1, error)
 	PublishObjectMetric(ctx context.Context, record *ObjectMetricRecordV1) error
 	DeprecateObjectMetric(ctx context.Context, record *ObjectMetricRecordV1) error
 	NextObjectMetricVersion(ctx context.Context, knID, branch, metricID string) (int, error)
 	ObjectMetricCodeExists(ctx context.Context, knID, branch, code, exceptID string) (bool, error)
+}
+
+// ObjectMetricLogicPropertyReferenceAccessV1 lets object-type mutations keep
+// their metric-reference index in the same database transaction. Community
+// builds do not implement it; Enterprise registers it with ObjectMetricAccessV1.
+type ObjectMetricLogicPropertyReferenceAccessV1 interface {
+	ReplaceObjectTypeMetricReferences(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
+	DeleteObjectTypeMetricReferences(ctx context.Context, tx *sql.Tx, knID, branch string, objectTypeIDs []string) error
+	RebuildObjectTypeMetricReferences(ctx context.Context, tx *sql.Tx, knID, branch string) error
+}
+
+type objectMetricReferenceSyncDeferredKey struct{}
+
+func WithObjectMetricReferenceSyncDeferred(ctx context.Context) context.Context {
+	return context.WithValue(ctx, objectMetricReferenceSyncDeferredKey{}, true)
+}
+
+func ObjectMetricReferenceSyncDeferred(ctx context.Context) bool {
+	deferred, _ := ctx.Value(objectMetricReferenceSyncDeferredKey{}).(bool)
+	return deferred
 }
 
 // ObjectMetricArchiveAccessV1 is the optional enterprise persistence bridge for
@@ -179,7 +245,8 @@ type ObjectMetricServiceV1 interface {
 	Get(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricRecordV1, error)
 	List(ctx context.Context, query ObjectMetricListQueryV1) (*ObjectMetricListV1, error)
 	ListVersions(ctx context.Context, knID, branch, metricID string) ([]*ObjectMetricRecordV1, error)
-	DeleteDraft(ctx context.Context, knID, branch, metricID string, version int) error
+	CheckVersionDeletion(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricVersionDeletionCheckV1, error)
+	DeleteVersion(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricRecordV1, error)
 	CreateNextDraft(ctx context.Context, knID, branch, metricID string) (*ObjectMetricRecordV1, error)
 	Validate(ctx context.Context, knID, branch string, definition *ObjectMetricDefinitionV1) (ObjectMetricValidationResultV1, error)
 	ValidateVersion(ctx context.Context, knID, branch, metricID string, version int) (*ObjectMetricRecordV1, []ObjectMetricValidationIssueV1, error)

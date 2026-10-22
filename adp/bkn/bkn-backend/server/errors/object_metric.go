@@ -8,6 +8,7 @@ const (
 	BknBackend_ObjectMetric_DuplicateCode     = "BknBackend.ObjectMetric.DuplicateCode"
 	BknBackend_ObjectMetric_ImmutableVersion  = "BknBackend.ObjectMetric.ImmutableVersion"
 	BknBackend_ObjectMetric_DependencyInvalid = "BknBackend.ObjectMetric.DependencyInvalid"
+	BknBackend_ObjectMetric_DeleteBlocked     = "BknBackend.ObjectMetric.DeleteBlocked"
 	BknBackend_ObjectMetric_InternalError     = "BknBackend.ObjectMetric.InternalError"
 )
 
@@ -17,5 +18,6 @@ var ObjectMetricErrCodeList = []string{
 	BknBackend_ObjectMetric_DuplicateCode,
 	BknBackend_ObjectMetric_ImmutableVersion,
 	BknBackend_ObjectMetric_DependencyInvalid,
+	BknBackend_ObjectMetric_DeleteBlocked,
 	BknBackend_ObjectMetric_InternalError,
 }

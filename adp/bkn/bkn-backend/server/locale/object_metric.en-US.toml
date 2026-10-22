@@ -23,6 +23,11 @@ Description = "The object metric dependency is invalid"
 Solution = "Review pinned versions, object alignment, time windows, and dependency cycles."
 ErrorLink = ""
 
+[BknBackend.ObjectMetric.DeleteBlocked]
+Description = "The object metric version is still referenced"
+Solution = "Remove or upgrade every metric and logical-property reference before deleting this version."
+ErrorLink = ""
+
 [BknBackend.ObjectMetric.InternalError]
 Description = "Object metric service error"
 Solution = "Retry later or contact an administrator if the problem persists."

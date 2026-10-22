@@ -8,6 +8,7 @@ package driveradapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -54,7 +55,8 @@ func RegisterObjectMetricRoutes(
 	public.POST("/knowledge-networks/:kn_id/object-metrics/preview", handler.verifyJsonContentType(), handler.PreviewObjectMetricByEx)
 	public.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id", handler.GetObjectMetricByEx)
 	public.PUT("/knowledge-networks/:kn_id/object-metrics/:metric_id", handler.verifyJsonContentType(), handler.UpdateObjectMetricDraftByEx)
-	public.DELETE("/knowledge-networks/:kn_id/object-metrics/:metric_id", handler.DeleteObjectMetricDraftByEx)
+	public.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/deletion-check", handler.CheckObjectMetricVersionDeletionByEx)
+	public.DELETE("/knowledge-networks/:kn_id/object-metrics/:metric_id", handler.DeleteObjectMetricVersionByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/versions", handler.CreateObjectMetricVersionByEx)
 	public.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/versions", handler.ListObjectMetricVersionsByEx)
 	public.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/validate", handler.ValidateObjectMetricVersionByEx)
@@ -99,6 +101,14 @@ func parseObjectMetricVersion(c *gin.Context) (int, bool) {
 		return 0, false
 	}
 	return version, true
+}
+
+func parseRequiredObjectMetricVersion(c *gin.Context) (int, bool) {
+	if c.Query("version") == "" {
+		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		return 0, false
+	}
+	return parseObjectMetricVersion(c)
 }
 
 func (r *restHandler) CreateObjectMetricDraftByEx(c *gin.Context) {
@@ -223,30 +233,42 @@ func (r *restHandler) listObjectMetrics(c *gin.Context, vis hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-func (r *restHandler) DeleteObjectMetricDraftByEx(c *gin.Context) {
-	r.objectMetricExternal(c, r.deleteObjectMetricDraft)
+func (r *restHandler) CheckObjectMetricVersionDeletionByEx(c *gin.Context) {
+	r.objectMetricExternal(c, r.checkObjectMetricVersionDeletion)
 }
 
-func (r *restHandler) deleteObjectMetricDraft(c *gin.Context, vis hydra.Visitor) {
-	version, ok := parseObjectMetricVersion(c)
+func (r *restHandler) checkObjectMetricVersionDeletion(c *gin.Context, vis hydra.Visitor) {
+	version, ok := parseRequiredObjectMetricVersion(c)
 	if !ok {
 		return
 	}
-	ctx := objectMetricContext(c, vis)
-	record, err := r.oms.Get(ctx, c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	check, err := r.oms.CheckVersionDeletion(objectMetricContext(c, vis), c.Param("kn_id"),
+		c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
 	if err != nil {
 		replyObjectMetricError(c, err)
 		return
 	}
-	if version == 0 {
-		version = record.Definition.Version
+	rest.ReplyOK(c, http.StatusOK, check)
+}
+
+func (r *restHandler) DeleteObjectMetricVersionByEx(c *gin.Context) {
+	r.objectMetricExternal(c, r.deleteObjectMetricVersion)
+}
+
+func (r *restHandler) deleteObjectMetricVersion(c *gin.Context, vis hydra.Visitor) {
+	version, ok := parseRequiredObjectMetricVersion(c)
+	if !ok {
+		return
 	}
-	c.Set("operation_audit_target_ids", []string{firstNonEmpty(record.Definition.ID, c.Param("metric_id"))})
-	c.Set("operation_audit_target_names", []string{record.Definition.Name})
-	if err := r.oms.DeleteDraft(ctx, c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version); err != nil {
+	c.Set("operation_audit_target_ids", []string{fmt.Sprintf("%s@%d", c.Param("metric_id"), version)})
+	record, err := r.oms.DeleteVersion(objectMetricContext(c, vis), c.Param("kn_id"),
+		c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
+	if err != nil {
 		replyObjectMetricError(c, err)
 		return
 	}
+	c.Set("operation_audit_target_ids", []string{fmt.Sprintf("%s@%d", firstNonEmpty(record.Definition.ID, c.Param("metric_id")), version)})
+	c.Set("operation_audit_target_names", []string{record.Definition.Name})
 	c.Status(http.StatusNoContent)
 }
 

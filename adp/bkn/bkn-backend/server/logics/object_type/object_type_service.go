@@ -348,6 +348,9 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 				WithErrorDetails(err.Error())
 		}
 	}
+	if err = replaceObjectTypeMetricReferences(ctx, tx, createObjectTypes...); err != nil {
+		return []string{}, err
+	}
 
 	for _, objectType := range createObjectTypes {
 		// Create object type-to-group relationships as needed.
@@ -392,6 +395,9 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 					return []string{}, err
 				}
 			}
+		}
+		if err = replaceObjectTypeMetricReferences(ctx, tx, updateObjectTypes...); err != nil {
+			return []string{}, err
 		}
 	}
 
@@ -1186,6 +1192,9 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 			berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(err.Error())
 	}
+	if err = replaceObjectTypeMetricReferences(ctx, tx, objectType); err != nil {
+		return err
+	}
 
 	// Standalone object updates retain full-replacement group semantics. Whole-network import
 	// defers relationships to its normalized additive membership plan.
@@ -1384,6 +1393,9 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
+	}
+	if err = deleteObjectTypeMetricReferences(ctx, tx, knID, branch, otIDs); err != nil {
+		return err
 	}
 
 	logger.Infof("DeleteObjectTypes: Rows affected is %v, request delete ObjectTypeIDs is %v!", rowsAffect, len(otIDs))
