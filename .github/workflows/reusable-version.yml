@@ -71,7 +71,11 @@ jobs:
             # Every branch uses the same immutable format. The bare version and
             # explicit RC versions belong to tags, so a later branch push can
             # never overwrite a deployable candidate.
-            SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-zA-Z.-]+#-#g; s#-+#-#g; s#^[.-]+##; s#[.-]+$##')"
+            # Dots become dashes too: a kept dot splits the branch into separate
+            # SemVer prerelease identifiers, and a numeric one with a leading zero
+            # (`ubuntu-24.04` -> `04`) or an empty one (`a..b`) is invalid, so helm
+            # refuses every chart. One alphanumeric-and-dash identifier is always valid.
+            SANITIZED_BRANCH="$(echo "$REF_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's#[^0-9a-z-]+#-#g; s#-+#-#g; s#^-+##; s#-+$##')"
             # The VERSION prefix already identifies the release line; keeping
             # its number in the branch token would duplicate it in the tag.
             if [[ "$REF_NAME" == release/* ]]; then SANITIZED_BRANCH=release; fi
