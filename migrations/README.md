@@ -34,6 +34,12 @@ data-migrator executes `init.sql` from the highest version directory and records
 that version as installed. Every version directory must therefore provide a
 complete `init.sql` that can initialize the target database independently.
 
+`init.sql` initializes the current schema and default data directly. Keep
+`UPDATE`, `DELETE`, `ALTER`, and transitions between historical versions in
+numbered incremental scripts. Fresh installations and upgrades must resolve the
+same current defaults; upgrade-only history need not be recreated on a fresh
+installation.
+
 ### Version upgrades
 
 For an existing installation, data-migrator skips every `init.sql` and executes

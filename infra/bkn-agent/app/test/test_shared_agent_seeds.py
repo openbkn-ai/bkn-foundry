@@ -19,6 +19,7 @@ SETTINGS = MIGRATIONS / "0.2.1/04-agent-settings.sql"
 VERSIONS = MIGRATIONS / "0.2.1/05-agent-versions.sql"
 CYPHER = MIGRATIONS / "0.2.1/06-seed-cypher-generation.sql"
 METRIC_DESIGN = MIGRATIONS / "0.2.1/07-seed-object-metric-designer.sql"
+SEMANTIC_LANGUAGE = MIGRATIONS / "0.2.1/08-semantic-output-language.sql"
 
 
 def statements(path):
@@ -151,7 +152,17 @@ def snapshot(db):
 def test_new_snapshot_only_adds_the_two_setting_tables():
     old = (MIGRATIONS / "0.2.0/init.sql").read_text()
     new = (MIGRATIONS / "0.2.1/init.sql").read_text()
-    assert new.startswith(old.rstrip() + "\n")
+    old_tables = [
+        statement
+        for statement in statements(MIGRATIONS / "0.2.0/init.sql")
+        if statement.lower().startswith("create table")
+    ]
+    new_tables = [
+        statement
+        for statement in statements(MIGRATIONS / "0.2.1/init.sql")
+        if statement.lower().startswith("create table")
+    ]
+    assert new_tables[: len(old_tables)] == old_tables
     tables = re.findall(r"create table if not exists (\w+)", new, re.I)
     # The original ten tables are untouched; network and user settings were
     # added deliberately (#2151 design change, 2026-10-17).
@@ -160,10 +171,14 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
         "t_agent_user_setting",
         "t_agent_version",
     ]
-    assert re.findall(r"create table if not exists (\w+)", VERSIONS.read_text(), re.I) == [
+    assert re.findall(
+        r"create table if not exists (\w+)", VERSIONS.read_text(), re.I
+    ) == [
         "t_agent_version",
     ]
-    assert re.findall(r"create table if not exists (\w+)", SETTINGS.read_text(), re.I) == [
+    assert re.findall(
+        r"create table if not exists (\w+)", SETTINGS.read_text(), re.I
+    ) == [
         "t_agent_network_setting",
         "t_agent_user_setting",
     ]
@@ -179,7 +194,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
 
 
-def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_versions():
+def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_history():
     with database() as fresh, database() as upgraded:
         apply(fresh, MIGRATIONS / "0.2.1/init.sql")
         apply(upgraded, MIGRATIONS / "0.2.0/init.sql")
@@ -190,16 +205,33 @@ def test_fresh_install_and_upgrade_have_identical_data_and_preserve_semantic_ver
         apply(upgraded, VERSIONS)
         apply(upgraded, CYPHER)
         apply(upgraded, METRIC_DESIGN)
-        assert snapshot(fresh) == snapshot(upgraded)
+        apply(upgraded, SEMANTIC_LANGUAGE)
+        # Fresh installs initialize current defaults directly; upgrades retain
+        # historical Prompt/Agent versions while resolving the same defaults.
+        assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
+        for agent in fresh.execute("SELECT f_agent_id FROM t_agent"):
+            assert item_from_db(fresh, agent[0]) == item_from_db(upgraded, agent[0])
         assert len(snapshot(fresh)[0]) == 7
-        for table_before, table_after in zip(original, snapshot(upgraded)):
-            assert all(row in table_after for row in table_before)
+        updated = snapshot(upgraded)
+        assert all(row in updated[0] for row in original[0])
+        for row in original[1]:
+            match = next(after for after in updated[1] if after[0] == row[0])
+            if row[0] == "resource-semantic-understanding-prompt":
+                assert row[:2] == match[:2]
+                assert match[2] == 4
+            else:
+                assert row == match
+        assert all(row in updated[2] for row in original[2])
+        # Only the current marker changes on historical Agent snapshots.
+        for row in original[3]:
+            match = next(after for after in updated[3] if after[:2] == row[:2])
+            assert row[:8] + row[9:] == match[:8] + match[9:]
         versions = dict(
             upgraded.execute(
                 "SELECT f_prompt_id, f_current_version FROM t_agent_prompt"
             )
         )
-        assert versions["resource-semantic-understanding-prompt"] == 3
+        assert versions["resource-semantic-understanding-prompt"] == 4
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
@@ -333,6 +365,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(VERSIONS),
                     str(CYPHER),
                     str(METRIC_DESIGN),
+                    str(SEMANTIC_LANGUAGE),
                 ],
             ]
         ],
@@ -591,7 +624,7 @@ def test_real_migrator_selected_cross_version_chain_preserves_semantic_agents(re
         versions = dict(
             db.execute("SELECT f_prompt_id,f_current_version FROM t_agent_prompt")
         )
-        assert versions["resource-semantic-understanding-prompt"] == 3
+        assert versions["resource-semantic-understanding-prompt"] == 4
         assert versions["catalog-semantic-understanding-prompt"] == 2
 
 
@@ -617,25 +650,41 @@ def test_every_agent_starts_with_one_current_version():
     with database() as db:
         apply(db, MIGRATIONS / "0.2.1/init.sql")
         rows = {
-            row["f_agent_id"]: dict(row) for row in db.execute("SELECT * FROM t_agent_version")
+            row["f_agent_id"]: dict(row)
+            for row in db.execute("SELECT * FROM t_agent_version WHERE f_current=1")
         }
-        agents = [row["f_agent_id"] for row in db.execute("SELECT f_agent_id FROM t_agent")]
+        agents = [
+            row["f_agent_id"] for row in db.execute("SELECT f_agent_id FROM t_agent")
+        ]
         assert sorted(rows) == sorted(agents)
-        assert all(row["f_version"] == 1 and row["f_current"] == 1 for row in rows.values())
-        # Built-in Agents mark v1 as the initial version restore returns to.
+        assert db.execute(
+            "SELECT count(*) FROM t_agent_version WHERE f_current=1"
+        ).fetchone()[0] == len(agents)
+        assert all(row["f_version"] == 1 for row in rows.values())
+        assert all(row["f_current"] == 1 for row in rows.values())
+        # A fresh installation restores to its initialized current defaults.
+        initial = db.execute(
+            "SELECT f_prompt_version FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_initial=1"
+        ).fetchone()
+        assert initial[0] == 4
         assert all(row["f_initial"] == 1 for row in rows.values())
         qa = db.execute(
             "SELECT f_model, f_tools, f_limits FROM t_agent WHERE f_agent_id='studio_smart_qa'"
         ).fetchone()
-        assert (rows["studio_smart_qa"]["f_tools"], rows["studio_smart_qa"]["f_limits"]) == (
+        assert (
+            rows["studio_smart_qa"]["f_tools"],
+            rows["studio_smart_qa"]["f_limits"],
+        ) == (
             qa["f_tools"],
             qa["f_limits"],
         )
-        assert rows["resource-semantic-understanding"]["f_prompt_version"] == 3
+        assert rows["resource-semantic-understanding"]["f_prompt_version"] == 4
 
         # Running the delta again adds nothing.
         apply(db, VERSIONS)
-        assert db.execute("SELECT count(*) FROM t_agent_version").fetchone()[0] == len(rows)
+        assert db.execute("SELECT count(*) FROM t_agent_version").fetchone()[0] == len(
+            rows
+        )
 
 
 def test_version_snapshot_tolerates_null_tools_and_model_in_older_rows():
@@ -742,4 +791,116 @@ def test_conflicting_cypher_prompt_is_not_taken_over():
         before = snapshot(db)
         with pytest.raises(sqlite3.IntegrityError):
             apply(db, CYPHER)
+        assert snapshot(db) == before
+
+
+def test_semantic_output_language_prompt_upgrade_preserves_history_and_configuration():
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.0/init.sql")
+        apply(db, VERSIONS)
+        old_prompt = item_from_db(db, "resource-semantic-understanding")["prompt"][
+            "content"
+        ]
+        db.execute(
+            "UPDATE t_agent SET f_model='custom-model' WHERE f_agent_id='resource-semantic-understanding'"
+        )
+        apply(db, SEMANTIC_LANGUAGE)
+        prompt = item_from_db(db, "resource-semantic-understanding")["prompt"][
+            "content"
+        ]
+        assert prompt.startswith(old_prompt)
+        assert "options.language" in prompt and "en-US" in prompt and "zh-CN" in prompt
+        assert "display_name、description、自然语言 warnings" in prompt
+        assert "技术字段 name、ID、类型" in prompt
+        assert "不要仅为翻译而重写已有用户元数据" in prompt
+        original = db.execute(
+            "SELECT f_content FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=3"
+        ).fetchone()
+        assert original[0] == old_prompt
+        current = db.execute(
+            "SELECT f_model,f_prompt_version FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding' AND f_current=1"
+        ).fetchall()
+        assert [tuple(row) for row in current] == [("custom-model", 4)]
+        before = snapshot(db)
+        apply(db, SEMANTIC_LANGUAGE)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("customization", ["content", "higher-version", "rollback"])
+def test_semantic_output_language_upgrade_preserves_operator_prompt_choices(
+    customization,
+):
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.0/init.sql")
+        apply(db, VERSIONS)
+        if customization == "content":
+            db.execute(
+                "UPDATE t_agent_prompt_version SET f_content='custom prompt' WHERE f_prompt_id='resource-semantic-understanding-prompt' AND f_version=3"
+            )
+        else:
+            db.execute(
+                "INSERT INTO t_agent_prompt_version VALUES('resource-semantic-understanding-prompt',4,'custom newer prompt',null,'operator',2000)"
+            )
+            if customization == "higher-version":
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_current_version=4 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+                )
+            else:
+                db.execute(
+                    "UPDATE t_agent_prompt SET f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+                )
+        before = snapshot(db)
+        apply(db, SEMANTIC_LANGUAGE)
+        assert snapshot(db) == before
+
+
+@pytest.mark.parametrize("limit", [1, 2, 3, 4])
+def test_semantic_output_language_upgrade_resumes_between_statements(limit):
+    with database() as db, database() as expected:
+        for connection in (db, expected):
+            apply(connection, MIGRATIONS / "0.2.0/init.sql")
+            apply(connection, VERSIONS)
+        apply(expected, SEMANTIC_LANGUAGE)
+        apply(db, SEMANTIC_LANGUAGE, limit=limit)
+        apply(db, SEMANTIC_LANGUAGE)
+        assert snapshot(db) == snapshot(expected)
+
+
+def test_semantic_language_upgrade_does_not_reverse_an_operator_rollback():
+    with database() as db:
+        apply(db, MIGRATIONS / "0.2.0/init.sql")
+        apply(db, VERSIONS)
+        apply(db, SEMANTIC_LANGUAGE)
+        db.execute(
+            "UPDATE t_agent_prompt SET f_current_version=3,f_update_user='operator',f_update_time=3000 WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+        )
+        db.execute(
+            "UPDATE t_agent_version SET f_current=0 WHERE f_agent_id='resource-semantic-understanding'"
+        )
+        db.execute(
+            "UPDATE t_agent_version SET f_current=1 WHERE f_agent_id='resource-semantic-understanding' AND f_version=1"
+        )
+        before = snapshot(db)
+        apply(db, SEMANTIC_LANGUAGE)
+        assert snapshot(db) == before
+
+
+def test_current_init_only_initializes_the_latest_semantic_defaults():
+    init = MIGRATIONS / "0.2.1/init.sql"
+    assert not any(
+        re.match(r"(?i)(update|delete|alter)\b", statement)
+        for statement in statements(init)
+    )
+    with database() as db:
+        apply(db, init)
+        versions = db.execute(
+            "SELECT f_version FROM t_agent_prompt_version WHERE f_prompt_id='resource-semantic-understanding-prompt'"
+        ).fetchall()
+        assert [row[0] for row in versions] == [4]
+        agent_versions = db.execute(
+            "SELECT f_version,f_prompt_version,f_initial,f_current FROM t_agent_version WHERE f_agent_id='resource-semantic-understanding'"
+        ).fetchall()
+        assert [tuple(row) for row in agent_versions] == [(1, 4, 1, 1)]
+        before = snapshot(db)
+        apply(db, init)
         assert snapshot(db) == before

@@ -633,6 +633,54 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 }
 
 func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
+	for _, tc := range []struct{ language, name, description string }{
+		{"en-US", "Order Identifier", "Unique order identifier"},
+		{"zh-CN", "订单标识", "订单唯一标识"},
+	} {
+		for _, mode := range []string{"dry_run", "fill_empty", "force"} {
+			t.Run(tc.language+"/"+mode, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				resources := vmock.NewMockResourceService(ctrl)
+				worker := &SemanticUnderstandingTaskWorker{rs: resources}
+				resource := &interfaces.Resource{
+					ID: "resource-1", Name: "orders", Description: "Existing description",
+					Category: interfaces.ResourceCategoryDataset, SourceIdentifier: "orders",
+					SchemaDefinition: []*interfaces.Property{{Name: "order_id", Type: interfaces.DataType_String, Description: "Existing field description"}},
+				}
+				if mode != "dry_run" {
+					resources.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
+					resources.EXPECT().InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+						DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
+							assert.Equal(t, "resource-1", got.ID)
+							assert.Equal(t, "orders", got.SourceIdentifier)
+							assert.Equal(t, "order_id", got.SchemaDefinition[0].Name)
+							assert.Equal(t, interfaces.DataType_String, got.SchemaDefinition[0].Type)
+							assert.Equal(t, tc.name, got.SchemaDefinition[0].DisplayName)
+							if mode == "force" {
+								assert.Equal(t, tc.description, got.Description)
+								assert.Equal(t, tc.description, got.SchemaDefinition[0].Description)
+							} else {
+								assert.Equal(t, "Existing description", got.Description)
+								assert.Equal(t, "Existing field description", got.SchemaDefinition[0].Description)
+							}
+							return nil
+						})
+				}
+				result := fmt.Sprintf(`{"resource":{"description":%q},"fields":[{"name":"order_id","display_name":%q,"description":%q}]}`, tc.description, tc.name, tc.description)
+				got, err := worker.applyResult(context.Background(), &sql.Tx{}, &interfaces.SemanticUnderstandingTask{
+					Scope: "resource", ResourceID: "resource-1", ApplyMode: mode, ConfidenceThreshold: 0.75,
+					Input: fmt.Sprintf(`{"options":{"language":%q}}`, tc.language),
+				}, result, 0.9)
+				require.NoError(t, err)
+				assert.Equal(t, mode != "dry_run", got.Applied)
+				if mode == "dry_run" {
+					assert.Equal(t, "Existing description", resource.Description)
+					assert.Empty(t, resource.SchemaDefinition[0].DisplayName)
+				}
+			})
+		}
+	}
+
 	for _, category := range []string{
 		interfaces.ResourceCategoryTable,
 		interfaces.ResourceCategoryDataset,

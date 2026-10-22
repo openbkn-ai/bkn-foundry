@@ -117,13 +117,13 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
 	}
 
-	task, err := normalizeResourceSemanticUnderstandingRequest(resource, req)
+	task, err := normalizeResourceSemanticUnderstandingRequest(ctx, resource, req)
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid semantic understanding task request")
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails(err.Error())
 	}
-	if req.IncludeSampleRows {
+	if req != nil && req.IncludeSampleRows {
 		// Sample rows are the table's actual contents, sent unmasked to the
 		// semantic service and then kept in the task's input snapshot. Asking for
 		// them is a data read, so it needs query_data on top of task_manage —
@@ -558,7 +558,7 @@ func (suts *semanticUnderstandingTaskService) InternalMarkCancelled(ctx context.
 	return suts.suta.MarkCancelled(ctx, id, failureDetail, time.Now().UnixMilli())
 }
 
-func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
+func normalizeResourceSemanticUnderstandingRequest(ctx context.Context, resource *interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 	normalized := defaultSemanticUnderstandingRequest()
 	if req != nil {
 		*normalized = *req
@@ -569,6 +569,9 @@ func normalizeResourceSemanticUnderstandingRequest(resource *interfaces.Resource
 			defaultThreshold := interfaces.DefaultSemanticUnderstandingConfidenceThreshold
 			normalized.ConfidenceThreshold = &defaultThreshold
 		}
+	}
+	if normalized.Language == "" {
+		normalized.Language = rest.GetLanguageByCtx(ctx)
 	}
 	if err := validateSemanticUnderstandingRequest(normalized); err != nil {
 		return nil, err
@@ -794,6 +797,9 @@ func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, r
 */
 
 func validateSemanticUnderstandingRequest(req *interfaces.CreateSemanticUnderstandingTaskRequest) error {
+	if req.Language != rest.AmericanEnglish && req.Language != rest.SimplifiedChinese {
+		return fmt.Errorf("language must be en-US or zh-CN")
+	}
 	switch req.ApplyMode {
 	case interfaces.SemanticUnderstandingApplyModeDryRun,
 		interfaces.SemanticUnderstandingApplyModeFillEmpty,
@@ -821,7 +827,7 @@ func buildResourceSemanticUnderstandingInput(resource *interfaces.Resource, req 
 		SampleRows:    []map[string]any{},
 		SampleContext: buildSemanticUnderstandingSampleContext(resource, req.IncludeSampleRows),
 		Options: interfaces.SemanticUnderstandingResourceAgentInputOptions{
-			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
+			Language:            req.Language,
 			ApplyMode:           req.ApplyMode,
 			ConfidenceThreshold: *req.ConfidenceThreshold,
 			IncludeSampleRows:   req.IncludeSampleRows,
@@ -878,7 +884,7 @@ func buildCatalogSemanticUnderstandingInput(catalog *interfaces.Catalog, resourc
 		Resources:          []interfaces.SemanticUnderstandingCatalogAgentInputResource{},
 		ExistingLogicalViews: []interfaces.SemanticUnderstandingCatalogAgentInputExistingView{},
 		Options: interfaces.SemanticUnderstandingCatalogAgentInputOptions{
-			Language:            interfaces.DefaultSemanticUnderstandingLanguage,
+			Language:            req.Language,
 			ApplyMode:           req.ApplyMode,
 			ConfidenceThreshold: *req.ConfidenceThreshold,
 		},

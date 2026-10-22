@@ -26,7 +26,6 @@ const (
 	SemanticUnderstandingResourceAgentID string = "resource-semantic-understanding"
 	SemanticUnderstandingCatalogAgentID  string = "catalog-semantic-understanding"
 
-	DefaultSemanticUnderstandingLanguage            string  = "zh-CN"
 	DefaultSemanticUnderstandingConfidenceThreshold float64 = 0.75
 	MaxSemanticUnderstandingSampleRows              int     = 20
 	MaxSemanticUnderstandingSampleValueRunes        int     = 128
@@ -119,6 +118,7 @@ type CreateSemanticUnderstandingTaskRequest struct {
 	CatalogID  string `json:"catalog_id,omitempty"`
 	ResourceID string `json:"resource_id,omitempty"`
 
+	Language            string                             `json:"language,omitempty"`
 	ApplyMode           string                             `json:"apply_mode,omitempty"`
 	ConfidenceThreshold *float64                           `json:"confidence_threshold,omitempty"`
 	IncludeSampleRows   bool                               `json:"include_sample_rows,omitempty"`
