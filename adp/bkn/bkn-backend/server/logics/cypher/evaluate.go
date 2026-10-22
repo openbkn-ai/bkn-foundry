@@ -613,8 +613,28 @@ func evaluateAggregate(aggregate PlanAggregate, group []binding) (any, error) {
 		if value == nil {
 			continue
 		}
+		if len(aggregate.Keys) > 0 {
+			// A node with several key columns is one combination of them,
+			// not counted where any of them is missing, as SQL does.
+			parts := []any{value}
+			for _, key := range aggregate.Keys {
+				part := scope{row: row}.column(aggregate.Table, key.Column)
+				if part == nil {
+					parts = nil
+					break
+				}
+				parts = append(parts, part)
+			}
+			if parts == nil {
+				continue
+			}
+			value = parts
+		}
 		if aggregate.Distinct {
 			key := canonicalKey(value)
+			if parts, ok := value.([]any); ok && len(aggregate.Keys) > 0 {
+				key = canonicalTuple(parts)
+			}
 			if seen[key] {
 				continue
 			}

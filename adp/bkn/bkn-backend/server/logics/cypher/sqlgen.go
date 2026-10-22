@@ -343,6 +343,17 @@ func (g *generator) aggregate(aggregate PlanAggregate) string {
 	if aggregate.Argument != nil {
 		inner = g.expression(aggregate.Argument)
 	}
+	if len(aggregate.Keys) > 0 {
+		columns := []string{inner}
+		for _, key := range aggregate.Keys {
+			columns = append(columns, g.column(aggregate.Table, key.Column))
+		}
+		inner = strings.Join(columns, ", ")
+		// MySQL counts distinct column lists; Postgres counts distinct rows.
+		if g.dialect == DialectPostgres {
+			inner = "(" + inner + ")"
+		}
+	}
 	if aggregate.Distinct {
 		inner = "DISTINCT " + inner
 	}

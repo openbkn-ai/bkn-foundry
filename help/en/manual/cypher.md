@@ -150,7 +150,7 @@ ORDER BY goals DESC LIMIT 10
 
 - **Properties**, optionally renamed with `AS`. Without an alias the column is named after what was written, as in `t.team_name`.
 - **`DISTINCT`** removes duplicate rows.
-- **Aggregates**: `count`, `sum`, `avg`, `min` and `max`, each also in its `DISTINCT` form, plus `count(*)`. `count(n)` counts the rows where node n was found; `count(DISTINCT n)` counts distinct objects by primary key, which needs the object type to have exactly one.
+- **Aggregates**: `count`, `sum`, `avg`, `min` and `max`, each also in its `DISTINCT` form, plus `count(*)`. `count(n)` counts the rows where node n was found; `count(DISTINCT n)` counts distinct objects by primary key, by all its properties together when it has several; an object type without a primary key cannot be counted this way.
 - **There is no GROUP BY.** Returning an aggregate groups by every other returned column. Writing GROUP BY is a syntax error.
 - **Arithmetic** `+ - * / %` with parentheses, as in `count(*) * 2`, `sum(o.price * o.qty)` or `count(o.x) * 1.0 / count(*)`.
   - Dividing two integers is refused: Cypher drops the remainder, and SQL databases do not agree on it. Multiply one side by `1.0` for a fractional result.

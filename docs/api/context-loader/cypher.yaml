@@ -70,7 +70,7 @@ paths:
           数据源列的排序规则（collation）。只能用于字符串属性，用在数值、日期等属性上返回 400。
         - **RETURN**：属性、`AS` 别名、`DISTINCT`，以及 `count` / `sum` / `avg` /
           `min` / `max`（含 `count(*)` 与 `DISTINCT` 形式）。`count(n)` 统计节点 n 存在的行，
-          `count(DISTINCT n)` 按主键统计不同对象（要求对象类恰有一个主键属性）。有聚合时按 RETURN 中其余
+          `count(DISTINCT n)` 按主键统计不同对象（多个主键属性按组合区分，没有主键的对象类不能用）。有聚合时按 RETURN 中其余
           列自动分组——这是 Cypher 的隐式 GROUP BY，无需也不能自己写 GROUP BY（写了会报语法错误并提示）。
           RETURN 也可以返回条件，写法与 `WHERE` 相同，如 `g.tournament_name CONTAINS 'Men' AS mens`：
           值为 `true` / `false`，无法判定时（属性为 null，或 OPTIONAL MATCH 没匹配到节点）为

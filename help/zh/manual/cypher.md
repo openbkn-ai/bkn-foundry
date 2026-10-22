@@ -150,7 +150,7 @@ ORDER BY goals DESC LIMIT 10
 
 - **属性**，可以用 `AS` 起别名；不起别名时，列名就是写下的原文，如 `t.team_name`。
 - **`DISTINCT`** 去重。
-- **聚合**：`count`、`sum`、`avg`、`min`、`max`，以及各自的 `DISTINCT` 形式和 `count(*)`。`count(n)` 统计找到节点 n 的行数；`count(DISTINCT n)` 按主键统计不同对象的个数，要求对象类恰好有一个主键。
+- **聚合**：`count`、`sum`、`avg`、`min`、`max`，以及各自的 `DISTINCT` 形式和 `count(*)`。`count(n)` 统计找到节点 n 的行数；`count(DISTINCT n)` 按主键统计不同对象的个数，主键有多个属性时按它们的组合区分，对象类没有主键时不能用。
 - **没有 GROUP BY**：只要返回了聚合，就按 RETURN 里其余各列分组。写 GROUP BY 会报语法错误。
 - **算术** `+ - * / %`，可以加括号，如 `count(*) * 2`、`sum(o.price * o.qty)`、`count(o.x) * 1.0 / count(*)`。
   - 两个整数相除会被拒绝：Cypher 会丢掉余数，而各个 SQL 库的做法不一致。要小数结果，把一边乘 `1.0`。
