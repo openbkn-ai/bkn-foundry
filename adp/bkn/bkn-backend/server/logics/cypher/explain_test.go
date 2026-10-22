@@ -127,9 +127,25 @@ func TestExplainWarns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("explain: %v", err)
 	}
-	if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "share no node") }) ||
+	if !slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "no relationship or equality joins") }) ||
 		slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.HasPrefix(w, "no LIMIT") }) {
 		t.Errorf("warnings = %v", plan.Warnings)
+	}
+
+	// An equality between their properties joins two parts, as a
+	// relationship would; one under OR does not.
+	for query, cartesian := range map[string]bool{
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code RETURN o.id, c.name LIMIT 5":                 false,
+		"MATCH (o:Order), (c:Customer) WHERE o.customer_code = c.code OR o.amount > 3 RETURN o.id, c.name LIMIT 5": true,
+	} {
+		plan, _, err := explainQuery(t, graphService(&recordingVega{}), query)
+		if err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		warned := slices.ContainsFunc(plan.Warnings, func(w string) bool { return strings.Contains(w, "no relationship or equality joins") })
+		if warned != cartesian {
+			t.Errorf("%s: warnings = %v", query, plan.Warnings)
+		}
 	}
 
 	plan, _, err = explainQuery(t, graphService(&recordingVega{}),

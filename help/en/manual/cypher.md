@@ -62,7 +62,8 @@ With `"explain": true` the query is read, authorized and compiled as usual but n
 
 - A form that would be refused gets the same error code and rewrite hint as running it; a query explain accepts is not refused for its form when it runs.
 - `plan` holds `shape` (match, aggregate, totals, semi_join, list_comparison or carried), `objects` and `relations` (the object type of each variable and the relation types walked), `conditions` (each condition's operator, the properties it reads and whether it applies to rows, groups or an earlier stage), `grouping`, `columns` (each column's name, what computes it and its value type), `ordering`, `limit` (the row limit in force), `reads` (the properties read), `row_filtered` (object types whose rows the access policy narrows) and `warnings`.
-- `warnings` points out parts of the pattern that share no node (their rows combine pairwise), the 1000-row cap without LIMIT, narrowed rows, and the 10000-row evidence cap of `collect`.
+- `warnings` points out parts of the pattern that no relationship, shared node or equality such as `a.code = b.code` joins (their rows combine pairwise), the 1000-row cap without LIMIT, narrowed rows, and the 10000-row evidence cap of `collect`.
+- explain reads no data and does not see where an object type's data lives: on object types bound to a dataset or an index, a form that "Object types on datasets and indexes" lists as unsupported passes explain and is refused only when run.
 - No SQL is returned, and the values in conditions are not repeated. Authorization is the same as running: object types and properties the caller cannot read stay out of explain too.
 - Use it to check a query with WITH, several MATCH clauses or several hops before running it: that the grouping, filters and joins are what was meant.
 

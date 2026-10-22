@@ -178,6 +178,13 @@ components:
             under the same authorization as any other property the query names.
           example:
             t: ["team_name"]
+        explain:
+          type: boolean
+          description: |-
+            Return the query's plan instead of its rows. The query is read, authorized and
+            compiled exactly as it would be to run, so it is refused in exactly the same cases
+            and with the same error, but nothing is read from the data and no SQL is returned.
+            entries is then empty and plan is set.
         query:
           type: string
           maxLength: 8192
@@ -368,6 +375,93 @@ components:
             $ref: "#/components/schemas/CypherValueType"
         execution:
           $ref: "#/components/schemas/CypherExecution"
+        plan:
+          $ref: "#/components/schemas/CypherPlan"
+    CypherPlan:
+      type: object
+      description: >-
+        Present when the request set explain. How the query would run, in the model's terms;
+        the SQL it becomes is never included.
+      properties:
+        shape:
+          type: string
+          enum: [match, aggregate, totals, semi_join, list_comparison, carried]
+          description: The query's form; see the WITH section above.
+        graph:
+          type: boolean
+          description: The result holds nodes, relationships or other graph values.
+        objects:
+          type: array
+          description: Each node of the pattern. A node of an earlier stage carries its prefix, as in stage0.o or carried.o.
+          items:
+            type: object
+            properties:
+              alias: {type: string}
+              object_type_id: {type: string}
+        relations:
+          type: array
+          items:
+            type: object
+            properties:
+              relation_type_id: {type: string}
+              source: {type: string}
+              target: {type: string}
+              direction: {type: string}
+        conditions:
+          type: array
+          description: >-
+            Each condition by operator and the properties it reads (object_type_id.property);
+            where says what it applies to: where (rows), having (groups), optional_match, or
+            either of those in an earlier stage. Values are not repeated.
+          items:
+            type: object
+            properties:
+              operator: {type: string}
+              expression: {type: string}
+              properties: {type: array, items: {type: string}}
+              where: {type: string}
+        grouping:
+          type: array
+          items: {type: string}
+          description: Properties the result is grouped by.
+        columns:
+          type: array
+          description: Each returned column, with what computes it (property, count, sum, node, arithmetic, case and so on) and its value type.
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              kind: {type: string}
+              type:
+                $ref: "#/components/schemas/CypherValueType"
+        ordering:
+          type: array
+          items:
+            type: object
+            properties:
+              column: {type: string}
+              property: {type: string}
+              descending: {type: boolean}
+        limit:
+          type: integer
+          description: The most rows the query returns.
+        limit_source:
+          type: string
+          enum: [explicit, default]
+        reads:
+          type: array
+          items: {type: string}
+          description: Every property the query reads, each authorized before it runs.
+        row_filtered:
+          type: array
+          items: {type: string}
+          description: Object types whose rows the caller's access policy narrows.
+        warnings:
+          type: array
+          items: {type: string}
+          description: >-
+            What to know before running: parts of the pattern that no relationship or equality
+            joins, the default row cap, row filters, and the evidence cap of collect.
     CypherValueType:
       type: object
       properties:

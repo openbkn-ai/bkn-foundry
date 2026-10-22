@@ -185,8 +185,8 @@ func planWarnings(plan *Plan, out *interfaces.CypherPlan) []string {
 	var warnings []string
 	if parts := patternParts(plan); parts > 1 {
 		warnings = append(warnings, fmt.Sprintf(
-			"the pattern has %d parts that share no node, so every row of one combines with every row of the other; "+
-				"connect them with a relationship or a shared node", parts))
+			"the pattern has %d parts that no relationship or equality joins, so every row of one combines with every row of the other; "+
+				"connect them with a relationship, a shared node or a condition such as a.code = b.code", parts))
 	}
 	oneRow := plan.Intersection != nil || len(plan.Totals) > 0 ||
 		(anyAggregates(plan) && len(plan.GroupBy) == 0 && !plan.Grouped)
@@ -211,7 +211,8 @@ func planWarnings(plan *Plan, out *interfaces.CypherPlan) []string {
 	return warnings
 }
 
-// patternParts counts the parts of a pattern no relationship connects.
+// patternParts counts the parts of a pattern that neither a relationship nor
+// an equality between their properties connects.
 func patternParts(plan *Plan) int {
 	if len(plan.Tables) == 0 {
 		return 0
@@ -231,6 +232,24 @@ func patternParts(plan *Plan) int {
 	for _, join := range plan.Joins {
 		parent[find(join.Left)] = find(join.Right)
 	}
+	// An equality between properties of two nodes, as in a.code = b.code,
+	// joins them as a relationship would, when every row must meet it.
+	var equalities func(PlanPredicate)
+	equalities = func(predicate PlanPredicate) {
+		switch node := predicate.(type) {
+		case PlanColumnComparison:
+			if node.Operator == "=" && node.LeftTable != node.RightTable {
+				parent[find(node.LeftTable)] = find(node.RightTable)
+			}
+		case PlanLogical:
+			if node.Operator == "AND" {
+				for _, operand := range node.Operands {
+					equalities(operand)
+				}
+			}
+		}
+	}
+	equalities(plan.Where)
 	parts := 0
 	for i := range parent {
 		if find(i) == i {
