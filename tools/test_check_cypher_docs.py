@@ -47,8 +47,10 @@ class CheckCypherDocsTest(unittest.TestCase):
         texts["run_cypher"] = {"description": "nothing"}
         texts["other_tool"] = {"description": "!= 1000 10000"}
         path.write_text(json.dumps(texts, ensure_ascii=False), encoding="utf-8")
-        named = {line.split(":")[0] for line in check.missing(self.root)}
-        self.assertEqual(named, {f"{check.SCHEMAS}/tools_meta.json"})
+        problems = check.missing(self.root)
+        self.assertEqual({line.split(":")[0] for line in problems}, {f"{check.SCHEMAS}/tools_meta.json"})
+        # Every fact is missing, the ones the other tool's text states included.
+        self.assertEqual(len(problems), len(check.FACTS))
 
 
 if __name__ == "__main__":
