@@ -586,7 +586,7 @@ func Test_BKNRestHandler_DownloadBKN(t *testing.T) {
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
 
 		Convey("Success downloading BKN tar\n", func() {
-			bs.EXPECT().ExportToTar(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return([]byte("tar-content"), nil)
+			bs.EXPECT().ExportToTar(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO).Return([]byte("tar-content"), nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/bkns/kn1", nil)
 			w := httptest.NewRecorder()
@@ -597,7 +597,7 @@ func Test_BKNRestHandler_DownloadBKN(t *testing.T) {
 		})
 
 		Convey("Failed when ExportToTar returns error\n", func() {
-			bs.EXPECT().ExportToTar(gomock.Any(), "kn1", gomock.Any()).Return(nil, &rest.HTTPError{
+			bs.EXPECT().ExportToTar(gomock.Any(), "kn1", gomock.Any(), gomock.Any()).Return(nil, &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Language: rest.DefaultLanguage,
 				BaseError: rest.BaseError{
@@ -610,6 +610,75 @@ func Test_BKNRestHandler_DownloadBKN(t *testing.T) {
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
+		Convey("Passes the bkn_spec it is asked for to the export\n", func() {
+			for _, spec := range []string{interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3} {
+				bs.EXPECT().ExportToTar(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, spec).Return([]byte("tar-content"), nil)
+				req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/bkns/kn1?bkn_spec="+spec, nil)
+				w := httptest.NewRecorder()
+				engine.ServeHTTP(w, req)
+				So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			}
+		})
+
+		Convey("Refuses a bkn_spec it cannot write\n", func() {
+			req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/bkns/kn1?bkn_spec=3", nil)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_BknSpec)
+		})
+	})
+}
+
+func Test_BKNRestHandler_CheckBKN(t *testing.T) {
+	Convey("Test BKNHandler CheckBKN\n", t, func() {
+		test := setGinMode()
+		defer test()
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		as := bmock.NewMockAuthService(mockCtrl)
+		kns := bmock.NewMockKNService(mockCtrl)
+		bs := bmock.NewMockBKNService(mockCtrl)
+		handler := MockNewBKNRestHandler(&common.AppSetting{}, as, kns, bs)
+		handler.RegisterPublic(engine)
+		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, nil)
+
+		Convey("Returns what the check finds\n", func() {
+			bs.EXPECT().CheckNetwork(gomock.Any(), "kn1", "dev").Return(&interfaces.NetworkCheckResult{
+				MisplacedParameters: []interfaces.NetworkCheckParameter{{
+					ActionTypeID: "restart_pod", Parameter: "pod",
+					Current:   interfaces.NetworkCheckParameterValue{Source: "property", ValueFrom: "pod_name"},
+					Suggested: interfaces.NetworkCheckParameterValue{ValueFrom: "property", Value: "pod_name"},
+				}},
+			}, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/bkns/kn1/check?branch=dev", nil)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			var body interfaces.NetworkCheckResult
+			So(json.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
+			So(body.MisplacedParameters, ShouldHaveLength, 1)
+			So(body.MisplacedParameters[0].Suggested.ValueFrom, ShouldEqual, "property")
+		})
+
+		Convey("Passes a classified error through\n", func() {
+			bs.EXPECT().CheckNetwork(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, &rest.HTTPError{
+				HTTPCode:  http.StatusForbidden,
+				Language:  rest.DefaultLanguage,
+				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
+			})
+			req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/bkns/kn1/check", nil)
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Result().StatusCode, ShouldEqual, http.StatusForbidden)
 		})
 	})
 }

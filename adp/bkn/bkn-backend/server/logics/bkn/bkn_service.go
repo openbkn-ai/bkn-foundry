@@ -57,7 +57,13 @@ func NewBKNService(appSetting *common.AppSetting) interfaces.BKNService {
 }
 
 // ExportToTar exports a knowledge network as a tar archive.
-func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch string) ([]byte, error) {
+//
+// A network without a 3.0 declaration is written as 2.x, byte for byte as before, unless 3.0 is asked
+// for. A network with one is written as 3.0, because a 2.x package cannot hold it, unless 2.0 is
+// asked for, which leaves the declarations out. A 3.0 export first runs the network check: a
+// misplaced parameter would be refused when the package is imported again, so the export is refused
+// with the parameters to fix.
+func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch string, spec string) ([]byte, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BKN导出为Tar")
 	defer span.End()
 
@@ -81,6 +87,15 @@ func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch strin
 	}
 	bknNetwork.Capabilities = capabilities
 
+	v3 := spec == interfaces.BKN_EXPORT_SPEC_3 || (spec == interfaces.BKN_EXPORT_SPEC_AUTO && bknsdk.HasV3Declarations(bknNetwork))
+	if v3 {
+		if found := checkResult(bknNetwork); found.NeedsFix() {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck).
+				WithErrorDetails(found)
+		}
+		bknNetwork.BknSpec = bknsdk.BknSpecV3
+	}
+
 	var buf bytes.Buffer
 	err = bknsdk.WriteNetworkToTar(bknNetwork, &buf)
 	if err != nil {
@@ -89,9 +104,62 @@ func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch strin
 	}
 	tarData := buf.Bytes()
 
+	// A 3.0 package is read back by the 3.0 rules before it leaves. The check above covers the
+	// parameters; this covers everything else stored data might hold that 3.0 refuses, so the
+	// refusal comes now, with its reason, instead of at the next import.
+	if v3 {
+		if _, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(tarData)); err != nil {
+			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3).
+				WithErrorDetails(err.Error())
+		}
+	}
+
 	logger.Debugf("BKN ExportToTar Completed: size=%d", len(tarData))
 	span.SetStatus(codes.Ok, "")
 	return tarData, nil
+}
+
+// CheckNetwork checks the definitions of a knowledge network branch without changing anything. It
+// works on any network: the parameters it finds are as misplaced in a 2.x network, where execution
+// drops them.
+func (bs *bknService) CheckNetwork(ctx context.Context, knID string, branch string) (*interfaces.NetworkCheckResult, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BKN network check")
+	defer span.End()
+
+	bknNetwork, err := bs.buildNetwork(ctx, knID, branch)
+	if err != nil {
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return checkResult(bknNetwork), nil
+}
+
+func checkResult(network *bknsdk.BknNetwork) *interfaces.NetworkCheckResult {
+	result := &interfaces.NetworkCheckResult{
+		MisplacedParameters: []interfaces.NetworkCheckParameter{},
+		InvalidParameters:   []interfaces.NetworkCheckInvalidParameter{},
+	}
+	for _, m := range bknsdk.FindMisplacedParameters(network) {
+		result.MisplacedParameters = append(result.MisplacedParameters, interfaces.NetworkCheckParameter{
+			ActionTypeID:  m.ActionTypeID,
+			ObjectTypeID:  m.ObjectTypeID,
+			LogicProperty: m.LogicProperty,
+			Parameter:     m.Parameter,
+			Current:       interfaces.NetworkCheckParameterValue{Source: m.Current.Source, ValueFrom: m.Current.ValueFrom, Value: m.Current.Value},
+			Suggested:     interfaces.NetworkCheckParameterValue{Source: m.Suggested.Source, ValueFrom: m.Suggested.ValueFrom, Value: m.Suggested.Value},
+			Conflict:      m.Conflict,
+		})
+	}
+	for _, p := range bknsdk.FindInvalidParameters(network) {
+		result.InvalidParameters = append(result.InvalidParameters, interfaces.NetworkCheckInvalidParameter{
+			ActionTypeID:  p.ActionTypeID,
+			ObjectTypeID:  p.ObjectTypeID,
+			LogicProperty: p.LogicProperty,
+			Parameter:     p.Parameter,
+			Current:       interfaces.NetworkCheckParameterValue{Source: p.Current.Source, ValueFrom: p.Current.ValueFrom, Value: p.Current.Value},
+		})
+	}
+	return result
 }
 
 // buildNetwork assembles the complete in-memory model of one knowledge network branch.
