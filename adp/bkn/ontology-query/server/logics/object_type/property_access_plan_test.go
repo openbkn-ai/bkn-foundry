@@ -27,6 +27,74 @@ type propertyAccessStub struct {
 	calls  *int
 }
 
+func TestPropertyAccessPlanKeepsDeniedAndUnknownPropertiesIndistinguishable(t *testing.T) {
+	objectType := accessPlanObjectType()
+	access := propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+		"id": interfaces.PropertyAccessFull, "mobile": interfaces.PropertyAccessMasked,
+		"notes": interfaces.PropertyAccessSchema, "secret": interfaces.PropertyAccessNone,
+	}}
+	tests := []struct {
+		name    string
+		query   interfaces.ObjectQueryBaseOnObjectType
+		status  int
+		code    string
+		details string
+	}{
+		{
+			name: "explicit denied property", query: interfaces.ObjectQueryBaseOnObjectType{Properties: []string{"secret"}},
+			status: http.StatusBadRequest, code: "OntologyQuery.ObjectType.InvalidParameter",
+			details: "the request contains an unavailable property",
+		},
+		{
+			name: "non-full calculation input", query: interfaces.ObjectQueryBaseOnObjectType{
+				Properties: []string{"id", "mobile"}, CommonQueryParameters: interfaces.CommonQueryParameters{
+					RequiredFullProperties: []string{"mobile"},
+				},
+			},
+			status: http.StatusBadRequest, code: "OntologyQuery.ObjectType.InvalidParameter",
+			details: "the request contains a property unavailable for this operation",
+		},
+		{
+			name: "no returnable properties", query: interfaces.ObjectQueryBaseOnObjectType{Properties: []string{"notes"}},
+			status: http.StatusForbidden, code: rest.PublicError_Forbidden,
+			details: "the request has no returnable properties",
+		},
+		{
+			name: "unknown property", query: interfaces.ObjectQueryBaseOnObjectType{Properties: []string{"missing"}},
+			status: http.StatusBadRequest, code: "OntologyQuery.ObjectType.InvalidParameter",
+			details: "the request contains an unavailable property",
+		},
+		{
+			name: "unknown calculation input", query: interfaces.ObjectQueryBaseOnObjectType{
+				Properties: []string{"id"}, CommonQueryParameters: interfaces.CommonQueryParameters{
+					RequiredFullProperties: []string{"missing"},
+				},
+			},
+			status: http.StatusBadRequest, code: "OntologyQuery.ObjectType.InvalidParameter",
+			details: "the request contains a property unavailable for this operation",
+		},
+	}
+	bodies := make(map[string]string, len(tests))
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := buildPropertyAccessPlan(context.Background(), access, objectType, &test.query, true)
+			httpError, ok := err.(*rest.HTTPError)
+			if !ok || httpError.HTTPCode != test.status || httpError.BaseError.ErrorCode != test.code ||
+				httpError.BaseError.ErrorDetails != test.details {
+				t.Fatalf("error = %#v, want status=%d code=%s details=%s", err, test.status, test.code, test.details)
+			}
+			if reason := httpError.BaseError.Metadata["reason"]; reason != "property_unavailable" {
+				t.Fatalf("property reason = %#v", reason)
+			}
+			bodies[test.name] = httpError.Error()
+		})
+	}
+	if bodies["explicit denied property"] != bodies["unknown property"] ||
+		bodies["non-full calculation input"] != bodies["unknown calculation input"] {
+		t.Fatal("denied and unknown properties returned distinguishable error bodies")
+	}
+}
+
 func TestObjectQueryRejectsEmptyReturnBeforeProxyOrVega(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)
