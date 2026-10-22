@@ -7,6 +7,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -277,16 +278,29 @@ func TestListObjectMetricsProjectsAuthorizedMetricOwnerNames(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", recorder.Code, recorder.Body.String())
 	}
+	var response interfaces.ObjectMetricListV1
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v; body = %s", err, recorder.Body.String())
+	}
+	if len(response.Entries) != len(service.result.Entries) {
+		t.Fatalf("response entries = %d, want %d", len(response.Entries), len(service.result.Entries))
+	}
 	for index, want := range []string{"销售订单", "销售订单", "客户"} {
 		if got := service.result.Entries[index].OwnerObjectTypeName; got != "" {
 			t.Fatalf("source entry[%d].OwnerObjectTypeName = %q, want empty", index, got)
 		}
-		if !strings.Contains(recorder.Body.String(), `"owner_object_type_name":"`+want+`"`) {
-			t.Fatalf("owner name %q missing from response: %s", want, recorder.Body.String())
+		entry := response.Entries[index]
+		if entry == nil || entry.Definition.ID != service.result.Entries[index].Definition.ID {
+			t.Fatalf("response entry[%d] = %#v, want metric %q", index, entry, service.result.Entries[index].Definition.ID)
+		}
+		if got := entry.OwnerObjectTypeName; got != want {
+			t.Fatalf("response entry[%d].OwnerObjectTypeName = %q, want %q", index, got, want)
 		}
 	}
 	if service.result.Entries[3].OwnerObjectTypeName != "stale owner name" ||
-		strings.Contains(recorder.Body.String(), "stale owner name") {
+		response.Entries[3] == nil ||
+		response.Entries[3].Definition.ID != "metric-4" ||
+		response.Entries[3].OwnerObjectTypeName != "" {
 		t.Fatalf("stale owner name leaked or source changed: %s", recorder.Body.String())
 	}
 }
