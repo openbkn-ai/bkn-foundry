@@ -171,6 +171,7 @@ func discoverableRelationsBuilder() sq.SelectBuilder {
 		// relpersistence: p=permanent, u=unlogged, t=temporary.
 		Where(sq.NotEq{"c.relpersistence": "t"}).
 		Where(sq.Expr("has_table_privilege(c.oid, ?)", "SELECT")).
+		Where(sq.Expr("has_schema_privilege(n.oid, ?)", "USAGE")).
 		Where(sq.NotEq{"n.nspname": SYSTEM_SCHEMAS}).
 		Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)")).
 		Where(sq.Expr("NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid = c.oid)"))
@@ -456,9 +457,14 @@ func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interface
 	if err != nil {
 		return fmt.Errorf("failed to fetch domain metadata: %w", err)
 	}
-	pkSet, err := c.fetchPrimaryKeyColumns(ctx, table.Schema, table.Name)
+	pks, err := c.fetchPrimaryKeyColumns(ctx, table.Schema, table.Name)
 	if err != nil {
 		return fmt.Errorf("failed to fetch primary key columns: %w", err)
+	}
+
+	pkSet := make(map[string]bool, len(pks))
+	for _, name := range pks {
+		pkSet[name] = true
 	}
 
 	columns := make([]interfaces.TableColumnMeta, 0, len(rawColumns))
@@ -516,40 +522,54 @@ func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interface
 
 	// PostgreSQL supports zero-column tables; an empty column list is valid.
 	table.Columns = columns
-	var pks []string
-	for _, col := range columns {
-		if col.ColumnKey == "PRI" {
-			pks = append(pks, col.Name)
-		}
-	}
 	table.PKs = pks
 	return nil
 }
 
 // fetchPrimaryKeyColumns retrieves the primary-key column names for a table.
-func (c *PostgresqlConnector) fetchPrimaryKeyColumns(ctx context.Context, schema, tableName string) (map[string]bool, error) {
+func (c *PostgresqlConnector) fetchPrimaryKeyColumns(ctx context.Context, schema, tableName string) ([]string, error) {
+	// 将目标表不可访问与可访问但没有主键的情况区分开。
+	const accessQuery = `
+		SELECT pg_catalog.has_schema_privilege(n.oid, 'USAGE')
+			AND pg_catalog.has_table_privilege(t.oid, 'SELECT')
+		FROM pg_catalog.pg_class t
+		JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+		WHERE n.nspname = $1 AND t.relname = $2
+	`
+	var readable bool
+	if err := c.db.QueryRowContext(ctx, accessQuery, schema, tableName).Scan(&readable); err != nil {
+		return nil, fmt.Errorf("failed to check primary key metadata access: %w", err)
+	}
+	if !readable {
+		return nil, fmt.Errorf("primary key metadata requires schema USAGE and table SELECT privileges")
+	}
+
+	// table_constraints 会隐藏只读账号的约束，因此直接读取系统目录。
+	// 使用子查询兼容不支持 LATERAL 或 WITH ORDINALITY 的数据库。
 	query := `
-		SELECT
-			kcu.column_name
-		FROM information_schema.table_constraints tc
-		JOIN information_schema.key_column_usage kcu
-			ON tc.constraint_catalog = kcu.constraint_catalog
-				AND tc.constraint_schema = kcu.constraint_schema
-				AND tc.constraint_name = kcu.constraint_name
-		WHERE tc.table_catalog = $1
-			AND tc.table_schema = $2
-			AND tc.table_name = $3
-			AND tc.constraint_type = 'PRIMARY KEY'
-		ORDER BY kcu.ordinal_position
+		SELECT a.attname
+		FROM (
+			SELECT con.conrelid, con.conkey,
+				generate_subscripts(con.conkey, 1) AS position
+			FROM pg_catalog.pg_constraint con
+			JOIN pg_catalog.pg_class t ON t.oid = con.conrelid
+			JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+			WHERE n.nspname = $1 AND t.relname = $2
+				AND con.contype = 'p'
+		) pk
+		JOIN pg_catalog.pg_attribute a
+			ON a.attrelid = pk.conrelid AND a.attnum = pk.conkey[pk.position]
+			AND NOT a.attisdropped
+		ORDER BY pk.position
 	`
 
-	rows, err := c.db.QueryContext(ctx, query, c.config.Database, schema, tableName)
+	rows, err := c.db.QueryContext(ctx, query, schema, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute primary key metadata query: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make(map[string]bool)
+	var out []string
 	for rows.Next() {
 		var col sql.NullString
 		if err := rows.Scan(&col); err != nil {
@@ -558,7 +578,7 @@ func (c *PostgresqlConnector) fetchPrimaryKeyColumns(ctx context.Context, schema
 		if !col.Valid {
 			return nil, fmt.Errorf("required primary key metadata contains NULL")
 		}
-		out[col.String] = true
+		out = append(out, col.String)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate primary key metadata: %w", err)

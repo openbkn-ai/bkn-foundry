@@ -83,7 +83,8 @@ func TestPostgresqlConnectorListTables(t *testing.T) {
 			AddRow("analytics", "orders_view", "v", "view").
 			AddRow("public", "undocumented", "r", nil)
 
-		mock.ExpectQuery("(?s).*pg_catalog\\.pg_inherits.*i\\.inhrelid = c\\.oid.*n\\.nspname IN.*").
+		mock.ExpectQuery("(?s).*has_table_privilege.*has_schema_privilege.*pg_catalog\\.pg_inherits.*i\\.inhrelid = c\\.oid.*n\\.nspname IN.*").
+			WithArgs("r", "v", "f", "m", "p", "t", "SELECT", "USAGE", "information_schema", "pg_catalog", "pg_toast", "public", "analytics").
 			WillReturnRows(rows)
 
 		tables, err := connector.ListTables(context.Background())
@@ -187,8 +188,8 @@ func TestPostgresqlConnectorListSchemas(t *testing.T) {
 		connector, mock, cleanup := newPostgresqlConnectorMock(t, nil)
 		defer cleanup()
 		connector.connected = true
-		mock.ExpectQuery(`(?s)SELECT DISTINCT n\.nspname FROM pg_catalog\.pg_class c JOIN pg_catalog\.pg_namespace n.*c\.relkind IN.*has_table_privilege.*NOT pg_is_other_temp_schema.*NOT EXISTS.*pg_catalog\.pg_inherits.*ORDER BY n\.nspname`).
-			WithArgs("r", "v", "f", "m", "p", "t", "SELECT", "information_schema", "pg_catalog", "pg_toast").
+		mock.ExpectQuery(`(?s)SELECT DISTINCT n\.nspname FROM pg_catalog\.pg_class c JOIN pg_catalog\.pg_namespace n.*c\.relkind IN.*has_table_privilege.*has_schema_privilege.*NOT pg_is_other_temp_schema.*NOT EXISTS.*pg_catalog\.pg_inherits.*ORDER BY n\.nspname`).
+			WithArgs("r", "v", "f", "m", "p", "t", "SELECT", "USAGE", "information_schema", "pg_catalog", "pg_toast").
 			WillReturnRows(sqlmock.NewRows([]string{"nspname"}).AddRow("analytics").AddRow("public"))
 
 		schemas, err := connector.listSchemas(context.Background())
@@ -236,7 +237,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 		defer func() { _ = db.Close() }()
 		connector := &PostgresqlConnector{config: &postgresqlConfig{Database: "appdb"}, connected: true, db: db, compatibility: postgresqlCompatibility{lateral: true, withOrdinality: true}}
 		mock.ExpectQuery("FROM pg_catalog.pg_class").WithArgs("public", "empty_table").WillReturnRows(sqlmock.NewRows([]string{"column"})).RowsWillBeClosed()
-		mock.ExpectQuery("FROM information_schema.table_constraints tc").WithArgs("appdb", "public", "empty_table").WillReturnRows(sqlmock.NewRows([]string{"column_name"})).RowsWillBeClosed()
+		mock.ExpectQuery("SELECT pg_catalog.has_schema_privilege").WithArgs("public", "empty_table").WillReturnRows(sqlmock.NewRows([]string{"readable"}).AddRow(true))
+		mock.ExpectQuery("FROM pg_catalog.pg_constraint con").WithArgs("public", "empty_table").WillReturnRows(sqlmock.NewRows([]string{"column_name"})).RowsWillBeClosed()
 		table := &interfaces.TableMeta{Schema: "public", Name: "empty_table", Columns: []interfaces.TableColumnMeta{{Name: "old"}}, PKs: []string{"old"}}
 		require.NoError(t, connector.fetchColumns(context.Background(), table))
 		assert.Empty(t, table.Columns)
@@ -277,9 +279,10 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 		}).
 			AddRow(9100, " INT4 ", "b", -1, true, "42", "CHECK ((VALUE > 0)); CHECK ((VALUE < 1000))").
 			AddRow(9400, "order_status", "e", -1, false, nil, ""))
-	mock.ExpectQuery("SELECT kcu.column_name").
-		WithArgs("appdb", "public", "orders").
-		WillReturnRows(sqlmock.NewRows([]string{"column_name"}).AddRow("id"))
+	mock.ExpectQuery("SELECT pg_catalog.has_schema_privilege").WithArgs("public", "orders").WillReturnRows(sqlmock.NewRows([]string{"readable"}).AddRow(true))
+	mock.ExpectQuery("SELECT a.attname").
+		WithArgs("public", "orders").
+		WillReturnRows(sqlmock.NewRows([]string{"column_name"}).AddRow("customer_id").AddRow("id"))
 
 	table := &interfaces.TableMeta{Schema: "public", Name: "orders"}
 	if err := connector.fetchColumns(context.Background(), table); err != nil {
@@ -292,6 +295,10 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	if column.Name != "id" || column.DefaultValue != "" || column.Description != "" || column.Collation != "" {
 		t.Fatalf("unexpected column metadata: %+v", column)
 	}
+	assert.Equal(t, []string{"customer_id", "id"}, table.PKs)
+	assert.Equal(t, "PRI", table.Columns[0].ColumnKey)
+	assert.Equal(t, "PRI", table.Columns[1].ColumnKey)
+	assert.Empty(t, table.Columns[2].ColumnKey)
 	assert.Empty(t, column.AliasType)
 	assert.Empty(t, column.CheckConstraint)
 
@@ -696,4 +703,81 @@ func TestPostgresqlConnectorGetTableMetaRequiresStatusAfterList(t *testing.T) {
 	require.ErrorContains(t, err, "failed to fetch table status")
 	assert.Equal(t, "listed comment", table.Description)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPostgresqlConnectorFetchPrimaryKeyColumns(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rows *sqlmock.Rows
+		err  error
+	}{
+		{name: "inaccessible table", rows: sqlmock.NewRows([]string{"readable"}).AddRow(false)},
+		{name: "missing table", rows: sqlmock.NewRows([]string{"readable"})},
+		{name: "access query failure", err: errors.New("catalog unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			query := mock.ExpectQuery("SELECT pg_catalog.has_schema_privilege").WithArgs("public", "orders")
+			if tc.err != nil {
+				query.WillReturnError(tc.err)
+			} else {
+				query.WillReturnRows(tc.rows).RowsWillBeClosed()
+			}
+			connector := &PostgresqlConnector{db: db}
+			got, err := connector.fetchPrimaryKeyColumns(context.Background(), "public", "orders")
+			require.Error(t, err)
+			assert.Nil(t, got)
+			if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+			} else if tc.name == "missing table" {
+				assert.ErrorIs(t, err, sql.ErrNoRows)
+			} else {
+				assert.ErrorContains(t, err, "privileges")
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+
+	for _, tc := range []struct {
+		name     string
+		rows     *sqlmock.Rows
+		queryErr error
+		want     []string
+		wantErr  string
+	}{
+		{name: "constraint order", rows: sqlmock.NewRows([]string{"column_name"}).AddRow("b").AddRow("a"), want: []string{"b", "a"}},
+		{name: "no primary key", rows: sqlmock.NewRows([]string{"column_name"})},
+		{name: "query failure", queryErr: errors.New("permission denied"), wantErr: "execute primary key"},
+		{name: "null column", rows: sqlmock.NewRows([]string{"column_name"}).AddRow(nil), wantErr: "contains NULL"},
+		{name: "scan failure", rows: sqlmock.NewRows([]string{"column_name", "unexpected"}).AddRow("a", "b"), wantErr: "scan primary key"},
+		{name: "iteration failure", rows: sqlmock.NewRows([]string{"column_name"}).AddRow("a").RowError(0, errors.New("read failed")), wantErr: "iterate primary key"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &PostgresqlConnector{db: db, config: &postgresqlConfig{Database: "appdb"}}
+			mock.ExpectQuery("SELECT pg_catalog.has_schema_privilege").WithArgs("public", "orders").WillReturnRows(sqlmock.NewRows([]string{"readable"}).AddRow(true))
+			query := mock.ExpectQuery(`(?s)generate_subscripts.*FROM pg_catalog.pg_constraint`).WithArgs("public", "orders")
+			if tc.queryErr != nil {
+				query.WillReturnError(tc.queryErr)
+			} else {
+				query.WillReturnRows(tc.rows).RowsWillBeClosed()
+			}
+			got, err := connector.fetchPrimaryKeyColumns(context.Background(), "public", "orders")
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				if tc.queryErr != nil {
+					assert.ErrorIs(t, err, tc.queryErr)
+				}
+				assert.Nil(t, got)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, got)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }
