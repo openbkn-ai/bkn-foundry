@@ -183,6 +183,16 @@ paths:
           schema:
             type: string
           in: query
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
+            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
+            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
+            the declarations; pass true to clear them.
+          schema:
+            type: boolean
+            default: false
         - name: import_mode
           description: Import mode. Supported values are normal, ignore, and overwrite. Defaults to normal.
           schema:
@@ -334,6 +344,16 @@ paths:
             type: boolean
             default: true
           in: query
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
+            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
+            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
+            the declarations; pass true to clear them.
+          schema:
+            type: boolean
+            default: false
         - name: import_mode
           description: Matches the concept group creation API and validates conflicts with persisted concept group IDs or names using normal, ignore, or overwrite.
           schema:

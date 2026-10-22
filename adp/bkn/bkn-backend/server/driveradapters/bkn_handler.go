@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -512,11 +511,11 @@ func hasArchiveSuffix(filename string) bool {
 }
 
 // unstoredDeclaration names the first 3.0 declaration in a package that the backend does not store
-// yet: a value type, an alias, a lifecycle, a relation declaration, or a property's Semantic,
-// Required or ### Property Constraints. The specification library reads them, but the backend stores
-// property declarations only from #2259, value types and aliases only from #2281, and relation
+// yet: a value type, an alias, a lifecycle or a relation declaration. The specification library
+// reads them, but the backend stores value types and aliases only from #2281, and relation
 // declarations and lifecycles only from #2284, so importing would drop them; the upload refuses the
-// package instead. It returns "" when there is none, which is always the case for a 2.x package.
+// package instead. Property declarations (Semantic, Required, ### Property Constraints) are stored.
+// It returns "" when there is none, which is always the case for a 2.x package.
 func unstoredDeclaration(net *bknsdk.BknNetwork) string {
 	if net.BknSpec != bknsdk.BknSpecV3 {
 		return ""
@@ -533,20 +532,9 @@ func unstoredDeclaration(net *bknsdk.BknNetwork) string {
 			return fmt.Sprintf("object type %q: lifecycle %s", ot.ID, unsupportedYet)
 		}
 		for _, p := range ot.DataProperties {
-			var what string
-			switch {
-			case p.Semantic != "":
-				what = "Semantic"
-			case p.Constraints != nil:
-				what = "### Property Constraints"
-			case p.Required && !slices.Contains(ot.PrimaryKeys, p.Name):
-				what = "Required"
-			case len(p.Aliases) > 0:
-				what = "Aliases"
-			default:
-				continue
+			if len(p.Aliases) > 0 {
+				return fmt.Sprintf("object type %q data property %q: Aliases %s", ot.ID, p.Name, unsupportedYet)
 			}
-			return fmt.Sprintf("object type %q data property %q: %s %s", ot.ID, p.Name, what, unsupportedYet)
 		}
 	}
 	for _, at := range net.ActionTypes {
