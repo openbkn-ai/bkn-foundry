@@ -39,6 +39,10 @@ func TestTwoWholeTablesAreRefused(t *testing.T) {
 		"MATCH (o:Order {id: 1}), (c:Customer {code: 'A'}) RETURN o.id, c.name": false,
 		// Nodes a WITH passed on meet in the same row of the carried stage.
 		"MATCH (o:Order)-[:PLACED_BY]->(c:Customer) WITH o, c, count(*) AS n MATCH (o), (c) RETURN o.id, c.name, n": false,
+		// A WITH over a whole table passes the whole table on.
+		"MATCH (o:Order) WITH o, count(*) AS k MATCH (o), (c:Customer) RETURN count(*) AS n":                                        true,
+		"MATCH (o:Order) WHERE o.amount > 3 WITH o, count(*) AS k MATCH (o), (c:Customer) RETURN count(*) AS n":                     false,
+		"MATCH (o:Order)-[:PLACED_BY]->(x:Customer) WITH o, count(x) AS k WHERE k > 1 MATCH (o), (c:Customer) RETURN count(*) AS n": false,
 		// A stage read first is checked as well.
 		"MATCH (o:Order), (c:Customer) WITH collect(o.id) AS ids MATCH (p:Order) WHERE p.id IN ids RETURN count(*) AS n": true,
 	} {

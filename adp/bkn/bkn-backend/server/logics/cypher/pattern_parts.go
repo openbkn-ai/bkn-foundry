@@ -62,8 +62,9 @@ func patternParts(plan *Plan) int {
 func unnarrowedParts(plan *Plan) int {
 	part := patternComponents(plan)
 	narrowed := map[int]bool{}
-	// The carried stage's rows bound the nodes passed on.
-	if plan.Carried != nil {
+	// The carried stage's rows bound the nodes passed on, but only when that
+	// stage is itself narrowed: one read whole passes whole tables on.
+	if plan.Carried != nil && stageNarrowed(plan.Carried.Stage) {
 		for _, key := range plan.Carried.Keys {
 			narrowed[part[key.Table]] = true
 		}
@@ -91,6 +92,13 @@ func unnarrowedParts(plan *Plan) int {
 		}
 	}
 	return len(open)
+}
+
+// stageNarrowed says an earlier stage yields fewer rows than its tables
+// hold: every part of its pattern is narrowed, or its groups must meet a
+// condition.
+func stageNarrowed(stage *Plan) bool {
+	return stage != nil && (unnarrowedParts(stage) == 0 || stage.Having != nil)
 }
 
 // crossProduct reports a plan, or a stage it reads first, whose pattern has
