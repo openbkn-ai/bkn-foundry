@@ -49,7 +49,7 @@ permissions:
 jobs:
   validate:
     name: prevent new hard-coded Chinese
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

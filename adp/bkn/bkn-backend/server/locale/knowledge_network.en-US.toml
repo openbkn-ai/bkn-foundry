@@ -228,3 +228,18 @@ ErrorLink = ""
 Description = "Get Metrics Total In Knowledge Network Failed"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
 ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.InvalidParameter.BknSpec]
+Description = "Invalid bkn_spec"
+Solution = "Leave it out to choose automatically, pass 2.0 to export as 2.x, or 3.0 to export as 3.0."
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck]
+Description = "The network check found parameters with a misplaced or invalid value source, so the network cannot be exported as 3.0 yet"
+Solution = "Fix the parameters listed in the error details (misplaced ones come with suggested values) and export again, or pass bkn_spec=2.0 to export as 2.x without the 3.0 declarations."
+ErrorLink = ""
+
+[BknBackend.KnowledgeNetwork.ExportNotReadableAsV3]
+Description = "The package written as 3.0 does not read back under the 3.0 rules, so the export was refused"
+Solution = "Fix the definition named in the error details and export again, or pass bkn_spec=2.0 to export as 2.x."
+ErrorLink = ""

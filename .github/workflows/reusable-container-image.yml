@@ -75,7 +75,7 @@ jobs:
   # Turns the `platforms` input into the build matrix and settles the SWR
   # decision once, so the legs and the manifest job agree on both.
   setup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Surfaced so a step can test credential presence — secrets aren't
       # allowed in `if:` directly. Empty when the SWR secrets aren't set.
@@ -100,7 +100,7 @@ jobs:
           for platform in "${platforms[@]}"; do
             platform="$(echo "${platform}" | xargs)"
             case "${platform}" in
-              linux/amd64) arch=amd64; runner=ubuntu-latest ;;
+              linux/amd64) arch=amd64; runner=ubuntu-24.04 ;;
               linux/arm64) arch=arm64; runner=ubuntu-24.04-arm ;;
               *)
                 echo "::error::No native runner mapped for platform '${platform}' (supported: linux/amd64, linux/arm64)"
@@ -241,7 +241,7 @@ jobs:
   manifest:
     needs: [setup, build]
     if: ${{ inputs.publish }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       # No merge-multiple: each artifact unpacks into its own directory named
       # after the artifact, and the union step reads the exact

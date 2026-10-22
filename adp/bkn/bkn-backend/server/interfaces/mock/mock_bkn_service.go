@@ -41,6 +41,21 @@ func (m *MockBKNService) EXPECT() *MockBKNServiceMockRecorder {
 	return m.recorder
 }
 
+// CheckNetwork mocks base method.
+func (m *MockBKNService) CheckNetwork(ctx context.Context, knID, branch string) (*interfaces.NetworkCheckResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckNetwork", ctx, knID, branch)
+	ret0, _ := ret[0].(*interfaces.NetworkCheckResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CheckNetwork indicates an expected call of CheckNetwork.
+func (mr *MockBKNServiceMockRecorder) CheckNetwork(ctx, knID, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckNetwork", reflect.TypeOf((*MockBKNService)(nil).CheckNetwork), ctx, knID, branch)
+}
+
 // DiffNetworks mocks base method.
 func (m *MockBKNService) DiffNetworks(ctx context.Context, req interfaces.KNDiffRequest) (*interfaces.KNDiffResult, error) {
 	m.ctrl.T.Helper()
@@ -57,16 +72,16 @@ func (mr *MockBKNServiceMockRecorder) DiffNetworks(ctx, req any) *gomock.Call {
 }
 
 // ExportToTar mocks base method.
-func (m *MockBKNService) ExportToTar(ctx context.Context, knID, branch string) ([]byte, error) {
+func (m *MockBKNService) ExportToTar(ctx context.Context, knID, branch, spec string) ([]byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExportToTar", ctx, knID, branch)
+	ret := m.ctrl.Call(m, "ExportToTar", ctx, knID, branch, spec)
 	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ExportToTar indicates an expected call of ExportToTar.
-func (mr *MockBKNServiceMockRecorder) ExportToTar(ctx, knID, branch any) *gomock.Call {
+func (mr *MockBKNServiceMockRecorder) ExportToTar(ctx, knID, branch, spec any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportToTar", reflect.TypeOf((*MockBKNService)(nil).ExportToTar), ctx, knID, branch)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportToTar", reflect.TypeOf((*MockBKNService)(nil).ExportToTar), ctx, knID, branch, spec)
 }

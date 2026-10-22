@@ -65,7 +65,7 @@ Representative public routes are registered in `server/driveradapters/routers.go
 | Metrics | `/knowledge-networks/{kn_id}/metrics` |
 | Risk types | `/knowledge-networks/{kn_id}/risk-types` |
 | Action schedules | `/knowledge-networks/{kn_id}/action-schedules` |
-| BKN import/export | `/bkns`, `/bkns/{kn_id}` |
+| BKN import/export | `/bkns`, `/bkns/{kn_id}`, `/bkns/{kn_id}/check` |
 | Resources | `/resources` |
 
 The canonical OpenAPI source is maintained at the repository root:

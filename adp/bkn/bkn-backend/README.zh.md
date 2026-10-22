@@ -58,7 +58,7 @@
 | 指标 | `/knowledge-networks/{kn_id}/metrics` |
 | 风险类 | `/knowledge-networks/{kn_id}/risk-types` |
 | 行动调度 | `/knowledge-networks/{kn_id}/action-schedules` |
-| BKN 导入导出 | `/bkns`、`/bkns/{kn_id}` |
+| BKN 导入导出 | `/bkns`、`/bkns/{kn_id}`、`/bkns/{kn_id}/check` |
 | 资源 | `/resources` |
 
 权威 OpenAPI 源文件位于仓库根目录：

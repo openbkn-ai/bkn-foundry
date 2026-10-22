@@ -23,7 +23,7 @@ permissions:
 jobs:
   openbkn-smoke-collect:
     name: L2 smoke harness (collect-only)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: adp/execution-factory/tests
@@ -50,7 +50,7 @@ jobs:
 
   operator-integration-go-test:
     name: operator-integration unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -70,7 +70,7 @@ jobs:
   openbkn-smoke-live:
     name: L2 live smoke (manual)
     if: github.event_name == 'workflow_dispatch' && inputs.run_live_smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: adp/execution-factory/tests

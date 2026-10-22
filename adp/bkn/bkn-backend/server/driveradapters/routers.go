@@ -208,6 +208,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		// BKN import and export (RESTful design).
 		apiV1.POST("/bkns", r.UploadBKN)         // Upload a BKN tar archive for import.
 		apiV1.GET("/bkns/:kn_id", r.DownloadBKN) // Download a BKN tar archive for export.
+		// Check the definitions of a network: read-only, any specification.
+		apiV1.GET("/bkns/:kn_id/check", r.CheckBKN)
 
 		// Compare two knowledge network branches. The two networks are named in the body rather
 		// than in the path: neither of them is the resource being addressed, and putting one in

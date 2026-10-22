@@ -19,7 +19,7 @@ ContextVar for that request, never off a module global.
 import contextvars
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable, Optional
 
 from pydantic import BaseModel
 
@@ -59,6 +59,9 @@ class Provider:
     # ValueError when the state does not make a valid fragment.
     result_key: str
     result: Callable[[Run], Any]
+    # Text appended to the system prompt once the run's tools are mounted, such
+    # as the network schema the tools are about.
+    instructions: Optional[Callable[[Run], Awaitable[str]]] = None
 
 
 _providers: dict[str, Provider] = {}
@@ -151,6 +154,14 @@ def definitions(provider: Provider) -> list[dict]:
         )
         out.append({"name": tool.name, "description": tool.description, "parameters": schema})
     return out
+
+
+async def instructions() -> str:
+    """The current run's provider instructions, or nothing."""
+    run = _current.get()
+    if run is None or run.provider.instructions is None:
+        return ""
+    return await run.provider.instructions(run)
 
 
 def is_builtin(tool) -> bool:

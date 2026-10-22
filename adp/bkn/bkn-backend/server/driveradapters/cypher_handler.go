@@ -113,9 +113,10 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 			Trace             json.RawMessage                        `json:"_trace,omitempty"`
 			PermissionImpacts []interfaces.CypherPermissionImpact    `json:"permission_impacts,omitempty"`
 			Plan              *interfaces.CypherPlan                 `json:"plan,omitempty"`
+			Limited           bool                                   `json:"limited,omitempty"`
 		}{Columns: result.Columns, Entries: result.Entries, ValueTypes: result.ValueTypes,
 			Execution: result.Execution, Trace: result.TraceDescriptor, PermissionImpacts: result.PermissionImpacts,
-			Plan: result.Plan})
+			Plan: result.Plan, Limited: result.Limited})
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, result)

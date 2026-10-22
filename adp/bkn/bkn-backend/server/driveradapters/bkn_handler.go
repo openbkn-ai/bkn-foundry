@@ -416,11 +416,22 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 
 	// Read query parameters.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	spec := strings.TrimSpace(c.Query("bkn_spec"))
+	switch spec {
+	case interfaces.BKN_EXPORT_SPEC_AUTO, interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3:
+	default:
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_BknSpec).
+			WithErrorDetails(fmt.Sprintf("bkn_spec must be %s or %s, or left out, got %q",
+				interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3, spec))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
-	logger.Debugf("Download BKN: kn_id=%s, branch=%s", kn_id, branch)
+	logger.Debugf("Download BKN: kn_id=%s, branch=%s, bkn_spec=%s", kn_id, branch, spec)
 
 	// Export a tar archive through the service.
-	tarData, err := r.bs.ExportToTar(ctx, kn_id, branch)
+	tarData, err := r.bs.ExportToTar(ctx, kn_id, branch, spec)
 	if err != nil {
 		logger.Errorf("Download BKN failed: %s", err.Error())
 		// An error the service already classified travels as it is. Flattening every failure into
@@ -444,6 +455,46 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 	c.Data(http.StatusOK, "application/octet-stream", tarData)
+}
+
+// CheckBKN runs the network check on a knowledge network branch (external endpoint). It is read-only
+// and works on any network, 2.x included.
+func (r *restHandler) CheckBKN(c *gin.Context) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	visitor, err := r.verifyOAuth(ctx, c)
+	if err != nil {
+		return
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	knID := c.Param("kn_id")
+	if knID == "" {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(commonValidationDetail(ctx, "KnowledgeNetworkIDRequired", nil))
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+
+	result, err := r.bs.CheckNetwork(ctx, knID, branch)
+	if err != nil {
+		var httpErr *rest.HTTPError
+		if !errors.As(err, &httpErr) {
+			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
+				WithErrorDetails(commonValidationDetail(ctx, "InternalRequestFailed", nil))
+		}
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, result)
 }
 
 // archiveSuffixes are the file names an archive upload may carry when it is not sent as

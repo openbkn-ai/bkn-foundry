@@ -625,7 +625,7 @@ func (c *OpenSearchConnector) GetDocument(ctx context.Context, indexName string,
 	}
 
 	var result map[string]any
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := common.DecodePreciseJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 
@@ -666,7 +666,7 @@ func (c *OpenSearchConnector) GetDocuments(ctx context.Context, indexName string
 			Source map[string]any `json:"_source"`
 		} `json:"docs"`
 	}
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := common.DecodePreciseJSON(resp.Body, &result); err != nil {
 		return nil, err
 	}
 	if len(result.Documents) != len(docIDs) {

@@ -71,7 +71,7 @@ func explain(compiled *compiledQuery) (*interfaces.CypherPlan, error) {
 			out.RowFiltered = append(out.RowFiltered, impact.ObjectTypeID)
 		}
 	}
-	out.Warnings = planWarnings(plan, out)
+	planWarnings(plan, out)
 	return out, nil
 }
 
@@ -180,83 +180,38 @@ func planReads(plan *Plan) []string {
 	return reads
 }
 
-// planWarnings says what the caller should know before running the query.
-func planWarnings(plan *Plan, out *interfaces.CypherPlan) []string {
-	var warnings []string
+// planWarnings says what the caller should know before running the query,
+// each warning with a code naming it.
+func planWarnings(plan *Plan, out *interfaces.CypherPlan) {
+	warn := func(code, text string) {
+		out.Warnings = append(out.Warnings, text)
+		out.WarningCodes = append(out.WarningCodes, code)
+	}
 	if parts := patternParts(plan); parts > 1 {
-		warnings = append(warnings, fmt.Sprintf(
+		warn("disconnected_parts", fmt.Sprintf(
 			"the pattern has %d parts that no relationship or equality joins, so every row of one combines with every row of the other; "+
 				"connect them with a relationship, a shared node or a condition such as a.code = b.code", parts))
 	}
 	oneRow := plan.Intersection != nil || len(plan.Totals) > 0 ||
 		(anyAggregates(plan) && len(plan.GroupBy) == 0 && !plan.Grouped)
 	if out.LimitSource == "default" && !oneRow {
-		warnings = append(warnings, fmt.Sprintf(
+		warn("default_limit", fmt.Sprintf(
 			"no LIMIT: at most %d rows come back; write LIMIT to ask for more (up to %d) or fewer",
 			interfaces.CYPHER_DEFAULT_LIMIT, interfaces.CYPHER_MAX_LIMIT))
 	}
 	if len(out.RowFiltered) > 0 {
-		warnings = append(warnings, fmt.Sprintf(
+		warn("row_filtered", fmt.Sprintf(
 			"your access policy narrows the rows of %s, so counts and results cover only the rows you may read",
 			strings.Join(out.RowFiltered, ", ")))
 	}
 	for _, column := range plan.Select {
 		if column.Graph != nil && planGraphCollects(column.Graph) {
-			warnings = append(warnings, fmt.Sprintf(
+			warn("collect_cap", fmt.Sprintf(
 				"collect reads its evidence in full; a query whose evidence reaches %d rows is refused, so narrow it with conditions",
 				graphRowCap))
 			break
 		}
 	}
-	return warnings
-}
-
-// patternParts counts the parts of a pattern that neither a relationship nor
-// an equality between their properties connects.
-func patternParts(plan *Plan) int {
-	if len(plan.Tables) == 0 {
-		return 0
-	}
-	parent := make([]int, len(plan.Tables))
-	for i := range parent {
-		parent[i] = i
-	}
-	var find func(int) int
-	find = func(i int) int {
-		for parent[i] != i {
-			parent[i] = parent[parent[i]]
-			i = parent[i]
-		}
-		return i
-	}
-	for _, join := range plan.Joins {
-		parent[find(join.Left)] = find(join.Right)
-	}
-	// An equality between properties of two nodes, as in a.code = b.code,
-	// joins them as a relationship would, when every row must meet it.
-	var equalities func(PlanPredicate)
-	equalities = func(predicate PlanPredicate) {
-		switch node := predicate.(type) {
-		case PlanColumnComparison:
-			if node.Operator == "=" && node.LeftTable != node.RightTable {
-				parent[find(node.LeftTable)] = find(node.RightTable)
-			}
-		case PlanLogical:
-			if node.Operator == "AND" {
-				for _, operand := range node.Operands {
-					equalities(operand)
-				}
-			}
-		}
-	}
-	equalities(plan.Where)
-	parts := 0
-	for i := range parent {
-		if find(i) == i {
-			parts++
-		}
-	}
-	return parts
 }
 
 // refName is the last part of a descriptor reference, which is the id the
