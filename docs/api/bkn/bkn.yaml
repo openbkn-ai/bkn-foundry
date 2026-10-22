@@ -156,6 +156,18 @@ paths:
           schema:
             type: string
             default: main
+        - name: bkn_spec
+          in: query
+          description: |
+            Specification the archive is written in. Left out, a network with a declaration only
+            BKN spec 3.0 can hold is written as 3.0 and every other network as 2.x, byte for byte as
+            before. `2.0` writes 2.x and leaves 3.0 declarations out; `3.0` writes 3.0. A 3.0 export
+            first runs the network check and is refused with
+            `BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck` while it finds misplaced
+            parameters; the error details are the check result.
+          schema:
+            type: string
+            enum: ['2.0', '3.0']
       responses:
         '200':
           description: Export succeeded
@@ -165,9 +177,48 @@ paths:
                 type: string
                 format: binary
         '400':
-          description: Invalid request parameters
+          description: Invalid request parameters, or a 3.0 export refused by the network check
         '401':
           description: Unauthorized
+        '404':
+          description: Knowledge network not found
+  /api/bkn-backend/v1/bkns/{kn_id}/check:
+    get:
+      tags:
+        - BKN Import/Export
+      summary: Check the definitions of a knowledge network
+      description: |
+        Read-only. Reports parameters of action types and logic properties whose value source sits
+        in `source`, as the legacy parameter table (Parameter | Type | Source | Binding) wrote it;
+        execution drops them. Each comes with the suggested rewrite the BKN spec 3.0 refusal shows.
+        Works on any network, 2.x included. It reads the definitions only, not source data.
+      operationId: checkBKN
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          in: path
+          required: true
+          description: Knowledge network ID
+          schema:
+            type: string
+        - name: branch
+          in: query
+          description: Branch name. Defaults to main.
+          schema:
+            type: string
+            default: main
+      responses:
+        '200':
+          description: Check result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkCheckResult'
+        '401':
+          description: Unauthorized
+        '403':
+          description: No permission to read the knowledge network
         '404':
           description: Knowledge network not found
   /api/bkn-backend/v1/bkns/diff:
@@ -434,6 +485,44 @@ paths:
 
 components:
   schemas:
+    NetworkCheckResult:
+      type: object
+      required: [misplaced_parameters]
+      properties:
+        misplaced_parameters:
+          type: array
+          description: Misplaced parameters, action types first, then object types, each by id.
+          items:
+            $ref: '#/components/schemas/NetworkCheckParameter'
+    NetworkCheckParameter:
+      type: object
+      required: [parameter, current, suggested, conflict]
+      properties:
+        action_type_id:
+          type: string
+          description: Set for a parameter of an action type.
+        object_type_id:
+          type: string
+          description: Set, with logic_property, for a parameter of a logic property.
+        logic_property:
+          type: string
+        parameter:
+          type: string
+        current:
+          $ref: '#/components/schemas/NetworkCheckParameterValue'
+        suggested:
+          $ref: '#/components/schemas/NetworkCheckParameterValue'
+        conflict:
+          type: boolean
+          description: The parameter already has a value that the suggested rewrite would replace.
+    NetworkCheckParameterValue:
+      type: object
+      properties:
+        source:
+          type: string
+        value_from:
+          type: string
+        value: {}
     KNDiffSideRequest:
       type: object
       required: [kn_id]
