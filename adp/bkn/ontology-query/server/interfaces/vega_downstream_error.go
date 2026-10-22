@@ -7,9 +7,12 @@
 package interfaces
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
@@ -24,6 +27,7 @@ type VegaDownstreamError struct {
 	ErrorCode   string
 	Description string
 	Details     string
+	Metadata    map[string]any
 	Raw         string
 }
 
@@ -66,10 +70,30 @@ func (e *VegaDownstreamError) Message() string {
 // ClientMessage returns only structured fields that are safe to pass to the caller. It never
 // falls back to the raw response body, which may be an infrastructure error page.
 func (e *VegaDownstreamError) ClientMessage() string {
+	if e.ErrorCode == "VegaBackend.Resource.QueryValueExceedsKeywordLimit" {
+		if metadata := e.ClientMetadata(); metadata != nil {
+			return fmt.Sprintf("The query value for %s exceeds the maximum indexed keyword length (%.0f UTF-16 code units). Use a shorter value or explicitly query the original data when available.", metadata["field"], metadata["limit"])
+		}
+		return "The query value exceeds the maximum indexed keyword length. Use a shorter value or explicitly query the original data when available."
+	}
+
 	if e.Details != "" {
 		return e.Details
 	}
 	return e.Description
+}
+
+// ClientMetadata exposes only validated keyword-limit parameters from an allowed response.
+func (e *VegaDownstreamError) ClientMetadata() map[string]any {
+	if e.StatusCode != http.StatusBadRequest || e.ErrorCode != "VegaBackend.Resource.QueryValueExceedsKeywordLimit" {
+		return nil
+	}
+	field, fieldOK := e.Metadata["field"].(string)
+	limit, limitOK := e.Metadata["limit"].(float64)
+	if !fieldOK || strings.TrimSpace(field) == "" || !limitOK || math.IsNaN(limit) || math.IsInf(limit, 0) || limit <= 0 || limit > 9007199254740991 || math.Trunc(limit) != limit {
+		return nil
+	}
+	return map[string]any{"field": field, "limit": limit}
 }
 
 // CanExposeQueryClientMessage reports whether this is a known Vega query validation or
@@ -79,7 +103,8 @@ func (e *VegaDownstreamError) CanExposeQueryClientMessage() bool {
 	switch e.StatusCode {
 	case http.StatusBadRequest:
 		return e.ErrorCode == "VegaBackend.Resource.InvalidParameter" ||
-			e.ErrorCode == "VegaBackend.Query.InvalidParameter"
+			e.ErrorCode == "VegaBackend.Query.InvalidParameter" ||
+			e.ErrorCode == "VegaBackend.Resource.QueryValueExceedsKeywordLimit"
 	case http.StatusTooManyRequests:
 		// A fixed message that tells the caller to retry rather than change the query.
 		return e.ErrorCode == "VegaBackend.Query.CursorSessionLimitExceeded"
@@ -108,14 +133,16 @@ func NewVegaDownstreamError(statusCode int, raw string) *VegaDownstreamError {
 	de := &VegaDownstreamError{StatusCode: statusCode, Raw: raw}
 
 	var payload struct {
-		ErrorCode    string `json:"error_code"`
-		Description  string `json:"description"`
-		ErrorDetails string `json:"error_details"`
+		ErrorCode    string          `json:"error_code"`
+		Description  string          `json:"description"`
+		ErrorDetails string          `json:"error_details"`
+		Metadata     json.RawMessage `json:"metadata"`
 	}
 	if err := sonic.Unmarshal([]byte(raw), &payload); err == nil {
 		de.ErrorCode = payload.ErrorCode
 		de.Description = payload.Description
 		de.Details = payload.ErrorDetails
+		_ = sonic.Unmarshal(payload.Metadata, &de.Metadata)
 	}
 	return de
 }

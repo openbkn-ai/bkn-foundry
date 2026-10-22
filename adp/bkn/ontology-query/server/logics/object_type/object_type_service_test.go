@@ -1175,6 +1175,49 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(httpErr.BaseError.ErrorDetails, ShouldEqual, details)
 		})
 
+		Convey("keyword limit errors preserve safe parameters and guidance", func() {
+			objectType := interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:        objectTypeID,
+					PrimaryKeys: []string{"id"},
+					DataProperties: []cond.DataProperty{
+						{Name: "prop1", MappedField: cond.Field{Name: "field1"}},
+					},
+					DataSource: &interfaces.ResourceInfo{
+						Type: interfaces.DATA_SOURCE_TYPE_RESOURCE,
+						ID:   "res1",
+					},
+				},
+			}
+
+			query := &interfaces.ObjectQueryBaseOnObjectType{
+				KNID:         knID,
+				Branch:       branch,
+				ObjectTypeID: objectTypeID,
+				PageQuery:    interfaces.PageQuery{Limit: 10},
+			}
+
+			service.vba = &vegaStubForOTQuery{
+				err: interfaces.NewVegaDownstreamError(http.StatusBadRequest,
+					`{"error_code":"VegaBackend.Resource.QueryValueExceedsKeywordLimit","error_details":"private diagnostic","metadata":{"field":"status","limit":256,"private":"secret"}}`),
+			}
+
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
+
+			_, err := service.GetObjectsByObjectTypeID(ctx, query)
+			So(err, ShouldNotBeNil)
+
+			httpErr, ok := err.(*rest.HTTPError)
+			So(ok, ShouldBeTrue)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "status")
+			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "256 UTF-16")
+			So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "private")
+			So(httpErr.BaseError.Metadata["field"], ShouldEqual, "status")
+			So(httpErr.BaseError.Metadata["limit"], ShouldEqual, float64(256))
+			So(len(httpErr.BaseError.Metadata), ShouldEqual, 2)
+		})
+
 		Convey("vega 返回 5xx 时仍认定为依赖故障", func() {
 			objectType := interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{

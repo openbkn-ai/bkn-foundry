@@ -661,7 +661,8 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return rest.NewHTTPError(ctx, downstream.StatusCode,
 				proxyDownstreamErrorCode(downstream.StatusCode)).
-				WithErrorDetails(downstream.ClientMessage())
+				WithErrorDetails(downstream.ClientMessage()).
+				WithMetadata(downstream.ClientMetadata())
 		}
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).

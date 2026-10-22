@@ -256,6 +256,22 @@ func TestVegaBackendAccessQueryResourceDataErrorDetails(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves keyword limit parameters through the proxy", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		httpClient := rmock.NewMockHTTPClient(ctrl)
+		httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(http.StatusBadRequest, []byte(`{"error_code":"VegaBackend.Resource.QueryValueExceedsKeywordLimit","metadata":{"field":"status","limit":256}}`), nil)
+		access := &vegaBackendAccess{baseURL: "http://vega", httpClient: httpClient}
+		result, err := access.QueryResourceData(trustedResourceProxyContext(context.Background(), "resource-1"), "resource-1", &interfaces.ResourceDataQueryParams{})
+		downstream, ok := interfaces.AsVegaDownstreamError(err)
+		if result != nil || !ok || downstream.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected a typed 400 and no result, got %v, %v", result, err)
+		}
+		metadata := downstream.ClientMetadata()
+		if metadata["field"] != "status" || metadata["limit"] != float64(256) || !strings.Contains(downstream.ClientMessage(), "256") {
+			t.Fatalf("keyword limit parameters lost: %v", downstream)
+		}
+	})
+
 	t.Run("redacts other proxy response bodies", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		httpClient := rmock.NewMockHTTPClient(ctrl)
@@ -300,7 +316,7 @@ func TestQueryResourceDataLocalIndexContract(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			client := rmock.NewMockHTTPClient(ctrl)
 			params := &interfaces.ResourceDataQueryParams{}
-			if err := json.Unmarshal([]byte(fmt.Sprintf(`{"ignore_local_index":%t}`, ignore)), params); err != nil {
+			if err := json.Unmarshal(fmt.Appendf(nil, `{"ignore_local_index":%t}`, ignore), params); err != nil {
 				t.Fatal(err)
 			}
 			client.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
