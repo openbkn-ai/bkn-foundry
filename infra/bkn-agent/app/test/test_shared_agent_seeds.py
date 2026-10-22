@@ -23,6 +23,7 @@ VERSIONS = MIGRATIONS / "0.2.1/05-agent-versions.sql"
 CYPHER = MIGRATIONS / "0.2.1/06-seed-cypher-generation.sql"
 METRIC_DESIGN = MIGRATIONS / "0.2.1/07-seed-object-metric-designer.sql"
 SEMANTIC_LANGUAGE = MIGRATIONS / "0.2.1/08-semantic-output-language.sql"
+GRAPH_EXPLORER = MIGRATIONS / "0.2.1/09-seed-graph-explorer.sql"
 
 
 def statements(path):
@@ -194,6 +195,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
         + VERSIONS.read_text()
         + CYPHER.read_text()
         + METRIC_DESIGN.read_text()
+        + GRAPH_EXPLORER.read_text()
     )
     assert "alter table" not in deltas.lower()
     assert not (ROOT / "infra/bkn-agent/deploy").exists()
@@ -213,12 +215,13 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         history = snapshot(upgraded)[3]
         assert history, "Historical Agent snapshots must exist before comparison"
         apply(upgraded, SEMANTIC_LANGUAGE)
+        apply(upgraded, GRAPH_EXPLORER)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
         for agent in fresh.execute("SELECT f_agent_id FROM t_agent"):
             assert item_from_db(fresh, agent[0]) == item_from_db(upgraded, agent[0])
-        assert len(snapshot(fresh)[0]) == 7
+        assert len(snapshot(fresh)[0]) == 8
         updated = snapshot(upgraded)
         assert all(row in updated[0] for row in original[0])
         for row in original[1]:
@@ -258,7 +261,18 @@ def test_object_metric_designer_default_is_english_and_respects_user_language():
         assert "changes empty" in content
 
 
-@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN])
+def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
+    with database() as db:
+        apply(db, GRAPH_EXPLORER)
+        seeded = item_from_db(db, "graph_explorer")
+        assert seeded["spec"]["tools"] == [
+            {"type": "context_loader", "profile": "full", "allowed_tools": []},
+            {"type": "builtin", "provider": "graph_explorer"},
+        ]
+        assert "expand_neighbours" in seeded["prompt"]["content"]
+
+
+@pytest.mark.parametrize("path", [STUDIO, PROVENANCE, CYPHER, METRIC_DESIGN, GRAPH_EXPLORER])
 def test_repeated_seed_preserves_custom_configuration_and_disabled_agents(path):
     with database() as db:
         apply(db, path)
@@ -376,6 +390,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(CYPHER),
                     str(METRIC_DESIGN),
                     str(SEMANTIC_LANGUAGE),
+                    str(GRAPH_EXPLORER),
                 ],
             ]
         ],
