@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao, evidence, observability
 from app.config import config
-from app.core import context_loader
+from app.core import builtin_tools, context_loader
 from app.core.checkpoint import open_checkpointer
 from app.core.llm import build_chat_model
 from app.core.structured import structured_extract_with_path
@@ -145,6 +145,10 @@ async def stream_chat(
         )
         if public:
             tools = public.guard_tools(tools)
+            # What the run's built-in tools are about, e.g. the network schema.
+            extra = await builtin_tools.instructions()
+            if extra:
+                system_prompt += "\n\n" + extra
         tools = instrument_tool_calls(tools, account_id, account_type)
         limits = agent.limits or None
         max_turns = (

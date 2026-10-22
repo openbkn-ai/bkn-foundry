@@ -294,9 +294,8 @@ def _tool_sources(tool_refs: list) -> list[ToolSourceOut]:
             chosen = ref.get("tools") or (provider.tool_names if provider else None)
             names = sorted(chosen) if chosen else None
             if provider and names:
-                definitions = [
-                    d for d in builtin_tools.definitions(provider) if d["name"] in names
-                ]
+                by_name = {d["name"]: d for d in builtin_tools.definitions(provider)}
+                definitions = [by_name[n] for n in names if n in by_name]
         elif kind == "context_loader" and ref.get("allowed_tools") is not None:
             names = sorted(ref["allowed_tools"])
         sources.append(
