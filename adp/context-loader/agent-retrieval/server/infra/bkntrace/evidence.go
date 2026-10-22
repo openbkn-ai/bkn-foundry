@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1193,7 +1194,7 @@ func trace30BusinessRefs(event Event, derivedRefs []BusinessRef) []trace30Busine
 	for _, item := range items {
 		refID := stringValue(item["ref_id"])
 		refType := trace30RefType(stringValue(item["ref_type"]))
-		if refID == "" || refType == "" {
+		if !trace30CanonicalRefID(refType, refID) {
 			continue
 		}
 		version := strings.TrimSpace(derivedVersions[refType+"\x00"+refID])
@@ -1216,7 +1217,7 @@ func trace30BusinessRefs(event Event, derivedRefs []BusinessRef) []trace30Busine
 	for _, ref := range derivedRefs {
 		refType := trace30RefType(ref.RefType)
 		refID := strings.TrimSpace(ref.RefID)
-		if refType == "" || refID == "" {
+		if !trace30CanonicalRefID(refType, refID) {
 			continue
 		}
 		key := refType + "\x00" + refID
@@ -1234,6 +1235,47 @@ func trace30BusinessRefs(event Event, derivedRefs []BusinessRef) []trace30Busine
 		})
 	}
 	return refs
+}
+
+// Match Trace Core's BusinessRefType.MatchesCanonicalRefID contract. Invalid
+// optional refs remain in the original envelope, but must not cause the Ledger
+// to reject an otherwise valid event after semantic metadata is promoted.
+func trace30CanonicalRefID(refType, refID string) bool {
+	prefix, ok := businessRefPrefixes[refType]
+	if !ok {
+		return false
+	}
+	count := 3
+	switch refType {
+	case "knowledge_network", "data_resource":
+		count = 2
+	case "object_instance", "action_instance", "property", "logic":
+		count = 4
+	}
+	parts := strings.Split(refID, ":")
+	if refType == "object_instance" || refType == "action_instance" {
+		// Instance keys may themselves contain colons.
+		parts = strings.SplitN(refID, ":", count)
+	}
+	if refType == "metric" && len(parts) == 4 {
+		if len(parts[3]) < 2 || parts[3][0] != 'v' {
+			return false
+		}
+		version, err := strconv.Atoi(parts[3][1:])
+		if err != nil || version <= 0 {
+			return false
+		}
+		parts = parts[:3]
+	}
+	if len(parts) != count || parts[0] != prefix {
+		return false
+	}
+	for _, part := range parts[1:] {
+		if part == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func trace30RefType(value string) string {
