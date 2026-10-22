@@ -5,6 +5,7 @@
 package opensearch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -101,50 +102,150 @@ func TestCreateDocumentsSplitsBulkRequestsBySerializedSize(t *testing.T) {
 	assert.Equal(t, "doc-1", document["_id"], "bulk encoding must not mutate the caller's document")
 }
 
-func TestGetDocumentReturnsNilForMissingDocument(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/dataset-1/_doc/missing", r.URL.Path)
-		http.NotFound(w, r)
-	}))
-	t.Cleanup(server.Close)
+// 原始响应中的数字必须直接写成 JSON 字面量，避免 fixture 提前丢失精度。
+const datasetPrecisionSource = `{
+	"integers":[9007199254740991,9007199254740992,9007199254740993,-9007199254740993,-9223372036854775808,9223372036854775807],
+	"nested":{"items":[9007199254740993,{"value":-9223372036854775808}]},
+	"decimal":1.25,"exponent":1.25e-3,"string":"9007199254740993","boolean":true,"null":null
+}`
 
-	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+func assertDatasetDocumentPrecision(t *testing.T, document map[string]any, id string) {
+	t.Helper()
+	expected := map[string]any{
+		"_id": id,
+		"integers": []any{
+			json.Number("9007199254740991"), json.Number("9007199254740992"),
+			json.Number("9007199254740993"), json.Number("-9007199254740993"),
+			json.Number("-9223372036854775808"), json.Number("9223372036854775807"),
+		},
+		"nested": map[string]any{"items": []any{
+			json.Number("9007199254740993"), map[string]any{"value": json.Number("-9223372036854775808")},
+		}},
+		"decimal": json.Number("1.25"), "exponent": json.Number("1.25e-3"),
+		"string": "9007199254740993", "boolean": true, "null": nil,
+	}
+	assert.Equal(t, expected, document)
+
+	// HTTP JSON 序列化后仍须保留数值和类型，不能只验证 Go 内存中的值。
+	encoded, err := json.Marshal(document)
 	require.NoError(t, err)
-	connector := &OpenSearchConnector{client: client}
-
-	document, err := connector.GetDocument(context.Background(), "dataset-1", "missing")
-
-	require.NoError(t, err)
-	assert.Nil(t, document)
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	var roundTrip map[string]any
+	require.NoError(t, decoder.Decode(&roundTrip))
+	assert.Equal(t, expected, roundTrip)
 }
 
-func TestGetDocumentsUsesMgetAndPreservesMissingPositions(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/dataset-1/_mget", r.URL.Path)
-		var body struct {
-			IDs []string `json:"ids"`
-		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		assert.Equal(t, []string{"doc-1", "missing", "doc-2"}, body.IDs)
-		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`{"docs":[{"_id":"doc-1","found":true,"_source":{"title":"one"}},{"_id":"missing","found":false},{"_id":"doc-2","found":true,"_source":{"title":"two"}}]}`))
+func TestOpenSearchConnectorGetDocument(t *testing.T) {
+	t.Run("missing documents", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/dataset-1/_doc/missing", r.URL.Path)
+			http.NotFound(w, r)
+		}))
+		t.Cleanup(server.Close)
+
+		client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
 		require.NoError(t, err)
-	}))
-	t.Cleanup(server.Close)
+		connector := &OpenSearchConnector{client: client}
 
-	client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
-	require.NoError(t, err)
-	connector := &OpenSearchConnector{client: client}
+		document, err := connector.GetDocument(context.Background(), "dataset-1", "missing")
 
-	documents, err := connector.GetDocuments(context.Background(), "dataset-1", []string{"doc-1", "missing", "doc-2"})
+		require.NoError(t, err)
+		assert.Nil(t, document)
+	})
 
-	require.NoError(t, err)
-	assert.Equal(t, []map[string]any{
-		{"_id": "doc-1", "title": "one"},
-		nil,
-		{"_id": "doc-2", "title": "two"},
-	}, documents)
+	t.Run("preserves numeric literals and JSON types", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			assert.Equal(t, "/dataset-1/_doc/doc-1", r.URL.Path)
+			_, err := io.WriteString(w, `{"_id":"doc-1","found":true,"_source":`+datasetPrecisionSource+`}`)
+			require.NoError(t, err)
+		}))
+		t.Cleanup(server.Close)
+		client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+		require.NoError(t, err)
+		connector := &OpenSearchConnector{client: client}
+		document, err := connector.GetDocument(context.Background(), "dataset-1", "doc-1")
+		require.NoError(t, err)
+		assertDatasetDocumentPrecision(t, document, "doc-1")
+	})
+}
+
+func TestOpenSearchConnectorGetDocuments(t *testing.T) {
+	t.Run("missing documents", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, http.MethodPost, r.Method)
+			assert.Equal(t, "/dataset-1/_mget", r.URL.Path)
+			var body struct {
+				IDs []string `json:"ids"`
+			}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			assert.Equal(t, []string{"doc-1", "missing", "doc-2"}, body.IDs)
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"docs":[{"_id":"doc-1","found":true,"_source":{"title":"one"}},{"_id":"missing","found":false},{"_id":"doc-2","found":true,"_source":{"title":"two"}}]}`))
+			require.NoError(t, err)
+		}))
+		t.Cleanup(server.Close)
+
+		client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+		require.NoError(t, err)
+		connector := &OpenSearchConnector{client: client}
+
+		documents, err := connector.GetDocuments(context.Background(), "dataset-1", []string{"doc-1", "missing", "doc-2"})
+
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{
+			{"_id": "doc-1", "title": "one"},
+			nil,
+			{"_id": "doc-2", "title": "two"},
+		}, documents)
+	})
+
+	for _, tc := range []struct {
+		name string
+		ids  []string
+		body string
+	}{
+		{
+			name: "single ID preserves numeric literals and JSON types",
+			ids:  []string{"doc-1"},
+			body: `{"docs":[{"_id":"doc-1","found":true,"_source":` + datasetPrecisionSource + `}]}`,
+		},
+		{
+			name: "multiple IDs preserve precision and missing positions",
+			ids:  []string{"doc-1", "missing", "doc-2"},
+			body: `{"docs":[{"_id":"doc-1","found":true,"_source":` + datasetPrecisionSource + `},{"_id":"missing","found":false},{"_id":"doc-2","found":true,"_source":` + datasetPrecisionSource + `}]}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/dataset-1/_mget", r.URL.Path)
+				var body struct {
+					IDs []string `json:"ids"`
+				}
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+				assert.Equal(t, tc.ids, body.IDs)
+				w.Header().Set("Content-Type", "application/json")
+				_, err := io.WriteString(w, tc.body)
+				require.NoError(t, err)
+			}))
+			t.Cleanup(server.Close)
+			client, err := opensearch.NewClient(opensearch.Config{Addresses: []string{server.URL}})
+			require.NoError(t, err)
+			connector := &OpenSearchConnector{client: client}
+			documents, err := connector.GetDocuments(context.Background(), "dataset-1", tc.ids)
+			require.NoError(t, err)
+			require.Len(t, documents, len(tc.ids))
+			for i, id := range tc.ids {
+				if id == "missing" {
+					assert.Nil(t, documents[i])
+					continue
+				}
+				assertDatasetDocumentPrecision(t, documents[i], id)
+			}
+		})
+	}
 }
 
 func TestCreateIndexAlwaysEnablesKNN(t *testing.T) {
