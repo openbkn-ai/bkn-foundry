@@ -11,14 +11,18 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchcoreprojection"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ibusinessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
@@ -87,6 +91,47 @@ func TestConversationKeywordReadSkipsUnusedTraceEnrichmentAndRetainsRequestIdent
 	}
 	if reads.statsCalls != 0 || reads.traceIdentityReads != 0 {
 		t.Fatalf("conversation list discards trace enrichment: stats=%d canonicalTrace=%d", reads.statsCalls, reads.traceIdentityReads)
+	}
+}
+
+func TestInteractionListPreservesWholeInteractionAuthorizationForManagedBuilder(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits := []any{}
+		for i, networks := range [][]string{{"kn-managed"}, {"kn-other"}, nil} {
+			hits = append(hits, map[string]any{"_source": map[string]any{
+				"receipt_id": fmt.Sprint("receipt-", i), "owner": map[string]string{"effective_subject_type": "user", "effective_subject_id": "owner"},
+				"conversation_id": "conversation", "interaction_id": "interaction", "operation_id": fmt.Sprint("operation-", i),
+				"request_id": fmt.Sprint("request-", i), "trace_id": fmt.Sprint("trace-", i),
+				"knowledge_network_ids": networks, "receipt_status": "completed", "issued_at": "2026-08-10T08:00:00Z",
+			}})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"hits": map[string]any{"hits": hits}})
+	}))
+	t.Cleanup(server.Close)
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "core", nil)
+	service := New(evidencestore.New(), WithProjectionSource(source))
+	for _, allowed := range []bool{true, false} {
+		profile := &evidencevo.AccessProfile{EffectiveSubjectID: "builder", AccountActive: true,
+			Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-unrelated"}}
+		if allowed {
+			profile.ManagedKnowledgeNetworkIDs = []string{"kn-managed"}
+		}
+		page, err := service.ListInteractions(context.Background(), evidencevo.SummaryQueryOptions{
+			Scope:          evidencevo.QueryScope{AccountID: "builder", AccountType: "user", AccessProfile: profile},
+			ConversationID: "conversation", Limit: 20,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !allowed {
+			if len(page.Entries) != 0 {
+				t.Fatalf("unmanaged interaction disclosed: %+v", page)
+			}
+			continue
+		}
+		if len(page.Entries) != 1 || page.Entries[0].RequestCount != 3 || page.Entries[0].TraceCount != 3 {
+			t.Fatalf("managed builder must retain all requests in the authorized interaction: %+v", page)
+		}
 	}
 }
 

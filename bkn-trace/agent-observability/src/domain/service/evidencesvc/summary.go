@@ -304,6 +304,9 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 	candidateLimit := summaryCandidateLimit(options)
 	loadOptions := options
 	loadOptions.Status = ""
+	// Preserve the legacy interaction-level authorization and scan window.
+	// Conversation filtering still happens after request aggregation below.
+	loadOptions.ConversationID = ""
 	requests, metadata, err := s.loadProvenanceRequestSummaries(ctx, loadOptions, candidateLimit)
 	if err != nil {
 		return evidencevo.InteractionSummaryPage{}, err
@@ -435,7 +438,7 @@ func (s *Service) listCanonicalConversationInteractions(
 	for _, interaction := range selection.Entries {
 		canonical := canonicalInteractionListSummary(conversation, interaction)
 		facts, factMetadata, loadErr := s.loadProvenanceRequestSummaries(ctx, evidencevo.SummaryQueryOptions{
-			Scope: options.Scope, ConversationID: conversation.ID, InteractionID: interaction.ID,
+			Scope: options.Scope, InteractionID: interaction.ID,
 			Limit: MaxSummaryQueryLimit,
 		}, MaxSummaryScanEntries)
 		if loadErr != nil {
