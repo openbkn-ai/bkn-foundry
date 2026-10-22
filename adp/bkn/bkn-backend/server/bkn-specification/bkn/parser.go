@@ -550,6 +550,9 @@ func ParseNetworkFile(text string, sourcePath string) (*BknNetwork, error) {
 		network.ID, network.Name, network.Tags = fm.str("id"), fm.str("name"), fm.list("tags")
 		network.Version, network.Branch = fm.str("version"), fm.str("branch")
 		network.Description = unescapeDescriptionV3(network.Description)
+		if network.Capabilities, err = parseCapabilitiesV3(fm.values["capabilities"]); err != nil {
+			return nil, fmt.Errorf("network.bkn: %w", err)
+		}
 	}
 	network.Summary = ExtractSummary(network.Description)
 
