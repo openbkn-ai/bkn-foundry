@@ -159,12 +159,14 @@ func (s *objectMetricVersionsServiceStub) ListVersions(ctx context.Context, knID
 func TestGetObjectMetricProvenanceByInForwardsCallerIdentityAndExactVersion(t *testing.T) {
 	restoreGin := setGinMode()
 	defer restoreGin()
+	ctrl := gomock.NewController(t)
+	objectTypes := bmock.NewMockObjectTypeService(ctrl)
 	service := &objectMetricVersionsServiceStub{versions: []*interfaces.ObjectMetricRecordV1{
 		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Version: 1, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"}}},
 		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Version: 3, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "draft"}}},
-		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Version: 2, Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"}}},
+		{Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", Version: 2, OwnerObjectTypeID: "orders", Lifecycle: interfaces.ObjectMetricLifecycleV1{Status: "published"}}},
 	}}
-	handler := &restHandler{oms: service}
+	handler := &restHandler{oms: service, ots: objectTypes}
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/kn-a/object-metrics/m-1/provenance?branch=main&version=2", nil)
@@ -213,8 +215,12 @@ func (s *objectMetricListServiceStub) List(ctx context.Context, query interfaces
 func TestListObjectMetricsByInForwardsCallerIdentityAndPublishedFilter(t *testing.T) {
 	restoreGin := setGinMode()
 	defer restoreGin()
-	service := &objectMetricListServiceStub{}
-	handler := &restHandler{oms: service}
+	ctrl := gomock.NewController(t)
+	objectTypes := bmock.NewMockObjectTypeService(ctrl)
+	service := &objectMetricListServiceStub{result: &interfaces.ObjectMetricListV1{Entries: []*interfaces.ObjectMetricRecordV1{{
+		Definition: interfaces.ObjectMetricDefinitionV1{ID: "m-1", OwnerObjectTypeID: "orders"},
+	}}, TotalCount: 1}}
+	handler := &restHandler{oms: service, ots: objectTypes}
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/bkn-backend/in/v1/knowledge-networks/kn-a/object-metrics?branch=main&status=published&offset=20&limit=500", nil)
@@ -233,6 +239,9 @@ func TestListObjectMetricsByInForwardsCallerIdentityAndPublishedFilter(t *testin
 	if service.query.KNID != "kn-a" || service.query.Branch != "main" || service.query.Status != "published" || service.query.Offset != 20 || service.query.Limit != 500 {
 		t.Fatalf("query = %#v", service.query)
 	}
+	if strings.Contains(recorder.Body.String(), `"owner_object_type_name"`) {
+		t.Fatalf("internal list unexpectedly projected owner name: %s", recorder.Body.String())
+	}
 }
 
 func TestListObjectMetricsProjectsAuthorizedMetricOwnerNames(t *testing.T) {
@@ -240,7 +249,7 @@ func TestListObjectMetricsProjectsAuthorizedMetricOwnerNames(t *testing.T) {
 	defer restoreGin()
 	ctrl := gomock.NewController(t)
 	objectTypes := bmock.NewMockObjectTypeService(ctrl)
-	objectTypes.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), "kn-a", "main", []string{"orders", "customers"}, false).Return(map[string]*interfaces.ObjectType{
+	objectTypes.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), "kn-a", "main", []string{"orders", "customers", "deleted"}, false).Return(map[string]*interfaces.ObjectType{
 		"orders": {
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders", OTName: "销售订单"},
 		},
@@ -253,8 +262,9 @@ func TestListObjectMetricsProjectsAuthorizedMetricOwnerNames(t *testing.T) {
 			{Definition: interfaces.ObjectMetricDefinitionV1{ID: "metric-1", OwnerObjectTypeID: "orders"}},
 			{Definition: interfaces.ObjectMetricDefinitionV1{ID: "metric-2", OwnerObjectTypeID: "orders"}},
 			{Definition: interfaces.ObjectMetricDefinitionV1{ID: "metric-3", OwnerObjectTypeID: "customers"}},
+			{Definition: interfaces.ObjectMetricDefinitionV1{ID: "metric-4", OwnerObjectTypeID: "deleted"}, OwnerObjectTypeName: "stale owner name"},
 		},
-		TotalCount: 3,
+		TotalCount: 4,
 	}}
 	handler := &restHandler{oms: service, ots: objectTypes}
 	recorder := httptest.NewRecorder()
@@ -262,19 +272,22 @@ func TestListObjectMetricsProjectsAuthorizedMetricOwnerNames(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-metrics?branch=main", nil)
 	c.Params = gin.Params{{Key: "kn_id", Value: "kn-a"}}
 
-	handler.listObjectMetrics(c, hydra.Visitor{})
+	handler.listObjectMetrics(c, hydra.Visitor{}, true)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body = %s", recorder.Code, recorder.Body.String())
 	}
 	for index, want := range []string{"销售订单", "销售订单", "客户"} {
-		if got := service.result.Entries[index].OwnerObjectTypeName; got != want {
-			t.Fatalf("entry[%d].OwnerObjectTypeName = %q, want %q", index, got, want)
+		if got := service.result.Entries[index].OwnerObjectTypeName; got != "" {
+			t.Fatalf("source entry[%d].OwnerObjectTypeName = %q, want empty", index, got)
+		}
+		if !strings.Contains(recorder.Body.String(), `"owner_object_type_name":"`+want+`"`) {
+			t.Fatalf("owner name %q missing from response: %s", want, recorder.Body.String())
 		}
 	}
-	if !strings.Contains(recorder.Body.String(), `"owner_object_type_name":"销售订单"`) ||
-		!strings.Contains(recorder.Body.String(), `"owner_object_type_name":"客户"`) {
-		t.Fatalf("owner names missing from response: %s", recorder.Body.String())
+	if service.result.Entries[3].OwnerObjectTypeName != "stale owner name" ||
+		strings.Contains(recorder.Body.String(), "stale owner name") {
+		t.Fatalf("stale owner name leaked or source changed: %s", recorder.Body.String())
 	}
 }
 
@@ -299,7 +312,7 @@ func TestGetObjectMetricProjectsAuthorizedMetricOwnerName(t *testing.T) {
 
 	handler.getObjectMetric(c, hydra.Visitor{})
 
-	if recorder.Code != http.StatusOK || service.record.OwnerObjectTypeName != "销售订单" ||
+	if recorder.Code != http.StatusOK || service.record.OwnerObjectTypeName != "" ||
 		!strings.Contains(recorder.Body.String(), `"owner_object_type_name":"销售订单"`) {
 		t.Fatalf("status=%d record=%#v body=%s", recorder.Code, service.record, recorder.Body.String())
 	}
