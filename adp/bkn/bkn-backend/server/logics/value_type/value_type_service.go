@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -78,6 +79,12 @@ func (s *valueTypeService) checkKNPermission(ctx context.Context, knID string, o
 // prepare checks a value type with the checks a 3.0 import runs and derives what is stored with it.
 func prepare(ctx context.Context, vt *interfaces.ValueType) error {
 	vt.ModuleType = interfaces.MODULE_TYPE_VALUE_TYPE
+	// What is checked is what is stored: a null enum item would be skipped by the check and kept
+	// in the stored definition.
+	if slices.Contains(vt.Enum, nil) {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+			WithErrorDetails(fmt.Sprintf("value type %q: an enum item is null", vt.VTID))
+	}
 	bkn := logics.ToBKNValueType(vt)
 	if err := bknsdk.ValidateValueType(bkn); err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).

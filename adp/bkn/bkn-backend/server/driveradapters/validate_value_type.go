@@ -7,6 +7,7 @@ package driveradapters
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -69,5 +70,11 @@ func ValidateValueType(ctx context.Context, vt *interfaces.ValueType) error {
 	}
 	vt.Tags = libCommon.TagSliceTransform(vt.Tags)
 	vt.BaseType = strings.ToLower(strings.TrimSpace(vt.BaseType))
+	for n, item := range vt.Enum {
+		if item == nil {
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("value type %q enum item %d is null", vt.VTID, n+1))
+		}
+	}
 	return nil
 }
