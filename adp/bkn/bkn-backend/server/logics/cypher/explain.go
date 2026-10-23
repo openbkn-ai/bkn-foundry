@@ -63,7 +63,7 @@ func explain(compiled *compiledQuery) (*interfaces.CypherPlan, error) {
 	}
 	for _, order := range descriptor.Ordering {
 		out.Ordering = append(out.Ordering, interfaces.CypherPlanOrder{
-			Column: order.Alias, Property: propertyName(order.PropertyRef), Descending: order.Descending,
+			Column: order.Alias, Property: orderingProperty(order), Descending: order.Descending,
 		})
 	}
 	for _, impact := range compiled.permissionImpacts {
@@ -73,6 +73,15 @@ func explain(compiled *compiledQuery) (*interfaces.CypherPlan, error) {
 	}
 	planWarnings(plan, out)
 	return out, nil
+}
+
+// orderingProperty names the property a sort key reads. A composite-key
+// count(DISTINCT n) reads every key; the first one names it.
+func orderingProperty(order SemanticQueryOrdering) string {
+	if order.PropertyRef == "" && order.Expression == "" && len(order.PropertyRefs) > 0 {
+		return propertyName(order.PropertyRefs[0])
+	}
+	return propertyName(order.PropertyRef)
 }
 
 // planShape names the form of a query, most specific first.
