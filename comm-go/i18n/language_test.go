@@ -3,12 +3,13 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-package rest
+package i18n
 
 import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -92,5 +93,30 @@ func TestWithLanguage(t *testing.T) {
 				t.Fatalf("GetLanguageByCtx() = %q, want %q", got, AmericanEnglish)
 			}
 		})
+	}
+}
+
+func TestSetLangSharesDefaultWithContextAndMessageValidation(t *testing.T) {
+	installTestMessages(t, testMessages(map[string]string{"Shared.Default": "中文"}, map[string]string{"Shared.Default": "English", "Shared.Extra": "extra"}))
+	SetLang("en-GB")
+	if lang := GetLanguageByCtx(context.Background()); lang != AmericanEnglish {
+		t.Fatalf("context default = %q", lang)
+	}
+	if lang := ResolveLanguage(""); lang != AmericanEnglish {
+		t.Fatalf("negotiated default = %q", lang)
+	}
+	if err := ValidateMessageBundles(); err == nil || !strings.Contains(err.Error(), "locale zh-CN is missing messageId Shared.Extra from en-US") {
+		t.Fatalf("message validation did not share the default: %v", err)
+	}
+	SetLang("zh_CN")
+	if lang := GetLanguageByCtx(context.Background()); lang != SimplifiedChinese {
+		t.Fatalf("changed context default = %q", lang)
+	}
+	if err := ValidateMessageBundles(); err == nil || !strings.Contains(err.Error(), "locale en-US has unexpected messageId Shared.Extra") {
+		t.Fatalf("message validation did not follow the changed default: %v", err)
+	}
+	SetLang("fr-FR")
+	if lang := ResolveLanguage(""); lang != SimplifiedChinese {
+		t.Fatalf("unsupported configuration changed default to %q", lang)
 	}
 }

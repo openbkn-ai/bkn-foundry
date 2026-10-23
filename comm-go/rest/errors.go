@@ -8,6 +8,8 @@ package rest
 
 import (
 	"context"
+	"fmt"
+	"maps"
 
 	"github.com/bytedance/sonic"
 
@@ -16,103 +18,116 @@ import (
 )
 
 type BaseError struct {
-	ErrorCode               string         `json:"error_code"`         // Stable error code.
-	Description             string         `json:"description"`        // Human-readable description.
-	Solution                string         `json:"solution"`           // Suggested resolution.
-	ErrorLink               string         `json:"error_link"`         // Documentation link.
-	ErrorDetails            interface{}    `json:"error_details"`      // Structured error details.
-	Metadata                map[string]any `json:"metadata,omitempty"` // Machine-readable error metadata.
-	DescriptionTemplateData map[string]any `json:"-"`                  // Description template parameters.
-	SolutionTemplateData    map[string]any `json:"-"`                  // Solution template parameters.
+	ErrorCode    string         `json:"error_code"`         // Stable error code.
+	Description  string         `json:"description"`        // Human-readable description.
+	ErrorDetails any            `json:"error_details"`      // Structured error details.
+	Metadata     map[string]any `json:"metadata,omitempty"` // Public rendering parameters.
 }
 
-var (
-	allErrs = PublicErrorI18n
-)
+var registeredErrors = make(map[string]struct{})
 
-func Register(errorCodeList []string) {
-	for _, errorCode := range errorCodeList {
-		if _, ok := allErrs[errorCode]; ok {
-			logger.Fatalf("duplicate errorCode: %s", errorCode)
-		}
-		allErrs[errorCode] = make(map[string]BaseError)
-		for lang := range Languages {
-			allErrs[errorCode][lang] = BaseError{
-				ErrorCode:               errorCode,
-				Description:             i18n.Translate(lang, errorCode+".Description", nil),
-				Solution:                i18n.Translate(lang, errorCode+".Solution", nil),
-				ErrorLink:               i18n.Translate(lang, errorCode+".ErrorLink", nil),
-				ErrorDetails:            "",
-				DescriptionTemplateData: make(map[string]any),
-				SolutionTemplateData:    make(map[string]any),
-			}
-		}
+// Register validates message ownership and records stable error codes, without
+// executing templates. Call it serially during startup after loading the service
+// messages and before serving requests. Runtime registration is not supported.
+// Duplicate codes and missing localized resources panic without a partial registration.
+func Register(errorCodes []string) {
+	pending, err := validateRegistration(errorCodes)
+	if err != nil {
+		panic(err)
 	}
+	maps.Copy(registeredErrors, pending)
+}
+
+// validateRegistration validates a whole startup batch without publishing state.
+func validateRegistration(errorCodes []string) (map[string]struct{}, error) {
+	pending := make(map[string]struct{}, len(errorCodes))
+	for _, code := range errorCodes {
+		if _, exists := registeredErrors[code]; exists {
+			return nil, fmt.Errorf("duplicate errorCode: %s", code)
+		}
+		if _, exists := pending[code]; exists {
+			return nil, fmt.Errorf("duplicate errorCode: %s", code)
+		}
+		pending[code] = struct{}{}
+	}
+	if err := i18n.ValidateMessages(errorCodes...); err != nil {
+		return nil, fmt.Errorf("register errorCodes: %w", err)
+	}
+	return pending, nil
 }
 
 type HTTPError struct {
 	HTTPCode  int
-	Language  string
+	Lang      i18n.Language
 	BaseError BaseError
 }
 
-// NewHTTPError creates an HTTP error.
+// NewHTTPError creates an error without rendering localized text.
 func NewHTTPError(ctx context.Context, httpCode int, errorCode string) *HTTPError {
-	lang := GetLanguageByCtx(ctx)
-	errs, ok := allErrs[errorCode]
-	if !ok {
-		logger.Fatalf("missing errorCode: %s", errorCode)
-		return nil
-	}
-	err := errs[lang]
-	if !ok {
-		logger.Fatalf("errorCode %s missing lang: %s", errorCode, lang)
-		return nil
+	if _, exists := registeredErrors[errorCode]; !exists {
+		panic("missing errorCode: " + errorCode)
 	}
 
+	lang := i18n.GetLanguageByCtx(ctx)
 	return &HTTPError{
 		HTTPCode: httpCode,
-		Language: lang,
+		Lang:     lang,
 		BaseError: BaseError{
 			ErrorCode:    errorCode,
-			Description:  err.Description,
-			ErrorLink:    err.ErrorLink,
-			Solution:     err.Solution,
-			ErrorDetails: err.ErrorDetails,
+			ErrorDetails: "",
 		},
 	}
 }
 
-func (e *HTTPError) WithDescription(templateData map[string]interface{}) *HTTPError {
-	e.BaseError.DescriptionTemplateData = templateData
-	e.BaseError.Description = i18n.Translate(e.Language, e.BaseError.ErrorCode+".Description", templateData)
-	return e
-}
-
-func (e *HTTPError) WithSolution(templateData map[string]interface{}) *HTTPError {
-	e.BaseError.SolutionTemplateData = templateData
-	e.BaseError.Solution = i18n.Translate(e.Language, e.BaseError.ErrorCode+".Solution", templateData)
-	return e
-}
-
 // WithErrorDetails sets structured error details.
-func (e *HTTPError) WithErrorDetails(errorDetails interface{}) *HTTPError {
+func (e *HTTPError) WithErrorDetails(errorDetails any) *HTTPError {
 	e.BaseError.ErrorDetails = errorDetails
 	return e
 }
 
-// WithMetadata adds machine-readable context without changing the localized
-// error details consumed by people and existing clients.
+// WithMetadata merges public rendering parameters. Later values overwrite earlier
+// ones; nil/empty input is a no-op. Entries are copied into the existing map.
+// Nested values are shared and must not be mutated after they are supplied.
 func (e *HTTPError) WithMetadata(metadata map[string]any) *HTTPError {
-	e.BaseError.Metadata = metadata
+	if len(metadata) == 0 {
+		return e
+	}
+	if e.BaseError.Metadata == nil {
+		e.BaseError.Metadata = make(map[string]any)
+	}
+	maps.Copy(e.BaseError.Metadata, metadata)
 	return e
 }
 
+// Render updates the error description without logging.
+// Lookup and execution failures clear the description and return a typed rendering error.
+func (e *HTTPError) Render() error {
+	description, err := i18n.Render(e.Lang, e.BaseError.ErrorCode, e.BaseError.Metadata)
+	e.BaseError.Description = description
+	return err
+}
+
+// MarshalJSON encodes the rendered envelope without logging. Call Render directly
+// to inspect rendering failures; this method returns only JSON encoding errors.
+func (e HTTPError) MarshalJSON() ([]byte, error) {
+	_ = e.Render()
+	return sonic.Marshal(e.BaseError)
+}
+
 func (e *HTTPError) Error() string {
-	return e.BaseError.Error()
+	data, err := e.MarshalJSON()
+	if err != nil {
+		logger.Errorf("serialize HTTP error failed: error_code=%s", e.BaseError.ErrorCode)
+		return e.BaseError.ErrorCode
+	}
+	return string(data)
 }
 
 func (e *BaseError) Error() string {
-	errStr, _ := sonic.MarshalString(e)
-	return errStr
+	data, err := sonic.Marshal(e)
+	if err != nil {
+		logger.Errorf("serialize base error failed: error_code=%s", e.ErrorCode)
+		return e.ErrorCode
+	}
+	return string(data)
 }
