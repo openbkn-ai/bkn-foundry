@@ -1012,7 +1012,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			logger.Debugf("处理对象[%d]的逻辑属性: %s", objIndex, propName)
+			logger.Debugf("Processing logical property of object [%d]: %s", objIndex, propName)
 			resultValue, err := ots.processLogicProperty(ctx, query.KNID, query.Branch, query.ObjectTypeID,
 				propName, propValue, logicProp, query.DynamicParams)
 			if err != nil {
