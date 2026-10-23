@@ -268,6 +268,10 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 			case column.Aggregate.Argument != nil:
 				projection.Expression = semanticExpression
 				projection.PropertyRefs = semanticExpressionRefs(plan, column.Aggregate.Argument)
+			case len(column.Aggregate.Keys) > 0:
+				// count(DISTINCT n) over a node keyed by several properties
+				// reads every one of them.
+				projection.PropertyRefs = semanticExpressionRefs(plan, *column.Aggregate)
 			case !column.Aggregate.Star:
 				projection.PropertyRef = semanticPropertyRef(plan, column.Aggregate.Table, column.Aggregate.Property)
 			}
@@ -305,6 +309,10 @@ func BuildSemanticQueryDescriptor(plan *Plan, query string) (*SemanticQueryDescr
 			case order.Aggregate.Argument != nil:
 				item.Expression = semanticExpression
 				item.PropertyRefs = semanticExpressionRefs(plan, order.Aggregate.Argument)
+			case len(order.Aggregate.Keys) > 0:
+				// count(DISTINCT n) over a node keyed by several properties
+				// reads every one of them.
+				item.PropertyRefs = semanticExpressionRefs(plan, *order.Aggregate)
 			case !order.Aggregate.Star:
 				item.PropertyRef = semanticPropertyRef(plan, order.Aggregate.Table, order.Aggregate.Property)
 			}
@@ -492,12 +500,9 @@ func semanticExpressionRefs(plan *Plan, value PlanExpression) []string {
 			if node.Argument != nil {
 				walk(node.Argument)
 			} else if !node.Star {
-				ref = semanticPropertyRef(plan, node.Table, node.Property)
+				add(semanticPropertyRef(plan, node.Table, node.Property))
 				for _, key := range node.Keys {
-					if more := semanticPropertyRef(plan, node.Table, key.Property); more != "" && !seen[more] {
-						seen[more] = true
-						refs = append(refs, more)
-					}
+					add(semanticPropertyRef(plan, node.Table, key.Property))
 				}
 			}
 		case PlanArithmetic:
