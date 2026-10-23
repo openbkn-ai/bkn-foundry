@@ -6,11 +6,12 @@
 import json
 import os
 import uuid
+from pathlib import Path
 
 import pymysql
 import pytest
 
-from app.test.test_shared_agent_seeds import CLAIM_LOCALES, MIGRATIONS, statements
+from app.test.test_shared_agent_seeds import CLAIM_LOCALES, MIGRATIONS, statements, selected_migrations
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
@@ -33,26 +34,19 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         with db.cursor() as cursor:
             cursor.execute(f"CREATE DATABASE `{name}` CHARACTER SET utf8mb4")
             cursor.execute(f"USE `{name}`")
-        if upgrade == "0.2.0":
-            apply(MIGRATIONS / "0.2.0/init.sql")
-            for path in sorted((MIGRATIONS / "0.2.1").glob("[0-9][0-9]-*.sql")):
-                apply(path)
-        elif upgrade == "0.2.1":
-            # Reconstruct the already-installed 021 schema, without the new delta.
-            old_init = (MIGRATIONS / "0.2.1/init.sql").read_text().removesuffix(CLAIM_LOCALES.read_text())
-            import tempfile
-            from pathlib import Path
-            with tempfile.TemporaryDirectory() as tmp:
-                old_path = Path(tmp) / "init.sql"
-                old_path.write_text(old_init)
-                apply(old_path)
+        fresh, selected = selected_migrations(upgrade if upgrade != "fresh" else "0.0.0")
+        if upgrade == "fresh":
+            assert fresh[1] == "0.2.2"
+            apply(Path(fresh[0]))
+        else:
+            apply(MIGRATIONS / upgrade / "init.sql")
             with db.cursor() as cursor:
                 with pytest.raises(pymysql.err.OperationalError, match="Unknown column"):
                     cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
-            # Existing 021 does not auto-discover the delta: operator applies it.
-            apply(CLAIM_LOCALES)
-        else:
-            apply(MIGRATIONS / "0.2.1/init.sql")
+            assert selected[1:] == ["0.2.2", True]
+            for _, paths in selected[0]:
+                for path in paths:
+                    apply(Path(path))
         with db.cursor() as cursor:
             cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
             assert cursor.fetchall() == ()

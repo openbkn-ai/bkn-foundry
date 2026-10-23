@@ -24,7 +24,7 @@ CYPHER = MIGRATIONS / "0.2.1/06-seed-cypher-generation.sql"
 METRIC_DESIGN = MIGRATIONS / "0.2.1/07-seed-object-metric-designer.sql"
 SEMANTIC_LANGUAGE = MIGRATIONS / "0.2.1/08-semantic-output-language.sql"
 GRAPH_EXPLORER = MIGRATIONS / "0.2.1/09-seed-graph-explorer.sql"
-CLAIM_LOCALES = MIGRATIONS / "0.2.1/10-claim-prompt-locales.sql"
+CLAIM_LOCALES = MIGRATIONS / "0.2.2/01-claim-prompt-locales.sql"
 
 
 def statements(path):
@@ -384,7 +384,7 @@ print(json.dumps([selector.find_init_sql('bkn-agent'),selector.select_upgrade_sc
 
 def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
     fresh, upgrade = selected_migrations("0.2.0")
-    assert fresh == [str(MIGRATIONS / "0.2.1/init.sql"), "0.2.1"]
+    assert fresh == [str(MIGRATIONS / "0.2.2/init.sql"), "0.2.2"]
     assert upgrade == [
         [
             [
@@ -399,11 +399,11 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(METRIC_DESIGN),
                     str(SEMANTIC_LANGUAGE),
                     str(GRAPH_EXPLORER),
-                    str(CLAIM_LOCALES),
                 ],
-            ]
+            ],
+            ["0.2.2", [str(CLAIM_LOCALES)]],
         ],
-        "0.2.1",
+        "0.2.2",
         True,
     ]
 
@@ -436,7 +436,7 @@ def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
 
 def test_claim_prompt_fresh_snapshot_includes_the_same_locale_upgrade():
     migration = CLAIM_LOCALES.read_text()
-    assert migration in (MIGRATIONS / "0.2.1/init.sql").read_text()
+    assert migration in (MIGRATIONS / "0.2.2/init.sql").read_text()
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -667,7 +667,7 @@ def test_real_migrator_selected_cross_version_chain_preserves_semantic_agents(re
             )
         ]
         _, upgrade = selected_migrations(schema_version)
-        assert upgrade[1] == "0.2.1"
+        assert upgrade[1] == "0.2.2"
         for _, paths in upgrade[0]:
             for path in paths:
                 apply(db, Path(path))
@@ -1136,7 +1136,8 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
         assert all(version.changes == ["prompt_version"] for version in upgraded)
 
 
-def test_installed_021_requires_controlled_locale_supplement():
-    # Document the real selector boundary: same-version deltas are not automatic.
+def test_installed_021_selects_locale_schema_upgrade():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[], "0.2.1", False]
+    assert upgrade == [[["0.2.2", [str(CLAIM_LOCALES)]]], "0.2.2", True]
+    _, repeated = selected_migrations("0.2.2")
+    assert repeated == [[], "0.2.2", False]

@@ -88,32 +88,30 @@ content. Re-activating an official version also restores its language variants.
 Saving the English effective/shared content as a new administrator version, even
 without editing it, publishes that English text as canonical for every language.
 
-Deployments must run `10-claim-prompt-locales.sql` before starting this Agent
-version: it adds the nullable `f_localized_content` column. Fresh `init.sql`
-includes the same idempotent step. The backfill matches the official owner,
-exact Chinese content hash and absent variable schema (SQL NULL or JSON null); it never rewrites bodies,
-current-version pointers, overrides or existing translations. Already-installed
-0.2.1 environments are **not covered by automatic upgrade**: the migration
-selector skips versions at or below the installed version. They require the
-following controlled supplemental migration before starting the new Agent image.
-Do not change migration version/progress records to force a rerun.
+The Agent component schema advances to `0.2.2` without changing the product
+release version. The normal migrator selects `0.2.2/01-claim-prompt-locales.sql`
+for already-installed `0.2.1` databases; earlier versions run their intervening
+deltas first. Fresh installations select `0.2.2/init.sql`. Do not modify migration
+progress records or rerun the previous version's initialization snapshot.
 
-From the repository root, with the deployment's approved MariaDB connection
-options supplied through `MYSQL_DEFAULTS_FILE` (a protected client option file):
+Run the platform migration phase before starting the new Agent image: the ORM
+requires the nullable `f_localized_content` column. The backfill matches the
+official owner, exact Chinese content hash, absent variable schema (SQL NULL or
+JSON null), and absent translations. It never rewrites canonical bodies,
+current-version pointers, caller overrides, or existing translations. An older
+controlled preview migration is safe: the new delta is idempotent.
+
+After the migrator succeeds, the deployment can perform this read-only schema
+preflight with its approved connection options; stop rollout if it fails:
 
 ```sh
-mysql --defaults-extra-file="$MYSQL_DEFAULTS_FILE" < migrations/bkn-agent/mariadb/0.2.1/10-claim-prompt-locales.sql
 mysql --defaults-extra-file="$MYSQL_DEFAULTS_FILE" < infra/bkn-agent/scripts/check-prompt-locales.sql
 ```
 
-Stop if either command fails. The second command is a read-only schema preflight
-and must succeed before replacing the running image; it returns no Prompt body.
-The first command is idempotent, uses the official-content hash protection above,
-and requires ALTER/UPDATE permissions. Inspect the current schema and take the
-normal deployment backup first; DDL is not transactionally rolled back. Validate
-English and Chinese effective Prompt/execution in the target environment after
-rollout. The existing-0.2.1 deployment path still needs that environment acceptance
-before closing #2341; isolated migration tests do not replace deployment approval.
+The preflight returns no Prompt body. Normal migration backup/approval applies;
+DDL is not transactionally rolled back. Validate both languages in the target
+environment after rollout. Isolated migration tests do not replace deployment
+acceptance.
 Rolling back the application can retain the extra column; deleting it is
 unnecessary and would discard translations. No online translation, additional
 Prompt query, or Trace list/detail loading is involved.
