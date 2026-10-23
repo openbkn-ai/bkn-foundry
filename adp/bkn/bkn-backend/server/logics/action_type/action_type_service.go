@@ -274,11 +274,6 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		bknAction := logics.ToBKNActionType(actionType)
 		actionType.BKNRawContent = bknsdk.SerializeActionType(bknAction)
 	}
-	if len(actionTypes) > 0 {
-		if err = ats.checkAliasNames(ctx, actionTypes[0].KNID, actionTypes[0].Branch, actionTypes); err != nil {
-			return []string{}, err
-		}
-	}
 
 	createActionTypes, updateActionTypes, err := ats.handleActionTypeImportMode(ctx, mode, actionTypes)
 	if err != nil {
@@ -305,6 +300,11 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 	}
 	// The action types being overwritten have been checked for modify above, or by the import.
 	if err = ats.checkOverwriteKeepsDeclarations(ctx, updateActionTypes, false); err != nil {
+		return []string{}, err
+	}
+	// Only what this save writes counts: an action type ignore skips keeps its stored name and aliases.
+	if err = ats.checkAliasNames(ctx, actionTypes[0].KNID, actionTypes[0].Branch,
+		append(append([]*interfaces.ActionType{}, createActionTypes...), updateActionTypes...)); err != nil {
 		return []string{}, err
 	}
 
@@ -424,7 +424,7 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 		}
 	}
 	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
-	_, updates, err := ats.handleActionTypeImportMode(ctx, mode, actionTypes)
+	creates, updates, err := ats.handleActionTypeImportMode(ctx, mode, actionTypes)
 	if err != nil {
 		return err
 	}
@@ -433,7 +433,9 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 	if err = ats.checkOverwriteKeepsDeclarations(ctx, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
 		return err
 	}
-	if err = ats.checkAliasNames(ctx, knID, branch, actionTypes); err != nil {
+	// Only what the import would write counts: an action type ignore skips keeps its stored name and
+	// aliases.
+	if err = ats.checkAliasNames(ctx, knID, branch, append(append([]*interfaces.ActionType{}, creates...), updates...)); err != nil {
 		return err
 	}
 

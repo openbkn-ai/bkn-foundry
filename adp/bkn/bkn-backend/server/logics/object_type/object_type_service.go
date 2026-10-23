@@ -250,11 +250,6 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		bknObj := logics.ToBKNObjectType(objectType)
 		objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
 	}
-	if len(objectTypes) > 0 {
-		if err := ots.checkAliasNames(ctx, objectTypes[0].KNID, objectTypes[0].Branch, objectTypes); err != nil {
-			return []string{}, err
-		}
-	}
 
 	// 0. Begin the transaction.
 	if tx == nil {
@@ -311,6 +306,11 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	// After the permission check: the refusal lists stored declarations, which only a caller allowed
 	// to modify these object types may see.
 	if err = ots.checkOverwriteKeepsDeclarations(ctx, tx, updateObjectTypes, false); err != nil {
+		return []string{}, err
+	}
+	// Only what this save writes counts: an object type ignore skips keeps its stored name and aliases.
+	if err = ots.checkAliasNames(ctx, objectTypes[0].KNID, objectTypes[0].Branch,
+		append(append([]*interfaces.ObjectType{}, createObjectTypes...), updateObjectTypes...)); err != nil {
 		return []string{}, err
 	}
 
@@ -459,7 +459,7 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 	}
 	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 
-	_, updates, err := ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
+	creates, updates, err := ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
 	if err != nil {
 		return err
 	}
@@ -468,7 +468,9 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 	if err = ots.checkOverwriteKeepsDeclarations(ctx, nil, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
 		return err
 	}
-	if err = ots.checkAliasNames(ctx, knID, branch, objectTypes); err != nil {
+	// Only what the import would write counts: an object type ignore skips keeps its stored name and
+	// aliases.
+	if err = ots.checkAliasNames(ctx, knID, branch, append(append([]*interfaces.ObjectType{}, creates...), updates...)); err != nil {
 		return err
 	}
 

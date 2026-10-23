@@ -410,3 +410,25 @@ func TestObjectTypeVectorTextCarriesAliases(t *testing.T) {
 	vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	require.NoError(t, ots.InsertDatasetData(ctx, []*interfaces.ObjectType{plain, &aliased}))
 }
+
+// With ignore, an object type that already exists is skipped and keeps its stored name and
+// aliases, so it does not count as saved: a new object type named like its stored alias is refused.
+func TestValidateObjectTypesIgnoreKeepsStoredAliasesInTheCheck(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ots := &objectTypeService{ota: ota, ps: ps}
+
+	order := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", OTName: "订单"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH}
+	customer := &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "customer", OTName: "客户"}, KNID: "kn1", Branch: interfaces.MAIN_BRANCH}
+	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any(), gomock.Any()).
+		Return([]*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", OTName: "订单"}}}, nil)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
+		Return([]*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", OTName: "订单"}, Aliases: []string{"客户"}}}, nil)
+
+	err := ots.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{order, customer}, false, nil, interfaces.ImportMode_Ignore)
+	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
+	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
+}
