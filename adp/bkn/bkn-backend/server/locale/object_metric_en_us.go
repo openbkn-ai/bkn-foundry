@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var objectMetricEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.ObjectMetric.InvalidDefinition": "The object metric definition is invalid. Correct the field-level validation issues and retry.",
 		"BknBackend.ObjectMetric.NotFound":          "Object metric not found. Verify the metric ID, version, and branch.",

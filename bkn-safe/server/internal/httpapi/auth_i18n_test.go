@@ -16,8 +16,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestOpenBKNLogoAssetIsCacheable(t *testing.T) {
@@ -123,7 +125,7 @@ func TestLoginPageReferencesExternalAssets(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(sharedrest.LanguageMiddleware())
+	router.Use(rest.LanguageMiddleware())
 	router.GET("/login", func(c *gin.Context) { showLogin(c, nil) })
 
 	request := httptest.NewRequest(http.MethodGet, "/login?login_challenge=test", nil)
@@ -199,7 +201,7 @@ func TestAuthPagesUseRequestLanguage(t *testing.T) {
 	for _, language := range []string{"zh-CN", "en-US"} {
 		t.Run(language, func(t *testing.T) {
 			router := gin.New()
-			router.Use(sharedrest.LanguageMiddleware())
+			router.Use(rest.LanguageMiddleware())
 			router.GET("/login", func(c *gin.Context) { showLogin(c, nil) })
 			router.GET("/change-password", showChangePassword)
 			router.GET("/device", showDevice)
@@ -213,7 +215,7 @@ func TestAuthPagesUseRequestLanguage(t *testing.T) {
 
 			for _, page := range pages {
 				request := httptest.NewRequest(http.MethodGet, page.path, nil)
-				request.Header.Set(sharedrest.AcceptLanguageHeader, language)
+				request.Header.Set(i18n.AcceptLanguageHeader, language)
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, request)
 
@@ -239,7 +241,7 @@ func TestChangePasswordLocaleLinksDoNotExposeAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(sharedrest.LanguageMiddleware())
+	router.Use(rest.LanguageMiddleware())
 	router.GET("/change-password", showChangePassword)
 
 	request := httptest.NewRequest(http.MethodGet, "/change-password?login_challenge=test&account=user@example.com", nil)
@@ -316,7 +318,7 @@ func TestShowLoginUsesOIDCUILocalesAndAllowsExplicitOverride(t *testing.T) {
 	defer hydraServer.Close()
 
 	router := gin.New()
-	router.Use(sharedrest.LanguageMiddleware())
+	router.Use(rest.LanguageMiddleware())
 	router.GET("/login", func(c *gin.Context) { showLogin(c, auth.NewHydraAdmin(hydraServer.URL)) })
 
 	for _, testCase := range []struct {
@@ -340,7 +342,7 @@ func TestShowLoginUsesOIDCUILocalesAndAllowsExplicitOverride(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
-			request.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+			request.Header.Set(i18n.AcceptLanguageHeader, "zh-CN")
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 
@@ -369,11 +371,11 @@ func TestShowLoginUsesSharedLocaleCookieBeforeAcceptLanguage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(sharedrest.LanguageMiddleware())
+	router.Use(rest.LanguageMiddleware())
 	router.GET("/login", func(c *gin.Context) { showLogin(c, nil) })
 
 	request := httptest.NewRequest(http.MethodGet, "/login?login_challenge=test", nil)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+	request.Header.Set(i18n.AcceptLanguageHeader, "zh-CN")
 	request.AddCookie(&http.Cookie{Name: authLocaleCookieName, Value: "en-US"})
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -387,7 +389,7 @@ func TestShowLoginUsesSharedLocaleCookieBeforeAcceptLanguage(t *testing.T) {
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "/login?login_challenge=test&lang=fr-FR", nil)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+	request.Header.Set(i18n.AcceptLanguageHeader, "zh-CN")
 	request.AddCookie(&http.Cookie{Name: authLocaleCookieName, Value: "en-US"})
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -405,14 +407,14 @@ func TestAuthContinuationKeepsLoginSelectorCookieBeforeOIDCUILocales(t *testing.
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
-	router.Use(sharedrest.LanguageMiddleware())
+	router.Use(rest.LanguageMiddleware())
 	router.GET("/continuation", func(c *gin.Context) {
 		applyAuthContinuationLocale(c, "https://openbkn.example/oauth2/auth?client_id=openbkn-studio&ui_locales=en-US")
 		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingConsentChallenge")
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/continuation", nil)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	request.Header.Set(i18n.AcceptLanguageHeader, "en-US")
 	request.AddCookie(&http.Cookie{Name: authLocaleCookieName, Value: "zh-CN"})
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
@@ -436,11 +438,11 @@ func TestShowLoginFallsBackWhenHydraLocaleLookupFails(t *testing.T) {
 	defer hydraServer.Close()
 
 	router := gin.New()
-	router.Use(sharedrest.LanguageMiddleware())
+	router.Use(rest.LanguageMiddleware())
 	router.GET("/login", func(c *gin.Context) { showLogin(c, auth.NewHydraAdmin(hydraServer.URL)) })
 
 	request := httptest.NewRequest(http.MethodGet, "/login?login_challenge=test", nil)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	request.Header.Set(i18n.AcceptLanguageHeader, "en-US")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -479,11 +481,11 @@ func TestShowConsentRendersProviderScopes(t *testing.T) {
 
 	provider := auth.NewProvider(nil, auth.NewHydraAdmin(hydraServer.URL), nil)
 	router := gin.New()
-	router.Use(sharedrest.LanguageMiddleware())
+	router.Use(rest.LanguageMiddleware())
 	router.GET("/consent", func(c *gin.Context) { showConsent(c, provider) })
 
 	request := httptest.NewRequest(http.MethodGet, "/consent?consent_challenge=test-challenge", nil)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	request.Header.Set(i18n.AcceptLanguageHeader, "en-US")
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
@@ -514,7 +516,7 @@ func TestAuthValidationMessagesUseRequestLanguage(t *testing.T) {
 	} {
 		t.Run(testCase.language, func(t *testing.T) {
 			router := gin.New()
-			router.Use(sharedrest.LanguageMiddleware())
+			router.Use(rest.LanguageMiddleware())
 			router.POST("/change-password", func(c *gin.Context) { doChangePassword(c, nil, nil) })
 
 			form := url.Values{
@@ -527,7 +529,7 @@ func TestAuthValidationMessagesUseRequestLanguage(t *testing.T) {
 			}
 			request := httptest.NewRequest(http.MethodPost, "/change-password", strings.NewReader(form.Encode()))
 			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			request.Header.Set(sharedrest.AcceptLanguageHeader, oppositeAuthLanguage(testCase.language))
+			request.Header.Set(i18n.AcceptLanguageHeader, oppositeAuthLanguage(testCase.language))
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 
@@ -577,7 +579,7 @@ func TestAuthMissingParameterTextUsesRequestLanguage(t *testing.T) {
 		for _, language := range []string{"zh-CN", "en-US"} {
 			t.Run(testCase.name+"/"+language, func(t *testing.T) {
 				router := gin.New()
-				router.Use(sharedrest.LanguageMiddleware())
+				router.Use(rest.LanguageMiddleware())
 				router.GET("/login", func(c *gin.Context) { showLogin(c, nil) })
 				router.GET("/consent", func(c *gin.Context) { showConsent(c, nil) })
 				router.POST("/device", func(c *gin.Context) { doDevice(c, nil) })
@@ -590,7 +592,7 @@ func TestAuthMissingParameterTextUsesRequestLanguage(t *testing.T) {
 				if testCase.form != nil {
 					request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 				}
-				request.Header.Set(sharedrest.AcceptLanguageHeader, language)
+				request.Header.Set(i18n.AcceptLanguageHeader, language)
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, request)
 
@@ -608,14 +610,14 @@ func TestAuthMissingParameterTextUsesRequestLanguage(t *testing.T) {
 
 func assertLocalizedAuthHeaders(t *testing.T, response *httptest.ResponseRecorder, language string) {
 	t.Helper()
-	if got := response.Header().Get(sharedrest.ContentLanguageHeader); got != language {
+	if got := response.Header().Get(i18n.ContentLanguageHeader); got != language {
 		t.Fatalf("Content-Language = %q, want %q", got, language)
 	}
 	if got := response.Header().Get("Cache-Control"); got != "no-store" {
 		t.Fatalf("Cache-Control = %q, want no-store", got)
 	}
-	if vary := strings.Join(response.Header().Values("Vary"), ","); !strings.Contains(vary, sharedrest.AcceptLanguageHeader) {
-		t.Fatalf("Vary = %q, want %s", vary, sharedrest.AcceptLanguageHeader)
+	if vary := strings.Join(response.Header().Values("Vary"), ","); !strings.Contains(vary, i18n.AcceptLanguageHeader) {
+		t.Fatalf("Vary = %q, want %s", vary, i18n.AcceptLanguageHeader)
 	}
 }
 
@@ -643,8 +645,8 @@ func findCookie(response *httptest.ResponseRecorder, name string) *http.Cookie {
 }
 
 func oppositeAuthLanguage(language string) string {
-	if language == sharedrest.SimplifiedChinese {
-		return sharedrest.AmericanEnglish
+	if language == i18n.SimplifiedChinese {
+		return i18n.AmericanEnglish
 	}
-	return sharedrest.SimplifiedChinese
+	return i18n.SimplifiedChinese
 }

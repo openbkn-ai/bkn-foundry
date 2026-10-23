@@ -51,8 +51,6 @@ components:
       required:
         - error_code
         - description
-        - solution
-        - error_link
         - error_details
       properties:
         error_code:
@@ -61,12 +59,6 @@ components:
         description:
           type: string
           description: Human-readable error description.
-        solution:
-          type: string
-          description: Recommended remediation.
-        error_link:
-          type: string
-          description: Link to detailed error documentation.
         error_details:
           description: |
             Error details with a service-defined type. Strict dependency failures use an object
@@ -75,7 +67,7 @@ components:
         metadata:
           type: object
           additionalProperties: true
-          description: Optional machine-readable context that supplements, but does not replace, the localized error details.
+          description: Optional public template parameters, approved by the caller for disclosure; not an internal diagnostic container.
 
     ErrorCompact:
       description: |

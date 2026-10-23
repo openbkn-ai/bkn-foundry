@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var knowledgeNetworkZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"OntologyQuery.KnowledgeNetwork.NullParameter.Direction":                      "方向为空。请检查参数是否正确。",
 		"OntologyQuery.KnowledgeNetwork.NullParameter.SourceObjectTypeId":             "起点对象类为空。请检查参数是否正确。",

@@ -13,8 +13,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/httperrors"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestWriteErrUsesStableLocalizedResponse(t *testing.T) {
@@ -78,18 +80,18 @@ func TestWriteErrUsesStableLocalizedResponse(t *testing.T) {
 		for _, language := range []string{"zh-CN", "en-US"} {
 			t.Run(testCase.name+"/"+language, func(t *testing.T) {
 				router := gin.New()
-				router.Use(sharedrest.LanguageMiddleware())
+				router.Use(rest.LanguageMiddleware())
 				router.GET("/error", func(c *gin.Context) { writeErr(c, testCase.err) })
 
 				request := httptest.NewRequest(http.MethodGet, "/error", nil)
-				request.Header.Set(sharedrest.AcceptLanguageHeader, language)
+				request.Header.Set(i18n.AcceptLanguageHeader, language)
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, request)
 
 				if response.Code != testCase.status {
 					t.Fatalf("status = %d, want %d", response.Code, testCase.status)
 				}
-				if got := response.Header().Get(sharedrest.ContentLanguageHeader); got != language {
+				if got := response.Header().Get(i18n.ContentLanguageHeader); got != language {
 					t.Fatalf("Content-Language = %q, want %q", got, language)
 				}
 				var body map[string]any

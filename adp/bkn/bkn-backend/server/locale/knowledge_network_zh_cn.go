@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var knowledgeNetworkZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.KnowledgeNetwork.Duplicated.IDInFile":                          "存在重复的业务知识网络ID。请检查参数是否正确。",
 		"BknBackend.KnowledgeNetwork.Duplicated.Name":                              "存在重复的业务知识网络名称。请检查参数是否正确。",

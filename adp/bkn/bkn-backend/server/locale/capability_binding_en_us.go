@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var capabilityBindingEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.CapabilityBinding.InvalidParameter":                     "Invalid capability binding parameter. Check the capability type and identifiers in the request body.",
 		"BknBackend.CapabilityBinding.NullParameter.CapabilityID":           "Missing capability identifier. Provide skill_id for a skill and tool_id for a function.",

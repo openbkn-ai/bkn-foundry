@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var knDiffEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.KNDiff.InvalidParameter":                                 "Invalid knowledge network comparison request. Please check the request body.",
 		"BknBackend.KNDiff.ObjectTypeNotFound":                               "The object type does not exist in that knowledge network branch. Please check kn_id, branch and ot_id.",

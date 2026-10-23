@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var objectMetricZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.ObjectMetric.InvalidDefinition": "对象指标定义不合法。请根据字段级校验结果修正定义后重试。",
 		"BknBackend.ObjectMetric.NotFound":          "未找到对象指标。请确认指标 ID、版本和分支。",

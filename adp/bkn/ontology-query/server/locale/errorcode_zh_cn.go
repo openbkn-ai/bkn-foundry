@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var errorcodeZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"OntologyQuery.InvalidParameter.Condition":                           "过滤条件无效。请检查参数是否正确。",
 		"OntologyQuery.InvalidParameter.OverrideMethod":                      "重载方法无效。请检查参数是否正确。",

@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var errorcodeEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"OntologyQuery.InvalidParameter.Condition":                           "Invalid Condition. Please check whether the parameter is correct.",
 		"OntologyQuery.InvalidParameter.OverrideMethod":                      "Invalid Override Method. Please check whether the parameter is correct.",

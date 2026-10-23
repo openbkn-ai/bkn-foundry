@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var actionExecutionEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"OntologyQuery.ActionExecution.InvalidParameter":      "Invalid request parameter. Please check if the parameters are correct.",
 		"OntologyQuery.ActionExecution.ActionTypeNotFound":    "Action type not found. Please check if the action type ID is correct.",

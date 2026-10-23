@@ -16,7 +16,7 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/google/uuid v1.6.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261016053435-798abfaea9a7
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023085447-aa872c9a3f35
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/ory/hydra-client-go/v2 v2.2.1
 	golang.org/x/crypto v0.58.0
@@ -30,7 +30,6 @@ require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	gitee.com/chunanyong/dm v1.8.23 // indirect
 	github.com/Azure/go-ntlmssp v0.1.1 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.4 // indirect

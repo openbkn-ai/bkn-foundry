@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var actionTypeZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.ActionType.InvalidParameter.Declarations":                                   "行动类声明不合法。按错误详情修正 aliases 后重试。",
 		"BknBackend.ActionType.DeclarationsWouldBeCleared":                                      "本次覆盖会清掉行动类已有的声明。错误详情列出了将被清掉的声明。确认要清掉时，带上 confirm_clear_declarations=true 重新提交；不想清掉时，在文件中保留这些声明。",

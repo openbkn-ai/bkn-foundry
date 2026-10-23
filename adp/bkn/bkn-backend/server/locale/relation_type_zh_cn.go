@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var relationTypeZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.RelationType.Duplicated.IDInFile":                                               "存在重复的关系类ID。请检查参数是否正确。",
 		"BknBackend.RelationType.InvalidParameter":                                                  "请求参数不合法。请检查参数是否正确。",

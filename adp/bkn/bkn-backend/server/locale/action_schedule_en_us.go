@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var actionScheduleEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.ActionSchedule.InvalidParameter":                  "Invalid parameter. Please check if the parameters are correct.",
 		"BknBackend.ActionSchedule.InvalidCronExpression":             "Invalid cron expression. Please check if the cron expression format is correct.",

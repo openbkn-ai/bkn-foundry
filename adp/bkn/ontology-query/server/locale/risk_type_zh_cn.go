@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var riskTypeZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"OntologyQuery.RiskType.RiskLevelExceedsMaxAcceptable":                 "评估得到的风险等级超过该风险类允许的最大等级。请调整入参或风险配置，或改用评估风险更低的操作。",
 		"OntologyQuery.RiskType.RiskTypeNotFound":                              "引用的风险类不存在。请确认操作类型配置中的 risk_type_id 与已存在的风险类一致。",

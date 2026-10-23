@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var objectTypeZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"OntologyQuery.ObjectType.InvalidParameter":                           "请求参数不合法。请检查参数是否正确。",
 		"OntologyQuery.ObjectType.InvalidParameter.IncludeTypeInfo":           "是否包含类信息参数无效。请检查参数是否正确。",

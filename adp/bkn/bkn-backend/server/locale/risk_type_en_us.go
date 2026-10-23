@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var riskTypeEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.RiskType.Duplicated.IDInFile":                               "Same Risk Type ID Existed. Please check whether the parameter is correct.",
 		"BknBackend.RiskType.Duplicated.Name":                                   "Same Risk Type Name Existed. Please check whether the parameter is correct.",

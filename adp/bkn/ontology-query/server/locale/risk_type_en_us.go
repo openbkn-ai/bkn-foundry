@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var riskTypeEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"OntologyQuery.RiskType.RiskLevelExceedsMaxAcceptable":                 "Risk level exceeds the maximum acceptable level for this risk type. Adjust inputs or risk configuration, or use an action with a lower assessed risk.",
 		"OntologyQuery.RiskType.RiskTypeNotFound":                              "Referenced risk type does not exist. Check that risk_type_id in the action type configuration matches an existing risk type.",

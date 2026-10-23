@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var knDiffZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.KNDiff.InvalidParameter":                                 "知识网络对比请求参数无效。请检查请求体。",
 		"BknBackend.KNDiff.ObjectTypeNotFound":                               "该知识网络分支下不存在此对象类。请检查 kn_id、branch 与 ot_id。",

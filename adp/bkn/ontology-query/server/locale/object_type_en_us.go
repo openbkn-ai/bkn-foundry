@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var objectTypeEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"OntologyQuery.ObjectType.InvalidParameter":                           "Invalid Request Paramter. Please check whether the parameter is correct.",
 		"OntologyQuery.ObjectType.InvalidParameter.DynamicParams":             "Invalid DynamicParams. Please check whether the parameter is correct.",

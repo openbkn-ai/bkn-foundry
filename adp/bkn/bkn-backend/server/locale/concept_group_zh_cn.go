@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var conceptGroupZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.ConceptGroup.Duplicated.Name":                                    "存在重复的概念分组名称。请检查参数是否正确。",
 		"BknBackend.ConceptGroup.InvalidParameter":                                   "请求参数不合法。请检查参数是否正确。",

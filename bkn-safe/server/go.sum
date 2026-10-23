@@ -28,8 +28,6 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.1.1/go.mod h1:wP83
 github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2/go.mod h1:wP83P5OoQ5p6ip3ScPr0BAq0BvuPAvacpEuSzyouqAI=
 github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2 h1:oygO0locgZJe7PpYPXT5A29ZkwJaPqcva7BVeemZOZs=
 github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2/go.mod h1:wP83P5OoQ5p6ip3ScPr0BAq0BvuPAvacpEuSzyouqAI=
-github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
-github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/IBM/sarama v1.61.1 h1:I59MWPHQUWqJNdRpsDUcbeCriog8SxjQaPfHNWxidEg=
 github.com/IBM/sarama v1.61.1/go.mod h1:dITlGHIiCQL/maGtBfDHNMDvyWgC9Ww//8pmlsU3RUs=
 github.com/alexbrainman/sspi v0.0.0-20250919150558-7d374ff0d59e h1:4dAU9FXIyQktpoUAgOJK3OTFc/xug0PCXYCqU0FgDKI=
@@ -212,8 +210,8 @@ github.com/modocache/gover v0.0.0-20171022184752-b58185e213c5/go.mod h1:caMODM3P
 github.com/montanaflynn/stats v0.7.0/go.mod h1:etXPPgVO6n31NxCd9KQUMvCM+ve0ruNzt6R8Bnaayow=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261016053435-798abfaea9a7 h1:OEchJ7xMu9ajZMN94uHx8DE3YfzAPhEePWVcqhCErUI=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261016053435-798abfaea9a7/go.mod h1:5OUZPHbtBwjzZCZLnJgF/UjnMUBPudE94jLJ+vd3hQw=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023085447-aa872c9a3f35 h1:wv7jjXnAB4jzC2ShUXzA78l8hi+YYMDAAvizizoQ0qU=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023085447-aa872c9a3f35/go.mod h1:5OUZPHbtBwjzZCZLnJgF/UjnMUBPudE94jLJ+vd3hQw=
 github.com/openbkn-ai/licverify v0.5.1 h1:mQVlRKvFNLDyjG41lti+MNt0BRmyrAxKdQDHSX3MPPs=
 github.com/openbkn-ai/licverify v0.5.1/go.mod h1:9Cnmt/tl7JN48+EjsGCjQERs1mNjuaBHdM+oVx0gvS4=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0 h1:nQIEMr+A92CkhHrZgUhcfsrZjibvB3APXf2a1VwCmMQ=

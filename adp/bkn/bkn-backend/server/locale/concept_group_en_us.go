@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var conceptGroupEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.ConceptGroup.Duplicated.Name":                                    "Same Konwledge Network Name Existed. Please check whether the parameter is correct.",
 		"BknBackend.ConceptGroup.InvalidParameter":                                   "Invalid Request Paramter. Please check whether the parameter is correct.",

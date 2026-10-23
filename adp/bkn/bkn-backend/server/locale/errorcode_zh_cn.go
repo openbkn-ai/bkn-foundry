@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var errorcodeZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.CountExceeded.TagTotal":                              "数据标签个数超过5个。请检查参数是否正确。",
 		"BknBackend.InvalidParameter.DataTagName":                        "指定的数据标签名称无效。请检查参数是否正确。",

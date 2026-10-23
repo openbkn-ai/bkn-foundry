@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var errorcodeEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.CountExceeded.TagTotal":                              "Number of Tags Exceed 5. Please check whether the parameter is correct.",
 		"BknBackend.InvalidParameter.DataTagName":                        "Invalid Data Tag Name. Please check whether the parameter is correct.",

@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var cypherZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.Cypher.InvalidParameter":                             "Cypher 查询请求参数无效。请检查请求体与查询参数。",
 		"BknBackend.Cypher.SyntaxError":                                  "Cypher 查询语法解析失败。请按提示位置修正查询语句。",

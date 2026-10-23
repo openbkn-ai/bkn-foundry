@@ -8,25 +8,26 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type localizedErrorResponse struct {
-	sharedrest.BaseError
+	rest.BaseError
 	// Error retains BKN Safe's former field while callers migrate to the stable
 	// error_code contract. Its value is localized and duplicates description.
 	Error string `json:"error"`
 }
 
 // New creates a localized HTTP error for the stable BKN Safe status mapping.
-func New(ctx context.Context, status int) *sharedrest.HTTPError {
+func New(ctx context.Context, status int) *rest.HTTPError {
 	return NewCode(ctx, status, ForStatus(status))
 }
 
 // NewCode creates a localized HTTP error with a handler-specific stable code.
-func NewCode(ctx context.Context, status int, code string) *sharedrest.HTTPError {
-	Register()
-	return sharedrest.NewHTTPError(ctx, status, code)
+func NewCode(ctx context.Context, status int, code string) *rest.HTTPError {
+	return rest.NewHTTPError(ctx, status, code)
 }
 
 // Write sends the common localized BKN Safe error envelope. Optional details
@@ -41,8 +42,12 @@ func WriteCode(c *gin.Context, status int, code string, details any) {
 	if details != nil {
 		err = err.WithErrorDetails(details)
 	}
-	sharedrest.MarkLocalizedResponse(c)
-	c.JSON(status, localizedErrorResponse{
+	renderErr := err.Render()
+	if renderErr != nil {
+		logger.Errorf("localized error rendering failed: %v", renderErr)
+	}
+	c.Header(i18n.ContentLanguageHeader, err.Lang)
+	rest.ReplyOK(c, status, localizedErrorResponse{
 		BaseError: err.BaseError,
 		Error:     err.BaseError.Description,
 	})

@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var knowledgeNetworkEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.KnowledgeNetwork.Duplicated.IDInFile":                          "Same Konwledge Network ID Existed. Please check whether the parameter is correct.",
 		"BknBackend.KnowledgeNetwork.Duplicated.Name":                              "Same Konwledge Network Name Existed. Please check whether the parameter is correct.",

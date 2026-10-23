@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var cypherEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.Cypher.InvalidParameter":                             "Invalid Cypher query request. Please check the request body and query parameters.",
 		"BknBackend.Cypher.SyntaxError":                                  "The Cypher query could not be parsed. Please correct the query at the reported position.",

@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var objectTypeEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.ObjectType.Duplicated.IDInFile":                                            "Same Object Type ID Existed. Please check whether the parameter is correct.",
 		"BknBackend.ObjectType.Duplicated.Name":                                                "Same Object Type Name Existed. Please check whether the parameter is correct.",

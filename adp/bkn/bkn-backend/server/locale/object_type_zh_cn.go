@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var objectTypeZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.ObjectType.Duplicated.IDInFile":                                            "存在重复的对象类ID。请检查参数是否正确。",
 		"BknBackend.ObjectType.Duplicated.Name":                                                "存在重复的对象类名称。请检查参数是否正确。",

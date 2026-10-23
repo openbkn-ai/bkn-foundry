@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var knowledgeNetworkEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"OntologyQuery.KnowledgeNetwork.NullParameter.Direction":                      "Direction Is Empty. Please check whether the parameter is correct.",
 		"OntologyQuery.KnowledgeNetwork.NullParameter.SourceObjectTypeId":             "Source Object Type Id Is Empty. Please check whether the parameter is correct.",

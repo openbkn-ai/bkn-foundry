@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var capabilityBindingZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.CapabilityBinding.InvalidParameter":                     "能力绑定参数不合法。请检查请求体中的能力类型与标识。",
 		"BknBackend.CapabilityBinding.NullParameter.CapabilityID":           "缺少能力标识。skill 需要提供 skill_id，function 需要提供 tool_id。",

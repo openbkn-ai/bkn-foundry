@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var actionTypeEnUS = i18n.I18nMessages{
-	Locale: "en-US",
+	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknBackend.ActionType.InvalidParameter.Declarations":                                   "Invalid action type declarations. Fix aliases as the error details say and try again.",
 		"BknBackend.ActionType.DeclarationsWouldBeCleared":                                      "This overwrite would clear existing action type declarations. The error details list the declarations it would clear. Submit again with confirm_clear_declarations=true to clear them, or keep them in the file.",

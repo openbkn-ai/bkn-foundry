@@ -6,41 +6,34 @@
 package locale
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 var registerOnce sync.Once
 
-// Register loads resources bundled next to the deployed binary, with the source
-// directory retained as a fallback for local development and tests.
+// Register validates the compiled-in resources during startup.
 func Register() {
-	registerOnce.Do(register)
-}
+	registerOnce.Do(func() {
+		i18n.RegisterI18n(&bknSafeEnUS)
+		i18n.RegisterI18n(&bknSafeZhCN)
 
-func register() {
-	if executable, err := os.Executable(); err == nil {
-		deployedDir := filepath.Join(filepath.Dir(executable), "locale")
-		if entries, readErr := os.ReadDir(deployedDir); readErr == nil && len(entries) > 0 {
-			i18n.RegisterI18n(deployedDir)
-			return
+		if err := i18n.ValidateMessageBundles(); err != nil {
+			panic(err)
 		}
-	}
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		return
-	}
-	i18n.RegisterI18n(filepath.Dir(filename))
+	})
 }
 
-// Translate resolves a BKN Safe message after ensuring the bundled catalog is
+// Translate resolves a BKN Safe message after ensuring the bundled message bundle is
 // registered. Callers pass the effective request language selected by the
 // platform language middleware.
 func Translate(language, messageID string) string {
 	Register()
-	return i18n.Translate(language, messageID, nil)
+	text, err := i18n.Render(language, messageID, nil)
+	if err != nil {
+		logger.Errorf("localized service message failed: %v", err)
+	}
+	return text
 }

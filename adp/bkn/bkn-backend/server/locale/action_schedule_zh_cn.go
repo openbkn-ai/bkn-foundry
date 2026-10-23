@@ -7,7 +7,7 @@ package locale
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 var actionScheduleZhCN = i18n.I18nMessages{
-	Locale: "zh-CN",
+	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
 		"BknBackend.ActionSchedule.InvalidParameter":                  "参数无效。请检查参数是否正确。",
 		"BknBackend.ActionSchedule.InvalidCronExpression":             "Cron表达式无效。请检查Cron表达式格式是否正确。",
