@@ -436,7 +436,9 @@ def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
 
 def test_claim_prompt_fresh_snapshot_includes_the_same_locale_upgrade():
     migration = CLAIM_LOCALES.read_text()
-    assert migration in (MIGRATIONS / "0.2.2/init.sql").read_text()
+    assert (MIGRATIONS / "0.2.2/init.sql").read_text() == (
+        (MIGRATIONS / "0.2.1/init.sql").read_text() + "\n" + migration
+    )
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
