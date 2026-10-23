@@ -112,3 +112,28 @@ func TestCountDistinctNodeTraceNamesEveryKey(t *testing.T) {
 		}
 	}
 }
+
+// Explain names the first key of a composite-key count(DISTINCT n) it sorts
+// by, as it did when the trace recorded only that key.
+func TestCountDistinctNodeOrderingExplainsItsFirstKey(t *testing.T) {
+	query := "MATCH (c:Customer) RETURN c.region AS r, count(*) AS m ORDER BY count(DISTINCT c) DESC"
+	tree, err := Parse(query)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	analyzed, err := Analyze(tree)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	plan, err := Compile(analyzed, bindJoinSchema(t), CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	descriptor, err := BuildSemanticQueryDescriptor(plan, query)
+	if err != nil {
+		t.Fatalf("descriptor: %v", err)
+	}
+	if got := orderingProperty(descriptor.Ordering[0]); got != "ot_customer.code" {
+		t.Errorf("ordering property = %q, want ot_customer.code", got)
+	}
+}
