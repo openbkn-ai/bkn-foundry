@@ -47,6 +47,7 @@ class PromptVersionRow(Base):
     f_prompt_id: Mapped[str] = mapped_column(String(50), primary_key=True)
     f_version: Mapped[int] = mapped_column(Integer, primary_key=True)
     f_content: Mapped[str] = mapped_column(Text)
+    f_localized_content: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     f_vars_schema: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     f_create_user: Mapped[str] = mapped_column(String(50))
     f_create_time: Mapped[int] = mapped_column(BigInteger)
