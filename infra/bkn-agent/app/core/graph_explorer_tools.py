@@ -942,6 +942,13 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         known = _present_nodes(run) | set(_planned_nodes(run))
         fresh = [n for n in graph.nodes if n["id"] not in known]
         await _enrich(run, fresh[: max(0, _room(run))], metas)
+        # Nodes the canvas or this run already has keep the label it knows, not their key.
+        labels = {n.id: n.label for n in _canvas(run).nodes if n.label}
+        for node in graph.nodes:
+            if node["id"] in known:
+                label = (_planned_nodes(run).get(node["id"]) or {}).get("label") or labels.get(node["id"])
+                if label:
+                    node["label"] = label
         out: dict[str, Any] = {"rows": len(entries)}
         execution = result.get("execution") if isinstance(result.get("execution"), dict) else {}
         # Scalar rows cut at the default limit say so at the top; graph values in execution.

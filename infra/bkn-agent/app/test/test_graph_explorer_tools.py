@@ -648,3 +648,13 @@ def test_cypher_fills_in_only_nodes_the_canvas_has_room_for():
     looked_up = [v for c in calls if c[0] == "query_object_instance" for v in c[1]["condition"]["value"]]
     # Two fit; the other three are left out, so they are not looked up either.
     assert looked_up == [1, 9] and out["left_out"] == 3
+
+
+def test_cypher_keeps_the_label_the_canvas_has_for_its_nodes():
+    # Key-only rows for nodes already on the canvas are not looked up again; their label stays.
+    run, tools, _ = _run(
+        nodes=[{"id": "teams-9", "object_type_id": "teams", "label": "Brazil"}],
+        cypher={"entries": [{"t": _obj("teams", 9)}]},
+    )
+    out = _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t")
+    assert out["items"][0]["label"] == "Brazil"
