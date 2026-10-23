@@ -16,10 +16,10 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/mq"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 var (
@@ -184,7 +184,7 @@ func NewWarnLog(logType string, op string, operator AuditOperator, obj AuditObje
 }
 
 // NewWarnLogWithError creates a warning audit log from an HTTP error.
-func NewWarnLogWithError(logType string, op string, operator AuditOperator, obj AuditObject, err *rest.BaseError) {
+func NewWarnLogWithError(logType string, op string, operator AuditOperator, obj AuditObject, err *httperrors.BaseError) {
 	auditLog := AuditLog{
 		Type:      logType,
 		Level:     WARN,

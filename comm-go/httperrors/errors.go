@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-package rest
+package httperrors
 
 import (
 	"context"
@@ -57,9 +57,9 @@ func validateRegistration(errorCodes []string) (map[string]struct{}, error) {
 }
 
 type HTTPError struct {
-	HTTPCode  int
-	Lang      i18n.Language
-	BaseError BaseError
+	HTTPCode int
+	Lang     i18n.Language
+	BaseError
 }
 
 // NewHTTPError creates an error without rendering localized text.
@@ -81,7 +81,7 @@ func NewHTTPError(ctx context.Context, httpCode int, errorCode string) *HTTPErro
 
 // WithErrorDetails sets structured error details.
 func (e *HTTPError) WithErrorDetails(errorDetails any) *HTTPError {
-	e.BaseError.ErrorDetails = errorDetails
+	e.ErrorDetails = errorDetails
 	return e
 }
 
@@ -92,18 +92,18 @@ func (e *HTTPError) WithMetadata(metadata map[string]any) *HTTPError {
 	if len(metadata) == 0 {
 		return e
 	}
-	if e.BaseError.Metadata == nil {
-		e.BaseError.Metadata = make(map[string]any)
+	if e.Metadata == nil {
+		e.Metadata = make(map[string]any)
 	}
-	maps.Copy(e.BaseError.Metadata, metadata)
+	maps.Copy(e.Metadata, metadata)
 	return e
 }
 
 // Render updates the error description without logging.
 // Lookup and execution failures clear the description and return a typed rendering error.
 func (e *HTTPError) Render() error {
-	description, err := i18n.Render(e.Lang, e.BaseError.ErrorCode, e.BaseError.Metadata)
-	e.BaseError.Description = description
+	description, err := i18n.Render(e.Lang, e.ErrorCode, e.Metadata)
+	e.Description = description
 	return err
 }
 
@@ -117,8 +117,8 @@ func (e HTTPError) MarshalJSON() ([]byte, error) {
 func (e *HTTPError) Error() string {
 	data, err := e.MarshalJSON()
 	if err != nil {
-		logger.Errorf("serialize HTTP error failed: error_code=%s", e.BaseError.ErrorCode)
-		return e.BaseError.ErrorCode
+		logger.Errorf("serialize HTTP error failed: error_code=%s", e.ErrorCode)
+		return e.ErrorCode
 	}
 	return string(data)
 }

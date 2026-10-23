@@ -78,9 +78,9 @@ grep -rlE 'openbkn-ai/bkn-foundry/comm-go v[0-9]' --include=go.mod . | xargs -n1
 中电科金仓（北京）科技股份有限公司。它被 `db/driver/rds.go` 无条件 import，因此
 链接进每个用到 `db/driver` 的服务。来源说明与第三方 license 例外待归档。
 
-## REST 错误与 i18n
+## HTTP 错误与 i18n
 
-`i18n` 提供语言协商、context 语言传递和消息模板渲染；`rest` 提供错误码注册、HTTP 错误构造与响应写出。
+`i18n` 提供语言协商、context 语言传递和消息模板渲染；`httperrors` 提供错误码注册、HTTP 错误构造、渲染与序列化；`rest` 提供 HTTP 响应写出。
 设计说明见[共享错误国际化与 metadata 方案](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/shared/decisions/issue-2375-error-i18n-metadata.md)。
 
 消息使用 Go map 定义，随代码编译。每个模块按 `<module>_zh_cn.go`、`<module>_en_us.go` 分别维护中文和英文消息，
@@ -113,7 +113,7 @@ i18n.SetDefaultLocale(i18n.SimplifiedChinese)
 if err := i18n.ValidateMessageBundles(); err != nil {
     panic(err)
 }
-rest.Register([]string{"Example.InvalidField"})
+httperrors.Register([]string{"Example.InvalidField"})
 ```
 
 `RegisterI18n` 每次接收一个 `*I18nMessages`，去除消息 key 和文案的首尾空白后编译模板。
@@ -124,7 +124,7 @@ rest.Register([]string{"Example.InvalidField"})
 
 `ValidateMessageBundles()` 以 `DefaultLanguage` 为基准检查各语言的消息 key 集合，要求提供 zh-CN 和 en-US，发现第一个问题即返回 error。
 不同语言允许使用不同的模板参数。`ValidateMessages(ids...)` 检查指定消息 ID 在全部已注册语言包中是否存在，不执行模板；
-`rest.Register` 会调用该检查，重复错误码或缺失消息会导致 panic。
+`httperrors.Register` 会调用该检查，重复错误码或缺失消息会导致 panic。
 
 HTTP 语言协商、context 读写和请求头常量位于 `i18n/language.go`。
 默认语言为中文，可在启动时通过 `SetDefaultLocale` 设置已注册的语言，或通过 `SetLang` 解析支持的语言别名。
@@ -134,7 +134,7 @@ HTTP 语言协商、context 读写和请求头常量位于 `i18n/language.go`。
 `GetLanguageByCtx` 会回退到 `DefaultLanguage`。
 
 ```go
-err := rest.NewHTTPError(ctx, http.StatusBadRequest, "Example.InvalidField").
+err := httperrors.NewHTTPError(ctx, http.StatusBadRequest, "Example.InvalidField").
     WithMetadata(map[string]any{"field": "title", "limit": 10})
 rest.ReplyError(c, err)
 ```
@@ -160,3 +160,15 @@ Content-Language 使用最终响应错误选定的语言。
 
 响应包含 error_code、description、error_details 及非空时的 metadata，不包含 solution/error_link。
 消费者可在 description 为空时展示 error_code。
+
+### 包依赖与迁移
+
+`httperrors` 依赖 `i18n`，不直接依赖 `rest` 或 Gin；`rest.ReplyError` 接收并处理 `*httperrors.HTTPError`。
+`i18n` 当前包含 Gin context 适配，因此 Gin 仍是传递依赖；本次仅拆分错误包。
+业务层构造错误时可直接依赖 `httperrors`，只有 HTTP 适配层需要依赖 `rest`。
+
+错误相关 API 已从 `rest` 移至 `httperrors`，旧包不保留转发或类型别名。
+消费者升级时，将 `rest.BaseError`、`rest.HTTPError`、`rest.NewHTTPError`、`rest.Register` 和 `rest.PublicError_*`
+替换为对应的 `httperrors.*`，并添加 `github.com/openbkn-ai/bkn-foundry/comm-go/httperrors` import。
+`rest.ReplyError`、`rest.ReplyOK` 和语言中间件继续保留在 `rest`。
+本次拆包不改变错误响应 JSON、错误码、渲染行为和 HTTP 状态码。
