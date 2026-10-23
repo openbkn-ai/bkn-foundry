@@ -55,7 +55,7 @@ func TestReplyErrorSetsContentLanguageWithoutVary(t *testing.T) {
 
 	ReplyError(c, NewHTTPError(c.Request.Context(), http.StatusBadRequest, PublicError_BadRequest))
 
-	if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != i18n.AmericanEnglish {
+	if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != string(i18n.AmericanEnglish) {
 		t.Fatalf("Content-Language = %q, want %q", got, i18n.AmericanEnglish)
 	}
 	if got := recorder.Header().Values("Vary"); len(got) != 0 {

@@ -58,11 +58,14 @@ func TestDelayedRenderingAcrossSerializationPaths(t *testing.T) {
 	code := "Test.Delayed"
 	loadErrorCatalog(t, code, "参数 {{ .field }} 超出 {{ .limit }}", "Field {{ .field }} exceeds {{ .limit }}")
 	registerTestCode(t, code)
-	for _, tc := range []struct{ lang, description string }{
+	for _, tc := range []struct {
+		lang        i18n.Language
+		description string
+	}{
 		{i18n.SimplifiedChinese, "参数 title 超出 10"},
 		{i18n.AmericanEnglish, "Field title exceeds 10"},
 	} {
-		t.Run(tc.lang, func(t *testing.T) {
+		t.Run(string(tc.lang), func(t *testing.T) {
 			err := NewHTTPError(i18n.WithLanguage(t.Context(), tc.lang), http.StatusBadRequest, code)
 			err = err.WithMetadata(map[string]any{"field": "title"})
 			renderErr := err.Render()
@@ -120,7 +123,10 @@ func TestReplyErrorRendersCompleteParameters(t *testing.T) {
 	loadErrorCatalog(t, code, "参数 {{ .field }}", "Field {{ .field }}")
 	registerTestCode(t, code)
 	gin.SetMode(gin.TestMode)
-	for _, tc := range []struct{ lang, description string }{
+	for _, tc := range []struct {
+		lang        i18n.Language
+		description string
+	}{
 		{i18n.SimplifiedChinese, "参数 title"}, {i18n.AmericanEnglish, "Field title"},
 	} {
 		recorder := httptest.NewRecorder()
@@ -129,7 +135,7 @@ func TestReplyErrorRendersCompleteParameters(t *testing.T) {
 		ctx.Request = ctx.Request.WithContext(i18n.WithLanguage(ctx.Request.Context(), tc.lang))
 		err := NewHTTPError(ctx.Request.Context(), 400, code).WithMetadata(map[string]any{"field": "title"})
 		ReplyError(ctx, fmt.Errorf("wrapped: %w", err))
-		if recorder.Code != 400 || recorder.Header().Get(i18n.ContentLanguageHeader) != tc.lang {
+		if recorder.Code != 400 || recorder.Header().Get(i18n.ContentLanguageHeader) != string(tc.lang) {
 			t.Fatalf("response: %#v", recorder)
 		}
 		assertErrorBody(t, recorder.Body.Bytes(), code, tc.description)
@@ -226,7 +232,7 @@ func TestErrorResponseUsesConstructionLanguage(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/", nil).WithContext(i18n.WithLanguage(t.Context(), i18n.SimplifiedChinese))
 	err := NewHTTPError(i18n.WithLanguage(t.Context(), i18n.AmericanEnglish), 400, PublicError_BadRequest)
 	ReplyError(c, fmt.Errorf("wrapped: %w", err))
-	if rec.Code != 400 || rec.Header().Get(i18n.ContentLanguageHeader) != i18n.AmericanEnglish {
+	if rec.Code != 400 || rec.Header().Get(i18n.ContentLanguageHeader) != string(i18n.AmericanEnglish) {
 		t.Fatalf("status=%d language=%s", rec.Code, rec.Header().Get(i18n.ContentLanguageHeader))
 	}
 	var body map[string]any
@@ -284,7 +290,7 @@ func TestEncodingFailureReturnsCodeAndSafeInternalResponse(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Code != 500 || body["error_code"] != PublicError_InternalServerError || body["metadata"] != nil || body["error_details"] != "" || rec.Header().Get(i18n.ContentLanguageHeader) != i18n.AmericanEnglish {
+	if rec.Code != 500 || body["error_code"] != PublicError_InternalServerError || body["metadata"] != nil || body["error_details"] != "" || rec.Header().Get(i18n.ContentLanguageHeader) != string(i18n.AmericanEnglish) {
 		t.Fatalf("unsafe encoding-failure response: %d %s", rec.Code, rec.Body)
 	}
 	if e.BaseError.ErrorDetails != "{{ literal }}" || len(e.BaseError.Metadata) != 1 {

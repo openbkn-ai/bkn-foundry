@@ -21,7 +21,7 @@ func testMessages(zh, en map[string]string) []I18nMessages {
 func installTestMessages(t *testing.T, definitions []I18nMessages) {
 	t.Helper()
 	previous := maps.Clone(compiledI18nMessagesBundle)
-	previousMessages := make(map[string]map[string]*template.Template)
+	previousMessages := make(map[Language]map[string]*template.Template)
 	for locale, bundle := range previous {
 		previousMessages[locale] = maps.Clone(bundle.Messages)
 	}
@@ -148,7 +148,7 @@ func TestLanguageTemplatesMayUseDifferentParameters(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
-		locale string
+		locale Language
 		data   map[string]any
 		want   string
 	}{
@@ -186,7 +186,7 @@ func TestSetDefaultLocaleValidatesBeforeUpdating(t *testing.T) {
 	before := maps.Clone(compiledI18nMessagesBundle)
 	for _, locale := range []string{"", "???", "fr-FR", "EN-us"} {
 		t.Run(locale, func(t *testing.T) {
-			assertPanicContains(t, "default locale", func() { SetDefaultLocale(locale) })
+			assertPanicContains(t, "default locale", func() { SetDefaultLocale(Language(locale)) })
 			if DefaultLanguage != "en-US" || !maps.Equal(before, compiledI18nMessagesBundle) {
 				t.Fatal("rejected default changed startup state")
 			}
@@ -359,7 +359,7 @@ func TestCompiledMessagesOwnInput(t *testing.T) {
 	installTestMessages(t, definitions)
 	definitions[1].Messages["Test.Code"] = "modified"
 	delete(definitions[0].Messages, "Test.Code")
-	for locale, want := range map[string]string{AmericanEnglish: "English", SimplifiedChinese: "中文"} {
+	for locale, want := range map[Language]string{AmericanEnglish: "English", SimplifiedChinese: "中文"} {
 		if got, err := Render(locale, "Test.Code", nil); err != nil || got != want {
 			t.Fatalf("language bundle %s: got %q, %v; want %q", locale, got, err, want)
 		}
@@ -374,7 +374,7 @@ func TestRenderRejectsMissingLanguagesWithoutDefaultFallback(t *testing.T) {
 	SetDefaultLocale("en-US")
 	for _, locale := range []string{"fr-FR", "en-GB", "", "???", "EN-us"} {
 		t.Run(locale, func(t *testing.T) {
-			text, err := Render(locale, "Test.Code", nil)
+			text, err := Render(Language(locale), "Test.Code", nil)
 			var failure *RenderError
 			if text != "" || !errors.As(err, &failure) || failure.Kind != LocaleMissing {
 				t.Fatalf("Render(%q) = %q, %v; want missing locale error", locale, text, err)
