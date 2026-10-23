@@ -6,7 +6,7 @@ import asyncio, json, uuid, os
 import pytest
 from pathlib import Path
 import pymysql
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from app import dao
 from app.auth import Account
@@ -171,6 +171,126 @@ async def main(monkeypatch):
                 current = [v for v in versions if v.f_current]
                 assert len(current) == 1 and current[0].f_prompt_version == prompt.current_version
             check('shared-prompt-admins-lock-all-agents-in-order', True)
+        # EXPLAIN must prove the live MariaDB path uses the binding index.
+        async with factory() as s:
+            plan = (await s.execute(text(
+                "EXPLAIN SELECT * FROM t_agent FORCE INDEX (ix_agent_prompt_id_agent_id) "
+                "WHERE f_prompt_id=:prompt ORDER BY f_agent_id FOR UPDATE"
+            ), {"prompt": PROMPT})).mappings().one()
+            check('binding-current-read-uses-index', plan['key'] == 'ix_agent_prompt_id_agent_id' and plan['type'] == 'ref')
+            print(json.dumps({'binding_lock_explain': dict(plan)}))
+            s.add(AgentRow(f_agent_id='unrelated', f_name='Unrelated fixture',
+                f_mode='chat', f_prompt_id=None, f_status='published',
+                f_create_user='seed', f_update_user='seed', f_create_time=1, f_update_time=1))
+            await s.commit()
+        async with factory() as locked, factory() as writer:
+            await dao.lock_prompt_agents(locked, PROMPT)
+            await asyncio.wait_for(dao.update_shared_agent(
+                writer, 'unrelated', {'model': 'independent'}, 'admin'), 3)
+            check('unrelated-agent-write-not-blocked', True)
+            await locked.rollback()
+        async with factory() as stale_session, factory() as rebinder:
+            # A current locking read must include bindings newer than this RR snapshot.
+            await stale_session.get(AgentRow, 'unrelated')
+            rebound = await rebinder.get(AgentRow, 'unrelated')
+            rebound.f_prompt_id = PROMPT
+            await rebinder.commit()
+            await dao.record_version(rebinder, 'unrelated', 'admin')
+            ids = await dao.lock_prompt_agents(stale_session, PROMPT)
+            check('binding-newer-than-rr-snapshot-locked', 'unrelated' in ids)
+            published = await dao.publish_prompt_version(stale_session, PROMPT,
+                'after-rebinding', None, 'admin', commit=False)
+            await stale_session.commit()
+        async with factory() as s:
+            current = await dao.current_version(s, 'unrelated')
+            check('newly-bound-agent-gets-published-history', current.f_prompt_version == published.current_version)
+        async with factory() as locked, factory() as binder:
+            await dao.lock_prompt_agents(locked, PROMPT)
+            async def new_binding():
+                binder.add(AgentRow(f_agent_id='new-binding', f_name='New binding fixture',
+                    f_mode='chat', f_prompt_id=PROMPT, f_status='published',
+                    f_create_user='seed', f_update_user='seed', f_create_time=1, f_update_time=1))
+                await binder.flush()
+                await dao.record_version(binder, 'new-binding', 'admin', commit=False)
+                await binder.commit()
+            pending = asyncio.create_task(new_binding())
+            await asyncio.sleep(.15)
+            check('new-binding-waits-for-current-range', not pending.done())
+            published = await dao.publish_prompt_version(locked, PROMPT,
+                'while-binding-waits', None, 'admin', commit=False)
+            await locked.commit()
+            await asyncio.wait_for(pending, 3)
+        async with factory() as s:
+            current = await dao.current_version(s, 'new-binding')
+            check('new-binding-resumes-with-current-prompt-history', current.f_prompt_version == published.current_version)
+        # Rebinding an existing Agent out of the locked range is serialized as
+        # well; when it resumes its version must describe the new binding.
+        async with factory() as s:
+            s.add_all([PromptRow(f_prompt_id='rebind-target', f_name='Rebind target',
+                f_current_version=1, f_update_user='seed', f_update_time=1),
+                PromptVersionRow(f_prompt_id='rebind-target', f_version=1,
+                    f_content='target canonical', f_create_user='seed', f_create_time=1)])
+            await s.commit()
+        async with factory() as locked, factory() as rebinder:
+            await dao.lock_prompt_agents(locked, PROMPT)
+            async def change_binding():
+                row = await rebinder.get(AgentRow, 'unrelated')
+                row.f_prompt_id = 'rebind-target'
+                await rebinder.flush()
+                await dao.record_version(rebinder, 'unrelated', 'admin', commit=False)
+                await rebinder.commit()
+            pending = asyncio.create_task(change_binding())
+            await asyncio.sleep(.15)
+            check('rebind-waits-for-current-binding-range', not pending.done())
+            await dao.publish_prompt_version(locked, PROMPT,
+                'before-rebind-completes', None, 'admin', commit=False)
+            await locked.commit()
+            await asyncio.wait_for(pending, 3)
+        async with factory() as s:
+            current = await dao.current_version(s, 'unrelated')
+            row = await s.get(AgentRow, 'unrelated')
+            check('rebind-records-target-prompt-history', row.f_prompt_id == 'rebind-target' and current.f_prompt_version == 1)
+            # Both null and a different nonnull Prompt binding remain writable.
+            s.add(AgentRow(f_agent_id='null-unrelated', f_name='Null unrelated fixture',
+                f_mode='chat', f_prompt_id=None, f_status='published',
+                f_create_user='seed', f_update_user='seed', f_create_time=1, f_update_time=1))
+            await s.commit()
+        async with factory() as locked:
+            await dao.lock_prompt_agents(locked, PROMPT)
+            for agent_id in ('unrelated', 'null-unrelated'):
+                async with factory() as writer:
+                    await asyncio.wait_for(dao.update_shared_agent(
+                        writer, agent_id, {'model': 'independent-again'}, 'admin'), 3)
+            check('other-prompt-and-null-bound-agents-remain-writable', True)
+            await locked.rollback()
+        # An administrator initially reads an old binding while an internal edit
+        # rebinds it. The old range is released before locking the new one.
+        other_prompt = 'other-fixture'
+        async with factory() as s:
+            s.add_all([PromptRow(f_prompt_id=other_prompt, f_name='Other fixture prompt',
+                f_current_version=1, f_update_user='seed', f_update_time=1),
+                PromptVersionRow(f_prompt_id=other_prompt, f_version=1,
+                    f_content='other canonical', f_create_user='seed', f_create_time=1)])
+            await s.commit()
+        original_lock = dao.lock_prompt_agents
+        rebound_once = False
+        async def rebind_before_lock(session, prompt_id):
+            nonlocal rebound_once
+            if not rebound_once:
+                rebound_once = True
+                async with factory() as writer:
+                    row = await writer.get(AgentRow, AGENT)
+                    row.f_prompt_id = other_prompt
+                    await writer.commit()
+            return await original_lock(session, prompt_id)
+        monkeypatch.setattr(dao, 'lock_prompt_agents', rebind_before_lock)
+        try:
+            async with factory() as s:
+                result = await routes.publish_shared_prompt(PromptPublish(content='new binding admin'),
+                    AGENT, Account('admin', 'user'), s)
+                check('admin-restarts-before-locking-rebound-prompt', result.prompt.prompt_id == other_prompt and result.prompt.content == 'new binding admin')
+        finally:
+            monkeypatch.setattr(dao, 'lock_prompt_agents', original_lock)
     finally:
         await engine.dispose()
         with db.cursor() as c:

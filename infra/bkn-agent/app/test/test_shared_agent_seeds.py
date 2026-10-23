@@ -25,6 +25,7 @@ METRIC_DESIGN = MIGRATIONS / "0.2.1/07-seed-object-metric-designer.sql"
 SEMANTIC_LANGUAGE = MIGRATIONS / "0.2.1/08-semantic-output-language.sql"
 GRAPH_EXPLORER = MIGRATIONS / "0.2.1/09-seed-graph-explorer.sql"
 CLAIM_LOCALES = MIGRATIONS / "0.2.2/01-claim-prompt-locales.sql"
+PROMPT_INDEX = MIGRATIONS / "0.2.3/01-agent-prompt-index.sql"
 
 
 def statements(path):
@@ -384,7 +385,7 @@ print(json.dumps([selector.find_init_sql('bkn-agent'),selector.select_upgrade_sc
 
 def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
     fresh, upgrade = selected_migrations("0.2.0")
-    assert fresh == [str(MIGRATIONS / "0.2.2/init.sql"), "0.2.2"]
+    assert fresh == [str(MIGRATIONS / "0.2.3/init.sql"), "0.2.3"]
     assert upgrade == [
         [
             [
@@ -402,8 +403,9 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                 ],
             ],
             ["0.2.2", [str(CLAIM_LOCALES)]],
+            ["0.2.3", [str(PROMPT_INDEX)]],
         ],
-        "0.2.2",
+        "0.2.3",
         True,
     ]
 
@@ -669,7 +671,7 @@ def test_real_migrator_selected_cross_version_chain_preserves_semantic_agents(re
             )
         ]
         _, upgrade = selected_migrations(schema_version)
-        assert upgrade[1] == "0.2.2"
+        assert upgrade[1] == "0.2.3"
         for _, paths in upgrade[0]:
             for path in paths:
                 apply(db, Path(path))
@@ -1140,6 +1142,14 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
 
 def test_installed_021_selects_locale_schema_upgrade():
     _, upgrade = selected_migrations("0.2.1")
-    assert upgrade == [[["0.2.2", [str(CLAIM_LOCALES)]]], "0.2.2", True]
-    _, repeated = selected_migrations("0.2.2")
-    assert repeated == [[], "0.2.2", False]
+    assert upgrade == [[["0.2.2", [str(CLAIM_LOCALES)]], ["0.2.3", [str(PROMPT_INDEX)]]], "0.2.3", True]
+    _, index_upgrade = selected_migrations("0.2.2")
+    assert index_upgrade == [[["0.2.3", [str(PROMPT_INDEX)]]], "0.2.3", True]
+    _, repeated = selected_migrations("0.2.3")
+    assert repeated == [[], "0.2.3", False]
+
+
+def test_index_snapshot_preserves_complete_locale_snapshot():
+    assert (MIGRATIONS / "0.2.3/init.sql").read_text() == (
+        (MIGRATIONS / "0.2.2/init.sql").read_text() + "\n" + PROMPT_INDEX.read_text()
+    )

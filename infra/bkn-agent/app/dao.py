@@ -175,13 +175,20 @@ async def _lock_agent(session: AsyncSession, agent_id: str) -> Optional[AgentRow
     ).scalar_one_or_none()
 
 
-async def lock_prompt_agents(session: AsyncSession, prompt_id: str) -> None:
-    """Lock every bound Agent in stable order before locking its shared Prompt."""
-    await session.execute(
+async def lock_prompt_agents(session: AsyncSession, prompt_id: str) -> list[str]:
+    """Lock the current binding range, not a repeatable-read snapshot of IDs.
+
+    Force the binding index on MySQL/MariaDB: a primary-key scan for
+    ORDER BY would otherwise lock unrelated Agents. The dialect-specific hint
+    is omitted on SQLite. Range locks also serialize new bindings until commit.
+    """
+    rows = (await session.execute(
         select(AgentRow).where(AgentRow.f_prompt_id == prompt_id)
+        .with_hint(AgentRow, "FORCE INDEX (ix_agent_prompt_id_agent_id)", dialect_name="mysql")
         .order_by(AgentRow.f_agent_id).with_for_update()
         .execution_options(populate_existing=True)
-    )
+    )).scalars().all()
+    return [row.f_agent_id for row in rows]
 
 
 async def _make_current(session: AsyncSession, agent_id: str, version: int) -> None:
@@ -281,12 +288,17 @@ async def record_version(
 
 
 async def _record_for_prompt(
-    session: AsyncSession, prompt_id: str, account_id: str, commit: bool
+    session: AsyncSession, prompt_id: str, account_id: str, commit: bool,
+    *, agent_ids: Optional[list[str]] = None,
 ) -> None:
-    agent_ids = (
-        await session.execute(select(AgentRow.f_agent_id).where(AgentRow.f_prompt_id == prompt_id))
-    ).scalars()
-    for agent_id in list(agent_ids):
+    # A transactional publisher passes its current-read locked set. Repeating
+    # a plain SELECT here could miss a binding newer than this session's RR snapshot.
+    if agent_ids is None:
+        agent_ids = list((await session.execute(
+            select(AgentRow.f_agent_id).where(AgentRow.f_prompt_id == prompt_id)
+            .order_by(AgentRow.f_agent_id)
+        )).scalars())
+    for agent_id in agent_ids:
         await record_version(session, agent_id, account_id, commit=commit)
 
 
@@ -702,9 +714,10 @@ async def publish_prompt_version(
     session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str,
     commit: bool = True,
 ):
+    locked_agent_ids = None
     if not commit:
         # Imports reach this function without already owning an Agent lock.
-        await lock_prompt_agents(session, prompt_id)
+        locked_agent_ids = await lock_prompt_agents(session, prompt_id)
     head = await session.get(
         PromptRow, prompt_id, **({"populate_existing": True, "with_for_update": True} if not commit else {})
     )
@@ -734,7 +747,7 @@ async def publish_prompt_version(
         await session.commit()
     else:
         await session.flush()
-    await _record_for_prompt(session, prompt_id, account_id, commit)
+    await _record_for_prompt(session, prompt_id, account_id, commit, agent_ids=locked_agent_ids)
     return await _prompt_out(session, head)
 
 
