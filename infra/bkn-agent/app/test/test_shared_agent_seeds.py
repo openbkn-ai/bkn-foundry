@@ -208,7 +208,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
 
 def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_history():
     with database() as fresh, database() as upgraded:
-        apply(fresh, MIGRATIONS / "0.2.1/init.sql")
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
         apply(upgraded, MIGRATIONS / "0.2.0/init.sql")
         original = snapshot(upgraded)
         apply(upgraded, STUDIO)
@@ -713,7 +713,7 @@ def test_owner_credential_rollback_is_not_mistaken_for_an_untouched_default():
 
 def test_every_agent_starts_with_one_current_version():
     with database() as db:
-        apply(db, MIGRATIONS / "0.2.1/init.sql")
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
         rows = {
             row["f_agent_id"]: dict(row)
             for row in db.execute("SELECT * FROM t_agent_version WHERE f_current=1")
@@ -956,7 +956,7 @@ def test_semantic_language_upgrade_does_not_reverse_an_operator_rollback():
 
 
 def test_current_init_only_initializes_the_latest_semantic_defaults():
-    init = MIGRATIONS / "0.2.1/init.sql"
+    init = Path(selected_migrations("0.0.0")[0][0])
     # The optional claim-locale column and guarded translation backfill do not
     # update semantic-understanding versions or their current/initial markers.
     claim_locale_statements = set(statements(CLAIM_LOCALES))
