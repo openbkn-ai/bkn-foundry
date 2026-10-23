@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -64,7 +65,7 @@ func TestResolveTypeEdgeDirection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := rest.WithLanguage(context.Background(), rest.SimplifiedChinese)
+			ctx := i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese)
 			direction, err := ResolveTypeEdgeDirection(ctx, 0, tt.edge, tt.relationType)
 			if len(tt.wantParts) == 0 {
 				if err != nil || direction != tt.wantDirection {

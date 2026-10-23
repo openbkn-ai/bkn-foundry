@@ -28,9 +28,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
@@ -208,6 +208,7 @@ func (server *Application) Run() {
 // Boot initializes shared infrastructure without opening the HTTP listener.
 // Paid entry points may register extensions after Boot returns and before Run.
 func Boot(_ Options) *Application {
+
 	// Enable pprof.
 	// go func() {
 	// 	http.ListenAndServe("0.0.0.0:6060", nil)
@@ -220,7 +221,7 @@ func Boot(_ Options) *Application {
 	logger.Info("Server Init Setting Success")
 
 	// Configure error-code locales.
-	rest.SetLang(appSetting.ServerSetting.Language)
+	i18n.SetLang(appSetting.ServerSetting.Language)
 	logger.Info("Server Set Language Success")
 
 	// Configure Gin run mode.

@@ -8,48 +8,43 @@ package locale
 
 import (
 	"context"
-	"log"
-	"os"
-	"path"
-	"runtime"
+	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-)
-
-var (
-	localeDir = "/locale"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 const validationDetailPrefix = "OntologyQuery.Validation.Detail."
 
 // ValidationDetail renders a request-validation detail using the effective request locale.
 func ValidationDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), validationDetailPrefix+name, templateData)
+	text, err := i18n.Render(i18n.GetLanguageByCtx(ctx), validationDetailPrefix+name, templateData)
+	if err != nil {
+		logger.Errorf("localized service message failed: %v", err)
+	}
+	return text
 }
 
-func Register() {
-	var abPath string
+var registerOnce sync.Once
 
-	// UT MODE
-	if os.Getenv("I18N_MODE_UT") == "true" {
-		_, filename, _, ok := runtime.Caller(0)
-		if ok {
-			abPath = path.Dir(filename)
-		} else {
-			log.Fatal("failed to get absolute path")
+// Register installs service messages once before error code registration.
+func Register() {
+	registerOnce.Do(func() {
+		i18n.RegisterI18n(&actionExecutionEnUS)
+		i18n.RegisterI18n(&actionExecutionZhCN)
+		i18n.RegisterI18n(&actionTypeEnUS)
+		i18n.RegisterI18n(&actionTypeZhCN)
+		i18n.RegisterI18n(&errorcodeEnUS)
+		i18n.RegisterI18n(&errorcodeZhCN)
+		i18n.RegisterI18n(&knowledgeNetworkEnUS)
+		i18n.RegisterI18n(&knowledgeNetworkZhCN)
+		i18n.RegisterI18n(&objectTypeEnUS)
+		i18n.RegisterI18n(&objectTypeZhCN)
+		i18n.RegisterI18n(&riskTypeEnUS)
+		i18n.RegisterI18n(&riskTypeZhCN)
+
+		if err := i18n.ValidateMessageBundles(); err != nil {
+			panic(err)
 		}
-	} else {
-		abPath, _ = os.Getwd()
-		abPath += localeDir
-		if _, err := os.Stat(abPath); err != nil {
-			_, filename, _, ok := runtime.Caller(0)
-			if ok {
-				abPath = path.Dir(filename)
-			} else {
-				log.Fatal("failed to get absolute path")
-			}
-		}
-	}
-	i18n.RegisterI18n(abPath)
+	})
 }

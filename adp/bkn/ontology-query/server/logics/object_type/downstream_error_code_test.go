@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -56,14 +57,19 @@ func Test_downstreamErrorCodeIsRegisteredInEveryLanguage(t *testing.T) {
 		http.StatusUnprocessableEntity,
 		http.StatusTooManyRequests,
 	}
-	for lang := range rest.Languages {
+	for lang := range i18n.Languages {
 		for _, status := range statuses {
-			ctx := context.WithValue(context.Background(), rest.LanguageKey, lang)
+			ctx := context.WithValue(context.Background(), i18n.LanguageKey, lang)
 			httpErr := rest.NewHTTPError(ctx, status, downstreamErrorCode(status))
 			if httpErr == nil {
 				t.Fatalf("status %d lang %v: error code is not registered", status, lang)
 			}
-			if httpErr.BaseError.Description == "" {
+			renderErr := httpErr.Render()
+			rendered := httpErr.BaseError
+			if renderErr != nil {
+				t.Fatal(renderErr)
+			}
+			if rendered.Description == "" {
 				t.Fatalf("status %d lang %v: description is empty", status, lang)
 			}
 			if httpErr.HTTPCode != status {

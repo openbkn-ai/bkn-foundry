@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
@@ -55,7 +56,7 @@ func RegisterObjectMetricRoutes(
 }
 
 func (r *restHandler) PostObjectMetricDrillThroughV1ByEx(c *gin.Context) {
-	visitorInfo, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitorInfo, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err == nil {
 		r.postObjectMetricDrillThroughV1(c, visitorInfo)
 	}
@@ -66,7 +67,7 @@ func (r *restHandler) PostObjectMetricDrillThroughV1ByIn(c *gin.Context) {
 }
 
 func (r *restHandler) PostObjectMetricTrialDrillThroughV1ByEx(c *gin.Context) {
-	visitorInfo, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitorInfo, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err == nil {
 		r.postObjectMetricTrialDrillThroughV1(c, visitorInfo)
 	}
@@ -77,7 +78,7 @@ func (r *restHandler) PostObjectMetricTrialDrillThroughV1ByIn(c *gin.Context) {
 }
 
 func (r *restHandler) postObjectMetricDrillThroughV1(c *gin.Context, visitorInfo hydra.Visitor) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitorInfo.ID, Type: string(visitorInfo.Type)})
 	knID, metricID := c.Param("kn_id"), c.Param("metric_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
@@ -113,7 +114,7 @@ func (r *restHandler) postObjectMetricDrillThroughV1(c *gin.Context, visitorInfo
 }
 
 func (r *restHandler) postObjectMetricTrialDrillThroughV1(c *gin.Context, visitorInfo hydra.Visitor) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitorInfo.ID, Type: string(visitorInfo.Type)})
 	knID, branch := c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	var body interfaces.ObjectMetricTrialDrillThroughRequestV1
@@ -151,7 +152,7 @@ func replyObjectMetricDrillThroughErrorV1(c *gin.Context, ctx context.Context, e
 }
 
 func (r *restHandler) PostObjectMetricDataV1ByEx(c *gin.Context) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	visitorInfo, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -164,7 +165,7 @@ func (r *restHandler) PostObjectMetricDataV1ByIn(c *gin.Context) {
 }
 
 func (r *restHandler) PostObjectMetricTrialV1ByEx(c *gin.Context) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	visitorInfo, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -177,7 +178,7 @@ func (r *restHandler) PostObjectMetricTrialV1ByIn(c *gin.Context) {
 }
 
 func (r *restHandler) postObjectMetricTrialV1(c *gin.Context, visitorInfo hydra.Visitor) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitorInfo.ID, Type: string(visitorInfo.Type)})
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
@@ -206,7 +207,7 @@ func (r *restHandler) postObjectMetricTrialV1(c *gin.Context, visitorInfo hydra.
 }
 
 func (r *restHandler) postObjectMetricDataV1(c *gin.Context, visitorInfo hydra.Visitor) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitorInfo.ID, Type: string(visitorInfo.Type)})
 	knID := c.Param("kn_id")
 	metricID := c.Param("metric_id")

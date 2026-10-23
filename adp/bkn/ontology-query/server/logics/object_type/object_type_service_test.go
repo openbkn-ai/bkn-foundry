@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -1349,7 +1350,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		})
 
 		Convey("失败 - 工具执行错误不回显下游载荷", func() {
-			localizedCtx := rest.WithLanguage(ctx, rest.AmericanEnglish)
+			localizedCtx := i18n.WithLanguage(ctx, i18n.AmericanEnglish)
 			logicProp := &interfaces.LogicProperty{
 				Name: "logic_prop1",
 				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
@@ -1372,7 +1373,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		})
 
 		Convey("失败 - 指标动态参数错误保留具体原因", func() {
-			localizedCtx := rest.WithLanguage(ctx, rest.SimplifiedChinese)
+			localizedCtx := i18n.WithLanguage(ctx, i18n.SimplifiedChinese)
 			dynamicParams := map[string]map[string]any{
 				"metric_prop": {"invalid": make(chan int)},
 			}

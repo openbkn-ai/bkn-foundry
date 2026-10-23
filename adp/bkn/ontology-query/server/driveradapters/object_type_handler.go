@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -35,7 +36,7 @@ func (r *restHandler) GetObjectTypeSchemaByIn(c *gin.Context) {
 
 // GetObjectTypeSchemaByEx returns the bound Vega schema for an authenticated caller.
 func (r *restHandler) GetObjectTypeSchemaByEx(c *gin.Context) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	requestVisitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -77,7 +78,7 @@ func (r *restHandler) GetObjectTypeSampleDataByIn(c *gin.Context) {
 
 // GetObjectTypeSampleDataByEx returns a small data sample for an authenticated caller.
 func (r *restHandler) GetObjectTypeSampleDataByEx(c *gin.Context) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	requestVisitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -206,7 +207,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -219,7 +220,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -235,7 +236,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -259,7 +260,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -279,7 +280,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -383,7 +384,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -396,7 +397,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -411,7 +412,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -429,7 +430,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
@@ -449,7 +450,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 		httpErr := err.(*rest.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)

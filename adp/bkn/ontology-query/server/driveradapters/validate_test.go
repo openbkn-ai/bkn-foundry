@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -95,24 +96,24 @@ func Test_ValidateHeaderMethodOverride(t *testing.T) {
 func Test_ValidateHeaderMethodOverrideLocalizesDetails(t *testing.T) {
 	tests := []struct {
 		name     string
-		language rest.Language
+		language i18n.Language
 		expected string
 	}{
 		{
 			name:     "Simplified Chinese",
-			language: rest.SimplifiedChinese,
+			language: i18n.SimplifiedChinese,
 			expected: "X-HTTP-Method-Override 必须为 GET，当前为 POST。",
 		},
 		{
 			name:     "American English",
-			language: rest.AmericanEnglish,
+			language: i18n.AmericanEnglish,
 			expected: "X-HTTP-Method-Override must be GET; got POST.",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := rest.WithLanguage(context.Background(), tt.language)
+			ctx := i18n.WithLanguage(context.Background(), tt.language)
 			err := ValidateHeaderMethodOverride(ctx, "POST")
 			if err == nil {
 				t.Fatal("ValidateHeaderMethodOverride() returned nil error")
@@ -807,7 +808,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 	tests := []struct {
 		name      string
 		query     *interfaces.SubGraphQueryBaseOnTypePath
-		language  rest.Language
+		language  i18n.Language
 		wantEdges []endpoints
 		wantCode  string
 		wantParts []string
@@ -843,7 +844,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			query: typePathQuery(issuePath,
 				interfaces.TypeEdge{RelationTypeId: "rel_address_user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "order", TargetObjectTypeId: "user"}),
-			language: rest.SimplifiedChinese,
+			language: i18n.SimplifiedChinese,
 			wantCode: oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"第 2 条边 rel_order_user 与路径节点不一致",
 				"路径要求 user → order，当前填写 order → user", "两者都可以省略"},
@@ -853,7 +854,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			query: typePathQuery(issuePath,
 				interfaces.TypeEdge{RelationTypeId: "rel_address_user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "order", TargetObjectTypeId: "user"}),
-			language:  rest.AmericanEnglish,
+			language:  i18n.AmericanEnglish,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"Edge 2 (rel_order_user)", "the path requires user → order, but the edge gives order → user"},
 		},
@@ -862,7 +863,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			query: typePathQuery(issuePath,
 				interfaces.TypeEdge{RelationTypeId: "rel_address_user", TargetObjectTypeId: "order"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user"}),
-			language:  rest.SimplifiedChinese,
+			language:  i18n.SimplifiedChinese,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"第 1 条边 rel_address_user", "路径要求 user_address → user，当前填写 user_address → order"},
 		},
@@ -871,14 +872,14 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			query: typePathQuery([]string{"user_address", "user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_address_user", SourceObjectTypeId: "user_address", TargetObjectTypeId: "user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "user", TargetObjectTypeId: "order"}),
-			language:  rest.SimplifiedChinese,
+			language:  i18n.SimplifiedChinese,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"路径有 2 条边，object_types 需要 3 个节点，当前只有 2 个。"},
 		},
 		{
 			name:      "a node on the path needs an id",
 			query:     typePathQuery([]string{"order", ""}, interfaces.TypeEdge{RelationTypeId: "rel_order_user"}),
-			language:  rest.SimplifiedChinese,
+			language:  i18n.SimplifiedChinese,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"object_types 第 2 个节点必须提供 id。"},
 		},
@@ -886,7 +887,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			name: "direction must be forward or backward",
 			query: typePathQuery([]string{"order", "user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user", Direction: interfaces.DIRECTION_BIDIRECTIONAL}),
-			language:  rest.SimplifiedChinese,
+			language:  i18n.SimplifiedChinese,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"第 1 条边的 direction 必须为 forward 或 backward，当前为 bidirectional"},
 		},
@@ -896,7 +897,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			if tt.language != "" {
-				ctx = rest.WithLanguage(ctx, tt.language)
+				ctx = i18n.WithLanguage(ctx, tt.language)
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, tt.query)
 			if tt.wantCode == "" {
@@ -944,7 +945,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 		})
 
 		Convey("失败 - Condition 解码错误保留具体原因", func() {
-			localizedCtx := rest.WithLanguage(ctx, rest.SimplifiedChinese)
+			localizedCtx := i18n.WithLanguage(ctx, i18n.SimplifiedChinese)
 			query := &interfaces.ObjectQueryBaseOnObjectType{
 				Condition: map[string]any{"sub_conditions": "invalid"},
 			}
