@@ -63,28 +63,19 @@ var objectNameErrorCode = map[string][]string{
 	},
 }
 
-func commonValidationDetail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(
-		i18n.GetLanguageByCtx(ctx),
-		"BknBackend.Validation.Detail."+name,
-		templateData,
-	)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
-}
-
-// Validate the import mode.
 func validateImportMode(ctx context.Context, mode string) *rest.HTTPError {
 	switch mode {
 	case interfaces.ImportMode_Normal,
 		interfaces.ImportMode_Ignore,
 		interfaces.ImportMode_Overwrite:
 	default:
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_ImportMode).
-			WithErrorDetails(commonValidationDetail(ctx, "ImportMode", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -97,8 +88,11 @@ func validateObjectName(ctx context.Context, objectName string, objectType strin
 	}
 
 	if utf8.RuneCountInString(objectName) > interfaces.OBJECT_NAME_MAX_LENGTH {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][1]).
-			WithErrorDetails(commonValidationDetail(ctx, "NameLengthExceeded", map[string]any{"objectType": objectType, "objectName": objectName, "limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.NameLengthExceeded", map[string]any{"objectType": objectType, "objectName": objectName, "limit": interfaces.OBJECT_NAME_MAX_LENGTH})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][1]).WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -130,13 +124,21 @@ func validateDataTagName(ctx context.Context, dataTagName string) error {
 	}
 
 	if utf8.RuneCountInString(dataTagName) > interfaces.OBJECT_NAME_MAX_LENGTH {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.DataTagNameLength", map[string]any{"limit": interfaces.OBJECT_NAME_MAX_LENGTH})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName).
-			WithErrorDetails(commonValidationDetail(ctx, "DataTagNameLength", map[string]any{"limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
+			WithErrorDetails(localizedText)
 	}
 
 	if isInvalid := strings.ContainsAny(interfaces.NAME_INVALID_CHARACTER, dataTagName); isInvalid {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.DataTagNameInvalidCharacters", map[string]any{"characters": interfaces.NAME_INVALID_CHARACTER})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName).
-			WithErrorDetails(commonValidationDetail(ctx, "DataTagNameInvalidCharacters", map[string]any{"characters": interfaces.NAME_INVALID_CHARACTER}))
+			WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -149,24 +151,39 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 
 	off, err := strconv.Atoi(offset)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.OffsetIntegerRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Offset).
-			WithErrorDetails(commonValidationDetail(ctx, "OffsetIntegerRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	if off < interfaces.MIN_OFFSET {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.OffsetMin", map[string]any{"min": interfaces.MIN_OFFSET})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Offset).
-			WithErrorDetails(commonValidationDetail(ctx, "OffsetMin", map[string]any{"min": interfaces.MIN_OFFSET}))
+			WithErrorDetails(localizedText)
 	}
 
 	lim, err := strconv.Atoi(limit)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.LimitIntegerRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).
-			WithErrorDetails(commonValidationDetail(ctx, "LimitIntegerRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	if limit != interfaces.NO_LIMIT && (lim < interfaces.MIN_LIMIT || lim > interfaces.MAX_LIMIT) {
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).
-			WithErrorDetails(commonValidationDetail(ctx, "LimitRange", map[string]any{"noLimit": interfaces.NO_LIMIT, "min": interfaces.MIN_LIMIT, "max": interfaces.MAX_LIMIT}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.LimitRange", map[string]any{"noLimit": interfaces.NO_LIMIT, "min": interfaces.MIN_LIMIT, "max": interfaces.MAX_LIMIT})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).WithErrorDetails(localizedText)
 	}
 
 	_, ok := supportedSortTypes[sort]
@@ -175,13 +192,21 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 		for t := range supportedSortTypes {
 			types = append(types, t)
 		}
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.SortInvalid", map[string]any{"types": types})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Sort).
-			WithErrorDetails(commonValidationDetail(ctx, "SortInvalid", map[string]any{"types": types}))
+			WithErrorDetails(localizedText)
 	}
 
 	if direction != interfaces.DESC_DIRECTION && direction != interfaces.ASC_DIRECTION {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.DirectionInvalid", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Direction).
-			WithErrorDetails(commonValidationDetail(ctx, "DirectionInvalid", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	return interfaces.PaginationQueryParameters{
@@ -198,8 +223,12 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 	var actualCond *cond.CondCfg
 	err := mapstructure.Decode(query.Condition, &actualCond)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Condition).
-			WithErrorDetails(commonValidationDetail(ctx, "ConditionDecodeFailed", nil))
+			WithErrorDetails(localizedText)
 	}
 	query.ActualCondition = actualCond
 
@@ -265,8 +294,12 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 	case cond.OperationAnd, cond.OperationOr, cond.OperationKNN:
 		// Limit the number of sub-conditions.
 		if len(cfg.SubConds) > cond.MaxSubCondition {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionCountExceeded", map[string]any{"limit": cond.MaxSubCondition})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
-				WithErrorDetails(commonValidationDetail(ctx, "ConditionCountExceeded", map[string]any{"limit": cond.MaxSubCondition}))
+				WithErrorDetails(localizedText)
 		}
 
 		for _, subCond := range cfg.SubConds {
@@ -296,30 +329,46 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 		// These operations require a single value.
 		_, ok := cfg.Value.([]any)
 		if ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionSingleValueRequired", map[string]any{"operation": cfg.Operation})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails(commonValidationDetail(ctx, "ConditionSingleValueRequired", map[string]any{"operation": cfg.Operation}))
+				WithErrorDetails(localizedText)
 		}
 
 		if cfg.Operation == cond.OperationLike || cfg.Operation == cond.OperationNotLike ||
 			cfg.Operation == cond.OperationPrefix || cfg.Operation == cond.OperationNotPrefix {
 			_, ok := cfg.Value.(string)
 			if !ok {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionStringValueRequired", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails(commonValidationDetail(ctx, "ConditionStringValueRequired", nil))
+					WithErrorDetails(localizedText)
 			}
 		}
 
 		if cfg.Operation == cond.OperationRegex {
 			val, ok := cfg.Value.(string)
 			if !ok {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionRegexStringRequired", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails(commonValidationDetail(ctx, "ConditionRegexStringRequired", nil))
+					WithErrorDetails(localizedText)
 			}
 
 			_, err := regexp2.Compile(val, regexp2.RE2)
 			if err != nil {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionRegexInvalid", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-					WithErrorDetails(commonValidationDetail(ctx, "ConditionRegexInvalid", nil))
+					WithErrorDetails(localizedText)
 			}
 
 		}
@@ -328,26 +377,42 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 		// The in and not_in operations require a non-empty array value.
 		_, ok := cfg.Value.([]any)
 		if !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionArrayRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails(commonValidationDetail(ctx, "ConditionArrayRequired", nil))
+				WithErrorDetails(localizedText)
 		}
 
 		if len(cfg.Value.([]any)) <= 0 {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionArrayNonEmpty", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails(commonValidationDetail(ctx, "ConditionArrayNonEmpty", nil))
+				WithErrorDetails(localizedText)
 		}
 	case cond.OperationRange, cond.OperationOutRange, cond.OperationBefore, cond.OperationBetween:
 		// Range-like operations require an array with two values.
 		// out_range excludes the interval between the two values.
 		v, ok := cfg.Value.([]any)
 		if !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionRangeArrayRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails(commonValidationDetail(ctx, "ConditionRangeArrayRequired", nil))
+				WithErrorDetails(localizedText)
 		}
 
 		if len(v) != 2 {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionRangeArrayLength", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
-				WithErrorDetails(commonValidationDetail(ctx, "ConditionRangeArrayLength", nil))
+				WithErrorDetails(localizedText)
 		}
 	}
 
@@ -360,8 +425,12 @@ func validateID(ctx context.Context, id string) error {
 		re := regexp2.MustCompile(interfaces.RegexPattern_NonBuiltin_ID, regexp2.RE2)
 		match, err := re.MatchString(id)
 		if err != nil || !match {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.IdentifierInvalid", map[string]any{"id": id})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
-				WithErrorDetails(commonValidationDetail(ctx, "IdentifierInvalid", map[string]any{"id": id}))
+				WithErrorDetails(localizedText)
 		}
 	}
 
@@ -372,13 +441,21 @@ func validateID(ctx context.Context, id string) error {
 func ValidateHeaderMethodOverride(ctx context.Context, methodOverride string) error {
 
 	if methodOverride == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.OverrideMethodRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_OverrideMethod).
-			WithErrorDetails(commonValidationDetail(ctx, "OverrideMethodRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	if methodOverride != "GET" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.OverrideMethodInvalid", map[string]any{"method": methodOverride})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_OverrideMethod).
-			WithErrorDetails(commonValidationDetail(ctx, "OverrideMethodInvalid", map[string]any{"method": methodOverride}))
+			WithErrorDetails(localizedText)
 	}
 	return nil
 }

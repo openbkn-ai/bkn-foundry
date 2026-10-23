@@ -60,14 +60,6 @@ func NewValueTypeService(appSetting *common.AppSetting) interfaces.ValueTypeServ
 	return vts
 }
 
-func detail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
-}
-
 func internalError(ctx context.Context, err error) error {
 	return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ValueType_InternalError).
 		WithErrorDetails(err.Error())
@@ -234,12 +226,19 @@ func (s *valueTypeService) splitByImportMode(ctx context.Context, mode string,
 		case mode == interfaces.ImportMode_Overwrite && !nameTaken:
 			updates = append(updates, vt)
 		case idExists && mode == interfaces.ImportMode_Normal:
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.ValueTypeIDAlreadyExists", map[string]any{"valueTypeID": vt.VTID})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeIDExisted).
-				WithErrorDetails(detail(ctx, "ValueTypeIDAlreadyExists", map[string]any{"valueTypeID": vt.VTID}))
+				WithErrorDetails(localizedText)
 		default:
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeNameExisted).
-				WithMetadata(map[string]any{"name": vt.VTName}).
-				WithErrorDetails(detail(ctx, "ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName}))
+				WithErrorDetails(localizedText)
 		}
 	}
 	return creates, updates, nil
@@ -330,9 +329,12 @@ func (s *valueTypeService) UpdateValueType(ctx context.Context, tx *sql.Tx, vt *
 		}
 		for _, other := range existing {
 			if other.VTID != vt.VTID {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeNameExisted).
-					WithMetadata(map[string]any{"name": vt.VTName}).
-					WithErrorDetails(detail(ctx, "ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName}))
+					WithErrorDetails(localizedText)
 			}
 		}
 		return s.update(ctx, tx, vt)

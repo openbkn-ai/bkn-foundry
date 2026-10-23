@@ -103,16 +103,24 @@ func (r *restHandler) CreateRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 		Entries []*interfaces.RiskType `json:"entries"`
 	}
 	if err = c.ShouldBindJSON(&requestData); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	riskTypes := requestData.Entries
 	if len(riskTypes) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.EntriesRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(commonValidationDetail(ctx, "EntriesRequired", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -189,8 +197,12 @@ func (r *restHandler) UpdateRiskType(c *gin.Context, visitor hydra.Visitor) {
 
 	var riskType interfaces.RiskType
 	if err = c.ShouldBindJSON(&riskType); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -450,8 +462,12 @@ func (r *restHandler) GetRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 				missing = append(missing, id)
 			}
 		}
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestedResourcesNotFound", map[string]any{"resources": missing})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestedResourcesNotFound", map[string]any{"resources": missing}))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -551,8 +567,12 @@ func (r *restHandler) SearchRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	query := interfaces.ConceptsQuery{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)

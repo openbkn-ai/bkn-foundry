@@ -112,8 +112,12 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 	strictModeStr := c.DefaultQuery(interfaces.QueryParam_StrictMode, "true")
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.StrictModeInvalid", map[string]any{"value": strictModeStr})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -142,8 +146,12 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 	}
 	err = c.ShouldBindJSON(&requestData)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
@@ -158,8 +166,12 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 
 	// Reject an empty entries array.
 	if len(relationTypes) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.EntriesRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(commonValidationDetail(ctx, "EntriesRequired", nil))
+			WithErrorDetails(localizedText)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -236,8 +248,12 @@ func (r *restHandler) ValidateRelationTypesForKN(c *gin.Context, visitor hydra.V
 	strictModeStr := c.DefaultQuery(interfaces.QueryParam_StrictMode, "true")
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.StrictModeInvalid", map[string]any{"value": strictModeStr})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -271,8 +287,12 @@ func (r *restHandler) ValidateRelationTypesForKN(c *gin.Context, visitor hydra.V
 		Entries []*interfaces.RelationType `json:"entries"`
 	}
 	if err = c.ShouldBindJSON(&requestData); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -355,8 +375,12 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 	strictModeStr := c.DefaultQuery(interfaces.QueryParam_StrictMode, "true")
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.StrictModeInvalid", map[string]any{"value": strictModeStr})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -388,8 +412,12 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 	relationType := interfaces.RelationType{}
 	err = c.ShouldBindJSON(&relationType)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
@@ -858,8 +886,12 @@ func (r *restHandler) SearchRelationTypes(c *gin.Context, visitor hydra.Visitor)
 	query := interfaces.ConceptsQuery{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)

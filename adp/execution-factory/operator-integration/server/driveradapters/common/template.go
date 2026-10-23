@@ -7,9 +7,10 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/validator"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -26,8 +27,7 @@ type TemplateHandler interface {
 }
 
 type templateHandler struct {
-	I18nTranslator map[common.Language]*localize.I18nTranslator
-	Validator      interfaces.Validator
+	Validator interfaces.Validator
 }
 
 var (
@@ -39,10 +39,6 @@ func NewTemplateHandler() TemplateHandler {
 	tOnce.Do(func() {
 		th = &templateHandler{
 			Validator: validator.NewValidator(),
-			I18nTranslator: map[common.Language]*localize.I18nTranslator{
-				common.SimplifiedChinese: localize.NewI18nTranslator(string(common.SimplifiedChinese)),
-				common.AmericanEnglish:   localize.NewI18nTranslator(string(common.AmericanEnglish)),
-			},
 		}
 	})
 	return th
@@ -76,11 +72,12 @@ func (t *templateHandler) GetTemplate(c *gin.Context) {
 		return
 	}
 	language := common.GetLanguageByCtx(c.Request.Context())
-	tr, ok := t.I18nTranslator[language]
-	if !ok {
-		tr = t.I18nTranslator[common.DefaultLanguage]
+	codeTemplate, renderErr := i18n.Render(language, "AgentOperatorIntegration."+fmt.Sprintf(CodeTemplate, req.TemplateType), nil)
+	if renderErr != nil {
+		rest.ReplyError(c, renderErr)
+		return
 	}
-	codeTemplate := tr.Trans(fmt.Sprintf(CodeTemplate, req.TemplateType))
+
 	rest.ReplyOK(c, http.StatusOK, &TemplateResponse{
 		TemplateType: req.TemplateType,
 		CodeTemplate: codeTemplate,

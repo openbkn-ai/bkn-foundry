@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -25,7 +26,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
@@ -871,8 +871,12 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		catalogIDs[r.CatalogID] = true
 	}
 	if len(catalogIDs) > 1 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Validation.Detail.MultiCatalogJoinNotSupported", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_MultiCatalogNotSupported).
-			WithErrorDetails(locale.ValidationDetail(ctx, "MultiCatalogJoinNotSupported", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	// Load the catalog.

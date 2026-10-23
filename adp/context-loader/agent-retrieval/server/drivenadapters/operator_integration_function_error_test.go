@@ -6,6 +6,7 @@ package drivenadapters
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
@@ -64,10 +66,10 @@ func TestExecuteFunction_DeniedExecutionNamesTheMissingGrant(t *testing.T) {
 
 	he := asHTTPError(t, executeDateScript(t, client))
 
-	if he.HTTPCode != http.StatusForbidden || he.Code != "Public.Forbidden" {
-		t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.Code)
+	if he.HTTPCode != http.StatusForbidden || he.BaseError.ErrorCode != "Public.Forbidden" {
+		t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.BaseError.ErrorCode)
 	}
-	details, _ := he.ErrorDetails.(string)
+	details, _ := he.BaseError.ErrorDetails.(string)
 	if !strings.HasPrefix(details, "AgentOperatorIntegration.Forbidden.CommonUseForbidden: ") {
 		t.Errorf("details = %q, want the downstream code first", details)
 	}
@@ -86,10 +88,10 @@ func TestExecuteFunction_AuthorizationOutageIsNotReportedAsDenial(t *testing.T) 
 
 	he := asHTTPError(t, executeDateScript(t, client))
 
-	if he.HTTPCode != http.StatusServiceUnavailable || he.Code != "Public.ServiceUnavailable" {
-		t.Fatalf("error = %d %s, want 503 Public.ServiceUnavailable", he.HTTPCode, he.Code)
+	if he.HTTPCode != http.StatusServiceUnavailable || he.BaseError.ErrorCode != "Public.ServiceUnavailable" {
+		t.Fatalf("error = %d %s, want 503 Public.ServiceUnavailable", he.HTTPCode, he.BaseError.ErrorCode)
 	}
-	details, _ := he.ErrorDetails.(string)
+	details, _ := he.BaseError.ErrorDetails.(string)
 	if !strings.HasPrefix(details, "AgentOperatorIntegration.ServiceUnavailable.CommonAuthorizationUnavailable: ") {
 		t.Errorf("details = %q, want the downstream code first", details)
 	}
@@ -114,8 +116,8 @@ func TestExecuteFunction_OtherRejectionsCarryCodeButNotRawDetails(t *testing.T) 
 		t.Fatalf("status = %d, want 400", he.HTTPCode)
 	}
 	want := "AgentOperatorIntegration.BadRequest.DebugParamsInvalid: 调试传参错误，必须为JSON格式"
-	if he.ErrorDetails != want {
-		t.Errorf("details = %#v, want %q", he.ErrorDetails, want)
+	if he.BaseError.ErrorDetails != want {
+		t.Errorf("details = %#v, want %q", he.BaseError.ErrorDetails, want)
 	}
 	if strings.Contains(he.Error(), leak) || strings.Contains(he.Error(), internalURL) {
 		t.Errorf("error leaks downstream internals: %s", he.Error())
@@ -141,12 +143,26 @@ func TestExecuteFunction_UpstreamFaultStaysBadGateway(t *testing.T) {
 
 			he := asHTTPError(t, executeDateScript(t, client))
 
-			if he.HTTPCode != http.StatusBadGateway || he.Code != "Public.BadGateway" {
-				t.Fatalf("error = %d %s, want 502 Public.BadGateway", he.HTTPCode, he.Code)
+			if he.HTTPCode != http.StatusBadGateway || he.BaseError.ErrorCode != "Public.BadGateway" {
+				t.Fatalf("error = %d %s, want 502 Public.BadGateway", he.HTTPCode, he.BaseError.ErrorCode)
 			}
 			if strings.Contains(he.Error(), "10.43.0.9") {
 				t.Errorf("error leaks downstream internals: %s", he.Error())
 			}
 		})
+	}
+}
+
+func TestExecutionFactoryErrorReadsSharedAndLegacyEnvelopes(t *testing.T) {
+	for _, codeKey := range []string{"error_code", "code"} {
+		body := fmt.Sprintf(`{"%s":"AgentOperatorIntegration.Forbidden.CommonUseForbidden","description":"execute denied"}`, codeKey)
+		dependency := &infraErr.DependencyError{
+			Err:  infraErr.DefaultHTTPError(context.Background(), http.StatusForbidden, nil),
+			Body: []byte(body),
+		}
+		code, description := executionFactoryError(fmt.Errorf("function failed: %w", dependency))
+		if code != "AgentOperatorIntegration.Forbidden.CommonUseForbidden" || description != "execute denied" {
+			t.Fatalf("%s: code=%q description=%q", codeKey, code, description)
+		}
 	}
 }

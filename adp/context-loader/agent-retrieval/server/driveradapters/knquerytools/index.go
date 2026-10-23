@@ -14,6 +14,9 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	commRest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -117,7 +120,7 @@ func (h *knQueryToolsHandler) RunCypher(c *gin.Context) {
 		// the construct it refused; that message is what tells the caller how
 		// to rewrite the query, so it is passed through untouched. Only the
 		// errors raised in this service need a status of their own.
-		httpErr := &errors.HTTPError{}
+		httpErr := &commRest.HTTPError{}
 		if !stderrors.As(err, &httpErr) {
 			err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 		}
@@ -178,9 +181,11 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	// downstream call per object type of a list this answer will not carry (#1877).
 	if resp.NeedsNavigationShell() {
 		resp.ReduceToNavigationShell()
-		resp.Notice = errors.LocalizedDetail(ctx, resp.NavigationShellNoticeKey(),
-			resp.ObjectTypeCount, resp.RelationTypeCount,
-			interfaces.MaxSummaryObjectTypes, interfaces.MaxSummaryRelationTypes)
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+resp.NavigationShellNoticeKey(), map[string]any{"Arg1": resp.ObjectTypeCount, "Arg2": resp.RelationTypeCount, "Arg3": interfaces.MaxSummaryObjectTypes, "Arg4": interfaces.MaxSummaryRelationTypes})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		resp.Notice = localizedText
 	} else {
 		resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, h.schemaAccess, req.KnID, resp.ObjectTypes)
 		if err != nil {
@@ -319,8 +324,11 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		matched, totalCount = page.Entries, page.TotalCount
 		nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
 		if clamped {
-			notice = errors.LocalizedDetail(ctx, "ObjectTypePageLimitClamped",
-				req.Limit, interfaces.MaxObjectTypePageSize, limit)
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ObjectTypePageLimitClamped", map[string]any{"Arg1": req.Limit, "Arg2": interfaces.MaxObjectTypePageSize, "Arg3": limit})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			notice = localizedText
 		}
 	} else if matched, err = h.bknBackend.GetObjectTypeDetail(ctx, knID, req.IDs, true); err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#GetObjectTypes] failed: %v", err)
@@ -397,7 +405,7 @@ func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#QueryMetric] kn=%s metric=%s failed: %v",
 			req.KnID, req.MetricID, err)
-		if httpErr, ok := err.(*errors.HTTPError); ok {
+		if httpErr, ok := err.(*commRest.HTTPError); ok {
 			rest.ReplyError(c, httpErr)
 			return
 		}

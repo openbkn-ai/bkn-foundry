@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -44,10 +46,13 @@ func validateObjectMetricV1PropertyUniqueness(ctx context.Context, objectType *i
 			continue
 		}
 		if previous, exists := seen[metricID]; exists {
-			return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricPropertyAlreadyBound", map[string]any{
-					"objectType": objectType.OTName, "metric": metricID, "property": previous,
-				}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricPropertyAlreadyBound", map[string]any{
+				"objectType": objectType.OTName, "metric": metricID, "property": previous,
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 		seen[metricID] = property.Name
 	}
@@ -60,34 +65,59 @@ func (ots *objectTypeService) validateLogicMetricProperty(ctx context.Context, o
 	}
 	metricID, version, ok := parseObjectMetricV1SourceID(lp.DataSource.ID)
 	if !ok {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
+			WithErrorDetails(localizedText)
 	}
 	if logics.OMA == nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricExtensionRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricExtensionRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	record, err := logics.OMA.GetObjectMetric(ctx, objectType.KNID, objectType.Branch, metricID, version)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.MetricLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
+			WithErrorDetails(localizedText)
 	}
 	if record == nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.MetricNotFound", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	status := record.Definition.Lifecycle.Status
 	if status != "published" && status != "deprecated" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricLifecycleInvalid", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "status": status})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricLifecycleInvalid", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "status": status}))
+			WithErrorDetails(localizedText)
 	}
 	if record.Definition.CalculationScope != interfaces.ObjectMetricScopeInstance {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricCalculationScopeInvalid", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "scope": record.Definition.CalculationScope})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricCalculationScopeInvalid", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "scope": record.Definition.CalculationScope}))
+			WithErrorDetails(localizedText)
 	}
 	if record.Definition.OwnerObjectTypeID != objectType.OTID {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(invalidParameterDetail(ctx, "ObjectMetricOwnerMismatch", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "ownerObjectTypeID": record.Definition.OwnerObjectTypeID, "objectTypeID": objectType.OTID}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricOwnerMismatch", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "metric": lp.DataSource.ID, "ownerObjectTypeID": record.Definition.OwnerObjectTypeID, "objectTypeID": objectType.OTID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	return nil
 }

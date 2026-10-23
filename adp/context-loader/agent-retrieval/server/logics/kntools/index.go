@@ -19,6 +19,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -149,8 +152,11 @@ func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) 
 	// of them: the network's bindings and the execution factory's ranking are both read with this
 	// service's identity, and without this the scope would be the kn_id the caller typed.
 	if s.knAuthz == nil {
-		return nil, nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
 		return nil, nil, permission.CapabilityScopeError(ctx, err, permission.CapabilityNetworkViewRequired)
@@ -490,23 +496,35 @@ func (s *knToolsService) dropWithdrawnOwners(ctx context.Context,
 // the least-privilege execution principal for this path.
 func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (map[string]any, error) {
 	if req == nil || strings.TrimSpace(req.ToolboxID) == "" || strings.TrimSpace(req.ToolID) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolboxIDAndToolIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolboxIDAndToolIDRequired", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	if strings.TrimSpace(req.KnID) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolScopeKnIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolScopeKnIDRequired", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	toolboxID, toolID := strings.TrimSpace(req.ToolboxID), strings.TrimSpace(req.ToolID)
 	knID := strings.TrimSpace(req.KnID)
 	if s.knAuthz == nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	executeAuthz, ok := s.knAuthz.(interfaces.KnowledgeNetworkExecuteAuthorizer)
 	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	if err := executeAuthz.AuthorizeExecute(ctx, knID); err != nil {
 		return nil, permission.CapabilityScopeError(ctx, err, permission.CapabilityNetworkExecuteRequired)
@@ -537,8 +555,11 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		// tool it had.
 		usable, err := s.operator.MCPServerIsUsable(ctx, ref.MCPID)
 		if err != nil || !usable {
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-				infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolNotExecutable", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 		}
 		proxy, err := s.resolveCapabilityProxy(ctx, knID, ref.BindingID, interfaces.KNProxyTargetTypeMCP, ref.MCPID)
 		if err != nil {
@@ -546,8 +567,11 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		}
 		proxyOperator, ok := s.operator.(interfaces.KNProxyOperator)
 		if !ok {
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-				infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 		}
 		return proxyOperator.CallMCPToolAsProxy(ctx, &interfaces.CallMCPToolRequest{
 			McpID:      ref.MCPID,
@@ -564,8 +588,11 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 		}
 	}
 	if functionBindingID == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolNotMountedOnNetwork"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolNotMountedOnNetwork", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 
 	// Lifecycle before visibility, and with the same reader search_capabilities uses (#1483).
@@ -576,13 +603,19 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 	// caller relies on the network proxy. A state that cannot be confirmed refuses.
 	state, err := s.operator.ToolBoxLifecycle(ctx, toolboxID)
 	if err != nil || state == nil || !state.Published {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolNotExecutable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	if state.EnabledKnown {
 		if _, on := state.EnabledTools[toolID]; !on {
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-				infraErr.LocalizedDetail(ctx, "ToolNotExecutable"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolNotExecutable", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 		}
 	}
 
@@ -596,8 +629,11 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 	}
 	proxyOperator, ok := s.operator.(interfaces.KNProxyOperator)
 	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	run := func(executionContext context.Context) (map[string]any, error) {
 		return proxyOperator.ExecutePublishedToolAsProxy(executionContext, &interfaces.ExecutePublishedToolRequest{
@@ -632,8 +668,11 @@ func (s *knToolsService) ExecuteTool(ctx context.Context, req *ExecuteToolReq) (
 func (s *knToolsService) resolveCapabilityProxy(ctx context.Context, knID, bindingID,
 	targetType, targetID string) (*interfaces.KNProxyExecution, error) {
 	if strings.TrimSpace(bindingID) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	binding := interfaces.KNProxyBinding{
 		KNID: knID, ChildType: interfaces.KNProxyChildTypeCapability, ChildID: bindingID,
@@ -641,8 +680,11 @@ func (s *knToolsService) resolveCapabilityProxy(ctx context.Context, knID, bindi
 	}
 	resolver, ok := s.bknBackend.(interfaces.KNProxyResolver)
 	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	mapping, err := resolver.ResolveKNProxyBinding(ctx, binding)
 	if err != nil {

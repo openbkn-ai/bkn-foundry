@@ -194,3 +194,6 @@ func validAuditEnvironment(value string) bool {
 func auditSummary(action, target, name string) string {
 	return locale.AuditSummary(action, target, name)
 }
+
+// init loads immutable audit copy before this package builds ledger snapshots.
+func init() { locale.Register() }

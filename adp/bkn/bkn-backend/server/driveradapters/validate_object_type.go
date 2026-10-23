@@ -30,8 +30,12 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 	for i := 0; i < len(objectTypes); i++ {
 		// Verify that imported models are object types.
 		if objectTypes[i].ModuleType != "" && objectTypes[i].ModuleType != interfaces.MODULE_TYPE_OBJECT_TYPE {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ModuleType", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "ModuleType", nil))
+				WithErrorDetails(localizedText)
 		}
 
 		// Verify that model IDs in the request are unique.
@@ -39,9 +43,12 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 		if _, ok := idMap[otID]; !ok || otID == "" {
 			idMap[otID] = nil
 		} else {
-			errDetails := objectTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"id": otID})
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DuplicatedIDInFile", map[string]any{"id": otID})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			errDetails := localizedText
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_Duplicated_IDInFile).
-				WithMetadata(map[string]any{"ObjectTypeID": otID}).
 				WithErrorDetails(errDetails)
 		}
 
@@ -124,11 +131,14 @@ func validateObjectTypeDataSource(ctx context.Context, objectType *interfaces.Ob
 		return nil
 	}
 	if objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataSourceTypeNotSupported", map[string]any{
-				"objectType": objectType.OTName,
-				"type":       objectType.DataSource.Type,
-			}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataSourceTypeNotSupported", map[string]any{
+			"objectType": objectType.OTName,
+			"type":       objectType.DataSource.Type,
+		})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	return nil
 }
@@ -145,12 +155,15 @@ func buildDataPropMap(dataProperties []*interfaces.DataProperty) map[string]*int
 // validateObjectTypeDataProperties validates the data property count and each property.
 func validateObjectTypeDataProperties(ctx context.Context, objectType *interfaces.ObjectType, strictMode bool) error {
 	if len(objectType.DataProperties) > interfaces.MAX_PROPERTY_NUM {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertiesExceeded", map[string]any{
-				"objectType": objectType.OTName,
-				"count":      len(objectType.DataProperties),
-				"limit":      interfaces.MAX_PROPERTY_NUM,
-			}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertiesExceeded", map[string]any{
+			"objectType": objectType.OTName,
+			"count":      len(objectType.DataProperties),
+			"limit":      interfaces.MAX_PROPERTY_NUM,
+		})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	for _, prop := range objectType.DataProperties {
@@ -175,15 +188,21 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 		for _, pKey := range objectType.PrimaryKeys {
 			prop, ok := dataPropMap[pKey]
 			if !ok {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.PrimaryKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": pKey})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(objectTypeInvalidDetail(ctx, "PrimaryKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": pKey}))
+					WithErrorDetails(localizedText)
 			}
 			// Primary key properties support only integer, unsigned integer, string, and text.
 			if !interfaces.ValidPrimaryKeyTypes[prop.Type] {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(objectTypeInvalidDetail(ctx, "PrimaryKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": pKey, "type": prop.Type}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.PrimaryKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": pKey, "type": prop.Type})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 		}
 	}
@@ -197,15 +216,21 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 	} else {
 		prop, ok := dataPropMap[objectType.DisplayKey]
 		if !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DisplayKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": objectType.DisplayKey})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "DisplayKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": objectType.DisplayKey}))
+				WithErrorDetails(localizedText)
 		}
 		// Display keys support integer, unsigned integer, float, decimal, string, text, date, timestamp, time, datetime, and boolean.
 		if !interfaces.ValidDisplayKeyTypes[prop.Type] {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "DisplayKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": objectType.DisplayKey, "type": prop.Type}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DisplayKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": objectType.DisplayKey, "type": prop.Type})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 	}
 
@@ -213,16 +238,22 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 	if objectType.IncrementalKey != "" {
 		field, ok := dataPropMap[objectType.IncrementalKey]
 		if !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.IncrementalKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": objectType.IncrementalKey})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "IncrementalKeyNotFound", map[string]any{"objectType": objectType.OTName, "key": objectType.IncrementalKey}))
+				WithErrorDetails(localizedText)
 		}
 		switch field.Type {
 		case "integer", "datetime", "timestamp":
 		default:
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "IncrementalKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": field.Name, "type": field.Type}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.IncrementalKeyTypeInvalid", map[string]any{"objectType": objectType.OTName, "key": field.Name, "type": field.Type})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 	}
 
@@ -233,8 +264,11 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 // It also adds instant, start, end, and step system parameters for metric properties.
 func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfaces.ObjectType, strictMode bool) error {
 	if len(objectType.LogicProperties) > interfaces.MAX_PROPERTY_NUM {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertiesExceeded", map[string]any{"objectType": objectType.OTName, "count": len(objectType.LogicProperties), "limit": interfaces.MAX_PROPERTY_NUM}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertiesExceeded", map[string]any{"objectType": objectType.OTName, "count": len(objectType.LogicProperties), "limit": interfaces.MAX_PROPERTY_NUM})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	dataPropNames := make(map[string]struct{}, len(objectType.DataProperties))
@@ -249,29 +283,45 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			return err
 		}
 		if _, exists := dataPropNames[prop.Name]; exists {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDuplicatesDataProperty", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDuplicatesDataProperty", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+				WithErrorDetails(localizedText)
 		}
-
 		// Validate displayName.
 		if prop.DisplayName == "" {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDisplayNameRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDisplayNameRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+				WithErrorDetails(localizedText)
 		}
 		if utf8.RuneCountInString(prop.DisplayName) > interfaces.OBJECT_NAME_MAX_LENGTH {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDisplayNameTooLong", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDisplayNameTooLong", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
+				WithErrorDetails(localizedText)
 		}
-
 		// Type is required and supports only metric or tool.
 		if prop.Type == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyTypeRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyTypeRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 		if prop.Type != interfaces.LOGIC_PROPERTY_TYPE_METRIC &&
 			prop.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyTypeInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.Type}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyTypeInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.Type})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 
 		// Validate data_source:
@@ -281,57 +331,96 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 		if prop.DataSource != nil && (prop.DataSource.Type != "" || prop.DataSource.ID != "" ||
 			prop.DataSource.BoxID != "" || prop.DataSource.ToolID != "" || prop.DataSource.ResultPath != "") {
 			if prop.DataSource.Type == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDataSourceTypeRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDataSourceTypeRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+					WithErrorDetails(localizedText)
 			}
 			if !interfaces.ValidLogicSourceTypes[prop.DataSource.Type] {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDataSourceTypeInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.DataSource.Type})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDataSourceTypeInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.DataSource.Type}))
+					WithErrorDetails(localizedText)
 			}
 			if prop.Type != prop.DataSource.Type {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDataSourceTypeMismatch", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.Type, "sourceType": prop.DataSource.Type}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDataSourceTypeMismatch", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "type": prop.Type, "sourceType": prop.DataSource.Type})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 			if prop.DataSource.Type == interfaces.LOGIC_PROPERTY_TYPE_TOOL {
 				if prop.DataSource.BoxID == "" || prop.DataSource.ToolID == "" {
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyToolSourceRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyToolSourceRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+						WithErrorDetails(localizedText)
 				}
 			} else if prop.DataSource.ID == "" {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertySourceIDRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertySourceIDRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 			if prop.DataSource.ResultPath != "" {
 				if prop.DataSource.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyResultPathRequiresTool", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyResultPathRequiresTool", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 				if _, err := jsonpath.New(prop.DataSource.ResultPath); err != nil {
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyResultPathInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "error": err.Error()})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					// Strict mode rejects a missing data source.
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyResultPathInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "error": err.Error()}))
+						WithErrorDetails(localizedText)
 				}
 			}
 		} else if strictMode {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			// Strict mode rejects a missing data source.
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 
 		// Parameter names are required.
 		for _, param := range prop.Parameters {
 			if param.Name == "" {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyParameterNameRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyParameterNameRequired", map[string]any{"objectType": objectType.OTName, "property": prop.Name})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 			if param.ValueFrom == interfaces.VALUE_FROM_PROPERTY {
 				propName, ok := param.Value.(string)
 				if !ok || strings.TrimSpace(propName) == "" {
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyParameterBindingInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "parameter": param.Name})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyParameterBindingInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "parameter": param.Name}))
+						WithErrorDetails(localizedText)
 				}
 				if _, exists := dataPropNames[propName]; !exists {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(objectTypeInvalidDetail(ctx, "LogicPropertyParameterPropertyNotFound", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "parameter": param.Name, "dataProperty": propName}))
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyParameterPropertyNotFound", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "parameter": param.Name, "dataProperty": propName})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			}
 		}
@@ -378,7 +467,11 @@ func ValidatePropertyName(ctx context.Context, name string) error {
 	re := regexp2.MustCompile(interfaces.RegexPattern_Property_Name, regexp2.RE2)
 	match, err := re.MatchString(name)
 	if err != nil || !match {
-		errDetails := objectTypeInvalidDetail(ctx, "PropertyNameInvalid", nil)
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.PropertyNameInvalid", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		errDetails := localizedText
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_PropertyName).
 			WithErrorDetails(errDetails)
 	}
@@ -387,8 +480,12 @@ func ValidatePropertyName(ctx context.Context, name string) error {
 
 func ValidateDataProperties(ctx context.Context, propertyNames []string, dataProperties []*interfaces.DataProperty, strictMode bool) error {
 	if len(propertyNames) != len(dataProperties) {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.PropertyNamesLengthMismatch", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "PropertyNamesLengthMismatch", nil))
+			WithErrorDetails(localizedText)
 		return httpErr
 	}
 
@@ -398,8 +495,12 @@ func ValidateDataProperties(ctx context.Context, propertyNames []string, dataPro
 	}
 	for _, prop := range dataProperties {
 		if _, ok := propertyNameMap[prop.Name]; !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyMissingFromURL", map[string]any{"property": prop.Name})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyMissingFromURL", map[string]any{"property": prop.Name}))
+				WithErrorDetails(localizedText)
 			return httpErr
 		}
 
@@ -419,44 +520,54 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 	}
 
 	if dataProperty.DisplayName == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyDisplayNameRequired", map[string]any{"property": dataProperty.Name})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyDisplayNameRequired", map[string]any{"property": dataProperty.Name}))
+			WithErrorDetails(localizedText)
 	}
 	if utf8.RuneCountInString(dataProperty.DisplayName) > interfaces.OBJECT_NAME_MAX_LENGTH {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyDisplayNameTooLong", map[string]any{"property": dataProperty.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyDisplayNameTooLong", map[string]any{"property": dataProperty.Name, "limit": interfaces.OBJECT_NAME_MAX_LENGTH})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	// When data_property.type is set, it must be a supported type: integer, unsigned integer, float, decimal, string, keyword, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, or ip.
 	if dataProperty.Type != "" {
 		if !interfaces.ValidDataPropertyTypes[dataProperty.Type] {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-				WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyTypeInvalid", map[string]any{"property": dataProperty.Name, "type": dataProperty.Type}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyTypeInvalid", map[string]any{"property": dataProperty.Name, "type": dataProperty.Type})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 	}
 	if err := maskrule.Validate(dataProperty.Type, dataProperty.MaskRule); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyMaskRuleInvalid", map[string]any{"property": dataProperty.Name, "reason": err.Error()})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyMaskRuleInvalid", map[string]any{"property": dataProperty.Name, "reason": err.Error()}))
+			WithErrorDetails(localizedText)
 	}
-
 	// When data_property.mapped_field is set, name is required.
 	if dataProperty.MappedField != nil && dataProperty.MappedField.Name == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyMappedFieldRequired", map[string]any{"property": dataProperty.Name})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyMappedFieldRequired", map[string]any{"property": dataProperty.Name}))
+			WithErrorDetails(localizedText)
 	}
-
 	if dataProperty.HasRetiredIndexConfig() {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyIndexConfigUnsupported", map[string]any{"property": dataProperty.Name}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.DataPropertyIndexConfigUnsupported", map[string]any{"property": dataProperty.Name})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
-
 	return nil
-}
-
-func objectTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
 }

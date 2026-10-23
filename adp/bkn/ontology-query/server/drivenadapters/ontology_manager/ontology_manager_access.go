@@ -113,8 +113,7 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 
 			return emptyObjectType, false, err
 		}
-		httpErr := rest.NewHTTPError(ctx, respCode, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).
-			WithErrorDetails(baseError)
+		httpErr := newOntologyManagerError(ctx, respCode, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed, baseError)
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
@@ -195,8 +194,7 @@ func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Co
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal BaseError failed")
 			return nil, err
 		}
-		httpErr := rest.NewHTTPError(ctx, respCode, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
-			WithErrorDetails(baseError)
+		httpErr := newOntologyManagerError(ctx, respCode, oerrors.OntologyQuery_Metric_InternalError_QueryFailed, baseError)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "HTTP status is not 200")
 		return nil, httpErr
 	}
@@ -268,8 +266,7 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 			return nil, err
 		}
 
-		httpErr := rest.NewHTTPError(ctx, respCode, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetRelationTypeFailed).
-			WithErrorDetails(baseError)
+		httpErr := newOntologyManagerError(ctx, respCode, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetRelationTypeFailed, baseError)
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
@@ -438,8 +435,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 			return emptyRelationType, false, err
 		}
 
-		httpErr := rest.NewHTTPError(ctx, respCode, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetRelationTypeFailed).
-			WithErrorDetails(baseError)
+		httpErr := newOntologyManagerError(ctx, respCode, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetRelationTypeFailed, baseError)
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
@@ -549,8 +545,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 			return nil, err
 		}
 
-		httpErr := rest.NewHTTPError(ctx, respCode, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetRelationTypeFailed).
-			WithErrorDetails(baseError)
+		httpErr := newOntologyManagerError(ctx, respCode, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetRelationTypeFailed, baseError)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		otellog.LogError(ctx, fmt.Sprintf("List relation types failed: %v", httpErr), httpErr)
 		return nil, fmt.Errorf("list relation types failed: %w", httpErr)
@@ -653,8 +648,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 			return emptyActionType, nil, false, err
 		}
 
-		httpErr := rest.NewHTTPError(ctx, respCode, oerrors.OntologyQuery_ActionType_InternalError_GetActionTypesByIDFailed).
-			WithErrorDetails(baseError)
+		httpErr := newOntologyManagerError(ctx, respCode, oerrors.OntologyQuery_ActionType_InternalError_GetActionTypesByIDFailed, baseError)
 
 		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
@@ -754,8 +748,7 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 			return nil, fmt.Errorf("decode risk types error response: %w", err)
 		}
-		httpErr := rest.NewHTTPError(ctx, respCode, oerrors.OntologyQuery_RiskType_InternalError_GetRiskTypesByIDsFailed).
-			WithErrorDetails(baseError)
+		httpErr := newOntologyManagerError(ctx, respCode, oerrors.OntologyQuery_RiskType_InternalError_GetRiskTypesByIDsFailed, baseError)
 		return nil, fmt.Errorf("get risk types failed: %w", httpErr)
 	}
 
@@ -769,4 +762,16 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return response.Entries, nil
+}
+
+// newOntologyManagerError keeps dependency details under a locally owned error.
+// Authentication and permission refusals must not use an internal-failure message.
+func newOntologyManagerError(ctx context.Context, status int, code string, source rest.BaseError) *rest.HTTPError {
+	switch status {
+	case http.StatusUnauthorized:
+		code = rest.PublicError_Unauthorized
+	case http.StatusForbidden:
+		code = rest.PublicError_Forbidden
+	}
+	return rest.NewHTTPError(ctx, status, code).WithErrorDetails(source)
 }

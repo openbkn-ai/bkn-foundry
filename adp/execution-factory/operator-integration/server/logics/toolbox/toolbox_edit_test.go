@@ -7,13 +7,15 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 // TestUpdateToolBoxMetadataTypeFallback Overrides the behavior of backfilling existing types when metadata_type is omitted in an edit request.
@@ -108,7 +110,7 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 			resp, err := toolbox.UpdateToolBox(context.TODO(), newReq())
 			So(err, ShouldNotBeNil)
 			So(resp, ShouldBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -122,7 +123,7 @@ func TestExploreSubgraph_RejectsNilSortEntry(t *testing.T) {
 			Sort: []*interfaces.SortSpec{nil},
 		})
 		convey.So(resp, convey.ShouldBeNil)
-		var he *infraErr.HTTPError
+		var he *rest.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusBadRequest)
 	})
@@ -190,7 +191,7 @@ func TestExploreSubgraph_PreservesDownstreamClientError(t *testing.T) {
 		_, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
 			KnID: "kn1", SourceObjectTypeID: "ot1", Direction: "forward", PathLength: 5, Limit: 10,
 		})
-		var he *infraErr.HTTPError
+		var he *rest.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusBadRequest)
 	})

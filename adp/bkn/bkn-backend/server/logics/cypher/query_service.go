@@ -318,10 +318,14 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 			WithErrorDetails(err.Error())
 	}
 	if limitExceeded(analyzed) {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.LimitExceeded", map[string]any{"max": interfaces.CYPHER_MAX_LIMIT})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		// Refused rather than clamped: a caller who asked for more rows than
 		// they will get should be told, not handed a short answer.
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_LimitExceeded).
-			WithErrorDetails(detail(ctx, "LimitExceeded", map[string]any{"max": interfaces.CYPHER_MAX_LIMIT}))
+			WithErrorDetails(localizedText)
 	}
 
 	schema, err := LoadSchema(ctx, s.schema, &permissionVisibility{ps: s.ps}, query.KNID, query.Branch)
@@ -349,8 +353,12 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 			WithErrorDetails(err.Error())
 	}
 	if crossProduct(plan) {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.CartesianProduct", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
-			WithErrorDetails(detail(ctx, "CartesianProduct", nil))
+			WithErrorDetails(localizedText)
 	}
 	// The semantic descriptor records the caller's query, not policy internals.
 	// In particular, a filter-only policy property may be invisible to the
@@ -978,8 +986,12 @@ func (s *cypherQueryService) outsideSQL(ctx context.Context, plan *Plan) bool {
 // its read budget or its time. It is the read budget's code, so a caller can
 // tell "narrow the query" from "rewrite it".
 func outsideSQLTooLarge(ctx context.Context) error {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.NonSQLSourceTooLarge", nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_ReadBudgetExceeded).
-		WithErrorDetails(detail(ctx, "NonSQLSourceTooLarge", nil))
+		WithErrorDetails(localizedText)
 }
 
 // unsupportedSource reports a statement vega-backend could not run as SQL
@@ -999,8 +1011,12 @@ func unsupportedSource(err error) bool {
 func (s *cypherQueryService) queryOutsideSQL(ctx context.Context, query interfaces.CypherQuery,
 	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
 	if compiled.plan.SQLOnly || !graphOutsideSQL(compiled.graph) {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.NonSQLSource", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
-			WithErrorDetails(detail(ctx, "NonSQLSource", nil))
+			WithErrorDetails(localizedText)
 	}
 	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.String(spanAttrExecutor, common.CypherExecutorBindJoin),
@@ -1069,22 +1085,22 @@ func pageSize(limit *int64) int {
 
 func validateQueryText(ctx context.Context, query string) error {
 	if len(query) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.QueryRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidParameter).
-			WithErrorDetails(detail(ctx, "QueryRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 	if len(query) > MaxQueryLength {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail.QueryTooLong", map[string]any{"max": MaxQueryLength})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_InvalidParameter).
-			WithErrorDetails(detail(ctx, "QueryTooLong", map[string]any{"max": MaxQueryLength}))
+			WithErrorDetails(localizedText)
 	}
 	return nil
-}
-
-func detail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
 }
 
 // conditionsAsBooleans turns the 1, 0 and NULL MySQL returns for a condition

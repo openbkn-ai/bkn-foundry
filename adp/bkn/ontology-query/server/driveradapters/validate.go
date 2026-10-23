@@ -14,13 +14,14 @@ import (
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 // parseSearchAfterQuery preserves numeric cursor literals while retaining the
@@ -62,8 +63,12 @@ func ValidateHeaderMethodOverride(ctx context.Context, headerMethod string) erro
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_NullParameter_OverrideMethod)
 	}
 	if headerMethod != "GET" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.OverrideMethodInvalid", map[string]any{"value": headerMethod})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_OverrideMethod).
-			WithErrorDetails(locale.ValidationDetail(ctx, "OverrideMethodInvalid", map[string]any{"value": headerMethod}))
+			WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -75,20 +80,32 @@ func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string,
 
 	includeType, err := strconv.ParseBool(includeTypeInfo)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.IncludeTypeInfoInvalid", map[string]any{"value": includeTypeInfo})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
-			WithErrorDetails(locale.ValidationDetail(ctx, "IncludeTypeInfoInvalid", map[string]any{"value": includeTypeInfo}))
+			WithErrorDetails(localizedText)
 	}
 
 	includeLogicP, err := strconv.ParseBool(includeLogicParams)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.IncludeLogicParamsInvalid", map[string]any{"value": includeLogicParams})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
-			WithErrorDetails(locale.ValidationDetail(ctx, "IncludeLogicParamsInvalid", map[string]any{"value": includeLogicParams}))
+			WithErrorDetails(localizedText)
 	}
 
 	ignoreIndex, err := strconv.ParseBool(ignoreLocalIndex)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.IgnoreLocalIndexInvalid", map[string]any{"value": ignoreLocalIndex})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex).
-			WithErrorDetails(locale.ValidationDetail(ctx, "IgnoreLocalIndexInvalid", map[string]any{"value": ignoreLocalIndex}))
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate excluded system properties.
@@ -99,8 +116,12 @@ func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string,
 	}
 	for _, field := range excludeSystemProperties {
 		if !validFields[field] {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ExcludedSystemPropertyInvalid", map[string]any{"field": field})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-				WithErrorDetails(locale.ValidationDetail(ctx, "ExcludedSystemPropertyInvalid", map[string]any{"field": field}))
+				WithErrorDetails(localizedText)
 		}
 	}
 
@@ -118,14 +139,22 @@ func validateSugraphQueryParameters(ctx context.Context,
 
 	includeLogicP, err := strconv.ParseBool(includeLogicParams)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.IncludeLogicParamsInvalid", map[string]any{"value": includeLogicParams})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
-			WithErrorDetails(locale.ValidationDetail(ctx, "IncludeLogicParamsInvalid", map[string]any{"value": includeLogicParams}))
+			WithErrorDetails(localizedText)
 	}
 
 	ignoreIndex, err := strconv.ParseBool(ignoreLocalIndex)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.IgnoreLocalIndexInvalid", map[string]any{"value": ignoreLocalIndex})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex).
-			WithErrorDetails(locale.ValidationDetail(ctx, "IgnoreLocalIndexInvalid", map[string]any{"value": ignoreLocalIndex}))
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate excluded system properties.
@@ -136,8 +165,12 @@ func validateSugraphQueryParameters(ctx context.Context,
 	}
 	for _, field := range excludeSystemProperties {
 		if !validFields[field] {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ExcludedSystemPropertyInvalid", map[string]any{"field": field})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-				WithErrorDetails(locale.ValidationDetail(ctx, "ExcludedSystemPropertyInvalid", map[string]any{"field": field}))
+				WithErrorDetails(localizedText)
 		}
 	}
 
@@ -155,8 +188,12 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 	var actualCond *cond.CondCfg
 	err := mapstructure.Decode(query.Condition, &actualCond)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ConditionDecodeFailed", map[string]any{"error": err.Error()})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-			WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", map[string]any{"error": err.Error()}))
+			WithErrorDetails(localizedText)
 	}
 	query.ActualCondition = actualCond
 
@@ -172,30 +209,49 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 
 	// Validate the direction.
 	if !interfaces.DIRECTION_MAP[query.Direction] {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.DirectionInvalid", map[string]any{"value": query.Direction})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_Direction).
-			WithErrorDetails(locale.ValidationDetail(ctx, "DirectionInvalid", map[string]any{"value": query.Direction}))
+			WithErrorDetails(localizedText)
 	}
 
 	// Limit the path length to three edges.
 	if query.PathLength > 3 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength).
-			WithErrorDetails(locale.ValidationDetail(ctx, "PathLengthInvalid", map[string]any{"limit": 3, "value": query.PathLength}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.PathLengthInvalid", map[string]any{"limit": 3, "value": query.PathLength})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength).WithErrorDetails(localizedText)
 	}
 
 	// Validate each optional sort definition. Field membership is validated by the service after loading the object type.
 	if len(query.Sort) > 0 {
 		for _, sp := range query.Sort {
 			if sp.Field == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortFieldRequired", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "SortFieldRequired", nil))
+					WithErrorDetails(localizedText)
 			}
 			if sp.Direction == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortDirectionRequired", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "SortDirectionRequired", nil))
+					WithErrorDetails(localizedText)
 			}
 			if sp.Direction != interfaces.DESC_DIRECTION && sp.Direction != interfaces.ASC_DIRECTION {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortDirectionInvalid", map[string]any{"value": sp.Direction})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "SortDirectionInvalid", map[string]any{"value": sp.Direction}))
+					WithErrorDetails(localizedText)
 			}
 		}
 	}
@@ -205,8 +261,11 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 		query.Limit = interfaces.DEFAULT_LIMIT
 	}
 	if query.Limit < 1 || query.Limit > interfaces.MAX_LIMIT {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "LimitRange", map[string]any{"min": 1, "max": interfaces.MAX_LIMIT, "value": query.Limit}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.LimitRange", map[string]any{"min": 1, "max": interfaces.MAX_LIMIT, "value": query.Limit})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -218,8 +277,12 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 
 	for i := range query.Paths.TypePaths {
 		if len(query.Paths.TypePaths[i].Edges) > 10 {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.PathDegreeLimit", map[string]any{"limit": 10})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-				WithErrorDetails(locale.ValidationDetail(ctx, "PathDegreeLimit", map[string]any{"limit": 10}))
+				WithErrorDetails(localizedText)
 		}
 		if query.Paths.TypePaths[i].Limit == 0 {
 			query.Paths.TypePaths[i].Limit = interfaces.DEFAULT_PATHS // Use the maximum default when no path limit is provided.
@@ -239,18 +302,24 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 		// 3. A path of n edges walks n+1 nodes. Nodes past that have always been ignored
 		// and stay accepted; too few used to index past the end of object_types.
 		if len(path.ObjectTypes) < len(path.Edges)+1 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
-				oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-				WithErrorDetails(locale.ValidationDetail(ctx, "PathNodeCountMismatch", map[string]any{
-					"edges": len(path.Edges), "expected": len(path.Edges) + 1, "actual": len(path.ObjectTypes),
-				}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.PathNodeCountMismatch", map[string]any{
+				"edges": len(path.Edges), "expected": len(path.Edges) + 1, "actual": len(path.ObjectTypes),
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
 		}
 		for i := 0; i <= len(path.Edges); i++ {
 			// Object-type existence is validated by the service.
 			if path.ObjectTypes[i].OTID == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.PathNodeIDRequired", map[string]any{"index": i + 1})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-					WithErrorDetails(locale.ValidationDetail(ctx, "PathNodeIDRequired", map[string]any{"index": i + 1}))
+					WithErrorDetails(localizedText)
 			}
 		}
 
@@ -259,16 +328,22 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 			edge := &query.Paths.TypePaths[pathIndex].Edges[i]
 			// Relation-type existence, and whether the edge can walk it, are validated by the service.
 			if edge.RelationTypeId == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.RelationTypeIDRequired", map[string]any{"index": i + 1})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "RelationTypeIDRequired", map[string]any{"index": i + 1}))
+					WithErrorDetails(localizedText)
 			}
 			if edge.Direction != "" && edge.Direction != interfaces.DIRECTION_FORWARD &&
 				edge.Direction != interfaces.DIRECTION_BACKWARD {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-					WithErrorDetails(locale.ValidationDetail(ctx, "EdgeDirectionInvalid", map[string]any{
-						"index": i + 1, "value": edge.Direction,
-					}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.EdgeDirectionInvalid", map[string]any{
+					"index": i + 1, "value": edge.Direction,
+				})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
 			}
 
 			// The endpoints are the nodes this hop walks from and to, so both follow from
@@ -282,12 +357,14 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 				givenTo = to
 			}
 			if givenFrom != from || givenTo != to {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-					WithErrorDetails(locale.ValidationDetail(ctx, "EdgeEndpointsMismatch", map[string]any{
-						"index": i + 1, "relation": edge.RelationTypeId,
-						"expectedFrom": from, "expectedTo": to, "from": givenFrom, "to": givenTo,
-					}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.EdgeEndpointsMismatch", map[string]any{
+					"index": i + 1, "relation": edge.RelationTypeId,
+					"expectedFrom": from, "expectedTo": to, "from": givenFrom, "to": givenTo,
+				})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
 			}
 			edge.SourceObjectTypeId, edge.TargetObjectTypeId = from, to
 		}
@@ -297,8 +374,12 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 			var actualCond *cond.CondCfg
 			err := mapstructure.Decode(path.ObjectTypes[i].Condition, &actualCond)
 			if err != nil {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ConditionDecodeFailed", map[string]any{"error": err.Error()})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-					WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", map[string]any{"error": err.Error()}))
+					WithErrorDetails(localizedText)
 			}
 			query.Paths.TypePaths[pathIndex].ObjectTypes[i].ActualCondition = actualCond
 
@@ -306,16 +387,28 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 			if len(path.ObjectTypes[i].Sort) > 0 {
 				for _, sp := range path.ObjectTypes[i].Sort {
 					if sp.Field == "" {
+						localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortFieldRequired", nil)
+						if renderErr != nil {
+							logger.Errorf("localized message rendering failed: %v", renderErr)
+						}
 						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-							WithErrorDetails(locale.ValidationDetail(ctx, "SortFieldRequired", nil))
+							WithErrorDetails(localizedText)
 					}
 					if sp.Direction == "" {
+						localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortDirectionRequired", nil)
+						if renderErr != nil {
+							logger.Errorf("localized message rendering failed: %v", renderErr)
+						}
 						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-							WithErrorDetails(locale.ValidationDetail(ctx, "SortDirectionRequired", nil))
+							WithErrorDetails(localizedText)
 					}
 					if sp.Direction != interfaces.DESC_DIRECTION && sp.Direction != interfaces.ASC_DIRECTION {
+						localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortDirectionInvalid", map[string]any{"value": sp.Direction})
+						if renderErr != nil {
+							logger.Errorf("localized message rendering failed: %v", renderErr)
+						}
 						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-							WithErrorDetails(locale.ValidationDetail(ctx, "SortDirectionInvalid", map[string]any{"value": sp.Direction}))
+							WithErrorDetails(localizedText)
 					}
 				}
 			}
@@ -325,8 +418,11 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 				path.ObjectTypes[i].Limit = interfaces.DEFAULT_LIMIT
 			}
 			if path.ObjectTypes[i].Limit < 1 || path.ObjectTypes[i].Limit > interfaces.MAX_LIMIT {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "LimitRange", map[string]any{"min": 1, "max": interfaces.MAX_LIMIT, "value": path.ObjectTypes[i].Limit}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.LimitRange", map[string]any{"min": 1, "max": interfaces.MAX_LIMIT, "value": path.ObjectTypes[i].Limit})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 		}
 	}
@@ -341,8 +437,12 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 	var actualCond *cond.CondCfg
 	err := mapstructure.Decode(query.Condition, &actualCond)
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ConditionDecodeFailed", map[string]any{"error": err.Error()})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
-			WithErrorDetails(locale.ValidationDetail(ctx, "ConditionDecodeFailed", map[string]any{"error": err.Error()}))
+			WithErrorDetails(localizedText)
 	}
 	query.ActualCondition = actualCond
 
@@ -350,16 +450,28 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 	if len(query.Sort) > 0 {
 		for _, sp := range query.Sort {
 			if sp.Field == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortFieldRequired", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "SortFieldRequired", nil))
+					WithErrorDetails(localizedText)
 			}
 			if sp.Direction == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortDirectionRequired", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "SortDirectionRequired", nil))
+					WithErrorDetails(localizedText)
 			}
 			if sp.Direction != interfaces.DESC_DIRECTION && sp.Direction != interfaces.ASC_DIRECTION {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortDirectionInvalid", map[string]any{"value": sp.Direction})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-					WithErrorDetails(locale.ValidationDetail(ctx, "SortDirectionInvalid", map[string]any{"value": sp.Direction}))
+					WithErrorDetails(localizedText)
 			}
 
 			// Field membership is validated after loading the object type.
@@ -368,8 +480,11 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 
 	// Validate the requested limit.
 	if query.Limit < 1 || query.Limit > interfaces.MAX_LIMIT {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "LimitRange", map[string]any{"min": 1, "max": interfaces.MAX_LIMIT, "value": query.Limit}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.LimitRange", map[string]any{"min": 1, "max": interfaces.MAX_LIMIT, "value": query.Limit})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	if query.Limit == 0 {
 		query.Limit = interfaces.DEFAULT_OBJECT_LIMIT
@@ -394,14 +509,22 @@ func validateObjectPropertyValueQuery(ctx context.Context, query *interfaces.Obj
 
 	// Require an object identity.
 	if len(query.InstanceIdentities) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ObjectIdentityRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "ObjectIdentityRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	// Require at least one property.
 	if len(query.Properties) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.PropertiesRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "PropertiesRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	// Start, end, instant, and step defaults are applied by the service after loading the object type.
@@ -414,28 +537,43 @@ func validateSubgraphQueryByObjectsRequest(ctx context.Context, query *interface
 
 	// Require entries.
 	if len(query.Entries) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.InstancesRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "InstancesRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	// Limit the number of entries.
 	if len(query.Entries) > 1000 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.InstancesLimit", map[string]any{"limit": 1000})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "InstancesLimit", map[string]any{"limit": 1000}))
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate every entry.
 	for i, entry := range query.Entries {
 		// Require object_type_id.
 		if entry.ObjectTypeID == "" {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ObjectTypeIDRequired", map[string]any{"index": i + 1})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-				WithErrorDetails(locale.ValidationDetail(ctx, "ObjectTypeIDRequired", map[string]any{"index": i + 1}))
+				WithErrorDetails(localizedText)
 		}
-
 		// Require _instance_identity.
 		if len(entry.InstanceIdentity) == 0 {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ObjectIdentityAtIndexRequired", map[string]any{"index": i + 1})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-				WithErrorDetails(locale.ValidationDetail(ctx, "ObjectIdentityAtIndexRequired", map[string]any{"index": i + 1}))
+				WithErrorDetails(localizedText)
 		}
 	}
 

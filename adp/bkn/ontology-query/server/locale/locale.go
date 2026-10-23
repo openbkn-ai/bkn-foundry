@@ -7,23 +7,10 @@
 package locale
 
 import (
-	"context"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
-
-const validationDetailPrefix = "OntologyQuery.Validation.Detail."
-
-// ValidationDetail renders a request-validation detail using the effective request locale.
-func ValidationDetail(ctx context.Context, name string, templateData map[string]any) string {
-	text, err := i18n.Render(i18n.GetLanguageByCtx(ctx), validationDetailPrefix+name, templateData)
-	if err != nil {
-		logger.Errorf("localized service message failed: %v", err)
-	}
-	return text
-}
 
 var registerOnce sync.Once
 

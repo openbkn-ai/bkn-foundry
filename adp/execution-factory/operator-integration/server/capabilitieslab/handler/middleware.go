@@ -81,7 +81,11 @@ func writeError(c *gin.Context, status int, code, message string) {
 
 func writeLocalizedError(c *gin.Context, status int, code string) {
 	rest.MarkLocalizedCacheableResponse(c)
-	writeError(c, status, code, capabilitiesLabErrorMessage(string(i18n.GetLanguageByCtx(c.Request.Context())), code))
+	message, renderErr := i18n.Render(i18n.GetLanguageByCtx(c.Request.Context()), "AgentOperatorIntegration.capabilities_lab."+code, nil)
+	if renderErr != nil {
+		message = code
+	}
+	writeError(c, status, code, message)
 }
 
 func writeBadGateway(c *gin.Context, message string) {

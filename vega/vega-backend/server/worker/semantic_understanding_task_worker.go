@@ -25,7 +25,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/bkn_agent"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
@@ -747,8 +746,16 @@ func formatSemanticUnderstandingMissingSampleWarning(ctx context.Context, fieldN
 	if len(fieldNames) > 1 {
 		messageName = "SemanticUnderstandingInsufficientSampleDataPlural"
 	}
-	separator := locale.ValidationDetail(ctx, "SemanticUnderstandingFieldSeparator", nil)
-	return locale.ValidationDetail(ctx, messageName, map[string]interface{}{"fields": strings.Join(fieldNames, separator)})
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Validation.Detail.SemanticUnderstandingFieldSeparator", nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	separator := localizedText
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Validation.Detail."+messageName, map[string]interface{}{"fields": strings.Join(fieldNames, separator)})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func isSemanticUnderstandingOmittedField(field interfaces.SemanticUnderstandingResourceAgentInputProperty,
@@ -769,7 +776,11 @@ func equalSemanticUnderstandingFieldName(left, right string) bool {
 }
 
 func semanticUnderstandingWarningClaimsMissingSample(ctx context.Context, warning string) bool {
-	pattern, err := regexp.Compile(locale.ValidationDetail(ctx, "SemanticUnderstandingMissingSamplePattern", nil))
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Validation.Detail.SemanticUnderstandingMissingSamplePattern", nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	pattern, err := regexp.Compile(localizedText)
 	return err == nil && pattern.MatchString(warning)
 }
 
@@ -1313,166 +1324,3 @@ func validateConfidence(confidence *float64, path string) error {
 	}
 	return nil
 }
-
-/* Catalog 任务暂不支持；保留旧 Logic View 写入和校验实现。
-func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Context, tx *sql.Tx,
-	task *interfaces.SemanticUnderstandingTask, resultJSON string) (*interfaces.SemanticUnderstandingApplyResult, error) {
-
-	if task.CatalogID == "" {
-		return nil, fmt.Errorf("catalog_id is required for catalog semantic understanding task")
-	}
-
-	var result interfaces.SemanticUnderstandingCatalogResult
-	if err := sonic.Unmarshal([]byte(resultJSON), &result); err != nil {
-		return nil, fmt.Errorf("unmarshal catalog semantic understanding result failed: %w", err)
-	}
-	catalog, err := sutw.cs.InternalGetByID(ctx, task.CatalogID, false)
-	if err != nil {
-		return nil, err
-	}
-	if catalog == nil {
-		return nil, fmt.Errorf("catalog %s not found", task.CatalogID)
-	}
-
-	resources, err := sutw.rs.InternalGetByCatalogID(ctx, task.CatalogID)
-	if err != nil {
-		return nil, err
-	}
-	resourceByID := make(map[string]*interfaces.Resource, len(resources))
-	logicalViewByID := make(map[string]*interfaces.Resource)
-	sourceIdentifiers := make(map[string]struct{}, len(resources))
-	for _, res := range resources {
-		if res == nil {
-			continue
-		}
-		resourceByID[res.ID] = res
-		if res.SourceIdentifier != "" {
-			sourceIdentifiers[res.SourceIdentifier] = struct{}{}
-		}
-		if res.Category == interfaces.ResourceCategoryLogicalView {
-			logicalViewByID[res.ID] = res
-		}
-	}
-
-	detail := interfaces.SemanticUnderstandingCatalogApplyDetail{}
-	for i, view := range result.LogicalViews {
-		if err := validateConfidence(view.Confidence, fmt.Sprintf("logical_views[%d].confidence", i)); err != nil {
-			return nil, err
-		}
-		if err := validateCatalogLogicalViewOutput(view, resourceByID, logicalViewByID, sourceIdentifiers); err != nil {
-			return nil, err
-		}
-
-		switch view.Action {
-		case "create":
-			sourceIdentifiers[view.SourceIdentifier] = struct{}{}
-			req := &interfaces.ResourceRequest{
-				CatalogID:        task.CatalogID,
-				Builtin:          &catalog.Builtin,
-				Name:             view.Name,
-				SourceIdentifier: view.SourceIdentifier,
-				Description:      view.Description,
-				Category:         interfaces.ResourceCategoryLogicalView,
-				Enabled:          true,
-				Status:           interfaces.ResourceStatusActive,
-				LogicDefinition:  view.LogicDefinition,
-			}
-			created, err := sutw.rs.InternalCreate(ctx, tx, req)
-			if err != nil {
-				return nil, err
-			}
-			if created != nil {
-				detail.CreatedResourceIDs = append(detail.CreatedResourceIDs, created.ID)
-			}
-		case "update":
-			current := logicalViewByID[view.TargetResourceID]
-			expectedUpdateTime := current.UpdateTime
-			nextDescription := current.Description
-			applyStringByMode(task.ApplyMode, &nextDescription, view.Description, false)
-			nextLogicDefinition := current.LogicDefinition
-			if task.ApplyMode == interfaces.SemanticUnderstandingApplyModeForce {
-				nextLogicDefinition = view.LogicDefinition
-			}
-			current.Description = nextDescription
-			current.LogicDefinition = nextLogicDefinition
-			current.Updater = task.Creator
-			current.UpdateTime = time.Now().UnixMilli()
-			err = sutw.rs.InternalUpdateSemanticMetadata(ctx, tx, current, expectedUpdateTime)
-			if err != nil {
-				return nil, err
-			}
-			detail.UpdatedResourceIDs = append(detail.UpdatedResourceIDs, current.ID)
-		}
-	}
-
-	for i, obsolete := range result.ObsoleteLogicalViews {
-		if err := validateConfidence(obsolete.Confidence, fmt.Sprintf("obsolete_logical_views[%d].confidence", i)); err != nil {
-			return nil, err
-		}
-		if obsolete.TargetResourceID == "" {
-			return nil, fmt.Errorf("obsolete_logical_views[%d].target_resource_id is required", i)
-		}
-		if _, ok := logicalViewByID[obsolete.TargetResourceID]; !ok {
-			return nil, fmt.Errorf("obsolete logical view %s does not exist in catalog input", obsolete.TargetResourceID)
-		}
-		err = sutw.rs.InternalUpdateStatus(ctx, tx, obsolete.TargetResourceID, interfaces.ResourceStatusStale, obsolete.Reason)
-		if err != nil {
-			return nil, err
-		}
-		detail.StaledResourceIDs = append(detail.StaledResourceIDs, obsolete.TargetResourceID)
-	}
-
-	if len(detail.CreatedResourceIDs) == 0 && len(detail.UpdatedResourceIDs) == 0 && len(detail.StaledResourceIDs) == 0 {
-		return skippedApplyResult(interfaces.SemanticUnderstandingSkippedApplyDetail{
-			Reason:    "no_catalog_changes",
-			ApplyMode: task.ApplyMode,
-			Scope:     task.Scope,
-		})
-	}
-
-	detailStr, err := sonic.MarshalString(detail)
-	if err != nil {
-		return nil, fmt.Errorf("marshal catalog semantic understanding apply detail failed: %w", err)
-	}
-	return &interfaces.SemanticUnderstandingApplyResult{
-		Applied:    true,
-		DetailJSON: detailStr,
-	}, nil
-}
-
-func validateCatalogLogicalViewOutput(view interfaces.SemanticUnderstandingCatalogLogicalView, resourceByID map[string]*interfaces.Resource, logicalViewByID map[string]*interfaces.Resource, sourceIdentifiers map[string]struct{}) error {
-	switch view.Action {
-	case "create":
-		if view.TargetResourceID != "" {
-			return fmt.Errorf("target_resource_id must be empty when creating logical view")
-		}
-		if view.Name == "" {
-			return fmt.Errorf("logical view name is required when creating logical view")
-		}
-		if !semanticUnderstandingSourceIdentifierPattern.MatchString(view.SourceIdentifier) {
-			return fmt.Errorf("source_identifier must be lower snake_case when creating logical view")
-		}
-		if _, exists := sourceIdentifiers[view.SourceIdentifier]; exists {
-			return fmt.Errorf("source_identifier %s already exists in catalog input", view.SourceIdentifier)
-		}
-	case "update":
-		if view.TargetResourceID == "" {
-			return fmt.Errorf("target_resource_id is required when updating logical view")
-		}
-		if _, ok := logicalViewByID[view.TargetResourceID]; !ok {
-			return fmt.Errorf("logical view %s does not exist in catalog input", view.TargetResourceID)
-		}
-	default:
-		return fmt.Errorf("unsupported logical view action: %s", view.Action)
-	}
-	if len(interfaces.LegacyLogicDefinitionNodes(view.LogicDefinition)) == 0 {
-		return fmt.Errorf("logic_definition is required for logical view action %s", view.Action)
-	}
-	for _, sourceResourceID := range view.SourceResources {
-		if _, ok := resourceByID[sourceResourceID]; !ok {
-			return fmt.Errorf("source resource %s does not exist in catalog input", sourceResourceID)
-		}
-	}
-	return nil
-}
-*/

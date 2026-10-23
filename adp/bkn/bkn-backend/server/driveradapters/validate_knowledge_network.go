@@ -20,14 +20,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
-func knowledgeNetworkInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
-}
-
 // validateKnowledgeNetwork validates required knowledge network fields.
 func ValidateKN(ctx context.Context, kn *interfaces.KN) error {
 	// Validate the ID.
@@ -54,8 +46,12 @@ func ValidateKN(ctx context.Context, kn *interfaces.KN) error {
 
 	// Validate that the branch is not empty.
 	if kn.Branch == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail.BranchRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch).
-			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "BranchRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -75,14 +71,22 @@ func ValidateRelationTypePathsQuery(ctx context.Context, query *interfaces.Relat
 
 	// Validate the direction.
 	if !interfaces.DIRECTION_MAP[query.Direction] {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail.DirectionUnsupported", map[string]any{"direction": query.Direction})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_Direction).
-			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "DirectionUnsupported", map[string]any{"direction": query.Direction}))
+			WithErrorDetails(localizedText)
 	}
 
 	// The path length must not exceed three.
 	if query.PathLength > 3 || query.PathLength < 1 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail.PathLengthInvalid", map[string]any{"pathLength": query.PathLength})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_PathLength).
-			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "PathLengthInvalid", map[string]any{"pathLength": query.PathLength}))
+			WithErrorDetails(localizedText)
 	}
 
 	return nil

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -25,7 +26,6 @@ import (
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
 	permissionlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
@@ -929,10 +929,14 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 	mappingRules := edge.RelationType.MappingRules.(*interfaces.InDirectMapping)
 
 	if mappingRules.BackingDataSource.ID == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.RelationViewIDRequired", map[string]any{"relationType": edge.RelationType.RTName})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		// If the view is empty, return an error without sending a request.
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "RelationViewIDRequired", map[string]any{"relationType": edge.RelationType.RTName}))
+			WithErrorDetails(localizedText)
 	}
 
 	// Mapping relationship from view to target object.
@@ -1380,10 +1384,12 @@ func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}
 		if !exists {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ObjectTypeNotFound", map[string]any{"objectTypeID": otID})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound,
-				oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound).WithErrorDetails(
-				locale.ValidationDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}),
-			)
+				oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound).WithErrorDetails(localizedText)
 		}
 		objectTypeMap[otID] = &objectType
 

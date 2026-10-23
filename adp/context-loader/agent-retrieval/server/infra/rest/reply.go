@@ -18,12 +18,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	errorwrap "github.com/pkg/errors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	i18nlogger "github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 	validatorv "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/validator"
 )
@@ -52,7 +52,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 			statusCode = http.StatusInternalServerError
 			ctx := c.Request.Context()
 			bodyStr := myErr.DefaultHTTPError(ctx, statusCode, err.Error()).Error()
-			sharedrest.MarkLocalizedResponse(c)
+			rest.MarkLocalizedResponse(c)
 			c.Writer.Header().Set(ContentTypeKey, ContentTypeJSON)
 			c.String(statusCode, bodyStr)
 			return
@@ -69,45 +69,35 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 
 // ReplyError responseerror.
 func ReplyError(c *gin.Context, err error) {
-	if err != nil {
-		errWithStack := errorwrap.WithStack(err)
-		logger.DefaultLogger().Debug("Error:", errWithStack.Error())
+	var upstream *ExHTTPError
+	if errors.As(err, &upstream) && upstream != nil {
+		c.Header(ContentTypeKey, ContentTypeJSON)
+		c.String(upstream.HTTPCode, string(upstream.Body))
+		return
 	}
-	var httpCode int
-	ctx := c.Request.Context()
-	var body string
-	localized := true
-	switch e := err.(type) {
-	case *ExHTTPError:
-		httpCode = e.HTTPCode
-		body = e.Error()
-		localized = false
-	default:
-		httpError := &myErr.HTTPError{}
-		vErr := make(validator.ValidationErrors, 0)
-		if errors.As(err, &httpError) {
-			httpCode = httpError.HTTPCode
-			body = err.Error()
-		} else if errors.As(err, &vErr) {
-			httpCode = http.StatusBadRequest
-			if len(vErr) > 0 {
-				extCode := validatorv.TagToErrorType[vErr[0].Tag()]
-				// Generate friendly multi-language error details (understandable by large models)
-				friendlyDetails := formatValidatorErrorDetails(ctx, vErr[0])
-				body = myErr.NewHTTPError(ctx, http.StatusBadRequest, extCode, friendlyDetails).Error()
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
+		ctx := c.Request.Context()
+		if len(validationErrors) > 0 {
+			vErr := validationErrors
+			extCode := validatorv.TagToErrorType[vErr[0].Tag()]
+			friendlyDetails := formatValidatorErrorDetails(ctx, vErr[0])
+			if extCode == "" {
+				err = myErr.DefaultHTTPError(ctx, http.StatusBadRequest, friendlyDetails)
 			} else {
-				body = myErr.DefaultHTTPError(ctx, httpCode, err.Error()).Error()
+				err = myErr.NewHTTPError(ctx, http.StatusBadRequest, extCode, friendlyDetails)
 			}
 		} else {
-			httpCode = http.StatusInternalServerError
-			body = myErr.DefaultHTTPError(ctx, httpCode, err.Error()).Error()
+			err = myErr.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 		}
 	}
-	if localized {
-		sharedrest.MarkLocalizedResponse(c)
+
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) || httpErr == nil {
+		logger.DefaultLogger().Errorf("unhandled response error: %v", err)
+		err = myErr.DefaultHTTPError(c.Request.Context(), http.StatusInternalServerError, err.Error())
 	}
-	c.Writer.Header().Set(ContentTypeKey, ContentTypeJSON)
-	c.String(httpCode, body)
+	rest.ReplyError(c, err)
 }
 
 // ExHTTPError error code depending on the service.
@@ -124,9 +114,6 @@ func (e *ExHTTPError) Error() string {
 func formatValidatorErrorDetails(ctx context.Context, err validator.FieldError) string {
 	// Get language settings (format: zh-CN or en-US)
 	lang := common.GetLanguageFromCtx(ctx)
-	// Convert zh-CN to zh_CN format (the format used by internationalization systems)
-	langKey := strings.ReplaceAll(string(lang), "-", "_")
-	tr := localize.NewI18nTranslator(langKey)
 
 	fieldName := err.Field()
 	tag := err.Tag()
@@ -164,7 +151,7 @@ func formatValidatorErrorDetails(ctx context.Context, err validator.FieldError) 
 		templateKey = "desc.ValidationDetailOneof"
 		// Formatting option list: use "," in Chinese and ", " in English.
 		options := strings.ReplaceAll(param, " ", "、")
-		if langKey == "en_US" {
+		if lang == i18n.AmericanEnglish {
 			options = strings.ReplaceAll(param, " ", ", ")
 		}
 		formatArgs = []interface{}{fieldName, options}
@@ -178,8 +165,14 @@ func formatValidatorErrorDetails(ctx context.Context, err validator.FieldError) 
 			formatArgs = []interface{}{fieldName, tag, param}
 		}
 	}
-
+	localizedData1 := make(map[string]any, len(formatArgs))
+	for index, value := range formatArgs {
+		localizedData1[fmt.Sprintf("Arg%d", index+1)] = value
+	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+strings.TrimPrefix(templateKey, "desc."), localizedData1)
+	if renderErr != nil {
+		i18nlogger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 	// Get the translation template and format it.
-	template := tr.Trans(templateKey)
-	return fmt.Sprintf(template, formatArgs...)
+	return localizedText
 }

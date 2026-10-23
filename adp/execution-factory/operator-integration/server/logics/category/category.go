@@ -7,12 +7,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 // requireOperatorTypePermission verifies that the caller holds the specified operation permission on the operator type.
@@ -117,8 +118,10 @@ func (c *categoryManager) GetCategoryList(ctx context.Context) (categoryList []*
 
 func (c *categoryManager) getCategoryOther(ctx context.Context) *interfaces.CategoryInfo {
 	language := common.GetLanguageByCtx(ctx)
-	tr := localize.NewI18nTranslator(string(language))
-	categoryName := tr.Trans("category." + interfaces.CategoryTypeOther.String())
+	categoryName, renderErr := i18n.Render(language, "AgentOperatorIntegration.category."+interfaces.CategoryTypeOther.String(), nil)
+	if renderErr != nil {
+		c.logger.Errorf("localized category failed: %v", renderErr)
+	}
 	return &interfaces.CategoryInfo{
 		CategoryType: interfaces.CategoryTypeOther,
 		CategoryName: categoryName,
@@ -127,8 +130,10 @@ func (c *categoryManager) getCategoryOther(ctx context.Context) *interfaces.Cate
 
 func (c *categoryManager) getCategorySystem(ctx context.Context) *interfaces.CategoryInfo {
 	language := common.GetLanguageByCtx(ctx)
-	tr := localize.NewI18nTranslator(string(language))
-	categoryName := tr.Trans("category." + interfaces.CategoryTypeSystem.String())
+	categoryName, renderErr := i18n.Render(language, "AgentOperatorIntegration.category."+interfaces.CategoryTypeSystem.String(), nil)
+	if renderErr != nil {
+		c.logger.Errorf("localized category failed: %v", renderErr)
+	}
 	return &interfaces.CategoryInfo{
 		CategoryType: interfaces.CategoryTypeSystem,
 		CategoryName: categoryName,

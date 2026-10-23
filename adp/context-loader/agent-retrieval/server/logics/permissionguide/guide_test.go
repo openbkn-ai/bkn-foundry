@@ -15,9 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -57,7 +58,7 @@ func splitLink(t *testing.T, link string) (string, url.Values) {
 }
 
 func forbidden() error {
-	return &infraErr.HTTPError{HTTPCode: http.StatusForbidden, Code: "Public.Forbidden"}
+	return &rest.HTTPError{HTTPCode: http.StatusForbidden, BaseError: rest.BaseError{ErrorCode: "Public.Forbidden"}}
 }
 
 func userCtx(origin string) context.Context {
@@ -159,8 +160,8 @@ func TestNoLinkWhenRequestsCannotHelp(t *testing.T) {
 func TestOnlyForbiddenErrorsGetGuidance(t *testing.T) {
 	guide := newTestGuide(&schemaProbeStub{})
 	for name, err := range map[string]error{
-		"not found":   &infraErr.HTTPError{HTTPCode: http.StatusNotFound},
-		"unavailable": &infraErr.HTTPError{HTTPCode: http.StatusServiceUnavailable},
+		"not found":   &rest.HTTPError{HTTPCode: http.StatusNotFound},
+		"unavailable": &rest.HTTPError{HTTPCode: http.StatusServiceUnavailable},
 		"transport":   errors.New("dial tcp: refused"),
 	} {
 		if got := guide.ForObjectTypeError(userCtx(""), err, "kn", "ot"); got != nil {
@@ -250,7 +251,7 @@ func TestVisibilityProbeIsCachedPerCallerUntilExpiry(t *testing.T) {
 }
 
 func TestFailedVisibilityProbeIsNotCached(t *testing.T) {
-	probe := &schemaProbeStub{err: &infraErr.HTTPError{HTTPCode: http.StatusServiceUnavailable}}
+	probe := &schemaProbeStub{err: &rest.HTTPError{HTTPCode: http.StatusServiceUnavailable}}
 	guide := newTestGuide(probe)
 
 	first := guide.ForObjectTypeError(userCtx(""), forbidden(), "kn", "ot")
@@ -326,10 +327,8 @@ func TestOnlyRequestedPropertiesAreReportedAsWithheld(t *testing.T) {
 
 func TestDenialGuidanceRequiresTheObjectTypeInTheRefusal(t *testing.T) {
 	guide := newTestGuide(&schemaProbeStub{})
-	named := &infraErr.HTTPError{HTTPCode: http.StatusForbidden,
-		ErrorDetails: "Public.Forbidden: query_data was not granted for object_type:kn/ot"}
-	other := &infraErr.HTTPError{HTTPCode: http.StatusForbidden,
-		ErrorDetails: "Public.Forbidden: execute was not granted for metric:m-1"}
+	named := &rest.HTTPError{HTTPCode: http.StatusForbidden, BaseError: rest.BaseError{ErrorDetails: "Public.Forbidden: query_data was not granted for object_type:kn/ot"}}
+	other := &rest.HTTPError{HTTPCode: http.StatusForbidden, BaseError: rest.BaseError{ErrorDetails: "Public.Forbidden: execute was not granted for metric:m-1"}}
 
 	if got := guide.ForObjectTypeDenial(userCtx(""), named, "kn", "ot"); got == nil {
 		t.Fatal("a refusal naming the object type must carry guidance")

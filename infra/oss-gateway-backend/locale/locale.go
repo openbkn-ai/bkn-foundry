@@ -6,11 +6,9 @@
 package locale
 
 import (
-	"context"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 var registerOnce sync.Once
@@ -27,12 +25,7 @@ func Register() {
 	})
 }
 
-// Translate renders a resource with the effective request locale.
-func Translate(ctx context.Context, messageID string, templateData map[string]interface{}) string {
+// init installs service messages before consumers render them.
+func init() {
 	Register()
-	text, err := i18n.Render(i18n.GetLanguageByCtx(ctx), messageID, templateData)
-	if err != nil {
-		logger.Errorf("localized service message failed: %v", err)
-	}
-	return text
 }

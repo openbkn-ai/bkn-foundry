@@ -667,7 +667,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -738,7 +738,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -939,7 +939,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
               examples:
                 缺 tool_name:
                   value:
@@ -1090,31 +1090,31 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Unauthorized:
       description: 凭据缺失或无效
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Forbidden:
       description: 当前主体缺少所需资源权限
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     NotFound:
       description: 工具箱或工具不存在
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     InternalError:
       description: 服务内部错误
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   schemas:
     BizStatus:

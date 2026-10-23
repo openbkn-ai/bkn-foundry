@@ -7,6 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
@@ -14,8 +18,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 func TestDebugOperator(t *testing.T) {
@@ -61,20 +63,20 @@ func TestDebugOperator(t *testing.T) {
 				Return(false, nil, errors.New("mock SelectByOperatorID error")).Times(1)
 			_, err := operator.DebugOperator(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
-			So(httpErr.Code, ShouldEqual, "Public.InternalServerError")
+			So(httpErr.BaseError.ErrorCode, ShouldEqual, "Public.InternalServerError")
 		})
 		Convey("TestDebugOperator: 算子不存在", func() {
 			mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(false, nil, nil).Times(1)
 			_, err := operator.DebugOperator(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.Code, ShouldContainSubstring, myErr.ErrExtOperatorNotFound.String())
+			So(httpErr.BaseError.ErrorCode, ShouldContainSubstring, myErr.ErrExtOperatorNotFound.String())
 		})
 		Convey("TestDebugOperator: 获取accessor信息失败", func() {
 			mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).

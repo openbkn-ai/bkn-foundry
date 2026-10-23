@@ -9,6 +9,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
@@ -76,8 +79,11 @@ type SearchCapabilitiesResp struct {
 func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	req *SearchCapabilitiesReq) (*SearchCapabilitiesResp, error) {
 	if req == nil || strings.TrimSpace(req.KnID) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolScopeKnIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolScopeKnIDRequired", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	limit := req.Limit
 	if limit < 1 {
@@ -110,9 +116,13 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 				message = "NoCapabilitiesOfRequestedKind"
 			}
 		}
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+message, map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return &SearchCapabilitiesResp{
 			Capabilities: []CapabilityEntry{},
-			Message:      infraErr.LocalizedDetail(ctx, message),
+			Message:      localizedText,
 		}, nil
 	}
 
@@ -213,26 +223,54 @@ func (s *knToolsService) SearchCapabilities(ctx context.Context,
 	narrowedKey, narrowed := narrowedAwayMessage(req)
 	switch {
 	case len(entries) == 0 && withdrawn > 0:
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.CapabilityStatusUnverified", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		// Everything the ranking found belongs to an owner that is no longer published, or whose
 		// state could not be confirmed. Neither is a permission problem, and saying it was would
 		// send the caller to the wrong fix.
-		resp.Message = infraErr.LocalizedDetail(ctx, "CapabilityStatusUnverified")
+		resp.Message = localizedText
 	case len(entries) == 0 && total > 0:
-		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolsMatchedButNotVisible", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		resp.Message = localizedText
 	case len(entries) == 0 && narrowed:
-		resp.Message = infraErr.LocalizedDetail(ctx, narrowedKey)
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+narrowedKey, map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		resp.Message = localizedText
 	case len(entries) == 0:
-		resp.Message = infraErr.LocalizedDetail(ctx, "NoPublishedToolsMatched")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.NoPublishedToolsMatched", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		resp.Message = localizedText
 	case withdrawn > 0 && len(entries) < limit && more:
 		// Short after the one refill allowed, with more still in the ranking: incomplete, and
 		// said so. A second refill is not attempted — bounded means bounded.
 		resp.Truncated = true
-		resp.Message = infraErr.LocalizedDetail(ctx, "CapabilityResultIncomplete")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.CapabilityResultIncomplete", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		resp.Message = localizedText
 	case more:
 		resp.Truncated = true
-		resp.Message = infraErr.LocalizedDetail(ctx, "ToolSearchTruncated")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolSearchTruncated", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		resp.Message = localizedText
 	case len(entries) < fitted:
-		resp.Message = infraErr.LocalizedDetail(ctx, "ToolsMatchedButNotVisible")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolsMatchedButNotVisible", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		resp.Message = localizedText
 	}
 	if len(resp.Capabilities) == 0 {
 		resp.Capabilities = []CapabilityEntry{}
@@ -254,8 +292,11 @@ func (s *knToolsService) allBoundRefs(ctx context.Context,
 	// the ranking are both read with this service's identity, and without it the scope would be
 	// the kn_id the caller typed.
 	if s.knAuthz == nil {
-		return nil, 0, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, 0, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
 		return nil, 0, permission.CapabilityScopeError(ctx, err, permission.CapabilityNetworkViewRequired)

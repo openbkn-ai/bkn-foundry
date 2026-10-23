@@ -109,7 +109,7 @@ func newLocalizedMCPHandlerForProfile(
 	handlers := make(map[string]http.Handler, 2)
 	for _, locale := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
 		srv, _ := newMCPServerForProfile(lifecycleClient, string(locale), sandboxPort, profile)
-		handlers[normalizeMCPLocale(string(locale))] = newMCPStreamableHTTPHandler(srv, profile.endpointPath)
+		handlers[string(locale)] = newMCPStreamableHTTPHandler(srv, profile.endpointPath)
 	}
 	return &localizedMCPHandler{handlers: handlers}
 }
@@ -133,7 +133,7 @@ func (h *localizedMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	// locale to Mcp-Session-Id, guarding against a client that changes language
 	// mid-session — which clients do not do, while the map itself became more
 	// per-replica session state to keep alive (#954).
-	locale := normalizeMCPLocale(string(i18n.ResolveLanguage(r.Header.Get(i18n.AcceptLanguageHeader))))
+	locale := string(i18n.ResolveLanguage(r.Header.Get(i18n.AcceptLanguageHeader)))
 	handler, ok := h.handlers[locale]
 	if !ok {
 		handler = h.handlers[defaultMCPLocale]

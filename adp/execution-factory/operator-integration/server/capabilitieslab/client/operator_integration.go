@@ -204,7 +204,7 @@ func (f createToolFailure) Message() string {
 
 	var detail struct {
 		Description string `json:"description"`
-		Details     string `json:"details"`
+		Details     string `json:"error_details"`
 		Message     string `json:"message"`
 		Error       string `json:"error"`
 	}

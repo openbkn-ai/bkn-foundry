@@ -103,12 +103,20 @@ func (r *restHandler) diffKNs(c *gin.Context, vis hydra.Visitor) {
 // and the answer — everything unchanged — is a real answer rather than a mistake to reject.
 func validateKNDiffBody(ctx context.Context, body *KNDiffRequestBody) *rest.HTTPError {
 	if body.Base.KNID == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+"BaseKNIDRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
-			WithErrorDetails(knDiffValidationDetail(ctx, "BaseKNIDRequired"))
+			WithErrorDetails(localizedText)
 	}
 	if body.Target.KNID == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+"TargetKNIDRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
-			WithErrorDetails(knDiffValidationDetail(ctx, "TargetKNIDRequired"))
+			WithErrorDetails(localizedText)
 	}
 	if body.Base.Branch == "" {
 		body.Base.Branch = interfaces.MAIN_BRANCH
@@ -117,19 +125,6 @@ func validateKNDiffBody(ctx context.Context, body *KNDiffRequestBody) *rest.HTTP
 		body.Target.Branch = interfaces.MAIN_BRANCH
 	}
 	return nil
-}
-
-// knDiffValidationDetail renders one detail message of the comparison error code.
-func knDiffValidationDetail(ctx context.Context, name string) string {
-	localizedText, renderErr := i18n.Render(
-		i18n.GetLanguageByCtx(ctx),
-		berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+name,
-		nil,
-	)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
 }
 
 // ObjectDataStatsRequestBody is the request body of the object data statistics endpoint.
@@ -210,12 +205,20 @@ func validateObjectDataStatsBody(ctx context.Context, body *ObjectDataStatsReque
 	}
 	for _, entry := range sides {
 		if entry.side.KNID == "" {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+entry.knKey, nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
-				WithErrorDetails(knDiffValidationDetail(ctx, entry.knKey))
+				WithErrorDetails(localizedText)
 		}
 		if entry.side.OTID == "" {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+entry.otKey, nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
-				WithErrorDetails(knDiffValidationDetail(ctx, entry.otKey))
+				WithErrorDetails(localizedText)
 		}
 		if entry.side.Branch == "" {
 			entry.side.Branch = interfaces.MAIN_BRANCH

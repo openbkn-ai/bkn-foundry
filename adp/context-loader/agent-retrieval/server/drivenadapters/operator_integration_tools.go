@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -81,8 +83,11 @@ func (o *operatorIntegrationClient) ListPublishedToolboxes(
 		}
 		if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
 			o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedToolboxes] Unmarshal failed, err: %v", err)
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-				infraErr.LocalizedDetail(ctx, "ToolboxCatalogResponseInvalid"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolboxCatalogResponseInvalid", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 		}
 
 		for _, box := range payload.Data {
@@ -109,8 +114,11 @@ func (o *operatorIntegrationClient) ListPublishedTools(
 	ctx context.Context, req *interfaces.ListPublishedToolsRequest,
 ) (*interfaces.ListPublishedToolsResponse, error) {
 	if req == nil || strings.TrimSpace(req.ToolboxID) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolboxIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolboxIDRequired", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	header, err := o.capabilityAuthorizationHeader(ctx, "operator.published_tool.list")
 	if err != nil {
@@ -151,8 +159,11 @@ func (o *operatorIntegrationClient) ListPublishedTools(
 		}
 		if err = sonic.Unmarshal(utils.ObjectToByte(body), &payload); err != nil {
 			o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListPublishedTools] Unmarshal failed, err: %v", err)
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-				infraErr.LocalizedDetail(ctx, "ToolCatalogResponseInvalid"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolCatalogResponseInvalid", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 		}
 
 		for _, tool := range payload.Tools {
@@ -207,8 +218,11 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 	ctx context.Context, req *interfaces.ExecutePublishedToolRequest,
 ) (map[string]any, error) {
 	if req == nil || strings.TrimSpace(req.ToolboxID) == "" || strings.TrimSpace(req.ToolID) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ToolboxIDAndToolIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolboxIDAndToolIDRequired", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	header, err := o.capabilityAuthorizationHeader(ctx, "operator.published_tool.execute")
 	if err != nil {
@@ -241,8 +255,11 @@ func (o *operatorIntegrationClient) ExecutePublishedTool(
 	}
 	result, ok := response.(map[string]any)
 	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolExecutionResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolExecutionResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	return result, nil
 }
@@ -252,8 +269,11 @@ func (o *operatorIntegrationClient) ExecutePublishedToolAsProxy(ctx context.Cont
 	if req == nil || proxy == nil || (proxy.Binding.TargetType != interfaces.KNProxyTargetTypeToolBox &&
 		proxy.Binding.TargetType != interfaces.KNProxyTargetTypeFunction) ||
 		proxy.Binding.TargetID != req.ToolboxID {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 	}
 	header, err := managedProxyHeaders(ctx, proxy)
 	if err != nil {
@@ -274,8 +294,11 @@ func (o *operatorIntegrationClient) ExecutePublishedToolAsProxy(ctx context.Cont
 	}
 	result, ok := response.(map[string]any)
 	if !ok {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolExecutionResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolExecutionResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	return result, nil
 }
@@ -320,8 +343,11 @@ func (o *operatorIntegrationClient) SearchBoundTools(ctx context.Context,
 	}
 	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchBoundTools] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolSearchResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolSearchResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	if raw.Entries == nil {
 		return []interfaces.ToolHit{}, nil

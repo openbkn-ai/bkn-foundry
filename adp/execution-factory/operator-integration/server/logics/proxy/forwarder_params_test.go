@@ -11,10 +11,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	. "github.com/smartystreets/goconvey/convey"
+
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 // newTestForwarder manually assembles the forwarder to avoid NewForwarder/NewClientPool from reading the configuration file.
@@ -131,11 +133,11 @@ func TestBuildRequest_PathParams(t *testing.T) {
 
 			So(httpReq, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.Code, ShouldEndWith, string(myErr.ErrExtProxyPathParamMissing))
-			So(httpErr.ErrorDetails, ShouldContainSubstring, "operator_id")
+			So(httpErr.BaseError.ErrorCode, ShouldEndWith, string(myErr.ErrExtProxyPathParamMissing))
+			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "operator_id")
 		})
 
 		Convey("path 参数只给一半时同样被拒绝", func() {
@@ -153,7 +155,7 @@ func TestBuildRequest_PathParams(t *testing.T) {
 
 			So(httpReq, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			So(err.(*myErr.HTTPError).ErrorDetails, ShouldContainSubstring, "tool_id")
+			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldContainSubstring, "tool_id")
 		})
 
 		Convey("query 里的花括号是业务值，不触发占位符拦截", func() {

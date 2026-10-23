@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -70,8 +70,12 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	// Read the uploaded file.
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.UploadedFileReadFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "UploadedFileReadFailed", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -83,8 +87,12 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		// Fall back to the filename extension. The suffix is matched on the whole name:
 		// filepath.Ext of "net.tar.gz" is ".gz", which never matched ".tar.gz".
 		if !hasArchiveSuffix(header.Filename) {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ArchiveFileTypeInvalid", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-				WithErrorDetails(commonValidationDetail(ctx, "ArchiveFileTypeInvalid", nil))
+				WithErrorDetails(localizedText)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -95,8 +103,12 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	bindingPolicy := strings.TrimSpace(c.DefaultQuery("binding_policy", bknBindingPolicyPreserve))
 	if bindingPolicy != bknBindingPolicyPreserve && bindingPolicy != bknBindingPolicyDetach {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.BindingPolicyInvalid", map[string]any{"value": bindingPolicy})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "BindingPolicyInvalid", map[string]any{"value": bindingPolicy}))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -110,8 +122,12 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	bknNetwork, err := bknsdk.LoadNetworkFromArchive(file)
 	if err != nil {
 		logger.Errorf("Failed to load network from tar: %s", err.Error())
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ArchiveLoadFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "ArchiveLoadFailed", nil))
+			WithErrorDetails(localizedText)
 		if strings.Contains(err.Error(), "legacy metrics") {
 			httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails("legacy metrics/*.bkn is unsupported; migrate metrics to object metrics V1 before import")
@@ -406,8 +422,12 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 	// Read path parameters.
 	kn_id := c.Param("kn_id")
 	if kn_id == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.KnowledgeNetworkIDRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "KnowledgeNetworkIDRequired", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -438,8 +458,12 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 		// execution factory is unreachable is worth retrying, and a generic 500 does not say so.
 		var httpErr *rest.HTTPError
 		if !errors.As(err, &httpErr) {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.InternalRequestFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
-				WithErrorDetails(commonValidationDetail(ctx, "InternalRequestFailed", nil))
+				WithErrorDetails(localizedText)
 		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -474,8 +498,12 @@ func (r *restHandler) CheckBKN(c *gin.Context) {
 
 	knID := c.Param("kn_id")
 	if knID == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.KnowledgeNetworkIDRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "KnowledgeNetworkIDRequired", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -486,8 +514,12 @@ func (r *restHandler) CheckBKN(c *gin.Context) {
 	if err != nil {
 		var httpErr *rest.HTTPError
 		if !errors.As(err, &httpErr) {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.InternalRequestFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
-				WithErrorDetails(commonValidationDetail(ctx, "InternalRequestFailed", nil))
+				WithErrorDetails(localizedText)
 		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

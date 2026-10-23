@@ -81,8 +81,12 @@ func (r *restHandler) CreateActionSchedule(c *gin.Context, visitor hydra.Visitor
 	// Bind request
 	var reqBody interfaces.ActionScheduleCreateRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -183,8 +187,12 @@ func (r *restHandler) UpdateActionSchedule(c *gin.Context, visitor hydra.Visitor
 	// Bind request
 	var reqBody interfaces.ActionScheduleUpdateRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -270,8 +278,12 @@ func (r *restHandler) UpdateActionScheduleStatus(c *gin.Context, visitor hydra.V
 	// Bind request
 	var reqBody interfaces.ActionScheduleStatusRequest
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -432,8 +444,12 @@ func (r *restHandler) ListActionSchedules(c *gin.Context, visitor hydra.Visitor)
 
 	// Validate status if provided
 	if status != "" && status != interfaces.ScheduleStatusActive && status != interfaces.ScheduleStatusInactive {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.StatusInvalid", map[string]any{"value": status})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
-			WithErrorDetails(commonValidationDetail(ctx, "StatusInvalid", map[string]any{"value": status}))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

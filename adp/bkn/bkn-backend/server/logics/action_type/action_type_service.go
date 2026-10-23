@@ -57,14 +57,6 @@ type actionTypeService struct {
 	vbs        interfaces.VegaBackendService
 }
 
-func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
-}
-
 func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeService {
 	atServiceOnce.Do(func() {
 		atService = &actionTypeService{
@@ -146,12 +138,15 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 		if err := ats.aoa.GetToolByID(ctx, src.BoxID, src.ToolID); err != nil {
 			logger.Errorf("validate action type tool binding failed: action_type=%s box_id=%s tool_id=%s err=%v",
 				at.ATName, src.BoxID, src.ToolID, err)
-			invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(invalidParameterDetail(ctx, "ToolBindingInvalid", map[string]any{
-					"actionType": at.ATName,
-					"boxID":      src.BoxID,
-					"toolID":     src.ToolID,
-				}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ToolBindingInvalid", map[string]any{
+				"actionType": at.ATName,
+				"boxID":      src.BoxID,
+				"toolID":     src.ToolID,
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 			// The execution-factory internal metadata endpoint does not perform
 			// caller resource authorization. A 403 therefore indicates an
 			// internal identity/configuration failure, not a user-scoped denial.
@@ -165,12 +160,15 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 		if err := ats.aoa.GetMcpToolByName(ctx, src.McpID, src.ToolName); err != nil {
 			logger.Errorf("validate action type MCP tool binding failed: action_type=%s mcp_id=%s tool_name=%s err=%v",
 				at.ATName, src.McpID, src.ToolName, err)
-			invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(invalidParameterDetail(ctx, "MCPBindingInvalid", map[string]any{
-					"actionType": at.ATName,
-					"mcpID":      src.McpID,
-					"toolName":   src.ToolName,
-				}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.MCPBindingInvalid", map[string]any{
+				"actionType": at.ATName,
+				"mcpID":      src.McpID,
+				"toolName":   src.ToolName,
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 			// The execution-factory internal metadata endpoint does not perform
 			// caller resource authorization. A 403 therefore indicates an
 			// internal identity/configuration failure, not a user-scoped denial.

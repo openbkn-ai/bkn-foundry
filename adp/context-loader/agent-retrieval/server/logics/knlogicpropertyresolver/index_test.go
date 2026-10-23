@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
@@ -34,20 +34,20 @@ func TestLogicPropertyErrorsLocalizeOwnedMessages(t *testing.T) {
 		t.Run(string(tt.locale), func(t *testing.T) {
 			ctx := common.SetLanguageToCtx(context.Background(), tt.locale)
 			missing := service.buildMissingParamsError(ctx, []interfaces.MissingPropertyParams{{Property: "region"}}, nil)
-			missingHTTPError := missing.(*infraerrors.HTTPError)
-			if got := missingHTTPError.ErrorDetails.(string); !strings.Contains(got, tt.missingWant) {
+			missingHTTPError := missing.(*rest.HTTPError)
+			if got := missingHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, tt.missingWant) {
 				t.Fatalf("missing error details = %q, want localized text %q", got, tt.missingWant)
 			}
 
 			failed := service.buildGenerationFailedError(ctx, []interfaces.MissingPropertyParams{{Property: "region", ErrorMsg: "provider timeout"}})
-			failedHTTPError := failed.(*infraerrors.HTTPError)
-			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, tt.failedWant) {
+			failedHTTPError := failed.(*rest.HTTPError)
+			if got := failedHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, tt.failedWant) {
 				t.Fatalf("generation error details = %q, want localized text %q", got, tt.failedWant)
 			}
-			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, "DYNAMIC_PARAMS_GENERATION_FAILED") {
+			if got := failedHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, "DYNAMIC_PARAMS_GENERATION_FAILED") {
 				t.Fatalf("generation error details lost stable discriminator: %q", got)
 			}
-			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, "provider timeout") {
+			if got := failedHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, "provider timeout") {
 				t.Fatalf("generation error details lost upstream diagnostic: %q", got)
 			}
 		})

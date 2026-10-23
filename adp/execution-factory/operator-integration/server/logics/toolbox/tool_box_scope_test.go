@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
@@ -15,7 +18,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	"go.uber.org/mock/gomock"
 )
 
 // Every route that names a tool also names the toolbox it is addressed through.
@@ -233,8 +235,8 @@ func TestBoxScopedToolPathsTreatToolOfAnotherBoxAsMissing(t *testing.T) {
 
 			_, missingErr := path.call(context.Background(), fixture.svc, scopeMissingID)
 			missing := requireHTTPError(t, missingErr)
-			if !strings.HasSuffix(missing.Code, string(oerrors.ErrExtToolNotFound)) {
-				t.Fatalf("missing tool answered %q, want a %s error", missing.Code, oerrors.ErrExtToolNotFound)
+			if !strings.HasSuffix(missing.BaseError.ErrorCode, string(oerrors.ErrExtToolNotFound)) {
+				t.Fatalf("missing tool answered %q, want a %s error", missing.BaseError.ErrorCode, oerrors.ErrExtToolNotFound)
 			}
 
 			found, otherErr := path.call(context.Background(), fixture.svc, scopeOtherToolID)
@@ -242,11 +244,11 @@ func TestBoxScopedToolPathsTreatToolOfAnotherBoxAsMissing(t *testing.T) {
 				t.Fatalf("%s(%s, %s) returned a result for a tool of another toolbox", path.name, scopeBoxID, scopeOtherToolID)
 			}
 			other := requireHTTPError(t, otherErr)
-			if other.HTTPCode != missing.HTTPCode || other.Code != missing.Code || other.Description != missing.Description {
+			if other.HTTPCode != missing.HTTPCode || other.BaseError.ErrorCode != missing.BaseError.ErrorCode || other.BaseError.Description != missing.BaseError.Description {
 				t.Fatalf("tool of another toolbox answered %d %q %q, want the missing-tool answer %d %q %q",
-					other.HTTPCode, other.Code, other.Description, missing.HTTPCode, missing.Code, missing.Description)
+					other.HTTPCode, other.BaseError.ErrorCode, other.BaseError.Description, missing.HTTPCode, missing.BaseError.ErrorCode, missing.BaseError.Description)
 			}
-			if got, want := other.ErrorDetails, fmt.Sprintf("tool %s not found", scopeOtherToolID); got != want {
+			if got, want := other.BaseError.ErrorDetails, fmt.Sprintf("tool %s not found", scopeOtherToolID); got != want {
 				t.Fatalf("details = %v, want %q", got, want)
 			}
 			if len(fixture.proxied) != 0 {
@@ -262,9 +264,9 @@ func TestBoxScopedToolPathsTreatToolOfAnotherBoxAsMissing(t *testing.T) {
 	}
 }
 
-func requireHTTPError(t *testing.T, err error) *oerrors.HTTPError {
+func requireHTTPError(t *testing.T, err error) *rest.HTTPError {
 	t.Helper()
-	var httpErr *oerrors.HTTPError
+	var httpErr *rest.HTTPError
 	if !errors.As(err, &httpErr) {
 		t.Fatalf("error = %v, want an HTTP error", err)
 	}

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 )
@@ -18,12 +19,11 @@ import (
 func TestDefaultHTTPErrorUsesBCP47Locale(t *testing.T) {
 	ctx := common.SetLanguageToCtx(context.Background(), i18n.AmericanEnglish)
 	err := DefaultHTTPError(ctx, http.StatusUnauthorized, "token is invalid")
-
-	if err.Description != "Authentication failed" {
-		t.Errorf("Description = %q, want English translation", err.Description)
+	if renderErr := err.Render(); renderErr != nil {
+		t.Fatal(renderErr)
 	}
-	if err.Solution != "Contact administrator" {
-		t.Errorf("Solution = %q, want English translation", err.Solution)
+	if err.BaseError.Description != "Authentication failed. Provide valid authentication credentials." {
+		t.Fatalf("description = %q", err.BaseError.Description)
 	}
 }
 
@@ -38,7 +38,11 @@ func TestLocalizedDetailUsesBCP47Locale(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.locale, func(t *testing.T) {
 			ctx := common.SetLanguageToCtx(context.Background(), i18n.ResolveLanguage(tt.locale))
-			if got := LocalizedDetail(ctx, "FunctionCodeRequired"); got != tt.want {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.FunctionCodeRequired", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			if got := localizedText; got != tt.want {
 				t.Fatalf("LocalizedDetail() = %q, want %q", got, tt.want)
 			}
 		})

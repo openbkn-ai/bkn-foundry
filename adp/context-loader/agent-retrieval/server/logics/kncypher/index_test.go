@@ -10,8 +10,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -184,10 +185,10 @@ func TestRunCypherClassifiesFailureBoundaries(t *testing.T) {
 	}{
 		{name: "cancelled", err: context.Canceled, wantStage: "interrupted", wantCode: "RUN_CYPHER_INTERRUPTED"},
 		{name: "deadline", err: context.DeadlineExceeded, wantStage: "interrupted", wantCode: "RUN_CYPHER_TIMEOUT"},
-		{name: "parse", err: &infraErr.HTTPError{Code: "BknBackend.BadRequest.BknBackend.Cypher.SyntaxError"}, wantStage: "parse", wantCode: "RUN_CYPHER_PARSE_FAILED"},
-		{name: "bind", err: &infraErr.HTTPError{Code: "BknBackend.BadRequest.BknBackend.Cypher.InvalidQuery"}, wantStage: "bind", wantCode: "RUN_CYPHER_BIND_FAILED"},
-		{name: "compile", err: &infraErr.HTTPError{Code: "BknBackend.InternalServerError.BknBackend.Cypher.InternalError"}, wantStage: "compile", wantCode: "RUN_CYPHER_COMPILE_FAILED"},
-		{name: "vega", err: &infraErr.HTTPError{Code: "BknBackend.InternalServerError.BknBackend.Cypher.QueryFailed"}, wantStage: "vega_execution", wantCode: "RUN_CYPHER_VEGA_FAILED"},
+		{name: "parse", err: &rest.HTTPError{BaseError: rest.BaseError{ErrorCode: "BknBackend.BadRequest.BknBackend.Cypher.SyntaxError"}}, wantStage: "parse", wantCode: "RUN_CYPHER_PARSE_FAILED"},
+		{name: "bind", err: &rest.HTTPError{BaseError: rest.BaseError{ErrorCode: "BknBackend.BadRequest.BknBackend.Cypher.InvalidQuery"}}, wantStage: "bind", wantCode: "RUN_CYPHER_BIND_FAILED"},
+		{name: "compile", err: &rest.HTTPError{BaseError: rest.BaseError{ErrorCode: "BknBackend.InternalServerError.BknBackend.Cypher.InternalError"}}, wantStage: "compile", wantCode: "RUN_CYPHER_COMPILE_FAILED"},
+		{name: "vega", err: &rest.HTTPError{BaseError: rest.BaseError{ErrorCode: "BknBackend.InternalServerError.BknBackend.Cypher.QueryFailed"}}, wantStage: "vega_execution", wantCode: "RUN_CYPHER_VEGA_FAILED"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -230,5 +231,16 @@ func TestRunCypherExplainsWithoutEvidence(t *testing.T) {
 	}
 	if emitted {
 		t.Fatal("an explained query emitted run evidence")
+	}
+}
+
+func TestClassifyRunCypherFailureReadsNestedSourceCode(t *testing.T) {
+	err := &rest.HTTPError{BaseError: rest.BaseError{
+		ErrorCode:    "agentRetrieval.BadRequest.CommonExternalServerError",
+		ErrorDetails: rest.BaseError{ErrorCode: "BknBackend.Cypher.SyntaxError", Description: "invalid query"},
+	}}
+	failure := classifyRunCypherFailure(err)
+	if failure.Stage != "parse" || failure.Code != "RUN_CYPHER_PARSE_FAILED" {
+		t.Fatalf("failure = %+v", failure)
 	}
 }

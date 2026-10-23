@@ -1324,7 +1324,6 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 				span.SetStatus(codes.Error, errDetails)
 				return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
 					berrors.BknBackend_ConceptGroup_ConceptGroupNameExisted).
-					WithMetadata(map[string]any{"cg_name": conceptGroup.CGName}).
 					WithErrorDetails(errDetails)
 			}
 

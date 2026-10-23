@@ -7,14 +7,15 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 func TestSkillManagementReader(t *testing.T) {
@@ -134,7 +135,7 @@ func TestSkillManagementReader(t *testing.T) {
 
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*errors.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -209,7 +210,7 @@ func TestSkillManagementReader(t *testing.T) {
 
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*errors.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 		})
@@ -233,7 +234,7 @@ func TestSkillManagementReader(t *testing.T) {
 
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*errors.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -470,7 +471,7 @@ func TestSkillManagementReader(t *testing.T) {
 
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*errors.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -499,7 +500,7 @@ func TestSkillManagementReader(t *testing.T) {
 
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*errors.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})

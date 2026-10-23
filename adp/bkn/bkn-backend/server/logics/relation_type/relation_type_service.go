@@ -55,14 +55,6 @@ type relationTypeService struct {
 	vbs        interfaces.VegaBackendService
 }
 
-func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
-}
-
 func NewRelationTypeService(appSetting *common.AppSetting) interfaces.RelationTypeService {
 	rtServiceOnce.Do(func() {
 		rtService = &relationTypeService{
@@ -1373,24 +1365,34 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 				if sourceObjectType != nil {
 					// Check that source properties exist in source object type data properties.
 					if _, exist := sourceObjectType.PropertyMap[mapping.SourceProp.Name]; !exist {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-							WithErrorDetails(invalidParameterDetail(ctx, "SourcePropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "objectType": sourceObjectType.OTName}))
+						localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.SourcePropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "objectType": sourceObjectType.OTName})
+						if renderErr != nil {
+							logger.Errorf("localized message rendering failed: %v", renderErr)
+						}
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 					}
 				}
 
 				if targetObjectType != nil {
 					// Check that target properties exist in target object type data properties.
 					if _, exist := targetObjectType.PropertyMap[mapping.TargetProp.Name]; !exist {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-							WithErrorDetails(invalidParameterDetail(ctx, "TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName}))
+						localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName})
+						if renderErr != nil {
+							logger.Errorf("localized message rendering failed: %v", renderErr)
+						}
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 					}
 				}
 			}
 		case interfaces.RELATION_TYPE_INDIRECT:
 			mappingRules := relationType.MappingRules.(*interfaces.InDirectMapping)
 			if mappingRules.BackingDataSource == nil {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceRequired", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceRequired", nil))
+					WithErrorDetails(localizedText)
 			}
 			if mappingRules.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
 				return logics.UnsupportedRelationBackingDataSourceError(ctx, relationType.RTID, mappingRules.BackingDataSource.Type)
@@ -1402,37 +1404,57 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 			res, err := rts.vbs.GetResourceSchema(lookupCtx, mappingRules.BackingDataSource.ID,
 				interfaces.OPERATION_TYPE_QUERY_DATA)
 			if err != nil {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceNotFound", map[string]any{"resource": mappingRules.BackingDataSource.ID})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceNotFound", map[string]any{"resource": mappingRules.BackingDataSource.ID}))
+					WithErrorDetails(localizedText)
 				return logics.MapDependencyError(ctx, err, !controlledLookup, invalidErr,
 					berrors.BknBackend_RelationType_InternalError)
 			}
 			if res == nil {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceNotFound", map[string]any{"resource": mappingRules.BackingDataSource.ID})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "BackingDataSourceNotFound", map[string]any{"resource": mappingRules.BackingDataSource.ID}))
+					WithErrorDetails(localizedText)
 			}
 			propertiesMap := logics.VegaResourceSchemaToPropertiesMap(res)
 			for _, mapping := range mappingRules.SourceMappingRules {
 				if sourceObjectType != nil {
 					if _, exists := sourceObjectType.PropertyMap[mapping.SourceProp.Name]; !exists {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-							WithErrorDetails(invalidParameterDetail(ctx, "SourcePropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "objectType": sourceObjectType.OTName}))
+						localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.SourcePropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "objectType": sourceObjectType.OTName})
+						if renderErr != nil {
+							logger.Errorf("localized message rendering failed: %v", renderErr)
+						}
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 					}
 				}
 				if _, exists := propertiesMap[mapping.TargetProp.Name]; !exists {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-						WithErrorDetails(invalidParameterDetail(ctx, "BackingPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "resource": res.Name}))
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "resource": res.Name})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			}
 			for _, mapping := range mappingRules.TargetMappingRules {
 				if _, exists := propertiesMap[mapping.SourceProp.Name]; !exists {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-						WithErrorDetails(invalidParameterDetail(ctx, "BackingPropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "resource": res.Name}))
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingPropertyNotFound", map[string]any{"property": mapping.SourceProp.Name, "resource": res.Name})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 				if targetObjectType != nil {
 					if _, exists := targetObjectType.PropertyMap[mapping.TargetProp.Name]; !exists {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-							WithErrorDetails(invalidParameterDetail(ctx, "TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName}))
+						localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TargetPropertyNotFound", map[string]any{"property": mapping.TargetProp.Name, "objectType": targetObjectType.OTName})
+						if renderErr != nil {
+							logger.Errorf("localized message rendering failed: %v", renderErr)
+						}
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 					}
 				}
 			}
@@ -1440,14 +1462,22 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 			rules := relationType.MappingRules.(*interfaces.FilteredCrossJoinMapping)
 			if sourceObjectType != nil && rules.SourceCondition != nil {
 				if _, err := cond.NewCondition(ctx, rules.SourceCondition, cond.CUSTOM, objectTypeToCondFieldsMap(sourceObjectType)); err != nil {
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.SourceConditionInvalid", nil)
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-						WithErrorDetails(invalidParameterDetail(ctx, "SourceConditionInvalid", nil))
+						WithErrorDetails(localizedText)
 				}
 			}
 			if targetObjectType != nil && rules.TargetCondition != nil {
 				if _, err := cond.NewCondition(ctx, rules.TargetCondition, cond.CUSTOM, objectTypeToCondFieldsMap(targetObjectType)); err != nil {
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TargetConditionInvalid", nil)
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-						WithErrorDetails(invalidParameterDetail(ctx, "TargetConditionInvalid", nil))
+						WithErrorDetails(localizedText)
 				}
 			}
 		}

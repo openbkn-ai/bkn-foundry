@@ -20,9 +20,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -67,8 +68,12 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	// account. An agent told "there are no searchable object types" looks for
 	// the problem in the network either way.
 	if len(objectTypes) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.NoRecalledObjectTypes", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return &interfaces.KnSearchSemanticInstanceResult{
-			Message: infraErr.LocalizedDetail(ctx, "NoRecalledObjectTypes"),
+			Message: localizedText,
 		}, nil
 	}
 
@@ -77,8 +82,12 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 		return nil, err
 	}
 	if len(objectTypes) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.NoAuthorizedObjectTypes", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return &interfaces.KnSearchSemanticInstanceResult{
-			Message: infraErr.LocalizedDetail(ctx, "NoAuthorizedObjectTypes"),
+			Message: localizedText,
 		}, nil
 	}
 
@@ -255,8 +264,11 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 
 	var capabilityMessage string
 	if len(capabilitiesUnknown) > 0 {
-		capabilityMessage = infraErr.LocalizedDetail(ctx, "InstanceSearchCapabilitiesUnknown",
-			strings.Join(capabilitiesUnknown, ", "))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.InstanceSearchCapabilitiesUnknown", map[string]any{"Arg1": strings.Join(capabilitiesUnknown, ", ")})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		capabilityMessage = localizedText
 	}
 	switch {
 	case gateMessage != "":
@@ -268,7 +280,11 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 		// and an empty one is not "no match".
 		result.Message = capabilityMessage
 	case len(allNodes) == 0:
-		result.Message = infraErr.LocalizedDetail(ctx, "NoMatchingInstances")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.NoMatchingInstances", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		result.Message = localizedText
 	}
 
 	return result, nil
@@ -411,8 +427,11 @@ func (s *localSearchImpl) applyRelevanceGate(
 		}
 		s.logger.WithContext(ctx).Warnf(
 			"[RelevanceGate] Skipped (%s): returning %d unfiltered instances", reason, len(nodes))
-		return nodes, infraErr.LocalizedDetail(ctx, "InstanceRelevanceGateSkipped",
-			formatScore(threshold))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.InstanceRelevanceGateSkipped", map[string]any{"Arg1": formatScore(threshold)})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nodes, localizedText
 	}
 
 	kept := make([]*interfaces.KnSearchNode, 0, len(nodes))
@@ -425,8 +444,11 @@ func (s *localSearchImpl) applyRelevanceGate(
 		"[RelevanceGate] threshold=%.4f top=%.4f kept=%d/%d", threshold, rerank.top, len(kept), len(nodes))
 
 	if len(kept) == 0 {
-		return nil, infraErr.LocalizedDetail(ctx, "InstanceRelevanceGateRejected",
-			formatScore(threshold), formatScore(rerank.top))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.InstanceRelevanceGateRejected", map[string]any{"Arg1": formatScore(threshold), "Arg2": formatScore(rerank.top)})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, localizedText
 	}
 	return kept, ""
 }

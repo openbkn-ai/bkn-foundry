@@ -11,16 +11,21 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 // MissingObjectTypeDataSourceError returns a client-facing 400 when an object type has no data source binding.
 func MissingObjectTypeDataSourceError(ctx context.Context, otID string) *rest.HTTPError {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.DataSourceRequired", map[string]any{"objectTypeID": otID})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 	return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
-		WithErrorDetails(locale.ValidationDetail(ctx, "DataSourceRequired", map[string]any{"objectTypeID": otID}))
+		WithErrorDetails(localizedText)
 }
 
 // UnsupportedObjectTypeDataSourceError returns a client-facing 400 for invalid object-type bindings.

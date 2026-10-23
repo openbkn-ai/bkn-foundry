@@ -11,10 +11,13 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 const defaultMCPLocale = "zh-CN"
@@ -40,7 +43,7 @@ type mcpLocaleBundle struct {
 var localeBundles sync.Map // normalised locale -> *mcpLocaleBundle
 
 func loadMCPLocaleBundle(locale string) *mcpLocaleBundle {
-	normalized := normalizeMCPLocale(locale)
+	normalized := string(i18n.ResolveLanguage(locale))
 	if cached, ok := localeBundles.Load(normalized); ok {
 		return cached.(*mcpLocaleBundle)
 	}
@@ -49,66 +52,125 @@ func loadMCPLocaleBundle(locale string) *mcpLocaleBundle {
 	return bundle
 }
 
-func buildMCPLocaleBundle(normalized string) *mcpLocaleBundle {
-	return buildMCPLocaleBundleFromFS(schemasFS, normalized)
+const mcpResourcePrefix = "agentRetrieval.MCP.Resource."
+const mcpErrorPrefix = "agentRetrieval.MCP.Error."
+
+// init installs immutable embedded copy before any MCP handler can render it.
+func init() {
+	bundles, err := loadMCPMessages(schemasFS)
+	if err != nil {
+		panic(err)
+	}
+	for index := range bundles {
+		i18n.RegisterI18n(&bundles[index])
+	}
+	if err := i18n.ValidateMessageBundles(); err != nil {
+		panic(err)
+	}
 }
 
-func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBundle {
-	bundle := &mcpLocaleBundle{
-		locale:              normalized,
-		instructions:        mustReadMCPInstructions(resources, defaultMCPLocale),
-		compactInstructions: mustReadMCPResource(resources, defaultMCPLocale, compactInstructionsResource),
-		ptcInstructions:     mustReadMCPResource(resources, defaultMCPLocale, "ptc_instructions.txt"),
-	}
-	if normalized == defaultMCPLocale {
-		return bundle
-	}
-	if content, err := readMCPResource(resources, normalized, "instructions.txt"); err != nil {
-		log.Printf("WARN: cannot load MCP locale instructions for %s: %v; using baseline", normalized, err)
-	} else if strings.TrimSpace(content) == "" {
-		log.Printf("WARN: MCP locale instructions for %s are empty; using baseline", normalized)
-	} else {
-		bundle.instructions = content
-	}
-	if content, err := readMCPResource(resources, normalized, compactInstructionsResource); err != nil {
-		log.Printf("WARN: cannot load compact MCP locale instructions for %s: %v; using baseline", normalized, err)
-	} else if strings.TrimSpace(content) == "" {
-		log.Printf("WARN: compact MCP locale instructions for %s are empty; using baseline", normalized)
-	} else {
-		bundle.compactInstructions = content
-	}
-	if content, err := readMCPResource(resources, normalized, "ptc_instructions.txt"); err != nil {
-		log.Printf("WARN: cannot load PTC MCP locale instructions for %s: %v; using baseline", normalized, err)
-	} else if strings.TrimSpace(content) == "" {
-		log.Printf("WARN: PTC MCP locale instructions for %s are empty; using baseline", normalized)
-	} else {
-		bundle.ptcInstructions = content
-	}
-	if content, err := readMCPResource(resources, normalized, "tools_meta.json"); err != nil {
-		log.Printf("WARN: cannot load MCP locale tool metadata for %s: %v; using baseline", normalized, err)
-	} else {
-		if err := sonic.Unmarshal([]byte(content), &bundle.toolMeta); err != nil {
-			log.Printf("WARN: cannot parse MCP locale tool metadata for %s: %v; using baseline", normalized, err)
-			bundle.toolMeta = nil
-		} else if bundle.toolMeta == nil {
-			log.Printf("WARN: MCP locale tool metadata for %s is empty; using baseline", normalized)
+// loadMCPMessages loads resource data only; language selection and template
+// execution belong to comm-go/i18n. Instructions/code may contain literal {{.
+func loadMCPMessages(resources fs.FS) ([]i18n.I18nMessages, error) {
+	names := map[string]bool{}
+	for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		entries, err := fs.ReadDir(resources, "schemas/locales/"+string(language))
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				names[entry.Name()] = true
+			}
 		}
 	}
-	if content, err := readMCPResource(resources, normalized, "schema_descriptions.json"); err != nil {
-		log.Printf("WARN: cannot load MCP locale schema descriptions for %s: %v; using baseline", normalized, err)
-	} else {
-		if err := sonic.Unmarshal([]byte(content), &bundle.schemaDescriptions); err != nil {
-			log.Printf("WARN: cannot parse MCP locale schema descriptions for %s: %v; using baseline", normalized, err)
-			bundle.schemaDescriptions = nil
-		} else if bundle.schemaDescriptions == nil {
-			log.Printf("WARN: MCP locale schema descriptions for %s are empty; using baseline", normalized)
+	for _, required := range []string{"instructions.txt", compactInstructionsResource, "ptc_instructions.txt", "tools_meta.json", "schema_descriptions.json", "ptc_errors.json"} {
+		if !names[required] {
+			return nil, fmt.Errorf("missing required MCP resource %s", required)
 		}
+	}
+	bundles := make([]i18n.I18nMessages, 0, 2)
+	parameter := regexp.MustCompile(`%[sdv]`)
+	for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		messages := map[string]string{}
+		for name := range names {
+			content, err := readMCPResource(resources, string(language), name)
+			// The default tool metadata is structural; description overlays are optional
+			// for the language already used by the baseline schemas.
+			if err != nil && language == i18n.SimplifiedChinese {
+				switch name {
+				case "tools_meta.json":
+					data, readErr := fs.ReadFile(resources, "schemas/tools_meta.json")
+					content = string(data)
+					err = readErr
+				case "schema_descriptions.json":
+					content = "{}"
+					err = nil
+				}
+			}
+			if err != nil {
+				return nil, fmt.Errorf("MCP locale %s resource %s: %w", language, name, err)
+			}
+			content = strings.TrimSpace(content)
+			if content == "" {
+				return nil, fmt.Errorf("empty MCP locale %s resource %s", language, name)
+			}
+			if strings.HasSuffix(name, ".json") && !json.Valid([]byte(content)) {
+				return nil, fmt.Errorf("invalid MCP locale %s JSON resource %s", language, name)
+			}
+			// Validate structured resources before installing any global messages.
+			var decodeErr error
+			switch name {
+			case "tools_meta.json":
+				var metadata map[string]ToolMeta
+				decodeErr = json.Unmarshal([]byte(content), &metadata)
+			case "schema_descriptions.json":
+				var descriptions map[string]map[string]string
+				decodeErr = json.Unmarshal([]byte(content), &descriptions)
+			case "ptc_hints.json":
+				var hints map[string][]string
+				decodeErr = json.Unmarshal([]byte(content), &hints)
+			}
+			if decodeErr != nil {
+				return nil, fmt.Errorf("invalid MCP locale %s resource %s: %w", language, name, decodeErr)
+			}
+			messages[mcpResourcePrefix+name] = `{{printf "%s" ` + strconv.Quote(content) + `}}`
+			if name == "ptc_errors.json" {
+				var errors map[string]string
+				if err := json.Unmarshal([]byte(content), &errors); err != nil {
+					return nil, err
+				}
+				for key, message := range errors {
+					index := 0
+					messages[mcpErrorPrefix+key] = parameter.ReplaceAllStringFunc(message, func(_ string) string { index++; return fmt.Sprintf("{{.Arg%d}}", index) })
+				}
+			}
+		}
+		bundles = append(bundles, i18n.I18nMessages{Locale: language, Messages: messages})
+	}
+	if len(bundles[0].Messages) != len(bundles[1].Messages) {
+		return nil, fmt.Errorf("MCP language message keys differ")
+	}
+	for key := range bundles[0].Messages {
+		if _, exists := bundles[1].Messages[key]; !exists {
+			return nil, fmt.Errorf("MCP language missing key %s", key)
+		}
+	}
+	return bundles, nil
+}
+
+func buildMCPLocaleBundle(normalized string) *mcpLocaleBundle {
+	bundle := &mcpLocaleBundle{locale: normalized}
+	bundle.instructions = bundle.PTCResource("instructions.txt")
+	bundle.compactInstructions = bundle.PTCResource(compactInstructionsResource)
+	bundle.ptcInstructions = bundle.PTCResource("ptc_instructions.txt")
+	if err := sonic.Unmarshal([]byte(bundle.PTCResource("tools_meta.json")), &bundle.toolMeta); err != nil {
+		panic(err)
+	}
+	if err := sonic.Unmarshal([]byte(bundle.PTCResource("schema_descriptions.json")), &bundle.schemaDescriptions); err != nil {
+		panic(err)
 	}
 	return bundle
-}
-
-func mustReadMCPInstructions(resources fs.FS, locale string) string {
-	return mustReadMCPResource(resources, locale, "instructions.txt")
 }
 
 func mustReadMCPStaticResource(resource string) string {
@@ -122,18 +184,6 @@ func mustReadMCPStaticResource(resource string) string {
 		panic("MCP static resource must not be empty: " + path)
 	}
 	return content
-}
-
-func mustReadMCPResource(resources fs.FS, locale, resource string) string {
-	content, err := readMCPResource(resources, locale, resource)
-	if err != nil {
-		panic("cannot load MCP baseline resource: " + err.Error())
-	}
-	instructions := strings.TrimSpace(content)
-	if instructions == "" {
-		panic("MCP baseline resource must not be empty")
-	}
-	return instructions
 }
 
 func readMCPResource(resources fs.FS, locale, resource string) (string, error) {
@@ -161,24 +211,6 @@ func stripMCPResourceLicenseHeader(content string) string {
 	return strings.TrimLeft(content[end+2:], "\r\n")
 }
 
-func normalizeMCPLocale(locale string) string {
-	locale = strings.TrimSpace(locale)
-	if locale == "" {
-		return defaultMCPLocale
-	}
-	locale = strings.Split(locale, ".")[0]
-	locale = strings.Split(locale, ":")[0]
-	locale = strings.ReplaceAll(locale, "_", "-")
-	switch strings.ToLower(locale) {
-	case "en", "en-us":
-		return "en-US"
-	case "zh", "zh-cn", "zh-hans":
-		return defaultMCPLocale
-	default:
-		return defaultMCPLocale
-	}
-}
-
 func (b *mcpLocaleBundle) ServerInstructions() string {
 	return b.instructions
 }
@@ -195,15 +227,11 @@ func (b *mcpLocaleBundle) PTCServerInstructions() string {
 }
 
 func (b *mcpLocaleBundle) PTCResource(name string) string {
-	base := mustReadMCPResource(schemasFS, defaultMCPLocale, name)
-	if b.locale == defaultMCPLocale {
-		return base
+	text, err := i18n.Render(i18n.Language(b.locale), mcpResourcePrefix+name, nil)
+	if err != nil {
+		log.Printf("WARN: cannot render MCP resource: %v", err)
 	}
-	content, err := readMCPResource(schemasFS, b.locale, name)
-	if err != nil || strings.TrimSpace(content) == "" {
-		return base
-	}
-	return content
+	return text
 }
 
 func (b *mcpLocaleBundle) PTCHints(toolName string) []string {
@@ -218,20 +246,16 @@ func (b *mcpLocaleBundle) PTCHints(toolName string) []string {
 }
 
 func (b *mcpLocaleBundle) PTCError(key string, params ...any) string {
-	// This renders the text of an error that already happened. A missing or
-	// malformed catalog entry must degrade to something readable rather than
-	// escalate the original error into a panic on the request path.
-	var messages map[string]string
-	if err := sonic.Unmarshal([]byte(b.PTCResource("ptc_errors.json")), &messages); err != nil {
-		log.Printf("WARN: cannot parse PTC errors for %s: %v", b.locale, err)
+	data := make(map[string]any, len(params))
+	for index, value := range params {
+		data[fmt.Sprintf("Arg%d", index+1)] = value
+	}
+	text, err := i18n.Render(i18n.Language(b.locale), mcpErrorPrefix+key, data)
+	if err != nil {
+		log.Printf("WARN: cannot render MCP error: %v", err)
 		return key
 	}
-	message, ok := messages[key]
-	if !ok {
-		log.Printf("WARN: PTC error message %q missing from the %s catalog", key, b.locale)
-		return key
-	}
-	return fmt.Sprintf(message, params...)
+	return text
 }
 
 // ToolMeta returns the tool's metadata for the bundle's locale.

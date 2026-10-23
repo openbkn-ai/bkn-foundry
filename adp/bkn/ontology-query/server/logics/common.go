@@ -22,6 +22,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/dlclark/regexp2"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -30,7 +31,6 @@ import (
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 // Build the default sort for views.
@@ -75,7 +75,11 @@ func MapSortFieldsForDataView(ctx context.Context, sort []*interfaces.SortParams
 	out := make([]*interfaces.SortParams, len(sort))
 	for i, sp := range sort {
 		if sp == nil {
-			return nil, fmt.Errorf("%s", locale.ValidationDetail(ctx, "SortConfigRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortConfigRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, fmt.Errorf("%s", localizedText)
 		}
 		field := sp.Field
 		if field == interfaces.SORT_FIELD_SCORE {
@@ -84,10 +88,18 @@ func MapSortFieldsForDataView(ctx context.Context, sort []*interfaces.SortParams
 		}
 		viewField, ok := propNameToViewField[field]
 		if !ok {
-			return nil, fmt.Errorf("%s", locale.ValidationDetail(ctx, "SortPropertyInvalid", map[string]any{"field": field}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortPropertyInvalid", map[string]any{"field": field})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, fmt.Errorf("%s", localizedText)
 		}
 		if viewField == "" {
-			return nil, fmt.Errorf("%s", locale.ValidationDetail(ctx, "SortMappedFieldRequired", map[string]any{"field": field}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.SortMappedFieldRequired", map[string]any{"field": field})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, fmt.Errorf("%s", localizedText)
 		}
 		out[i] = &interfaces.SortParams{Field: viewField, Direction: sp.Direction}
 	}

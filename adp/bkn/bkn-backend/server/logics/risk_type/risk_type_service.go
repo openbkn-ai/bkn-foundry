@@ -49,14 +49,6 @@ type riskTypeService struct {
 	mfs        interfaces.ModelFactoryService
 }
 
-func riskTypeInvalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
-}
-
 func NewRiskTypeService(appSetting *common.AppSetting) interfaces.RiskTypeService {
 	rtsOnce.Do(func() {
 		rts = &riskTypeService{
@@ -310,9 +302,13 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 			switch mode {
 			case interfaces.ImportMode_Normal:
 				if idExist {
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail.RiskTypeIDAlreadyExists", map[string]any{"riskTypeID": rt.RTID})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
 					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeIDExisted).
-						WithErrorDetails(riskTypeInvalidParameterDetail(ctx, "RiskTypeIDAlreadyExists", map[string]any{"riskTypeID": rt.RTID}))
+						WithErrorDetails(localizedText)
 				}
 				if nameExist {
 					errDetails := fmt.Sprintf("risk type name '%s' already exists", rt.RTName)
@@ -320,7 +316,6 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 					span.SetStatus(codes.Error, errDetails)
 					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeNameExisted).
-						WithMetadata(map[string]any{"name": rt.RTName}).
 						WithErrorDetails(errDetails)
 				}
 

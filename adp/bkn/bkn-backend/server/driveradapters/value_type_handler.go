@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -98,13 +99,21 @@ func (r *restHandler) CreateValueTypes(c *gin.Context, visitor hydra.Visitor) {
 		Entries []*interfaces.ValueType `json:"entries"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil)))
+			WithErrorDetails(localizedText))
 		return
 	}
 	if len(body.Entries) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.EntriesRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(commonValidationDetail(ctx, "EntriesRequired", nil)))
+			WithErrorDetails(localizedText))
 		return
 	}
 	for _, vt := range body.Entries {
@@ -183,8 +192,12 @@ func (r *restHandler) UpdateValueType(c *gin.Context, visitor hydra.Visitor) {
 	}
 	var vt interfaces.ValueType
 	if err := c.ShouldBindJSON(&vt); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil)))
+			WithErrorDetails(localizedText))
 		return
 	}
 	vt.VTID, vt.KNID, vt.Branch = c.Param("vt_id"), knID, branch

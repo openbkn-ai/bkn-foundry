@@ -12,7 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -45,20 +46,20 @@ func (b *recallingBackend) GetObjectTypeDetail(
 	// holding * or / is refused with 400 for the whole batch.
 	for _, id := range otIDs {
 		if strings.ContainsAny(id, "*/") {
-			return nil, &infraErr.HTTPError{HTTPCode: http.StatusBadRequest, Code: "InvalidParameter.ID"}
+			return nil, &rest.HTTPError{HTTPCode: http.StatusBadRequest, BaseError: rest.BaseError{ErrorCode: "InvalidParameter.ID"}}
 		}
 		// The id travels in a URL path. A % that opens no valid escape fails
 		// url.Parse inside this process, and the adapter reports that with no
 		// status code at all — the shape nothing can classify.
 		if strings.Contains(id, "%") {
-			return nil, &infraErr.HTTPError{HTTPCode: 0, Code: "RequestFailed"}
+			return nil, &rest.HTTPError{HTTPCode: 0, BaseError: rest.BaseError{ErrorCode: "RequestFailed"}}
 		}
 	}
 	out := make([]*interfaces.ObjectType, 0, len(otIDs))
 	for _, id := range otIDs {
 		found, ok := b.existing[id]
 		if !ok {
-			return nil, &infraErr.HTTPError{HTTPCode: http.StatusNotFound, Code: "ObjectTypeNotFound"}
+			return nil, &rest.HTTPError{HTTPCode: http.StatusNotFound, BaseError: rest.BaseError{ErrorCode: "ObjectTypeNotFound"}}
 		}
 		out = append(out, found)
 	}
@@ -178,7 +179,7 @@ func TestPinnedObjectTypesFallBackToOneLookupEach(t *testing.T) {
 // type does not exist" would send an agent rewriting a correct request.
 func TestPinnedObjectTypeLookupFailurePropagates(t *testing.T) {
 	svc, backend := newPinnedScenario(t, []string{"players"}, []string{"teams"})
-	backend.lookupErr = &infraErr.HTTPError{HTTPCode: http.StatusInternalServerError, Code: "Boom"}
+	backend.lookupErr = &rest.HTTPError{HTTPCode: http.StatusInternalServerError, BaseError: rest.BaseError{ErrorCode: "Boom"}}
 
 	cfg := DefaultConceptRetrievalConfig()
 	cfg.ObjectTypes = []string{"teams"}

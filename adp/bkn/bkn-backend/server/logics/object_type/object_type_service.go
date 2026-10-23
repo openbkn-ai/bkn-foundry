@@ -84,14 +84,6 @@ func (ots *objectTypeService) knProxyResolver() interfaces.KNProxyBindingResolve
 	return registeredKNProxyResolver.resolver
 }
 
-func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
-}
-
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
 	otServiceOnce.Do(func() {
 		otService = &objectTypeService{
@@ -125,18 +117,22 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 				if kind, ok := logics.DependencyErrorKind(err); ok && kind == interfaces.DependencyNotFound {
 					detailKey = "ResourceNotFound"
 				}
-				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, detailKey, map[string]any{
-						"objectType": objectType.OTName, "resource": objectType.DataSource.ID,
-					}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+detailKey, map[string]any{
+					"objectType": objectType.OTName, "resource": objectType.DataSource.ID,
+				})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				return logics.MapDependencyError(ctx, err, !controlledLookup, invalidErr,
 					berrors.BknBackend_ObjectType_InternalError)
 			}
 			if res == nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "ResourceNotFound", map[string]any{"objectType": objectType.OTName, "resource": objectType.DataSource.ID}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ResourceNotFound", map[string]any{"objectType": objectType.OTName, "resource": objectType.DataSource.ID})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 		default:
 			return logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
@@ -151,12 +147,18 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			}
 		case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
 			if lp.DataSource == nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 			if err := ots.aoa.GetToolByID(ctx, lp.DataSource.BoxID, lp.DataSource.ToolID); err != nil {
-				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "ToolLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "box": lp.DataSource.BoxID, "tool": lp.DataSource.ToolID}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ToolLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "box": lp.DataSource.BoxID, "tool": lp.DataSource.ToolID})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				// The execution-factory internal metadata endpoint does not perform
 				// caller resource authorization. A 403 therefore indicates an
 				// internal identity/configuration failure, not a user-scoped denial.
@@ -529,9 +531,11 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 						WithErrorDetails(fmt.Sprintf("GetConceptGroupsByIDs failed: %s", err.Error()))
 				}
 				if len(conceptGroups) != len(needDBLookup) {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(invalidParameterDetail(ctx, "ConceptGroupsNotFound", map[string]any{"expected": len(needDBLookup), "actual": len(conceptGroups)}))
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ConceptGroupsNotFound", map[string]any{"expected": len(needDBLookup), "actual": len(conceptGroups)})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			}
 		}
@@ -1055,8 +1059,12 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		return nil, err
 	}
 	if len(objectTypes) == 0 || objectTypes[0] == nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound", map[string]any{"objectTypeID": otID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
-			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(invalidParameterDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}))
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(localizedText)
 	}
 
 	objectType := objectTypes[0]
@@ -1649,7 +1657,6 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 					span.SetStatus(codes.Error, errDetails)
 					return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
-						WithMetadata(map[string]any{"name": objectType.OTName}).
 						WithErrorDetails(errDetails)
 				}
 
@@ -2638,8 +2645,12 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 			berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).WithErrorDetails(err.Error())
 	}
 	if objectType == nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound", map[string]any{"objectTypeID": otID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound).
-			WithErrorDetails(invalidParameterDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}))
+			WithErrorDetails(localizedText)
 	}
 
 	span.SetStatus(codes.Ok, "")

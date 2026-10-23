@@ -6,15 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
-	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 func TestImport(t *testing.T) {
@@ -108,7 +109,7 @@ func TestImport(t *testing.T) {
 				mockToolBoxDB.EXPECT().SelectToolBoxByName(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, &model.ToolboxDB{}, nil)
 				err := toolbox.Import(context.TODO(), nil, interfaces.ImportTypeCreate, importData, "")
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			})
@@ -117,7 +118,7 @@ func TestImport(t *testing.T) {
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("SelectListByBoxIDs"))
 				err := toolbox.Import(context.TODO(), nil, interfaces.ImportTypeCreate, importData, "")
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
@@ -126,7 +127,7 @@ func TestImport(t *testing.T) {
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(boxList, nil)
 				err := toolbox.Import(context.TODO(), nil, interfaces.ImportTypeCreate, importData, "")
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusConflict)
 			})
@@ -206,7 +207,7 @@ func TestImport(t *testing.T) {
 				mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
 				err := toolbox.Import(publicCtx, nil, interfaces.ImportTypeCreate, importData, "")
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			})
@@ -545,7 +546,7 @@ func TestExport(t *testing.T) {
 					interfaces.AuthOperationTypeView).Return(map[string]bool{"box_id_1": false}, nil)
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 			})
@@ -554,7 +555,7 @@ func TestExport(t *testing.T) {
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("SelectListByBoxIDs"))
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
@@ -563,7 +564,7 @@ func TestExport(t *testing.T) {
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{}, nil)
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 			})
@@ -577,7 +578,7 @@ func TestExport(t *testing.T) {
 				mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 			})
@@ -587,7 +588,7 @@ func TestExport(t *testing.T) {
 				mockToolDB.EXPECT().SelectToolBoxByIDs(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("SelectToolBoxByIDs"))
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
@@ -598,7 +599,7 @@ func TestExport(t *testing.T) {
 				mockToolDB.EXPECT().SelectToolBoxByIDs(gomock.Any(), gomock.Any()).Return(tools, nil)
 				_, err := toolbox.Export(publicCtx, exportReq)
 				So(err, ShouldNotBeNil)
-				httpErr, ok := err.(*myErr.HTTPError)
+				httpErr, ok := err.(*rest.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})

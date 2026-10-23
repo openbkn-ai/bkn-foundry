@@ -8,6 +8,9 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -16,7 +19,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 // EditOperator editing operator (only supports editing the current version)
@@ -437,8 +439,8 @@ func (m *operatorManager) getUpdateMetadataDB(ctx context.Context, req *interfac
 			// Check for updates.
 			if updateMetadataDB == nil {
 				// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
-				err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtCommonNoMatchedMethodPath,
-					"no matched method path found or metadata data not exist").WithDescription(oerrors.ErrExtToolNotExistInFile)
+				err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtToolNotExistInFile,
+					"no matched method path found or metadata data not exist")
 				return
 			}
 		case interfaces.OperatorTypeComposite:
@@ -517,9 +519,9 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 		err = m.checkDuplicateName(ctx, req.Name, operator.OperatorID)
 		if err != nil {
 			// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
-			httErr := &oerrors.HTTPError{}
+			httErr := &rest.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
-				err = httErr.WithDescription(oerrors.ErrExtCommonNameExists)
+				err = oerrors.NewHTTPError(ctx, httErr.HTTPCode, oerrors.ErrExtCommonNameExists, httErr.BaseError.ErrorDetails)
 			}
 			return
 		}

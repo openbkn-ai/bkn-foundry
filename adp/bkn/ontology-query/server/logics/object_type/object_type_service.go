@@ -19,6 +19,7 @@ import (
 
 	"github.com/PaesslerAG/jsonpath"
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -30,7 +31,6 @@ import (
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 	permissionlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
 )
@@ -998,10 +998,14 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 					resultValue, err := ots.processLogicProperty(ctx, query.KNID, query.Branch, query.ObjectTypeID,
 						propName, propValue, logicProp, query.DynamicParams)
 					if err != nil {
-						detail := locale.ValidationDetail(ctx, "LogicPropertyProcessFailed", map[string]any{
+						localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.LogicPropertyProcessFailed", map[string]any{
 							"index":    objIndex,
 							"property": propName,
 						})
+						if renderErr != nil {
+							logger.Errorf("localized message rendering failed: %v", renderErr)
+						}
+						detail := localizedText
 						errChan <- fmt.Errorf("%s: %w", detail, err)
 						return
 					}
@@ -1085,18 +1089,24 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	var metricParams interfaces.MetricPropertyDynamicParams
 	paramBytes, err := sonic.Marshal(dynamicParams[propName])
 	if err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.DynamicParamDecodeFailed", map[string]any{"property": propName, "error": err.Error()})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(locale.ValidationDetail(ctx, "DynamicParamDecodeFailed", map[string]any{
-				"property": propName, "error": err.Error(),
-			}))
+			WithErrorDetails(localizedText)
 	}
 	if err = sonic.Unmarshal(paramBytes, &metricParams); err != nil {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.DynamicParamDecodeFailed", map[string]any{
+			"property": propName, "error": err.Error(),
+		})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(locale.ValidationDetail(ctx, "DynamicParamDecodeFailed", map[string]any{
-				"property": propName, "error": err.Error(),
-			}))
+			WithErrorDetails(localizedText)
 	}
 
 	start, end = logicMetricTimeWindow(metricParams, time.Now().UnixMilli())
@@ -1108,11 +1118,13 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 		default:
 			paramValue, paramExist := dynamicParams[propName][paramK]
 			if !paramExist {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.MetricDynamicParamRequired", map[string]any{"property": propName, "parameter": paramK})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-					WithErrorDetails(locale.ValidationDetail(ctx, "MetricDynamicParamRequired", map[string]any{
-						"property": propName, "parameter": paramK,
-					}))
+					WithErrorDetails(localizedText)
 			}
 			operation := "=="
 			for _, configParam := range logicProp.Parameters {
@@ -1144,11 +1156,13 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 
 	toolValue := propValue.(interfaces.ToolProperty)
 	if _, dynamicParamExist := dynamicParams[propName]; !dynamicParamExist && len(toolValue.DynamicParams) > 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.LogicPropertyDynamicParamsRequired", map[string]any{"property": propName, "parameters": toolValue.DynamicParams})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
-			WithErrorDetails(locale.ValidationDetail(ctx, "LogicPropertyDynamicParamsRequired", map[string]any{
-				"property": propName, "parameters": toolValue.DynamicParams,
-			}))
+			WithErrorDetails(localizedText)
 	}
 
 	toolRequest := generateToolExecutionRequest(logicProp.Parameters, toolValue.Parameters, dynamicParams[propName])
@@ -1177,12 +1191,14 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 	toolResult, err := ots.aoAccess.ExecuteToolAsProxy(interfaces.WithTrustedProxyContext(ctx, proxyContext),
 		logicProp.DataSource.BoxID, logicProp.DataSource.ToolID, request)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).
-			WithErrorDetails(locale.ValidationDetail(ctx, "ToolExecutionFailed", map[string]any{
-				"property": propName, "toolbox": logicProp.DataSource.BoxID, "tool": logicProp.DataSource.ToolID,
-				"error": "tool execution failed",
-			}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ToolExecutionFailed", map[string]any{
+			"property": propName, "toolbox": logicProp.DataSource.BoxID, "tool": logicProp.DataSource.ToolID,
+			"error": "tool execution failed",
+		})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).WithErrorDetails(localizedText)
 	}
 
 	if logicProp.DataSource.ResultPath != "" {

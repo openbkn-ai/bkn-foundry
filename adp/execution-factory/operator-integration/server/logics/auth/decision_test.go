@@ -8,11 +8,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 // TestOperationCheckAllSeparatesDenialFromDependencyFailure guards #1533.
@@ -64,11 +66,11 @@ func TestOperationCheckAllSeparatesDenialFromDependencyFailure(t *testing.T) {
 				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute)
 
 			So(allowed, ShouldBeFalse)
-			var httpErr *oerrors.HTTPError
+			var httpErr *rest.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusServiceUnavailable)
-			So(strings.HasSuffix(httpErr.Code, "."+oerrors.ErrExtCommonAuthorizationUnavailable.String()), ShouldBeTrue)
-			So(httpErr.ErrorDetails, ShouldBeNil)
+			So(strings.HasSuffix(httpErr.BaseError.ErrorCode, "."+oerrors.ErrExtCommonAuthorizationUnavailable.String()), ShouldBeTrue)
+			So(httpErr.BaseError.ErrorDetails, ShouldBeNil)
 			So(err.Error(), ShouldNotContainSubstring, "10.43.0.17")
 			So(err.Error(), ShouldNotContainSubstring, "/api/safe/v1/authz/checks")
 			So(logged, ShouldContainSubstring, cause.Error())

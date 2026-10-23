@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -46,11 +47,14 @@ func newActionErrorClient(t *testing.T) (*ontologyQueryClient, *mocks.MockHTTPCl
 	}, mockHTTPClient, ctrl
 }
 
-func asHTTPError(t *testing.T, err error) *infraErr.HTTPError {
+func asHTTPError(t *testing.T, err error) *rest.HTTPError {
 	t.Helper()
-	var he *infraErr.HTTPError
+	var he *rest.HTTPError
 	if !errors.As(err, &he) {
-		t.Fatalf("expected *infraErr.HTTPError, got %T: %v", err, err)
+		t.Fatalf("expected *rest.HTTPError, got %T: %v", err, err)
+	}
+	if renderErr := he.Render(); renderErr != nil {
+		t.Fatal(renderErr)
 	}
 	return he
 }
@@ -77,7 +81,7 @@ func TestQueryActions_DownstreamClientErrorIsNotReportedAsBadGateway(t *testing.
 	if he.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("downstream 400 must stay a 400, got %d", he.HTTPCode)
 	}
-	details := fmt.Sprintf("%v", he.ErrorDetails)
+	details := fmt.Sprintf("%v", he.BaseError.ErrorDetails)
 	if !strings.Contains(details, "对象类 contract 未绑定数据源。") {
 		t.Fatalf("downstream cause must reach the caller, got details: %s", details)
 	}

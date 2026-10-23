@@ -15,13 +15,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	hydra "github.com/ory/hydra-client-go/v2"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/locale"
 )
 
 // registerAuth mounts the hydra login/consent/device provider pages. hydra is
@@ -206,7 +206,11 @@ type authPageData struct {
 
 func localizedAuthMessage(c *gin.Context, key string) string {
 	language := i18n.GetLanguageByCtx(c.Request.Context())
-	return locale.Translate(language, authMessagePrefix+key)
+	localizedText, renderErr := i18n.Render(language, authMessagePrefix+key, nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func localizedAuthPageData(c *gin.Context) authPageData {
@@ -329,7 +333,11 @@ func replyLocalizedAuthText(c *gin.Context, status int, messageID string) {
 	language := i18n.GetLanguageByCtx(c.Request.Context())
 	c.Header("Cache-Control", "no-store")
 	rest.MarkLocalizedCacheableResponse(c)
-	c.String(status, locale.Translate(language, messageID))
+	localizedText, renderErr := i18n.Render(language, messageID, nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	c.String(status, localizedText)
 }
 
 func isExpiredLoginRequest(err error) bool {

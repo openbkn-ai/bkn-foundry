@@ -22,22 +22,18 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
-func actionTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail."+name, templateData)
-	if renderErr != nil {
-		logger.Errorf("localized service message failed: %v", renderErr)
-	}
-	return localizedText
-}
-
 func ValidateActionTypes(ctx context.Context, knID string, actionTypes []*interfaces.ActionType, strictMode bool) error {
 	tmpNameMap := make(map[string]any)
 	idMap := make(map[string]any)
 	for i := 0; i < len(actionTypes); i++ {
 		// Verify that imported models are action types.
 		if actionTypes[i].ModuleType != "" && actionTypes[i].ModuleType != interfaces.MODULE_TYPE_ACTION_TYPE {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ModuleType", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ModuleType", nil))
+				WithErrorDetails(localizedText)
 		}
 
 		// Verify that model IDs in the request are unique.
@@ -45,7 +41,11 @@ func ValidateActionTypes(ctx context.Context, knID string, actionTypes []*interf
 		if _, ok := idMap[atID]; !ok || atID == "" {
 			idMap[atID] = nil
 		} else {
-			errDetails := actionTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"actionTypeID": atID})
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.DuplicatedIDInFile", map[string]any{"actionTypeID": atID})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			errDetails := localizedText
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_Duplicated_IDInFile).
 				WithMetadata(map[string]any{"actionTypeID": atID}).
 				WithErrorDetails(errDetails)
@@ -100,23 +100,35 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 
 	// Validate the action type.
 	if !interfaces.ActionTypeMap[actionType.ActionType] {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ActionTypeInvalid", map[string]any{"actionType": actionType.ActionType})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-			WithErrorDetails(actionTypeInvalidDetail(ctx, "ActionTypeInvalid", map[string]any{"actionType": actionType.ActionType}))
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate conditions and parameters according to the object type binding.
 	if actionType.ObjectTypeID == "" && strictMode {
 		// Conditions must be empty when no object type is bound.
 		if actionType.Condition != nil {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionRequiresObjectType", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionRequiresObjectType", nil))
+				WithErrorDetails(localizedText)
 		}
 
 		// Without an object type, parameter ValueFrom can only be const or input.
 		for _, param := range actionType.Parameters {
 			if param.ValueFrom == interfaces.VALUE_FROM_PROPERTY {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.PropertyValueRequiresObjectType", nil)
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-					WithErrorDetails(actionTypeInvalidDetail(ctx, "PropertyValueRequiresObjectType", nil))
+					WithErrorDetails(localizedText)
 			}
 		}
 	}
@@ -125,8 +137,12 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 	if actionType.ActionSource.Type != "" {
 		// A non-empty type indicates a configured mapping that must be validated.
 		if !interfaces.IsValidActionSourceType(actionType.ActionSource.Type) {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ActionSourceTypeInvalid", map[string]any{"actionSourceType": actionType.ActionSource.Type})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ActionSourceTypeInvalid", map[string]any{"actionSourceType": actionType.ActionSource.Type}))
+				WithErrorDetails(localizedText)
 		}
 		// strict_mode off: allow empty or draft combinations for McpID, ToolName, BoxID, ToolID (no cross-kind checks).
 		if strictMode {
@@ -134,14 +150,20 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 			case interfaces.ACTION_SOURCE_TYPE_TOOL:
 				// For tool mappings, mcp_id and tool_name must be empty.
 				if actionType.ActionSource.McpID != "" || actionType.ActionSource.ToolName != "" {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-						WithErrorDetails(actionTypeInvalidDetail(ctx, "ToolSourceContainsMCP", map[string]any{"mcpID": actionType.ActionSource.McpID, "toolName": actionType.ActionSource.ToolName}))
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ToolSourceContainsMCP", map[string]any{"mcpID": actionType.ActionSource.McpID, "toolName": actionType.ActionSource.ToolName})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			case interfaces.ACTION_SOURCE_TYPE_MCP:
 				// For map mappings, box_id and tool_id must be empty.
 				if actionType.ActionSource.BoxID != "" || actionType.ActionSource.ToolID != "" {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-						WithErrorDetails(actionTypeInvalidDetail(ctx, "MCPSourceContainsTool", map[string]any{"boxID": actionType.ActionSource.BoxID, "toolID": actionType.ActionSource.ToolID}))
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.MCPSourceContainsTool", map[string]any{"boxID": actionType.ActionSource.BoxID, "toolID": actionType.ActionSource.ToolID})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			}
 		}
@@ -151,8 +173,12 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 	if len(actionType.Parameters) > 0 {
 		for _, param := range actionType.Parameters {
 			if param.Name == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ParameterNameRequired", map[string]any{"actionType": actionType.ATName})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-					WithErrorDetails(actionTypeInvalidDetail(ctx, "ParameterNameRequired", map[string]any{"actionType": actionType.ATName}))
+					WithErrorDetails(localizedText)
 			}
 		}
 	}
@@ -190,8 +216,12 @@ func syncIntentWithType(ctx context.Context, actionType *interfaces.ActionType) 
 	actionType.ActionType = at
 	actionType.ActionIntent = ai
 	if at != "" && ai != "" && at != ai {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ActionIntentMismatch", map[string]any{"actionIntent": ai, "actionType": at})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-			WithErrorDetails(actionTypeInvalidDetail(ctx, "ActionIntentMismatch", map[string]any{"actionIntent": ai, "actionType": at}))
+			WithErrorDetails(localizedText)
 	}
 	if at != "" && ai == "" {
 		actionType.ActionIntent = at
@@ -212,8 +242,12 @@ func validateAffectExpectedOperation(ctx context.Context, aff *interfaces.Action
 		return nil
 	}
 	if !interfaces.IsValidExpectedOperation(op) {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.AffectExpectedOperationInvalid", map[string]any{"expectedOperation": op})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-			WithErrorDetails(actionTypeInvalidDetail(ctx, "AffectExpectedOperationInvalid", map[string]any{"expectedOperation": op}))
+			WithErrorDetails(localizedText)
 	}
 	return nil
 }
@@ -221,22 +255,38 @@ func validateAffectExpectedOperation(ctx context.Context, aff *interfaces.Action
 func validateImpactContracts(ctx context.Context, items []interfaces.ImpactContractItem) error {
 	for i := range items {
 		if strings.TrimSpace(items[i].ObjectTypeID) == "" {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ImpactContractObjectTypeRequired", map[string]any{"index": i})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ImpactContractObjectTypeRequired", map[string]any{"index": i}))
+				WithErrorDetails(localizedText)
 		}
 		op := strings.TrimSpace(string(items[i].ExpectedOperation))
 		if op == "" {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ImpactContractExpectedOperationRequired", map[string]any{"index": i})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ImpactContractExpectedOperationRequired", map[string]any{"index": i}))
+				WithErrorDetails(localizedText)
 		}
 		if !interfaces.IsValidExpectedOperation(op) {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ImpactContractExpectedOperationInvalid", map[string]any{"index": i, "expectedOperation": op})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ImpactContractExpectedOperationInvalid", map[string]any{"index": i, "expectedOperation": op}))
+				WithErrorDetails(localizedText)
 		}
 		for j := range items[i].AffectedFields {
 			if strings.TrimSpace(items[i].AffectedFields[j]) == "" {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ImpactContractAffectedFieldRequired", map[string]any{"index": i, "fieldIndex": j})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-					WithErrorDetails(actionTypeInvalidDetail(ctx, "ImpactContractAffectedFieldRequired", map[string]any{"index": i, "fieldIndex": j}))
+					WithErrorDetails(localizedText)
 			}
 		}
 	}
@@ -252,8 +302,12 @@ func syncImpactAffect(ctx context.Context, actionType *interfaces.ActionType) er
 		if foldedImpactMatchesAffect(actionType) {
 			return nil
 		}
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.AffectAndImpactContractsConflict", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-			WithErrorDetails(actionTypeInvalidDetail(ctx, "AffectAndImpactContractsConflict", nil))
+			WithErrorDetails(localizedText)
 	}
 	if !hasAff || hasIC {
 		return nil
@@ -320,27 +374,42 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 
 	// Validate the filter operator.
 	if cfg.Operation == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionOperationRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-			WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionOperationRequired", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	_, exists := interfaces.ActionCondOperationMap[cfg.Operation]
 	if !exists {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionOperationUnsupported", map[string]any{"operation": cfg.Operation})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-			WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionOperationUnsupported", map[string]any{"operation": cfg.Operation}))
+			WithErrorDetails(localizedText)
 	}
 
 	switch cfg.Operation {
 	case cond.OperationAnd, cond.OperationOr:
 		// A filter may contain at most 100 subconditions.
 		if len(cfg.SubConds) == 0 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionSubconditionsRequired", map[string]any{"path": path, "operation": cfg.Operation}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionSubconditionsRequired", map[string]any{"path": path, "operation": cfg.Operation})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 
 		if len(cfg.SubConds) > cond.MaxSubCondition {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionSubconditionsExceeded", map[string]any{"limit": cond.MaxSubCondition})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionSubconditionsExceeded", map[string]any{"limit": cond.MaxSubCondition}))
+				WithErrorDetails(localizedText)
 		}
 
 		for i, subCond := range cfg.SubConds {
@@ -352,8 +421,12 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 	default:
 		// The filter field name is required.
 		if cfg.Field == "" {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionFieldRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionFieldRequired", nil))
+				WithErrorDetails(localizedText)
 
 		}
 	}
@@ -363,34 +436,54 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		// The right-hand side contains a single value.
 		_, ok := cfg.Value.([]any)
 		if ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionSingleValueRequired", map[string]any{"operation": cfg.Operation})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionSingleValueRequired", map[string]any{"operation": cfg.Operation}))
+				WithErrorDetails(localizedText)
 		}
 
 	case cond.OperationIn, cond.OperationNotIn:
 		// For in and not_in, value is a non-empty array of primitive values.
 		_, ok := cfg.Value.([]any)
 		if !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionArrayRequired", map[string]any{"operations": "in, not_in"})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionArrayRequired", map[string]any{"operations": "in, not_in"}))
+				WithErrorDetails(localizedText)
 		}
 
 		if len(cfg.Value.([]any)) <= 0 {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionArrayNonEmpty", map[string]any{"operations": "in, not_in"})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionArrayNonEmpty", map[string]any{"operations": "in, not_in"}))
+				WithErrorDetails(localizedText)
 		}
 	case cond.OperationRange, cond.OperationOutRange, cond.OperationBefore, cond.OperationBetween:
 		// For range, value is a two-element numeric array containing inclusive bounds.
 		// For out_range, value is a two-element numeric array defining (-inf, value[0]) or [value[1], +inf).
 		v, ok := cfg.Value.([]any)
 		if !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionRangeArrayRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionRangeArrayRequired", nil))
+				WithErrorDetails(localizedText)
 		}
 
 		if len(v) != 2 {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionRangeArrayLength", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionRangeArrayLength", nil))
+				WithErrorDetails(localizedText)
 		}
 	case cond.OperationExist, cond.OperationNotExist, cond.OperationNull, cond.OperationNotNull:
 		// exist, not_exist, null, and not_null do not require a value.
@@ -400,25 +493,41 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		// like, not_like, prefix, not_prefix, and regex require a single string value.
 		_, ok := cfg.Value.([]any)
 		if ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionSingleStringValueRequired", map[string]any{"operation": cfg.Operation})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionSingleStringValueRequired", map[string]any{"operation": cfg.Operation}))
+				WithErrorDetails(localizedText)
 		}
 		_, ok = cfg.Value.(string)
 		if !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionStringValueRequired", map[string]any{"operation": cfg.Operation})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionStringValueRequired", map[string]any{"operation": cfg.Operation}))
+				WithErrorDetails(localizedText)
 		}
 
 	case cond.OperationContain, cond.OperationNotContain:
 		// contain and not_contain accept one value or a non-empty array.
 		if cfg.Value == nil {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionValueRequired", map[string]any{"operation": cfg.Operation})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionValueRequired", map[string]any{"operation": cfg.Operation}))
+				WithErrorDetails(localizedText)
 		}
 		if arr, ok := cfg.Value.([]any); ok {
 			if len(arr) <= 0 {
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionValueArrayNonEmpty", map[string]any{"operation": cfg.Operation})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-					WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionValueArrayNonEmpty", map[string]any{"operation": cfg.Operation}))
+					WithErrorDetails(localizedText)
 			}
 		}
 
@@ -426,13 +535,21 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		// current requires a string unit, not an array.
 		_, ok := cfg.Value.([]any)
 		if ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionCurrentValueNotArray", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionCurrentValueNotArray", nil))
+				WithErrorDetails(localizedText)
 		}
 		unit, ok := cfg.Value.(string)
 		if !ok {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionCurrentValueStringRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionCurrentValueStringRequired", nil))
+				WithErrorDetails(localizedText)
 		}
 		// Validate the unit value.
 		validUnits := map[string]bool{
@@ -444,8 +561,12 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			"minute": true,
 		}
 		if !validUnits[unit] {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ConditionCurrentUnitInvalid", map[string]any{"unit": unit})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(actionTypeInvalidDetail(ctx, "ConditionCurrentUnitInvalid", map[string]any{"unit": unit}))
+				WithErrorDetails(localizedText)
 		}
 	}
 

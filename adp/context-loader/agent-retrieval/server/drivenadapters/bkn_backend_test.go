@@ -13,10 +13,10 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
@@ -560,15 +560,15 @@ func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 			err := testCase.call(context.Background(), client)
 			convey.So(err, convey.ShouldNotBeNil)
 
-			httpErr, ok := err.(*infraErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			convey.So(ok, convey.ShouldBeTrue)
 			convey.So(httpErr.HTTPCode, convey.ShouldEqual, http.StatusNotFound)
-			convey.So(httpErr.Code, convey.ShouldEqual, "BknBackend.KnowledgeNetwork.NotFound")
-			convey.So(httpErr.Description, convey.ShouldEqual, "knowledge network not found")
-			convey.So(httpErr.Solution, convey.ShouldBeEmpty)
-			convey.So(httpErr.ErrorLink, convey.ShouldBeEmpty)
-			convey.So(httpErr.ErrorDetails, convey.ShouldResemble, map[string]interface{}{"kn_id": "kn-001"})
-			convey.So(httpErr.Metadata, convey.ShouldResemble, map[string]any{"field": "kn_id"})
+			source, ok := httpErr.BaseError.ErrorDetails.(rest.BaseError)
+			convey.So(ok, convey.ShouldBeTrue)
+			convey.So(source.ErrorCode, convey.ShouldEqual, "BknBackend.KnowledgeNetwork.NotFound")
+			convey.So(source.Description, convey.ShouldEqual, "knowledge network not found")
+			convey.So(source.ErrorDetails, convey.ShouldResemble, map[string]interface{}{"kn_id": "kn-001"})
+			convey.So(source.Metadata, convey.ShouldResemble, map[string]any{"field": "kn_id"})
 		})
 	}
 }
@@ -582,11 +582,12 @@ func TestGetRelationTypeDetailPreservesCurrentSharedEnvelope(t *testing.T) {
 	body := []byte(`{"error_code":"BknBackend.RelationType.NotFound","description":"Relation type not found. Check its ID.","error_details":"{{ literal }}","metadata":{"field":"relation_type_id"}}`)
 	mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(404, body, nil)
 	_, err := client.GetRelationTypeDetail(t.Context(), "kn-001", []string{"rt-001"}, true)
-	var public *infraErr.HTTPError
+	var public *rest.HTTPError
 	if !errors.As(err, &public) {
 		t.Fatalf("error type = %T", err)
 	}
-	if public.Code != "BknBackend.RelationType.NotFound" || public.Description != "Relation type not found. Check its ID." || public.Metadata["field"] != "relation_type_id" || public.ErrorDetails != "{{ literal }}" || public.Solution != "" || public.ErrorLink != "" {
-		t.Fatalf("lost shared response fields: %#v", public)
+	source, ok := public.BaseError.ErrorDetails.(rest.BaseError)
+	if !ok || source.ErrorCode != "BknBackend.RelationType.NotFound" || source.Description != "Relation type not found. Check its ID." || source.Metadata["field"] != "relation_type_id" || source.ErrorDetails != "{{ literal }}" {
+		t.Fatalf("source envelope = %#v", public.BaseError.ErrorDetails)
 	}
 }

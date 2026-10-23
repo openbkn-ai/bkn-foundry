@@ -57,10 +57,10 @@ func TestVegaRawQuery_ResourceDenialExplainsDirectPermission(t *testing.T) {
 			})
 
 			he := asHTTPError(t, err)
-			if he.HTTPCode != http.StatusForbidden || he.Code != "Public.Forbidden" {
-				t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.Code)
+			if he.HTTPCode != http.StatusForbidden || he.BaseError.ErrorCode != "Public.Forbidden" {
+				t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.BaseError.ErrorCode)
 			}
-			details, _ := he.ErrorDetails.(string)
+			details, _ := he.BaseError.ErrorDetails.(string)
 			for _, want := range tc.want {
 				if !strings.Contains(details, want) {
 					t.Errorf("details = %q, want it to mention %q", details, want)
@@ -68,7 +68,7 @@ func TestVegaRawQuery_ResourceDenialExplainsDirectPermission(t *testing.T) {
 			}
 			for _, leak := range []string{"vega raw query failed", "Access denied", "error_code", "没有执行此操作的权限",
 				"SELECT", "d9m3f2k2u8d3u773mgo0", "vega-backend"} {
-				if strings.Contains(he.Error(), leak) {
+				if strings.Contains(details, leak) {
 					t.Errorf("error echoes downstream or request internals %q: %s", leak, he.Error())
 				}
 			}
@@ -106,8 +106,8 @@ func TestVegaRawQuery_OtherFailuresKeepDownstreamDetail(t *testing.T) {
 			if he.HTTPCode != tc.status {
 				t.Fatalf("status = %d, want %d", he.HTTPCode, tc.status)
 			}
-			if want := "vega raw query failed: " + tc.body; he.ErrorDetails != want {
-				t.Errorf("details = %#v, want %q", he.ErrorDetails, want)
+			if want := "vega raw query failed: " + tc.body; he.BaseError.ErrorDetails != want {
+				t.Errorf("details = %#v, want %q", he.BaseError.ErrorDetails, want)
 			}
 		})
 	}

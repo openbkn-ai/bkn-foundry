@@ -6,15 +6,16 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
-	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 func TestQueryOperatorMarketDetail(t *testing.T) {
@@ -61,7 +62,7 @@ func TestQueryOperatorMarketDetail(t *testing.T) {
 			mockOpReleaseDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(false, nil, mocks.MockFuncErr("SelectByOpID")).Times(1)
 			_, err := operator.QueryOperatorMarketDetail(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &rest.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -69,7 +70,7 @@ func TestQueryOperatorMarketDetail(t *testing.T) {
 			mockOpReleaseDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 			_, err := operator.QueryOperatorMarketDetail(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &rest.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -100,7 +101,7 @@ func TestQueryOperatorMarketDetail(t *testing.T) {
 			mockMetadataService.EXPECT().CheckMetadataExists(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 			_, err := operator.QueryOperatorMarketDetail(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &rest.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -226,7 +227,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false).Times(1)
 			_, err := operator.QueryOperatorMarketList(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &rest.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})

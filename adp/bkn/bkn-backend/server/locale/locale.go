@@ -17,6 +17,8 @@ var registerOnce sync.Once
 // Register installs the service messages once before error code registration.
 func Register() {
 	registerOnce.Do(func() {
+		i18n.RegisterI18n(&auditTextEnUS)
+		i18n.RegisterI18n(&auditTextZhCN)
 		i18n.RegisterI18n(&valueTypeEnUS)
 		i18n.RegisterI18n(&valueTypeZhCN)
 		i18n.RegisterI18n(&actionScheduleEnUS)

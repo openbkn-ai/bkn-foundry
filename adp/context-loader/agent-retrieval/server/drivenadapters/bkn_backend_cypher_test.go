@@ -12,10 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
@@ -24,7 +24,7 @@ import (
 // a property the caller may not read in full, or a resource the data source
 // refused. Both reach the caller with the same status and code, not as a
 // gateway failure and not as a failed authentication of Context Loader itself.
-func TestRunCypherQueryPassesForbiddenThrough(t *testing.T) {
+func TestRunCypherQueryWrapsForbiddenWithSourceDetails(t *testing.T) {
 	for _, code := range []string{"BknBackend.Cypher.PropertyForbidden", "BknBackend.Cypher.Forbidden"} {
 		t.Run(code, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -43,17 +43,18 @@ func TestRunCypherQueryPassesForbiddenThrough(t *testing.T) {
 				KnID: "kn-1", Query: "MATCH (u:user) RETURN u.phone",
 			})
 
-			var httpErr *infraErr.HTTPError
+			var httpErr *rest.HTTPError
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("RunCypherQuery() error = %T %v, want *HTTPError", err, err)
 			}
-			if httpErr.HTTPCode != http.StatusForbidden || httpErr.Code != code {
-				t.Fatalf("RunCypherQuery() error = %d %s, want 403 %s", httpErr.HTTPCode, httpErr.Code, code)
+			if httpErr.HTTPCode != http.StatusForbidden || httpErr.BaseError.ErrorCode != "agentRetrieval.Forbidden.CommonExternalServerError" {
+				t.Fatalf("RunCypherQuery() error = %d %s, want 403 %s", httpErr.HTTPCode, httpErr.BaseError.ErrorCode, code)
 			}
-			if httpErr.ErrorDetails != "ot_user.phone" {
-				t.Fatalf("details = %v, want the property the refusal names", httpErr.ErrorDetails)
+			source, ok := httpErr.BaseError.ErrorDetails.(rest.BaseError)
+			if !ok || source.ErrorCode != code || source.Description != "refused" || source.ErrorDetails != "ot_user.phone" {
+				t.Fatalf("details = %v, want the property the refusal names", httpErr.BaseError.ErrorDetails)
 			}
-			if httpErr.Metadata == nil {
+			if source.Metadata == nil {
 				t.Fatal("machine-readable permission metadata was lost")
 			}
 		})

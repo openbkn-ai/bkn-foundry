@@ -7,19 +7,17 @@
 package locale
 
 import (
-	"context"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
-
-const validationDetailPrefix = "VegaBackend.Validation.Detail."
 
 var registerOnce sync.Once
 
 func Register() {
 	registerOnce.Do(func() {
+		i18n.RegisterI18n(&auditTextEnUS)
+		i18n.RegisterI18n(&auditTextZhCN)
 		i18n.RegisterI18n(&buildTaskEnUS)
 		i18n.RegisterI18n(&buildTaskZhCN)
 		i18n.RegisterI18n(&catalogEnUS)
@@ -49,14 +47,4 @@ func Register() {
 			panic(err)
 		}
 	})
-}
-
-// ValidationDetail returns a localized validation detail for the request language.
-func ValidationDetail(ctx context.Context, name string, data map[string]interface{}) string {
-	messageID := validationDetailPrefix + name
-	text, err := i18n.Render(i18n.GetLanguageByCtx(ctx), messageID, data)
-	if err != nil {
-		logger.Errorf("localized service message failed: %v", err)
-	}
-	return text
 }

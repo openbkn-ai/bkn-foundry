@@ -16,6 +16,8 @@ import (
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -80,7 +82,7 @@ func upstreamHTTPStatus(err error) int {
 // Prompting users to check whether the service is running can lead people in the wrong direction.
 func classifyMCPConnError(ctx context.Context, url string, err error) error {
 	// When initClient has given a clear error (such as the mode is not supported), it is transparently transmitted as it is to avoid being folded into unreachable.
-	var httpErr *errors.HTTPError
+	var httpErr *rest.HTTPError
 	if stderrors.As(err, &httpErr) {
 		return httpErr
 	}

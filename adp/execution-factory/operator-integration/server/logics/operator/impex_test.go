@@ -8,15 +8,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
-	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 func TestImport(t *testing.T) {
@@ -88,7 +89,7 @@ func TestImport(t *testing.T) {
 				nil, mocks.MockFuncErr("SelectByNameAndStatus"))
 			err := operator.Import(context.TODO(), &sql.Tx{}, interfaces.ImportTypeCreate, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -97,7 +98,7 @@ func TestImport(t *testing.T) {
 				gomock.Any()).Return(true, &model.OperatorRegisterDB{}, nil)
 			err := operator.Import(context.TODO(), &sql.Tx{}, interfaces.ImportTypeCreate, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusConflict)
 		})
@@ -107,7 +108,7 @@ func TestImport(t *testing.T) {
 			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("SelectByOperatorIDs"))
 			err := operator.Import(context.TODO(), &sql.Tx{}, interfaces.ImportTypeCreate, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -117,7 +118,7 @@ func TestImport(t *testing.T) {
 			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return([]*model.OperatorRegisterDB{operatorDB}, nil)
 			err := operator.Import(context.TODO(), &sql.Tx{}, interfaces.ImportTypeCreate, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusConflict)
 		})
@@ -149,7 +150,7 @@ func TestImport(t *testing.T) {
 			mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 		})
@@ -178,7 +179,7 @@ func TestImport(t *testing.T) {
 			mockValidator.EXPECT().ValidateOperatorName(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -193,7 +194,7 @@ func TestImport(t *testing.T) {
 			mockValidator.EXPECT().ValidateOperatorName(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -208,7 +209,7 @@ func TestImport(t *testing.T) {
 			mockValidator.EXPECT().ValidateOperatorName(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -223,7 +224,7 @@ func TestImport(t *testing.T) {
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -238,7 +239,7 @@ func TestImport(t *testing.T) {
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -256,7 +257,7 @@ func TestImport(t *testing.T) {
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -276,7 +277,7 @@ func TestImport(t *testing.T) {
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
 			fmt.Println(err)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -317,7 +318,7 @@ func TestImport(t *testing.T) {
 			mockDBOperatorManager.EXPECT().UpdateByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).Return(mocks.MockFuncErr("UpdateByOperatorID")).Times(1)
 			err := operator.Import(publicCtx, &sql.Tx{}, interfaces.ImportTypeUpsert, importData, "")
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -486,7 +487,7 @@ func TestExport(t *testing.T) {
 				gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(map[string]bool{"1": false}, nil)
 			_, err := operator.Export(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 		})
@@ -497,7 +498,7 @@ func TestExport(t *testing.T) {
 			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("SelectByOperatorIDs"))
 			_, err := operator.Export(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -508,7 +509,7 @@ func TestExport(t *testing.T) {
 			mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return([]*model.OperatorRegisterDB{}, nil)
 			_, err := operator.Export(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*myErr.HTTPError)
+			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})

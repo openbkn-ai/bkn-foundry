@@ -6,14 +6,9 @@
 #   $ref: '../_shared/errors.yaml#/components/schemas/Error'
 # instead of embedding independent copies.
 #
-# Note: context-loader (`agent-retrieval`) and execution-factory
-# (`agent-operator-integration`) under adp do not use the
-# comm-go/rest.BaseError envelope. They use equivalent local
-# infra/errors.HTTPError types whose field names differ:
-# code/description/solution/link/details. ErrorCompact documents that contract.
-# It remains separate because MCP clients and Studio already parse these fields.
-# ErrorAgentRetrieval is retained as an alias because the nine context-loader
-# YAML files introduced in #578 reference that name.
+# Context-loader and execution-factory also use Error for local failures.
+# Raw proxy responses can retain their dependency-owned envelope (e.g. ErrorOpenAI).
+# ErrorAgentRetrieval is a legacy schema name referencing Error.
 #
 # Note: mf-model uses FastAPI and a different code/detail/link envelope. It must
 # use a separate errors-fastapi.yaml rather than being forced into this schema.
@@ -69,58 +64,6 @@ components:
           additionalProperties: true
           description: Optional public template parameters, approved by the caller for disclosure; not an internal diagnostic container.
 
-    ErrorCompact:
-      description: |
-        Error response shared by context-loader (`agent-retrieval`) and
-        execution-factory (`agent-operator-integration`) under adp. It is
-        serialized from each service's `infra/errors.HTTPError`. Its field names
-        differ from `Error` above and clients must not treat them as the same
-        envelope.
-
-        When an error originates from a downstream service, these services pass
-        the downstream body through unchanged. In that case the field names are
-        those of the downstream envelope, commonly `error_code` and
-        `error_details`. Use the `code` prefix to identify locally generated
-        errors: `Public.*`, `agentRetrieval.*`, or
-        `AgentOperatorIntegration.*` (the last prefix starts with a capital
-        letter).
-
-        Errors from mf-model-api are an exception to the prefix rule.
-        `/v1/chat/completions` exposes an OpenAI-compatible surface and always
-        returns `{"error": {"message", "type", "param", "code"}}` on failure.
-        There is no top-level `code`; the original business code is in
-        `error.code`. Endpoints that call a large model, such as
-        execution-factory `/ai_generate/*`, pass this shape through. A top-level
-        `error` object therefore identifies an error from the model call chain.
-        Read `error.message` for the text and `error.type` for classifications
-        such as `rate_limit_exceeded`, `service_unavailable_error`, and
-        `invalid_request_error`.
-      type: object
-      properties:
-        code:
-          type: string
-          description: |
-            Machine-readable error code. Generic errors use
-            `Public.<ErrCode>`, such as `Public.BadRequest`. Business errors use
-            `<service>.<ErrCode>.<ExtCode>`, for example
-            `AgentOperatorIntegration.BadRequest.ValidationRequired`.
-          example: Public.BadRequest
-        description:
-          type: string
-          description: Localized, human-readable error description.
-        solution:
-          type: string
-          description: Recommended remediation.
-        link:
-          type: string
-          description: Link to error documentation; may indicate that no link is available.
-        details:
-          description: Error details, commonly a string or object.
-        metadata:
-          type: object
-          additionalProperties: true
-          description: Optional machine-readable context propagated from a downstream service.
-
     ErrorOpenAI:
       description: |
         OpenAI-compatible error response. `mf-model-api`
@@ -128,7 +71,7 @@ components:
         large-model failures through, such as execution-factory
         `/ai_generate/function/{type}`, return it unchanged.
 
-        Unlike `ErrorCompact`, the top level contains only `error`. The business
+        Unlike `Error`, the top level contains only `error`. The business
         code is in `error.code`, and there are no `solution` or `link` fields.
         A top-level `error` object identifies a failure from the model call
         chain.
@@ -176,9 +119,6 @@ components:
               example: service_unavailable_error
 
     ErrorAgentRetrieval:
-      description: |
-        Alias of `ErrorCompact` retained for the context-loader YAML files added
-        in #578. The structure is identical. New documentation should reference
-        `ErrorCompact` directly.
+      description: Alias of the shared Error envelope retained for existing context-loader references.
       allOf:
-        - $ref: '#/components/schemas/ErrorCompact'
+        - $ref: '#/components/schemas/Error'

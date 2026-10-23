@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 var registerOnce sync.Once
@@ -26,14 +25,7 @@ func Register() {
 	})
 }
 
-// Translate resolves a BKN Safe message after ensuring the bundled message bundle is
-// registered. Callers pass the effective request language selected by the
-// platform language middleware.
-func Translate(language i18n.Language, messageID string) string {
+// init installs service messages before consumers render them.
+func init() {
 	Register()
-	text, err := i18n.Render(language, messageID, nil)
-	if err != nil {
-		logger.Errorf("localized service message failed: %v", err)
-	}
-	return text
 }

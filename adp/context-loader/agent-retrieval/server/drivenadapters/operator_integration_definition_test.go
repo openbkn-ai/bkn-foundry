@@ -118,7 +118,7 @@ func TestToolDetailReadsKeepExecutionFactoryStatus(t *testing.T) {
 				if he.HTTPCode != test.wantStatus {
 					t.Fatalf("%s: status = %d, want %d (%v)", name, he.HTTPCode, test.wantStatus, err)
 				}
-				details, _ := he.ErrorDetails.(string)
+				details, _ := he.BaseError.ErrorDetails.(string)
 				if test.wantDetails != "" && !strings.HasPrefix(details, test.wantDetails) {
 					t.Errorf("%s: details = %q, want the downstream code first", name, details)
 				}

@@ -11,6 +11,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -270,8 +273,11 @@ func (a *knowledgeNetworkAuthorizer) authorizeResource(ctx context.Context, acco
 	if result.Allowed {
 		return nil
 	}
-	return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden,
-		infraerrors.LocalizedDetail(ctx, deniedDetailKey))
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+deniedDetailKey, map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 }
 
 // Refusal details for the network-scoped capability tools.
@@ -292,7 +298,11 @@ const (
 // unavailable authorization service, keeps its own status and detail.
 func CapabilityScopeError(ctx context.Context, err error, detailKey string) error {
 	if status, ok := infraerrors.HTTPStatus(err); ok && status == http.StatusForbidden {
-		return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden, infraerrors.LocalizedDetail(ctx, detailKey))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+detailKey, map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return infraerrors.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 	}
 	return err
 }

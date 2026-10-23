@@ -1638,7 +1638,6 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 				span.SetStatus(codes.Error, errDetails)
 				return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
 					berrors.BknBackend_KnowledgeNetwork_KNNameExisted).
-					WithMetadata(map[string]any{"kn_name": kn.KNName}).
 					WithErrorDetails(errDetails)
 			}
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -25,7 +26,6 @@ import (
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/action_logs"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
@@ -109,10 +109,13 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 		return rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound)
 	}
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "ActionDynamicParamsMissing", map[string]any{
-				"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
-			}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
+			"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
+		})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	_, err = s.authorizeActionType(ctx, req.KNID, &actionType)
 	if err != nil {
@@ -154,10 +157,13 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	}
 
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "ActionDynamicParamsMissing", map[string]any{
-				"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
-			}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
+			"actionType": actionType.ATName, "parameters": logics.FormatMissingParamNames(missing),
+		})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	// Resolve the authenticated execution subject before any instance scan or
@@ -529,12 +535,14 @@ func (s *actionSchedulerService) executeOnce(ctx context.Context, execution *int
 	actionType *interfaces.ActionType, req *interfaces.ActionExecutionRequest) {
 
 	startTime := time.Now().UnixMilli()
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionInstancesMerged", map[string]any{"count": len(req.Instances)})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 	result := interfaces.ObjectExecutionResult{
 		ObjectSystemInfo: interfaces.ObjectSystemInfo{
 			InstanceIdentity: map[string]any{},
-			Display: locale.ValidationDetail(ctx, "ActionInstancesMerged", map[string]any{
-				"count": len(req.Instances),
-			}),
+			Display:          localizedText,
 		},
 		Targets:   req.Instances,
 		StartTime: startTime,

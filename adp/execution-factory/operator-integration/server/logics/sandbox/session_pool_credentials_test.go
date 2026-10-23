@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
@@ -140,7 +140,7 @@ func TestDependencyInstallFailureCarriesNoCredentials(t *testing.T) {
 
 	_, err := newCredentialTestPool(client).ExecuteCode(context.Background(), credentialBearingRequest())
 
-	var httpErr *errors.HTTPError
+	var httpErr *rest.HTTPError
 	if !stderrors.As(err, &httpErr) {
 		t.Fatalf("want an HTTP error, got %v", err)
 	}
@@ -148,7 +148,7 @@ func TestDependencyInstallFailureCarriesNoCredentials(t *testing.T) {
 	if strings.Contains(string(raw), callerToken) {
 		t.Fatalf("error details leak the caller token: %s", raw)
 	}
-	details, _ := httpErr.ErrorDetails.(map[string]any)
+	details, _ := httpErr.BaseError.ErrorDetails.(map[string]any)
 	if details["dependencies"] == nil || details["dependencies_url"] == nil {
 		t.Fatalf("error details lost the dependency context: %s", raw)
 	}

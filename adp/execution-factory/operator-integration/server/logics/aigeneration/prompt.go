@@ -5,13 +5,14 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"path"
+	"strconv"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
@@ -67,11 +68,11 @@ func NewPromptLoader() (*PromptLoader, error) {
 // loadDefaulTemplates loads embedded default template files.
 func (l *PromptLoader) loadDefaulTemplates() error {
 	for tempType, fileName := range promptTemplateFiles {
-		content, err := fs.ReadFile(promptTemplatesFS, path.Join("templates", fileName))
+		content, err := i18n.Render(i18n.SimplifiedChinese, "AgentOperatorIntegration.SystemPrompt."+fileName, nil)
 		if err != nil {
-			return fmt.Errorf("failed to read template file %s: %w", fileName, err)
+			return err
 		}
-		l.DefaulTemplates[tempType].SystemPrompt = string(content)
+		l.DefaulTemplates[tempType].SystemPrompt = content
 	}
 	return nil
 }
@@ -99,19 +100,32 @@ func (l *PromptLoader) GetTemplate(ctx context.Context, tempType interfaces.Prom
 
 func localizedPromptTemplate(ctx context.Context, tempType interfaces.PromptTemplateType, source *interfaces.PromptTemplate) *interfaces.PromptTemplate {
 	temp := *source
-	tr := localize.NewI18nTranslator(string(common.GetLanguageFromCtx(ctx)))
+	language := i18n.GetLanguageByCtx(ctx)
 	switch tempType {
 	case interfaces.PythonFunctionGenerator:
-		temp.Description = tr.Trans("prompt.python_function_description")
-		temp.UserPromptTemplate = tr.Trans("prompt.python_function_user_template")
+		text, renderErr := i18n.Render(language, "AgentOperatorIntegration.prompt.python_function_description", nil)
+		if renderErr != nil {
+			logger.Errorf("localized prompt failed: %v", renderErr)
+		}
+		temp.Description = text
+		userPrompt, userRenderErr := i18n.Render(language, "AgentOperatorIntegration.prompt.python_function_user_template", nil)
+		if userRenderErr != nil {
+			logger.Errorf("localized prompt failed: %v", userRenderErr)
+		}
+		temp.UserPromptTemplate = userPrompt
 	case interfaces.MetadataParamGenerator:
-		temp.Description = tr.Trans("prompt.metadata_parameter_description")
+		metadataText, metadataRenderErr := i18n.Render(language, "AgentOperatorIntegration.prompt.metadata_parameter_description", nil)
+		if metadataRenderErr != nil {
+			logger.Errorf("localized prompt failed: %v", metadataRenderErr)
+		}
+		temp.Description = metadataText
 	}
-	if common.GetLanguageFromCtx(ctx) == common.AmericanEnglish {
-		if fileName, ok := promptTemplateFiles[tempType]; ok {
-			if content, err := fs.ReadFile(promptTemplatesFS, path.Join("templates", "locales", "en-US", fileName)); err == nil && len(content) > 0 {
-				temp.SystemPrompt = string(content)
-			}
+	if fileName, ok := promptTemplateFiles[tempType]; ok {
+		text, renderErr := i18n.Render(language, "AgentOperatorIntegration.SystemPrompt."+fileName, nil)
+		if renderErr != nil {
+			logger.Errorf("localized system prompt failed: %v", renderErr)
+		} else {
+			temp.SystemPrompt = text
 		}
 	}
 	return &temp
@@ -140,4 +154,26 @@ func (l *PromptLoader) loadCustomPromptTemplate(ctx context.Context, tempType in
 		Name:         promptResult.PromptName,
 		SystemPrompt: promptResult.Messages,
 	}, nil
+}
+
+// init registers immutable prompt text; runtime language selection belongs to i18n.
+func init() {
+	for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		messages := map[string]string{}
+		for _, fileName := range promptTemplateFiles {
+			resource := "templates/" + fileName
+			if language == i18n.AmericanEnglish {
+				resource = "templates/locales/en-US/" + fileName
+			}
+			content, err := fs.ReadFile(promptTemplatesFS, resource)
+			if err != nil {
+				panic(err)
+			}
+			messages["AgentOperatorIntegration.SystemPrompt."+fileName] = `{{printf "%s" ` + strconv.Quote(string(content)) + `}}`
+		}
+		i18n.RegisterI18n(&i18n.I18nMessages{Locale: language, Messages: messages})
+	}
+	if err := i18n.ValidateMessageBundles(); err != nil {
+		panic(err)
+	}
 }

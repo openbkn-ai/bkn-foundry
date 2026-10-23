@@ -18,6 +18,8 @@ import (
 	"unicode"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	commRest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -92,13 +94,8 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 			return nil, err
 		}
 
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	resp = &interfaces.ListKnResp{}
@@ -222,13 +219,8 @@ func (b *bknBackendAccess) getKnowledgeNetworkJSON(ctx context.Context, src, ope
 			return err
 		}
 
-		return &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	// bkn-backend always answers these reads with a JSON object. An empty body would otherwise
@@ -279,13 +271,8 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 			return nil, infraErr.DefaultHTTPError(ctx, respCode,
 				fmt.Sprintf("[BknBackendAccess] RunCypherQuery failed, [%s]", src))
 		}
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	resp := &interfaces.CypherQueryResp{}
@@ -343,13 +330,8 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 			return objectTypes, err
 		}
 
-		return objectTypes, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return objectTypes, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -449,13 +431,8 @@ func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string,
 			return emptyObjectTypes, err
 		}
 
-		return emptyObjectTypes, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return emptyObjectTypes, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -502,13 +479,8 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 			return nil, err
 		}
 
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	releationTypes = &interfaces.RelationTypeConcepts{}
@@ -558,13 +530,8 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 			return emptyRelationTypes, err
 		}
 
-		return emptyRelationTypes, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return emptyRelationTypes, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -611,13 +578,8 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 			return nil, err
 		}
 
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	actionTypes = &interfaces.ActionTypeConcepts{}
@@ -806,13 +768,8 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 			return emptyActionTypes, err
 		}
 
-		return emptyActionTypes, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return emptyActionTypes, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -917,13 +874,8 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 				return nil, infraErr.DefaultHTTPError(ctx, respCode,
 					fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes failed, code %d", respCode))
 			}
-			return nil, &infraErr.HTTPError{
-				HTTPCode:     respCode,
-				Code:         baseError.ErrorCode,
-				Description:  baseError.Description,
-				ErrorDetails: baseError.ErrorDetails,
-				Metadata:     baseError.Metadata,
-			}
+			return nil, infraErr.NewHTTPError(ctx, respCode,
+				infraErr.ErrExtCommonExternalServerError, baseError)
 		}
 
 		if len(respBody) == 0 {
@@ -1058,13 +1010,8 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -1105,28 +1052,35 @@ func (b *bknBackendAccess) ResolveKNProxyBinding(ctx context.Context,
 
 	status, body, err := b.httpClient.PostNoUnmarshal(ctx, src, header, binding)
 	if err != nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		var baseError commRest.BaseError
 		if decodeErr := sonic.Unmarshal(body, &baseError); decodeErr != nil {
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-				infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 		}
-		return nil, &infraErr.HTTPError{
-			HTTPCode: status, Code: baseError.ErrorCode, Description: baseError.Description,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return nil, infraErr.NewHTTPError(ctx, status,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
+
 	var mapping interfaces.KNProxyAccount
 	if len(body) == 0 || sonic.Unmarshal(body, &mapping) != nil ||
 		mapping.KNID != binding.KNID || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
 		mapping.ProxyAccountType != string(interfaces.AccessorTypeApp) || mapping.Version <= 0 ||
 		mapping.LifecycleStatus != "active" || mapping.SyncStatus != "ready" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	return &mapping, nil
 }

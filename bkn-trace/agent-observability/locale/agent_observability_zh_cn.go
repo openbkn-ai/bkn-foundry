@@ -1,7 +1,9 @@
-// Copyright openbkn.ai
-//
-// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+// Copyright (c) 2026 OpenBKN
+// SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+// Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
+// Package locale provides request-scoped localization for Agent Observability.
 package locale
 
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -9,6 +11,12 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var agentObservabilityZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"AgentObservability.Message.event payload conflicts with durable ledger":      "事件内容与已持久化账本冲突",
+		"AgentObservability.Message.producer sequence conflicts with durable ledger":  "生产者序列与已持久化账本冲突",
+		"AgentObservability.Message.event causality conflicts with durable ledger":    "事件因果关系与已持久化账本冲突",
+		"AgentObservability.Message.evidence interaction or operation does not exist": "证据所属交互或操作不存在",
+		"AgentObservability.Message.request failed":                                   "请求失败。",
+
 		"AgentObservability.Message.OAuth introspection is unavailable":                                                "OAuth 令牌校验服务不可用",
 		"AgentObservability.Message.OAuth query authentication is not configured":                                      "未配置 OAuth 查询认证",
 		"AgentObservability.Message.action state changed before this append committed":                                 "追加提交前操作状态已发生变化",

@@ -12,10 +12,10 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
@@ -180,7 +180,7 @@ func TestQueryObjectInstances_RejectsNilSortEntry(t *testing.T) {
 		convey.So(resp, convey.ShouldBeNil)
 		convey.So(err, convey.ShouldNotBeNil)
 
-		var he *infraErr.HTTPError
+		var he *rest.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusBadRequest)
 	})

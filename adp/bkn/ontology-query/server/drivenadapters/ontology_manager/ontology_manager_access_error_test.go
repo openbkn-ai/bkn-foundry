@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -53,7 +54,7 @@ func TestGetRiskTypesByIDsPreservesForbiddenError(t *testing.T) {
 	assertOntologyManagerHTTPStatus(t, err, http.StatusForbidden)
 }
 
-func TestDownstreamErrorsUseOperationCodes(t *testing.T) {
+func TestDownstreamErrorsDistinguishDenialsAndOperationFailures(t *testing.T) {
 	cases := []struct {
 		name string
 		code string
@@ -90,35 +91,44 @@ func TestDownstreamErrorsUseOperationCodes(t *testing.T) {
 		}},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			client := rmock.NewMockHTTPClient(ctrl)
-			access := newTestOntologyManagerAccess(&common.AppSetting{BKNBackendUrl: "http://test-om"}, client)
-			source := rest.BaseError{ErrorCode: "BknBackend.Denied", Description: "downstream reason", ErrorDetails: "source detail", Metadata: map[string]any{"resource": "example"}}
-			body, err := json.Marshal(source)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if tc.post {
-				client.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(http.StatusForbidden, body, nil)
-			} else {
-				client.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(http.StatusForbidden, body, nil)
-			}
-			err = tc.call(i18n.WithLanguage(t.Context(), i18n.AmericanEnglish), access)
-			var got *rest.HTTPError
-			if !errors.As(err, &got) {
-				t.Fatalf("error=%T %v", err, err)
-			}
-			if got.HTTPCode != http.StatusForbidden || got.BaseError.ErrorCode != tc.code || got.Lang != i18n.AmericanEnglish {
-				t.Fatalf("outer error=%#v", got)
-			}
-			if err := got.Render(); err != nil || got.BaseError.Description == "" {
-				t.Fatalf("render=%v, %#v", err, got)
-			}
-			detail, ok := got.BaseError.ErrorDetails.(rest.BaseError)
-			if !ok || detail.ErrorCode != source.ErrorCode || detail.Description != source.Description || detail.ErrorDetails != source.ErrorDetails || detail.Metadata["resource"] != "example" || len(got.BaseError.Metadata) != 0 {
-				t.Fatalf("details=%#v", got.BaseError.ErrorDetails)
-			}
-		})
+		for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusBadGateway} {
+			t.Run(fmt.Sprintf("%s/%d", tc.name, status), func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				client := rmock.NewMockHTTPClient(ctrl)
+				access := newTestOntologyManagerAccess(&common.AppSetting{BKNBackendUrl: "http://test-om"}, client)
+				source := rest.BaseError{ErrorCode: "BknBackend.Denied", Description: "downstream reason", ErrorDetails: "source detail", Metadata: map[string]any{"resource": "example"}}
+				body, err := json.Marshal(source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if tc.post {
+					client.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(status, body, nil)
+				} else {
+					client.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(status, body, nil)
+				}
+				err = tc.call(i18n.WithLanguage(t.Context(), i18n.AmericanEnglish), access)
+				var got *rest.HTTPError
+				if !errors.As(err, &got) {
+					t.Fatalf("error=%T %v", err, err)
+				}
+				expectedCode := tc.code
+				switch status {
+				case http.StatusUnauthorized:
+					expectedCode = rest.PublicError_Unauthorized
+				case http.StatusForbidden:
+					expectedCode = rest.PublicError_Forbidden
+				}
+				if got.HTTPCode != status || got.BaseError.ErrorCode != expectedCode || got.Lang != i18n.AmericanEnglish {
+					t.Fatalf("outer error=%#v", got)
+				}
+				if err := got.Render(); err != nil || got.BaseError.Description == "" {
+					t.Fatalf("render=%v, %#v", err, got)
+				}
+				detail, ok := got.BaseError.ErrorDetails.(rest.BaseError)
+				if !ok || detail.ErrorCode != source.ErrorCode || detail.Description != source.Description || detail.ErrorDetails != source.ErrorDetails || detail.Metadata["resource"] != "example" || len(got.BaseError.Metadata) != 0 {
+					t.Fatalf("details=%#v", got.BaseError.ErrorDetails)
+				}
+			})
+		}
 	}
 }

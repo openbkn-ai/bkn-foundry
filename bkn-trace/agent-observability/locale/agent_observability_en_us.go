@@ -1,7 +1,9 @@
-// Copyright openbkn.ai
-//
-// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+// Copyright (c) 2026 OpenBKN
+// SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+// Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
+// Package locale provides request-scoped localization for Agent Observability.
 package locale
 
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -9,6 +11,12 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var agentObservabilityEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"AgentObservability.Message.event payload conflicts with durable ledger":      "event payload conflicts with durable ledger",
+		"AgentObservability.Message.producer sequence conflicts with durable ledger":  "producer sequence conflicts with durable ledger",
+		"AgentObservability.Message.event causality conflicts with durable ledger":    "event causality conflicts with durable ledger",
+		"AgentObservability.Message.evidence interaction or operation does not exist": "evidence interaction or operation does not exist",
+		"AgentObservability.Message.request failed":                                   "Request failed.",
+
 		"AgentObservability.Message.OAuth introspection is unavailable":                                                "OAuth introspection is unavailable",
 		"AgentObservability.Message.OAuth query authentication is not configured":                                      "OAuth query authentication is not configured",
 		"AgentObservability.Message.action state changed before this append committed":                                 "action state changed before this append committed",
