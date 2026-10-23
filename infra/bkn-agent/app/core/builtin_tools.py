@@ -62,6 +62,10 @@ class Provider:
     # Text appended to the system prompt once the run's tools are mounted, such
     # as the network schema the tools are about.
     instructions: Optional[Callable[[Run], Awaitable[str]]] = None
+    # What the run has planned since the last call, sent with each of the
+    # provider's tool results so the page can show it before the run ends.
+    # None when nothing new was planned.
+    progress: Optional[Callable[[Run], Any]] = None
 
 
 _providers: dict[str, Provider] = {}

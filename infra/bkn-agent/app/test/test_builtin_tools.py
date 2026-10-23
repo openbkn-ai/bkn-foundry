@@ -377,3 +377,27 @@ def test_admin_lists_tools_by_source():
         {"type": "context_loader"},
         {"type": "toolbox", "box_id": "box-1", "name": "Functions"},
     ]
+
+
+def test_a_builtin_tool_result_carries_what_the_provider_planned_since():
+    import dataclasses
+
+    from langchain_core.messages import ToolMessage
+
+    sent = []
+    provider = dataclasses.replace(
+        PROVIDER, progress=lambda run: (sent.append(1), {"actions": ["show"]})[1] if not sent else None
+    )
+    run = _run()
+    run.provider = provider
+    public = PublicChat("run-1", "network-1")
+    public.builtin_run = run
+
+    def finished(name):
+        frame = next(public.updates({"tools": {"messages": [ToolMessage(content="ok", tool_call_id=name, name=name)]}}))
+        return json.loads(frame.split("data: ", 1)[1])
+
+    assert finished("show_instances")["progress"] == {"canvas_result": {"actions": ["show"]}}
+    # Nothing new since, and tools from elsewhere never ask the provider.
+    assert "progress" not in finished("canvas_state")
+    assert "progress" not in finished("search_schema")

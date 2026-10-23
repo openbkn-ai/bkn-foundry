@@ -149,6 +149,9 @@ async def cancel_execution(
             "part of the answer. "
             "Each event carries run_id and sequence. result.content.answer is the last "
             "assistant message; text streamed before tool calls is progress, not the answer. "
+            "tool_finished of a built-in provider's tool may carry progress, {<result key>: what "
+            "the run planned since the previous one}, to show before the run ends; the final "
+            "result stays authoritative. "
             "Successful result is persisted before "
             "result/terminal; terminal.status is succeeded/failed/cancelled. Retries return "
             "meta and the existing terminal; an active retry returns 409. Disconnect cancels execution.",
@@ -287,6 +290,7 @@ async def _execute_impl(
         if provider
         else None
     )
+    public.builtin_run = run
 
     async def events():
         _active[run_id] = asyncio.current_task()

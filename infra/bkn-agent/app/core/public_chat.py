@@ -58,6 +58,8 @@ class PublicChat:
     # Built-in tools as the network and user layers narrow them; None keeps all.
     allowed_builtin_tools: set[str] | None = None
     usage: dict = field(default_factory=dict)
+    # The run's built-in provider state, when the Agent mounts one.
+    builtin_run: Any = None
     tool_starts: dict[str, float] = field(default_factory=dict)
     # Reasoning arrives a token or two per chunk; it is sent in pieces instead.
     reasoning_parts: list[str] = field(default_factory=list)
@@ -194,6 +196,7 @@ class PublicChat:
                             },
                         )
                 elif isinstance(message, ToolMessage):
+                    progress = self.builtin_progress(message.name)
                     yield self.event(
                         "tool_finished",
                         {
@@ -224,8 +227,20 @@ class PublicChat:
                                 if message.status == "error"
                                 else {}
                             ),
+                            **({"progress": progress} if progress else {}),
                         },
                     )
+
+    def builtin_progress(self, tool_name: str | None) -> dict | None:
+        """What a built-in tool's provider planned since the last tool result,
+        under its result key (canvas_result), for the page to show early. The
+        final result stays authoritative."""
+        run = self.builtin_run
+        provider = run.provider if run else None
+        if not provider or not provider.progress or tool_name not in provider.tool_names:
+            return None
+        delta = provider.progress(run)
+        return {provider.result_key: delta} if delta else None
 
     def guard_tools(self, tools: list) -> list:
         from app.core import builtin_tools
