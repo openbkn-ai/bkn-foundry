@@ -91,14 +91,15 @@ func (s *Store) listServiceTraceIdentityPage(ctx context.Context, q isessionstor
 		var id string
 		var at time.Time
 		if err := rows.Scan(&id, &at, &result.Total); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return result, fmt.Errorf("scan trace summary identities: %w", err)
 		}
 		result.Entries = append(result.Entries, isessionstore.SummaryIdentity{ID: id, StartedAt: at.UTC().Format(time.RFC3339Nano)})
 	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
+	if err := rows.Close(); err != nil {
+		return result, fmt.Errorf("close trace summary identities: %w", err)
+	}
+	if err := rows.Err(); err != nil {
 		return result, fmt.Errorf("scan trace summary identities: %w", err)
 	}
 	if len(result.Entries) == 0 {
