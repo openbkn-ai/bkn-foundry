@@ -10,8 +10,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/client"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 const (
@@ -78,8 +80,8 @@ func writeError(c *gin.Context, status int, code, message string) {
 }
 
 func writeLocalizedError(c *gin.Context, status int, code string) {
-	sharedrest.MarkLocalizedCacheableResponse(c)
-	writeError(c, status, code, capabilitiesLabErrorMessage(sharedrest.GetLanguageByCtx(c.Request.Context()), code))
+	rest.MarkLocalizedCacheableResponse(c)
+	writeError(c, status, code, capabilitiesLabErrorMessage(i18n.GetLanguageByCtx(c.Request.Context()), code))
 }
 
 func writeBadGateway(c *gin.Context, message string) {

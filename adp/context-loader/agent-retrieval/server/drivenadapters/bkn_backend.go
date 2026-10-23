@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/bytedance/sonic"
+	commRest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -85,9 +86,9 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] ListKnowledgeNetworks get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmarshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmarshal BaseError failed: %v\n", err)
 			return nil, err
 		}
 
@@ -95,9 +96,8 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -216,9 +216,9 @@ func (b *bknBackendAccess) getKnowledgeNetworkJSON(ctx context.Context, src, ope
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmarshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmarshal BaseError failed: %v\n", err)
 			return err
 		}
 
@@ -226,9 +226,8 @@ func (b *bknBackendAccess) getKnowledgeNetworkJSON(ctx context.Context, src, ope
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -274,9 +273,9 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 		// A refusal from the compiler names the construct and its position,
 		// and that is the whole value of it to a caller writing a query, so it
 		// is carried through rather than flattened into a generic failure.
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal BaseError failed: %v\n", err)
 			return nil, infraErr.DefaultHTTPError(ctx, respCode,
 				fmt.Sprintf("[BknBackendAccess] RunCypherQuery failed, [%s]", src))
 		}
@@ -284,8 +283,6 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
 			Metadata:     baseError.Metadata,
 		}
@@ -340,9 +337,9 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] SearchObjectTypes， get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return objectTypes, err
 		}
 
@@ -350,9 +347,8 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -447,9 +443,9 @@ func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string,
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] GetObjectTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyObjectTypes, err
 		}
 
@@ -457,9 +453,8 @@ func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string,
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -501,9 +496,9 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] SearchRelationTypes get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
 
@@ -511,9 +506,8 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -558,9 +552,9 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] GetRelationTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyRelationTypes, err
 		}
 
@@ -568,9 +562,8 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -612,9 +605,9 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] SearchActionTypes get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
 
@@ -622,9 +615,8 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -808,9 +800,9 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] GetActionTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyActionTypes, err
 		}
 
@@ -818,9 +810,8 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -921,7 +912,7 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 		if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 			b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes failed, [%s], code %d", src, respCode)
 
-			var baseError interfaces.KnBaseError
+			var baseError commRest.BaseError
 			if err := sonic.Unmarshal(respBody, &baseError); err != nil {
 				return nil, infraErr.DefaultHTTPError(ctx, respCode,
 					fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes failed, code %d", respCode))
@@ -930,9 +921,8 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 				HTTPCode:     respCode,
 				Code:         baseError.ErrorCode,
 				Description:  baseError.Description,
-				Solution:     baseError.Solution,
-				ErrorLink:    baseError.ErrorLink,
 				ErrorDetails: baseError.ErrorDetails,
+				Metadata:     baseError.Metadata,
 			}
 		}
 
@@ -1063,18 +1053,17 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListKNCapabilities get resp failed, [%s], %v", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
 		return nil, &infraErr.HTTPError{
 			HTTPCode:     respCode,
 			Code:         baseError.ErrorCode,
 			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
 			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 
@@ -1120,14 +1109,15 @@ func (b *bknBackendAccess) ResolveKNProxyBinding(ctx context.Context,
 			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		var baseError interfaces.KnBaseError
+		var baseError commRest.BaseError
 		if decodeErr := sonic.Unmarshal(body, &baseError); decodeErr != nil {
 			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
 				infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
 		}
 		return nil, &infraErr.HTTPError{
 			HTTPCode: status, Code: baseError.ErrorCode, Description: baseError.Description,
-			Solution: baseError.Solution, ErrorLink: baseError.ErrorLink, ErrorDetails: baseError.ErrorDetails,
+			ErrorDetails: baseError.ErrorDetails,
+			Metadata:     baseError.Metadata,
 		}
 	}
 	var mapping interfaces.KNProxyAccount

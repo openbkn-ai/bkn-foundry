@@ -11,6 +11,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -18,7 +19,6 @@ import (
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // TestGetToolDetail_Success test GetToolDetail success scenario.
@@ -40,7 +40,7 @@ func TestGetToolDetail_Success(t *testing.T) {
 		}
 
 		ctx := common.SetLanguageToCtx(
-			common.SetRawTokenToCtx(context.Background(), "caller-token"), sharedrest.AmericanEnglish)
+			common.SetRawTokenToCtx(context.Background(), "caller-token"), i18n.AmericanEnglish)
 		req := &interfaces.GetToolDetailRequest{
 			BoxID:  "box-001",
 			ToolID: "tool-001",
@@ -89,7 +89,7 @@ func TestGetToolDetail_HTTPError(t *testing.T) {
 		}
 
 		ctx := common.SetLanguageToCtx(
-			common.SetRawTokenToCtx(context.Background(), "caller-token"), sharedrest.AmericanEnglish)
+			common.SetRawTokenToCtx(context.Background(), "caller-token"), i18n.AmericanEnglish)
 		req := &interfaces.GetToolDetailRequest{
 			BoxID:  "box-001",
 			ToolID: "tool-001",

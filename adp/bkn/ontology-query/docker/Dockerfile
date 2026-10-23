@@ -35,7 +35,6 @@ RUN groupadd -r -g $GID openbkn \
 COPY --from=builder --chown=$UID:$GID /workspace/adp/bkn/ontology-query/server/bin /opt/ontology-query
 
 ADD adp/bkn/ontology-query/server/config/ontology-query-config.yaml /opt/ontology-query/config/
-ADD adp/bkn/ontology-query/server/locale /opt/ontology-query/locale
 
 # Set the working directory
 WORKDIR /opt/ontology-query/

@@ -2,11 +2,11 @@ package parsers
 
 import (
 	"context"
-	stderrors "errors"
+	"errors"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 func TestOpenAPIMultiErrorDetailsUseRequestLanguage(t *testing.T) {
@@ -15,14 +15,14 @@ func TestOpenAPIMultiErrorDetailsUseRequestLanguage(t *testing.T) {
 		language string
 		want     string
 	}{
-		{name: "Chinese", language: sharedrest.SimplifiedChinese, want: "错误1：first failure"},
-		{name: "English", language: sharedrest.AmericanEnglish, want: "Error 1: first failure"},
+		{name: "Chinese", language: i18n.SimplifiedChinese, want: "错误1：first failure"},
+		{name: "English", language: i18n.AmericanEnglish, want: "Error 1: first failure"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ctx := sharedrest.WithLanguage(context.Background(), test.language)
-			multiErr := openapi3.MultiError{stderrors.New("first failure"), stderrors.New("second failure")}
+			ctx := i18n.WithLanguage(context.Background(), test.language)
+			multiErr := openapi3.MultiError{errors.New("first failure"), errors.New("second failure")}
 
 			httpErr := parseOpenAPILoadError(ctx, &multiErr)
 			details, ok := httpErr.ErrorDetails.([]string)

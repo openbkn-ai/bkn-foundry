@@ -11,14 +11,14 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 func TestGetLanguageInfoUsesAcceptLanguage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Request.Header.Set(sharedrest.AcceptLanguageHeader, "en-GB")
+	c.Request.Header.Set(i18n.AcceptLanguageHeader, "en-GB")
 
 	if got := GetLanguageInfo(c); got != AmericanEnglish {
 		t.Fatalf("GetLanguageInfo() = %q, want %q", got, AmericanEnglish)

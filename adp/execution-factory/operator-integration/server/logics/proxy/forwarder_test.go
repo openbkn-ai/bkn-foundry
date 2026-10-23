@@ -8,14 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/mock/gomock"
 )
 
 func TestForwardStream_MissingResponseWriterDoesNotPanic(t *testing.T) {
@@ -241,16 +242,16 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 func TestBuildRequestUsesEffectiveLocale(t *testing.T) {
 	Convey("buildRequest forwards the resolved locale instead of caller preferences", t, func() {
 		forwarder := &forwarder{logger: logger.DefaultLogger()}
-		ctx := sharedrest.WithLanguage(context.Background(), sharedrest.AmericanEnglish)
+		ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
 		httpReq, err := forwarder.buildRequest(ctx, &interfaces.HTTPRequest{
 			HTTPRouter: interfaces.HTTPRouter{Method: http.MethodGet, URL: "http://svc:9000/ping"},
 			HTTPRequestParams: interfaces.HTTPRequestParams{
-				Headers: map[string]any{sharedrest.AcceptLanguageHeader: "zh-CN, en-US;q=0.8"},
+				Headers: map[string]any{i18n.AcceptLanguageHeader: "zh-CN, en-US;q=0.8"},
 			},
 		})
 
 		So(err, ShouldBeNil)
-		So(httpReq.Header.Get(sharedrest.AcceptLanguageHeader), ShouldEqual, sharedrest.AmericanEnglish)
+		So(httpReq.Header.Get(i18n.AcceptLanguageHeader), ShouldEqual, i18n.AmericanEnglish)
 	})
 }
 

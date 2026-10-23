@@ -17,7 +17,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/mark3labs/mcp-go v0.37.0
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261016053435-798abfaea9a7
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023085447-aa872c9a3f35
 	github.com/pkg/errors v0.9.1
 	github.com/qustavo/sqlhooks/v2 v2.1.0
 	github.com/redis/go-redis/v9 v9.22.0
@@ -34,7 +34,6 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	gitee.com/chunanyong/dm v1.8.23 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/IBM/sarama v1.61.1 // indirect
 	github.com/avast/retry-go v3.0.0+incompatible // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect

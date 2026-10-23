@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"go.uber.org/mock/gomock"
 )
 
 func TestCategoryListMarksLocalizedCacheableResponse(t *testing.T) {
@@ -23,14 +24,14 @@ func TestCategoryListMarksLocalizedCacheableResponse(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	request := httptest.NewRequest(http.MethodGet, "/operator/category", nil)
-	ctx.Request = request.WithContext(sharedrest.WithLanguage(request.Context(), sharedrest.AmericanEnglish))
+	ctx.Request = request.WithContext(i18n.WithLanguage(request.Context(), i18n.AmericanEnglish))
 
 	handler.CategoryList(ctx)
 
-	if got := recorder.Header().Get(sharedrest.ContentLanguageHeader); got != sharedrest.AmericanEnglish {
-		t.Fatalf("Content-Language = %q, want %q", got, sharedrest.AmericanEnglish)
+	if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != i18n.AmericanEnglish {
+		t.Fatalf("Content-Language = %q, want %q", got, i18n.AmericanEnglish)
 	}
-	if got := recorder.Header().Get("Vary"); got != sharedrest.AcceptLanguageHeader {
-		t.Fatalf("Vary = %q, want %q", got, sharedrest.AcceptLanguageHeader)
+	if got := recorder.Header().Get("Vary"); got != i18n.AcceptLanguageHeader {
+		t.Fatalf("Vary = %q, want %q", got, i18n.AcceptLanguageHeader)
 	}
 }

@@ -552,7 +552,8 @@ func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 				"description": "knowledge network not found",
 				"solution": "check kn_id",
 				"error_link": "https://example.com/bkn-error",
-				"error_details": {"kn_id": "kn-001"}
+				"error_details": {"kn_id": "kn-001"},
+				"metadata": {"field": "kn_id"}
 			}`)
 			testCase.expectHTTP(mockHTTPClient, respBody)
 
@@ -564,9 +565,28 @@ func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 			convey.So(httpErr.HTTPCode, convey.ShouldEqual, http.StatusNotFound)
 			convey.So(httpErr.Code, convey.ShouldEqual, "BknBackend.KnowledgeNetwork.NotFound")
 			convey.So(httpErr.Description, convey.ShouldEqual, "knowledge network not found")
-			convey.So(httpErr.Solution, convey.ShouldEqual, "check kn_id")
-			convey.So(httpErr.ErrorLink, convey.ShouldEqual, "https://example.com/bkn-error")
+			convey.So(httpErr.Solution, convey.ShouldBeEmpty)
+			convey.So(httpErr.ErrorLink, convey.ShouldBeEmpty)
 			convey.So(httpErr.ErrorDetails, convey.ShouldResemble, map[string]interface{}{"kn_id": "kn-001"})
+			convey.So(httpErr.Metadata, convey.ShouldResemble, map[string]any{"field": "kn_id"})
 		})
+	}
+}
+
+func TestGetRelationTypeDetailPreservesCurrentSharedEnvelope(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockHTTPClient := mocks.NewMockHTTPClient(ctrl)
+	mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	client := &bknBackendAccess{logger: mockLogger, baseURL: "http://localhost/api/bkn-backend", httpClient: mockHTTPClient}
+	body := []byte(`{"error_code":"BknBackend.RelationType.NotFound","description":"Relation type not found. Check its ID.","error_details":"{{ literal }}","metadata":{"field":"relation_type_id"}}`)
+	mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(404, body, nil)
+	_, err := client.GetRelationTypeDetail(t.Context(), "kn-001", []string{"rt-001"}, true)
+	var public *infraErr.HTTPError
+	if !errors.As(err, &public) {
+		t.Fatalf("error type = %T", err)
+	}
+	if public.Code != "BknBackend.RelationType.NotFound" || public.Description != "Relation type not found. Check its ID." || public.Metadata["field"] != "relation_type_id" || public.ErrorDetails != "{{ literal }}" || public.Solution != "" || public.ErrorLink != "" {
+		t.Fatalf("lost shared response fields: %#v", public)
 	}
 }

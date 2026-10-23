@@ -14,13 +14,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/pkg/errors"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/pkg/errors"
 )
 
 // Forwarder HTTP request forwarder interface.
@@ -336,7 +337,7 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	}
 	// Internal requests carry the resolved, single-value locale rather than the
 	// caller's original Accept-Language preference list.
-	httpReq.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+	httpReq.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
 
 	// If Content-Type is not set in the request header but we have a definite type, set it.
 	if contentType != "" && (forceContentType || httpReq.Header.Get("Content-Type") == "") {

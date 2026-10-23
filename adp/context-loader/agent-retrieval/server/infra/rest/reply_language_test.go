@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 func TestReplyErrorMarksOnlyLocallyGeneratedTextAsLocalized(t *testing.T) {
@@ -22,12 +22,12 @@ func TestReplyErrorMarksOnlyLocallyGeneratedTextAsLocalized(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
 		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		c.Request = c.Request.WithContext(sharedrest.WithLanguage(c.Request.Context(), sharedrest.AmericanEnglish))
+		c.Request = c.Request.WithContext(i18n.WithLanguage(c.Request.Context(), i18n.AmericanEnglish))
 
 		ReplyError(c, http.ErrNotSupported)
 
-		if got := recorder.Header().Get(sharedrest.ContentLanguageHeader); got != sharedrest.AmericanEnglish {
-			t.Fatalf("Content-Language = %q, want %q", got, sharedrest.AmericanEnglish)
+		if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != i18n.AmericanEnglish {
+			t.Fatalf("Content-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 	})
 
@@ -35,11 +35,11 @@ func TestReplyErrorMarksOnlyLocallyGeneratedTextAsLocalized(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
 		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
-		c.Request = c.Request.WithContext(sharedrest.WithLanguage(c.Request.Context(), sharedrest.AmericanEnglish))
+		c.Request = c.Request.WithContext(i18n.WithLanguage(c.Request.Context(), i18n.AmericanEnglish))
 
 		ReplyError(c, &ExHTTPError{HTTPCode: http.StatusBadGateway, Body: []byte(`{"message":"upstream"}`)})
 
-		if got := recorder.Header().Get(sharedrest.ContentLanguageHeader); got != "" {
+		if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != "" {
 			t.Fatalf("Content-Language = %q, want empty for upstream response", got)
 		}
 	})

@@ -10,12 +10,13 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestDefaultHTTPErrorUsesBCP47Locale(t *testing.T) {
-	for _, locale := range []string{sharedrest.AmericanEnglish, "en-us"} {
+	for _, locale := range []string{i18n.AmericanEnglish, "en-us"} {
 		t.Run(locale, func(t *testing.T) {
 			ctx := common.SetLanguageToCtx(context.Background(), locale)
 			err := DefaultHTTPError(ctx, http.StatusUnauthorized, "token is invalid")

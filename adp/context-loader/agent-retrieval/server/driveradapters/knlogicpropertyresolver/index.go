@@ -63,8 +63,8 @@ func NewKnLogicPropertyResolverHandler() KnLogicPropertyResolverHandler {
 // @Param body body interfaces.ResolveLogicPropertiesRequest true "Request payload"
 // @Success 200 {object} interfaces.ResolveLogicPropertiesResponse "Success response"
 // @Failure 400 {object} interfaces.MissingParamsError "Missing parameter error"
-// @Failure 404 {object} interfaces.KnBaseError "Object type not found"
-// @Failure 500 {object} interfaces.KnBaseError "Internal server error"
+// @Failure 404 {object} github.com/openbkn-ai/bkn-foundry/comm-go/rest.BaseError "Object type not found"
+// @Failure 500 {object} github.com/openbkn-ai/bkn-foundry/comm-go/rest.BaseError "Internal server error"
 // @Router /api/kn/logic-property-resolver [post]
 func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 	var err error
