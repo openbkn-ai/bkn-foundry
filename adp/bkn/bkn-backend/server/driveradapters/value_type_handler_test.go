@@ -119,6 +119,16 @@ func TestValueTypeHandlers(t *testing.T) {
 		assert.Contains(t, w.Body.String(), berrors.BknBackend_ValueType_Duplicated_Name)
 	})
 
+	t.Run("create refuses a null enum item", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		kns := bmock.NewMockKNService(ctrl)
+		kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", "main").Return("Network 1", true, nil)
+		w := serve(&restHandler{kns: kns}, http.MethodPost, "/knowledge-networks/kn1/value-types",
+			`{"entries":[{"id":"s","name":"状态","base_type":"string","enum":[null,{"value":"A","display":"甲"}]}]}`)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "enum item 1 is null")
+	})
+
 	t.Run("update takes the ID from the path", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		kns := bmock.NewMockKNService(ctrl)
