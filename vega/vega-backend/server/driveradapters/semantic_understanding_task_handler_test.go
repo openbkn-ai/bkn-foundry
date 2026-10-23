@@ -70,7 +70,7 @@ func Test_SemanticUnderstandingTaskRestHandler_CreateTask(t *testing.T) {
 			DoAndReturn(func(ctx context.Context, resourceID string, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {
 				assert.Equal(t, "res-1", resourceID)
 				assert.Equal(t, "zh-CN", req.Language)
-				assert.Equal(t, "en-US", i18n.GetLanguageByCtx(ctx))
+				assert.Equal(t, i18n.AmericanEnglish, i18n.GetLanguageByCtx(ctx))
 				assert.Equal(t, interfaces.SemanticUnderstandingApplyModeDryRun, req.ApplyMode)
 				require.NotNil(t, req.ConfidenceThreshold)
 				assert.Equal(t, 0.9, *req.ConfidenceThreshold)

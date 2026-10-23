@@ -160,7 +160,7 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	if executor.last.Event["mcp"] != toolkit.SandboxMCPURL {
 		t.Fatalf("未下发沙箱回访地址: %v", executor.last.Event["mcp"])
 	}
-	if executor.last.Event["locale"] != "en-US" {
+	if executor.last.Event["locale"] != common.AmericanEnglish {
 		t.Fatalf("未下发有效语言: %v", executor.last.Event["locale"])
 	}
 	if !strings.Contains(toolkit.Stub, `"Accept-Language": _CFG.get("locale", "zh-CN")`) {
