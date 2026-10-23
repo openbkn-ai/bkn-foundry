@@ -140,6 +140,12 @@ func TestCreateValueTypes(t *testing.T) {
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, "range, length and pattern do not go with it")
 
 		f.allow(interfaces.OPERATION_TYPE_MODIFY)
+		vt = lisStatus()
+		vt.Enum = append(vt.Enum, nil)
+		_, err = f.svc.CreateValueTypes(ctx, nil, []*interfaces.ValueType{vt}, interfaces.ImportMode_Normal)
+		assert.Contains(t, httpError(t, err).BaseError.ErrorDetails, "an enum item is null")
+
+		f.allow(interfaces.OPERATION_TYPE_MODIFY)
 		vt = amountCNY()
 		vt.BaseType = "money"
 		_, err = f.svc.CreateValueTypes(ctx, nil, []*interfaces.ValueType{vt}, interfaces.ImportMode_Normal)
