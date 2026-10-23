@@ -86,11 +86,11 @@ func TestGetLanguageCtx(t *testing.T) {
 }
 
 func TestWithLanguage(t *testing.T) {
-	for _, input := range []Language{AmericanEnglish, "en-us"} {
+	for _, input := range []Language{AmericanEnglish, SimplifiedChinese} {
 		t.Run(string(input), func(t *testing.T) {
 			ctx := WithLanguage(context.Background(), input)
-			if got := GetLanguageByCtx(ctx); got != AmericanEnglish {
-				t.Fatalf("GetLanguageByCtx() = %q, want %q", got, AmericanEnglish)
+			if got := GetLanguageByCtx(ctx); got != input {
+				t.Fatalf("GetLanguageByCtx() = %q, want %q", got, input)
 			}
 		})
 	}

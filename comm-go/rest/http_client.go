@@ -268,6 +268,6 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod string, url str
 		}
 	}
 	// Service-to-service calls use the resolved locale, not the original range.
-	req.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	return
 }

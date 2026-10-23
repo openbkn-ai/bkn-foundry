@@ -80,7 +80,7 @@ func ReplyError(c *gin.Context, err error) {
 			body = []byte(`{"error_code":"Public.InternalServerError","description":"","error_details":""}`)
 		}
 	}
-	c.Writer.Header().Set(i18n.ContentLanguageHeader, httpErr.Lang)
+	c.Writer.Header().Set(i18n.ContentLanguageHeader, string(httpErr.Lang))
 	c.Writer.Header().Set(ContentTypeKey, ContentTypeJson)
 	c.String(httpErr.HTTPCode, string(body))
 }
@@ -102,7 +102,7 @@ func addHeaders(c *gin.Context, headers map[string]string) {
 // localized text. Callers opt in because a successful response can be purely
 // machine-readable even when the request has an effective locale.
 func MarkLocalizedResponse(c *gin.Context) {
-	c.Writer.Header().Set(i18n.ContentLanguageHeader, i18n.GetLanguageByCtx(c.Request.Context()))
+	c.Writer.Header().Set(i18n.ContentLanguageHeader, string(i18n.GetLanguageByCtx(c.Request.Context())))
 }
 
 // MarkLocalizedCacheableResponse additionally declares that a cacheable
