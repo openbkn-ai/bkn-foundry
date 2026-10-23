@@ -2,14 +2,12 @@
 #
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-"""Validate Python/MCP resources and compiled Go message bundles."""
+"""Validate Python and MCP locale resources without external toolchains."""
 
 from __future__ import annotations
 
 import ast
 import json
-import os
-import subprocess
 import re
 import string
 import sys
@@ -40,12 +38,6 @@ PYTHON_CATALOGS = (
         REPOSITORY_ROOT / "infra/sandbox/sandbox_control_plane/src/shared/i18n/zh_cn.py",
         REPOSITORY_ROOT / "infra/sandbox/sandbox_control_plane/src/shared/i18n/en_us.py",
     ),
-)
-# These services now declare Go messages and validate them through comm-go/i18n.
-# Execute their existing error-package tests instead of parsing retired JSON copies.
-GO_MESSAGE_MODULES = (
-    REPOSITORY_ROOT / "adp/context-loader/agent-retrieval",
-    REPOSITORY_ROOT / "adp/execution-factory/operator-integration",
 )
 MCP_SCHEMAS_DIRECTORY = REPOSITORY_ROOT / "adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas"
 DEFAULT_MCP_LOCALE = "zh-CN"
@@ -394,17 +386,6 @@ def main() -> int:
             errors.extend(validate_catalog_pair(*catalog))
         except ValueError as error:
             errors.append(str(error))
-    for module in GO_MESSAGE_MODULES:
-        result = subprocess.run(
-            ["go", "test", "./server/infra/errors"],
-            cwd=module,
-            env={**os.environ, "GOWORK": "off"},
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode:
-            errors.append(f"{module}: Go message validation failed:\n{result.stdout}{result.stderr}")
     try:
         errors.extend(validate_mcp_locale_resources(MCP_SCHEMAS_DIRECTORY))
     except ValueError as error:
