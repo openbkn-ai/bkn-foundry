@@ -54,7 +54,7 @@ func decodeProperty(t *testing.T, text string) *interfaces.DataProperty {
 	return &p
 }
 
-// A save runs the checks a 3.0 import runs, plus what the backend cannot store yet.
+// A save runs the checks a 3.0 import runs.
 func TestValidateDeclarations(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, validateDeclarations(ctx, declaredObjectType()))
@@ -67,8 +67,12 @@ func TestValidateDeclarations(t *testing.T) {
 
 	ot = declaredObjectType()
 	ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
+	require.NoError(t, validateDeclarations(ctx, ot), "a value type is resolved by checkValueTypes")
+
+	ot = declaredObjectType()
+	ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny", Unit: "元"}
 	err = validateDeclarations(ctx, ot)
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, "value_type is not supported by this version yet")
+	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, "write range, length, pattern and unit in the value type")
 
 	ot = declaredObjectType()
 	ot.DataProperties[0] = decodeProperty(t, `{"name":"id","type":"string","required":false}`)
@@ -221,4 +225,42 @@ func TestOverwritePrecheckRunsAfterThePermissionCheck(t *testing.T) {
 	_, err = service.CreateObjectTypes(ctx, nil, []*interfaces.ObjectType{file}, interfaces.ImportMode_Overwrite, false, false)
 	require.Error(t, err)
 	assert.Equal(t, http.StatusForbidden, err.(*rest.HTTPError).HTTPCode)
+}
+
+// A property may name only a value type of its network, and the value type's base_type must be
+// the property's Type.
+func TestCheckValueTypes(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	vta := bmock.NewMockValueTypeAccess(ctrl)
+	ots := &objectTypeService{vta: vta}
+
+	require.NoError(t, ots.checkValueTypes(ctx, declaredObjectType()), "no reference, no lookup")
+
+	amountCNY := &interfaces.ValueType{VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal"}
+	referencing := func() *interfaces.ObjectType {
+		ot := declaredObjectType()
+		ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
+		return ot
+	}
+
+	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
+		Return([]*interfaces.ValueType{amountCNY}, nil)
+	require.NoError(t, ots.checkValueTypes(ctx, referencing()))
+
+	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
+		Return([]*interfaces.ValueType{}, nil)
+	err := ots.checkValueTypes(ctx, referencing())
+	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
+	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `value type "amount_cny" is not defined in this network`)
+
+	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
+		Return([]*interfaces.ValueType{{VTID: "amount_cny", VTName: "人民币金额", BaseType: "integer"}}, nil)
+	err = ots.checkValueTypes(ctx, referencing())
+	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `value type "amount_cny" has base_type integer`)
+
+	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
+		Return(nil, errors.New("db down"))
+	err = ots.checkValueTypes(ctx, referencing())
+	assert.Equal(t, http.StatusInternalServerError, err.(*rest.HTTPError).HTTPCode)
 }

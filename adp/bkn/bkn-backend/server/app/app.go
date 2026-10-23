@@ -54,6 +54,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/relation_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/risk_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/user_mgmt"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/value_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
@@ -362,6 +363,7 @@ func Boot(_ Options) *Application {
 	logics.SetObjectTypeAccess(object_type.NewObjectTypeAccess(appSetting))
 	logics.SetRelationTypeAccess(relation_type.NewRelationTypeAccess(appSetting))
 	logics.SetRiskTypeAccess(risk_type.NewRiskTypeAccess(appSetting))
+	logics.SetValueTypeAccess(value_type.NewValueTypeAccess(appSetting))
 	logics.SetVegaBackendAccess(vega_backend.NewVegaBackendAccess(appSetting))
 
 	// Create and start the service.

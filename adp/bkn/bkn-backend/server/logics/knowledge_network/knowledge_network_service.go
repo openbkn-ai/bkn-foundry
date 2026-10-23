@@ -39,6 +39,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/relation_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/risk_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/user_mgmt"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/value_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/vega_backend"
 )
 
@@ -75,6 +76,7 @@ type knowledgeNetworkService struct {
 	rts        interfaces.RelationTypeService
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
+	vts        interfaces.ValueTypeService
 }
 
 func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMutation {
@@ -103,6 +105,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 			rts:        relation_type.NewRelationTypeService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
+			vts:        value_type.NewValueTypeService(appSetting),
 		}
 		// Object type enrichment reads resources through the managed proxy when
 		// the caller may not read them directly. This service owns the proxy
@@ -1490,6 +1493,13 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	if err != nil {
 		logger.Errorf("DeleteRiskTypesByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络风险类失败")
+		return err
+	}
+
+	// Delete all value types under the business knowledge network.
+	if err = kns.vts.DeleteValueTypesByKnID(ctx, tx, kn.KNID, kn.Branch); err != nil {
+		logger.Errorf("DeleteValueTypesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "delete knowledge network value types failed")
 		return err
 	}
 

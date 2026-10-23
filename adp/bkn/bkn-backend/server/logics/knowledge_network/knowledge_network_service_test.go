@@ -1768,6 +1768,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 		riskTypeS := bmock.NewMockRiskTypeService(mockCtrl)
 		cgs := bmock.NewMockConceptGroupService(mockCtrl)
 		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
+		vts := bmock.NewMockValueTypeService(mockCtrl)
 
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1782,6 +1783,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			riskTypeS:  riskTypeS,
 			cgs:        cgs,
 			cbs:        cbs,
+			vts:        vts,
 			db:         db,
 		}
 
@@ -1799,6 +1801,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// Deleting a network must clear its capability bindings: a knowledge network ID can
 			// be supplied by the caller, so leftover rows would be inherited by a network
@@ -1910,6 +1913,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -1931,6 +1935,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// Deleting a network must clear its capability bindings: a knowledge network ID can
 			// be supplied by the caller, so leftover rows would be inherited by a network
@@ -1957,6 +1962,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// Deleting a network must clear its capability bindings: a knowledge network ID can
 			// be supplied by the caller, so leftover rows would be inherited by a network
@@ -1984,6 +1990,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// Deleting a network must clear its capability bindings: a knowledge network ID can
 			// be supplied by the caller, so leftover rows would be inherited by a network
@@ -2012,6 +2019,28 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			smock.ExpectRollback()
+
+			err := service.DeleteKN(ctx, kn)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("Failed when DeleteValueTypesByKnID returns error\n", func() {
+			kn := &interfaces.KN{
+				KNID:   "kn1",
+				KNName: "kn1",
+				Branch: interfaces.MAIN_BRANCH,
+			}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
+				Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ValueType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)

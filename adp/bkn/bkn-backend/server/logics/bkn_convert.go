@@ -758,3 +758,93 @@ func rangeBound(v any) any {
 	}
 	return v
 }
+
+// ToADPValueType converts a BKN value type to the stored model.
+func ToADPValueType(knID string, branch string, vt *bknsdk.BknValueType) *interfaces.ValueType {
+	out := &interfaces.ValueType{
+		VTID:   vt.ID,
+		VTName: vt.Name,
+		CommonInfo: interfaces.CommonInfo{
+			Tags:          vt.Tags,
+			Comment:       vt.Description,
+			BKNRawContent: vt.RawContent,
+		},
+		KNID:     knID,
+		Branch:   branch,
+		BaseType: vt.BaseType,
+		ValueTypeDefinition: interfaces.ValueTypeDefinition{
+			Pattern: vt.Pattern,
+			Unit:    vt.Unit,
+		},
+		ModuleType: interfaces.MODULE_TYPE_VALUE_TYPE,
+	}
+	if vt.Enum != nil {
+		out.Enum = make([]*interfaces.ValueTypeEnumItem, 0, len(vt.Enum))
+		for _, item := range vt.Enum {
+			out.Enum = append(out.Enum, &interfaces.ValueTypeEnumItem{
+				Value: item.Value, Display: item.Display, Deprecated: item.Deprecated, Description: item.Description,
+			})
+		}
+	}
+	if vt.Range != nil {
+		out.Range = &interfaces.ValueRange{Min: vt.Range.Min, Max: vt.Range.Max}
+	}
+	if vt.Length != nil {
+		out.Length = &interfaces.LengthRange{Min: vt.Length.Min, Max: vt.Length.Max}
+	}
+	return out
+}
+
+// ToBKNValueType converts a stored value type to the specification model.
+func ToBKNValueType(vt *interfaces.ValueType) *bknsdk.BknValueType {
+	out := &bknsdk.BknValueType{
+		BknValueTypeFrontmatter: bknsdk.BknValueTypeFrontmatter{
+			Type: interfaces.MODULE_TYPE_VALUE_TYPE,
+			ID:   vt.VTID,
+			Name: vt.VTName,
+			Tags: vt.Tags,
+		},
+		Summary:     bknsdk.ExtractSummary(vt.Comment),
+		Description: vt.Comment,
+		BaseType:    vt.BaseType,
+		Pattern:     vt.Pattern,
+		Unit:        vt.Unit,
+	}
+	if vt.Enum != nil {
+		out.Enum = make([]*bknsdk.ValueTypeEnumItem, 0, len(vt.Enum))
+		for _, item := range vt.Enum {
+			if item == nil {
+				continue
+			}
+			out.Enum = append(out.Enum, &bknsdk.ValueTypeEnumItem{
+				Value: item.Value, Display: item.Display, Deprecated: item.Deprecated, Description: item.Description,
+			})
+		}
+	}
+	if vt.Range != nil {
+		out.Range = &bknsdk.ValueRange{Min: rangeBound(vt.Range.Min), Max: rangeBound(vt.Range.Max)}
+	}
+	if vt.Length != nil {
+		out.Length = &bknsdk.LengthRange{Min: vt.Length.Min, Max: vt.Length.Max}
+	}
+	return out
+}
+
+// ValueTypeReferences lists the data properties of objectTypes whose constraints name vtID, in
+// object type and property order.
+func ValueTypeReferences(objectTypes []*interfaces.ObjectType, vtID string) []interfaces.ValueTypeReference {
+	var refs []interfaces.ValueTypeReference
+	for _, ot := range objectTypes {
+		if ot == nil {
+			continue
+		}
+		for _, p := range ot.DataProperties {
+			if p != nil && p.Constraints != nil && p.Constraints.ValueType == vtID {
+				refs = append(refs, interfaces.ValueTypeReference{
+					ObjectTypeID: ot.OTID, ObjectTypeName: ot.OTName, Property: p.Name, PropertyType: p.Type,
+				})
+			}
+		}
+	}
+	return refs
+}

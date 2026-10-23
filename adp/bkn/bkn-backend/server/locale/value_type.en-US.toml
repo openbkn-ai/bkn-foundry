@@ -1,0 +1,57 @@
+# ValueType
+[BknBackend.ValueType.InvalidParameter]
+Description = "Invalid Value Type"
+Solution = "Please check the value type against the BKN specification, section 16."
+ErrorLink = ""
+
+[BknBackend.ValueType.InvalidParameter.Detail]
+ModuleType = "Value type module type must be 'value_type'."
+DuplicatedIDInFile = "Value type ID '{{.valueTypeID}}' appears more than once in the request body."
+DuplicatedNameInFile = "Value type name '{{.valueTypeName}}' appears more than once in the request body."
+ValueTypeIDAlreadyExists = "Value type ID {{.valueTypeID}} already exists."
+ValueTypeNameAlreadyExists = "Value type name {{.valueTypeName}} already exists."
+
+[BknBackend.ValueType.Duplicated.IDInFile]
+Description = "Same Value Type ID Existed"
+Solution = "Please check whether the parameter is correct."
+ErrorLink = ""
+
+[BknBackend.ValueType.Duplicated.Name]
+Description = "Same Value Type Name Existed"
+Solution = "Please check whether the parameter is correct."
+ErrorLink = ""
+
+[BknBackend.ValueType.ValueTypeIDExisted]
+Description = "Same Value Type ID Existed"
+Solution = "Please check whether the parameter is correct."
+ErrorLink = ""
+
+[BknBackend.ValueType.ValueTypeNameExisted]
+Description = "Same Value Type Name Existed"
+Solution = "Please check whether the parameter is correct."
+ErrorLink = ""
+
+[BknBackend.ValueType.NullParameter.Name]
+Description = "Value Type Name Is Empty"
+Solution = "Please check whether the parameter is correct."
+ErrorLink = ""
+
+[BknBackend.ValueType.LengthExceeded.Name]
+Description = "The Length of Value Type Name Out of Limit"
+Solution = "Please check whether the parameter is correct."
+ErrorLink = ""
+
+[BknBackend.ValueType.ValueTypeNotFound]
+Description = "Value Type Not Found"
+Solution = "Please check whether the value type ID is correct."
+ErrorLink = ""
+
+[BknBackend.ValueType.Referenced]
+Description = "Value Type Is Referenced"
+Solution = "Data properties listed in the error details use this value type. Change their constraints first, then delete the value type or change its base_type."
+ErrorLink = ""
+
+[BknBackend.ValueType.InternalError]
+Description = "Internal Error"
+Solution = "Please contact the administrator."
+ErrorLink = ""

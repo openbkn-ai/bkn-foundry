@@ -1,0 +1,407 @@
+---
+openapi: 3.0.2
+info:
+  title: BKN 知识网络 · 值类型 API
+  version: 0.1.0
+  description: |-
+    Value types of a knowledge network (BKN specification 3.0, section 16). A value type is a base
+    type with a set of value rules (an enum, or a range, a length, a pattern and a unit), named so
+    that several data properties can share it: a property names one in `constraints.value_type`.
+
+    Value types have no authorization of their own. Reads and lists need `view_detail` on the
+    knowledge network; creating, updating and deleting need `modify` on it. See
+    `../knowledge-network-authorization.md`.
+
+    The rules are checked with the checks a BKN 3.0 import runs: `base_type` is one of the listed
+    types, an enum goes with none of `range`, `length` and `pattern`, enum values fit the base type
+    and do not repeat. A data property that names a value type must have the value type's
+    `base_type` as its Type, and writes no `range`, `length`, `pattern` or `unit` of its own.
+
+    While a data property names a value type, the value type cannot be deleted, and an update must
+    keep a `base_type` the referencing properties fit. Either refusal is 409
+    `BknBackend.ValueType.Referenced`, and its details list the referencing object types and
+    properties.
+
+    All APIs are exposed under /api/bkn-backend/v1, require OAuth2 authentication, and default the
+    branch query parameter to main. Writes are recorded in the operation audit.
+security:
+  - OAuth2: []
+paths:
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/value-types:
+    post:
+      tags:
+        - ValueType
+      summary: Create value types in batch
+      description: Creates or imports value types. Requires an application/json content type.
+      operationId: createValueTypes
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/Branch"
+        - name: import_mode
+          in: query
+          description: |-
+            normal reports an existing ID or name; ignore skips existing items; overwrite replaces
+            the value type of the same ID and refuses a name another value type holds.
+          schema:
+            type: string
+            enum:
+              - normal
+              - ignore
+              - overwrite
+            default: normal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValueTypeCreateRequest"
+      responses:
+        "201":
+          description: Created. Returns the IDs of the value types created or overwritten.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Referenced"
+    get:
+      tags:
+        - ValueType
+      summary: List value types
+      description: Lists the value types of a knowledge network with pagination and optional name or tag filtering.
+      operationId: listValueTypes
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/Branch"
+        - name: name_pattern
+          in: query
+          description: Fuzzy match by name or ID. Defaults to empty.
+          schema:
+            type: string
+        - name: tag
+          in: query
+          description: Fuzzy match by tag. Defaults to empty.
+          schema:
+            type: string
+        - name: offset
+          in: query
+          description: Offset, greater than or equal to 0. Defaults to 0.
+          schema:
+            type: integer
+            format: int64
+            default: 0
+        - name: limit
+          in: query
+          description: Page size in the range [1, 1000]. A value of -1 returns all items without pagination.
+          schema:
+            type: integer
+            format: int64
+            default: 10
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - name
+              - update_time
+            default: update_time
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ValueType"
+                  total_count:
+                    type: integer
+                    format: int64
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/value-types/{vt_id}:
+    get:
+      tags:
+        - ValueType
+      summary: Get a value type
+      operationId: getValueType
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/VTID"
+        - $ref: "#/components/parameters/Branch"
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValueType"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags:
+        - ValueType
+      summary: Update a value type
+      description: |-
+        Fully updates one value type; the ID comes from the path. Requires an application/json
+        content type.
+      operationId: updateValueType
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/VTID"
+        - $ref: "#/components/parameters/Branch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValueTypeInput"
+      responses:
+        "204":
+          description: Updated
+        "400":
+          $ref: "#/components/responses/InvalidParameter"
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Referenced"
+    delete:
+      tags:
+        - ValueType
+      summary: Delete a value type
+      operationId: deleteValueType
+      parameters:
+        - $ref: "#/components/parameters/KNID"
+        - $ref: "#/components/parameters/VTID"
+        - $ref: "#/components/parameters/Branch"
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Referenced"
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  parameters:
+    KNID:
+      name: kn_id
+      in: path
+      required: true
+      description: Business knowledge network ID
+      schema:
+        type: string
+    VTID:
+      name: vt_id
+      in: path
+      required: true
+      description: Value type ID
+      schema:
+        type: string
+    Branch:
+      name: branch
+      in: query
+      description: Branch name. Defaults to main.
+      schema:
+        type: string
+        default: main
+  responses:
+    InvalidParameter:
+      description: Invalid parameters, including value rules the specification refuses
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Forbidden:
+      description: The caller lacks the knowledge-network permission
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    NotFound:
+      description: Knowledge network or value type not found
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Referenced:
+      description: |-
+        BknBackend.ValueType.Referenced. Data properties name the value type; error_details is
+        `{"reason": "...", "references": [ValueTypeReference]}`.
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+  schemas:
+    AccountInfo:
+      type: object
+      description: Account information for creators and updaters
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+    ValueTypeInput:
+      type: object
+      description: Writable value type fields for create and update requests
+      required:
+        - name
+        - base_type
+      properties:
+        id:
+          type: string
+          description: Optional on creation; generated when empty. Ignored on update.
+        name:
+          type: string
+          description: Name, unique in the network, with a maximum length of 40
+        tags:
+          type: array
+          items:
+            type: string
+        comment:
+          type: string
+        icon:
+          type: string
+        color:
+          type: string
+        base_type:
+          type: string
+          enum:
+            - string
+            - keyword
+            - integer
+            - unsigned integer
+            - float
+            - decimal
+            - date
+            - datetime
+            - timestamp
+        enum:
+          type: array
+          description: The valid values. Goes with none of range, length and pattern.
+          items:
+            $ref: "#/components/schemas/ValueTypeEnumItem"
+        range:
+          type: object
+          description: Closed interval; numbers for a numeric base type, ISO 8601 text for a date or time base type.
+          properties:
+            min: {}
+            max: {}
+        length:
+          type: object
+          description: Closed interval on the number of characters.
+          properties:
+            min:
+              type: integer
+            max:
+              type: integer
+        pattern:
+          type: string
+          description: Regular expression the whole value matches
+        unit:
+          type: string
+    ValueTypeEnumItem:
+      type: object
+      required:
+        - value
+        - display
+      properties:
+        value:
+          type: string
+          description: The stored value, written as text whatever the base type
+        display:
+          type: string
+        deprecated:
+          type: boolean
+          description: Kept for stored data, not for new values
+        description:
+          type: string
+    ValueType:
+      allOf:
+        - $ref: "#/components/schemas/ValueTypeInput"
+        - type: object
+          properties:
+            kn_id:
+              type: string
+            branch:
+              type: string
+            module_type:
+              type: string
+              description: Always value_type
+            creator:
+              $ref: "#/components/schemas/AccountInfo"
+            create_time:
+              type: integer
+              format: int64
+            updater:
+              $ref: "#/components/schemas/AccountInfo"
+            update_time:
+              type: integer
+              format: int64
+    ValueTypeCreateRequest:
+      type: object
+      required:
+        - entries
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValueTypeInput"
+    ValueTypeReference:
+      type: object
+      description: A data property that names the value type
+      properties:
+        object_type_id:
+          type: string
+        object_type_name:
+          type: string
+        property:
+          type: string
+        property_type:
+          type: string

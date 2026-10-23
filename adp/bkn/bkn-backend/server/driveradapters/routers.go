@@ -38,6 +38,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/relation_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/risk_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/value_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/version"
 )
 
@@ -60,6 +61,7 @@ type restHandler struct {
 	ots                     interfaces.ObjectTypeService
 	rts                     interfaces.RelationTypeService
 	rtsRisk                 interfaces.RiskTypeService
+	vts                     interfaces.ValueTypeService
 	oms                     interfaces.ObjectMetricServiceV1
 	bs                      interfaces.BKNService
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
@@ -99,6 +101,7 @@ func NewRestHandler(appSetting *common.AppSetting, recorder operationAuditRecord
 		ots:                     object_type.NewObjectTypeService(appSetting),
 		rts:                     relation_type.NewRelationTypeService(appSetting),
 		rtsRisk:                 risk_type.NewRiskTypeService(appSetting),
+		vts:                     value_type.NewValueTypeService(appSetting),
 		bs:                      bkn.NewBKNService(appSetting),
 		projectionGrantVerifier: projectionVerifier,
 		cqs:                     cypher.NewCypherQueryService(appSetting),
@@ -191,6 +194,13 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.PUT("/knowledge-networks/:kn_id/risk-types/:rt_id", r.verifyJsonContentType(), r.UpdateRiskTypeByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/risk-types", r.ListRiskTypesByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.GetRiskTypesByEx)
+
+		// Value types.
+		apiV1.POST("/knowledge-networks/:kn_id/value-types", r.verifyJsonContentType(), r.CreateValueTypesByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/value-types", r.ListValueTypesByEx)
+		apiV1.GET("/knowledge-networks/:kn_id/value-types/:vt_id", r.GetValueTypeByEx)
+		apiV1.PUT("/knowledge-networks/:kn_id/value-types/:vt_id", r.verifyJsonContentType(), r.UpdateValueTypeByEx)
+		apiV1.DELETE("/knowledge-networks/:kn_id/value-types/:vt_id", r.DeleteValueTypeByEx)
 
 		// Action schedule management.
 		apiV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByEx)
@@ -289,6 +299,13 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiInV1.GET("/knowledge-networks/:kn_id/risk-types", r.GetRiskTypesByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.GetRiskTypesByInWithPath)
 		apiInV1.DELETE("/knowledge-networks/:kn_id/risk-types/:rt_ids", r.DeleteRiskTypes)
+
+		// Value types (internal).
+		apiInV1.POST("/knowledge-networks/:kn_id/value-types", r.verifyJsonContentType(), r.CreateValueTypesByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/value-types", r.ListValueTypesByIn)
+		apiInV1.GET("/knowledge-networks/:kn_id/value-types/:vt_id", r.GetValueTypeByIn)
+		apiInV1.PUT("/knowledge-networks/:kn_id/value-types/:vt_id", r.verifyJsonContentType(), r.UpdateValueTypeByIn)
+		apiInV1.DELETE("/knowledge-networks/:kn_id/value-types/:vt_id", r.DeleteValueTypeByIn)
 
 		// Action schedule management.
 		apiInV1.POST("/knowledge-networks/:kn_id/action-schedules", r.verifyJsonContentType(), r.CreateActionScheduleByIn)

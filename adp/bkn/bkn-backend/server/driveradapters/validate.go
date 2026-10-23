@@ -55,6 +55,11 @@ var objectNameErrorCode = map[string][]string{
 		berrors.BknBackend_RiskType_NullParameter_Name,
 		berrors.BknBackend_RiskType_LengthExceeded_Name,
 	},
+
+	interfaces.MODULE_TYPE_VALUE_TYPE: {
+		berrors.BknBackend_ValueType_NullParameter_Name,
+		berrors.BknBackend_ValueType_LengthExceeded_Name,
+	},
 }
 
 func commonValidationDetail(ctx context.Context, name string, templateData map[string]any) string {
