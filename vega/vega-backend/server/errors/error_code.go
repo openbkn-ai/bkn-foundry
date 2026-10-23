@@ -106,8 +106,10 @@ var (
 	}
 )
 
+// init 在注册错误码前初始化服务国际化消息。
 func init() {
 	locale.Register()
+
 	rest.Register(commonErrCodeList)
 	rest.Register(CatalogErrCodeList)
 	rest.Register(CatalogHealthCheckScheduleErrCodeList)

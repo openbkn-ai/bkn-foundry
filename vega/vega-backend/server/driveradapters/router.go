@@ -428,10 +428,10 @@ func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Vi
 // HTTPErrorOrInternal 保留 Service 返回的 HTTP 错误；其他错误转换为调用方指定的内部错误码。
 func httpErrorOrInternal(ctx context.Context, err error, internalErrorCode string) *rest.HTTPError {
 	var httpErr *rest.HTTPError
-	if errors.As(err, &httpErr) {
+	if errors.As(err, &httpErr) && httpErr != nil {
 		return httpErr
 	}
 
-	return rest.NewHTTPError(ctx, http.StatusInternalServerError, internalErrorCode).
-		WithErrorDetails(err.Error())
+	logger.Errorf("request failed with internal diagnostic: %v", err)
+	return rest.NewHTTPError(ctx, http.StatusInternalServerError, internalErrorCode)
 }

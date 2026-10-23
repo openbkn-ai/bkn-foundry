@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -146,11 +147,14 @@ func TestValidateResourceRequestRejectsDuplicateFeatureTypes(t *testing.T) {
 					}
 
 					var httpErr *rest.HTTPError
-					require.ErrorAs(t, ValidateResourceRequest(rest.WithLanguage(context.Background(), rest.AmericanEnglish), req), &httpErr)
+					require.ErrorAs(t, ValidateResourceRequest(i18n.WithLanguage(context.Background(), i18n.AmericanEnglish), req), &httpErr)
 					require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 					require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.BaseError.ErrorCode)
-					require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.BaseError.DescriptionTemplateData)
-					require.Equal(t, "Field title already has a fulltext feature", httpErr.BaseError.Description)
+					require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.BaseError.Metadata)
+					renderErr := httpErr.Render()
+					rendered := httpErr.BaseError
+					require.NoError(t, renderErr)
+					require.Equal(t, "Field title already has a fulltext feature. Please keep only one feature of this type for the field", rendered.Description)
 					require.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
 				})
 			}

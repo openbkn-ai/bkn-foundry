@@ -910,7 +910,7 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 
 // replaceResourceIDWithSchemaTable replaces resource placeholders with quoted source identifiers.
 func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context,
-	sql any, resourceIDs []string, catalog *interfaces.Catalog, inputDialect string) (string, error) {
+	sql any, resourceIDs []string, _ *interfaces.Catalog, inputDialect string) (string, error) {
 
 	replacedSQL := sql.(string)
 	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)

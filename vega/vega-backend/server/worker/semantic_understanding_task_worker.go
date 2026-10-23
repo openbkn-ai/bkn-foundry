@@ -20,15 +20,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/bkn_agent"
-	// "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog" // Catalog 任务恢复时启用。
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/semantic_understanding_task"
@@ -592,7 +591,7 @@ func reconcileResourceSemanticSampleWarnings(ctx context.Context,
 	if len(omissions) == 0 {
 		return resultJSON, confidenceDetailJSON, nil
 	}
-	ctx = rest.WithLanguage(ctx, input.Options.Language)
+	ctx = i18n.WithLanguage(ctx, i18n.ResolveLanguage(input.Options.Language))
 	allFieldsOmittedByPolicy := input.SampleContext.Status == interfaces.SemanticUnderstandingSampleStatusAllFieldsOmittedByPolicy
 
 	resultJSON, err := reconcileResourceSemanticSampleWarningPayload(

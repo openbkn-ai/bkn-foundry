@@ -27,7 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 )
 
 // mockCipher 实现 kwcrypto.Cipher 接口用于测试
@@ -223,7 +223,7 @@ func TestDecryptSensitiveFields(t *testing.T) {
 func TestCatalogServiceCheckExistByID(t *testing.T) {
 	t.Run("check exist by idfound", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockCA.EXPECT().GetByID(gomock.Any(), "test-id").
 			Return(&interfaces.Catalog{ID: "test-id"}, nil)
 
@@ -238,7 +238,7 @@ func TestCatalogServiceCheckExistByID(t *testing.T) {
 	})
 	t.Run("check exist by idnot found", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockCA.EXPECT().GetByID(gomock.Any(), "missing-id").
 			Return(nil, nil)
 
@@ -253,7 +253,7 @@ func TestCatalogServiceCheckExistByID(t *testing.T) {
 	})
 	t.Run("check exist by iderror", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockCA.EXPECT().GetByID(gomock.Any(), "test-id").
 			Return(nil, fmt.Errorf("db error"))
 
@@ -268,7 +268,7 @@ func TestCatalogServiceCheckExistByID(t *testing.T) {
 func TestCatalogServiceCheckExistByName(t *testing.T) {
 	t.Run("check exist by name found", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockCA.EXPECT().GetByName(gomock.Any(), "test").
 			Return(&interfaces.Catalog{Name: "test"}, nil)
 
@@ -286,7 +286,7 @@ func TestCatalogServiceCheckExistByName(t *testing.T) {
 func TestCatalogServiceCreate(t *testing.T) {
 	t.Run("checks permission before catalog uniqueness", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(permissionErr)
 
@@ -300,8 +300,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 	t.Run("rejects duplicate name after permission check", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByName(gomock.Any(), "duplicate").Return(&interfaces.Catalog{Name: "duplicate"}, nil)
 
@@ -316,11 +316,11 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 	t.Run("does not expose connector initialization error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		sensitiveError := "invalid endpoint db.internal with token secret"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).
 			Return(nil, errors.New(sensitiveError))
@@ -354,14 +354,14 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		connector := mock_interfaces.NewMockConnector(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
 		sensitiveError := "dial tcp db.internal:3306 with password secret failed"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
@@ -385,8 +385,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 	t.Run("create logical catalog defaults to disabled and unchecked", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -426,8 +426,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 	t.Run("rolls back transaction when catalog creation fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -454,7 +454,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 	t.Run("rejects health check schedule for logical catalog before persistence", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		cs := &catalogService{ps: mockPS}
@@ -475,8 +475,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 	t.Run("create enabled true", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -510,8 +510,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 	})
 	t.Run("create internal requires built-in admin and uses catalog hierarchy", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -555,7 +555,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 	})
 	t.Run("physical catalog creates default inherit schedule", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		mockHCSS := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
 		mockHCSS.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Catalog{}), nil).Return(&interfaces.CatalogHealthCheckSchedule{}, nil)
 
 		cs := &catalogService{hcss: mockHCSS}
@@ -580,7 +580,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 	t.Run("returns schedule creation error without compensating delete", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockHCSS := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		mockHCSS := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
 		createErr := errors.New("schedule insert failed")
 		catalog := &interfaces.Catalog{ID: "catalog-1", Type: interfaces.CatalogTypePhysical}
 
@@ -598,9 +598,9 @@ func TestCatalogServiceCreate(t *testing.T) {
 func TestCatalogServiceTestConnection(t *testing.T) {
 	t.Run("returns connector details while redacting sensitive config during preflight", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
-		connector := mock_interfaces.NewMockConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		config := interfaces.ConnectorConfig{
 			"host":      "db.example.com",
 			"port":      3306,
@@ -637,10 +637,10 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 	})
 	t.Run("returns connector details for a saved catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
-		connector := mock_interfaces.NewMockConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		config := interfaces.ConnectorConfig{
 			"host":     "db.example.com",
 			"port":     3306,
@@ -685,11 +685,11 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 
 	t.Run("does not expose connector initialization error during preflight", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		sensitiveError := "invalid endpoint db.internal with token secret"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).
 			Return(nil, errors.New(sensitiveError))
@@ -707,8 +707,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 
 	t.Run("returns not found for missing catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			ID:   "missing",
@@ -726,8 +726,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 	})
 	t.Run("rejects internal catalog for non-admin", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			ID:   "internal-catalog",
@@ -748,8 +748,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 	})
 	t.Run("redacts catalog query error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
 		sensitiveError := "select t_catalog failed at db.internal"
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(nil, errors.New(sensitiveError))
@@ -767,9 +767,9 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 	})
 	t.Run("redacts health status update error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
-		connector := mock_interfaces.NewMockConnector(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
 		sensitiveError := "update t_catalog health status failed at db.internal"
 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -782,7 +782,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "catalog-1", gomock.Any()).
 			Return(errors.New(sensitiveError))
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
@@ -804,8 +804,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 	})
 	t.Run("test connection logical catalog returns an explicit failure", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		catalog := &interfaces.Catalog{
 			ID: "catalog-1",
 			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
@@ -834,7 +834,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 
 	t.Run("rejects manual connection test without modify permission", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		permissionErr := errors.New("modify permission denied")
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
@@ -850,7 +850,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 
 	t.Run("internal connection test bypasses user permission checks", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{ID: "catalog-1"}, nil)
 
 		cs := &catalogService{ca: mockCA}
@@ -885,7 +885,7 @@ func TestSanitizeConnectionError(t *testing.T) {
 func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 	t.Run("passes configured timeout to connector", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockConnector(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
 		cs := &catalogService{appSetting: &common.AppSetting{CatalogHealthCheck: common.CatalogHealthCheckConfig{Timeout: 2 * time.Second}}}
 
 		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
@@ -900,7 +900,7 @@ func TestCatalogServiceTestConnectorConnection(t *testing.T) {
 
 	t.Run("uses default timeout when configuration is absent", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockConnector(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
 		cs := &catalogService{appSetting: &common.AppSetting{}}
 
 		connector.EXPECT().TestConnection(gomock.Any()).DoAndReturn(func(ctx context.Context) error {
@@ -928,9 +928,9 @@ func TestCatalogServiceUpdate(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-			ps := mock_interfaces.NewMockPermissionService(ctrl)
-			cf := mock_interfaces.NewMockConnectorFactory(ctrl)
+			ca := vmock.NewMockCatalogAccess(ctrl)
+			ps := vmock.NewMockPermissionService(ctrl)
+			cf := vmock.NewMockConnectorFactory(ctrl)
 			db, sqlMock, err := sqlmock.New()
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = db.Close() })
@@ -986,8 +986,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("does not load catalog when modify permission is denied", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		permissionErr := errors.New("modify permission denied")
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
@@ -1003,8 +1003,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("rejects connector type change", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
@@ -1024,8 +1024,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("rejects enabled state change", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
@@ -1045,8 +1045,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("rejects duplicate changed name", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
@@ -1067,15 +1067,15 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("explicit empty config fails construction even when unhealthy is allowed", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		sensitiveError := "invalid endpoint db.internal with token secret"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
 			ID: "catalog-1", Name: "physical-catalog", ConnectorType: "mariadb",
 		}, nil)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", interfaces.ConnectorConfig{}).
 			Return(nil, errors.New(sensitiveError))
@@ -1096,9 +1096,9 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		connector := mock_interfaces.NewMockConnector(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
 		sensitiveError := "dial tcp db.internal:3306 with password secret failed"
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1107,7 +1107,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		}, nil)
 		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(sensitiveError))
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
 
@@ -1134,10 +1134,10 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("successful connection test updates health check status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		connector := mock_interfaces.NewMockConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -1190,10 +1190,10 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("allowed unhealthy connection test updates health check status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		connector := mock_interfaces.NewMockConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		connector := vmock.NewMockConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -1231,8 +1231,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("uses transaction", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -1252,8 +1252,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("returns conflict for stale catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -1286,8 +1286,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 
 	t.Run("returns conflict when no catalog is updated", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -1313,8 +1313,8 @@ func TestCatalogServiceUpdate(t *testing.T) {
 func TestCatalogServiceSetEnabled(t *testing.T) {
 	t.Run("set enabled reenable sets health status unchecked", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
@@ -1346,8 +1346,8 @@ func TestCatalogServiceSetEnabled(t *testing.T) {
 	})
 	t.Run("set enabled disable preserves health status", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCA.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
@@ -1379,8 +1379,8 @@ func TestCatalogServiceSetEnabled(t *testing.T) {
 	})
 	t.Run("does not load catalog when modify permission is denied", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		permissionErr := errors.New("modify permission denied")
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
@@ -1396,8 +1396,8 @@ func TestCatalogServiceSetEnabled(t *testing.T) {
 	})
 	t.Run("already enabled catalog is idempotent", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		existing := &interfaces.Catalog{ID: "catalog-1", Name: "catalog", Enabled: true}
 
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1413,7 +1413,7 @@ func TestCatalogServiceSetEnabled(t *testing.T) {
 
 func TestCatalogServiceInternalGetByIDs(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+	mockCA := vmock.NewMockCatalogAccess(ctrl)
 	cs := &catalogService{ca: mockCA}
 
 	empty, err := cs.InternalGetByIDs(context.Background(), nil)
@@ -1432,9 +1432,9 @@ func TestCatalogServiceInternalGetByIDs(t *testing.T) {
 func TestCatalogServiceGetByIDs(t *testing.T) {
 	t.Run("preserves requested order from keyed access results", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockUMS := vmock.NewMockUserMgmtService(ctrl)
 		ids := []string{"c1", "c2"}
 		mockCA.EXPECT().GetByIDs(gomock.Any(), ids).Return(map[string]*interfaces.Catalog{"c2": {ID: "c2"}, "c1": {ID: "c1"}}, nil)
 		mockPS.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, ids, gomock.Any(), interfaces.VISIBILITY_MATCH_ALL).
@@ -1488,9 +1488,9 @@ func TestCatalogServiceList(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				ctrl := gomock.NewController(t)
-				mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-				mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-				mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+				mockCA := vmock.NewMockCatalogAccess(ctrl)
+				mockPS := vmock.NewMockPermissionService(ctrl)
+				mockUMS := vmock.NewMockUserMgmtService(ctrl)
 				permissions := make(map[string]interfaces.PermissionResourceOps, len(tc.permitted))
 				for _, id := range tc.permitted {
 					permissions[id] = interfaces.PermissionResourceOps{
@@ -1514,9 +1514,9 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 	t.Run("includes detail and summary catalogs but preserves their effective operations", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockUMS := vmock.NewMockUserMgmtService(ctrl)
 		params := interfaces.CatalogsQueryParams{
 			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: -1},
 		}
@@ -1554,9 +1554,9 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 	t.Run("keeps catalogs when account name lookup fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockUMS := vmock.NewMockUserMgmtService(ctrl)
 
 		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}, {CatalogID: "c3"}}
 		catalogs := []*interfaces.CatalogSummary{{ID: "c1"}, {ID: "c2"}, {ID: "c3"}}
@@ -1586,9 +1586,9 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 	t.Run("list pagination", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockUMS := vmock.NewMockUserMgmtService(ctrl)
 
 		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}, {CatalogID: "c3"}, {CatalogID: "c4"}, {CatalogID: "c5"}}
 		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
@@ -1623,8 +1623,8 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 	t.Run("list offset beyond total", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 
 		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}}
 		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
@@ -1650,9 +1650,9 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 	t.Run("list permission filters out", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockUMS := vmock.NewMockUserMgmtService(ctrl)
 
 		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}, {CatalogID: "c3"}}
 		catalogs := []*interfaces.CatalogSummary{{ID: "c1"}, {ID: "c3"}}
@@ -1682,7 +1682,7 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 	t.Run("list dberror", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("db error"))
 
 		cs := &catalogService{ca: mockCA}
@@ -1693,9 +1693,9 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 	t.Run("list excludes internal catalog for non-admin", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
+		mockUMS := vmock.NewMockUserMgmtService(ctrl)
 
 		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}}
 		params := interfaces.CatalogsQueryParams{
@@ -1725,7 +1725,7 @@ func TestCatalogServiceList(t *testing.T) {
 	})
 	t.Run("requests internal catalogs for the built-in admin", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
 		params := interfaces.CatalogsQueryParams{}
 		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), interfaces.CatalogsQueryParams{IncludeBuiltin: true}).Return(nil, nil)
 
@@ -1743,8 +1743,8 @@ func TestCatalogServiceList(t *testing.T) {
 func TestCatalogServiceListConnectorTypeStats(t *testing.T) {
 	t.Run("aggregates authorized refs", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		refs := []interfaces.CatalogConnectorTypePermissionRef{
 			{CatalogID: "logical-1", CatalogType: interfaces.CatalogTypeLogical, ConnectorType: ""},
 			{CatalogID: "mysql-1", CatalogType: interfaces.CatalogTypePhysical, ConnectorType: "mysql"},
@@ -1776,8 +1776,8 @@ func TestCatalogServiceListConnectorTypeStats(t *testing.T) {
 
 	t.Run("filters permissions in batches", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		mockCA := vmock.NewMockCatalogAccess(ctrl)
+		mockPS := vmock.NewMockPermissionService(ctrl)
 		refs := make([]interfaces.CatalogConnectorTypePermissionRef, catalogAuthResourcePermissionBatchSize+1)
 		for index := range refs {
 			refs[index] = interfaces.CatalogConnectorTypePermissionRef{
@@ -1813,7 +1813,7 @@ func TestCatalogServiceListConnectorTypeStats(t *testing.T) {
 
 func TestCatalogServiceListAuthResourcesDoesNotFilterByPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+	ca := vmock.NewMockCatalogAccess(ctrl)
 	cs := &catalogService{ca: ca}
 	params := interfaces.AuthResourceQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Offset: 1, Limit: 1},
@@ -1831,7 +1831,7 @@ func TestCatalogServiceListAuthResourcesDoesNotFilterByPermission(t *testing.T) 
 
 func TestCatalogServiceListAuthResourcesIncludesInternalForBuiltinAdmin(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+	ca := vmock.NewMockCatalogAccess(ctrl)
 	cs := &catalogService{ca: ca}
 	params := interfaces.AuthResourceQueryParams{}
 	ca.EXPECT().ListAuthResourceEntries(gomock.Any(), interfaces.AuthResourceQueryParams{IncludeBuiltin: true}).
@@ -1850,14 +1850,14 @@ func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 
-	ra := mock_interfaces.NewMockResourceAccess(ctrl)
-	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-	ps := mock_interfaces.NewMockPermissionService(ctrl)
-	bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	dsa := mock_interfaces.NewMockDiscoverScheduleAccess(ctrl)
-	dta := mock_interfaces.NewMockDiscoverTaskAccess(ctrl)
-	suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-	hcss := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	ca := vmock.NewMockCatalogAccess(ctrl)
+	ps := vmock.NewMockPermissionService(ctrl)
+	bta := vmock.NewMockBuildTaskAccess(ctrl)
+	dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+	dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+	suta := vmock.NewMockSemanticUnderstandingTaskAccess(ctrl)
+	hcss := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
 	cs := &catalogService{ca: ca, ps: ps, ra: ra, bta: bta, dsa: dsa, dta: dta, suta: suta, hcss: hcss}
 
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
@@ -1925,8 +1925,8 @@ func TestCatalogServiceGetDeletionImpact(t *testing.T) {
 
 func TestCatalogServiceGetDeletionImpactDependencyFailure(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-	ps := mock_interfaces.NewMockPermissionService(ctrl)
+	ca := vmock.NewMockCatalogAccess(ctrl)
+	ps := vmock.NewMockPermissionService(ctrl)
 	sensitiveError := "dial tcp db.internal:3306: connection refused"
 
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
@@ -1948,8 +1948,8 @@ func TestCatalogServiceGetDeletionImpactDependencyFailure(t *testing.T) {
 
 func TestCatalogServiceGetDeletionImpactReturnsNotFoundWhenCatalogDisappears(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-	ps := mock_interfaces.NewMockPermissionService(ctrl)
+	ca := vmock.NewMockCatalogAccess(ctrl)
+	ps := vmock.NewMockPermissionService(ctrl)
 
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "catalog-1",
@@ -1968,12 +1968,12 @@ func TestCatalogServiceGetDeletionImpactReturnsNotFoundWhenCatalogDisappears(t *
 
 func expectCatalogDeletionImpact(
 	ctrl *gomock.Controller,
-	ra *mock_interfaces.MockResourceAccess,
-	bta *mock_interfaces.MockBuildTaskAccess,
-	dsa *mock_interfaces.MockDiscoverScheduleAccess,
-	dta *mock_interfaces.MockDiscoverTaskAccess,
-	suta *mock_interfaces.MockSemanticUnderstandingTaskAccess,
-	hcss *mock_interfaces.MockCatalogHealthCheckScheduleService,
+	ra *vmock.MockResourceAccess,
+	bta *vmock.MockBuildTaskAccess,
+	dsa *vmock.MockDiscoverScheduleAccess,
+	dta *vmock.MockDiscoverTaskAccess,
+	suta *vmock.MockSemanticUnderstandingTaskAccess,
+	hcss *vmock.MockCatalogHealthCheckScheduleService,
 	catalogType string,
 	buildTasks []*interfaces.BuildTask,
 	resourceBlocked bool,
@@ -2014,8 +2014,8 @@ func expectCatalogDeletionImpact(
 func TestCatalogServiceDeleteByID(t *testing.T) {
 	t.Run("returns not found when catalog disappears after authorization", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
 
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "c1",
@@ -2033,14 +2033,14 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 
 	t.Run("commits database deletion and tolerates permission cleanup failures", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
-		ra := mock_interfaces.NewMockResourceAccess(ctrl)
-		hcss := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
-		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		dsa := mock_interfaces.NewMockDiscoverScheduleAccess(ctrl)
-		dta := mock_interfaces.NewMockDiscoverTaskAccess(ctrl)
-		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		ra := vmock.NewMockResourceAccess(ctrl)
+		hcss := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+		bta := vmock.NewMockBuildTaskAccess(ctrl)
+		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+		suta := vmock.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -2075,14 +2075,14 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 
 	t.Run("does not clean external state when database deletion rolls back", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
-		ra := mock_interfaces.NewMockResourceAccess(ctrl)
-		hcss := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
-		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		dsa := mock_interfaces.NewMockDiscoverScheduleAccess(ctrl)
-		dta := mock_interfaces.NewMockDiscoverTaskAccess(ctrl)
-		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		ra := vmock.NewMockResourceAccess(ctrl)
+		hcss := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
+		bta := vmock.NewMockBuildTaskAccess(ctrl)
+		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+		suta := vmock.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		db, sqlMock, err := sqlmock.New()
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = db.Close() })
@@ -2110,14 +2110,14 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 
 	t.Run("rejects protected resources using the shared impact", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-		ps := mock_interfaces.NewMockPermissionService(ctrl)
-		ra := mock_interfaces.NewMockResourceAccess(ctrl)
-		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		dsa := mock_interfaces.NewMockDiscoverScheduleAccess(ctrl)
-		dta := mock_interfaces.NewMockDiscoverTaskAccess(ctrl)
-		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		hcss := mock_interfaces.NewMockCatalogHealthCheckScheduleService(ctrl)
+		ca := vmock.NewMockCatalogAccess(ctrl)
+		ps := vmock.NewMockPermissionService(ctrl)
+		ra := vmock.NewMockResourceAccess(ctrl)
+		bta := vmock.NewMockBuildTaskAccess(ctrl)
+		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
+		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+		suta := vmock.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		hcss := vmock.NewMockCatalogHealthCheckScheduleService(ctrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "c1",
 		}, []string{interfaces.OPERATION_TYPE_DELETE}).Return(nil)
@@ -2194,13 +2194,13 @@ func TestCatalogServiceGetByID(t *testing.T) {
 // ===== Internal catalog（系统内部目录） =====
 
 func newS2SCatalogService(t *testing.T) (
-	*catalogService, *mock_interfaces.MockCatalogAccess, *mock_interfaces.MockPermissionService, *mock_interfaces.MockUserMgmtService) {
+	*catalogService, *vmock.MockCatalogAccess, *vmock.MockPermissionService, *vmock.MockUserMgmtService) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
-	ca := mock_interfaces.NewMockCatalogAccess(ctrl)
-	ps := mock_interfaces.NewMockPermissionService(ctrl)
-	ums := mock_interfaces.NewMockUserMgmtService(ctrl)
+	ca := vmock.NewMockCatalogAccess(ctrl)
+	ps := vmock.NewMockPermissionService(ctrl)
+	ums := vmock.NewMockUserMgmtService(ctrl)
 	cs := &catalogService{ca: ca, ps: ps, ums: ums}
 	return cs, ca, ps, ums
 }

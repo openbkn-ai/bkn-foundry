@@ -12,9 +12,10 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/stretchr/testify/require"
+
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
-	"github.com/stretchr/testify/require"
 )
 
 func TestConnectorCreationError(t *testing.T) {

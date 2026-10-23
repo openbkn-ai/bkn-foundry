@@ -10,10 +10,11 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/require"
 )
 
-func TestLocaleCatalogs(t *testing.T) {
-	require.NoError(t, i18n.ValidateLocaleDir(".", rest.SimplifiedChinese, rest.SimplifiedChinese, rest.AmericanEnglish))
+func TestLocaleMessages(t *testing.T) {
+	Register()
+	Register()
+	require.NoError(t, i18n.ValidateMessageBundles())
 }

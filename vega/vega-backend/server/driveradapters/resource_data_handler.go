@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mitchellh/mapstructure"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -37,7 +38,7 @@ import (
 //	POST   → batch create documents (dataset category only)
 //	DELETE → delete documents by filter (dataset category only)
 func (r *restHandler) PostResourceDataByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -78,7 +79,7 @@ func (r *restHandler) postResourceData(c *gin.Context, visitor hydra.Visitor, s2
 		r.deleteResourceDataByQuery(c, ctx, span)
 	default:
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_OverrideMethod)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 	}
@@ -289,7 +290,7 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 
 // GetResourceDataDocByEx handles GET /api/vega-backend/v1/resources/:id/data/:docid (External).
 func (r *restHandler) GetResourceDataDocByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -366,7 +367,7 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 // PutResourceDataDocByEx handles PUT /api/vega-backend/v1/resources/:id/data/:docid (External).
 // Single-document update; docid from path takes precedence over any `_id` field in body.
 func (r *restHandler) PutResourceDataDocByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -443,7 +444,7 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 // Deletes one or more documents by IDs. Missing IDs reject the whole request by default;
 // callers can opt into skipping them with ?ignore_missing=true.
 func (r *restHandler) DeleteResourceDataByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

@@ -14,13 +14,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	// "sort" // Catalog 任务恢复时启用。
 	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -571,7 +571,7 @@ func normalizeResourceSemanticUnderstandingRequest(ctx context.Context, resource
 		}
 	}
 	if normalized.Language == "" {
-		normalized.Language = rest.GetLanguageByCtx(ctx)
+		normalized.Language = string(i18n.GetLanguageByCtx(ctx))
 	}
 	if err := validateSemanticUnderstandingRequest(normalized); err != nil {
 		return nil, err
@@ -797,7 +797,7 @@ func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, r
 */
 
 func validateSemanticUnderstandingRequest(req *interfaces.CreateSemanticUnderstandingTaskRequest) error {
-	if req.Language != rest.AmericanEnglish && req.Language != rest.SimplifiedChinese {
+	if req.Language != string(i18n.AmericanEnglish) && req.Language != string(i18n.SimplifiedChinese) {
 		return fmt.Errorf("language must be en-US or zh-CN")
 	}
 	switch req.ApplyMode {

@@ -14,16 +14,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
-
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common/visitor"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -59,7 +59,7 @@ func parseDryRun(ctx context.Context, c *gin.Context) (bool, error) {
 // ListCatalogsByEx handles GET /api/vega-backend/v1/catalogs (External)
 func (r *restHandler) ListCatalogsByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -75,7 +75,7 @@ func (r *restHandler) ListCatalogsByIn(c *gin.Context) {
 
 // ListCatalogConnectorTypeStatsByEx handles GET /api/vega-backend/v1/catalogs/stats/by-connector-type.
 func (r *restHandler) ListCatalogConnectorTypeStatsByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -147,7 +147,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 		offset, limit, sort, direction, interfaces.CATALOG_SORT)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -165,7 +165,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 
 	if err := ValidateCatalogListQueryParams(ctx, params); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -195,7 +195,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 // CreateCatalogByEx handles POST /api/vega-backend/v1/catalogs (External)
 func (r *restHandler) CreateCatalogByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -267,7 +267,7 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 // GetCatalogsByEx handles GET /api/vega-backend/v1/catalogs/:ids (External)
 func (r *restHandler) GetCatalogsByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -342,7 +342,7 @@ func (r *restHandler) getCatalogs(c *gin.Context, visitor hydra.Visitor) {
 // UpdateCatalogByEx handles PUT /api/vega-backend/v1/catalogs/:id (External)
 func (r *restHandler) UpdateCatalogByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -431,7 +431,7 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 
 // EnableCatalogByEx handles POST /api/vega-backend/v1/catalogs/:id/enable (External)
 func (r *restHandler) EnableCatalogByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -446,7 +446,7 @@ func (r *restHandler) EnableCatalogByIn(c *gin.Context) {
 
 // DisableCatalogByEx handles POST /api/vega-backend/v1/catalogs/:id/disable (External)
 func (r *restHandler) DisableCatalogByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -493,7 +493,7 @@ func (r *restHandler) setCatalogEnabled(c *gin.Context, visitor hydra.Visitor, e
 // DeleteCatalogByEx handles DELETE /api/vega-backend/v1/catalogs/:id (External).
 func (r *restHandler) DeleteCatalogByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -574,7 +574,7 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 // GetCatalogHealthStatusByEx handles GET /api/vega-backend/v1/catalogs/:id/health-status (External)
 func (r *restHandler) GetCatalogHealthStatusByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -627,7 +627,7 @@ func (r *restHandler) getCatalogHealthStatus(c *gin.Context, visitor hydra.Visit
 
 // TestConnectionConfigByEx handles POST /api/vega-backend/v1/catalogs/test-connection (External).
 func (r *restHandler) TestConnectionConfigByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -673,7 +673,7 @@ func (r *restHandler) testConnectionConfig(c *gin.Context, visitor hydra.Visitor
 // TestConnectionByEx handles POST /api/vega-backend/v1/catalogs/:id/test-connection (External)
 func (r *restHandler) TestConnectionByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -727,7 +727,7 @@ func (r *restHandler) testConnection(c *gin.Context, visitor hydra.Visitor) {
 // DiscoverCatalogResourcesByEx handles POST /api/vega-backend/v1/catalogs/:id/discover (External)
 func (r *restHandler) DiscoverCatalogResourcesByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

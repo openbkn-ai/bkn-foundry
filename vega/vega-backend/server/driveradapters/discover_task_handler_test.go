@@ -196,7 +196,7 @@ func Test_DiscoverTaskRestHandler_GetDiscoverTask(t *testing.T) {
 
 		require.Equal(t, http.StatusInternalServerError, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "VegaBackend.DiscoverTask.InternalError.GetFailed")
-		assert.Contains(t, w.Body.String(), "database unavailable")
+		assert.NotContains(t, w.Body.String(), "database unavailable")
 	})
 }
 

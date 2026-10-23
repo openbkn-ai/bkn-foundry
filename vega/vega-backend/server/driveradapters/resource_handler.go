@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -32,7 +33,7 @@ import (
 // ListResourcesByEx handles GET /api/vega-backend/v1/resources (External)
 func (r *restHandler) ListResourcesByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -87,7 +88,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 		offset, limit, sort, direction, interfaces.RESOURCE_SORT)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -106,7 +107,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 
 	if err := ValidateResourceListQueryParams(ctx, params); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -136,7 +137,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 // CreateResourceByEx handles POST /api/vega-backend/v1/resources (External)
 func (r *restHandler) CreateResourceByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -207,7 +208,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 // GetResourcesByEx handles GET /api/vega-backend/v1/resources/:ids (External)
 func (r *restHandler) GetResourcesByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -289,7 +290,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 // UpdateResourceByEx handles PUT /api/vega-backend/v1/resources/:id (External)
 func (r *restHandler) UpdateResourceByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -368,7 +369,7 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 
 // EnableResourceByEx handles POST /api/vega-backend/v1/resources/:id/enable.
 func (r *restHandler) EnableResourceByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -382,7 +383,7 @@ func (r *restHandler) EnableResourceByIn(c *gin.Context) {
 
 // DisableResourceByEx handles POST /api/vega-backend/v1/resources/:id/disable.
 func (r *restHandler) DisableResourceByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -425,7 +426,7 @@ func (r *restHandler) setResourceEnabled(c *gin.Context, visitor hydra.Visitor, 
 // DeleteResourcesByEx handles DELETE /api/vega-backend/v1/resources/:ids (External)
 func (r *restHandler) DeleteResourcesByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -496,7 +497,7 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 
 // DiscoverResourceByEx handles POST /api/vega-backend/v1/resources/:id/discover.
 func (r *restHandler) DiscoverResourceByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

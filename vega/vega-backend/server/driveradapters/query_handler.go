@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -27,7 +28,7 @@ import (
 // RawQueryByEx handles POST /api/vega-backend/v1/resources/query (External)
 func (r *restHandler) RawQueryByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -43,7 +44,7 @@ func (r *restHandler) RawQueryByIn(c *gin.Context) {
 
 // CloseCursorByEx releases a cursor created by either query API.
 func (r *restHandler) CloseCursorByEx(c *gin.Context) {
-	caller, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	caller, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

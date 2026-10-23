@@ -127,14 +127,14 @@ func validateSchemaProperties(ctx context.Context, props []*interfaces.Property,
 		}
 		if _, dup := nameMap[prop.Name]; dup {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_FieldName).
-				WithDescription(map[string]any{"FieldName": prop.Name}).
+				WithMetadata(map[string]any{"FieldName": prop.Name}).
 				WithErrorDetails(fmt.Sprintf("Dataset field '%s' already exists", prop.Name))
 		}
 		nameMap[prop.Name] = struct{}{}
 
 		if _, dup := displayNameMap[prop.DisplayName]; dup {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName).
-				WithDescription(map[string]any{"FieldName": prop.Name, "DisplayName": prop.DisplayName}).
+				WithMetadata(map[string]any{"FieldName": prop.Name, "DisplayName": prop.DisplayName}).
 				WithErrorDetails(fmt.Sprintf("Dataset field '%s' display name '%s' already exists", prop.Name, prop.DisplayName))
 		}
 		displayNameMap[prop.DisplayName] = struct{}{}
@@ -183,7 +183,7 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 		}
 		if _, dup := featureNameMap[f.FeatureName]; dup {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Dataset_Duplicated_FieldFeatureName).
-				WithDescription(map[string]any{"FieldFeatureName": f.FeatureName}).
+				WithMetadata(map[string]any{"FieldFeatureName": f.FeatureName}).
 				WithErrorDetails(fmt.Sprintf("Dataset field feature '%s' already exists", f.FeatureName))
 		}
 		featureNameMap[f.FeatureName] = struct{}{}
@@ -220,7 +220,7 @@ func validatePropertyFeatures(ctx context.Context, prop *interfaces.Property, pr
 
 		if _, duplicate := featureTypeMap[f.FeatureType]; duplicate {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType).
-				WithDescription(map[string]any{"FieldName": prop.Name, "FieldFeatureType": f.FeatureType}).
+				WithMetadata(map[string]any{"FieldName": prop.Name, "FieldFeatureType": f.FeatureType}).
 				WithErrorDetails(fmt.Sprintf("property %q has more than one %q feature", prop.Name, f.FeatureType))
 		}
 		featureTypeMap[f.FeatureType] = struct{}{}

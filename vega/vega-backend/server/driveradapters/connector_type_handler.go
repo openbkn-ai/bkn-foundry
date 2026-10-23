@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -29,7 +30,7 @@ import (
 // ListConnectorTypes handles GET /api/vega-backend/v1/connector-types
 func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 	// Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -85,7 +86,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_ConnectorType_InternalError)
 
 		// Log the error.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Attach error details to the trace.
@@ -105,7 +106,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 
 	if err := ValidateConnectorTypeListQueryParams(ctx, params); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_ConnectorType_InternalError)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -133,7 +134,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 // CreateConnectorType handles POST /api/vega-backend/v1/connector-types
 func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 	// Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -201,7 +202,7 @@ func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 // GetConnectorType handles GET /api/vega-backend/v1/connector-types/:type
 func (r *restHandler) GetConnectorType(c *gin.Context) {
 	// Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -240,7 +241,7 @@ func (r *restHandler) GetConnectorType(c *gin.Context) {
 // UpdateConnectorType handles PUT /api/vega-backend/v1/connector-types/:type
 func (r *restHandler) UpdateConnectorType(c *gin.Context) {
 	// Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -326,7 +327,7 @@ func (r *restHandler) UpdateConnectorType(c *gin.Context) {
 // DeleteConnectorType handles DELETE /api/vega-backend/v1/connector-types/:type
 func (r *restHandler) DeleteConnectorType(c *gin.Context) {
 	// Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -384,7 +385,7 @@ func (r *restHandler) DisableConnectorType(c *gin.Context) {
 }
 
 func (r *restHandler) setConnectorTypeEnabled(c *gin.Context, value bool, spanName string) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -419,7 +420,7 @@ func (r *restHandler) setConnectorTypeEnabled(c *gin.Context, value bool, spanNa
 	if err := r.cts.SetEnabled(ctx, tp, value); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_ConnectorType_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, err)
+		rest.ReplyError(c, httpErr)
 		return
 	}
 	if r.auditRecorder != nil {

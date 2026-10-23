@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -22,7 +23,7 @@ import (
 )
 
 func (r *restHandler) GetCatalogHealthCheckScheduleByEx(c *gin.Context) {
-	v, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	v, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err == nil {
 		r.getCatalogHealthCheckSchedule(c, v)
 	}
@@ -77,7 +78,7 @@ func (r *restHandler) getCatalogHealthCheckSchedule(c *gin.Context, v hydra.Visi
 }
 
 func (r *restHandler) UpdateCatalogHealthCheckScheduleByEx(c *gin.Context) {
-	v, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	v, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err == nil {
 		r.updateCatalogHealthCheckSchedule(c, v)
 	}

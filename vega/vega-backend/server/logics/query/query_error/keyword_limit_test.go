@@ -12,10 +12,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	_ "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 func TestKeywordLimitHTTPError(t *testing.T) {
