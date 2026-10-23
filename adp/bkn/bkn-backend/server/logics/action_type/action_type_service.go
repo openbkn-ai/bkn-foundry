@@ -268,6 +268,9 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			}
 		}
 
+		if err = ats.checkDeclarations(ctx, actionType); err != nil {
+			return []string{}, err
+		}
 		bknAction := logics.ToBKNActionType(actionType)
 		actionType.BKNRawContent = bknsdk.SerializeActionType(bknAction)
 	}
@@ -294,6 +297,10 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			interfaces.OPERATION_TYPE_MODIFY); err != nil {
 			return []string{}, err
 		}
+	}
+	// The action types being overwritten have been checked for modify above, or by the import.
+	if err = ats.checkOverwriteKeepsDeclarations(ctx, updateActionTypes, false); err != nil {
+		return []string{}, err
 	}
 
 	// Create.
@@ -339,7 +346,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 
 	// Update.
 	if len(updateActionTypes) == 1 {
-		err = ats.UpdateActionType(ctx, tx, updateActionTypes[0], strictMode)
+		err = ats.updateActionType(ctx, tx, updateActionTypes[0], strictMode, false)
 		if err != nil {
 			return []string{}, err
 		}
@@ -412,14 +419,22 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 		}
 	}
 	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
-	_, _, err = ats.handleActionTypeImportMode(ctx, mode, actionTypes)
+	_, updates, err := ats.handleActionTypeImportMode(ctx, mode, actionTypes)
 	if err != nil {
+		return err
+	}
+	// Validation has checked modify on the network only; the action types being overwritten are
+	// checked before their aliases are listed.
+	if err = ats.checkOverwriteKeepsDeclarations(ctx, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
 		return err
 	}
 
 	for _, actionType := range actionTypes {
 		actionType.KNID = knID
 		actionType.Branch = branch
+		if err = ats.checkDeclarations(ctx, actionType); err != nil {
+			return err
+		}
 		if strictMode {
 			if actionType.ObjectTypeID != "" {
 				if batch == nil || !batchindex.HasObjectTypeID(actionType.ObjectTypeID, batch) {
@@ -612,7 +627,16 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 }
 
 // Update action types.
+// UpdateActionType is the interactive update: aliases the request leaves out keep their stored
+// value.
 func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, actionType *interfaces.ActionType, strictMode bool) error {
+	return ats.updateActionType(ctx, tx, actionType, strictMode, true)
+}
+
+// updateActionType writes actionType over the stored one. keepStoredAliases is the interactive
+// merge; an import overwrite takes the file as the whole state.
+func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, actionType *interfaces.ActionType,
+	strictMode bool, keepStoredAliases bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateActionType")
 	defer span.End()
 
@@ -630,6 +654,14 @@ func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, 
 		actionType.KNID, actionType.ATID)
 	err = ats.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
+		return err
+	}
+	if keepStoredAliases {
+		if err = ats.keepStoredAliases(ctx, actionType); err != nil {
+			return err
+		}
+	}
+	if err = ats.checkDeclarations(ctx, actionType); err != nil {
 		return err
 	}
 
@@ -1000,6 +1032,8 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 		words := []string{}
 		for _, actionType := range actionTypes {
 			arr := []string{actionType.ATName}
+			// Aliases follow the name; without them the text is as before.
+			arr = append(arr, actionType.Aliases...)
 			arr = append(arr, actionType.Tags...)
 			arr = append(arr, actionType.Comment, actionType.BKNRawContent)
 			word := strings.Join(arr, "\n")

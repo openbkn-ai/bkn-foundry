@@ -111,3 +111,13 @@ ConditionValueArrayNonEmpty = "The {{.operation}} operation requires at least on
 ConditionCurrentValueNotArray = "The current operation requires a string value, not an array."
 ConditionCurrentValueStringRequired = "The current operation requires a string value."
 ConditionCurrentUnitInvalid = "The current operation unit must be one of [year, month, week, day, hour, minute]; got {{.unit}}."
+
+[BknBackend.ActionType.InvalidParameter.Declarations]
+Description = "Invalid action type declarations"
+Solution = "Fix aliases as the error details say and try again."
+ErrorLink = ""
+
+[BknBackend.ActionType.DeclarationsWouldBeCleared]
+Description = "This overwrite would clear existing action type declarations"
+Solution = "The error details list the declarations it would clear. Submit again with confirm_clear_declarations=true to clear them, or keep them in the file."
+ErrorLink = ""

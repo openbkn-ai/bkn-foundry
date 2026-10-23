@@ -1008,6 +1008,12 @@ components:
         name:
           description: Action type name
           type: string
+        aliases:
+          description: |
+            Other names of the action type (BKN spec 3.0); not its own name or another action type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
+          type: array
+          items:
+            type: string
         tags:
           description: Tags。
           type: array
@@ -1090,6 +1096,12 @@ components:
         name:
           description: Action type name
           type: string
+        aliases:
+          description: |
+            Other names of the action type (BKN spec 3.0); not its own name or another action type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
+          type: array
+          items:
+            type: string
         tags:
           description: Tags. May be empty.
           type: array
@@ -1182,6 +1194,12 @@ components:
         name:
           description: Action type name
           type: string
+        aliases:
+          description: |
+            Other names of the action type (BKN spec 3.0); not its own name or another action type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
+          type: array
+          items:
+            type: string
         tags:
           description: Tags. May be empty.
           type: array

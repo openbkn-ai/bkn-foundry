@@ -63,8 +63,9 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 			Tags:    bknObj.Tags,
 			Comment: bknObj.Description,
 		},
-		KNID:   knID,
-		Branch: branch,
+		Aliases: interfaces.NormalizeAliases(bknObj.Aliases),
+		KNID:    knID,
+		Branch:  branch,
 	}
 
 	// Convert DataSource.
@@ -84,6 +85,7 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 			Type:        dp.Type,
 			Comment:     dp.Description,
 			MaskRule:    dp.MaskRule,
+			Aliases:     interfaces.NormalizeAliases(dp.Aliases),
 			Semantic:    dp.Semantic,
 			Required:    dp.Required,
 			Constraints: toADPConstraints(dp.Constraints),
@@ -149,10 +151,11 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 	bknObj := &bknsdk.BknObjectType{
 		BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{
-			Type: interfaces.MODULE_TYPE_OBJECT_TYPE,
-			ID:   adpObj.OTID,
-			Name: adpObj.OTName,
-			Tags: adpObj.Tags,
+			Type:    interfaces.MODULE_TYPE_OBJECT_TYPE,
+			ID:      adpObj.OTID,
+			Name:    adpObj.OTName,
+			Tags:    adpObj.Tags,
+			Aliases: adpObj.Aliases,
 		},
 		Summary:        bknsdk.ExtractSummary(adpObj.Comment),
 		Description:    adpObj.Comment,
@@ -178,6 +181,7 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 			Type:        adpDP.Type,
 			Description: adpDP.Comment,
 			MaskRule:    adpDP.MaskRule,
+			Aliases:     adpDP.Aliases,
 			Semantic:    adpDP.Semantic,
 			Required:    adpDP.Required,
 			Constraints: toBKNConstraints(adpDP.Constraints),
@@ -399,8 +403,9 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 			Tags:    bknAction.Tags,
 			Comment: bknAction.Description,
 		},
-		KNID:   knID,
-		Branch: branch,
+		Aliases: interfaces.NormalizeAliases(bknAction.Aliases),
+		KNID:    knID,
+		Branch:  branch,
 	}
 	if adpAction.ActionIntent == "" && bknAction.ActionType != "" {
 		adpAction.ActionIntent = bknAction.ActionType
@@ -477,6 +482,7 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 			Tags:         adpAction.Tags,
 			ActionType:   adpAction.ActionType,
 			ActionIntent: adpAction.ActionIntent,
+			Aliases:      adpAction.Aliases,
 		},
 		Summary:     bknsdk.ExtractSummary(adpAction.Comment),
 		Description: adpAction.Comment,

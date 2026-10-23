@@ -110,3 +110,13 @@ ConditionValueArrayNonEmpty = "{{.operation}} 操作至少要求一个数组值�
 ConditionCurrentValueNotArray = "current 操作要求字符串值，不能为数组。"
 ConditionCurrentValueStringRequired = "current 操作要求字符串值。"
 ConditionCurrentUnitInvalid = "current 操作的单位必须为 [year, month, week, day, hour, minute] 之一，当前为 {{.unit}}。"
+
+[BknBackend.ActionType.InvalidParameter.Declarations]
+Description = "行动类声明不合法"
+Solution = "按错误详情修正 aliases 后重试。"
+ErrorLink = ""
+
+[BknBackend.ActionType.DeclarationsWouldBeCleared]
+Description = "本次覆盖会清掉行动类已有的声明"
+Solution = "错误详情列出了将被清掉的声明。确认要清掉时，带上 confirm_clear_declarations=true 重新提交；不想清掉时，在文件中保留这些声明。"
+ErrorLink = ""

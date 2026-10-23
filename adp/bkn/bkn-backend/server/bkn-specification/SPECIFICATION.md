@@ -532,7 +532,7 @@ Incremental Key: updated_at
 
 ### 6.8 属性声明（3.0）
 
-> **状态：3.0。** `Semantic`、`Required`、`Aliases`、对象类的 `aliases` 与 `### Property Constraints` 的全部键（含 `value_type`，§16）已在规范库实现。bkn-backend 存储属性声明（`Semantic`、`Required`、`### Property Constraints` 的全部键），对象类接口读写它们，保存时按本节规则校验，`value_type` 须是本网络已有的值类型（§16）。别名的存储、上传含值类型与别名的 3.0 包随 bkn-foundry#2281 实现中，在此之前上传含它们的 3.0 包时按「此版本尚不支持」拒绝并指出位置。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** `Semantic`、`Required`、`Aliases`、对象类的 `aliases` 与 `### Property Constraints` 的全部键（含 `value_type`，§16）已在规范库实现。bkn-backend 存储属性声明（`Aliases`、`Semantic`、`Required`、`### Property Constraints` 的全部键）与对象类、行动类的 `aliases`，对象类、行动类接口读写它们，保存时按本节规则校验：`value_type` 须是本网络已有的值类型（§16），别名不得是同类其他定义的名称。上传含值类型与别名的 3.0 包随 bkn-foundry#2281 实现中，在此之前按「此版本尚不支持」拒绝并指出位置。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 属性声明描述数据应当满足的要求，只用于理解与展示，**不校验源数据**；声明本身写错时在导入和保存时拒绝。
 

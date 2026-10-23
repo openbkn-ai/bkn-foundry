@@ -238,7 +238,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		if err := validateDeclarations(ctx, objectType); err != nil {
 			return []string{}, err
 		}
-		if err := ots.checkValueTypes(ctx, objectType); err != nil {
+		if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
 			return []string{}, err
 		}
 		if strictMode {
@@ -473,7 +473,7 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 		if err := validateDeclarations(ctx, objectType); err != nil {
 			return err
 		}
-		if err := ots.checkValueTypes(ctx, objectType); err != nil {
+		if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
 			return err
 		}
 		if strictMode {
@@ -1174,7 +1174,7 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 	if err := validateDeclarations(ctx, objectType); err != nil {
 		return err
 	}
-	if err := ots.checkValueTypes(ctx, objectType); err != nil {
+	if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
 		return err
 	}
 	if strictMode {
@@ -1302,7 +1302,7 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	if err := validateDeclarations(ctx, objectType); err != nil {
 		return err
 	}
-	if err := ots.checkValueTypes(ctx, objectType); err != nil {
+	if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
 		return err
 	}
 
@@ -1737,6 +1737,8 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 		words := []string{}
 		for _, objectType := range objectTypes {
 			arr := []string{objectType.OTName}
+			// Aliases follow the name; without them the text is as before.
+			arr = append(arr, objectType.Aliases...)
 			arr = append(arr, objectType.Tags...)
 			arr = append(arr, objectType.Comment, objectType.BKNRawContent)
 			word := strings.Join(arr, "\n")

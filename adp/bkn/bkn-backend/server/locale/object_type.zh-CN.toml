@@ -206,7 +206,7 @@ VectorModelIDRequired = "必须提供 vector_config.model_id。"
 
 [BknBackend.ObjectType.InvalidParameter.Declarations]
 Description = "属性声明不合法"
-Solution = "按错误详情修正 semantic、required 或 constraints 后重试。"
+Solution = "按错误详情修正 aliases、semantic、required 或 constraints 后重试。"
 ErrorLink = ""
 
 [BknBackend.ObjectType.DeclarationsWouldBeCleared]

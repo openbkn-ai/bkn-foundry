@@ -96,6 +96,10 @@ type ObjectTypeWithKeyField struct {
 type ObjectType struct {
 	ObjectTypeWithKeyField `mapstructure:",squash"`
 	CommonInfo             `mapstructure:",squash"`
+	// Aliases are the other names of the object type (BKN spec 3.0, §6.8). An interactive update
+	// that leaves them out keeps the stored ones.
+	Aliases         []string `json:"aliases,omitempty" mapstructure:"aliases"`
+	aliasesDeclared bool
 
 	KNID          string          `json:"kn_id" mapstructure:"kn_id"`
 	Branch        string          `json:"branch" mapstructure:"branch"`
@@ -191,6 +195,7 @@ type DataProperty struct {
 	// The BKN spec 3.0 property declarations (SPECIFICATION.md §6.8). They describe what the data
 	// should be, for understanding and display; nothing checks the source data against them. A
 	// property without them reads and stores exactly as before.
+	Aliases     []string             `json:"aliases,omitempty" mapstructure:"aliases,omitempty"`
 	Semantic    string               `json:"semantic,omitempty" mapstructure:"semantic,omitempty"`
 	Required    bool                 `json:"required,omitempty" mapstructure:"required,omitempty"`
 	Constraints *PropertyConstraints `json:"constraints,omitempty" mapstructure:"constraints,omitempty"`
@@ -204,13 +209,14 @@ type DataProperty struct {
 
 // Declaration fields of a data property, as they are named in JSON.
 const (
+	DECLARATION_ALIASES     = "aliases"
 	DECLARATION_SEMANTIC    = "semantic"
 	DECLARATION_REQUIRED    = "required"
 	DECLARATION_CONSTRAINTS = "constraints"
 )
 
 // DeclarationFields lists the declaration fields of a data property.
-var DeclarationFields = []string{DECLARATION_SEMANTIC, DECLARATION_REQUIRED, DECLARATION_CONSTRAINTS}
+var DeclarationFields = []string{DECLARATION_ALIASES, DECLARATION_SEMANTIC, DECLARATION_REQUIRED, DECLARATION_CONSTRAINTS}
 
 // PropertyConstraints is a property's entry in ### Property Constraints (SPECIFICATION.md §6.8). An
 // empty field is not declared.
@@ -241,9 +247,11 @@ type LengthRange struct {
 // ClearedDeclaration is a stored declaration an overwrite would clear: the file the definition is
 // overwritten with does not carry it.
 type ClearedDeclaration struct {
-	ObjectTypeID string   `json:"object_type_id"`
-	Property     string   `json:"property"`
-	Fields       []string `json:"fields"`
+	ObjectTypeID string `json:"object_type_id,omitempty"`
+	ActionTypeID string `json:"action_type_id,omitempty"`
+	// Property is empty for a declaration of the definition itself, such as its aliases.
+	Property string   `json:"property,omitempty"`
+	Fields   []string `json:"fields"`
 }
 
 // EncodeIndexedConstraints rewrites data_properties[].constraints of an object type document for
@@ -334,7 +342,7 @@ func (p *DataProperty) HasDeclarations(primaryKeys []string) bool {
 	if p == nil {
 		return false
 	}
-	return p.Semantic != "" || !p.Constraints.IsEmpty() || (p.Required && !slices.Contains(primaryKeys, p.Name))
+	return len(p.Aliases) > 0 || p.Semantic != "" || !p.Constraints.IsEmpty() || (p.Required && !slices.Contains(primaryKeys, p.Name))
 }
 
 // KeepUndeclared copies from stored the declaration fields this property's JSON left out, the
@@ -343,6 +351,9 @@ func (p *DataProperty) HasDeclarations(primaryKeys []string) bool {
 func (p *DataProperty) KeepUndeclared(stored *DataProperty) {
 	if p == nil || stored == nil {
 		return
+	}
+	if !p.Declares(DECLARATION_ALIASES) {
+		p.Aliases = stored.Aliases
 	}
 	if !p.Declares(DECLARATION_SEMANTIC) {
 		p.Semantic = stored.Semantic
@@ -356,6 +367,7 @@ func (p *DataProperty) KeepUndeclared(stored *DataProperty) {
 	if p.Constraints.IsEmpty() {
 		p.Constraints = nil
 	}
+	p.Aliases = NormalizeAliases(p.Aliases)
 }
 
 // HasRetiredIndexConfig reports whether the request contained the retired property-level index_config field.

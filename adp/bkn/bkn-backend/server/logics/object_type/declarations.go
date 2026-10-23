@@ -38,16 +38,33 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 		if p.Constraints.IsEmpty() {
 			p.Constraints = nil
 		}
+		p.Aliases = interfaces.NormalizeAliases(p.Aliases)
 	}
+	objectType.Aliases = interfaces.NormalizeAliases(objectType.Aliases)
 	if err := bknsdk.ValidateObjectTypeDeclarations(logics.ToBKNObjectType(objectType)); err != nil {
 		return invalidDeclarations(ctx, err.Error())
 	}
 	return nil
 }
 
-// checkValueTypes resolves the value types the data properties name: each must be a value type of
-// the network, with the property's Type as its base_type.
-func (ots *objectTypeService) checkValueTypes(ctx context.Context, objectType *interfaces.ObjectType) error {
+// checkNetworkDeclarations checks the declarations of an object type against the rest of its
+// network: an alias is not the name of another object type, and the value types the data
+// properties name are value types of the network, with the property's Type as their base_type.
+// An object type without aliases or value types reads nothing more.
+func (ots *objectTypeService) checkNetworkDeclarations(ctx context.Context, objectType *interfaces.ObjectType) error {
+	if len(objectType.Aliases) > 0 {
+		named, err := ots.ota.GetObjectTypeIdentitiesByIDsOrNames(ctx, objectType.KNID, objectType.Branch, nil, objectType.Aliases)
+		if err != nil {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+				WithErrorDetails(err.Error())
+		}
+		for _, other := range named {
+			if other.OTID != objectType.OTID {
+				return invalidDeclarations(ctx, fmt.Sprintf("object type %q alias %q is the name of object type %q",
+					objectType.OTID, other.OTName, other.OTID))
+			}
+		}
+	}
 	var ids []string
 	for _, p := range objectType.DataProperties {
 		if p != nil && p.Constraints != nil && p.Constraints.ValueType != "" && !slices.Contains(ids, p.Constraints.ValueType) {
@@ -83,6 +100,9 @@ func keepUndeclared(update *interfaces.ObjectType, stored *interfaces.ObjectType
 	if stored == nil {
 		return
 	}
+	if !update.DeclaresAliases() {
+		update.Aliases = stored.Aliases
+	}
 	storedByName := make(map[string]*interfaces.DataProperty, len(stored.DataProperties))
 	for _, p := range stored.DataProperties {
 		if p != nil {
@@ -106,12 +126,18 @@ func clearedDeclarations(stored, incoming *interfaces.ObjectType) []interfaces.C
 		}
 	}
 	var cleared []interfaces.ClearedDeclaration
+	if len(stored.Aliases) > 0 && len(incoming.Aliases) == 0 {
+		cleared = append(cleared, interfaces.ClearedDeclaration{ObjectTypeID: stored.OTID, Fields: []string{interfaces.DECLARATION_ALIASES}})
+	}
 	for _, s := range stored.DataProperties {
 		if !s.HasDeclarations(stored.PrimaryKeys) {
 			continue
 		}
 		in := incomingByName[s.Name]
 		var fields []string
+		if len(s.Aliases) > 0 && (in == nil || len(in.Aliases) == 0) {
+			fields = append(fields, interfaces.DECLARATION_ALIASES)
+		}
 		if s.Semantic != "" && (in == nil || in.Semantic == "") {
 			fields = append(fields, interfaces.DECLARATION_SEMANTIC)
 		}

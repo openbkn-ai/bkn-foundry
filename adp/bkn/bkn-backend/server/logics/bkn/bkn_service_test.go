@@ -641,6 +641,31 @@ func Test_bknService_ExportDeclarations(t *testing.T) {
 			So(network.ObjectTypes[0].DataProperties[2].Constraints.ValueType, ShouldEqual, "amount_cny")
 		})
 
+		Convey("Aliases are written as 3.0 and read back; 2.0 leaves them out\n", func() {
+			aliased := func() *interfaces.KN {
+				kn := declaredKN("kn1", false)
+				kn.ObjectTypes[0].Aliases = []string{"订货单"}
+				kn.ObjectTypes[0].DataProperties[2].Aliases = []string{"价款"}
+				return kn
+			}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(aliased(), nil)
+			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+			So(err, ShouldBeNil)
+			So(network.BknSpec, ShouldEqual, bknsdk.BknSpecV3)
+			So(network.ObjectTypes[0].Aliases, ShouldResemble, []string{"订货单"})
+			So(network.ObjectTypes[0].DataProperties[2].Aliases, ShouldResemble, []string{"价款"})
+
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(aliased(), nil)
+			withAliases, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_2)
+			So(err, ShouldBeNil)
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
+			plain, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			So(exportedFiles(t, withAliases), ShouldResemble, exportedFiles(t, plain))
+		})
+
 		Convey("2.0 leaves value types out, byte for byte as a network that never had them\n", func() {
 			svc.vts = valueTypesStub{list: []*interfaces.ValueType{{VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal"}}}
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
