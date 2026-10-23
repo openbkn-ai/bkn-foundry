@@ -17,7 +17,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -28,7 +27,6 @@ import (
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/locale"
 )
 
 // spanRecorder keeps the attributes set on any span started while it is the
@@ -73,15 +71,6 @@ func recordSpans(t *testing.T) *spanRecorder {
 	otel.SetTracerProvider(recordingTracerProvider{recorder: recorder})
 	t.Cleanup(func() { otel.SetTracerProvider(noop.NewTracerProvider()) })
 	return recorder
-}
-
-var registerLocaleOnce sync.Once
-
-// withLocale loads the message catalog, so a refusal's details read as they
-// would in production rather than as a bare message id.
-func withLocale(t *testing.T) {
-	t.Helper()
-	registerLocaleOnce.Do(locale.Register)
 }
 
 // recordingVega records which of the two ways a statement was sent to the raw
@@ -645,7 +634,6 @@ var queriesNamingAmount = []struct {
 // schema -- is refused wherever the query names it, by its logical name, and
 // nothing reaches vega-backend.
 func TestQueryRefusesPropertyWithoutFullAccess(t *testing.T) {
-	withLocale(t)
 	for _, level := range []string{interfaces.PROPERTY_ACCESS_MASKED, interfaces.PROPERTY_ACCESS_SCHEMA} {
 		for _, tc := range queriesNamingAmount {
 			t.Run(level+" "+tc.name, func(t *testing.T) {
@@ -691,7 +679,6 @@ func TestQueryRefusesPropertyWithoutFullAccess(t *testing.T) {
 }
 
 func TestPropertyRefusalIncludesTheRowFilterThatWouldAlsoShapeTheQuery(t *testing.T) {
-	withLocale(t)
 	permission := amountAt(interfaces.PROPERTY_ACCESS_MASKED)
 	permission.rowFilters = map[string]interfaces.RowFilterPredicate{
 		"kn_1/ot_order": {Kind: "false"},

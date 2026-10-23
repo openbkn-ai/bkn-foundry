@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -90,14 +91,14 @@ func TestObjectMetricV1PropertyUniquenessUsesRequestedLanguage(t *testing.T) {
 	}}
 	for _, test := range []struct {
 		name     string
-		language rest.Language
+		language i18n.Language
 		fragment string
 	}{
-		{name: "English", language: rest.AmericanEnglish, fragment: "already bound to logical property"},
-		{name: "Chinese", language: rest.SimplifiedChinese, fragment: "已绑定逻辑属性"},
+		{name: "English", language: i18n.AmericanEnglish, fragment: "already bound to logical property"},
+		{name: "Chinese", language: i18n.SimplifiedChinese, fragment: "已绑定逻辑属性"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateObjectMetricV1PropertyUniqueness(rest.WithLanguage(context.Background(), test.language), objectType)
+			err := validateObjectMetricV1PropertyUniqueness(i18n.WithLanguage(context.Background(), test.language), objectType)
 			var httpErr *rest.HTTPError
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("error = %v, want an HTTP error", err)

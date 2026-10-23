@@ -93,8 +93,10 @@ var (
 	}
 )
 
+// init prepares messages before registering the service error codes.
 func init() {
 	locale.Register()
+
 	rest.Register(errCodeList)
 	rest.Register(KNErrCodeList)
 	rest.Register(ObjectTypeErrCodeList)

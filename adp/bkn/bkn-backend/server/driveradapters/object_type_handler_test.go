@@ -18,6 +18,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -150,7 +151,7 @@ func Test_ObjectTypeRestHandler_CreateObjectTypes(t *testing.T) {
 		Convey("CheckKNExistByID failed\n", func() {
 			expectedErr := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_ObjectType_InternalError,
 				},
@@ -169,7 +170,7 @@ func Test_ObjectTypeRestHandler_CreateObjectTypes(t *testing.T) {
 		Convey("CreateObjectTypes failed\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_ObjectType_InternalError,
 				},
@@ -301,7 +302,7 @@ func Test_ObjectTypeRestHandler_UpdateObjectType(t *testing.T) {
 		Convey("UpdateObjectType failed\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_ObjectType_InternalError,
 				},
@@ -388,7 +389,7 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes(t *testing.T) {
 		Convey("DeleteObjectTypes failed\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_ObjectType_InternalError,
 				},
@@ -601,7 +602,7 @@ func Test_ObjectTypeRestHandler_ListObjectTypes(t *testing.T) {
 		Convey("ListObjectTypes failed\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_ObjectType_InternalError,
 				},
@@ -673,7 +674,7 @@ func Test_ObjectTypeRestHandler_GetObjectTypes(t *testing.T) {
 		Convey("GetObjectTypes failed\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_ObjectType_InternalError,
 				},
@@ -764,7 +765,7 @@ func Test_ObjectTypeRestHandler_SearchObjectTypes(t *testing.T) {
 		Convey("SearchObjectTypes failed\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_ObjectType_InternalError,
 				},
@@ -1102,7 +1103,7 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes_extraCases(t *testing.T) {
 		Convey("Failed when CheckKNExistByID returns error\n", func() {
 			httpErr := &rest.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
+				Lang:      i18n.DefaultLanguage,
 				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, httpErr)
@@ -1123,7 +1124,7 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes_extraCases(t *testing.T) {
 		Convey("Failed when CheckObjectTypeExistByID returns error\n", func() {
 			httpErr := &rest.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
+				Lang:      i18n.DefaultLanguage,
 				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ObjectType_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
@@ -1137,7 +1138,7 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes_extraCases(t *testing.T) {
 		Convey("Failed when ListRelationTypes returns error\n", func() {
 			httpErr := &rest.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
+				Lang:      i18n.DefaultLanguage,
 				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ObjectType_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
@@ -1164,7 +1165,7 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes_extraCases(t *testing.T) {
 		Convey("Failed when ListActionTypes returns error\n", func() {
 			httpErr := &rest.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
+				Lang:      i18n.DefaultLanguage,
 				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ObjectType_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)

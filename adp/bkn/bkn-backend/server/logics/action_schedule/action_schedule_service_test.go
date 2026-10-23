@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/robfig/cron/v3"
 	. "github.com/smartystreets/goconvey/convey"
@@ -281,7 +282,7 @@ func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 
 func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 	Convey("Test UpdateScheduleStatus\n", t, func() {
-		ctx := rest.WithLanguage(context.Background(), rest.AmericanEnglish)
+		ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
 		svc, mockCtrl, asa, _ := newTestService(t)
 		defer mockCtrl.Finish()
 

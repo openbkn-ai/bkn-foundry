@@ -963,10 +963,14 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Error, "Object type not found")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx),
+			"BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound",
+			map[string]any{"objectTypeID": otID})
+		if renderErr != nil {
+			logger.Errorf("localized service message failed: %v", renderErr)
+		}
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound).
-			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx),
-				"BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound",
-				map[string]any{"objectTypeID": otID}))
+			WithErrorDetails(localizedText)
 	} else if err != nil {
 		common.LogSafeError(ctx, "Row scan error", err)
 		return nil, err

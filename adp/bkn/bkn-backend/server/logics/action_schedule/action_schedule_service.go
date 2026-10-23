@@ -44,7 +44,11 @@ type actionScheduleService struct {
 }
 
 func actionScheduleDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 // NewActionScheduleService creates a singleton instance of ActionScheduleService

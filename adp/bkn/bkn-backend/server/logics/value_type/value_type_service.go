@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -60,7 +61,11 @@ func NewValueTypeService(appSetting *common.AppSetting) interfaces.ValueTypeServ
 }
 
 func detail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func internalError(ctx context.Context, err error) error {
@@ -195,8 +200,12 @@ func (s *valueTypeService) CreateValueTypes(ctx context.Context, tx *sql.Tx, val
 func (s *valueTypeService) splitByImportMode(ctx context.Context, mode string,
 	valueTypes []*interfaces.ValueType) (creates, updates []*interfaces.ValueType, err error) {
 	if mode != interfaces.ImportMode_Normal && mode != interfaces.ImportMode_Ignore && mode != interfaces.ImportMode_Overwrite {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil)
+		if renderErr != nil {
+			logger.Errorf("localized service message failed: %v", renderErr)
+		}
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ImportMode).
-			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil))
+			WithErrorDetails(localizedText)
 	}
 	ids := make([]string, 0, len(valueTypes))
 	names := make([]string, 0, len(valueTypes))
@@ -229,7 +238,7 @@ func (s *valueTypeService) splitByImportMode(ctx context.Context, mode string,
 				WithErrorDetails(detail(ctx, "ValueTypeIDAlreadyExists", map[string]any{"valueTypeID": vt.VTID}))
 		default:
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeNameExisted).
-				WithDescription(map[string]any{"name": vt.VTName}).
+				WithMetadata(map[string]any{"name": vt.VTName}).
 				WithErrorDetails(detail(ctx, "ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName}))
 		}
 	}
@@ -322,7 +331,7 @@ func (s *valueTypeService) UpdateValueType(ctx context.Context, tx *sql.Tx, vt *
 		for _, other := range existing {
 			if other.VTID != vt.VTID {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeNameExisted).
-					WithDescription(map[string]any{"name": vt.VTName}).
+					WithMetadata(map[string]any{"name": vt.VTName}).
 					WithErrorDetails(detail(ctx, "ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName}))
 			}
 		}

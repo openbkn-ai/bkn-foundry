@@ -11,6 +11,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -61,7 +62,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 		ops := []string{"read"}
 
 		Convey("Failed: missing account info in context uses the Chinese catalog", func() {
-			err := svc.CheckPermission(rest.WithLanguage(context.Background(), rest.SimplifiedChinese), resource, ops)
+			err := svc.CheckPermission(i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese), resource, ops)
 
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
@@ -77,7 +78,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 		})
 
 		Convey("Failed: pa returns false uses the English permission detail", func() {
-			ctx := rest.WithLanguage(withAccountInfo(context.Background(), "u1", "user"), rest.AmericanEnglish)
+			ctx := i18n.WithLanguage(withAccountInfo(context.Background(), "u1", "user"), i18n.AmericanEnglish)
 			pa.EXPECT().CheckPermissions(gomock.Any(), gomock.Any()).Return(interfaces.PermissionChecksResponse{Allowed: false}, nil)
 
 			err := svc.CheckPermission(ctx, resource, ops)

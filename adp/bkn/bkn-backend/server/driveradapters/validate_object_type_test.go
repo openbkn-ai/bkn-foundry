@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -691,8 +692,8 @@ func TestValidateObjectTypeLocalizesInvalidParameterDetails(t *testing.T) {
 		language string
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "Object type customer uses unsupported data-source type table; only resource is supported."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "对象类 customer 的数据来源类型 table 不支持，仅支持 resource。"},
+		{"English", i18n.AmericanEnglish, "Object type customer uses unsupported data-source type table; only resource is supported."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "对象类 customer 的数据来源类型 table 不支持，仅支持 resource。"},
 	}
 
 	for _, testCase := range testCases {
@@ -704,7 +705,7 @@ func TestValidateObjectTypeLocalizesInvalidParameterDetails(t *testing.T) {
 					DataSource: &interfaces.ResourceInfo{Type: "table"},
 				},
 			}
-			err := ValidateObjectType(rest.WithLanguage(context.Background(), testCase.language), objectType, false)
+			err := ValidateObjectType(i18n.WithLanguage(context.Background(), testCase.language), objectType, false)
 			if err == nil {
 				t.Fatal("ValidateObjectType() error = nil, want invalid parameter error")
 			}
@@ -847,7 +848,7 @@ func Test_ValidateDataProperty(t *testing.T) {
 				DisplayName: "Secret",
 				MaskRule:    &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "*"},
 			}
-			err := ValidateDataProperty(rest.WithLanguage(ctx, rest.AmericanEnglish), prop, true)
+			err := ValidateDataProperty(i18n.WithLanguage(ctx, i18n.AmericanEnglish), prop, true)
 			So(err, ShouldNotBeNil)
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)

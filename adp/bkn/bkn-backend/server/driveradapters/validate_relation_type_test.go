@@ -10,6 +10,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -313,19 +314,19 @@ func TestValidateRelationTypeLocalizesInvalidParameterDetails(t *testing.T) {
 	}{
 		{
 			name:     "English",
-			language: rest.AmericanEnglish,
+			language: i18n.AmericanEnglish,
 			want:     "Relation type must be direct, indirect, or filtered_cross_join; received unsupported.",
 		},
 		{
 			name:     "SimplifiedChinese",
-			language: rest.SimplifiedChinese,
+			language: i18n.SimplifiedChinese,
 			want:     "关系类型仅支持 direct、indirect 和 filtered_cross_join，当前为 unsupported。",
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			ctx := rest.WithLanguage(context.Background(), testCase.language)
+			ctx := i18n.WithLanguage(context.Background(), testCase.language)
 			relationType := &interfaces.RelationType{
 				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 					RTID:   "rt1",
@@ -412,14 +413,14 @@ func TestRelationTypeValidationDetailsRespectLanguage(t *testing.T) {
 		language string
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "Relation type module type must be relation_type."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "关系类模块类型必须为 relation_type。"},
+		{"English", i18n.AmericanEnglish, "Relation type module type must be relation_type."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "关系类模块类型必须为 relation_type。"},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := ValidateRelationTypes(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				"kn-1",
 				[]*interfaces.RelationType{{ModuleType: "object_type"}},
 				true,

@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -35,7 +36,7 @@ func (r *restHandler) CreateActionScheduleByIn(c *gin.Context) {
 // CreateActionScheduleByEx creates a new action schedule (external)
 func (r *restHandler) CreateActionScheduleByEx(c *gin.Context) {
 	logger.Debug("Handler CreateActionScheduleByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -135,7 +136,7 @@ func (r *restHandler) UpdateActionScheduleByIn(c *gin.Context) {
 // UpdateActionScheduleByEx updates an existing action schedule (external)
 func (r *restHandler) UpdateActionScheduleByEx(c *gin.Context) {
 	logger.Debug("Handler UpdateActionScheduleByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -222,7 +223,7 @@ func (r *restHandler) UpdateActionScheduleStatusByIn(c *gin.Context) {
 // UpdateActionScheduleStatusByEx updates the status of an action schedule (external)
 func (r *restHandler) UpdateActionScheduleStatusByEx(c *gin.Context) {
 	logger.Debug("Handler UpdateActionScheduleStatusByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -299,7 +300,7 @@ func (r *restHandler) DeleteActionSchedulesByIn(c *gin.Context) {
 // DeleteActionSchedulesByEx deletes action schedules (external)
 func (r *restHandler) DeleteActionSchedulesByEx(c *gin.Context) {
 	logger.Debug("Handler DeleteActionSchedulesByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -370,7 +371,7 @@ func (r *restHandler) ListActionSchedulesByIn(c *gin.Context) {
 // ListActionSchedulesByEx lists action schedules (external)
 func (r *restHandler) ListActionSchedulesByEx(c *gin.Context) {
 	logger.Debug("Handler ListActionSchedulesByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -478,7 +479,7 @@ func (r *restHandler) GetActionScheduleByIn(c *gin.Context) {
 // GetActionScheduleByEx gets a single action schedule (external)
 func (r *restHandler) GetActionScheduleByEx(c *gin.Context) {
 	logger.Debug("Handler GetActionScheduleByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

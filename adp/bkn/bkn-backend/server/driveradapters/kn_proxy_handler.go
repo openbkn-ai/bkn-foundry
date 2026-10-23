@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/visitor"
@@ -23,12 +24,12 @@ func proxyRequestContext(c *gin.Context) (context.Context, string) {
 }
 
 func (r *restHandler) proxyOAuthRequestContext(c *gin.Context) (context.Context, string, bool) {
-	actor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	actor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return nil, "", false
 	}
 	account := interfaces.AccountInfo{ID: actor.ID, Type: string(actor.Type)}
-	return context.WithValue(rest.GetLanguageCtx(c), interfaces.ACCOUNT_INFO_KEY, account), actor.ID, true
+	return context.WithValue(i18n.GetLanguageCtx(c), interfaces.ACCOUNT_INFO_KEY, account), actor.ID, true
 }
 
 func (r *restHandler) GetKNProxy(c *gin.Context) {

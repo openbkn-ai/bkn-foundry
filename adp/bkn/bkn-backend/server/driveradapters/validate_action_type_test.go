@@ -10,6 +10,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -1012,14 +1013,14 @@ func TestActionTypeValidationDetailsRespectLanguage(t *testing.T) {
 		language string
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "The action type must be one of [add, modify, delete]; got unsupported."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "行动类型必须为 [add, modify, delete] 之一，当前为 unsupported。"},
+		{"English", i18n.AmericanEnglish, "The action type must be one of [add, modify, delete]; got unsupported."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "行动类型必须为 [add, modify, delete] 之一，当前为 unsupported。"},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := ValidateActionType(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				&interfaces.ActionType{ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
 					ATID: "at1", ATName: "action1", ObjectTypeID: "ot1", ActionType: "unsupported",
 				}},

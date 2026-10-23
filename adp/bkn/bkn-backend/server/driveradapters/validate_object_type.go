@@ -16,6 +16,7 @@ import (
 	"github.com/dlclark/regexp2"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
@@ -40,7 +41,7 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 		} else {
 			errDetails := objectTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"id": otID})
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_Duplicated_IDInFile).
-				WithDescription(map[string]any{"ObjectTypeID": otID}).
+				WithMetadata(map[string]any{"ObjectTypeID": otID}).
 				WithErrorDetails(errDetails)
 		}
 
@@ -453,5 +454,9 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 }
 
 func objectTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }

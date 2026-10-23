@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
@@ -2004,7 +2005,7 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 			defer mockCtrl.Finish()
 			aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 			svc := &actionTypeService{aoa: aoa}
-			ctx := rest.WithLanguage(context.Background(), rest.SimplifiedChinese)
+			ctx := i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese)
 			aoa.EXPECT().GetToolByID(gomock.Any(), "box-1", "tool-1").Return(
 				interfaces.NewDependencyError("execution-factory", "get_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 
@@ -2032,7 +2033,7 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 			defer mockCtrl.Finish()
 			aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 			svc := &actionTypeService{aoa: aoa}
-			ctx := rest.WithLanguage(context.Background(), rest.AmericanEnglish)
+			ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
 			aoa.EXPECT().GetMcpToolByName(gomock.Any(), "mcp-1", "create_order").Return(
 				interfaces.NewDependencyError("execution-factory", "get_mcp_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 

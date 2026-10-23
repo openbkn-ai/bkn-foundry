@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -42,7 +43,7 @@ type CypherQueryRequest struct {
 }
 
 func (r *restHandler) RunCypherQueryByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

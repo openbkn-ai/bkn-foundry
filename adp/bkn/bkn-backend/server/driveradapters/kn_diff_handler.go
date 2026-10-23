@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -42,7 +43,7 @@ type KNDiffRequestBody struct {
 
 // DiffKNsByEx compares two knowledge network branches (external endpoint).
 func (r *restHandler) DiffKNsByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -120,11 +121,15 @@ func validateKNDiffBody(ctx context.Context, body *KNDiffRequestBody) *rest.HTTP
 
 // knDiffValidationDetail renders one detail message of the comparison error code.
 func knDiffValidationDetail(ctx context.Context, name string) string {
-	return i18n.Translate(
-		rest.GetLanguageByCtx(ctx),
+	localizedText, renderErr := i18n.Render(
+		i18n.GetLanguageByCtx(ctx),
 		berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+name,
 		nil,
 	)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 // ObjectDataStatsRequestBody is the request body of the object data statistics endpoint.
@@ -142,7 +147,7 @@ type ObjectDataStatsSideRequest struct {
 
 // ObjectDataStatsByEx counts the data behind one object type on each side of a comparison.
 func (r *restHandler) ObjectDataStatsByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

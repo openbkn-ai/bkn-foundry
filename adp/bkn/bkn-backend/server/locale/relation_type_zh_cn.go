@@ -1,0 +1,60 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package locale
+
+import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
+var relationTypeZhCN = i18n.I18nMessages{
+	Locale: "zh-CN",
+	Messages: map[string]string{
+		"BknBackend.RelationType.Duplicated.IDInFile":                                               "存在重复的关系类ID。请检查参数是否正确。",
+		"BknBackend.RelationType.InvalidParameter":                                                  "请求参数不合法。请检查参数是否正确。",
+		"BknBackend.RelationType.InvalidParameter.ConceptCondition":                                 "关系类概念条件请求参数不合法。请检查参数是否正确。",
+		"BknBackend.RelationType.RelationTypeIDExisted":                                             "关系类ID已经存在。请检查参数是否正确。",
+		"BknBackend.RelationType.LengthExceeded.Name":                                               "关系类名称长度超出限制。请检查参数是否正确。",
+		"BknBackend.RelationType.NullParameter.Name":                                                "关系类名称为空。请检查参数是否正确。",
+		"BknBackend.RelationType.RelationTypeNotFound":                                              "关系类不存在。请检查参数是否正确。",
+		"BknBackend.RelationType.InternalError":                                                     "内部错误。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
+		"BknBackend.RelationType.InternalError.BeginTransactionFailed":                              "开启事务异常。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
+		"BknBackend.RelationType.InternalError.MissingTransaction":                                  "缺少事务。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
+		"BknBackend.RelationType.InternalError.CheckRelationTypeIfExistFailed":                      "检查关系类名称是否存在失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
+		"BknBackend.RelationType.InternalError.GetDataViewByIDFailed":                               "按ID获取数据视图失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
+		"BknBackend.RelationType.InternalError.GetRelationTypesByIDsFailed":                         "按ID获取关系类失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
+		"BknBackend.RelationType.InternalError.InsertOpenSearchDataFailed":                          "关系类概念索引插入失败。请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TypeNotSupported":                          "关系类型仅支持 {{.directType}}、{{.indirectType}} 和 {{.crossJoinType}}，当前为 {{.type}}。",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceObjectTypeIDRequired":                "关系类的 source_object_type_id 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetObjectTypeIDRequired":                "关系类的 target_object_type_id 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.MappingRulesRequired":                      "关系类的 mapping_rules 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TypeRequired":                              "提供 mapping_rules 时，type 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.UnsupportedType":                           "不支持关系类型 {{.type}}。",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRulesDecodeFailed":            "直接关联的 mapping_rules 解码失败：{{.error}}",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRulesRequired":                "直接关联的 mapping_rules 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectSourcePropertyRequired":              "direct mapping_rules[{{.index}}].source_property.name 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectTargetPropertyRequired":              "direct mapping_rules[{{.index}}].target_property.name 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRuleDuplicated":               "direct mapping_rules[{{.index}}] 的起点和终点映射规则不能重复。",
+		"BknBackend.RelationType.InvalidParameter.Detail.IndirectMappingRulesInvalid":               "间接关联的 mapping_rules 必须是 InDirectMapping 对象。",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceRequired":                 "间接关联的 backing_data_source 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceTypeRequired":             "backing_data_source.type 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceTypeInvalid":              "backing_data_source.type 必须为 {{.expected}}，当前为 {{.actual}}。",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceIDRequired":               "backing_data_source.id 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceNotFound":                 "backing 资源 {{.resource}} 不存在。",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingPropertyNotFound":                   "backing 资源 {{.resource}} 中不存在字段 {{.property}}。",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceMappingRulesRequired":                "间接关联的 source_mapping_rules 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceMappingSourcePropertyRequired":       "source_mapping_rules[{{.index}}].source_property.name 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceMappingBridgePropertyRequired":       "source_mapping_rules[{{.index}}].target_property.name 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceMappingRuleDuplicated":               "source_mapping_rules[{{.index}}] 的起点和终点映射规则不能重复。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingRulesRequired":                "间接关联的 target_mapping_rules 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingBridgePropertyRequired":       "target_mapping_rules[{{.index}}].source_property.name 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingTargetPropertyRequired":       "target_mapping_rules[{{.index}}].target_property.name 不能为空。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingRuleDuplicated":               "target_mapping_rules[{{.index}}] 的起点和终点映射规则不能重复。",
+		"BknBackend.RelationType.InvalidParameter.Detail.FilteredCrossJoinMappingRulesDecodeFailed": "分侧过滤全连接的 mapping_rules 解码失败：{{.error}}",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourcePropertyNotFound":                    "起点关联属性 {{.property}} 在起点对象类 {{.objectType}} 中不存在。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetPropertyNotFound":                    "终点关联属性 {{.property}} 在终点对象类 {{.objectType}} 中不存在。",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceConditionInvalid":                    "分侧过滤全连接起点条件无效。",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetConditionInvalid":                    "分侧过滤全连接终点条件无效。",
+		"BknBackend.RelationType.InvalidParameter.Detail.ModuleType":                                "关系类模块类型必须为 relation_type。",
+		"BknBackend.RelationType.InvalidParameter.Detail.DuplicatedIDInFile":                        "请求体中已存在关系类 ID {{.id}}。",
+	},
+}

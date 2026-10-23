@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -46,7 +47,7 @@ func (r *restHandler) DeleteValueTypeByIn(c *gin.Context) {
 }
 
 func (r *restHandler) withExVisitor(c *gin.Context, handle func(*gin.Context, hydra.Visitor)) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

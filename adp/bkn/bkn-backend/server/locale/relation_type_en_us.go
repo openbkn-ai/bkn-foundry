@@ -1,0 +1,60 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package locale
+
+import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
+var relationTypeEnUS = i18n.I18nMessages{
+	Locale: "en-US",
+	Messages: map[string]string{
+		"BknBackend.RelationType.Duplicated.IDInFile":                                               "Same Relation Type ID Existed. Please check whether the parameter is correct.",
+		"BknBackend.RelationType.InvalidParameter":                                                  "Invalid Request Paramter. Please check whether the parameter is correct.",
+		"BknBackend.RelationType.InvalidParameter.ConceptCondition":                                 "Invalid Concept Condition Request Paramter. Please check whether the parameter is correct.",
+		"BknBackend.RelationType.RelationTypeIDExisted":                                             "Same ID Existed. Please check whether the parameter is correct.",
+		"BknBackend.RelationType.LengthExceeded.Name":                                               "The Length of Relation Type Name Out of Limit. Please check whether the parameter is correct.",
+		"BknBackend.RelationType.NullParameter.Name":                                                "Relation Type Name Is Empty. Please check whether the parameter is correct.",
+		"BknBackend.RelationType.RelationTypeNotFound":                                              "The Relation Type Does Not Exist. Please try again. If the error occurs again, please submit the work order or contact technical support.",
+		"BknBackend.RelationType.InternalError":                                                     "Internal Error. Please try again. If the error occurs again, please submit the work order or contact technical support.",
+		"BknBackend.RelationType.InternalError.BeginTransactionFailed":                              "Begin Transaction Failed. Please try again. If the error occurs again, please submit the work order or contact technical support.",
+		"BknBackend.RelationType.InternalError.MissingTransaction":                                  "Missing Transaction. Please try again. If the error occurs again, please submit the work order or contact technical support.",
+		"BknBackend.RelationType.InternalError.CheckRelationTypeIfExistFailed":                      "Check Relation Type Exist Failed. Please try again. If the error occurs again, please submit the work order or contact technical support.",
+		"BknBackend.RelationType.InternalError.GetDataViewByIDFailed":                               "Get DataView By ID Failed. Please try again. If the error occurs again, please submit the work order or contact technical support.",
+		"BknBackend.RelationType.InternalError.GetRelationTypesByIDsFailed":                         "Get Relation Type By IDs Failed. Please try again. If the error occurs again, please submit the work order or contact technical support.",
+		"BknBackend.RelationType.InternalError.InsertOpenSearchDataFailed":                          "Insert Relation Type Data Into OpenSearch Failed. Please try again. If the error occurs again, please submit the work order or contact technical support.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TypeNotSupported":                          "Relation type must be {{.directType}}, {{.indirectType}}, or {{.crossJoinType}}; received {{.type}}.",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceObjectTypeIDRequired":                "source_object_type_id is required for a relation type.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetObjectTypeIDRequired":                "target_object_type_id is required for a relation type.",
+		"BknBackend.RelationType.InvalidParameter.Detail.MappingRulesRequired":                      "mapping_rules is required for a relation type.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TypeRequired":                              "type is required when mapping_rules is provided.",
+		"BknBackend.RelationType.InvalidParameter.Detail.UnsupportedType":                           "Relation type {{.type}} is not supported.",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRulesDecodeFailed":            "Failed to decode direct mapping_rules: {{.error}}",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRulesRequired":                "mapping_rules is required for a direct relation type.",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectSourcePropertyRequired":              "mapping_rules[{{.index}}].source_property.name is required.",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectTargetPropertyRequired":              "mapping_rules[{{.index}}].target_property.name is required.",
+		"BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRuleDuplicated":               "mapping_rules[{{.index}}] duplicates an existing source-target mapping pair.",
+		"BknBackend.RelationType.InvalidParameter.Detail.IndirectMappingRulesInvalid":               "mapping_rules for an indirect relation type must be an InDirectMapping object.",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceRequired":                 "backing_data_source is required for an indirect relation type.",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceTypeRequired":             "backing_data_source.type is required.",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceTypeInvalid":              "backing_data_source.type must be {{.expected}}; received {{.actual}}.",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceIDRequired":               "backing_data_source.id is required.",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceNotFound":                 "The backing resource {{.resource}} does not exist.",
+		"BknBackend.RelationType.InvalidParameter.Detail.BackingPropertyNotFound":                   "The property {{.property}} does not exist on backing resource {{.resource}}.",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceMappingRulesRequired":                "source_mapping_rules is required for an indirect relation type.",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceMappingSourcePropertyRequired":       "source_mapping_rules[{{.index}}].source_property.name is required.",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceMappingBridgePropertyRequired":       "source_mapping_rules[{{.index}}].target_property.name is required.",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceMappingRuleDuplicated":               "source_mapping_rules[{{.index}}] duplicates an existing source-target mapping pair.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingRulesRequired":                "target_mapping_rules is required for an indirect relation type.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingBridgePropertyRequired":       "target_mapping_rules[{{.index}}].source_property.name is required.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingTargetPropertyRequired":       "target_mapping_rules[{{.index}}].target_property.name is required.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetMappingRuleDuplicated":               "target_mapping_rules[{{.index}}] duplicates an existing source-target mapping pair.",
+		"BknBackend.RelationType.InvalidParameter.Detail.FilteredCrossJoinMappingRulesDecodeFailed": "Failed to decode filtered_cross_join mapping_rules: {{.error}}",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourcePropertyNotFound":                    "Source relation property {{.property}} does not exist on source object type {{.objectType}}.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetPropertyNotFound":                    "Target relation property {{.property}} does not exist on target object type {{.objectType}}.",
+		"BknBackend.RelationType.InvalidParameter.Detail.SourceConditionInvalid":                    "The filtered cross-join source condition is invalid.",
+		"BknBackend.RelationType.InvalidParameter.Detail.TargetConditionInvalid":                    "The filtered cross-join target condition is invalid.",
+		"BknBackend.RelationType.InvalidParameter.Detail.ModuleType":                                "Relation type module type must be relation_type.",
+		"BknBackend.RelationType.InvalidParameter.Detail.DuplicatedIDInFile":                        "Relation type ID {{.id}} already exists in the request body.",
+	},
+}

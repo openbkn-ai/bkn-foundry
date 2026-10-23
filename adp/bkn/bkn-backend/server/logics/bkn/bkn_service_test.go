@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -144,7 +145,7 @@ func Test_bknService_ExportToTar(t *testing.T) {
 		Convey("Failed when GetKNByID returns error\n", func() {
 			getErr := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError,
 				},

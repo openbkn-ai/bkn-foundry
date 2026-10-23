@@ -50,7 +50,11 @@ type riskTypeService struct {
 }
 
 func riskTypeInvalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func NewRiskTypeService(appSetting *common.AppSetting) interfaces.RiskTypeService {
@@ -241,9 +245,13 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 
 func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, riskTypes []*interfaces.RiskType) (createList, updateList []*interfaces.RiskType, err error) {
 	if mode != interfaces.ImportMode_Normal && mode != interfaces.ImportMode_Ignore && mode != interfaces.ImportMode_Overwrite {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil)
+		if renderErr != nil {
+			logger.Errorf("localized service message failed: %v", renderErr)
+		}
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_ImportMode).
-			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil))
+			WithErrorDetails(localizedText)
 	}
 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "handleRiskTypeImportMode")
@@ -312,7 +320,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 					span.SetStatus(codes.Error, errDetails)
 					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeNameExisted).
-						WithDescription(map[string]any{"name": rt.RTName}).
+						WithMetadata(map[string]any{"name": rt.RTName}).
 						WithErrorDetails(errDetails)
 				}
 
@@ -689,9 +697,13 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			})
 		if err != nil {
 			logger.Errorf("convert risk type condition to filter condition failed: %v", err)
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_RiskType_InvalidParameter).
-				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
+				WithErrorDetails(localizedText)
 		}
 	}
 	filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)

@@ -23,6 +23,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
@@ -294,7 +295,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 		Convey("CreateKN failed\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError,
 				},
@@ -562,7 +563,7 @@ func Test_KnowledgeNetworkRestHandler_GetKN(t *testing.T) {
 		Convey("KN not found\n", func() {
 			err := &rest.HTTPError{
 				HTTPCode: http.StatusNotFound,
-				Language: rest.DefaultLanguage,
+				Lang:     i18n.DefaultLanguage,
 				BaseError: rest.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_NotFound,
 				},
@@ -932,7 +933,7 @@ func Test_KnowledgeNetworkRestHandler_DeleteKN_extraCases(t *testing.T) {
 		Convey("Failed when GetKNByID returns error\n", func() {
 			httpErr := &rest.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
+				Lang:      i18n.DefaultLanguage,
 				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
 			}
 			kns.EXPECT().GetKNByID(gomock.Any(), knID, gomock.Any(), gomock.Any()).Return(nil, httpErr)
@@ -945,7 +946,7 @@ func Test_KnowledgeNetworkRestHandler_DeleteKN_extraCases(t *testing.T) {
 		Convey("Failed when DeleteKN service returns error\n", func() {
 			httpErr := &rest.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
+				Lang:      i18n.DefaultLanguage,
 				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
 			}
 			kns.EXPECT().GetKNByID(gomock.Any(), knID, gomock.Any(), gomock.Any()).Return(&interfaces.KN{

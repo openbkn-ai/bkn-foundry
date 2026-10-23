@@ -16,6 +16,7 @@ import (
 	"github.com/dlclark/regexp2"
 	"github.com/mitchellh/mapstructure"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
@@ -63,11 +64,15 @@ var objectNameErrorCode = map[string][]string{
 }
 
 func commonValidationDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(
-		rest.GetLanguageByCtx(ctx),
+	localizedText, renderErr := i18n.Render(
+		i18n.GetLanguageByCtx(ctx),
 		"BknBackend.Validation.Detail."+name,
 		templateData,
 	)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 // Validate the import mode.

@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -143,7 +144,7 @@ func parseOverviewGraphLimit(ctx context.Context, value string, defaultValue, ma
 
 // ListOverviewGraphByEx returns the bounded ontology graph for an OAuth caller.
 func (r *restHandler) ListOverviewGraphByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -263,7 +264,7 @@ func (r *restHandler) CreateKNByIn(c *gin.Context) {
 func (r *restHandler) CreateKNByEx(c *gin.Context) {
 	logger.Debug("Handler CreateKNByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -340,7 +341,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -392,7 +393,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate knowledge network[%s] failed: %s. %v", kn.KNName,
-			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("kn_name").String(kn.KNName))
@@ -478,7 +479,7 @@ func (r *restHandler) ValidateKNByIn(c *gin.Context) {
 // ValidateKNByEx validates knowledge network dependencies without persistence (external).
 func (r *restHandler) ValidateKNByEx(c *gin.Context) {
 	logger.Debug("Handler ValidateKNByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -599,7 +600,7 @@ func (r *restHandler) UpdateKNByIn(c *gin.Context) {
 func (r *restHandler) UpdateKNByEx(c *gin.Context) {
 	logger.Debug("Handler UpdateKNByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -649,7 +650,7 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -690,7 +691,7 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate knowledge network[%s] failed: %s. %v", kn.KNName,
-			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("kn_name").String(kn.KNName))
@@ -932,7 +933,7 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 func (r *restHandler) ListKNsByEx(c *gin.Context) {
 	logger.Debug("Handler ListKNsByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -976,7 +977,7 @@ func (r *restHandler) ListKNs(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -1003,7 +1004,7 @@ func (r *restHandler) ListKNs(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -1030,7 +1031,7 @@ func (r *restHandler) GetKNByIn(c *gin.Context) {
 func (r *restHandler) GetKNByEx(c *gin.Context) {
 	logger.Debug("Handler GetKNByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -1080,7 +1081,7 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 			WithErrorDetails(commonValidationDetail(ctx, "IncludeStatisticsInvalid", map[string]any{"value": includeStatistics}))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -1140,7 +1141,7 @@ func (r *restHandler) GetRelationTypePathsByIn(c *gin.Context) {
 func (r *restHandler) GetRelationTypePathsByEx(c *gin.Context) {
 	logger.Debug("Handler GetRelationTypePathsByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -1179,7 +1180,7 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		rest.ReplyError(c, httpErr)
@@ -1321,7 +1322,7 @@ func (r *restHandler) ListKnSrcs(c *gin.Context) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -1345,7 +1346,7 @@ func (r *restHandler) ListKnSrcs(c *gin.Context) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.

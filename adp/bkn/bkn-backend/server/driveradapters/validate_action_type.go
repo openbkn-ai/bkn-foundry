@@ -14,6 +14,7 @@ import (
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
@@ -22,7 +23,11 @@ import (
 )
 
 func actionTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func ValidateActionTypes(ctx context.Context, knID string, actionTypes []*interfaces.ActionType, strictMode bool) error {
@@ -42,7 +47,7 @@ func ValidateActionTypes(ctx context.Context, knID string, actionTypes []*interf
 		} else {
 			errDetails := actionTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"actionTypeID": atID})
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_Duplicated_IDInFile).
-				WithDescription(map[string]any{"actionTypeID": atID}).
+				WithMetadata(map[string]any{"actionTypeID": atID}).
 				WithErrorDetails(errDetails)
 		}
 

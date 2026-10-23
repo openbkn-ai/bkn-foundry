@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -411,7 +412,7 @@ func TestRiskTypeServiceHandleImportModeLocalizesInvalidMode(t *testing.T) {
 
 		Convey("Chinese request uses the Chinese catalog", func() {
 			_, _, err := service.handleImportMode(
-				rest.WithLanguage(context.Background(), rest.SimplifiedChinese),
+				i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese),
 				"unsupported",
 				nil,
 			)
@@ -423,7 +424,7 @@ func TestRiskTypeServiceHandleImportModeLocalizesInvalidMode(t *testing.T) {
 
 		Convey("English request uses the English catalog", func() {
 			_, _, err := service.handleImportMode(
-				rest.WithLanguage(context.Background(), rest.AmericanEnglish),
+				i18n.WithLanguage(context.Background(), i18n.AmericanEnglish),
 				"unsupported",
 				nil,
 			)

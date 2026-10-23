@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -35,7 +36,7 @@ func (r *restHandler) HandleRelationTypeGetOverrideByIn(c *gin.Context) {
 	case http.MethodGet:
 		r.SearchRelationTypesByIn(c)
 	default:
-		httpErr := rest.NewHTTPError(rest.GetLanguageCtx(c), http.StatusBadRequest,
+		httpErr := rest.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_OverrideMethod)
 		rest.ReplyError(c, httpErr)
 	}
@@ -48,7 +49,7 @@ func (r *restHandler) HandleRelationTypeGetOverrideByEx(c *gin.Context) {
 	case http.MethodGet:
 		r.SearchRelationTypesByEx(c)
 	default:
-		httpErr := rest.NewHTTPError(rest.GetLanguageCtx(c), http.StatusBadRequest,
+		httpErr := rest.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_OverrideMethod)
 		rest.ReplyError(c, httpErr)
 	}
@@ -67,7 +68,7 @@ func (r *restHandler) CreateRelationTypesByIn(c *gin.Context) {
 func (r *restHandler) CreateRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler CreateRelationTypesByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -145,7 +146,7 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -215,7 +216,7 @@ func (r *restHandler) ValidateRelationTypesByIn(c *gin.Context) {
 // ValidateRelationTypesByEx validates relation type dependencies without persistence (external).
 func (r *restHandler) ValidateRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler ValidateRelationTypesByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -319,7 +320,7 @@ func (r *restHandler) UpdateRelationTypeByIn(c *gin.Context) {
 func (r *restHandler) UpdateRelationTypeByEx(c *gin.Context) {
 	logger.Debug("Handler UpdateRelationTypeByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -391,7 +392,7 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -433,7 +434,7 @@ func (r *restHandler) UpdateRelationType(c *gin.Context, visitor hydra.Visitor) 
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate relation type[%s] failed: %s. %v", relationType.RTName,
-			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("rt_name").String(relationType.RTName))
@@ -572,7 +573,7 @@ func (r *restHandler) ListRelationTypesByIn(c *gin.Context) {
 func (r *restHandler) ListRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler ListRelationTypesByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -645,7 +646,7 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -687,7 +688,7 @@ func (r *restHandler) ListRelationTypes(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -715,7 +716,7 @@ func (r *restHandler) GetRelationTypesByIn(c *gin.Context) {
 func (r *restHandler) GetRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler ListRelationTypesByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -802,7 +803,7 @@ func (r *restHandler) SearchRelationTypesByIn(c *gin.Context) {
 func (r *restHandler) SearchRelationTypesByEx(c *gin.Context) {
 	logger.Debug("Handler SearchRelationTypesByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -860,7 +861,7 @@ func (r *restHandler) SearchRelationTypes(c *gin.Context, visitor hydra.Visitor)
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -894,7 +895,7 @@ func (r *restHandler) SearchRelationTypes(c *gin.Context, visitor hydra.Visitor)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

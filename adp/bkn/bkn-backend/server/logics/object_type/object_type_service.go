@@ -85,7 +85,11 @@ func (ots *objectTypeService) knProxyResolver() interfaces.KNProxyBindingResolve
 }
 
 func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
@@ -1645,7 +1649,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 					span.SetStatus(codes.Error, errDetails)
 					return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
-						WithDescription(map[string]any{"name": objectType.OTName}).
+						WithMetadata(map[string]any{"name": objectType.OTName}).
 						WithErrorDetails(errDetails)
 				}
 
@@ -1880,9 +1884,13 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			})
 		if err != nil {
 			logger.Errorf("convert object type condition to filter condition failed: %v", err)
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter_ConceptCondition).
-				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
+				WithErrorDetails(localizedText)
 		}
 	}
 	filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)

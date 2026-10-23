@@ -35,7 +35,11 @@ const maxRowFilterObjectTypesPerRequest = 100
 const safeMutationBatchSize = 200
 
 func localizedPermissionDetail(ctx context.Context, key string) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail."+key, nil)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail."+key, nil)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 type PermissionServiceImpl struct {

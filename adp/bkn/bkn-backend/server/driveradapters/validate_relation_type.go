@@ -14,6 +14,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -36,7 +37,7 @@ func ValidateRelationTypes(ctx context.Context, knID string, relationTypes []*in
 		} else {
 			errDetails := relationTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"id": rtID})
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_Duplicated_IDInFile).
-				WithDescription(map[string]any{"relationTypeID": rtID}).
+				WithMetadata(map[string]any{"relationTypeID": rtID}).
 				WithErrorDetails(errDetails)
 		}
 
@@ -301,5 +302,9 @@ func validateFilteredCrossJoinMappingRules(ctx context.Context, mappingRules any
 }
 
 func relationTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }

@@ -36,7 +36,7 @@ func (r *restHandler) HandleObjectTypeGetOverrideByIn(c *gin.Context) {
 	case http.MethodGet:
 		r.SearchObjectTypesByIn(c)
 	default:
-		httpErr := rest.NewHTTPError(rest.GetLanguageCtx(c), http.StatusBadRequest,
+		httpErr := rest.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_OverrideMethod)
 		rest.ReplyError(c, httpErr)
 	}
@@ -49,7 +49,7 @@ func (r *restHandler) HandleObjectTypeGetOverrideByEx(c *gin.Context) {
 	case http.MethodGet:
 		r.SearchObjectTypesByEx(c)
 	default:
-		httpErr := rest.NewHTTPError(rest.GetLanguageCtx(c), http.StatusBadRequest,
+		httpErr := rest.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_OverrideMethod)
 		rest.ReplyError(c, httpErr)
 	}
@@ -68,7 +68,7 @@ func (r *restHandler) CreateObjectTypesByIn(c *gin.Context) {
 func (r *restHandler) CreateObjectTypesByEx(c *gin.Context) {
 	logger.Debug("Handler CreateObjectTypesByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -145,7 +145,7 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -214,7 +214,7 @@ func (r *restHandler) ValidateObjectTypesByIn(c *gin.Context) {
 // ValidateObjectTypesByEx validates object type dependencies without persistence (external).
 func (r *restHandler) ValidateObjectTypesByEx(c *gin.Context) {
 	logger.Debug("Handler ValidateObjectTypesByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -319,7 +319,7 @@ func (r *restHandler) UpdateObjectTypeByIn(c *gin.Context) {
 func (r *restHandler) UpdateObjectTypeByEx(c *gin.Context) {
 	logger.Debug("Handler UpdateObjectTypeByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -391,7 +391,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -432,7 +432,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate object type[%s] failed: %s. %v", objectType.OTName,
-			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("ot_name").String(objectType.OTName))
@@ -575,7 +575,7 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -730,9 +730,13 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			for _, rt := range relationTypes {
 				relationTypeNames = append(relationTypeNames, rt.RTName)
 			}
-			errorDetails := i18n.Translate(rest.GetLanguageByCtx(ctx),
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx),
 				"BknBackend.ObjectType.InvalidParameter.Detail.BoundByRelationTypes",
 				map[string]any{"relationTypeNames": strings.Join(relationTypeNames, ", ")})
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
+			errorDetails := localizedText
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_ObjectTypeBoundByRelationType).
 				WithErrorDetails(errorDetails)
@@ -761,9 +765,13 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			for _, at := range actionTypes {
 				actionTypeNames = append(actionTypeNames, at.ATName)
 			}
-			errorDetails := i18n.Translate(rest.GetLanguageByCtx(ctx),
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx),
 				"BknBackend.ObjectType.InvalidParameter.Detail.BoundByActionTypes",
 				map[string]any{"actionTypeNames": strings.Join(actionTypeNames, ", ")})
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
+			errorDetails := localizedText
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_ObjectTypeBoundByActionType).
 				WithErrorDetails(errorDetails)
@@ -807,7 +815,7 @@ func (r *restHandler) ListObjectTypesByIn(c *gin.Context) {
 func (r *restHandler) ListObjectTypesByEx(c *gin.Context) {
 	logger.Debug("Handler ListObjectTypesByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -876,7 +884,7 @@ func (r *restHandler) ListObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -906,7 +914,7 @@ func (r *restHandler) ListObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -934,7 +942,7 @@ func (r *restHandler) GetObjectTypesByIn(c *gin.Context) {
 func (r *restHandler) GetObjectTypesByEx(c *gin.Context) {
 	logger.Debug("Handler GetObjectTypesByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -1025,7 +1033,7 @@ func (r *restHandler) GetObjectTypeSampleDataByIn(c *gin.Context) {
 
 func (r *restHandler) GetObjectTypeSampleDataByEx(c *gin.Context) {
 	logger.Debug("Handler GetObjectTypeSampleDataByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -1126,7 +1134,7 @@ func (r *restHandler) SearchObjectTypesByIn(c *gin.Context) {
 func (r *restHandler) SearchObjectTypesByEx(c *gin.Context) {
 	logger.Debug("Handler SearchObjectTypesByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -1184,7 +1192,7 @@ func (r *restHandler) SearchObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1218,7 +1226,7 @@ func (r *restHandler) SearchObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

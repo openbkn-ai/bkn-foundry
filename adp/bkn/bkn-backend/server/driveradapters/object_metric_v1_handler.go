@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -70,7 +71,7 @@ func RegisterObjectMetricRoutes(
 }
 
 func (r *restHandler) objectMetricExternal(c *gin.Context, next func(*gin.Context, hydra.Visitor)) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

@@ -58,7 +58,11 @@ type actionTypeService struct {
 }
 
 func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeService {
@@ -978,7 +982,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 					span.SetStatus(codes.Error, errDetails)
 					return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ActionType_ActionTypeNameExisted).
-						WithDescription(map[string]any{"name": actionType.ATName}).
+						WithMetadata(map[string]any{"name": actionType.ATName}).
 						WithErrorDetails(errDetails)
 				}
 
@@ -1168,9 +1172,13 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			})
 		if err != nil {
 			logger.Errorf("convert action type condition to filter condition failed: %v", err)
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ActionType_InvalidParameter_ConceptCondition).
-				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
+				WithErrorDetails(localizedText)
 		}
 	}
 	filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)

@@ -56,7 +56,11 @@ type relationTypeService struct {
 }
 
 func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func NewRelationTypeService(appSetting *common.AppSetting) interfaces.RelationTypeService {
@@ -1010,9 +1014,13 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			})
 		if err != nil {
 			logger.Errorf("convert relation type condition to filter condition failed: %v", err)
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
 			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_RelationType_InvalidParameter_ConceptCondition).
-				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
+				WithErrorDetails(localizedText)
 		}
 	}
 	filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)

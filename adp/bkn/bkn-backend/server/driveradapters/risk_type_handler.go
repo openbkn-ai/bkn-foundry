@@ -34,7 +34,7 @@ func (r *restHandler) HandleRiskTypeGetOverrideByEx(c *gin.Context) {
 	case http.MethodGet:
 		r.SearchRiskTypesByEx(c)
 	default:
-		httpErr := rest.NewHTTPError(rest.GetLanguageCtx(c), http.StatusBadRequest,
+		httpErr := rest.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_OverrideMethod)
 		rest.ReplyError(c, httpErr)
 	}
@@ -47,7 +47,7 @@ func (r *restHandler) HandleRiskTypeGetOverrideByIn(c *gin.Context) {
 	case http.MethodGet:
 		r.SearchRiskTypesByIn(c)
 	default:
-		httpErr := rest.NewHTTPError(rest.GetLanguageCtx(c), http.StatusBadRequest,
+		httpErr := rest.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_OverrideMethod)
 		rest.ReplyError(c, httpErr)
 	}
@@ -59,7 +59,7 @@ func (r *restHandler) CreateRiskTypesByIn(c *gin.Context) {
 }
 
 func (r *restHandler) CreateRiskTypesByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -153,7 +153,7 @@ func (r *restHandler) UpdateRiskTypeByIn(c *gin.Context) {
 }
 
 func (r *restHandler) UpdateRiskTypeByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -229,9 +229,13 @@ func (r *restHandler) UpdateRiskType(c *gin.Context, visitor hydra.Visitor) {
 			return
 		}
 		if exist {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail.RiskTypeNameAlreadyExists", map[string]any{"riskTypeName": riskType.RTName})
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
 			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_RiskTypeNameExisted).
-				WithDescription(map[string]any{"name": riskType.RTName}).
-				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail.RiskTypeNameAlreadyExists", map[string]any{"riskTypeName": riskType.RTName}))
+				WithMetadata(map[string]any{"name": riskType.RTName}).
+				WithErrorDetails(localizedText)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -317,7 +321,7 @@ func (r *restHandler) ListRiskTypesByIn(c *gin.Context) {
 }
 
 func (r *restHandler) ListRiskTypesByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -392,7 +396,7 @@ func (r *restHandler) ListRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 }
 
 func (r *restHandler) GetRiskTypesByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -501,7 +505,7 @@ func (r *restHandler) SearchRiskTypesByIn(c *gin.Context) {
 // Search risk types (external).
 func (r *restHandler) SearchRiskTypesByEx(c *gin.Context) {
 	logger.Debug("Handler SearchRiskTypesByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -550,7 +554,7 @@ func (r *restHandler) SearchRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_InvalidParameter).
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -583,7 +587,7 @@ func (r *restHandler) SearchRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

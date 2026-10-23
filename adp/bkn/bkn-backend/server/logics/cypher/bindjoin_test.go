@@ -733,7 +733,6 @@ func TestBindJoinRetriesRefusedCallerUnderProxyAccount(t *testing.T) {
 }
 
 func TestBindJoinReportsRefusalWhenProxyUnavailable(t *testing.T) {
-	withLocale(t)
 	caller, _ := callerContext().Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	vega := &accountDataAPI{api: newFakeDataAPI(relationServiceData()), refused: map[string]bool{caller.ID: true}}
 	service := bindJoinService(vega, nil)
@@ -818,7 +817,6 @@ func TestBindJoinFallsBackToSQLWhenItRunsOutOfTime(t *testing.T) {
 
 // A caller that went away is not served by starting the query over as SQL.
 func TestBindJoinDoesNotFallBackWhenTheCallerGoesAway(t *testing.T) {
-	withLocale(t)
 	vega := &slowDataAPI{}
 	service := bindJoinService(vega, nil)
 	ctx, cancel := context.WithTimeout(callerContext(), 20*time.Millisecond)
@@ -835,7 +833,6 @@ func TestBindJoinDoesNotFallBackWhenTheCallerGoesAway(t *testing.T) {
 // Only the read budget and the executor's own timeout fall back: any other
 // failure is reported as it is.
 func TestBindJoinDoesNotFallBackOnOtherFailures(t *testing.T) {
-	withLocale(t)
 	caller, _ := callerContext().Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	vega := &accountDataAPI{api: newFakeDataAPI(relationServiceData()), refused: map[string]bool{caller.ID: true}}
 	service := bindJoinService(vega, nil)

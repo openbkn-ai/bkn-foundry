@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -792,8 +793,8 @@ func TestValidateRiskTypesLocalizesInvalidParameterDetails(t *testing.T) {
 		language string
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "Risk type ID 'risk-1' already exists in the request body."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "请求体中已存在风险类 ID 'risk-1'。"},
+		{"English", i18n.AmericanEnglish, "Risk type ID 'risk-1' already exists in the request body."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "请求体中已存在风险类 ID 'risk-1'。"},
 	}
 
 	for _, testCase := range testCases {
@@ -803,7 +804,7 @@ func TestValidateRiskTypesLocalizesInvalidParameterDetails(t *testing.T) {
 				{RTID: "risk-1", RTName: "risk-two"},
 			}
 			err := ValidateRiskTypes(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				"kn-1",
 				riskTypes,
 			)
@@ -827,14 +828,14 @@ func TestCommonValidationDetailsRespectLanguage(t *testing.T) {
 		language string
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "x-http-method-override must be GET; got POST."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "x-http-method-override 必须为 GET，当前为 POST。"},
+		{"English", i18n.AmericanEnglish, "x-http-method-override must be GET; got POST."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "x-http-method-override 必须为 GET，当前为 POST。"},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := ValidateHeaderMethodOverride(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				"POST",
 			)
 			if err == nil {

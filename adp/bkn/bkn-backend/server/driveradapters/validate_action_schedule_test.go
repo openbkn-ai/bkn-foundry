@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -136,14 +136,14 @@ func TestActionScheduleValidationDetailsRespectLanguage(t *testing.T) {
 		language string
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "name is required."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "必须提供 name。"},
+		{"English", i18n.AmericanEnglish, "name is required."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "必须提供 name。"},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := ValidateActionScheduleCreate(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				&interfaces.ActionScheduleCreateRequest{},
 			)
 			if err == nil {

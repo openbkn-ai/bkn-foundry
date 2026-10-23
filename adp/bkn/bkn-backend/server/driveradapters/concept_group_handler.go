@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -50,7 +51,7 @@ func (r *restHandler) CreateConceptGroupByIn(c *gin.Context) {
 func (r *restHandler) CreateConceptGroupByEx(c *gin.Context) {
 	logger.Debug("Handler CreateConceptGroupByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -131,7 +132,7 @@ func (r *restHandler) CreateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -161,7 +162,7 @@ func (r *restHandler) CreateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate concept group[%s] failed: %s. %v", cg.CGName,
-			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("cg_name").String(cg.CGName))
@@ -225,7 +226,7 @@ func (r *restHandler) ValidateConceptGroupsByIn(c *gin.Context) {
 // ValidateConceptGroupsByEx validates concept group dependencies without persistence (external).
 func (r *restHandler) ValidateConceptGroupsByEx(c *gin.Context) {
 	logger.Debug("Handler ValidateConceptGroupsByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -329,7 +330,7 @@ func (r *restHandler) UpdateConceptGroupByIn(c *gin.Context) {
 func (r *restHandler) UpdateConceptGroupByEx(c *gin.Context) {
 	logger.Debug("Handler UpdateConceptGroupByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -401,7 +402,7 @@ func (r *restHandler) UpdateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -452,7 +453,7 @@ func (r *restHandler) UpdateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate concept group[%s] failed: %s. %v", cg.CGName,
-			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("kn_name").String(cg.CGName))
@@ -604,7 +605,7 @@ func (r *restHandler) ListConceptGroupsByIn(c *gin.Context) {
 func (r *restHandler) ListConceptGroupsByEx(c *gin.Context) {
 	logger.Debug("Handler ListConceptGroupsByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -672,7 +673,7 @@ func (r *restHandler) ListConceptGroups(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -700,7 +701,7 @@ func (r *restHandler) ListConceptGroups(c *gin.Context, visitor hydra.Visitor) {
 		httpErr := err.(*rest.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -727,7 +728,7 @@ func (r *restHandler) GetConceptGroupByIn(c *gin.Context) {
 func (r *restHandler) GetConceptGroupByEx(c *gin.Context) {
 	logger.Debug("Handler GetKNByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -793,7 +794,7 @@ func (r *restHandler) GetConceptGroup(c *gin.Context, visitor hydra.Visitor) {
 			WithErrorDetails(commonValidationDetail(ctx, "IncludeStatisticsInvalid", map[string]any{"value": includeStatistics}))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
@@ -848,7 +849,7 @@ func (r *restHandler) AddObjectTypesToConceptGroupByIn(c *gin.Context) {
 func (r *restHandler) AddObjectTypesToConceptGroupByEx(c *gin.Context) {
 	logger.Debug("Handler AddObjectTypesToConceptGroupByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -928,7 +929,7 @@ func (r *restHandler) AddObjectTypesToConceptGroup(c *gin.Context, visitor hydra
 			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -991,7 +992,7 @@ func (r *restHandler) DeleteObjectTypesFromGroupByIn(c *gin.Context) {
 func (r *restHandler) DeleteObjectTypesFromGroupByEx(c *gin.Context) {
 	logger.Debug("Handler DeleteObjectTypesFromGroupByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

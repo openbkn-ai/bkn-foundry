@@ -558,9 +558,13 @@ func (s *cypherQueryService) authorizeProperties(ctx context.Context, knID strin
 	for _, objectTypeID := range impactObjectTypeIDs {
 		impacts = append(impacts, impactByObjectType[objectTypeID])
 	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.PropertyForbidden.Detail.NotFull",
+		map[string]any{"properties": strings.Join(denied, ", ")})
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
 	return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_Cypher_PropertyForbidden).
-		WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Cypher.PropertyForbidden.Detail.NotFull",
-			map[string]any{"properties": strings.Join(denied, ", ")})).
+		WithErrorDetails(localizedText).
 		WithMetadata(map[string]any{"permission_impacts": impacts})
 }
 
@@ -1076,7 +1080,11 @@ func validateQueryText(ctx context.Context, query string) error {
 }
 
 func detail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail."+name, templateData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Cypher.InvalidParameter.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 // conditionsAsBooleans turns the 1, 0 and NULL MySQL returns for a condition

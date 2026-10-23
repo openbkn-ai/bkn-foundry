@@ -10,6 +10,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -141,14 +142,14 @@ func TestKnowledgeNetworkValidationDetailsRespectLanguage(t *testing.T) {
 		language string
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "branch is required."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "必须提供 branch。"},
+		{"English", i18n.AmericanEnglish, "branch is required."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "必须提供 branch。"},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := ValidateKN(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				&interfaces.KN{KNID: "kn-1", KNName: "network"},
 			)
 			if err == nil {

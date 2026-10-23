@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -26,7 +27,7 @@ import (
 )
 
 func (r *restHandler) AttachCapabilitiesByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -38,7 +39,7 @@ func (r *restHandler) AttachCapabilitiesByIn(c *gin.Context) {
 }
 
 func (r *restHandler) DetachCapabilitiesByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -50,7 +51,7 @@ func (r *restHandler) DetachCapabilitiesByIn(c *gin.Context) {
 }
 
 func (r *restHandler) ListCapabilitiesByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

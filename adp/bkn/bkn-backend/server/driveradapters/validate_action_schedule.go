@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -18,11 +19,15 @@ import (
 )
 
 func actionScheduleDetail(ctx context.Context, name string) string {
-	return i18n.Translate(
-		rest.GetLanguageByCtx(ctx),
+	localizedText, renderErr := i18n.Render(
+		i18n.GetLanguageByCtx(ctx),
 		"BknBackend.ActionSchedule.Detail."+name,
 		nil,
 	)
+	if renderErr != nil {
+		logger.Errorf("localized service message failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 // ValidateActionScheduleCreate validates the create schedule request
