@@ -95,6 +95,54 @@ func TestPropertyAccessPlanKeepsDeniedAndUnknownPropertiesIndistinguishable(t *t
 	}
 }
 
+func TestPropertyAccessPlanRequiresFullAccessForMetricIdentityDisjunction(t *testing.T) {
+	objectType := accessPlanObjectType()
+	objectType.PrimaryKeys = []string{"id", "mobile"}
+	identity := func(id, mobile string) *cond.CondCfg {
+		return &cond.CondCfg{Operation: cond.OperationAnd, SubConds: []*cond.CondCfg{
+			{Name: "id", Operation: cond.OperationEq, ValueOptCfg: cond.ValueOptCfg{Value: id}},
+			{Name: "mobile", Operation: cond.OperationEq, ValueOptCfg: cond.ValueOptCfg{Value: mobile}},
+		}}
+	}
+	query := &interfaces.ObjectQueryBaseOnObjectType{
+		Properties: []string{"id", "mobile"},
+		ActualCondition: &cond.CondCfg{Operation: cond.OperationOr,
+			SubConds: []*cond.CondCfg{identity("customer-a", "phone-a"), identity("customer-b", "phone-b")}},
+		CommonQueryParameters: interfaces.CommonQueryParameters{
+			RequiredFullProperties: []string{"id", "mobile"},
+		},
+	}
+	for _, test := range []struct {
+		name        string
+		mobileLevel interfaces.PropertyAccessLevel
+		allowed     bool
+	}{
+		{name: "full key", mobileLevel: interfaces.PropertyAccessFull, allowed: true},
+		{name: "masked key", mobileLevel: interfaces.PropertyAccessMasked},
+		{name: "schema-only key", mobileLevel: interfaces.PropertyAccessSchema},
+		{name: "denied key", mobileLevel: interfaces.PropertyAccessNone},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			access := propertyAccessStub{levels: map[string]interfaces.PropertyAccessLevel{
+				"id": interfaces.PropertyAccessFull, "mobile": test.mobileLevel,
+				"notes": interfaces.PropertyAccessSchema, "secret": interfaces.PropertyAccessNone,
+			}}
+			_, err := buildPropertyAccessPlan(context.Background(), access, objectType, query, true)
+			if test.allowed {
+				if err != nil {
+					t.Fatalf("fully authorized identity rejected: %v", err)
+				}
+				return
+			}
+			httpError, ok := err.(*rest.HTTPError)
+			if !ok || httpError.HTTPCode != http.StatusBadRequest ||
+				httpError.BaseError.Metadata["reason"] != "property_unavailable" {
+				t.Fatalf("non-full identity access was not rejected: %#v", err)
+			}
+		})
+	}
+}
+
 func TestObjectQueryRejectsEmptyReturnBeforeProxyOrVega(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	models := omock.NewMockOntologyManagerAccess(ctrl)

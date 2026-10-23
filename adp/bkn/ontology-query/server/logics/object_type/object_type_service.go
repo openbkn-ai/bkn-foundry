@@ -426,14 +426,11 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 // approved by the access plan. The raw dependency values stay in this local
 // row and are discarded immediately after projection.
 func (*objectTypeService) addLogicProperties(ctx context.Context, object map[string]any,
-	objectType interfaces.ObjectType, plan *propertyAccessPlan) error {
+	logicProperties []*interfaces.LogicProperty) error {
 
 	var err error
 
-	for _, logicProp := range objectType.LogicProperties {
-		if _, allowed := plan.returnLogic[logicProp.Name]; !allowed {
-			continue
-		}
+	for _, logicProp := range logicProperties {
 		switch logicProp.Type {
 		case interfaces.LOGIC_PROPERTY_TYPE_METRIC:
 			filters := []interfaces.Filter{}
@@ -527,6 +524,16 @@ func (*objectTypeService) addLogicProperties(ctx context.Context, object map[str
 		}
 	}
 	return nil
+}
+
+func selectedObjectLogicProperties(objectType interfaces.ObjectType, plan *propertyAccessPlan) []*interfaces.LogicProperty {
+	selected := make([]*interfaces.LogicProperty, 0, len(plan.returnLogic))
+	for _, property := range objectType.LogicProperties {
+		if _, allowed := plan.returnLogic[property.Name]; allowed {
+			selected = append(selected, property)
+		}
+	}
+	return selected
 }
 
 // getObjectsFromResource queries vega-backend resource data (same row mapping as view path).
@@ -707,6 +714,9 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		return nil
 	}
 
+	// The access plan is fixed for this request. Preserve declaration order,
+	// but do not recheck every unrequested logical property on every row.
+	selectedLogicProperties := selectedObjectLogicProperties(objectType, plan)
 	objects := make([]map[string]any, 0, len(resp.Entries))
 	for _, col := range resp.Entries {
 		rawObject := map[string]any{}
@@ -718,7 +728,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 				rawObject[propName] = v
 			}
 		}
-		if err := ots.addLogicProperties(ctx, rawObject, objectType, plan); err != nil {
+		if err := ots.addLogicProperties(ctx, rawObject, selectedLogicProperties); err != nil {
 			return err
 		}
 		object := plan.projectRow(rawObject, &objectType, query)
@@ -895,6 +905,8 @@ func (ots *objectTypeService) handlerVector(ctx context.Context, property *cond.
 	return nil, fmt.Errorf("ontology-query no longer vectorizes property %q; Vega Resource resolves vector conditions", property.Name)
 }
 
+const maxConcurrentLogicProperties = 16
+
 func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 	query *interfaces.ObjectPropertyValueQuery) (interfaces.Objects, error) {
 
@@ -977,53 +989,77 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 
 		datas[i] = newObject
 	}
-	// Step 2: concurrently process all logical properties for all objects.
+	// Step 2: process logical properties with bounded concurrency. A page may
+	// contain thousands of objects, and each metric/tool property can call a
+	// downstream service; one goroutine per property would overload it.
+	// Reuse only identical object-set metric queries within this request. The
+	// memo is never shared with another request or principal.
+	ctx = withObjectMetricRequestMemo(ctx)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	errChan := make(chan error, len(objects.Datas)*len(logicProperties)) // Large enough buffer.
+	var processErrors []error
+	semaphore := make(chan struct{}, maxConcurrentLogicProperties)
+	batchResults := make(chan []map[string]bool, 1)
+	go func() {
+		batchResults <- ots.batchObjectInstanceMetricPropertiesWithSemaphore(ctx, query, objects, datas,
+			logicProperties, propertyNames, semaphore, &mu)
+	}()
 
-	for i, object := range objects.Datas {
-		for prop, value := range object {
-			if !propertyNames[prop] {
-				continue
+	launchProperty := func(i int, prop string, value any, logicProp *interfaces.LogicProperty) {
+		semaphore <- struct{}{}
+		wg.Add(1)
+		go func(objIndex int, propName string, propValue any, logicProp *interfaces.LogicProperty) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			logger.Debugf("处理对象[%d]的逻辑属性: %s", objIndex, propName)
+			resultValue, err := ots.processLogicProperty(ctx, query.KNID, query.Branch, query.ObjectTypeID,
+				propName, propValue, logicProp, query.DynamicParams)
+			if err != nil {
+				detail := locale.ValidationDetail(ctx, "LogicPropertyProcessFailed", map[string]any{
+					"index":    objIndex,
+					"property": propName,
+				})
+				mu.Lock()
+				processErrors = append(processErrors, fmt.Errorf("%s: %w", detail, err))
+				mu.Unlock()
+				return
 			}
 
-			// Process only logical properties.
-			if logicProp, exist := logicProperties[prop]; exist {
-				wg.Add(1)
-				go func(objIndex int, propName string, propValue any, logicProp *interfaces.LogicProperty) {
-					defer wg.Done()
+			// Safely write the result to the corresponding object.
+			mu.Lock()
+			datas[objIndex][propName] = resultValue
+			mu.Unlock()
 
-					logger.Debugf("处理对象[%d]的逻辑属性: %s", i, propName)
-					resultValue, err := ots.processLogicProperty(ctx, query.KNID, query.Branch, query.ObjectTypeID,
-						propName, propValue, logicProp, query.DynamicParams)
-					if err != nil {
-						detail := locale.ValidationDetail(ctx, "LogicPropertyProcessFailed", map[string]any{
-							"index":    objIndex,
-							"property": propName,
-						})
-						errChan <- fmt.Errorf("%s: %w", detail, err)
-						return
-					}
-
-					// Safely write the result to the corresponding object.
-					mu.Lock()
-					datas[objIndex][propName] = resultValue
-					mu.Unlock()
-
-				}(i, prop, value, logicProp)
+		}(i, prop, value, logicProp)
+	}
+	// Independent non-metric properties can run while instance metric batches
+	// are in flight. Both paths share the same downstream concurrency budget.
+	for i, object := range objects.Datas {
+		for prop, value := range object {
+			if logicProp := logicProperties[prop]; propertyNames[prop] && logicProp != nil &&
+				logicProp.Type != interfaces.PROPERTY_TYPE_METRIC {
+				launchProperty(i, prop, value, logicProp)
+			}
+		}
+	}
+	batchedMetrics := <-batchResults
+	for i, object := range objects.Datas {
+		for prop, value := range object {
+			if logicProp := logicProperties[prop]; propertyNames[prop] && logicProp != nil &&
+				logicProp.Type == interfaces.PROPERTY_TYPE_METRIC && !batchedMetrics[i][prop] {
+				launchProperty(i, prop, value, logicProp)
 			}
 		}
 	}
 
 	// Wait for all logical-property processing to complete.
 	wg.Wait()
-	close(errChan)
 
 	// Check errors.
-	if len(errChan) > 0 {
-		var errors []string
-		for err := range errChan {
+	if len(processErrors) > 0 {
+		errors := make([]string, 0, len(processErrors))
+		for _, err := range processErrors {
 			errors = append(errors, err.Error())
 		}
 		return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
