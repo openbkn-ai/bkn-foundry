@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -52,7 +53,7 @@ func (r *restHandler) ListAuthorizationResourcesByIn(c *gin.Context) {
 	case interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE:
 		entries, total, err = r.cts.ListAuthResourceEntries(ctx, query)
 	default:
-		err = rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		err = httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("resource_type is invalid; valid values: catalog, resource, connector_type")
 	}
 	if err != nil {

@@ -19,9 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 const (
@@ -204,7 +205,7 @@ func CopyRequestScopedValues(from, onto context.Context) context.Context {
 	}
 	for _, key := range []any{
 		keyTraceContext,
-		sharedrest.LanguageKey,
+		i18n.LanguageKey,
 		interfaces.KeyAccountAuthContext,
 		interfaces.KeyResponseFormat,
 		interfaces.IsPublic,

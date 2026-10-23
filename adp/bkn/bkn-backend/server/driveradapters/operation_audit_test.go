@@ -19,8 +19,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/operationaudit"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -653,7 +653,7 @@ func TestOperationAuditCapabilityDetachRealHandler(t *testing.T) {
 			}
 			var mutationErr error
 			if test.mutationFailure {
-				mutationErr = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+				mutationErr = httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 			}
 			bindings.EXPECT().DetachCapabilities(gomock.Any(), gomock.Any(), "kn-1", "main", ids).After(previous).Return(test.rows, mutationErr)
 			engine := gin.New()
@@ -795,7 +795,7 @@ func TestOperationAuditCapabilityAttachRealHandler(t *testing.T) {
 			}
 			var err error
 			if tc.denied {
-				err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+				err = httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 			}
 			mutation := cbs.EXPECT().AttachCapabilities(gomock.Any(), nil, "kn-1", "main", gomock.Any()).Return(returned, err)
 			if !tc.disabled && !tc.existing && !tc.denied {
@@ -863,7 +863,7 @@ func TestOperationAuditBKNImportRealHandler(t *testing.T) {
 			if !tc.invalid {
 				var err error
 				if tc.denied {
-					err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+					err = httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 				}
 				mode := interfaces.ImportMode_Overwrite
 				if tc.ignore {

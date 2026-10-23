@@ -10,8 +10,9 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
-	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
@@ -200,7 +201,7 @@ func TestAuthorizeOutboundRunsOnlyAtManagedProxyBoundary(t *testing.T) {
 				authorizer = NewAuthorizer(test.access)
 			}
 			err := AuthorizeOutbound(ctx, authorizer, recorder)
-			var httpErr *oerrors.HTTPError
+			var httpErr *httperrors.HTTPError
 			if !errors.As(err, &httpErr) || httpErr.HTTPCode != test.wantStatus {
 				t.Fatalf("AuthorizeOutbound() error = %v, want HTTP %d", err, test.wantStatus)
 			}

@@ -11,7 +11,10 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -46,7 +49,7 @@ func (r *restHandler) DeleteValueTypeByIn(c *gin.Context) {
 }
 
 func (r *restHandler) withExVisitor(c *gin.Context, handle func(*gin.Context, hydra.Visitor)) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -67,7 +70,7 @@ func (r *restHandler) valueTypeRequest(c *gin.Context, visitor hydra.Visitor) (c
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err == nil && !exist {
-		err = rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		err = httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 	}
 	if err != nil {
 		replyError(c, span, err)
@@ -77,7 +80,7 @@ func (r *restHandler) valueTypeRequest(c *gin.Context, visitor hydra.Visitor) (c
 }
 
 func replyError(c *gin.Context, span trace.Span, err error) {
-	httpErr := err.(*rest.HTTPError)
+	httpErr := err.(*httperrors.HTTPError)
 	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 	rest.ReplyError(c, httpErr)
 }
@@ -97,13 +100,21 @@ func (r *restHandler) CreateValueTypes(c *gin.Context, visitor hydra.Visitor) {
 		Entries []*interfaces.ValueType `json:"entries"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil)))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+			WithErrorDetails(localizedText))
 		return
 	}
 	if len(body.Entries) == 0 {
-		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
-			WithErrorDetails(commonValidationDetail(ctx, "EntriesRequired", nil)))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.EntriesRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(localizedText))
 		return
 	}
 	for _, vt := range body.Entries {
@@ -182,8 +193,12 @@ func (r *restHandler) UpdateValueType(c *gin.Context, visitor hydra.Visitor) {
 	}
 	var vt interfaces.ValueType
 	if err := c.ShouldBindJSON(&vt); err != nil {
-		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil)))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+			WithErrorDetails(localizedText))
 		return
 	}
 	vt.VTID, vt.KNID, vt.Branch = c.Param("vt_id"), knID, branch

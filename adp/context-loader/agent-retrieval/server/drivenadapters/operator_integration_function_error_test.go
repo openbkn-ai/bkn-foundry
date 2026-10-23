@@ -6,6 +6,7 @@ package drivenadapters
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
@@ -64,8 +66,8 @@ func TestExecuteFunction_DeniedExecutionNamesTheMissingGrant(t *testing.T) {
 
 	he := asHTTPError(t, executeDateScript(t, client))
 
-	if he.HTTPCode != http.StatusForbidden || he.Code != "Public.Forbidden" {
-		t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.Code)
+	if he.HTTPCode != http.StatusForbidden || he.ErrorCode != "Public.Forbidden" {
+		t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.ErrorCode)
 	}
 	details, _ := he.ErrorDetails.(string)
 	if !strings.HasPrefix(details, "AgentOperatorIntegration.Forbidden.CommonUseForbidden: ") {
@@ -86,8 +88,8 @@ func TestExecuteFunction_AuthorizationOutageIsNotReportedAsDenial(t *testing.T) 
 
 	he := asHTTPError(t, executeDateScript(t, client))
 
-	if he.HTTPCode != http.StatusServiceUnavailable || he.Code != "Public.ServiceUnavailable" {
-		t.Fatalf("error = %d %s, want 503 Public.ServiceUnavailable", he.HTTPCode, he.Code)
+	if he.HTTPCode != http.StatusServiceUnavailable || he.ErrorCode != "Public.ServiceUnavailable" {
+		t.Fatalf("error = %d %s, want 503 Public.ServiceUnavailable", he.HTTPCode, he.ErrorCode)
 	}
 	details, _ := he.ErrorDetails.(string)
 	if !strings.HasPrefix(details, "AgentOperatorIntegration.ServiceUnavailable.CommonAuthorizationUnavailable: ") {
@@ -141,12 +143,26 @@ func TestExecuteFunction_UpstreamFaultStaysBadGateway(t *testing.T) {
 
 			he := asHTTPError(t, executeDateScript(t, client))
 
-			if he.HTTPCode != http.StatusBadGateway || he.Code != "Public.BadGateway" {
-				t.Fatalf("error = %d %s, want 502 Public.BadGateway", he.HTTPCode, he.Code)
+			if he.HTTPCode != http.StatusBadGateway || he.ErrorCode != "Public.BadGateway" {
+				t.Fatalf("error = %d %s, want 502 Public.BadGateway", he.HTTPCode, he.ErrorCode)
 			}
 			if strings.Contains(he.Error(), "10.43.0.9") {
 				t.Errorf("error leaks downstream internals: %s", he.Error())
 			}
 		})
+	}
+}
+
+func TestExecutionFactoryErrorReadsSharedAndLegacyEnvelopes(t *testing.T) {
+	for _, codeKey := range []string{"error_code", "code"} {
+		body := fmt.Sprintf(`{"%s":"AgentOperatorIntegration.Forbidden.CommonUseForbidden","description":"execute denied"}`, codeKey)
+		dependency := &infraErr.DependencyError{
+			Err:  infraErr.DefaultHTTPError(context.Background(), http.StatusForbidden, nil),
+			Body: []byte(body),
+		}
+		code, description := executionFactoryError(fmt.Errorf("function failed: %w", dependency))
+		if code != "AgentOperatorIntegration.Forbidden.CommonUseForbidden" || description != "execute denied" {
+			t.Fatalf("%s: code=%q description=%q", codeKey, code, description)
+		}
 	}
 }

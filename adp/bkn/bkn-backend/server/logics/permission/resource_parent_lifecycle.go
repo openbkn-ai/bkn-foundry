@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -330,7 +330,7 @@ func PrepareKNChildResourceID(ctx context.Context, requestedID string) (string, 
 		id = generatedID.String()
 	}
 	if !interfaces.IsValidAuthorizationID(id) {
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
 			WithErrorDetails(fmt.Sprintf("invalid child resource ID %q", id))
 	}
 	return id, nil
@@ -339,12 +339,12 @@ func PrepareKNChildResourceID(ctx context.Context, requestedID string) (string, 
 // ValidateKNChildAuthorizationIDs rejects ambiguous Safe resource references.
 func ValidateKNChildAuthorizationIDs(ctx context.Context, knID string, childIDs []string) error {
 	if !interfaces.IsValidAuthorizationID(knID) {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
 			WithErrorDetails(fmt.Sprintf("invalid knowledge network ID %q", knID))
 	}
 	for _, childID := range childIDs {
 		if !interfaces.IsValidAuthorizationID(childID) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
 				WithErrorDetails(fmt.Sprintf("invalid child resource ID %q", childID))
 		}
 	}

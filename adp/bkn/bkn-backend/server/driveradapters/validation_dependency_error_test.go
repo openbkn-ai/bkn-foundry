@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace"
@@ -30,7 +30,7 @@ func TestReplyDependencyValidationErrorPreservesMachineReadableContract(t *testi
 	err := logics.MapDependencyError(context.Background(),
 		interfaces.NewDependencyError("vega", "get_resource_schema", interfaces.DependencyTimeout, 0),
 		false,
-		rest.NewHTTPError(context.Background(), http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
+		httperrors.NewHTTPError(context.Background(), http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
 		berrors.BknBackend_ObjectType_InternalError)
 
 	replied := replyDependencyValidationError(ctx, trace.SpanFromContext(context.Background()), err)

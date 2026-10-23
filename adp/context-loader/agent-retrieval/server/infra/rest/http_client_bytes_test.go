@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 )
 
@@ -72,7 +74,7 @@ func TestPostBytesKeepsHTTPErrorSemantics(t *testing.T) {
 			PostBytes(context.Background(), srv.URL, nil, map[string]string{})
 		srv.Close()
 
-		var he *infraErr.HTTPError
+		var he *httperrors.HTTPError
 		if !errors.As(err, &he) {
 			t.Fatalf("status %d: error = %v, want *infraErr.HTTPError", status, err)
 		}
@@ -82,9 +84,13 @@ func TestPostBytesKeepsHTTPErrorSemantics(t *testing.T) {
 		if string(body) == "" {
 			t.Errorf("status %d: body was dropped, callers log it", status)
 		}
+		var dependency *infraErr.DependencyError
+		if !errors.As(err, &dependency) {
+			t.Fatal("missing dependency wrapper")
+		}
 		// classifyQueryError reads the dependency's own error code from it.
-		if string(he.DownstreamBody) != `{"detail":"downstream said no"}` {
-			t.Errorf("status %d: DownstreamBody = %q", status, he.DownstreamBody)
+		if string(dependency.Body) != `{"detail":"downstream said no"}` {
+			t.Errorf("status %d: DownstreamBody = %q", status, dependency.Body)
 		}
 	}
 }

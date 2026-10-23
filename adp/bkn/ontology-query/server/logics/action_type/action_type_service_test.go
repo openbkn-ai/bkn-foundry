@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -130,10 +130,10 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 
 			result, err := service.GetActionsByActionTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 			So(result.TotalCount, ShouldEqual, 0)
 		})
 
@@ -143,11 +143,11 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 				ActionTypeID: actionTypeID,
 			}
 
-			omAccess.EXPECT().GetActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ActionType{}, nil, false, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			omAccess.EXPECT().GetActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ActionType{}, nil, false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.GetActionsByActionTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			So(result.TotalCount, ShouldEqual, 0)
@@ -594,7 +594,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 
 			omAccess.EXPECT().GetActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(actionType, map[string]any{"id": actionType.ATID}, true, nil)
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), objectTypeID).Return(objectType, true, nil)
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.GetActionsByActionTypeID(ctx, query)
 			So(err, ShouldNotBeNil)

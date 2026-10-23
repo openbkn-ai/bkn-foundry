@@ -14,10 +14,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -25,7 +26,6 @@ import (
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/object_type"
 	permissionlogic "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/logics/permission"
@@ -67,7 +67,7 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 	defer span.End()
 	var resps interfaces.ObjectSubGraph
 	if query == nil || query.Branch != interfaces.MAIN_BRANCH {
-		return resps, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("only the published main branch can be queried")
 	}
@@ -88,7 +88,7 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 			span.SetAttributes(attribute.Key("branch").String(query.Branch))
 			otellog.LogError(ctx, fmt.Sprintf("Get RelationTypePathsBaseOnSource error: %v", err), err)
 
-			return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return resps, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}
 	}
@@ -150,7 +150,7 @@ func (kns *knowledgeNetworkService) SearchSubgraphByTypePath(ctx context.Context
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询路径的对象子图")
 	defer span.End()
 	if query == nil || query.Branch != interfaces.MAIN_BRANCH {
-		return interfaces.PathsEntries{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return interfaces.PathsEntries{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("only the published main branch can be queried")
 	}
@@ -215,7 +215,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 			span.SetAttributes(attribute.Key("rt_id").String(edge.RelationTypeId))
 			otellog.LogError(ctx, fmt.Sprintf("Get relation type error: %v", err), err)
 
-			err = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			err = httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetRelationTypeFailed).WithErrorDetails(err.Error())
 
 			typePathsObjectCtx.errCh <- err
@@ -225,7 +225,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 			logger.Debugf("relation type %d not found!", edge.RelationTypeId)
 
 			span.SetAttributes(attribute.Key("rt_id").String(edge.RelationTypeId))
-			err = rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_KnowledgeNetwork_RelationTypeNotFound)
+			err = httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_KnowledgeNetwork_RelationTypeNotFound)
 			otellog.LogError(ctx, fmt.Sprintf("relation type [%s] not found!", edge.RelationTypeId), err)
 
 			typePathsObjectCtx.errCh <- err
@@ -737,7 +737,7 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 	if edge.RelationType.Type == interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
 		rules, ok := edge.RelationType.MappingRules.(*interfaces.FilteredCrossJoinMapping)
 		if !ok {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails("relation type filtered_cross_join requires FilteredCrossJoinMapping rules")
 		}
 		return kns.expandFilteredCrossJoin(ctx, query, batch, edge, objectType, isForward, rules)
@@ -929,10 +929,14 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 	mappingRules := edge.RelationType.MappingRules.(*interfaces.InDirectMapping)
 
 	if mappingRules.BackingDataSource.ID == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.RelationViewIDRequired", map[string]any{"relationType": edge.RelationType.RTName})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		// If the view is empty, return an error without sending a request.
-		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
-			WithErrorDetails(locale.ValidationDetail(ctx, "RelationViewIDRequired", map[string]any{"relationType": edge.RelationType.RTName}))
+			WithErrorDetails(localizedText)
 	}
 
 	// Mapping relationship from view to target object.
@@ -1064,7 +1068,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 		return nil, logics.UnsupportedRelationBackingDataSourceError(ctx, backingType)
 	}
 	if kns.proxy == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
@@ -1174,16 +1178,16 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			resp, err := kns.vba.QueryResourceData(ctx, mappingRules.BackingDataSource.ID, params)
 			if err != nil {
 				if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
-					return nil, rest.NewHTTPError(ctx, downstream.StatusCode,
+					return nil, httperrors.NewHTTPError(ctx, downstream.StatusCode,
 						relationDownstreamErrorCode(downstream.StatusCode)).
 						WithErrorDetails(downstream.ClientMessage())
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
 					WithErrorDetails("relation backing resource query failed")
 			}
 			if resp == nil {
-				return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails("vega resource query returned nil")
 			}
 			backingRows = resp.Entries
@@ -1205,13 +1209,13 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 func relationDownstreamErrorCode(statusCode int) string {
 	switch statusCode {
 	case http.StatusUnauthorized:
-		return rest.PublicError_Unauthorized
+		return httperrors.PublicError_Unauthorized
 	case http.StatusForbidden:
-		return rest.PublicError_Forbidden
+		return httperrors.PublicError_Forbidden
 	case http.StatusNotFound:
-		return rest.PublicError_NotFound
+		return httperrors.PublicError_NotFound
 	case http.StatusConflict:
-		return rest.PublicError_Conflict
+		return httperrors.PublicError_Conflict
 	default:
 		return oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter
 	}
@@ -1319,7 +1323,7 @@ func (kns *knowledgeNetworkService) SearchSubgraphByObjects(ctx context.Context,
 
 	var result interfaces.ObjectSubGraph
 	if query == nil || query.Branch != interfaces.MAIN_BRANCH {
-		return result, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return result, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("only the published main branch can be queried")
 	}
@@ -1376,14 +1380,16 @@ func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 		// Get object type information.
 		objectType, exists, err := kns.omAccess.GetObjectType(ctx, query.KNID, query.Branch, otID)
 		if err != nil {
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}
 		if !exists {
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound,
-				oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound).WithErrorDetails(
-				locale.ValidationDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}),
-			)
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ObjectTypeNotFound", map[string]any{"objectTypeID": otID})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound,
+				oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound).WithErrorDetails(localizedText)
 		}
 		objectTypeMap[otID] = &objectType
 

@@ -11,16 +11,20 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 const MaxSubCondition = 100
 
 func validationError(ctx context.Context, name string, templateData map[string]any) error {
-	return errors.New(locale.ValidationDetail(ctx, name, templateData))
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail."+name, templateData)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return errors.New(localizedText)
 }
 
 // SQL string escaping.

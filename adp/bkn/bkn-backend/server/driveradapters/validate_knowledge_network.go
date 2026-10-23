@@ -11,17 +11,14 @@ import (
 	"net/http"
 	"strings"
 
+	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
-
-	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
-
-func knowledgeNetworkInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail."+name, templateData)
-}
 
 // validateKnowledgeNetwork validates required knowledge network fields.
 func ValidateKN(ctx context.Context, kn *interfaces.KN) error {
@@ -49,8 +46,12 @@ func ValidateKN(ctx context.Context, kn *interfaces.KN) error {
 
 	// Validate that the branch is not empty.
 	if kn.Branch == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch).
-			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "BranchRequired", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail.BranchRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch).
+			WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -60,24 +61,32 @@ func ValidateKN(ctx context.Context, kn *interfaces.KN) error {
 func ValidateRelationTypePathsQuery(ctx context.Context, query *interfaces.RelationTypePathsBaseOnSource) error {
 	// The source object type is required.
 	if query.SourceObjecTypeId == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 	}
 
 	// The direction is required.
 	if query.Direction == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_Direction)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_NullParameter_Direction)
 	}
 
 	// Validate the direction.
 	if !interfaces.DIRECTION_MAP[query.Direction] {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_Direction).
-			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "DirectionUnsupported", map[string]any{"direction": query.Direction}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail.DirectionUnsupported", map[string]any{"direction": query.Direction})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_Direction).
+			WithErrorDetails(localizedText)
 	}
 
 	// The path length must not exceed three.
 	if query.PathLength > 3 || query.PathLength < 1 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_PathLength).
-			WithErrorDetails(knowledgeNetworkInvalidDetail(ctx, "PathLengthInvalid", map[string]any{"pathLength": query.PathLength}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.KnowledgeNetwork.InvalidParameter.Detail.PathLengthInvalid", map[string]any{"pathLength": query.PathLength})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_PathLength).
+			WithErrorDetails(localizedText)
 	}
 
 	return nil

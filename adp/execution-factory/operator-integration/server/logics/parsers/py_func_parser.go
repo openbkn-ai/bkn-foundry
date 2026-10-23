@@ -10,11 +10,12 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-python/gpython/ast"
 	"github.com/go-python/gpython/parser"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 const (
@@ -373,7 +374,7 @@ func createResponseBody(outputs []*interfaces.ParameterDef) []*interfaces.Respon
 		Description: "Failure details",
 		Properties:  map[string]*openapi3.SchemaRef{},
 	}
-	errSchema.Properties["code"] = openapi3.NewSchemaRef("", &openapi3.Schema{
+	errSchema.Properties["error_code"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Type:        &openapi3.Types{openapi3.TypeString},
 		Description: "Error code",
 	})
@@ -381,18 +382,14 @@ func createResponseBody(outputs []*interfaces.ParameterDef) []*interfaces.Respon
 		Type:        &openapi3.Types{openapi3.TypeString},
 		Description: "Error description",
 	})
-	errSchema.Properties["detail"] = openapi3.NewSchemaRef("", &openapi3.Schema{
-		Type:        &openapi3.Types{openapi3.TypeObject},
+	errSchema.Properties["error_details"] = openapi3.NewSchemaRef("", &openapi3.Schema{
 		Description: "Error details",
 	})
-	errSchema.Properties["solution"] = openapi3.NewSchemaRef("", &openapi3.Schema{
-		Type:        &openapi3.Types{openapi3.TypeString},
-		Description: "Error solution",
+	errSchema.Properties["metadata"] = openapi3.NewSchemaRef("", &openapi3.Schema{
+		Type:        &openapi3.Types{openapi3.TypeObject},
+		Description: "Public rendering parameters",
 	})
-	errSchema.Properties["link"] = openapi3.NewSchemaRef("", &openapi3.Schema{
-		Type:        &openapi3.Types{openapi3.TypeString},
-		Description: "Error link",
-	})
+	errSchema.Required = []string{"error_code", "description", "error_details"}
 	// Build the response list.
 	responseBody := []*interfaces.Response{
 		{

@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -260,7 +260,7 @@ func (kns *knowledgeNetworkService) listOverviewFocus(ctx context.Context, knID 
 	allowed := overviewIDSet(visibleObjectIDs)
 	if !objectScopeUnrestricted {
 		if _, ok := allowed[query.FocusObjectTypeID]; !ok {
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound,
+			return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		}
 	}
@@ -326,7 +326,7 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 	query interfaces.OverviewGraphQuery) (*interfaces.OverviewGraph, error) {
 	kn, err := kns.kna.GetKNByID(ctx, knID, query.Branch)
 	if err != nil || kn == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 	}
 	objectScope, err := kns.ps.ListAccessibleResources(ctx, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 		interfaces.OPERATION_TYPE_VIEW_DETAIL)
@@ -374,7 +374,7 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 	if query.Cursor != "" {
 		cursor, cursorErr := decodeOverviewCursor(query.Cursor)
 		if cursorErr != nil || cursor.Snapshot != snapshot {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails("overview graph cursor is invalid or stale")
 		}
 		offset = cursor.Offset

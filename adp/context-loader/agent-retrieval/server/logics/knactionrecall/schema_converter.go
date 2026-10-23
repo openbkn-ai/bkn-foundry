@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"strings"
 
-	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -139,26 +141,46 @@ func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 //
 //nolint:unparam // Keep the interface consistent; the error return is for future extension.
 func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Context, apiSpec map[string]any) (map[string]any, error) {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionParamHeader", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	headerDescription := localizedText
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionParamPath", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	pathDescription := localizedText
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionParamQuery", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	queryDescription := localizedText
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionParamBody", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	bodyDescription := localizedText
 	// Use hierarchical structure: header/path/query/body.
 	properties := map[string]any{
 		"header": map[string]any{
 			"type":        "object",
-			"description": infraerrors.LocalizedDetail(ctx, "ActionParamHeader"),
+			"description": headerDescription,
 			"properties":  make(map[string]any),
 		},
 		"path": map[string]any{
 			"type":        "object",
-			"description": infraerrors.LocalizedDetail(ctx, "ActionParamPath"),
+			"description": pathDescription,
 			"properties":  make(map[string]any),
 		},
 		"query": map[string]any{
 			"type":        "object",
-			"description": infraerrors.LocalizedDetail(ctx, "ActionParamQuery"),
+			"description": queryDescription,
 			"properties":  make(map[string]any),
 		},
 		"body": map[string]any{
 			"type":        "object",
-			"description": infraerrors.LocalizedDetail(ctx, "ActionParamBody"),
+			"description": bodyDescription,
 			"properties":  make(map[string]any),
 		},
 	}
@@ -228,9 +250,13 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 						// Add a generic body parameter as a fallback.
 						if bodyProps, ok := properties["body"].(map[string]any); ok {
 							if props, ok := bodyProps["properties"].(map[string]any); ok {
+								localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionParamBody", map[string]any{})
+								if renderErr != nil {
+									logger.Errorf("localized message rendering failed: %v", renderErr)
+								}
 								props["request_body"] = map[string]any{
 									"type":        "object",
-									"description": infraerrors.LocalizedDetail(ctx, "ActionParamBody"),
+									"description": localizedText,
 								}
 							}
 						}
@@ -281,9 +307,13 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 
 	// Return an empty body structure when no parameters are available.
 	if len(resultProps) == 0 {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionParamBody", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		resultProps["body"] = map[string]any{
 			"type":        "object",
-			"description": infraerrors.LocalizedDetail(ctx, "ActionParamBody"),
+			"description": localizedText,
 			"properties":  make(map[string]any),
 		}
 	}
@@ -664,7 +694,11 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToFunctionCall(ctx context.C
 	if props, ok := resolvedSchema["properties"].(map[string]any); ok {
 		if bodyProp, ok := props["body"].(map[string]any); ok {
 			if _, hasDesc := bodyProp["description"]; !hasDesc {
-				bodyProp["description"] = infraerrors.LocalizedDetail(ctx, "ActionParamBody")
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionParamBody", map[string]any{})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				bodyProp["description"] = localizedText
 			}
 		}
 	}
@@ -788,11 +822,15 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 			}
 		}
 	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionDynamicParams", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 
 	// 3. construct dynamic_params schema.
 	dynamicParamsSchema := map[string]any{
 		"type":        "object",
-		"description": infraerrors.LocalizedDetail(ctx, "ActionDynamicParams"),
+		"description": localizedText,
 		"properties":  dynamicProperties,
 	}
 	if len(dynamicRequired) > 0 {
@@ -810,11 +848,15 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.C
 	if err != nil {
 		return nil, err
 	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionDynamicParams", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 
 	// Construct dynamic_params schema: use the parsed MCP schema as dynamic_params.
 	dynamicParamsSchema := map[string]any{
 		"type":        "object",
-		"description": infraerrors.LocalizedDetail(ctx, "ActionDynamicParams"),
+		"description": localizedText,
 	}
 	if props, ok := resolvedSchema["properties"].(map[string]any); ok {
 		dynamicParamsSchema["properties"] = props
@@ -832,16 +874,25 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.C
 // wrapActionDriverParameters uniformly wraps the top-level action driver request parameter structure.
 // The outermost layer is fixed to dynamic_params + _instance_identities.
 func (s *knActionRecallServiceImpl) wrapActionDriverParameters(ctx context.Context, dynamicParamsSchema map[string]any) map[string]any {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionInstanceIdentities", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	identitiesDescription := localizedText
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionInstanceIdentity", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"dynamic_params": dynamicParamsSchema,
 			"_instance_identities": map[string]any{
 				"type":        "array",
-				"description": infraerrors.LocalizedDetail(ctx, "ActionInstanceIdentities"),
+				"description": identitiesDescription,
 				"items": map[string]any{
 					"type":                 "object",
-					"description":          infraerrors.LocalizedDetail(ctx, "ActionInstanceIdentity"),
+					"description":          localizedText,
 					"additionalProperties": map[string]any{},
 				},
 			},
@@ -973,7 +1024,11 @@ func (s *knActionRecallServiceImpl) finalizeOutputSchema(ctx context.Context, sc
 	}
 
 	if _, ok := schema["description"].(string); !ok {
-		schema["description"] = infraerrors.LocalizedDetail(ctx, "ActionOutputSchema")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionOutputSchema", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		schema["description"] = localizedText
 	}
 
 	return schema

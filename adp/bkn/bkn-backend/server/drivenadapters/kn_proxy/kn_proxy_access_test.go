@@ -6,6 +6,7 @@ package kn_proxy
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -247,6 +248,31 @@ func TestEnsureResolvesConcurrentIdenticalInsert(t *testing.T) {
 	})
 	if err != nil || created || mapping == nil || mapping.ProxyAccountID != "proxy-1" {
 		t.Fatalf("Ensure() = mapping %#v, created %v, err %v", mapping, created, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolvePublishedBindingPreservesScanAndCloseErrors(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	})
+	closeErr := errors.New("close rows failed")
+	mock.ExpectQuery("SELECT f_binding_type, f_binding_id, f_resource_type, f_resource_id, f_operation FROM t_kn_proxy_published_grant_source").
+		WillReturnRows(sqlmock.NewRows([]string{"f_binding_type", "f_binding_id", "f_resource_type", "f_resource_id", "f_operation"}).
+			AddRow(nil, "at-1", "function", "box-1", "execute").CloseError(closeErr)).RowsWillBeClosed()
+	access := &access{db: db}
+	_, err = access.ResolvePublishedBinding(t.Context(), "kn-1", interfaces.KNProxyBinding{})
+	if !errors.Is(err, closeErr) || !strings.Contains(err.Error(), "converting NULL to string") {
+		t.Fatalf("error = %v, want both scan and close errors", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

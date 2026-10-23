@@ -31,6 +31,9 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -67,17 +70,29 @@ func (e localizedInputError) Unwrap() error { return e.cause }
 
 // SkillIDRequiredError returns a localized missing skill_id error.
 func SkillIDRequiredError(ctx context.Context) error {
-	return localizedInputError{message: infraErr.LocalizedDetail(ctx, "SkillIDRequired"), cause: ErrSkillIDRequired}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillIDRequired", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return localizedInputError{message: localizedText, cause: ErrSkillIDRequired}
 }
 
 // RelPathRequiredError returns a localized missing rel_path error.
 func RelPathRequiredError(ctx context.Context) error {
-	return localizedInputError{message: infraErr.LocalizedDetail(ctx, "SkillRelativePathRequired"), cause: ErrRelPathRequired}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillRelativePathRequired", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return localizedInputError{message: localizedText, cause: ErrRelPathRequired}
 }
 
 // EntryShellRequiredError returns a localized missing entry_shell error.
 func EntryShellRequiredError(ctx context.Context) error {
-	return localizedInputError{message: infraErr.LocalizedDetail(ctx, "SkillEntryShellRequired"), cause: ErrEntryShellRequired}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillEntryShellRequired", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return localizedInputError{message: localizedText, cause: ErrEntryShellRequired}
 }
 
 // ListSkillsReq is the input for list_skills.
@@ -244,7 +259,11 @@ func (s *knSkillsService) ListSkills(ctx context.Context, req *ListSkillsReq) (*
 		})
 	}
 	if len(out.Entries) == 0 {
-		out.Message = infraErr.LocalizedDetail(ctx, "NoPublishedSkillsMatched")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.NoPublishedSkillsMatched", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		out.Message = localizedText
 	}
 	return out, nil
 }
@@ -264,14 +283,20 @@ func (s *knSkillsService) ListSkills(ctx context.Context, req *ListSkillsReq) (*
 func (s *knSkillsService) requireMounted(ctx context.Context, knID, skillID string) (*interfaces.CapabilityRef, error) {
 	knID = strings.TrimSpace(knID)
 	if knID == "" {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillScopeKnIDRequired", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		// A 400, not the bare sentinel: a missing argument is the caller's error, and the REST
 		// layer turns an unclassified error into a 500 that reads as a platform fault.
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "SkillScopeKnIDRequired"))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	if s.knAuthz == nil || s.bknBackend == nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	if err := s.knAuthz.AuthorizeRead(ctx, knID); err != nil {
 		return nil, permission.CapabilityScopeError(ctx, err, permission.CapabilityNetworkViewRequired)
@@ -289,8 +314,11 @@ func (s *knSkillsService) requireMounted(ctx context.Context, knID, skillID stri
 			return ref, nil
 		}
 	}
-	return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-		infraErr.LocalizedDetail(ctx, "SkillNotMountedOnNetwork"))
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillNotMountedOnNetwork", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 }
 
 // proxyReadAccount resolves the managed proxy account a mounted Skill is read as.
@@ -304,8 +332,11 @@ func (s *knSkillsService) proxyReadAccount(ctx context.Context, knID string, mou
 	reader, readerOK := s.operator.(interfaces.SkillAccountReader)
 	resolver, resolverOK := s.bknBackend.(interfaces.KNProxyResolver)
 	if !readerOK || !resolverOK || mount == nil || strings.TrimSpace(mount.ID) == "" {
-		return nil, interfaces.AccountAuthContext{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, interfaces.AccountAuthContext{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	binding := interfaces.KNProxyBinding{
 		KNID: strings.TrimSpace(knID), ChildType: interfaces.KNProxyChildTypeCapability,
@@ -318,8 +349,11 @@ func (s *knSkillsService) proxyReadAccount(ctx context.Context, knID string, mou
 	}
 	if mapping == nil || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
 		mapping.ProxyAccountType != string(interfaces.AccessorTypeApp) {
-		return nil, interfaces.AccountAuthContext{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, interfaces.AccountAuthContext{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	return reader, interfaces.AccountAuthContext{
 		AccountID: mapping.ProxyAccountID, AccountType: interfaces.AccessorTypeApp,
@@ -353,8 +387,11 @@ func (s *knSkillsService) logProxyRead(ctx context.Context, operation, knID stri
 // it — which the caller can act on only if told so. Other statuses keep their own meaning.
 func notProvisionedWhenForbidden(ctx context.Context, err error) error {
 	if status, ok := infraErr.HTTPStatus(err); ok && status == http.StatusForbidden {
-		return infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-			infraErr.LocalizedDetail(ctx, "SkillNotProvisionedForNetwork"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillNotProvisionedForNetwork", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return infraErr.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 	}
 	return err
 }
@@ -407,7 +444,11 @@ func (s *knSkillsService) GetSkillContent(ctx context.Context, knID, skillID str
 		})
 	}
 	if truncated {
-		out.Message = infraErr.LocalizedDetail(ctx, "SkillContentTruncated")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillContentTruncated", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		out.Message = localizedText
 	}
 	return out, nil
 }
@@ -452,12 +493,20 @@ func (s *knSkillsService) ReadSkillFile(ctx context.Context, req *ReadSkillFileR
 		FileType: resp.FileType,
 	}
 	if !isTextual(resp.MimeType, resp.Content) {
-		out.Message = infraErr.LocalizedDetail(ctx, "SkillFileNotTextual")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillFileNotTextual", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		out.Message = localizedText
 		return out, nil
 	}
 	out.Content, out.Truncated = truncateRunes(string(resp.Content), maxDocChars)
 	if out.Truncated {
-		out.Message = infraErr.LocalizedDetail(ctx, "SkillFileTruncated")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillFileTruncated", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		out.Message = localizedText
 	}
 	return out, nil
 }

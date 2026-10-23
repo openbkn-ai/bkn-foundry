@@ -13,6 +13,9 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -87,8 +90,11 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 	}
 	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListSkills] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "SkillListResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillListResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 
 	resp := &interfaces.ListSkillsResponse{
@@ -166,8 +172,11 @@ func explicitAccountHeader(ctx context.Context, account interfaces.AccountAuthCo
 	accountID := strings.TrimSpace(account.AccountID)
 	accountType := strings.TrimSpace(string(account.AccountType))
 	if accountID == "" || accountType == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "SkillAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	header := common.GetHeaderForChildOperation(ctx, operationName, 1)
 	delete(header, "Authorization")
@@ -186,8 +195,11 @@ func (o *operatorIntegrationClient) skillContentFromResponse(ctx context.Context
 	}
 	if err := sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "SkillContentResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillContentResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 
 	content, err := o.fetchSkillAsset(ctx, raw.URL)
@@ -227,8 +239,11 @@ func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *inte
 func (o *operatorIntegrationClient) ReadSkillFileAs(ctx context.Context, account interfaces.AccountAuthContext,
 	req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
 	if req == nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "SkillIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillIDRequired", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	header, err := explicitAccountHeader(ctx, account, "operator.skill.file_read.as_account")
 	if err != nil {
@@ -255,8 +270,11 @@ func (o *operatorIntegrationClient) skillFileFromResponse(ctx context.Context, r
 	}
 	if err := sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ReadSkillFile] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "SkillFileReadResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillFileReadResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 
 	content, err := o.fetchSkillAsset(ctx, raw.URL)
@@ -296,8 +314,11 @@ func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *inter
 	resp := &interfaces.ExecuteSkillResponse{}
 	if err = common.UnmarshalPreciseJSON(utils.ObjectToByte(respBody), resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteSkill] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "SkillExecutionResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillExecutionResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 	if resp.SkillID == "" {
 		resp.SkillID = req.SkillID
@@ -309,24 +330,36 @@ func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *inter
 // It is the second hop for a published skill because the metadata API returns only a presigned URL.
 func (o *operatorIntegrationClient) fetchSkillAsset(ctx context.Context, assetURL string) ([]byte, error) {
 	if assetURL == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound,
-			infraErr.LocalizedDetail(ctx, "SkillAssetURLMissing"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAssetURLMissing", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound, localizedText)
 	}
 	// The presigned URL carries its own signature. Do not send account or trace
 	// headers because some object stores include additional headers in signature validation.
 	code, body, err := o.httpClient.GetNoUnmarshal(ctx, assetURL, nil, nil)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#fetchSkillAsset] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "SkillAssetDownloadFailed"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAssetDownloadFailed", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	if code < http.StatusOK || code >= http.StatusMultipleChoices {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "SkillAssetUnexpectedStatus"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAssetUnexpectedStatus", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	if len(body) > maxSkillAssetBytes {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusRequestEntityTooLarge,
-			infraErr.LocalizedDetail(ctx, "SkillAssetTooLarge"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAssetTooLarge", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusRequestEntityTooLarge, localizedText)
 	}
 	return body, nil
 }
@@ -344,9 +377,17 @@ func (o *operatorIntegrationClient) skillHeader(ctx context.Context, operationNa
 // Transport errors and 5xx responses are upstream failures and become 502.
 func skillUpstreamError(ctx context.Context, code int, detailKey string, _ error) error {
 	if code >= http.StatusBadRequest && code < http.StatusInternalServerError {
-		return infraErr.DefaultHTTPError(ctx, code, infraErr.LocalizedDetail(ctx, detailKey))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+detailKey, map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return infraErr.DefaultHTTPError(ctx, code, localizedText)
 	}
-	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, infraErr.LocalizedDetail(ctx, detailKey))
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+detailKey, map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 }
 
 func firstNonEmptyStr(values ...string) string {
@@ -387,8 +428,11 @@ func (o *operatorIntegrationClient) GetSkillNamesByIDs(ctx context.Context,
 	}
 	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillNamesByIDs] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "SkillNameLookupInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillNameLookupInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	for _, entry := range raw.Entries {
 		if entry.ID != "" {

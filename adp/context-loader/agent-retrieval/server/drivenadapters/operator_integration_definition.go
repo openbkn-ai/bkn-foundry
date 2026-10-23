@@ -11,6 +11,9 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -27,9 +30,17 @@ func classifyToolReadError(ctx context.Context, code int, err error, detailKey s
 		if downstreamCode, description := executionFactoryError(err); downstreamCode != "" && description != "" {
 			return infraErr.DefaultHTTPError(ctx, code, downstreamCode+": "+description)
 		}
-		return infraErr.DefaultHTTPError(ctx, code, infraErr.LocalizedDetail(ctx, detailKey))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+detailKey, map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return infraErr.DefaultHTTPError(ctx, code, localizedText)
 	}
-	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, infraErr.LocalizedDetail(ctx, detailKey))
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+detailKey, map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 }
 
 // The schema keys of a tool's API spec that get_action_info builds a tool from: its parameters
@@ -49,8 +60,11 @@ func (o *operatorIntegrationClient) GetToolDetailAs(ctx context.Context, account
 		return nil, err
 	}
 	if req == nil || strings.TrimSpace(req.BoxID) == "" || strings.TrimSpace(req.ToolID) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 	}
 	fullURL := o.baseURL + fmt.Sprintf(getToolDetailInternalURI,
 		url.PathEscape(strings.TrimSpace(req.BoxID)), url.PathEscape(strings.TrimSpace(req.ToolID)))
@@ -84,8 +98,11 @@ func (o *operatorIntegrationClient) GetMCPToolDetailAs(ctx context.Context, acco
 		return nil, err
 	}
 	if req == nil || strings.TrimSpace(req.McpID) == "" || strings.TrimSpace(req.ToolName) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 	}
 	fullURL := o.baseURL + fmt.Sprintf(getMCPToolListInternalURI, url.PathEscape(strings.TrimSpace(req.McpID)))
 	tool, err := o.readMCPToolDetail(ctx, "GetMCPToolDetailAs", fullURL, header, req.ToolName)
@@ -104,8 +121,11 @@ func (o *operatorIntegrationClient) GetMCPToolDetailAs(ctx context.Context, acco
 func (o *operatorIntegrationClient) accountHeader(ctx context.Context, account interfaces.AccountIdentity,
 	operationName string) (map[string]string, error) {
 	if strings.TrimSpace(account.ID) == "" || strings.TrimSpace(string(account.Type)) == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	header := o.skillHeader(ctx, operationName)
 	header[string(interfaces.HeaderXAccountID)] = account.ID

@@ -11,7 +11,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -22,7 +24,7 @@ import (
 )
 
 func (r *restHandler) GetCatalogHealthCheckScheduleByEx(c *gin.Context) {
-	v, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	v, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err == nil {
 		r.getCatalogHealthCheckSchedule(c, v)
 	}
@@ -55,7 +57,7 @@ func (r *restHandler) getCatalogHealthCheckSchedule(c *gin.Context, v hydra.Visi
 		return
 	}
 	if catalog.Type != interfaces.CatalogTypePhysical {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).
 			WithErrorDetails("health check schedules are only supported for physical catalogs")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -77,7 +79,7 @@ func (r *restHandler) getCatalogHealthCheckSchedule(c *gin.Context, v hydra.Visi
 }
 
 func (r *restHandler) UpdateCatalogHealthCheckScheduleByEx(c *gin.Context) {
-	v, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	v, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err == nil {
 		r.updateCatalogHealthCheckSchedule(c, v)
 	}
@@ -103,7 +105,7 @@ func (r *restHandler) updateCatalogHealthCheckSchedule(c *gin.Context, v hydra.V
 
 	var req interfaces.CatalogHealthCheckScheduleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

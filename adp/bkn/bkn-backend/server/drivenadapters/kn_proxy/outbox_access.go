@@ -74,7 +74,7 @@ func (a *outboxAccess) ListPlannedSources(ctx context.Context, knID string,
 	return result, nil
 }
 
-func (a *outboxAccess) ListPlannedSnapshot(ctx context.Context, knID string) ([]interfaces.ProxyGrantSourceSpec, error) {
+func (a *outboxAccess) ListPlannedSnapshot(ctx context.Context, knID string) (result []interfaces.ProxyGrantSourceSpec, err error) {
 	query, args, err := sq.Select(
 		"f_resource_type", "f_resource_id", "f_operation", "f_source_type", "f_source_id",
 		"f_kn_id", "f_binding_type", "f_binding_id",
@@ -87,8 +87,12 @@ func (a *outboxAccess) ListPlannedSnapshot(ctx context.Context, knID string) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	result := make([]interfaces.ProxyGrantSourceSpec, 0)
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
+	result = make([]interfaces.ProxyGrantSourceSpec, 0)
 	for rows.Next() {
 		var source interfaces.ProxyGrantSourceSpec
 		if err := rows.Scan(&source.ResourceType, &source.ResourceID, &source.Operation,
@@ -545,7 +549,7 @@ WHERE f_id = ? AND f_status IN ('processing', 'completing') AND f_lease_owner = 
 	return tx.Commit()
 }
 
-func (a *outboxAccess) CleanupTerminal(ctx context.Context, updatedBefore int64, limit int) (int64, error) {
+func (a *outboxAccess) CleanupTerminal(ctx context.Context, updatedBefore int64, limit int) (deleted int64, err error) {
 	if limit <= 0 {
 		return 0, nil
 	}
@@ -553,7 +557,11 @@ func (a *outboxAccess) CleanupTerminal(ctx context.Context, updatedBefore int64,
 	if err != nil {
 		return 0, err
 	}
-	defer conn.Close()
+	defer func() {
+		if closeErr := conn.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
 	var acquired int
 	const acquireCleanupLock = "SELECT GET_LOCK(CONCAT(DATABASE(), ':', ?), 0)"
 	const releaseCleanupLock = "SELECT RELEASE_LOCK(CONCAT(DATABASE(), ':', ?))"

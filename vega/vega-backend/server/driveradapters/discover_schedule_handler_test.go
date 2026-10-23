@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -434,7 +434,7 @@ func Test_DiscoverScheduleRestHandler_ToggleDiscoverSchedule(t *testing.T) {
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
 			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: false, UpdateTime: 123}, nil)
 		dss.EXPECT().UpdateEnabled(gomock.Any(), gomock.Any(), true).Return(
-			rest.NewHTTPError(context.Background(), http.StatusConflict,
+			httperrors.NewHTTPError(context.Background(), http.StatusConflict,
 				verrors.VegaBackend_DiscoverSchedule_UpdateConflict))
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/enable", nil)
@@ -451,7 +451,7 @@ func Test_DiscoverScheduleRestHandler_ToggleDiscoverSchedule(t *testing.T) {
 		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true, UpdateTime: 789}
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(current, nil)
 		dss.EXPECT().UpdateEnabled(gomock.Any(), current, true).Return(
-			rest.NewHTTPError(context.Background(), http.StatusConflict,
+			httperrors.NewHTTPError(context.Background(), http.StatusConflict,
 				verrors.VegaBackend_DiscoverSchedule_UpdateConflict))
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/enable", nil)

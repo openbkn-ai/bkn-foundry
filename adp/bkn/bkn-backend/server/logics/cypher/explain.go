@@ -151,10 +151,10 @@ func columnTypes(compiled *compiledQuery) map[string]*interfaces.CypherValueType
 		return selected
 	}
 	for _, total := range plan.Totals {
-		switch {
-		case total.Function == "COUNT":
+		switch total.Function {
+		case "COUNT":
 			types[total.Alias] = integer
-		case total.Function == "AVG":
+		case "AVG":
 			types[total.Alias] = &interfaces.CypherValueType{Kind: "float"}
 		default:
 			types[total.Alias] = selected[total.Of]

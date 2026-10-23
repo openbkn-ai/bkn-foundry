@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -35,7 +37,7 @@ func (r *restHandler) GetObjectTypeSchemaByIn(c *gin.Context) {
 
 // GetObjectTypeSchemaByEx returns the bound Vega schema for an authenticated caller.
 func (r *restHandler) GetObjectTypeSchemaByEx(c *gin.Context) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	requestVisitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -59,10 +61,10 @@ func (r *restHandler) getObjectTypeSchema(c *gin.Context, requestVisitor hydra.V
 	}
 	schema, err := r.ots.GetObjectTypeSchema(ctx, knID, branch, objectTypeID)
 	if err != nil {
-		if httpErr, ok := err.(*rest.HTTPError); ok {
+		if httpErr, ok := err.(*httperrors.HTTPError); ok {
 			rest.ReplyError(c, httpErr)
 		} else {
-			rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 		}
 		return
@@ -77,7 +79,7 @@ func (r *restHandler) GetObjectTypeSampleDataByIn(c *gin.Context) {
 
 // GetObjectTypeSampleDataByEx returns a small data sample for an authenticated caller.
 func (r *restHandler) GetObjectTypeSampleDataByEx(c *gin.Context) {
-	ctx := rest.GetLanguageCtx(c)
+	ctx := i18n.GetLanguageCtx(c)
 	requestVisitor, err := r.verifyOAuth(ctx, c)
 	if err != nil {
 		return
@@ -98,12 +100,12 @@ func (r *restHandler) getObjectTypeSampleData(c *gin.Context, requestVisitor hyd
 	offset, offsetErr := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	needTotal, totalErr := strconv.ParseBool(c.DefaultQuery("need_total", "true"))
 	if limitErr != nil || offsetErr != nil || totalErr != nil {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("invalid sample pagination"))
 		return
 	}
 	if c.Query("search_after") != "" {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("raw search_after is not accepted; use cursor"))
 		return
 	}
@@ -120,10 +122,10 @@ func (r *restHandler) getObjectTypeSampleData(c *gin.Context, requestVisitor hyd
 		},
 	})
 	if err != nil {
-		if httpErr, ok := err.(*rest.HTTPError); ok {
+		if httpErr, ok := err.(*httperrors.HTTPError); ok {
 			rest.ReplyError(c, httpErr)
 		} else {
-			rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+			rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 		}
 		return
@@ -202,12 +204,12 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	// Validate query parameters.
 	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo, ignoreLocalIndex, IncludeLogicParams, excludeSystemProperties)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -216,11 +218,11 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -231,19 +233,19 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	query := interfaces.ObjectQueryBaseOnObjectType{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
 		return
 	}
 	if len(query.SearchAfter) > 0 {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails("raw search_after is not accepted; use cursor"))
 		return
@@ -256,11 +258,11 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 
 	err = validateObjectSearchRequest(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -276,11 +278,11 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	// Execute the query.
 	result, err := r.ots.GetObjectsByObjectTypeID(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -379,12 +381,12 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 		interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS,
 		excludeSystemProperties)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -393,11 +395,11 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -407,12 +409,12 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	query := interfaces.ObjectPropertyValueQuery{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -426,11 +428,11 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 
 	err = validateObjectPropertyValueQuery(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -446,11 +448,11 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	// Execute the query.
 	result, err := r.ots.GetObjectPropertyValue(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 

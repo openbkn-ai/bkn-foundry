@@ -14,6 +14,8 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -103,8 +105,11 @@ func classifyRawQueryError(ctx context.Context, code int, body []byte) error {
 	if code == http.StatusForbidden {
 		errorCode, errorDetails := vegaErrorFields(body)
 		if errorCode == vegaPublicForbidden && strings.Contains(errorDetails, vegaViewDetailOperation) {
-			return infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-				infraErr.LocalizedDetail(ctx, "RunSQLResourceForbidden"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.RunSQLResourceForbidden", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return infraErr.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 		}
 	}
 	return infraErr.DefaultHTTPError(ctx, code, fmt.Sprintf("vega raw query failed: %s", string(body)))

@@ -28,6 +28,11 @@ func TestProductionGoCodeHasNoHardCodedChineseText(t *testing.T) {
 			return nil
 		}
 
+		// Chinese translations belong in the dedicated message bundle.
+		if path == filepath.Join("locale", "agent_observability_zh_cn.go") {
+			return nil
+		}
+
 		file, err := os.Open(path)
 		if err != nil {
 			return err

@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -338,7 +338,7 @@ func assertHTTPStatus(t *testing.T, err error, status int) {
 	t.Helper()
 	require.Error(t, err)
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, status, httpErr.HTTPCode)
 }

@@ -11,7 +11,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 func TestCreateToolFailureMessageUsesErrorMsgDescription(t *testing.T) {
@@ -43,8 +43,8 @@ func TestExecuteFunctionForwardsSandboxRuntimeContext(t *testing.T) {
 		if r.URL.Path != "/api/agent-operator-integration/v1/function/execute" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if got := r.Header.Get(sharedrest.AcceptLanguageHeader); got != sharedrest.AmericanEnglish {
-			t.Fatalf("Accept-Language = %q, want %q", got, sharedrest.AmericanEnglish)
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != string(i18n.AmericanEnglish) {
+			t.Fatalf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode payload: %v", err)
@@ -60,7 +60,7 @@ func TestExecuteFunctionForwardsSandboxRuntimeContext(t *testing.T) {
 	}
 
 	_, err := client.ExecuteFunction(
-		sharedrest.WithLanguage(context.Background(), sharedrest.AmericanEnglish),
+		i18n.WithLanguage(context.Background(), i18n.AmericanEnglish),
 		"user_001",
 		ExecuteFunctionRequest{
 			Code:           "def handler(event):\n    return event\n",

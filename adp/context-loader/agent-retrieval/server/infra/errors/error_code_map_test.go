@@ -29,8 +29,8 @@ func TestDistinguishableErrorCodes(t *testing.T) {
 		if err.HTTPCode != status {
 			t.Fatalf("status %d: HTTPCode = %d", status, err.HTTPCode)
 		}
-		if err.Code == "" || err.Code == "agentRetrieval.InternalServerError" {
-			t.Fatalf("status %d: code = %q，落回了 InternalServerError，调用方无从区分", status, err.Code)
+		if err.ErrorCode == "" || err.ErrorCode == "agentRetrieval.InternalServerError" {
+			t.Fatalf("status %d: code = %q，落回了 InternalServerError，调用方无从区分", status, err.ErrorCode)
 		}
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -84,7 +84,7 @@ func ExecuteResourceDataCursorContinuationWithRunner(ctx context.Context, accoun
 	}
 	defer rawQueryCursorSessions.release(session)
 	if session.AccountID != accountID {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	}
 	if resource == nil || session.ResourceDataResourceID != resource.ID {
@@ -167,6 +167,6 @@ func executeResourceDataCursorPage(ctx context.Context, session *interfaces.Curs
 }
 
 func cursorNotFoundError(ctx context.Context) error {
-	return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
+	return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
 		WithErrorDetails("cursor not found or expired")
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
@@ -34,7 +35,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kntools"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permission"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/permissionguide"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 const (
@@ -107,9 +107,9 @@ func newLocalizedMCPHandlerForProfile(
 	lifecycleClient *bkntrace.LifecycleClient, sandboxPort int, profile mcpProfile,
 ) http.Handler {
 	handlers := make(map[string]http.Handler, 2)
-	for _, locale := range []sharedrest.Language{sharedrest.SimplifiedChinese, sharedrest.AmericanEnglish} {
+	for _, locale := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
 		srv, _ := newMCPServerForProfile(lifecycleClient, string(locale), sandboxPort, profile)
-		handlers[normalizeMCPLocale(string(locale))] = newMCPStreamableHTTPHandler(srv, profile.endpointPath)
+		handlers[string(locale)] = newMCPStreamableHTTPHandler(srv, profile.endpointPath)
 	}
 	return &localizedMCPHandler{handlers: handlers}
 }
@@ -133,7 +133,7 @@ func (h *localizedMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	// locale to Mcp-Session-Id, guarding against a client that changes language
 	// mid-session — which clients do not do, while the map itself became more
 	// per-replica session state to keep alive (#954).
-	locale := normalizeMCPLocale(string(sharedrest.ResolveLanguage(r.Header.Get(sharedrest.AcceptLanguageHeader))))
+	locale := string(i18n.ResolveLanguage(r.Header.Get(i18n.AcceptLanguageHeader)))
 	handler, ok := h.handlers[locale]
 	if !ok {
 		handler = h.handlers[defaultMCPLocale]

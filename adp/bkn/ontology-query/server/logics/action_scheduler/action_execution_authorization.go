@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -94,7 +94,7 @@ func (s *actionSchedulerService) resolveActionPermissionRequirements(ctx context
 			return nil, actionPermissionUnavailable(ctx, err)
 		}
 		if !exists {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 		}
 		if objectType.KNID != "" && objectType.KNID != knID {
 			return nil, actionPermissionInvalid(ctx, "object type belongs to another knowledge network")
@@ -251,11 +251,11 @@ func validateStandaloneActionResourceID(resourceID string) error {
 }
 
 func actionPermissionInvalid(ctx context.Context, detail string) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 		oerrors.OntologyQuery_ActionExecution_InvalidParameter).WithErrorDetails(detail)
 }
 
 func actionPermissionUnavailable(ctx context.Context, err error) error {
-	return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+	return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 		oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails(err.Error())
 }

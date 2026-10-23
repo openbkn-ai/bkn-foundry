@@ -14,9 +14,10 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // safeAuthorization implements interfaces.Authorization against bkn-safe's clean
@@ -304,7 +305,7 @@ func (s *safeAuthorization) get(ctx context.Context, path string, query url.Valu
 	if err != nil {
 		return err
 	}
-	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	for key, value := range common.BuildTraceHeaders(ctx) {
 		req.Header.Set(key, value)
 	}
@@ -333,7 +334,7 @@ func (s *safeAuthorization) do(ctx context.Context, method, path string, body, o
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	for key, value := range common.BuildTraceHeaders(ctx) {
 		req.Header.Set(key, value)
 	}

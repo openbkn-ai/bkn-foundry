@@ -18,6 +18,9 @@ import (
 	"unicode"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -85,20 +88,14 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] ListKnowledgeNetworks get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmarshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmarshal BaseError failed: %v\n", err)
 			return nil, err
 		}
 
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	resp = &interfaces.ListKnResp{}
@@ -216,20 +213,14 @@ func (b *bknBackendAccess) getKnowledgeNetworkJSON(ctx context.Context, src, ope
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmarshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmarshal BaseError failed: %v\n", err)
 			return err
 		}
 
-		return &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	// bkn-backend always answers these reads with a JSON object. An empty body would otherwise
@@ -274,21 +265,14 @@ func (b *bknBackendAccess) RunCypherQuery(ctx context.Context, req *interfaces.C
 		// A refusal from the compiler names the construct and its position,
 		// and that is the whole value of it to a caller writing a query, so it
 		// is carried through rather than flattened into a generic failure.
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("[BknBackendAccess] RunCypherQuery unmarshal BaseError failed: %v\n", err)
 			return nil, infraErr.DefaultHTTPError(ctx, respCode,
 				fmt.Sprintf("[BknBackendAccess] RunCypherQuery failed, [%s]", src))
 		}
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-			Metadata:     baseError.Metadata,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	resp := &interfaces.CypherQueryResp{}
@@ -340,20 +324,14 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] SearchObjectTypes， get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return objectTypes, err
 		}
 
-		return objectTypes, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return objectTypes, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -447,20 +425,14 @@ func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string,
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] GetObjectTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyObjectTypes, err
 		}
 
-		return emptyObjectTypes, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return emptyObjectTypes, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -501,20 +473,14 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] SearchRelationTypes get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
 
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	releationTypes = &interfaces.RelationTypeConcepts{}
@@ -558,20 +524,14 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] GetRelationTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyRelationTypes, err
 		}
 
-		return emptyRelationTypes, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return emptyRelationTypes, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -612,20 +572,14 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] SearchActionTypes get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
 
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	actionTypes = &interfaces.ActionTypeConcepts{}
@@ -808,20 +762,14 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.Errorf("[BknBackendAccess] GetActionTypeDetail get resp failed, [%s], %v\n", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return emptyActionTypes, err
 		}
 
-		return emptyActionTypes, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return emptyActionTypes, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -921,19 +869,13 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 		if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 			b.logger.WithContext(ctx).Warnf("[BknBackendAccess] ListMetricsByObjectTypes failed, [%s], code %d", src, respCode)
 
-			var baseError interfaces.KnBaseError
+			var baseError httperrors.BaseError
 			if err := sonic.Unmarshal(respBody, &baseError); err != nil {
 				return nil, infraErr.DefaultHTTPError(ctx, respCode,
 					fmt.Sprintf("[BknBackendAccess] ListMetricsByObjectTypes failed, code %d", respCode))
 			}
-			return nil, &infraErr.HTTPError{
-				HTTPCode:     respCode,
-				Code:         baseError.ErrorCode,
-				Description:  baseError.Description,
-				Solution:     baseError.Solution,
-				ErrorLink:    baseError.ErrorLink,
-				ErrorDetails: baseError.ErrorDetails,
-			}
+			return nil, infraErr.NewHTTPError(ctx, respCode,
+				infraErr.ErrExtCommonExternalServerError, baseError)
 		}
 
 		if len(respBody) == 0 {
@@ -1063,19 +1005,13 @@ func (b *bknBackendAccess) ListKNCapabilities(ctx context.Context, knID, branch,
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		b.logger.WithContext(ctx).Errorf("[BknBackendAccess] ListKNCapabilities get resp failed, [%s], %v", src, respBody)
 
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(respBody, &baseError); err != nil {
-			b.logger.Errorf("unmalshal KnBaseError failed: %v\n", err)
+			b.logger.Errorf("unmalshal BaseError failed: %v\n", err)
 			return nil, err
 		}
-		return nil, &infraErr.HTTPError{
-			HTTPCode:     respCode,
-			Code:         baseError.ErrorCode,
-			Description:  baseError.Description,
-			Solution:     baseError.Solution,
-			ErrorLink:    baseError.ErrorLink,
-			ErrorDetails: baseError.ErrorDetails,
-		}
+		return nil, infraErr.NewHTTPError(ctx, respCode,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
 
 	if len(respBody) == 0 {
@@ -1116,27 +1052,35 @@ func (b *bknBackendAccess) ResolveKNProxyBinding(ctx context.Context,
 
 	status, body, err := b.httpClient.PostNoUnmarshal(ctx, src, header, binding)
 	if err != nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
-		var baseError interfaces.KnBaseError
+		var baseError httperrors.BaseError
 		if decodeErr := sonic.Unmarshal(body, &baseError); decodeErr != nil {
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-				infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 		}
-		return nil, &infraErr.HTTPError{
-			HTTPCode: status, Code: baseError.ErrorCode, Description: baseError.Description,
-			Solution: baseError.Solution, ErrorLink: baseError.ErrorLink, ErrorDetails: baseError.ErrorDetails,
-		}
+		return nil, infraErr.NewHTTPError(ctx, status,
+			infraErr.ErrExtCommonExternalServerError, baseError)
 	}
+
 	var mapping interfaces.KNProxyAccount
 	if len(body) == 0 || sonic.Unmarshal(body, &mapping) != nil ||
 		mapping.KNID != binding.KNID || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
 		mapping.ProxyAccountType != string(interfaces.AccessorTypeApp) || mapping.Version <= 0 ||
 		mapping.LifecycleStatus != "active" || mapping.SyncStatus != "ready" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	return &mapping, nil
 }

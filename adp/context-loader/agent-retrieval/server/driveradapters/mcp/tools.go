@@ -8,15 +8,17 @@ package mcp
 
 import (
 	"context"
-	"github.com/bytedance/sonic"
-	validator "github.com/go-playground/validator/v10"
-	"github.com/mark3labs/mcp-go/mcp"
 	"log"
 	"strings"
 
+	"github.com/bytedance/sonic"
+	"github.com/go-playground/validator/v10"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/kncypher"
@@ -668,9 +670,11 @@ func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetr
 		// downstream call per object type of a list this answer will not carry (#1877).
 		if resp.NeedsNavigationShell() {
 			resp.ReduceToNavigationShell()
-			resp.Notice = infraErr.LocalizedDetail(ctx, resp.NavigationShellNoticeKey(),
-				resp.ObjectTypeCount, resp.RelationTypeCount,
-				interfaces.MaxSummaryObjectTypes, interfaces.MaxSummaryRelationTypes)
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+resp.NavigationShellNoticeKey(), map[string]any{"Arg1": resp.ObjectTypeCount, "Arg2": resp.RelationTypeCount, "Arg3": interfaces.MaxSummaryObjectTypes, "Arg4": interfaces.MaxSummaryRelationTypes})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			resp.Notice = localizedText
 		} else {
 			resp.ObjectTypes, err = objectpermission.FilterObjectTypes(ctx, schemaAccess, knID, resp.ObjectTypes)
 			if err != nil {
@@ -785,8 +789,11 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 			matched, totalCount = page.Entries, page.TotalCount
 			nextOffset = interfaces.NextObjectTypeOffset(offset, page.Scanned, totalCount)
 			if clamped {
-				notice = infraErr.LocalizedDetail(ctx, "ObjectTypePageLimitClamped",
-					args.Limit, interfaces.MaxObjectTypePageSize, limit)
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ObjectTypePageLimitClamped", map[string]any{"Arg1": args.Limit, "Arg2": interfaces.MaxObjectTypePageSize, "Arg3": limit})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				notice = localizedText
 			}
 		} else {
 			// Prioritize the endpoint that retrieves details by id: the export view only lists object types, does not enrich the data source, and does not enrich the data source.

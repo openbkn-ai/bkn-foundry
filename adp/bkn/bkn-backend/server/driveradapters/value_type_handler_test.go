@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -151,7 +151,7 @@ func TestValueTypeHandlers(t *testing.T) {
 		vts.EXPECT().GetValueTypeByID(gomock.Any(), "kn1", "main", "amount_cny").
 			Return(&interfaces.ValueType{VTID: "amount_cny", VTName: "人民币金额"}, nil)
 		vts.EXPECT().DeleteValueType(gomock.Any(), nil, "kn1", "main", "amount_cny").Return(
-			rest.NewHTTPError(context.Background(), http.StatusConflict, berrors.BknBackend_ValueType_Referenced).
+			httperrors.NewHTTPError(context.Background(), http.StatusConflict, berrors.BknBackend_ValueType_Referenced).
 				WithErrorDetails(map[string]any{"references": []interfaces.ValueTypeReference{{ObjectTypeID: "order", Property: "amount"}}}))
 		w := serve(&restHandler{kns: kns, vts: vts}, http.MethodDelete, "/knowledge-networks/kn1/value-types/amount_cny", "")
 		assert.Equal(t, http.StatusConflict, w.Code)

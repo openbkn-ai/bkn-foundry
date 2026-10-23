@@ -1,0 +1,76 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package errors
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
+	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+)
+
+func TestSharedHTTPErrorEnvelope(t *testing.T) {
+	for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		t.Run(string(language), func(t *testing.T) {
+			ctx := i18n.WithLanguage(context.Background(), language)
+			details := map[string]any{"reason": "{{ literal }}"}
+			err := NewHTTPError(ctx, http.StatusBadRequest, ErrExtCommonInternalComponentNotAllowed, details, "tool-1")
+			if err.Description != "" {
+				t.Fatal("constructor rendered the description")
+			}
+			if err.Lang != language {
+				t.Fatalf("language = %q", err.Lang)
+			}
+			if renderErr := err.Render(); renderErr != nil {
+				t.Fatal(renderErr)
+			}
+			if !strings.Contains(err.Description, "tool-1") || err.Metadata["Arg1"] != "tool-1" || strings.Contains(err.Description, "<no value>") {
+				t.Fatalf("description = %q", err.Description)
+			}
+			data, encodeErr := json.Marshal(err)
+			if encodeErr != nil {
+				t.Fatal(encodeErr)
+			}
+			var body map[string]any
+			if decodeErr := json.Unmarshal(data, &body); decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			if body["error_code"] != err.ErrorCode || body["description"] != err.Description || body["error_details"].(map[string]any)["reason"] != "{{ literal }}" {
+				t.Fatalf("body = %s", data)
+			}
+			for _, legacy := range []string{"code", "details", "solution", "link", "error_link"} {
+				if _, exists := body[legacy]; exists {
+					t.Fatalf("legacy field %s present", legacy)
+				}
+			}
+		})
+	}
+}
+
+func TestPublicStatusMessagesRender(t *testing.T) {
+	for status := range errCodeMap {
+		for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+			err := DefaultHTTPError(i18n.WithLanguage(context.Background(), language), status, nil)
+			if renderErr := err.Render(); renderErr != nil {
+				t.Fatalf("status %d language %s: %v", status, language, renderErr)
+			}
+			if err.Description == "" {
+				t.Fatalf("status %d: empty description", status)
+			}
+		}
+	}
+}
+
+func TestCodeScaffoldUsesSharedI18n(t *testing.T) {
+	for _, lang := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		text, err := i18n.Render(lang, "AgentOperatorIntegration.template.python", nil)
+		if err != nil || !strings.Contains(text, "@tool") {
+			t.Fatalf("%s: %v %q", lang, err, text)
+		}
+	}
+}

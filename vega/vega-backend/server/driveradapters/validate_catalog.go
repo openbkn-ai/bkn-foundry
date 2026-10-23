@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -56,7 +56,7 @@ func validateCatalogTypeQueryParam(ctx context.Context, typ string) error {
 		interfaces.CatalogTypeLogical:
 		return nil
 	default:
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_Type).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_Type).
 			WithErrorDetails(fmt.Sprintf("invalid type: %s", typ))
 	}
 }
@@ -74,7 +74,7 @@ func validateCatalogHealthCheckStatusQueryParam(ctx context.Context, status stri
 		interfaces.CatalogHealthStatusUnchecked:
 		return nil
 	default:
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("invalid health_check_status: %s", status))
 	}
 }

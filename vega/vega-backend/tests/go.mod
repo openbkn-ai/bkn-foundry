@@ -5,14 +5,13 @@ go 1.26.0
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/go-sql-driver/mysql v1.10.1
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261016053435-798abfaea9a7
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
 )
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.4 // indirect
 	github.com/bytedance/sonic/loader v0.5.2 // indirect

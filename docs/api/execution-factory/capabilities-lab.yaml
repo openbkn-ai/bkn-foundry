@@ -5,7 +5,7 @@ info:
   description: Implemented capabilities-lab route group. Authorization and Cookie headers are forwarded
     to upstream public APIs; the group middleware itself does not validate Bearer tokens. user_id, then
     X-User-ID, then the configured default determines its user context. Responses use the capabilities-lab
-    envelope, not ErrorCompact. Feature-gated operations return 404 when disabled.
+    envelope, not Error. Feature-gated operations return 404 when disabled.
 servers:
 - url: /api/capabilities-lab/v1
 paths:

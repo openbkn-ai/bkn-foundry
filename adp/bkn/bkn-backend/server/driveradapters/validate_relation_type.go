@@ -13,8 +13,9 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -25,8 +26,12 @@ func ValidateRelationTypes(ctx context.Context, knID string, relationTypes []*in
 	for i := 0; i < len(relationTypes); i++ {
 		// Validate that imported models are relation types.
 		if relationTypes[i].ModuleType != "" && relationTypes[i].ModuleType != interfaces.MODULE_TYPE_RELATION_TYPE {
-			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "ModuleType", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.ModuleType", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
+				WithErrorDetails(localizedText)
 		}
 
 		// Reject duplicate model IDs in the request body.
@@ -34,9 +39,13 @@ func ValidateRelationTypes(ctx context.Context, knID string, relationTypes []*in
 		if _, ok := idMap[rtID]; !ok || rtID == "" {
 			idMap[rtID] = nil
 		} else {
-			errDetails := relationTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"id": rtID})
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_Duplicated_IDInFile).
-				WithDescription(map[string]any{"relationTypeID": rtID}).
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.DuplicatedIDInFile", map[string]any{"id": rtID})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			errDetails := localizedText
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_Duplicated_IDInFile).
+				WithMetadata(map[string]any{"relationTypeID": rtID}).
 				WithErrorDetails(errDetails)
 		}
 
@@ -85,42 +94,60 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 		if relationType.Type != interfaces.RELATION_TYPE_DIRECT &&
 			relationType.Type != interfaces.RELATION_TYPE_INDIRECT &&
 			relationType.Type != interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "TypeNotSupported", map[string]any{
-					"directType":    interfaces.RELATION_TYPE_DIRECT,
-					"indirectType":  interfaces.RELATION_TYPE_INDIRECT,
-					"crossJoinType": interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN,
-					"type":          relationType.Type,
-				}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TypeNotSupported", map[string]any{
+				"directType":    interfaces.RELATION_TYPE_DIRECT,
+				"indirectType":  interfaces.RELATION_TYPE_INDIRECT,
+				"crossJoinType": interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN,
+				"type":          relationType.Type,
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 	}
-
 	if relationType.SourceObjectTypeID == "" {
 		if strictMode {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceObjectTypeIDRequired", nil))
-		}
-	}
-	if relationType.TargetObjectTypeID == "" {
-		if strictMode {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetObjectTypeIDRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.SourceObjectTypeIDRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 	}
 
 	// Validate the mapping_rules field.
+	if relationType.TargetObjectTypeID == "" {
+		if strictMode {
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TargetObjectTypeIDRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
+		}
+	}
+	// Validate the mapping_rules field.
 	if relationType.MappingRules == nil {
 		if strictMode {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "MappingRulesRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.MappingRulesRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 		return nil
 	}
-
 	// A non-empty mapping_rules value requires type.
 	if relationType.Type == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(relationTypeInvalidDetail(ctx, "TypeRequired", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TypeRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	rules, err := validateMappingRules(ctx, relationType.Type, relationType.MappingRules, strictMode)
@@ -142,9 +169,13 @@ func validateMappingRules(ctx context.Context, relationType string, mappingRules
 	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 		return validateFilteredCrossJoinMappingRules(ctx, mappingRules, strictMode)
 	default:
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.UnsupportedType", map[string]any{"type": relationType})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		// Reject unsupported relation types.
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(relationTypeInvalidDetail(ctx, "UnsupportedType", map[string]any{"type": relationType}))
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 }
 
@@ -153,15 +184,23 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 	// Decode the input into []interfaces.Mapping.
 	var mappings []interfaces.Mapping
 	if err := mapstructure.Decode(mappingRules, &mappings); err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectMappingRulesDecodeFailed", map[string]any{"error": err.Error()}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRulesDecodeFailed", map[string]any{"error": err.Error()})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate that the list is not empty.
 	if len(mappings) == 0 {
 		if strictMode {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectMappingRulesRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRulesRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 	}
 
@@ -170,20 +209,31 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 	for idx, item := range mappings {
 		// Validate the source property.
 		if item.SourceProp.Name == "" {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectSourcePropertyRequired", map[string]any{"index": idx}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.DirectSourcePropertyRequired", map[string]any{"index": idx})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
-
 		// Validate the target property.
 		if item.TargetProp.Name == "" {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectTargetPropertyRequired", map[string]any{"index": idx}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.DirectTargetPropertyRequired", map[string]any{"index": idx})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 
 		// Reject duplicate mapping pairs.
 		if mappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "DirectMappingRuleDuplicated", map[string]any{"index": idx}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.DirectMappingRuleDuplicated", map[string]any{"index": idx})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 		mappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
 	}
@@ -198,40 +248,62 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 	// Decode the input into an indirect mapping.
 	var mapping interfaces.InDirectMapping
 	if err := mapstructure.Decode(mappingRules, &mapping); err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(relationTypeInvalidDetail(ctx, "IndirectMappingRulesInvalid", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.IndirectMappingRulesInvalid", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate indirect relation backing data source. Only vega resource is supported.
 	if mapping.BackingDataSource == nil {
 		if strictMode {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "BackingDataSourceRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 	} else {
 		if mapping.BackingDataSource.Type == "" {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "BackingDataSourceTypeRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceTypeRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 		if mapping.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "BackingDataSourceTypeInvalid", map[string]any{
-					"expected": interfaces.DATA_SOURCE_TYPE_RESOURCE,
-					"actual":   mapping.BackingDataSource.Type,
-				}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceTypeInvalid", map[string]any{
+				"expected": interfaces.DATA_SOURCE_TYPE_RESOURCE,
+				"actual":   mapping.BackingDataSource.Type,
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 		// Validate that the referenced data-view ID is present.
 		if mapping.BackingDataSource.ID == "" {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "BackingDataSourceIDRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingDataSourceIDRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 	}
-
 	// Validate source-to-dataset mapping rules.
 	if len(mapping.SourceMappingRules) == 0 {
 		if strictMode {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceMappingRulesRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.SourceMappingRulesRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 	} else {
 		// Each source-to-bridge mapping pair must be unique.
@@ -239,19 +311,31 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 		for idx, item := range mapping.SourceMappingRules {
 			// Validate the source object-type property.
 			if item.SourceProp.Name == "" {
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceMappingSourcePropertyRequired", map[string]any{"index": idx}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.SourceMappingSourcePropertyRequired", map[string]any{"index": idx})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(localizedText)
 			}
 			// Validate the bridge property.
 			if item.TargetProp.Name == "" {
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceMappingBridgePropertyRequired", map[string]any{"index": idx}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.SourceMappingBridgePropertyRequired", map[string]any{"index": idx})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(localizedText)
 			}
 
 			// Reject duplicate mapping pairs.
 			if sourceMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] {
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(relationTypeInvalidDetail(ctx, "SourceMappingRuleDuplicated", map[string]any{"index": idx}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.SourceMappingRuleDuplicated", map[string]any{"index": idx})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(localizedText)
 			}
 			sourceMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
 		}
@@ -260,8 +344,12 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 	// Validate dataset-to-target mapping rules.
 	if len(mapping.TargetMappingRules) == 0 {
 		if strictMode {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-				WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetMappingRulesRequired", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TargetMappingRulesRequired", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 	} else {
 		// Each bridge-to-target mapping pair must be unique.
@@ -269,19 +357,31 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 		for idx, item := range mapping.TargetMappingRules {
 			// Validate the bridge property.
 			if item.SourceProp.Name == "" {
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetMappingBridgePropertyRequired", map[string]any{"index": idx}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TargetMappingBridgePropertyRequired", map[string]any{"index": idx})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(localizedText)
 			}
 			// Validate the target object-type property.
 			if item.TargetProp.Name == "" {
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetMappingTargetPropertyRequired", map[string]any{"index": idx}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TargetMappingTargetPropertyRequired", map[string]any{"index": idx})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(localizedText)
 			}
 
 			// Reject duplicate mapping pairs.
 			if targetMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] {
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-					WithErrorDetails(relationTypeInvalidDetail(ctx, "TargetMappingRuleDuplicated", map[string]any{"index": idx}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.TargetMappingRuleDuplicated", map[string]any{"index": idx})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+					WithErrorDetails(localizedText)
 			}
 			targetMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
 		}
@@ -293,13 +393,13 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 func validateFilteredCrossJoinMappingRules(ctx context.Context, mappingRules any, _ bool) (*interfaces.FilteredCrossJoinMapping, error) {
 	var mapping interfaces.FilteredCrossJoinMapping
 	if err := mapstructure.Decode(mappingRules, &mapping); err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
-			WithErrorDetails(relationTypeInvalidDetail(ctx, "FilteredCrossJoinMappingRulesDecodeFailed", map[string]any{"error": err.Error()}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.FilteredCrossJoinMappingRulesDecodeFailed", map[string]any{"error": err.Error()})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 	// source_condition and target_condition are optional; nil means no extra filter for that side.
 	return &mapping, nil
-}
-
-func relationTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail."+name, templateData)
 }

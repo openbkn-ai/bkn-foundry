@@ -7,13 +7,14 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 // UpdateToolBox update toolbox.
@@ -211,8 +212,8 @@ func (s *ToolServiceImpl) batchUpdateOpenAPIToolMetadata(ctx context.Context, tx
 	}
 	if !changed {
 		// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
-		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtCommonNoMatchedMethodPath,
-			"no matched method path found").WithDescription(errors.ErrExtToolNotExistInFile)
+		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolNotExistInFile,
+			"no matched method path found")
 		return
 	}
 	// Update metadata and tools.

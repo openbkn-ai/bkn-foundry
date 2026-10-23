@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -115,7 +115,7 @@ func TestRefuseFailedProxyOutboxAppendRequiresExplicitRecovery(t *testing.T) {
 	err := refuseFailedProxyOutboxAppend(t.Context(), &proxyOutboxAccessStub{}, &proxyPublishPlan{
 		mapping: &interfaces.KNProxyAccount{SyncStatus: interfaces.KNProxySyncFailed},
 	})
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusConflict {
 		t.Fatalf("failed mapping append error = %#v, want HTTP 409", err)
 	}
@@ -279,7 +279,7 @@ func TestDeniedExistingSkillDeltaRemovesOnlyItsMaterializedGrant(t *testing.T) {
 	}
 	err = refuseNewlyMountedSkillsWithoutGrant(t.Context(), selection, nil,
 		[]*interfaces.CapabilityBinding{{ID: "binding-1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL}})
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("new best-effort skill error = %#v, want HTTP 403", err)
 	}

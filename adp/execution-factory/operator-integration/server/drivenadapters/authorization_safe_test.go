@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"testing"
 
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
@@ -209,8 +209,8 @@ func TestSafeAuthorizationResourceList(t *testing.T) {
 
 func TestSafeAuthorizationUsesEffectiveLocale(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get(sharedrest.AcceptLanguageHeader); got != sharedrest.AmericanEnglish {
-			t.Errorf("Accept-Language = %q, want %q", got, sharedrest.AmericanEnglish)
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != string(i18n.AmericanEnglish) {
+			t.Errorf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"allowed": true,
@@ -222,7 +222,7 @@ func TestSafeAuthorizationUsesEffectiveLocale(t *testing.T) {
 	defer server.Close()
 
 	safe := newSafeAuthorization(server.URL, testLogger{})
-	ctx := sharedrest.WithLanguage(context.Background(), sharedrest.AmericanEnglish)
+	ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
 	result, err := safe.OperationCheck(ctx, &interfaces.AuthOperationCheckRequest{
 		Accessor:  &interfaces.AuthAccessor{ID: "user-1"},
 		Resource:  &interfaces.AuthResource{Type: "skill", ID: "skill-1"},

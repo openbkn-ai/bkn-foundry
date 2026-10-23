@@ -16,7 +16,7 @@ import (
 
 func TestHTTPClientPropagatesEffectiveLanguage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != i18n.AmericanEnglish {
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != string(i18n.AmericanEnglish) {
 			t.Errorf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -36,7 +36,7 @@ func TestHTTPClientPropagatesEffectiveLanguage(t *testing.T) {
 
 func TestHTTPClientOverridesExplicitAcceptLanguageWithEffectiveLocale(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != i18n.AmericanEnglish {
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != string(i18n.AmericanEnglish) {
 			t.Errorf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		w.WriteHeader(http.StatusNoContent)

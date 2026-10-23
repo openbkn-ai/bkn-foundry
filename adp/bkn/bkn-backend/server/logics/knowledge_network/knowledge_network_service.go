@@ -17,10 +17,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -123,7 +123,7 @@ func (kns *knowledgeNetworkService) CheckKNExistByID(ctx context.Context, KNID s
 	otName, exist, err := kns.kna.CheckKNExistByID(ctx, KNID, branch)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("按ID[%v]获取业务知识网络失败", KNID), err)
-		return "", exist, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", exist, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed).WithErrorDetails(err.Error())
 	}
 
@@ -138,7 +138,7 @@ func (kns *knowledgeNetworkService) CheckKNExistByName(ctx context.Context, knNa
 	KNID, exist, err := kns.kna.CheckKNExistByName(ctx, knName, branch)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("按名称[%v]获取业务知识网络失败", knName), err)
-		return KNID, exist, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return KNID, exist, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed).WithErrorDetails(err.Error())
 	}
 
@@ -215,7 +215,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	}
 	importPlan, err := normalizeImportPlan(ctx, kn)
 	if err != nil {
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
@@ -246,12 +246,12 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 	}
 	if err = validateObjectMetricArchive(importPlan); err != nil {
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails(err.Error())
 	}
 	if len(importPlan.ObjectMetrics) > 0 {
 		if _, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1); !ok {
-			return "", rest.NewHTTPError(ctx, http.StatusNotImplemented,
+			return "", httperrors.NewHTTPError(ctx, http.StatusNotImplemented,
 				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails("object metric V1 archive import requires the enterprise capability")
 		}
@@ -316,7 +316,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	tx, err := kns.db.Begin()
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -329,7 +329,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			logger.Errorf("CreateKN error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建业务知识网络失败")
 
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_CreateKNFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -346,7 +346,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		if err != nil {
 			logger.Errorf("UpdateKN error: %s", err.Error())
 			span.SetStatus(codes.Error, "修改业务知识网络失败")
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -362,7 +362,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			logger.Errorf("InsertDatasetData error: %s", err.Error())
 			span.SetStatus(codes.Error, "业务知识网络概念索引写入失败")
 
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_InsertOpenSearchDataFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -380,7 +380,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		if err != nil {
 			logger.Errorf("CreateResources error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建业务知识网络资源失败")
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_CreateResourcesFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -392,7 +392,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	}
 	if err = tx.Commit(); err != nil {
 		otellog.LogError(ctx, "CreateKN Transaction Commit Failed", err)
-		return kn.KNID, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return kn.KNID, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	span.SetAttributes(
@@ -438,7 +438,7 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 	}
 	plan, err := normalizeImportPlan(ctx, kn)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
@@ -446,7 +446,7 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 
 	batch, err := batchindex.CollectKNFromPayload(view)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
@@ -511,7 +511,7 @@ func (kns *knowledgeNetworkService) resolveKNNavigationVisibility(ctx context.Co
 
 	candidates, err := kns.kna.ListKNChildResourceCandidates(ctx, restrictedKNIDs, branch)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	resourceIDsByType := make(map[string][]string)
@@ -563,7 +563,7 @@ func (kns *knowledgeNetworkService) ResolveKNReadAccess(ctx context.Context,
 		return interfaces.KN_READ_ACCESS_NAVIGATION_ONLY, nil
 	}
 
-	err = rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	err = httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	span.SetStatus(codes.Error, common.SafeErrorSummary(err))
 	return "", err
 }
@@ -611,7 +611,7 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 		logger.Errorf("ListKNs error: %s", err.Error())
 		span.SetStatus(codes.Error, "List knowledge networks error")
 
-		return []*interfaces.KN{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.KN{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	if len(KNArr) == 0 {
@@ -673,7 +673,7 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 	if err != nil {
 		logger.Errorf("ListKNs detail error: %s", err.Error())
 		span.SetStatus(codes.Error, "List knowledge network details error")
-		return []*interfaces.KN{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.KN{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	for _, kn := range KNs {
@@ -696,7 +696,7 @@ func (kns *knowledgeNetworkService) ListKNs(ctx context.Context, parameter inter
 		if err != nil {
 			span.SetStatus(codes.Error, "GetAccountNames error")
 
-			return []*interfaces.KN{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.KN{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 		}
 	}
@@ -709,7 +709,7 @@ func (kns *knowledgeNetworkService) ListAuthorizationResources(ctx context.Conte
 	query interfaces.AuthorizationResourcesQuery) ([]*interfaces.AuthorizationResource, int, error) {
 	resources, total, err := kns.kna.ListAuthorizationResources(ctx, query)
 	if err != nil {
-		return []*interfaces.AuthorizationResource{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.AuthorizationResource{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	return resources, total, nil
@@ -746,7 +746,7 @@ func (kns *knowledgeNetworkService) GetKNNamesByIDs(ctx context.Context, ids []s
 	if err != nil {
 		logger.Errorf("GetKNNamesByIDs error: %s", err.Error())
 		span.SetStatus(codes.Error, "按ID批量查询业务知识网络名称失败")
-		return resp, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return resp, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	resp.Entries = entries
@@ -817,7 +817,7 @@ func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, 
 		span.SetStatus(codes.Error, fmt.Sprintf("Get knowledge network[%s] error: %v", knID, err))
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed).WithErrorDetails(err.Error())
 	}
 
@@ -827,7 +827,7 @@ func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, 
 		span.SetStatus(codes.Error, errStr)
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound).
 			WithErrorDetails(errStr)
 	}
 
@@ -844,7 +844,7 @@ func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, 
 				accountInfos := []*interfaces.AccountInfo{&kn.Creator, &kn.Updater}
 				if err = kns.ums.GetAccountNames(ctx, accountInfos); err != nil {
 					span.SetStatus(codes.Error, "GetAccountNames error")
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 				}
 			}
@@ -854,7 +854,7 @@ func (kns *knowledgeNetworkService) getKNByID(ctx context.Context, knID string, 
 			// same result can safely serve include_statistics in the handler.
 			kn.NavigationStatistics = navigationStatistics(visibility)
 		} else {
-			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+			return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 		}
 	}
 
@@ -945,7 +945,7 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 		return err
 	}
 	if err := kns.ums.GetAccountNames(ctx, exportAccountInfos(kn)); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	return nil
@@ -1166,8 +1166,8 @@ func runExportLoaders(ctx context.Context, concurrency int, loaders ...exportLoa
 	return nil
 }
 
-func exportRequestCanceledError(ctx context.Context, cause error) *rest.HTTPError {
-	return rest.NewHTTPError(ctx, http.StatusRequestTimeout,
+func exportRequestCanceledError(ctx context.Context, cause error) *httperrors.HTTPError {
+	return httperrors.NewHTTPError(ctx, http.StatusRequestTimeout,
 		berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(cause.Error())
 }
 
@@ -1203,7 +1203,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		span.SetStatus(codes.Error, fmt.Sprintf("GetObjectTypesTotal in knowledge network[%s], error: %v", kn.KNID, err))
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1217,7 +1217,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		span.SetStatus(codes.Error, fmt.Sprintf("GetRelationTypesTotal in knowledge network[%s], error: %v", kn.KNID, err))
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1231,7 +1231,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		span.SetStatus(codes.Error, fmt.Sprintf("GetActionTypesTotal in knowledge network[%s], error: %v", kn.KNID, err))
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1245,7 +1245,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		span.SetStatus(codes.Error, fmt.Sprintf("GetConceptGroupsTotal in knowledge network[%s], error: %v", kn.KNID, err))
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1259,7 +1259,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		span.SetStatus(codes.Error, fmt.Sprintf("GetRiskTypesTotal in knowledge network[%s], error: %v", kn.KNID, err))
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1269,11 +1269,11 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		metricIDs, metricErr := logics.OMA.ListObjectMetricIDs(ctx, interfaces.ObjectMetricListQueryV1{
 			KNID: kn.KNID, Branch: kn.Branch,
 		})
-		var hidden *rest.HTTPError
+		var hidden *httperrors.HTTPError
 		if errors.As(metricErr, &hidden) && hidden.HTTPCode == http.StatusNotFound {
 			metricIDs = nil // The enterprise capability is not entitled.
 		} else if metricErr != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(metricErr.Error())
 		}
 		metricsCnt = len(metricIDs)
@@ -1287,7 +1287,7 @@ func (kns *knowledgeNetworkService) GetStatByKN(ctx context.Context, kn *interfa
 		span.SetStatus(codes.Error, fmt.Sprintf("GetBindingsTotalByType in knowledge network[%s], error: %v", kn.KNID, err))
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1345,7 +1345,7 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 		tx, err = kns.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -1375,7 +1375,7 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 		logger.Errorf("UpdateKN error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改业务知识网络失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -1385,7 +1385,7 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
 		span.SetStatus(codes.Error, "业务知识网络概念索引写入失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1436,7 +1436,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	tx, err := kns.db.Begin()
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1449,7 +1449,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		logger.Errorf("DeleteKN error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	logger.Infof("DeleteKN: Rows affected is %v, request delete KNID is %s!", rowsAffect, kn.KNID)
@@ -1552,14 +1552,14 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 	if err != nil {
 		logger.Errorf("DeleteDatasetDocumentsByQuery error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络概念失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).
 			WithErrorDetails(err.Error())
 	}
 
 	if err = tx.Commit(); err != nil {
 		otellog.LogError(ctx, "DeleteKN Transaction Commit Failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	deletionCommitted = true
@@ -1588,7 +1588,7 @@ func (kns *knowledgeNetworkService) UpdateKNDetail(ctx context.Context, knID str
 		logger.Errorf("UpdateKNDetail error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改知识网络详情失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -1627,7 +1627,7 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 				errDetails := fmt.Sprintf("The knowledge network with id [%s] already exists!", kn.KNID)
 				logger.Error(errDetails)
 				span.SetStatus(codes.Error, errDetails)
-				return false, false, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return false, false, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_KnowledgeNetwork_KNIDExisted).
 					WithErrorDetails(errDetails)
 			}
@@ -1636,9 +1636,8 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 				errDetails := fmt.Sprintf("knowledge network name '%s' already exists", kn.KNName)
 				logger.Error(errDetails)
 				span.SetStatus(codes.Error, errDetails)
-				return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
+				return false, false, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 					berrors.BknBackend_KnowledgeNetwork_KNNameExisted).
-					WithDescription(map[string]any{"kn_name": kn.KNName}).
 					WithErrorDetails(errDetails)
 			}
 
@@ -1650,7 +1649,7 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 					kn.KNID, kn.KNName, existID)
 				logger.Error(errDetails)
 				span.SetStatus(codes.Error, errDetails)
-				return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
+				return false, false, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 					berrors.BknBackend_KnowledgeNetwork_KNNameExisted).
 					WithErrorDetails(errDetails)
 			}
@@ -1664,7 +1663,7 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 						kn.KNID, kn.KNName, existID)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return false, false, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_KnowledgeNetwork_KNNameExisted).
 						WithErrorDetails(errDetails)
 				} else {
@@ -1686,7 +1685,7 @@ func (kns *knowledgeNetworkService) handleKNImportMode(ctx context.Context, mode
 					kn.KNID, kn.KNName)
 				logger.Error(errDetails)
 				span.SetStatus(codes.Error, errDetails)
-				return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
+				return false, false, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 					berrors.BknBackend_KnowledgeNetwork_KNNameExisted).
 					WithErrorDetails(errDetails)
 			}
@@ -1979,7 +1978,7 @@ func (kns *knowledgeNetworkService) ListKnSrcs(ctx context.Context,
 		logger.Errorf("ListSimpleKns error: %s", err.Error())
 		listSpan.SetStatus(codes.Error, "List simple knowledge networks error")
 		listSpan.End()
-		return emptyResources, 0, rest.NewHTTPError(listCtx, http.StatusInternalServerError,
+		return emptyResources, 0, httperrors.NewHTTPError(listCtx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	if len(knList) == 0 {

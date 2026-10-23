@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
@@ -82,7 +82,7 @@ func assertSpansCarryNoToken(t *testing.T, recorder *tracetest.SpanRecorder) {
 	sawExecuteSpan := false
 	for _, span := range spans {
 		for _, kv := range span.Attributes() {
-			if strings.Contains(kv.Value.Emit(), callerToken) {
+			if strings.Contains(kv.Value.String(), callerToken) {
 				t.Fatalf("span %q attribute %q leaks the caller token", span.Name(), kv.Key)
 			}
 			if kv.Key == "language" && kv.Value.AsString() == "python" {
@@ -91,7 +91,7 @@ func assertSpansCarryNoToken(t *testing.T, recorder *tracetest.SpanRecorder) {
 		}
 		for _, event := range span.Events() {
 			for _, kv := range event.Attributes {
-				if strings.Contains(kv.Value.Emit(), callerToken) {
+				if strings.Contains(kv.Value.String(), callerToken) {
 					t.Fatalf("span %q event %q leaks the caller token", span.Name(), event.Name)
 				}
 			}
@@ -140,7 +140,7 @@ func TestDependencyInstallFailureCarriesNoCredentials(t *testing.T) {
 
 	_, err := newCredentialTestPool(client).ExecuteCode(context.Background(), credentialBearingRequest())
 
-	var httpErr *errors.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !stderrors.As(err, &httpErr) {
 		t.Fatalf("want an HTTP error, got %v", err)
 	}

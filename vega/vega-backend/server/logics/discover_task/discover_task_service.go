@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -96,7 +96,7 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 		req.Strategy = interfaces.DiscoverStrategyFullSync
 	}
 	if !interfaces.IsValidDiscoverStrategy(req.Strategy) {
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("invalid discover strategy")
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails("invalid discover strategy")
 	}
 	// Get account info from context
 	accountInfo := interfaces.AccountInfo{}
@@ -113,7 +113,7 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	}
 	if !allowed {
 		span.SetStatus(codes.Error, "Permission denied")
-		return "", rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return "", httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	}
 
 	// 在持久化和通知调度前校验单资源纯计数能力，所有创建入口共用此检查。
@@ -123,10 +123,10 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 			return "", err
 		}
 		if res == nil || res.CatalogID != req.CatalogID {
-			return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+			return "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 		}
 		if !interfaces.SupportsResourceCount(res.Category) {
-			return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 				WithErrorDetails(fmt.Sprintf("resource category %q does not support count_only", res.Category))
 		}
 	}
@@ -144,7 +144,7 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 			return "", err
 		}
 		if len(activeTasks) > 0 {
-			return "", rest.NewHTTPError(ctx, http.StatusConflict,
+			return "", httperrors.NewHTTPError(ctx, http.StatusConflict,
 				verrors.VegaBackend_DiscoverTask_ResourceRefreshInProgress)
 		}
 	}
@@ -201,12 +201,12 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 	task, err := dts.dta.GetByID(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get discover task failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	if task == nil {
 		span.SetStatus(codes.Error, "Discover task not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
 	}
 
 	// 一个探查任务是通过它所属的目录被看见的（#269）。
@@ -218,7 +218,7 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 	}
 	if !allowed {
 		span.SetStatus(codes.Error, "Permission denied")
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	}
 
 	if err := dts.populateDiscoverTaskReferences(ctx, []*interfaces.DiscoverTask{task}); err != nil {
@@ -279,7 +279,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	tasks, total, err := dts.dta.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List discover tasks failed")
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
+		return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -466,7 +466,7 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 		task, err := dts.dta.GetByID(ctx, id)
 		if err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Get discover_task %s failed", id), err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
 				WithErrorDetails(err.Error())
 		}
 		if task == nil {
@@ -486,7 +486,7 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 			}
 			if !allowed {
 				span.SetStatus(codes.Error, "Permission denied")
-				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+				return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 			}
 			checkedCatalogIDs[task.CatalogID] = struct{}{}
 		}
@@ -501,12 +501,12 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 
 	if len(runningIDs) > 0 {
 		span.SetStatus(codes.Error, "Some tasks are pending or running")
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverTask_HasRunningExecution).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverTask_HasRunningExecution).
 			WithErrorDetails(map[string]any{"running_ids": runningIDs})
 	}
 	if len(missingIDs) > 0 && !ignoreMissing {
 		span.SetStatus(codes.Error, "Some discover tasks not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound).
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound).
 			WithErrorDetails(map[string]any{"missing_ids": missingIDs})
 	}
 	if len(toDelete) == 0 {
@@ -517,13 +517,13 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 	deleted, err := dts.dta.DeleteByIDs(ctx, toDelete)
 	if err != nil {
 		otellog.LogError(ctx, "Delete discover tasks failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_DeleteFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
 	}
 	if deleted != int64(len(toDelete)) {
 		err = fmt.Errorf("expected to delete %d discover tasks, deleted %d", len(toDelete), deleted)
 		otellog.LogError(ctx, "Delete discover tasks affected unexpected rows", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_DeleteFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
 	}
 

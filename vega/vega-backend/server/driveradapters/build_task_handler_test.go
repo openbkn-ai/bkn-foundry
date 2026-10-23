@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -54,8 +54,8 @@ func Test_BuildTaskRestHandler_CreateBuildTask(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"forbidden", rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden), http.StatusForbidden, rest.PublicError_Forbidden},
-		{"wrapped not found", fmt.Errorf("lookup: %w", rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound},
+		{"forbidden", httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden), http.StatusForbidden, httperrors.PublicError_Forbidden},
+		{"wrapped not found", fmt.Errorf("lookup: %w", httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound},
 		{"unknown failure", errors.New("lookup failed"), http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

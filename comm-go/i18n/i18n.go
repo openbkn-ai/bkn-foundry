@@ -135,7 +135,7 @@ const (
 
 // RenderError contains identifiers only, never template contents or parameter values.
 type RenderError struct {
-	Locale    string
+	Locale    Language
 	MessageID string
 	Kind      RenderFailure
 }

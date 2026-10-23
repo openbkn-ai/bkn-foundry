@@ -47,17 +47,6 @@ const (
 	LogicPropertyTypeTool   LogicPropertyType = "tool"   // Tool type
 )
 
-type KnBaseError struct {
-	ErrorCode               string         `json:"error_code"`         // Error code
-	Description             string         `json:"description"`        // Error description
-	Solution                string         `json:"solution"`           // Solution
-	ErrorLink               string         `json:"error_link"`         // Error link
-	ErrorDetails            interface{}    `json:"error_details"`      // Detail content
-	Metadata                map[string]any `json:"metadata,omitempty"` // Machine-readable error metadata
-	DescriptionTemplateData map[string]any `json:"-"`                  // Description parameters
-	SolutionTemplateData    map[string]any `json:"-"`                  // Solution parameters
-}
-
 type ResourceInfo struct {
 	Type string `json:"type"` // Data source type
 	ID   string `json:"id"`   // Data view ID

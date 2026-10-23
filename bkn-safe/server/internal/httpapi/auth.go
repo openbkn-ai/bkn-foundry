@@ -14,13 +14,14 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	hydra "github.com/ory/hydra-client-go/v2"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
-	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/locale"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // registerAuth mounts the hydra login/consent/device provider pages. hydra is
@@ -204,13 +205,17 @@ type authPageData struct {
 }
 
 func localizedAuthMessage(c *gin.Context, key string) string {
-	language := sharedrest.GetLanguageByCtx(c.Request.Context())
-	return locale.Translate(language, authMessagePrefix+key)
+	language := i18n.GetLanguageByCtx(c.Request.Context())
+	localizedText, renderErr := i18n.Render(language, authMessagePrefix+key, nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return localizedText
 }
 
 func localizedAuthPageData(c *gin.Context) authPageData {
 	message := func(key string) string { return localizedAuthMessage(c, key) }
-	return authPageData{Language: sharedrest.GetLanguageByCtx(c.Request.Context()), Text: authPageText{
+	return authPageData{Language: string(i18n.GetLanguageByCtx(c.Request.Context())), Text: authPageText{
 		AccountPlaceholder:         message("AccountPlaceholder"),
 		PasswordPlaceholder:        message("PasswordPlaceholder"),
 		LoginButton:                message("LoginButton"),
@@ -320,15 +325,19 @@ func renderHTMLStatus(c *gin.Context, status int, t *template.Template, data any
 	c.Status(status)
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Header("Cache-Control", "no-store")
-	sharedrest.MarkLocalizedCacheableResponse(c)
+	rest.MarkLocalizedCacheableResponse(c)
 	_ = t.Execute(c.Writer, data)
 }
 
 func replyLocalizedAuthText(c *gin.Context, status int, messageID string) {
-	language := sharedrest.GetLanguageByCtx(c.Request.Context())
+	language := i18n.GetLanguageByCtx(c.Request.Context())
 	c.Header("Cache-Control", "no-store")
-	sharedrest.MarkLocalizedCacheableResponse(c)
-	c.String(status, locale.Translate(language, messageID))
+	rest.MarkLocalizedCacheableResponse(c)
+	localizedText, renderErr := i18n.Render(language, messageID, nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	c.String(status, localizedText)
 }
 
 func isExpiredLoginRequest(err error) bool {
@@ -409,7 +418,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore accesslog.Recorder) {
 			renderHTMLStatus(c, http.StatusUnauthorized, loginPage, data)
 			return
 		}
-		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
+		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError")
 		return
 	}
 	recordLogin(c, p, accessStore, user, account, "success", "")
@@ -469,7 +478,7 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore accesslog.Re
 			renderHTML(c, changePasswordExpiredPage, localizedAuthPageDataFor(c, "/change-password", nil))
 			return
 		}
-		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
+		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError")
 		return
 	}
 	recordLogin(c, p, accessStore, user, account, "success", "")
@@ -534,7 +543,7 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 	cr, err := p.ConsentInfo(c.Request.Context(), challenge)
 	if err != nil {
 		slog.Error("consent: get failed", "err", err)
-		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
+		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError")
 		return
 	}
 	applyAuthContinuationLocale(c, cr.RequestURL)
@@ -542,7 +551,7 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 		redirectTo, err := p.Consent(c.Request.Context(), challenge, c.ClientIP(), auth.ClientTypeWeb, false)
 		if err != nil {
 			slog.Error("consent: first-party auto-accept failed", "err", err)
-			replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
+			replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError")
 			return
 		}
 		redirectToHydra(c, redirectTo)
@@ -577,7 +586,7 @@ func doConsent(c *gin.Context, p *auth.Provider) {
 	}
 	if err != nil {
 		slog.Error("consent: decision failed", "err", err)
-		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
+		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError")
 		return
 	}
 	redirectToHydra(c, redirectTo)

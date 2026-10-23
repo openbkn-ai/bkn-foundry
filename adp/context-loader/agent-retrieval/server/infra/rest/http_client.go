@@ -18,13 +18,13 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // httpClient HTTP client structure.
@@ -195,8 +195,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 		// Exception when calling external service.
 		httpErr := infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
 			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", mtehod, url, respCode, respStr))
-		httpErr.DownstreamBody = respBody
-		err = httpErr
+		err = &infraErr.DependencyError{Err: httpErr, Body: respBody}
 		return
 	}
 	return
@@ -233,8 +232,7 @@ func (c *httpClient) httpDoBytes(ctx context.Context, method, url string, header
 		// Exception when calling external service.
 		httpErr := infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
 			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", method, url, respCode, respStr))
-		httpErr.DownstreamBody = respBody
-		err = httpErr
+		err = &infraErr.DependencyError{Err: httpErr, Body: respBody}
 		return
 	}
 	return
@@ -318,6 +316,6 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod, url string,
 			req.Header.Add(k, v)
 		}
 	}
-	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	return
 }

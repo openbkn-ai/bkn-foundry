@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -62,7 +62,7 @@ func (cgs *conceptGroupService) loadMemberScope(ctx context.Context, knID, branc
 		TargetObjectTypeIDs:       visibleIDs,
 	})
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 	relationTypeIDs := make([]string, 0, len(relationTypes))
@@ -84,7 +84,7 @@ func (cgs *conceptGroupService) loadMemberScope(ctx context.Context, knID, branc
 		ObjectTypeIDs:             visibleIDs,
 	})
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed).WithErrorDetails(err.Error())
 	}
 	actionTypeIDs := make([]string, 0, len(actionTypes))

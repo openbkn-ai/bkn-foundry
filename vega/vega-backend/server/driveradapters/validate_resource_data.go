@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -66,7 +66,7 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 	var actualCond *interfaces.FilterCondCfg
 	err = mapstructure.Decode(params.FilterCondition, &actualCond)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterCondition).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterCondition).
 			WithErrorDetails(fmt.Sprintf("mapstructure decode filters failed: %s", err.Error()))
 	}
 	params.FilterCondCfg = actualCond
@@ -84,34 +84,34 @@ func validateBinaryMode(ctx context.Context, mode *string) error {
 	if mode == nil || *mode == interfaces.BinaryModeMetadata || *mode == interfaces.BinaryModeContent {
 		return nil
 	}
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 		WithErrorDetails("binary_mode must be either metadata or content")
 }
 
 func validateResourceDataPaging(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
 	paging := params.Paging
 	if paging.Mode == interfaces.PagingModeCursor && paging.Limit == 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails("paging.limit is required for cursor paging")
 	}
 	params.Paging = paging.Normalized()
 	if params.Paging.Mode == interfaces.PagingModeCursor {
 		if params.Paging.Offset < 0 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 				WithErrorDetails("paging.offset must not be negative")
 		}
 		if params.Paging.Limit < interfaces.MinPageLimit || params.Paging.Limit > interfaces.MaxPageLimit {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 				WithErrorDetails(fmt.Sprintf("paging.limit must be in the range of [%d,%d] for cursor paging", interfaces.MinPageLimit, interfaces.MaxPageLimit))
 		}
 		if params.Paging.KeepAliveSec != 0 && (params.Paging.KeepAliveSec < interfaces.MinCursorKeepAliveSec || params.Paging.KeepAliveSec > interfaces.MaxCursorKeepAliveSec) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("paging.keep_alive_sec must be between %d and %d", interfaces.MinCursorKeepAliveSec, interfaces.MaxCursorKeepAliveSec))
 		}
 		return nil
 	}
 	if params.Paging.Mode != interfaces.PagingModeSingle {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("paging.mode must be either single or cursor")
 	}
 	return validatePaginationParams(ctx, params.Paging.Offset, params.Paging.Limit)
@@ -123,7 +123,7 @@ func validateResourceDataCursorContinuation(ctx context.Context, params *interfa
 		params.FilterCondition != nil || len(params.Sort) != 0 || len(params.OutputFields) != 0 ||
 		params.Aggregation != nil || len(params.GroupBy) != 0 || params.Having != nil ||
 		params.BinaryMode != nil || params.IgnoreLocalIndex != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor continuation must contain only paging.cursor")
 	}
 	// The initial request freezes this value in the cursor session.
@@ -133,7 +133,7 @@ func validateResourceDataCursorContinuation(ctx context.Context, params *interfa
 
 func validateFormat(ctx context.Context, format string) error {
 	if format != interfaces.Format_Original && format != interfaces.Format_Flat {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails(fmt.Sprintf("The output format should be %s or %s", interfaces.Format_Original, interfaces.Format_Flat))
 	}
 
@@ -144,12 +144,12 @@ func validateFormat(ctx context.Context, format string) error {
 func validatePaginationParams(ctx context.Context, offset, limit int) error {
 	// from + size query verification
 	if offset < 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 			WithErrorDetails("When execute From + size query, 'offset' should be >= 0")
 	}
 
 	if limit < interfaces.MIN_LIMIT || limit > interfaces.MAX_SEARCH_SIZE {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails(fmt.Sprintf("Limit should be in the range of [%d,%d]", interfaces.MIN_LIMIT, interfaces.MAX_SEARCH_SIZE))
 	}
 
@@ -162,7 +162,7 @@ func validateSortFields(ctx context.Context, sortFields []*interfaces.SortField)
 		if sortField.Direction != interfaces.ASC_DIRECTION &&
 			sortField.Direction != interfaces.DESC_DIRECTION {
 
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Direction).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Direction).
 				WithErrorDetails("The sort direction should be desc or asc")
 		}
 	}
@@ -182,23 +182,23 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 
 	// Filtering operator
 	if cfg.Operation == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionOperation)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionOperation)
 	}
 
 	condFactory, exists := filter_condition.OperationMap[cfg.Operation]
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_UnsupportFilterConditionOperation).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_UnsupportFilterConditionOperation).
 			WithErrorDetails(fmt.Sprintf("Unsupported filter condition operation: %s", cfg.Operation))
 	}
 
 	if !condFactory.SupportSubCond() {
 		if len(cfg.SubConds) > 0 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_UnsupportFilterConditionOperation).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_UnsupportFilterConditionOperation).
 				WithErrorDetails(fmt.Sprintf("operation '%s' does not support sub conditions", cfg.Operation))
 		}
 	} else {
 		if len(cfg.SubConds) > interfaces.MaxSubCondition {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_CountExceeded_FilterConditionSubConds).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_CountExceeded_FilterConditionSubConds).
 				WithErrorDetails(fmt.Sprintf("The number of subConditions exceeds %d", interfaces.MaxSubCondition))
 		}
 
@@ -213,42 +213,42 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 	if condFactory.NeedName() {
 		// The name of the filter field cannot be empty
 		if cfg.Name == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionName)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionName)
 		}
 	}
 
 	if condFactory.NeedValue() {
 		if cfg.Value == nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionValue)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionValue)
 		}
 
 		if err := filter_condition.NormalizeValueFrom(cfg); err != nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom).
 				WithErrorDetails(err.Error())
 		}
 
 		if condFactory.IsSingleValue() {
 			// The value on the right is a single value
 			if _, ok := cfg.Value.([]any); ok {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 					WithErrorDetails(fmt.Sprintf("[%s] operation's value should be a single value", cfg.Operation))
 			}
 		} else if condFactory.IsFixedLenArrayValue() {
 			// The value on the right is an array value
 			if vals, ok := cfg.Value.([]any); !ok {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 					WithErrorDetails(fmt.Sprintf("[%s] operation's value must be an array", cfg.Operation))
 			} else {
 				if condFactory.IsFixedLenArrayValue() && len(vals) != condFactory.RequiredValueLen() {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 						WithErrorDetails(fmt.Sprintf("[%s] operation's value must contain %d values", cfg.Operation, condFactory.RequiredValueLen()))
 				} else if len(vals) == 0 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 						WithErrorDetails(fmt.Sprintf("[%s] operation's value should contains at least 1 value", cfg.Operation))
 				}
 				if cfg.Operation == filter_condition.OperationBefore {
 					if err := filter_condition.NormalizeBeforeInterval(vals); err != nil {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
+						return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 							WithErrorDetails(err.Error())
 					}
 				}
@@ -278,7 +278,7 @@ func validateCalendarInterval(ctx context.Context, calendarInterval string) erro
 		interfaces.CALENDAR_UNIT_YEAR:
 		return nil
 	default:
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_CalendarInterval).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_CalendarInterval).
 			WithErrorDetails(fmt.Sprintf("Invalid calendar_interval value: %s, must be one of: minute, hour, day, week, month, quarter, year", calendarInterval))
 	}
 }
@@ -288,7 +288,7 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 	// Verify aggregation
 	if params.Aggregation != nil {
 		if params.Aggregation.Property == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
 				WithErrorDetails("Aggregation property cannot be empty")
 		}
 		// Verify the type of the aggregation function
@@ -297,12 +297,12 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 			"max": true, "min": true, "avg": true,
 		}
 		if !validAggr[params.Aggregation.Aggr] {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
 				WithErrorDetails(fmt.Sprintf("Unsupported aggregation function: %s", params.Aggregation.Aggr))
 		}
 		// A wildcard denotes all rows and is valid only for COUNT(*).
 		if params.Aggregation.Property == "*" && params.Aggregation.Aggr != "count" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
 				WithErrorDetails("Aggregation property '*' only supports count")
 		}
 	}
@@ -310,7 +310,7 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 	// Verify group_by
 	for _, groupByItem := range params.GroupBy {
 		if groupByItem.Property == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
 				WithErrorDetails("GroupBy property cannot be empty")
 		}
 		// Verify calendar_interval
@@ -326,12 +326,12 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 	if params.Having != nil {
 		// having depends on aggregation or count(*)
 		if params.Aggregation == nil && params.Having.Field != "count(*)" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails("Having clause requires aggregation or count(*)")
 		}
 		// Verify the field field
 		if params.Having.Field != "__value" && params.Having.Field != "count(*)" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails("Having field must be '__value' or 'count(*)'")
 		}
 		// Verify operation
@@ -348,12 +348,12 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 			"out_range": true,
 		}
 		if !validOps[params.Having.Operation] {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails(fmt.Sprintf("Unsupported having operation: %s", params.Having.Operation))
 		}
 		// Validate the value.
 		if params.Having.Value == nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails("Having value cannot be empty")
 		}
 
@@ -362,7 +362,7 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 		case "==", "!=", ">", ">=", "<", "<=":
 			switch params.Having.Value.(type) {
 			case []any, []string, map[string]any:
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 					WithErrorDetails("Having comparison requires a scalar value")
 			}
 		case "in", "not_in", "range", "out_range":
@@ -373,16 +373,16 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 			case []string:
 				length = len(value)
 			default:
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 					WithErrorDetails("Having operation requires an array")
 			}
 			if params.Having.Operation == "range" || params.Having.Operation == "out_range" {
 				if length != 2 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 						WithErrorDetails("Having range requires exactly two values")
 				}
 			} else if length == 0 {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 					WithErrorDetails("Having in/not_in requires a non-empty array")
 			}
 		}
@@ -405,11 +405,11 @@ func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfa
 	for _, groupByItem := range params.GroupBy {
 		fieldType, ok := fields[groupByItem.Property]
 		if !ok {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
 				WithErrorDetails(fmt.Sprintf("GroupBy property %q is not defined by the resource", groupByItem.Property))
 		}
 		if fieldType == interfaces.DataType_Binary || fieldType == interfaces.DataType_Other {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
 				WithErrorDetails(fmt.Sprintf("%s field %q cannot be used in group_by", fieldType, groupByItem.Property))
 		}
 	}
@@ -418,7 +418,7 @@ func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfa
 		return nil
 	}
 	if params.Aggregation != nil && fields[params.Aggregation.Property] == interfaces.DataType_Binary {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
 			WithErrorDetails(fmt.Sprintf("Binary field %q cannot be used in aggregation", params.Aggregation.Property))
 	}
 	// Aggregate results always contain the grouping dimensions and the aggregate
@@ -440,17 +440,17 @@ func validateResourceDataQueryGroupByFields(ctx context.Context, params *interfa
 	for _, outputField := range params.OutputFields {
 		fieldType := fields[outputField]
 		if fieldType == interfaces.DataType_Binary {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("Binary field %q cannot be requested by an aggregation query", outputField))
 		}
 		if fieldType == interfaces.DataType_Other {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("Other field %q cannot be requested by an aggregation query", outputField))
 		}
 		if _, valid := validOutputFields[outputField]; valid {
 			continue
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Output field %q must be a group_by field or aggregate alias for an aggregation query", outputField))
 	}
 

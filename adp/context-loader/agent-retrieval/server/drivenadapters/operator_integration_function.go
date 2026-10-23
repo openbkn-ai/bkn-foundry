@@ -12,6 +12,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -82,8 +85,11 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 	ctx context.Context, req *interfaces.ExecuteFunctionRequest,
 ) (*interfaces.ExecuteFunctionResponse, error) {
 	if req == nil || req.Code == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "FunctionCodeRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.FunctionCodeRequired", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 	if _, hasCallerToken := common.GetRawTokenFromCtx(ctx); !common.IsPublicAPIFromCtx(ctx) && !hasCallerToken {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
@@ -120,8 +126,11 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 	resp := &interfaces.ExecuteFunctionResponse{}
 	if err = common.UnmarshalPreciseJSON(utils.ObjectToByte(respBody), resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteFunction] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "FunctionExecutionResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.FunctionExecutionResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 	return resp, nil
 }
@@ -149,12 +158,20 @@ func classifyFunctionExecuteError(ctx context.Context, code int, err error) erro
 	downstreamCode, description := executionFactoryError(err)
 	switch {
 	case code == http.StatusForbidden && isExecutionFactoryCode(downstreamCode, executionFactoryUseForbidden):
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.FunctionExecuteForbidden", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-			downstreamCode+": "+infraErr.LocalizedDetail(ctx, "FunctionExecuteForbidden"))
+			downstreamCode+": "+localizedText)
 	case code == http.StatusServiceUnavailable &&
 		isExecutionFactoryCode(downstreamCode, executionFactoryAuthorizationUnavailable):
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.FunctionAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
 		return infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			downstreamCode+": "+infraErr.LocalizedDetail(ctx, "FunctionAuthorizationUnavailable"))
+			downstreamCode+": "+localizedText)
 	case code >= http.StatusBadRequest && code < http.StatusInternalServerError &&
 		downstreamCode != "" && description != "":
 		return infraErr.DefaultHTTPError(ctx, code, downstreamCode+": "+description)
@@ -166,16 +183,20 @@ func classifyFunctionExecuteError(ctx context.Context, code int, err error) erro
 // Execution Factory error body. Both are empty when the body is not its envelope,
 // for example a gateway page.
 func executionFactoryError(err error) (code, description string) {
-	var he *infraErr.HTTPError
-	if !errors.As(err, &he) || len(he.DownstreamBody) == 0 {
+	var he *infraErr.DependencyError
+	if !errors.As(err, &he) || len(he.Body) == 0 {
 		return "", ""
 	}
 	var envelope struct {
-		Code        string `json:"code"`
+		Code        string `json:"error_code"`
+		LegacyCode  string `json:"code"`
 		Description string `json:"description"`
 	}
-	if json.Unmarshal(he.DownstreamBody, &envelope) != nil {
+	if json.Unmarshal(he.Body, &envelope) != nil {
 		return "", ""
+	}
+	if envelope.Code == "" {
+		envelope.Code = envelope.LegacyCode
 	}
 	return envelope.Code, envelope.Description
 }

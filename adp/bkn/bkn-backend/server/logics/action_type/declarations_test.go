@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -32,9 +32,9 @@ func approve(aliases ...string) *interfaces.ActionType {
 	}
 }
 
-func httpError(t *testing.T, err error) *rest.HTTPError {
+func httpError(t *testing.T, err error) *httperrors.HTTPError {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.True(t, errors.As(err, &httpErr), "%v", err)
 	return httpErr
 }
@@ -49,7 +49,7 @@ func TestCheckActionTypeDeclarations(t *testing.T) {
 	assert.Nil(t, at.Aliases, "[] is stored as no aliases")
 
 	err := ats.checkDeclarations(ctx, approve("审批"))
-	assert.Equal(t, berrors.BknBackend_ActionType_InvalidParameter_Declarations, httpError(t, err).BaseError.ErrorCode,
+	assert.Equal(t, berrors.BknBackend_ActionType_InvalidParameter_Declarations, httpError(t, err).ErrorCode,
 		"an alias is not the action type's own name")
 }
 
@@ -63,12 +63,12 @@ func TestCheckActionTypeAliasNames(t *testing.T) {
 	ata.EXPECT().GetActionTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, nil, []string{"核准", "驳回"}).
 		Return([]*interfaces.ActionType{reject}, nil)
 	err := ats.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ActionType{approve("核准", "驳回")})
-	assert.Contains(t, httpError(t, err).BaseError.ErrorDetails, `action type "approve" alias "驳回" is the name of action type "reject"`)
+	assert.Contains(t, httpError(t, err).ErrorDetails, `action type "approve" alias "驳回" is the name of action type "reject"`)
 
 	ata.EXPECT().ListAliasedActionTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
 		Return([]*interfaces.ActionType{approve("驳回")}, nil)
 	err = ats.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ActionType{reject})
-	assert.Contains(t, httpError(t, err).BaseError.ErrorDetails, `action type "reject" is named "驳回", which is an alias of action type "approve"`)
+	assert.Contains(t, httpError(t, err).ErrorDetails, `action type "reject" is named "驳回", which is an alias of action type "approve"`)
 
 	ata.EXPECT().ListAliasedActionTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
 		Return([]*interfaces.ActionType{approve("驳回")}, nil)
@@ -112,15 +112,15 @@ func TestCheckActionTypeOverwriteKeepsDeclarations(t *testing.T) {
 	err := ats.checkOverwriteKeepsDeclarations(ctx, []*interfaces.ActionType{approve()}, false)
 	httpErr := httpError(t, err)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-	assert.Equal(t, berrors.BknBackend_ActionType_DeclarationsWouldBeCleared, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, berrors.BknBackend_ActionType_DeclarationsWouldBeCleared, httpErr.ErrorCode)
 	assert.Equal(t, []interfaces.ClearedDeclaration{{ActionTypeID: "approve", Fields: []string{interfaces.DECLARATION_ALIASES}}},
-		httpErr.BaseError.ErrorDetails.(map[string]any)["cleared"])
+		httpErr.ErrorDetails.(map[string]any)["cleared"])
 
 	require.NoError(t, ats.checkOverwriteKeepsDeclarations(ctx, []*interfaces.ActionType{approve("批准")}, false),
 		"changed aliases are not cleared")
 
 	ps.EXPECT().RequirePermissions(gomock.Any(), gomock.Any()).
-		Return(rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ActionType_InternalError))
+		Return(httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ActionType_InternalError))
 	err = ats.checkOverwriteKeepsDeclarations(ctx, []*interfaces.ActionType{approve()}, true)
 	assert.Equal(t, http.StatusForbidden, httpError(t, err).HTTPCode, "the list is shown only to who may modify")
 

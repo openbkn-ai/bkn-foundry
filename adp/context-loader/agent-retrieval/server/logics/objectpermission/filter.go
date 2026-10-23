@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -98,6 +100,9 @@ func filterObjectTypes(ctx context.Context, access interfaces.ObjectSchemaAccess
 	tokens := make(chan struct{}, schemaFanOut)
 queue:
 	for i, objectType := range objectTypes {
+		if ctx.Err() != nil {
+			break queue
+		}
 		if objectType == nil {
 			continue
 		}
@@ -113,6 +118,12 @@ queue:
 		case <-ctx.Done():
 			// A read has already failed, or the caller left. Either way this answer
 			// is lost, so stop queueing reads someone would still have to serve.
+			break queue
+		}
+		// A free slot and cancellation may both be ready in the select above.
+		// Release the acquired slot instead of scheduling another schema read.
+		if ctx.Err() != nil {
+			<-tokens
 			break queue
 		}
 		wg.Add(1)
@@ -178,11 +189,12 @@ func transientReadFailure(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
-	var httpErr *infraErr.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
 		return true
 	}
-	return httpErr.HTTPCode >= 500 && httpErr.DownstreamBody != nil
+	var dependency *infraErr.DependencyError
+	return httpErr.HTTPCode >= 500 && errors.As(err, &dependency) && dependency.Body != nil
 }
 
 func filterObjectType(source *interfaces.ObjectType,

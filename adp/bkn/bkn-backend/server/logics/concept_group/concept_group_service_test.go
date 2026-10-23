@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -72,14 +72,14 @@ func Test_conceptGroupService_CheckConceptGroupExistByID(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			cgID := "cg1"
 
-			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			name, exist, err := service.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed)
 		})
 	})
 }
@@ -130,14 +130,14 @@ func Test_conceptGroupService_CheckConceptGroupExistByName(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			cgName := "concept_group1"
 
-			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			id, exist, err := service.CheckConceptGroupExistByName(ctx, knID, branch, cgName)
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 			So(id, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed)
 		})
 	})
 }
@@ -174,12 +174,12 @@ func Test_conceptGroupService_UpdateConceptGroupDetail(t *testing.T) {
 			cgID := "cg1"
 			detail := "updated detail"
 
-			cga.EXPECT().UpdateConceptGroupDetail(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().UpdateConceptGroupDetail(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := service.UpdateConceptGroupDetail(ctx, knID, branch, cgID, detail)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError)
 		})
 	})
 }
@@ -266,7 +266,7 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 
 		Convey("Failed when getting concept IDs returns error\n", func() {
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+				Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
@@ -275,25 +275,25 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 
 		Convey("Failed when listing relation types returns error\n", func() {
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
-			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
 		})
 
 		Convey("Failed when listing action types returns error\n", func() {
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, nil)
-			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			stats, err := service.GetStatByConceptGroup(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
 		})
 	})
 }
@@ -378,7 +378,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -403,7 +403,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 			}
 
 			cga.EXPECT().ListConceptGroups(gomock.Any(), gomock.Any()).Return(cgArr, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -442,7 +442,7 @@ func Test_conceptGroupService_ListConceptGroups(t *testing.T) {
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsGroupedByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
 				[]string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(nil,
-				rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+				httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			cgs, total, err := service.ListConceptGroups(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -577,8 +577,8 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
 		})
 
 		Convey("Failed when GetConceptGroupByID returns error\n", func() {
@@ -587,13 +587,13 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			cgID := "cg1"
 			mode := ""
 
-			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetConceptGroupByIDFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetConceptGroupByIDFailed)
 		})
 
 		Convey("Failed when GetConceptIDsByConceptGroupIDs returns error\n", func() {
@@ -609,7 +609,7 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			}
 
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
 			So(err, ShouldNotBeNil)
@@ -676,7 +676,7 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
-			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
 			So(err, ShouldNotBeNil)
@@ -709,7 +709,7 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			cga.EXPECT().GetConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(cg, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, 0, nil)
-			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, 0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return(nil, 0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
 			So(err, ShouldNotBeNil)
@@ -745,7 +745,7 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otIDs, nil)
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ObjectType{}, 0, nil)
 			rts.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, 0, nil)
-			ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, 0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			ats.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, 0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			result, err := service.GetConceptGroupByID(ctx, knID, branch, cgID, mode)
 			So(err, ShouldNotBeNil)
@@ -794,7 +794,7 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := service.InsertDatasetData(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
@@ -860,7 +860,7 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
@@ -887,7 +887,7 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 			}
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
@@ -939,7 +939,7 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			cgID := "cg1"
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
 			So(err, ShouldNotBeNil)
@@ -952,7 +952,7 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().DeleteConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().DeleteConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
@@ -967,7 +967,7 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().DeleteConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
@@ -983,7 +983,7 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().DeleteConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
@@ -1086,7 +1086,7 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := service.UpdateConceptGroup(ctx, nil, conceptGroup, false)
 			So(err, ShouldNotBeNil)
@@ -1103,7 +1103,7 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{}, nil)
-			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateConceptGroup(ctx, nil, conceptGroup, false)
@@ -1122,7 +1122,7 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{}, nil)
 			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateConceptGroup(ctx, nil, conceptGroup, false)
@@ -1209,7 +1209,7 @@ func Test_conceptGroupService_ListConceptGroupRelations(t *testing.T) {
 				ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
 
 			result, err := service.ListConceptGroupRelations(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -1226,7 +1226,7 @@ func Test_conceptGroupService_ListConceptGroupRelations(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.ListConceptGroupRelations(ctx, query)
@@ -1363,7 +1363,7 @@ func Test_conceptGroupService_DeleteObjectTypesFromGroup(t *testing.T) {
 			cgID := "cg1"
 			otIDs := []string{"ot1"}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := service.DeleteObjectTypesFromGroup(ctx, nil, knID, branch, cgID, otIDs)
 			So(err, ShouldNotBeNil)
@@ -1377,7 +1377,7 @@ func Test_conceptGroupService_DeleteObjectTypesFromGroup(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteObjectTypesFromGroup(ctx, nil, knID, branch, cgID, otIDs)
@@ -1458,7 +1458,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			}
 			mode := interfaces.ImportMode_Normal
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_ConceptGroup_InternalError))
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
 			So(err, ShouldNotBeNil)
@@ -1483,8 +1483,8 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
 			So(err, ShouldNotBeNil)
 			So(cgID, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted)
 		})
 
 		Convey("Success with empty CGID generates new ID\n", func() {
@@ -1568,7 +1568,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
-			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1590,7 +1590,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1678,7 +1678,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			childErr := rootlogics.MapDependencyError(ctx,
 				interfaces.NewDependencyError("vega", "get_resource_schema", interfaces.DependencyTimeout, 0),
 				false,
-				rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
+				httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
 				berrors.BknBackend_ObjectType_InternalError)
 			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, childErr)
 			smock.ExpectRollback()
@@ -1687,8 +1687,8 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(cgID, ShouldEqual, "")
 			So(err, ShouldEqual, childErr)
-			httpErr := err.(*rest.HTTPError)
-			details := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			httpErr := err.(*httperrors.HTTPError)
+			details := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(details.Kind, ShouldEqual, interfaces.DependencyTimeout)
 		})
 
@@ -1725,7 +1725,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
-			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1806,7 +1806,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().CreateRelationTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			rts.EXPECT().CreateRelationTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1887,7 +1887,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1973,8 +1973,8 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 			cgrIDs, err := service.AddObjectTypesToConceptGroup(ctx, nil, knID, branch, cgID, otIDs, importMode, true)
 			So(err, ShouldNotBeNil)
 			So(len(cgrIDs), ShouldEqual, 0)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ObjectTypeNotFound)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ObjectTypeNotFound)
 		})
 
 		Convey("Failed when relation already exists in normal mode\n", func() {
@@ -2010,8 +2010,8 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 			cgrIDs, err := service.AddObjectTypesToConceptGroup(ctx, nil, knID, branch, cgID, otIDs, importMode, true)
 			So(err, ShouldNotBeNil)
 			So(len(cgrIDs), ShouldEqual, 0)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupRelationExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupRelationExisted)
 		})
 
 		Convey("Failed when ListObjectTypes returns error\n", func() {
@@ -2024,7 +2024,7 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 			importMode := interfaces.ImportMode_Normal
 
 			smock.ExpectBegin()
-			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, 0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgrIDs, err := service.AddObjectTypesToConceptGroup(ctx, nil, knID, branch, cgID, otIDs, importMode, true)
@@ -2051,7 +2051,7 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 
 			smock.ExpectBegin()
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, 1, nil)
-			cga.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgrIDs, err := service.AddObjectTypesToConceptGroup(ctx, nil, knID, branch, cgID, otIDs, importMode, true)
@@ -2079,7 +2079,7 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 			smock.ExpectBegin()
 			ots.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(objectTypes, 1, nil)
 			cga.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any(), gomock.Any()).Return([]interfaces.ConceptGroupRelation{}, nil)
-			cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgrIDs, err := service.AddObjectTypesToConceptGroup(ctx, nil, knID, branch, cgID, otIDs, importMode, true)
@@ -2197,7 +2197,7 @@ func Test_conceptGroupService_DeleteConceptGroupsByKnID(t *testing.T) {
 
 		Convey("Failed when DeleteConceptGroupsByKnID access returns error\n", func() {
 			tx := new(sql.Tx)
-			cga.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), tx, knID, branch).Return(int64(0), rest.NewHTTPError(context.Background(), 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), tx, knID, branch).Return(int64(0), httperrors.NewHTTPError(context.Background(), 500, berrors.BknBackend_ConceptGroup_InternalError))
 			err := service.DeleteConceptGroupsByKnID(context.Background(), tx, knID, branch)
 			So(err, ShouldNotBeNil)
 		})
@@ -2205,7 +2205,7 @@ func Test_conceptGroupService_DeleteConceptGroupsByKnID(t *testing.T) {
 		Convey("Failed when DeleteConceptGroupRelationsByKnID access returns error\n", func() {
 			tx := new(sql.Tx)
 			cga.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), tx, knID, branch).Return(int64(1), nil)
-			cga.EXPECT().DeleteConceptGroupRelationsByKnID(gomock.Any(), tx, knID, branch).Return(int64(0), rest.NewHTTPError(context.Background(), 500, berrors.BknBackend_ConceptGroup_InternalError))
+			cga.EXPECT().DeleteConceptGroupRelationsByKnID(gomock.Any(), tx, knID, branch).Return(int64(0), httperrors.NewHTTPError(context.Background(), 500, berrors.BknBackend_ConceptGroup_InternalError))
 			err := service.DeleteConceptGroupsByKnID(context.Background(), tx, knID, branch)
 			So(err, ShouldNotBeNil)
 		})

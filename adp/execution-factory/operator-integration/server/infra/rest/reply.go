@@ -10,13 +10,15 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	validatorv "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/validator"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	errorwrap "github.com/pkg/errors"
 )
 
 const (
@@ -38,7 +40,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 			statusCode = http.StatusInternalServerError
 			ctx := c.Request.Context()
 			bodyStr = myErr.DefaultHTTPError(ctx, statusCode, err.Error()).Error()
-			sharedrest.MarkLocalizedResponse(c)
+			rest.MarkLocalizedResponse(c)
 		}
 	}
 
@@ -48,43 +50,35 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 
 // ReplyError writes an error response.
 func ReplyError(c *gin.Context, err error) {
-	if err != nil {
-		errWithStack := errorwrap.WithStack(err)
-		logger.DefaultLogger().Debug("Error:", errWithStack.Error())
+	var upstream *ExHTTPError
+	if errors.As(err, &upstream) && upstream != nil {
+		c.Header(ContentTypeKey, ContentTypeJSON)
+		c.String(upstream.HTTPCode, string(upstream.Body))
+		return
 	}
-	var httpCode int
-	ctx := c.Request.Context()
-	var body string
-	localized := true
-	switch e := err.(type) {
-	case *ExHTTPError:
-		httpCode = e.HTTPCode
-		body = e.Error()
-		localized = false
-	default:
-		httpError := &myErr.HTTPError{}
-		vErr := make(validator.ValidationErrors, 0)
-		if errors.As(err, &httpError) {
-			httpCode = httpError.HTTPCode
-			body = err.Error()
-		} else if errors.As(err, &vErr) {
-			httpCode = http.StatusBadRequest
-			if len(vErr) > 0 {
-				extCode := validatorv.TagToErrorType[vErr[0].Tag()]
-				body = myErr.NewHTTPError(ctx, http.StatusBadRequest, extCode, vErr[0].Error()).Error()
+	var validationErrors validator.ValidationErrors
+	if errors.As(err, &validationErrors) {
+		ctx := c.Request.Context()
+		if len(validationErrors) > 0 {
+			vErr := validationErrors
+			extCode := validatorv.TagToErrorType[vErr[0].Tag()]
+			friendlyDetails := vErr[0].Error()
+			if extCode == "" {
+				err = myErr.DefaultHTTPError(ctx, http.StatusBadRequest, friendlyDetails)
 			} else {
-				body = myErr.DefaultHTTPError(ctx, httpCode, err.Error()).Error()
+				err = myErr.NewHTTPError(ctx, http.StatusBadRequest, extCode, friendlyDetails)
 			}
 		} else {
-			httpCode = http.StatusInternalServerError
-			body = myErr.DefaultHTTPError(ctx, httpCode, err.Error()).Error()
+			err = myErr.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 		}
 	}
-	if localized {
-		sharedrest.MarkLocalizedResponse(c)
+
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr == nil {
+		logger.DefaultLogger().Errorf("unhandled response error: %v", err)
+		err = myErr.DefaultHTTPError(c.Request.Context(), http.StatusInternalServerError, err.Error())
 	}
-	c.Writer.Header().Set(ContentTypeKey, ContentTypeJSON)
-	c.String(httpCode, body)
+	rest.ReplyError(c, err)
 }
 
 // ExHTTPError preserves an error response owned by a dependency.
@@ -110,17 +104,21 @@ func ReplyWithExecutionMode(c *gin.Context, resp interface{}, err error) {
 			if err == nil {
 				return
 			}
-			switch e := err.(type) {
-			case *ExHTTPError:
-				c.SSEvent("error", e)
-			case *myErr.HTTPError:
-				sharedrest.MarkLocalizedResponse(c)
-				c.SSEvent("error", e)
-			default:
-				localizedErr := myErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
-				sharedrest.MarkLocalizedResponse(c)
-				c.SSEvent("error", localizedErr)
+
+			var upstream *ExHTTPError
+			if errors.As(err, &upstream) && upstream != nil {
+				c.SSEvent("error", upstream)
+				return
 			}
+			var httpErr *httperrors.HTTPError
+			if !errors.As(err, &httpErr) || httpErr == nil {
+				httpErr = myErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+			}
+			if renderErr := httpErr.Render(); renderErr != nil {
+				logger.DefaultLogger().Errorf("localized error rendering failed: %v", renderErr)
+			}
+			c.Header(i18n.ContentLanguageHeader, string(httpErr.Lang))
+			c.SSEvent("error", httpErr.BaseError)
 			return
 		case interfaces.StreamingModeHTTP:
 			if err != nil {

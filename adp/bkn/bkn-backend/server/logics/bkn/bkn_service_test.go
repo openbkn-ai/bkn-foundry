@@ -15,7 +15,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -142,10 +143,10 @@ func Test_bknService_ExportToTar(t *testing.T) {
 		})
 
 		Convey("Failed when GetKNByID returns error\n", func() {
-			getErr := &rest.HTTPError{
+			getErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError,
 				},
 			}
@@ -418,7 +419,7 @@ func Test_bknService_DiffNetworks(t *testing.T) {
 		})
 
 		Convey("A caller who cannot read the base network is refused before the target is touched\n", func() {
-			denied := rest.NewHTTPError(context.Background(), http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_InvalidParameter)
+			denied := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_InvalidParameter)
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", "main", interfaces.Mode_Export).Return(nil, denied)
 
 			result, err := svc.DiffNetworks(context.Background(), interfaces.KNDiffRequest{
@@ -492,11 +493,11 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(misplacedKN("kn1"), nil)
 			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
 			So(data, ShouldBeNil)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
-			found := httpErr.BaseError.ErrorDetails.(*interfaces.NetworkCheckResult)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
+			found := httpErr.ErrorDetails.(*interfaces.NetworkCheckResult)
 			So(found.MisplacedParameters, ShouldHaveLength, 1)
 			So(found.MisplacedParameters[0].ActionTypeID, ShouldEqual, "restart_pod")
 		})
@@ -506,10 +507,10 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			kn.ActionTypes[0].Parameters[0] = interfaces.Parameter{Name: "pod", Type: "string", Source: "Body"}
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn3", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
 			_, err := svc.ExportToTar(context.Background(), "kn3", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
-			found := httpErr.BaseError.ErrorDetails.(*interfaces.NetworkCheckResult)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
+			found := httpErr.ErrorDetails.(*interfaces.NetworkCheckResult)
 			So(found.MisplacedParameters, ShouldBeEmpty)
 			So(found.InvalidParameters, ShouldResemble, []interfaces.NetworkCheckInvalidParameter{{
 				ActionTypeID: "restart_pod", Parameter: "pod", Current: interfaces.NetworkCheckParameterValue{Source: "Body"},
@@ -526,10 +527,10 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn4", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
 			data, err := svc.ExportToTar(context.Background(), "kn4", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
 			So(data, ShouldBeNil)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "pod")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3)
+			So(httpErr.ErrorDetails, ShouldContainSubstring, "pod")
 		})
 
 		Convey("3.0 is written as 3.0 when the check finds nothing\n", func() {

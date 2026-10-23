@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -51,7 +51,7 @@ func (c *boxCache) mcpTools(ctx context.Context, mcpID string) ([]*interfaces.MC
 	}
 	tools, err := c.svc.aoa.ListMCPTools(ctx, mcpID)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadGateway,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadGateway,
 			berrors.BknBackend_CapabilityBinding_ExecutionFactoryUnavailable).
 			WithErrorDetails(fmt.Sprintf("mcp server lookup failed: mcp_id=%s", mcpID))
 	}
@@ -67,7 +67,7 @@ func (c *boxCache) tools(ctx context.Context, boxID string) ([]*interfaces.ToolB
 	}
 	tools, err := c.svc.aoa.ListBoxTools(ctx, boxID)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadGateway,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadGateway,
 			berrors.BknBackend_CapabilityBinding_ExecutionFactoryUnavailable).
 			WithErrorDetails(fmt.Sprintf("tool box %s: %s", boxID, err.Error()))
 	}
@@ -143,7 +143,7 @@ func (cbs *capabilityBindingService) expandBox(ctx context.Context, boxes *boxCa
 	entry *interfaces.AttachCapabilityEntry) ([]*resolvedCapability, error) {
 	boxID := strings.TrimSpace(entry.OwnerID)
 	if boxID == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_NullParameter_OwnerID)
 	}
 
@@ -152,12 +152,12 @@ func (cbs *capabilityBindingService) expandBox(ctx context.Context, boxes *boxCa
 		return nil, err
 	}
 	if tools == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotFound).
 			WithErrorDetails(fmt.Sprintf("tool box not found: box_id=%s", boxID))
 	}
 	if len(tools) > 0 && !boxIsUsable(tools[0]) {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
 			WithErrorDetails(fmt.Sprintf("tool box is not published: box_id=%s status=%s", boxID, tools[0].BoxStatus))
 	}
@@ -177,7 +177,7 @@ func (cbs *capabilityBindingService) expandBox(ctx context.Context, boxes *boxCa
 		})
 	}
 	if len(expanded) == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_EmptyToolBox).
 			WithErrorDetails(fmt.Sprintf("tool box has no enabled tool to mount: box_id=%s", boxID))
 	}
@@ -187,17 +187,17 @@ func (cbs *capabilityBindingService) expandBox(ctx context.Context, boxes *boxCa
 func (cbs *capabilityBindingService) validateSkill(ctx context.Context, skillID string) error {
 	skill, err := cbs.aoa.GetSkillByID(ctx, skillID)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadGateway,
+		return httperrors.NewHTTPError(ctx, http.StatusBadGateway,
 			berrors.BknBackend_CapabilityBinding_ExecutionFactoryUnavailable).
 			WithErrorDetails(fmt.Sprintf("skill %s: %s", skillID, err.Error()))
 	}
 	if skill == nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotFound).
 			WithErrorDetails(fmt.Sprintf("skill not found: skill_id=%s", skillID))
 	}
 	if !interfaces.SkillIsBindable(skill.Status) {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
 			WithErrorDetails(fmt.Sprintf("skill is not published: skill_id=%s status=%s", skillID, skill.Status))
 	}
@@ -213,7 +213,7 @@ func (cbs *capabilityBindingService) validateTool(ctx context.Context, boxes *bo
 		return err
 	}
 	if tools == nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotFound).
 			WithErrorDetails(fmt.Sprintf("tool box not found: box_id=%s", boxID))
 	}
@@ -222,18 +222,18 @@ func (cbs *capabilityBindingService) validateTool(ctx context.Context, boxes *bo
 			continue
 		}
 		if !boxIsUsable(tool) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
 				WithErrorDetails(fmt.Sprintf("tool box is not published: box_id=%s status=%s", boxID, tool.BoxStatus))
 		}
 		if tool.Status != interfaces.EXEC_TOOL_STATUS_ENABLED {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
 				WithErrorDetails(fmt.Sprintf("tool is disabled: box_id=%s tool_id=%s", boxID, toolID))
 		}
 		return nil
 	}
-	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 		berrors.BknBackend_CapabilityBinding_TargetNotFound).
 		WithErrorDetails(fmt.Sprintf("tool not found: box_id=%s tool_id=%s", boxID, toolID))
 }
@@ -256,12 +256,12 @@ func (cbs *capabilityBindingService) validateMCPTool(ctx context.Context, boxes 
 		return err
 	}
 	if tools == nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotFound).
 			WithErrorDetails(fmt.Sprintf("mcp server not found: mcp_id=%s", mcpID))
 	}
 	if len(tools) > 0 && !mcpIsUsable(tools[0]) {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
 			WithErrorDetails(fmt.Sprintf("mcp server is not published: mcp_id=%s status=%s",
 				mcpID, tools[0].MCPStatus))
@@ -271,7 +271,7 @@ func (cbs *capabilityBindingService) validateMCPTool(ctx context.Context, boxes 
 			return nil
 		}
 	}
-	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 		berrors.BknBackend_CapabilityBinding_TargetNotFound).
 		WithErrorDetails(fmt.Sprintf("mcp tool not found: mcp_id=%s tool_name=%s", mcpID, toolName))
 }
@@ -288,7 +288,7 @@ func (cbs *capabilityBindingService) expandMCPServer(ctx context.Context, boxes 
 	entry *interfaces.AttachCapabilityEntry) ([]*resolvedCapability, error) {
 	mcpID := strings.TrimSpace(entry.OwnerID)
 	if mcpID == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_NullParameter_OwnerID)
 	}
 
@@ -297,12 +297,12 @@ func (cbs *capabilityBindingService) expandMCPServer(ctx context.Context, boxes 
 		return nil, err
 	}
 	if tools == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotFound).
 			WithErrorDetails(fmt.Sprintf("mcp server not found: mcp_id=%s", mcpID))
 	}
 	if len(tools) > 0 && !mcpIsUsable(tools[0]) {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
 			WithErrorDetails(fmt.Sprintf("mcp server is not published: mcp_id=%s status=%s",
 				mcpID, tools[0].MCPStatus))
@@ -323,7 +323,7 @@ func (cbs *capabilityBindingService) expandMCPServer(ctx context.Context, boxes 
 		})
 	}
 	if len(expanded) == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_EmptyToolBox).
 			WithErrorDetails(fmt.Sprintf("mcp server exposes no tool: mcp_id=%s", mcpID))
 	}
