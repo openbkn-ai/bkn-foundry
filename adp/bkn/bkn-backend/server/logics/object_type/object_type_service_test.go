@@ -52,6 +52,7 @@ func Test_objectTypeService_CheckObjectTypeExistByID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -110,6 +111,7 @@ func Test_objectTypeService_CheckObjectTypeExistByName(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -168,6 +170,7 @@ func Test_objectTypeService_GetObjectTypeIDsByKnID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -269,6 +272,7 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
@@ -490,6 +494,7 @@ func Test_objectTypeService_GetAllObjectTypesByKnID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -537,6 +542,7 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &objectTypeService{
@@ -639,6 +645,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			},
 		}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -948,6 +955,7 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
@@ -1049,6 +1057,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
@@ -1476,6 +1485,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
@@ -1654,6 +1664,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
 	vbs := bmock.NewMockVegaBackendService(ctrl)
@@ -1704,6 +1715,7 @@ func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *te
 func TestObjectTypeServiceListSummariesFallsBackForWildcardScope(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
 	vbs := bmock.NewMockVegaBackendService(ctrl)
@@ -1759,6 +1771,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			},
 		}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1897,6 +1910,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			},
 		}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -2087,6 +2101,7 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -2211,6 +2226,7 @@ func Test_objectTypeService_GetObjectTypesMapByIDs(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -2648,6 +2664,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil).AnyTimes()
 		ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
@@ -3126,6 +3143,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -3974,6 +3992,7 @@ func Test_objectTypeService_DeleteObjectTypesByKnID(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()

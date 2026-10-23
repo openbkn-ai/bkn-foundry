@@ -519,6 +519,8 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 		words := []string{}
 		for _, objectType := range objectTypes {
 			arr := []string{objectType.OTName}
+			// Aliases follow the name; without them the text is as before.
+			arr = append(arr, objectType.Aliases...)
 			arr = append(arr, objectType.Tags...)
 			arr = append(arr, objectType.Comment, objectType.BKNRawContent)
 			word := strings.Join(arr, "\n")
@@ -604,6 +606,8 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 		words := []string{}
 		for _, actionType := range actionTypes {
 			arr := []string{actionType.ATName}
+			// Aliases follow the name; without them the text is as before.
+			arr = append(arr, actionType.Aliases...)
 			arr = append(arr, actionType.Tags...)
 			arr = append(arr, actionType.Comment, actionType.BKNRawContent)
 			word := strings.Join(arr, "\n")

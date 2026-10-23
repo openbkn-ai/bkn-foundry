@@ -231,6 +231,11 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 		common.LogSafeError(ctx, "Failed to marshal DataProperties, err", err)
 		return err
 	}
+	aliases, err := common.EncodeAliases(objectType.Aliases)
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to marshal Aliases, err", err)
+		return err
+	}
 	// 2.2 Serialize logical properties.
 	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
 	if err != nil {
@@ -257,6 +262,7 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 			"f_branch",
 			"f_data_source",
 			"f_data_properties",
+			"f_aliases",
 			"f_logic_properties",
 			"f_primary_keys",
 			"f_display_key",
@@ -280,6 +286,7 @@ func (ota *objectTypeAccess) CreateObjectType(ctx context.Context, tx *sql.Tx, o
 			objectType.Branch,
 			dataSourceBytes,
 			dataPropertiesBytes,
+			aliases,
 			logicPropertiesBytes,
 			primaryKeysBytes,
 			objectType.DisplayKey,
@@ -327,7 +334,7 @@ func (ota *objectTypeAccess) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		end := min(start+objectTypeInsertBatchSize, len(objectTypes))
 		builder := sq.Insert(OT_TABLE_NAME).Columns(
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
-			"f_kn_id", "f_branch", "f_data_source", "f_data_properties", "f_logic_properties",
+			"f_kn_id", "f_branch", "f_data_source", "f_data_properties", "f_aliases", "f_logic_properties",
 			"f_primary_keys", "f_display_key", "f_incremental_key", "f_creator", "f_creator_type",
 			"f_create_time", "f_updater", "f_updater_type", "f_update_time",
 		)
@@ -368,6 +375,10 @@ func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	aliases, err := common.EncodeAliases(objectType.Aliases)
+	if err != nil {
+		return nil, err
+	}
 	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
 	if err != nil {
 		return nil, err
@@ -379,7 +390,7 @@ func objectTypeInsertValues(objectType *interfaces.ObjectType) ([]any, error) {
 	return []any{
 		objectType.OTID, objectType.OTName, libCommon.TagSlice2TagString(objectType.Tags), objectType.Comment,
 		objectType.Icon, objectType.Color, objectType.BKNRawContent, objectType.KNID, objectType.Branch,
-		dataSourceBytes, dataPropertiesBytes, logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey,
+		dataSourceBytes, dataPropertiesBytes, aliases, logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey,
 		objectType.IncrementalKey, objectType.Creator.ID, objectType.Creator.Type, objectType.CreateTime,
 		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime,
 	}, nil
@@ -495,6 +506,7 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 		"ot.f_branch",
 		"ot.f_data_source",
 		"ot.f_data_properties",
+		"ot.f_aliases",
 		"ot.f_logic_properties",
 		"ot.f_primary_keys",
 		"ot.f_display_key",
@@ -564,6 +576,7 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 		var (
 			dataSourceBytes      []byte
 			dataPropertiesBytes  []byte
+			aliasesBytes         []byte
 			logicPropertiesBytes []byte
 			primaryKeysBytes     []byte
 		)
@@ -579,6 +592,7 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 			&objectType.Branch,
 			&dataSourceBytes,
 			&dataPropertiesBytes,
+			&aliasesBytes,
 			&logicPropertiesBytes,
 			&primaryKeysBytes,
 			&objectType.DisplayKey,
@@ -614,6 +628,7 @@ func (ota *objectTypeAccess) ListObjectTypes(ctx context.Context, tx *sql.Tx, qu
 		}
 
 		// 2.1 Deserialize data properties.
+		objectType.Aliases = common.DecodeStoredAliases(ctx, aliasesBytes)
 		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
@@ -862,6 +877,7 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 		"ot.f_branch",
 		"ot.f_data_source",
 		"ot.f_data_properties",
+		"ot.f_aliases",
 		"ot.f_logic_properties",
 		"ot.f_primary_keys",
 		"ot.f_display_key",
@@ -902,6 +918,7 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	var (
 		dataSourceBytes      []byte
 		dataPropertiesBytes  []byte
+		aliasesBytes         []byte
 		logicPropertiesBytes []byte
 		primaryKeysBytes     []byte
 	)
@@ -924,6 +941,7 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 		&objectType.Branch,
 		&dataSourceBytes,
 		&dataPropertiesBytes,
+		&aliasesBytes,
 		&logicPropertiesBytes,
 		&primaryKeysBytes,
 		&objectType.DisplayKey,
@@ -965,6 +983,7 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	}
 
 	// 2.1 Deserialize data properties.
+	objectType.Aliases = common.DecodeStoredAliases(ctx, aliasesBytes)
 	err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 	if err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
@@ -1011,6 +1030,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		"ot.f_branch",
 		"ot.f_data_source",
 		"ot.f_data_properties",
+		"ot.f_aliases",
 		"ot.f_logic_properties",
 		"ot.f_primary_keys",
 		"ot.f_display_key",
@@ -1086,6 +1106,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		var (
 			dataSourceBytes      []byte
 			dataPropertiesBytes  []byte
+			aliasesBytes         []byte
 			logicPropertiesBytes []byte
 			primaryKeysBytes     []byte
 		)
@@ -1102,6 +1123,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 			&objectType.Branch,
 			&dataSourceBytes,
 			&dataPropertiesBytes,
+			&aliasesBytes,
 			&logicPropertiesBytes,
 			&primaryKeysBytes,
 			&objectType.DisplayKey,
@@ -1137,6 +1159,7 @@ func (ota *objectTypeAccess) GetObjectTypesByIDs(ctx context.Context, tx *sql.Tx
 		}
 
 		// 2.1 Deserialize data properties.
+		objectType.Aliases = common.DecodeStoredAliases(ctx, aliasesBytes)
 		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
@@ -1187,6 +1210,11 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		logger.Errorf("Failed to marshal DataProperties, err: %v", common.SafeErrorSummary(err))
 		return err
 	}
+	aliases, err := common.EncodeAliases(objectType.Aliases)
+	if err != nil {
+		common.LogSafeError(ctx, "Failed to marshal Aliases, err", err)
+		return err
+	}
 	// 2.2 Serialize logical properties.
 	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
 	if err != nil {
@@ -1209,6 +1237,7 @@ func (ota *objectTypeAccess) UpdateObjectType(ctx context.Context, tx *sql.Tx, o
 		"f_bkn_raw_content":  objectType.BKNRawContent,
 		"f_data_source":      dataSourceBytes,
 		"f_data_properties":  dataPropertiesBytes,
+		"f_aliases":          aliases,
 		"f_logic_properties": logicPropertiesBytes,
 		"f_primary_keys":     primaryKeysBytes,
 		"f_display_key":      objectType.DisplayKey,
@@ -1280,7 +1309,7 @@ func (ota *objectTypeAccess) UpdateObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	columns := []string{
 		"f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
-		"f_data_source", "f_data_properties", "f_logic_properties", "f_primary_keys",
+		"f_data_source", "f_data_properties", "f_aliases", "f_logic_properties", "f_primary_keys",
 		"f_display_key", "f_incremental_key", "f_updater", "f_updater_type", "f_update_time",
 	}
 	for start := 0; start < len(objectTypes); {
@@ -1361,6 +1390,10 @@ func objectTypeUpdateValues(objectType *interfaces.ObjectType) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	aliases, err := common.EncodeAliases(objectType.Aliases)
+	if err != nil {
+		return nil, err
+	}
 	logicPropertiesBytes, err := sonic.Marshal(objectType.LogicProperties)
 	if err != nil {
 		return nil, err
@@ -1371,7 +1404,7 @@ func objectTypeUpdateValues(objectType *interfaces.ObjectType) ([]any, error) {
 	}
 	return []any{
 		objectType.OTName, libCommon.TagSlice2TagString(objectType.Tags), objectType.Comment,
-		objectType.Icon, objectType.Color, objectType.BKNRawContent, dataSourceBytes, dataPropertiesBytes,
+		objectType.Icon, objectType.Color, objectType.BKNRawContent, dataSourceBytes, dataPropertiesBytes, aliases,
 		logicPropertiesBytes, primaryKeysBytes, objectType.DisplayKey, objectType.IncrementalKey,
 		objectType.Updater.ID, objectType.Updater.Type, objectType.UpdateTime,
 	}, nil
@@ -1778,6 +1811,7 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		"f_branch",
 		"f_data_source",
 		"f_data_properties",
+		"f_aliases",
 		"f_logic_properties",
 		"f_primary_keys",
 		"f_display_key",
@@ -1816,6 +1850,7 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		var (
 			dataSourceBytes      []byte
 			dataPropertiesBytes  []byte
+			aliasesBytes         []byte
 			logicPropertiesBytes []byte
 			primaryKeysBytes     []byte
 		)
@@ -1831,6 +1866,7 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 			&objectType.Branch,
 			&dataSourceBytes,
 			&dataPropertiesBytes,
+			&aliasesBytes,
 			&logicPropertiesBytes,
 			&primaryKeysBytes,
 			&objectType.DisplayKey,
@@ -1858,6 +1894,7 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 		}
 
 		// 2.1 Deserialize data properties.
+		objectType.Aliases = common.DecodeStoredAliases(ctx, aliasesBytes)
 		err = common.UnmarshalStoredJSON(dataPropertiesBytes, &objectType.DataProperties)
 		if err != nil {
 			common.LogSafeError(ctx, "Failed to unmarshal dataProperties after getting object type, err", err)
@@ -1883,4 +1920,38 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 
 	span.SetStatus(codes.Ok, "")
 	return objectTypes, nil
+}
+
+// ListAliasedObjectTypes lists the ID, name and aliases of every object type of the branch that has
+// aliases. A network without aliases answers no rows.
+func (ota *objectTypeAccess) ListAliasedObjectTypes(ctx context.Context, knID string, branch string) ([]*interfaces.ObjectType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAliasedObjectTypes")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_id", "f_name", "f_aliases").From(OT_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.NotEq{"f_aliases": nil}).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := ota.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "Query aliased object types failed", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []*interfaces.ObjectType
+	for rows.Next() {
+		objectType := &interfaces.ObjectType{ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE}
+		var aliases []byte
+		if err = rows.Scan(&objectType.OTID, &objectType.OTName, &aliases); err != nil {
+			return nil, err
+		}
+		objectType.Aliases = common.DecodeStoredAliases(ctx, aliases)
+		result = append(result, objectType)
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, rows.Err()
 }

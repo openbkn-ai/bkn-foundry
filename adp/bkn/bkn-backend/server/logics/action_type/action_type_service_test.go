@@ -50,6 +50,7 @@ func Test_actionTypeService_CheckActionTypeExistByID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &actionTypeService{
 			appSetting: appSetting,
@@ -108,6 +109,7 @@ func Test_actionTypeService_CheckActionTypeExistByName(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &actionTypeService{
 			appSetting: appSetting,
@@ -166,6 +168,7 @@ func Test_actionTypeService_GetActionTypeIDsByKnID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &actionTypeService{
 			appSetting: appSetting,
@@ -218,6 +221,7 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
@@ -375,6 +379,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllActionPermissionResources).AnyTimes()
@@ -973,6 +978,7 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1074,6 +1080,9 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			},
 		}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+		// No stored aliases: the merge and the overwrite precheck read the stored action types.
+		ata.EXPECT().GetActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, nil).AnyTimes()
 		ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -1176,6 +1185,9 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			},
 		}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+		// No stored aliases: the merge and the overwrite precheck read the stored action types.
+		ata.EXPECT().GetActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1460,6 +1472,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
@@ -1625,6 +1638,7 @@ func Test_actionTypeService_DeleteActionTypesByKnID(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
@@ -1672,6 +1686,7 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil).AnyTimes()
 		ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ObjectTypeID: "ot1"},
@@ -1755,6 +1770,9 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
+		ata.EXPECT().ListAliasedActionTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+		// No stored aliases: the merge and the overwrite precheck read the stored action types.
+		ata.EXPECT().GetActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.ActionType{}, nil).AnyTimes()
 
 		service := &actionTypeService{
 			ps:  ps,

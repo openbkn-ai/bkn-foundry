@@ -42,6 +42,7 @@ func TestObjectTypeSingleResourceAuthorization(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ota := bmock.NewMockObjectTypeAccess(ctrl)
+			ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			ps := bmock.NewMockPermissionService(ctrl)
 			denied := errors.New("denied")
 			service := &objectTypeService{ota: ota, ps: ps}
@@ -99,6 +100,7 @@ func TestUpdateDataPropertiesRequiresCanonicalObjectTypeModify(t *testing.T) {
 func TestObjectTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(ctrl)
 	db, sqlMock, err := sqlmock.New()
 	if err != nil {

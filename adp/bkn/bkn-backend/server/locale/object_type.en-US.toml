@@ -206,7 +206,7 @@ VectorModelIDRequired = "vector_config.model_id is required."
 
 [BknBackend.ObjectType.InvalidParameter.Declarations]
 Description = "Invalid property declarations"
-Solution = "Fix semantic, required or constraints as the error details say and try again."
+Solution = "Fix aliases, semantic, required or constraints as the error details say and try again."
 ErrorLink = ""
 
 [BknBackend.ObjectType.DeclarationsWouldBeCleared]
