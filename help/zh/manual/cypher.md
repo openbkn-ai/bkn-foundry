@@ -201,7 +201,8 @@ MATCH (o:Order) WHERE o.amount > 1000 RETURN o.code AS code, 'large' AS kind
 
 - 把几段查询的结果合在一起。`UNION ALL` 保留所有行，`UNION` 去掉重复的行；同一条查询里不能混用两者。
 - 每一段返回同样的列：列名和顺序都要一致，用 `AS` 对齐。
-- 每一段可以有自己的 `ORDER BY`、`SKIP`、`LIMIT`，只作用于这一段；不写 `LIMIT` 的段最多返回 1000 行。
+- 每一段可以有自己的 `ORDER BY`、`SKIP`、`LIMIT`，只作用于这一段；不写 `LIMIT` 的段最多返回 1000 行，该段读满时结果带 `limited: true`。
+- 一条查询最多 10 段，合计最多返回 10000 行；超出的部分不再读取，结果带 `limited: true`。
 - 只能返回值，不能返回节点、关系和 `collect`。数据集和索引上也能用，每段各自读取。
 
 ---

@@ -317,7 +317,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
 			WithErrorDetails(err.Error())
 	}
-	if analyzed.Limit != nil && *analyzed.Limit > interfaces.CYPHER_MAX_LIMIT {
+	if limitExceeded(analyzed) {
 		// Refused rather than clamped: a caller who asked for more rows than
 		// they will get should be told, not handed a short answer.
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_LimitExceeded).
@@ -1124,6 +1124,12 @@ func (s *cypherQueryService) queryUnion(ctx context.Context, query interfaces.Cy
 	}
 	seen := map[string]bool{}
 	for i, part := range compiled.parts {
+		if len(result.Entries) >= interfaces.CYPHER_MAX_LIMIT {
+			// The parts together may hold more rows than one query returns;
+			// the rest are not read, and the caller is told.
+			result.Limited = true
+			break
+		}
 		got, err := s.run(ctx, query, part)
 		if err != nil {
 			return nil, err
@@ -1131,7 +1137,16 @@ func (s *cypherQueryService) queryUnion(ctx context.Context, query interfaces.Cy
 		if i == 0 {
 			result.Columns, result.ValueTypes = got.Columns, got.ValueTypes
 		}
+		// A part that wrote no LIMIT and filled the default may have more
+		// rows, as a query on its own would say.
+		if got.Limited || (part.plan.Limit == nil && len(got.Entries) >= interfaces.CYPHER_DEFAULT_LIMIT) {
+			result.Limited = true
+		}
 		for _, entry := range got.Entries {
+			if len(result.Entries) >= interfaces.CYPHER_MAX_LIMIT {
+				result.Limited = true
+				break
+			}
 			if !compiled.plan.Union.All {
 				values := make([]any, len(result.Columns))
 				for j, column := range result.Columns {

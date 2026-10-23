@@ -8,6 +8,7 @@ package cypher
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -185,5 +186,86 @@ func TestUnionOutsideSQL(t *testing.T) {
 	}
 	if len(result.Entries) != 4 || len(vega.readers) == 0 {
 		t.Errorf("entries = %v, readers = %v", result.Entries, vega.readers)
+	}
+}
+
+func manyCodes(n int) *interfaces.RawQueryResponse {
+	values := make([]string, n)
+	for i := range values {
+		values[i] = fmt.Sprintf("c%d", i)
+	}
+	return codes(values...)
+}
+
+// A part cut at the default limit marks the whole answer limited, and the
+// parts together return no more rows than one query does.
+func TestUnionMarksAndCapsWhatItReturns(t *testing.T) {
+	part := "MATCH (o:Order) RETURN o.customer_code AS code"
+	for _, tc := range []struct {
+		name    string
+		query   string
+		answers []*interfaces.RawQueryResponse
+		rows    int
+		ran     int
+		limited bool
+	}{
+		{name: "a part filling the default", query: part + " UNION ALL " + part + " LIMIT 5",
+			answers: []*interfaces.RawQueryResponse{manyCodes(interfaces.CYPHER_DEFAULT_LIMIT), codes("x")},
+			rows:    interfaces.CYPHER_DEFAULT_LIMIT + 1, ran: 2, limited: true},
+		{name: "parts under their limits", query: part + " LIMIT 5 UNION ALL " + part + " LIMIT 5",
+			answers: []*interfaces.RawQueryResponse{codes("a"), codes("b")}, rows: 2, ran: 2},
+		{name: "parts past the ceiling together", query: part + " LIMIT 10000 UNION ALL " + part + " LIMIT 10000 UNION ALL " + part + " LIMIT 10000",
+			answers: []*interfaces.RawQueryResponse{manyCodes(6000), manyCodes(6000), codes("never")},
+			rows:    interfaces.CYPHER_MAX_LIMIT, ran: 2, limited: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vega := &partsVega{answers: tc.answers}
+			result, err := unionService(vega, &stubPermission{}).Query(callerContext(), interfaces.CypherQuery{
+				KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: tc.query,
+			})
+			if err != nil {
+				t.Fatalf("Query: %v", err)
+			}
+			if len(result.Entries) != tc.rows || len(vega.statements) != tc.ran || result.Limited != tc.limited {
+				t.Errorf("rows = %d, statements = %d, limited = %v; want %d, %d, %v",
+					len(result.Entries), len(vega.statements), result.Limited, tc.rows, tc.ran, tc.limited)
+			}
+		})
+	}
+}
+
+// Parts are compared by the columns they return: a count over groups returns
+// its totals, and a comparison of two lists its items.
+func TestUnionComparesTheColumnsPartsReturn(t *testing.T) {
+	service := unionService(&partsVega{}, &stubPermission{})
+	totals := "MATCH (o:Order) WITH o.customer_code AS c, count(*) AS n RETURN count(*) AS k " +
+		"UNION ALL MATCH (o:Order) RETURN count(*) AS k"
+	if _, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: totals,
+	}); err != nil {
+		t.Errorf("totals: %v", err)
+	}
+	both := "MATCH (o:Order) WITH collect(DISTINCT o.customer_code) AS a " +
+		"MATCH (c:Customer) WITH a, collect(DISTINCT c.code) AS b "
+	lists := both + "RETURN size([x IN a WHERE x IN b]) AS common UNION " + both + "RETURN size(a) AS na"
+	_, err := service.Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: lists,
+	})
+	if err == nil || !strings.Contains(err.Error(), "(common), this one (na)") {
+		t.Errorf("lists: err = %v", err)
+	}
+}
+
+func TestUnionPartsAreBounded(t *testing.T) {
+	parts := make([]string, maxUnionParts+1)
+	for i := range parts {
+		parts[i] = "MATCH (o:Order) RETURN o.id AS id"
+	}
+	vega := &partsVega{}
+	_, err := unionService(vega, &stubPermission{}).Query(callerContext(), interfaces.CypherQuery{
+		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: strings.Join(parts, " UNION ALL "),
+	})
+	if err == nil || !strings.Contains(err.Error(), "at most 10 parts") || len(vega.statements) != 0 {
+		t.Errorf("err = %v, statements = %d", err, len(vega.statements))
 	}
 }

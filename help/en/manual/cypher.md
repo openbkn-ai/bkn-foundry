@@ -201,7 +201,8 @@ MATCH (o:Order) WHERE o.amount > 1000 RETURN o.code AS code, 'large' AS kind
 
 - Puts the rows of several queries together. `UNION ALL` keeps every row and `UNION` returns repeated rows once; one query does not mix the two.
 - Every part returns the same columns, by name and in order; align them with `AS`.
-- Each part may have its own `ORDER BY`, `SKIP` and `LIMIT`, which apply to that part; a part without `LIMIT` returns at most 1000 rows.
+- Each part may have its own `ORDER BY`, `SKIP` and `LIMIT`, which apply to that part; a part without `LIMIT` returns at most 1000 rows, and the result carries `limited: true` when it fills them.
+- A query has at most 10 parts and returns at most 10000 rows together; the rest is not read and the result carries `limited: true`.
 - Parts return values only, not nodes, relationships or `collect`. It works on datasets and indexes too, each part read on its own.
 
 ---

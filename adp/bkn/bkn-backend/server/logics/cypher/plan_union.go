@@ -6,6 +6,7 @@
 package cypher
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -21,12 +22,36 @@ type PlanUnion struct {
 	All   bool
 }
 
+// maxUnionParts bounds the statements one UNION sends: each part is a query
+// of its own, read one after another.
+const maxUnionParts = 10
+
+// limitExceeded tells whether the query, or any part of a UNION, asks for
+// more rows than one query returns.
+func limitExceeded(query *Query) bool {
+	if query.Limit != nil && *query.Limit > interfaces.CYPHER_MAX_LIMIT {
+		return true
+	}
+	if query.Union != nil {
+		for _, part := range query.Union.Parts {
+			if limitExceeded(part) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // compileUnion plans each part on its own. The parts must return the same
 // columns in the same order, as openCypher asks, and return values: a
 // constant, such as 'open' AS kind, is one, while nodes, relationships and
 // collect are not. Each part keeps its ORDER BY, SKIP and LIMIT, so the query
 // returns at most what its parts do together.
 func compileUnion(node *Union, schema *Schema, options CompileOptions) (*Plan, error) {
+	if len(node.Parts) > maxUnionParts {
+		return nil, planErrorf(Position{}, "a UNION puts together at most %d parts; this one has %d, split it across queries",
+			maxUnionParts, len(node.Parts))
+	}
 	if len(options.ObjectProperties) > 0 {
 		return nil, planErrorf(Position{}, "object_properties names properties of returned nodes; a UNION returns values only")
 	}
@@ -65,14 +90,24 @@ func compileUnion(node *Union, schema *Schema, options CompileOptions) (*Plan, e
 	return plan, nil
 }
 
-// unionColumns names the columns a part returns, in order.
+// unionColumns names the columns a part returns, in order: the totals when
+// it counts over groups, the list items when it compares two lists, and its
+// selected columns otherwise.
 func unionColumns(plan *Plan) string {
-	names := make([]string, 0, len(plan.Select)+len(plan.Totals))
-	for _, column := range plan.Select {
-		names = append(names, column.Alias)
-	}
-	for _, total := range plan.Totals {
-		names = append(names, total.Alias)
+	var names []string
+	switch {
+	case plan.Intersection != nil:
+		for _, item := range plan.Intersection.Items {
+			names = append(names, item.Alias)
+		}
+	case len(plan.Totals) > 0:
+		for _, total := range plan.Totals {
+			names = append(names, total.Alias)
+		}
+	default:
+		for _, column := range plan.Select {
+			names = append(names, column.Alias)
+		}
 	}
 	return "(" + strings.Join(names, ", ") + ")"
 }
@@ -99,6 +134,13 @@ func semanticUnionDescriptor(plan *Plan, query string) (*SemanticQueryDescriptor
 	descriptor.LimitSource = "default"
 	if explicit {
 		descriptor.LimitSource = "explicit"
+	}
+	raw, err := json.Marshal(descriptor)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > maxSemanticDescriptorBytes {
+		return nil, fmt.Errorf("%w: exceeds %d bytes", ErrSemanticDescriptorTooLarge, maxSemanticDescriptorBytes)
 	}
 	return descriptor, nil
 }
