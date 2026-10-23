@@ -1921,3 +1921,37 @@ func (ota *objectTypeAccess) GetAllObjectTypesByKnID(ctx context.Context, knID s
 	span.SetStatus(codes.Ok, "")
 	return objectTypes, nil
 }
+
+// ListAliasedObjectTypes lists the ID, name and aliases of every object type of the branch that has
+// aliases. A network without aliases answers no rows.
+func (ota *objectTypeAccess) ListAliasedObjectTypes(ctx context.Context, knID string, branch string) ([]*interfaces.ObjectType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAliasedObjectTypes")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_id", "f_name", "f_aliases").From(OT_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.NotEq{"f_aliases": nil}).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := ota.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "Query aliased object types failed", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []*interfaces.ObjectType
+	for rows.Next() {
+		objectType := &interfaces.ObjectType{ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE}
+		var aliases []byte
+		if err = rows.Scan(&objectType.OTID, &objectType.OTName, &aliases); err != nil {
+			return nil, err
+		}
+		objectType.Aliases = common.DecodeStoredAliases(ctx, aliases)
+		result = append(result, objectType)
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, rows.Err()
+}

@@ -1518,3 +1518,17 @@ func Test_ActionTypeAccess_ProcessQueryCondition(t *testing.T) {
 		})
 	})
 }
+
+func Test_ActionTypeAccess_ListAliasedActionTypes(t *testing.T) {
+	Convey("ListAliasedActionTypes reads only action types with aliases\n", t, func() {
+		ata, smock := MockNewActionTypeAccess(&common.AppSetting{})
+		smock.ExpectQuery("SELECT f_id, f_name, f_aliases FROM t_action_type WHERE f_kn_id = ? AND f_branch = ? AND f_aliases IS NOT NULL").
+			WithArgs("kn1", "main").
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name", "f_aliases"}).AddRow("approve", "审批", `["核准"]`))
+		list, err := ata.ListAliasedActionTypes(testCtx, "kn1", "main")
+		So(err, ShouldBeNil)
+		So(len(list), ShouldEqual, 1)
+		So(list[0].Aliases, ShouldResemble, []string{"核准"})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}

@@ -203,6 +203,16 @@ paths:
               - overwrite
             type: string
           in: query
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the aliases of an existing action type (BKN spec 3.0),
+            such as a 2.x package or an old JSON export, would clear them. Without this parameter the request is
+            refused with 409 BknBackend.ActionType.DeclarationsWouldBeCleared, whose details list the cleared
+            aliases (`action_type_id`, `fields`); pass true to clear them.
+          schema:
+            type: boolean
+            default: false
         - name: strict_mode
           description: Whether to strictly validate dependencies. Defaults to true. When true, validates dependencies such as bound and affected object types. When false, missing dependencies do not cause an error.
           schema:
@@ -520,6 +530,16 @@ paths:
             enum: [normal, ignore, overwrite]
             default: normal
           in: query
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the aliases of an existing action type (BKN spec 3.0),
+            such as a 2.x package or an old JSON export, would clear them. Without this parameter the request is
+            refused with 409 BknBackend.ActionType.DeclarationsWouldBeCleared, whose details list the cleared
+            aliases (`action_type_id`, `fields`); pass true to clear them.
+          schema:
+            type: boolean
+            default: false
       requestBody:
         required: true
         content:

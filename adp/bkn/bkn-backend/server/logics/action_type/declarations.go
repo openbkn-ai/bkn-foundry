@@ -7,7 +7,6 @@ package action_type
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"slices"
 
@@ -25,29 +24,54 @@ import (
 // overwrite with a file that does not carry them clears them only once confirmed, the same as the
 // property declarations of an object type.
 
-// checkDeclarations checks the aliases of an action type before it is saved: on their own, and
-// against the names of the other action types of the network. An action type without aliases
-// reads nothing more.
+// checkDeclarations checks the aliases of an action type on their own, with the checks a 3.0
+// import runs.
 func (ats *actionTypeService) checkDeclarations(ctx context.Context, actionType *interfaces.ActionType) error {
 	actionType.Aliases = interfaces.NormalizeAliases(actionType.Aliases)
 	if err := bknsdk.ValidateActionTypeDeclarations(logics.ToBKNActionType(actionType)); err != nil {
 		return invalidDeclarations(ctx, err.Error())
 	}
-	if len(actionType.Aliases) == 0 {
+	return nil
+}
+
+// checkAliasNames checks the action types of one save against the network they are saved into: no
+// alias is the name of another action type, in either direction. It reads the stored action types
+// that have aliases, and the stored ones named like an alias of the save; the save's renames and
+// alias changes count as done. A network without aliases answers both reads with no rows.
+func (ats *actionTypeService) checkAliasNames(ctx context.Context, knID, branch string, actionTypes []*interfaces.ActionType) error {
+	if len(actionTypes) == 0 {
 		return nil
 	}
-	named, err := ats.ata.GetActionTypeIdentitiesByIDsOrNames(ctx, actionType.KNID, actionType.Branch, nil, actionType.Aliases)
+	incoming := make([]logics.NamedDefinition, 0, len(actionTypes))
+	var aliases []string
+	for _, at := range actionTypes {
+		incoming = append(incoming, logics.NamedDefinition{ID: at.ATID, Name: at.ATName, Aliases: at.Aliases})
+		aliases = append(aliases, at.Aliases...)
+	}
+	storedAliased, err := ats.ata.ListAliasedActionTypes(ctx, knID, branch)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())
 	}
-	for _, other := range named {
-		if other.ATID != actionType.ATID {
-			return invalidDeclarations(ctx, fmt.Sprintf("action type %q alias %q is the name of action type %q",
-				actionType.ATID, other.ATName, other.ATID))
+	var storedNamed []*interfaces.ActionType
+	if len(aliases) > 0 {
+		if storedNamed, err = ats.ata.GetActionTypeIdentitiesByIDsOrNames(ctx, knID, branch, nil, aliases); err != nil {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
+				WithErrorDetails(err.Error())
 		}
 	}
+	if conflict := logics.AliasConflict("action type", incoming, namedActionTypes(storedNamed), namedActionTypes(storedAliased)); conflict != "" {
+		return invalidDeclarations(ctx, conflict)
+	}
 	return nil
+}
+
+func namedActionTypes(actionTypes []*interfaces.ActionType) []logics.NamedDefinition {
+	named := make([]logics.NamedDefinition, 0, len(actionTypes))
+	for _, at := range actionTypes {
+		named = append(named, logics.NamedDefinition{ID: at.ATID, Name: at.ATName, Aliases: at.Aliases})
+	}
+	return named
 }
 
 func invalidDeclarations(ctx context.Context, detail string) error {

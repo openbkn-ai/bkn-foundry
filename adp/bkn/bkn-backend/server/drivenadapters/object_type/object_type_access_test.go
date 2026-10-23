@@ -2095,3 +2095,17 @@ func Test_objectTypeAccess_ListObjectTypeLogicProperties(t *testing.T) {
 		})
 	})
 }
+
+func Test_objectTypeAccess_ListAliasedObjectTypes(t *testing.T) {
+	Convey("ListAliasedObjectTypes reads only object types with aliases\n", t, func() {
+		ota, smock := MockNewObjectTypeAccess(&common.AppSetting{})
+		smock.ExpectQuery("SELECT f_id, f_name, f_aliases FROM t_object_type WHERE f_kn_id = ? AND f_branch = ? AND f_aliases IS NOT NULL").
+			WithArgs("kn1", "main").
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name", "f_aliases"}).AddRow("order", "订单", `["订货单"]`))
+		list, err := ota.ListAliasedObjectTypes(testCtx, "kn1", "main")
+		So(err, ShouldBeNil)
+		So(len(list), ShouldEqual, 1)
+		So(list[0].Aliases, ShouldResemble, []string{"订货单"})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}

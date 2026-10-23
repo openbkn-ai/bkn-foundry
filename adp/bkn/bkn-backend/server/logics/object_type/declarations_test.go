@@ -104,6 +104,7 @@ func TestCheckOverwriteKeepsDeclarations(t *testing.T) {
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	service := &objectTypeService{ota: ota}
 	file := &interfaces.ObjectType{
 		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", DataProperties: []*interfaces.DataProperty{{Name: "id"}, {Name: "placed_at"}, {Name: "amount"}}},
@@ -137,6 +138,7 @@ func TestCheckOverwriteKeepsDeclarationsChecksPermission(t *testing.T) {
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(mockCtrl)
 	service := &objectTypeService{ota: ota, ps: ps}
 	file := &interfaces.ObjectType{
@@ -166,6 +168,7 @@ func TestUpdateObjectTypeKeepsStoredDeclarations(t *testing.T) {
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(mockCtrl)
 	cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 	vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -208,6 +211,7 @@ func TestOverwritePrecheckRunsAfterThePermissionCheck(t *testing.T) {
 	ctx := context.Background()
 	mockCtrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(mockCtrl)
 	db, smock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
@@ -291,6 +295,7 @@ func TestUpdateObjectTypeKeepsStoredAliases(t *testing.T) {
 		ctx := context.Background()
 		mockCtrl := gomock.NewController(t)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -343,26 +348,42 @@ func TestClearedDeclarationsListsAliases(t *testing.T) {
 	assert.Empty(t, clearedDeclarations(stored, incoming), "changed aliases are not cleared")
 }
 
-func TestCheckNetworkDeclarationsRefusesAnAliasNamingAnotherObjectType(t *testing.T) {
+func TestCheckAliasNames(t *testing.T) {
 	ctx := context.Background()
-	ota := bmock.NewMockObjectTypeAccess(gomock.NewController(t))
-	ots := &objectTypeService{ota: ota}
+	named := func(id, name string, aliases ...string) *interfaces.ObjectType {
+		return &interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: id, OTName: name}, Aliases: aliases}
+	}
+
+	t.Run("an alias naming another object type", func(t *testing.T) {
+		ota := bmock.NewMockObjectTypeAccess(gomock.NewController(t))
+		ots := &objectTypeService{ota: ota}
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, nil)
+		ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, nil, []string{"订货单", "客户"}).
+			Return([]*interfaces.ObjectType{named("customer", "客户")}, nil)
+		err := ots.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{named("order", "订单", "订货单", "客户")})
+		assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
+		assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `object type "order" alias "客户" is the name of object type "customer"`)
+	})
+
+	t.Run("a new object type named like a stored alias", func(t *testing.T) {
+		ota := bmock.NewMockObjectTypeAccess(gomock.NewController(t))
+		ots := &objectTypeService{ota: ota}
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
+			Return([]*interfaces.ObjectType{named("order", "订单", "客户")}, nil)
+		err := ots.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{named("customer", "客户")})
+		assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
+	})
+
+	t.Run("without aliases only the aliased object types are read", func(t *testing.T) {
+		ota := bmock.NewMockObjectTypeAccess(gomock.NewController(t))
+		ots := &objectTypeService{ota: ota}
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, nil)
+		require.NoError(t, ots.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{declaredObjectType()}))
+	})
+
 	ot := declaredObjectType()
-	ot.Aliases = []string{"订货单", "客户"}
-
-	ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, nil, ot.Aliases).
-		Return([]*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "customer", OTName: "客户"}}}, nil)
-	err := ots.checkNetworkDeclarations(ctx, ot)
-	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `object type "order" alias "客户" is the name of object type "customer"`)
-
-	ota.EXPECT().GetObjectTypeIdentitiesByIDsOrNames(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return([]*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order", OTName: "订货单"}}}, nil)
-	require.NoError(t, ots.checkNetworkDeclarations(ctx, ot), "its own name is no conflict")
-
-	ot = declaredObjectType()
 	ot.Aliases = []string{"订单"}
-	err = validateDeclarations(ctx, ot)
+	err := validateDeclarations(ctx, ot)
 	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, "订单", "an alias is not the object type's own name")
 }
 

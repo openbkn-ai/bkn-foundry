@@ -47,24 +47,10 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 	return nil
 }
 
-// checkNetworkDeclarations checks the declarations of an object type against the rest of its
-// network: an alias is not the name of another object type, and the value types the data
-// properties name are value types of the network, with the property's Type as their base_type.
-// An object type without aliases or value types reads nothing more.
+// checkNetworkDeclarations resolves the value types the data properties of an object type name:
+// each must be a value type of the network, with the property's Type as its base_type. An object
+// type without value types reads nothing more.
 func (ots *objectTypeService) checkNetworkDeclarations(ctx context.Context, objectType *interfaces.ObjectType) error {
-	if len(objectType.Aliases) > 0 {
-		named, err := ots.ota.GetObjectTypeIdentitiesByIDsOrNames(ctx, objectType.KNID, objectType.Branch, nil, objectType.Aliases)
-		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
-				WithErrorDetails(err.Error())
-		}
-		for _, other := range named {
-			if other.OTID != objectType.OTID {
-				return invalidDeclarations(ctx, fmt.Sprintf("object type %q alias %q is the name of object type %q",
-					objectType.OTID, other.OTName, other.OTID))
-			}
-		}
-	}
 	var ids []string
 	for _, p := range objectType.DataProperties {
 		if p != nil && p.Constraints != nil && p.Constraints.ValueType != "" && !slices.Contains(ids, p.Constraints.ValueType) {
@@ -87,6 +73,46 @@ func (ots *objectTypeService) checkNetworkDeclarations(ctx context.Context, obje
 		return invalidDeclarations(ctx, err.Error())
 	}
 	return nil
+}
+
+// checkAliasNames checks the object types of one save against the network they are saved into: no
+// alias is the name of another object type, in either direction. It reads the stored object types
+// that have aliases, and the stored ones named like an alias of the save; the save's renames and
+// alias changes count as done. A network without aliases answers both reads with no rows.
+func (ots *objectTypeService) checkAliasNames(ctx context.Context, knID, branch string, objectTypes []*interfaces.ObjectType) error {
+	if len(objectTypes) == 0 {
+		return nil
+	}
+	incoming := make([]logics.NamedDefinition, 0, len(objectTypes))
+	var aliases []string
+	for _, ot := range objectTypes {
+		incoming = append(incoming, logics.NamedDefinition{ID: ot.OTID, Name: ot.OTName, Aliases: ot.Aliases})
+		aliases = append(aliases, ot.Aliases...)
+	}
+	storedAliased, err := ots.ota.ListAliasedObjectTypes(ctx, knID, branch)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+			WithErrorDetails(err.Error())
+	}
+	var storedNamed []*interfaces.ObjectType
+	if len(aliases) > 0 {
+		if storedNamed, err = ots.ota.GetObjectTypeIdentitiesByIDsOrNames(ctx, knID, branch, nil, aliases); err != nil {
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+				WithErrorDetails(err.Error())
+		}
+	}
+	if conflict := logics.AliasConflict("object type", incoming, namedObjectTypes(storedNamed), namedObjectTypes(storedAliased)); conflict != "" {
+		return invalidDeclarations(ctx, conflict)
+	}
+	return nil
+}
+
+func namedObjectTypes(objectTypes []*interfaces.ObjectType) []logics.NamedDefinition {
+	named := make([]logics.NamedDefinition, 0, len(objectTypes))
+	for _, ot := range objectTypes {
+		named = append(named, logics.NamedDefinition{ID: ot.OTID, Name: ot.OTName, Aliases: ot.Aliases})
+	}
+	return named
 }
 
 func invalidDeclarations(ctx context.Context, detail string) error {

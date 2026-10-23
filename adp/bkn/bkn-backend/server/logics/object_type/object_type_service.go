@@ -250,6 +250,11 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		bknObj := logics.ToBKNObjectType(objectType)
 		objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
 	}
+	if len(objectTypes) > 0 {
+		if err := ots.checkAliasNames(ctx, objectTypes[0].KNID, objectTypes[0].Branch, objectTypes); err != nil {
+			return []string{}, err
+		}
+	}
 
 	// 0. Begin the transaction.
 	if tx == nil {
@@ -461,6 +466,9 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 	// Validation has checked modify on the network only; the object types being overwritten are
 	// checked before their declarations are listed.
 	if err = ots.checkOverwriteKeepsDeclarations(ctx, nil, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
+		return err
+	}
+	if err = ots.checkAliasNames(ctx, knID, branch, objectTypes); err != nil {
 		return err
 	}
 
@@ -1175,6 +1183,9 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		return err
 	}
 	if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
+		return err
+	}
+	if err := ots.checkAliasNames(ctx, objectType.KNID, objectType.Branch, []*interfaces.ObjectType{objectType}); err != nil {
 		return err
 	}
 	if strictMode {

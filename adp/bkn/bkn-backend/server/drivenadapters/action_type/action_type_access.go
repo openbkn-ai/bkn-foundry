@@ -1454,3 +1454,37 @@ func unmarshalImpactContractsJSON(raw []byte, actionType *interfaces.ActionType)
 	}
 	return sonic.Unmarshal(raw, &actionType.ImpactContracts)
 }
+
+// ListAliasedActionTypes lists the ID, name and aliases of every action type of the branch that has
+// aliases. A network without aliases answers no rows.
+func (ata *actionTypeAccess) ListAliasedActionTypes(ctx context.Context, knID string, branch string) ([]*interfaces.ActionType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListAliasedActionTypes")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_id", "f_name", "f_aliases").From(AT_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.NotEq{"f_aliases": nil}).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := ata.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "Query aliased action types failed", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []*interfaces.ActionType
+	for rows.Next() {
+		actionType := &interfaces.ActionType{ModuleType: interfaces.MODULE_TYPE_ACTION_TYPE}
+		var aliases []byte
+		if err = rows.Scan(&actionType.ATID, &actionType.ATName, &aliases); err != nil {
+			return nil, err
+		}
+		actionType.Aliases = common.DecodeStoredAliases(ctx, aliases)
+		result = append(result, actionType)
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, rows.Err()
+}

@@ -274,6 +274,11 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		bknAction := logics.ToBKNActionType(actionType)
 		actionType.BKNRawContent = bknsdk.SerializeActionType(bknAction)
 	}
+	if len(actionTypes) > 0 {
+		if err = ats.checkAliasNames(ctx, actionTypes[0].KNID, actionTypes[0].Branch, actionTypes); err != nil {
+			return []string{}, err
+		}
+	}
 
 	createActionTypes, updateActionTypes, err := ats.handleActionTypeImportMode(ctx, mode, actionTypes)
 	if err != nil {
@@ -426,6 +431,9 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 	// Validation has checked modify on the network only; the action types being overwritten are
 	// checked before their aliases are listed.
 	if err = ats.checkOverwriteKeepsDeclarations(ctx, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
+		return err
+	}
+	if err = ats.checkAliasNames(ctx, knID, branch, actionTypes); err != nil {
 		return err
 	}
 
@@ -662,6 +670,9 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 		}
 	}
 	if err = ats.checkDeclarations(ctx, actionType); err != nil {
+		return err
+	}
+	if err = ats.checkAliasNames(ctx, actionType.KNID, actionType.Branch, []*interfaces.ActionType{actionType}); err != nil {
 		return err
 	}
 
