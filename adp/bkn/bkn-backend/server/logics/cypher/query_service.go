@@ -85,6 +85,9 @@ func NewCypherQueryService(appSetting *common.AppSetting) interfaces.CypherQuery
 type compiledQuery struct {
 	statement string
 	rowLimit  int
+	// parts are the parts of a UNION, each compiled as the query it would be
+	// on its own; the union itself has no statement.
+	parts []*compiledQuery
 	// graph is how a query that returns graph values reads its rows; such
 	// a query has no statement of its own.
 	graph             *graphRead
@@ -172,6 +175,9 @@ func (s *cypherQueryService) Query(ctx context.Context, query interfaces.CypherQ
 func (s *cypherQueryService) run(ctx context.Context, query interfaces.CypherQuery,
 	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
 	span := trace.SpanFromContext(ctx)
+	if compiled.parts != nil {
+		return s.queryUnion(ctx, query, compiled)
+	}
 	if s.outsideSQL(ctx, compiled.plan) {
 		return s.queryOutsideSQL(ctx, query, compiled)
 	}
@@ -311,7 +317,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
 			WithErrorDetails(err.Error())
 	}
-	if analyzed.Limit != nil && *analyzed.Limit > interfaces.CYPHER_MAX_LIMIT {
+	if limitExceeded(analyzed) {
 		// Refused rather than clamped: a caller who asked for more rows than
 		// they will get should be told, not handed a short answer.
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_LimitExceeded).
@@ -373,6 +379,36 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
+	if plan.Union != nil {
+		parts := make([]*compiledQuery, 0, len(plan.Union.Parts))
+		for _, part := range plan.Union.Parts {
+			compiledPart, err := compileStatement(ctx, part, schema)
+			if err != nil {
+				return nil, err
+			}
+			compiledPart.traceDescriptor = descriptorJSON
+			compiledPart.permissionImpacts = rowFilterPermissionImpacts(rowFilteredObjectTypes)
+			parts = append(parts, compiledPart)
+		}
+		return &compiledQuery{
+			parts: parts, rowLimit: pageSize(plan.Limit), plan: plan, schema: schema,
+			traceDescriptor:   descriptorJSON,
+			permissionImpacts: rowFilterPermissionImpacts(rowFilteredObjectTypes),
+		}, nil
+	}
+
+	compiled, err := compileStatement(ctx, plan, schema)
+	if err != nil {
+		return nil, err
+	}
+	compiled.traceDescriptor = descriptorJSON
+	compiled.permissionImpacts = rowFilterPermissionImpacts(rowFilteredObjectTypes)
+	return compiled, nil
+}
+
+// compileStatement writes what a plan runs as: a graph read when it returns
+// graph values, a statement otherwise.
+func compileStatement(ctx context.Context, plan *Plan, schema *Schema) (*compiledQuery, error) {
 	if plan.HasGraphValues() {
 		read, err := planGraphRead(plan, DialectMySQL, interfaces.CYPHER_DEFAULT_LIMIT)
 		var planErr *PlanError
@@ -384,11 +420,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 			common.LogSafeError(ctx, "Cypher SQL generation failed", err)
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 		}
-		return &compiledQuery{
-			graph: read, plan: plan, schema: schema,
-			traceDescriptor:   descriptorJSON,
-			permissionImpacts: rowFilterPermissionImpacts(rowFilteredObjectTypes),
-		}, nil
+		return &compiledQuery{graph: read, plan: plan, schema: schema}, nil
 	}
 
 	sql, err := Generate(plan, GenerateOptions{
@@ -400,11 +432,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 
-	return &compiledQuery{
-		statement: sql, rowLimit: pageSize(plan.Limit), plan: plan, schema: schema,
-		traceDescriptor:   descriptorJSON,
-		permissionImpacts: rowFilterPermissionImpacts(rowFilteredObjectTypes),
-	}, nil
+	return &compiledQuery{statement: sql, rowLimit: pageSize(plan.Limit), plan: plan, schema: schema}, nil
 }
 
 // loadPropertyLevels records the caller's property levels for every object
@@ -1055,6 +1083,11 @@ func detail(ctx context.Context, name string, templateData map[string]any) strin
 // column back into the true, false and null the executor returns, so the
 // answer reads the same whichever path produced it.
 func conditionsAsBooleans(plan *Plan, columns []interfaces.RawQueryColumn, entries []map[string]any) {
+	if plan.Union != nil {
+		// Every part returns the same columns; the first says which are
+		// conditions.
+		plan = plan.Union.Parts[0]
+	}
 	for _, column := range plan.Select {
 		if _, ok := column.Expression.(PlanConditionValue); !ok {
 			continue
@@ -1077,4 +1110,56 @@ func conditionsAsBooleans(plan *Plan, columns []interfaces.RawQueryColumn, entri
 			}
 		}
 	}
+}
+
+// queryUnion runs each part of a UNION as the query it would be on its own,
+// wherever its data lives, and puts the rows together: all of them for UNION
+// ALL, each distinct row once for UNION.
+func (s *cypherQueryService) queryUnion(ctx context.Context, query interfaces.CypherQuery,
+	compiled *compiledQuery) (*interfaces.CypherQueryResult, error) {
+	result := &interfaces.CypherQueryResult{
+		Entries:           []map[string]any{},
+		TraceDescriptor:   compiled.traceDescriptor,
+		PermissionImpacts: compiled.permissionImpacts,
+	}
+	seen := map[string]bool{}
+	for i, part := range compiled.parts {
+		if len(result.Entries) >= interfaces.CYPHER_MAX_LIMIT {
+			// The parts together may hold more rows than one query returns;
+			// the rest are not read, and the caller is told.
+			result.Limited = true
+			break
+		}
+		got, err := s.run(ctx, query, part)
+		if err != nil {
+			return nil, err
+		}
+		if i == 0 {
+			result.Columns, result.ValueTypes = got.Columns, got.ValueTypes
+		}
+		// A part that wrote no LIMIT and filled the default may have more
+		// rows, as a query on its own would say.
+		if got.Limited || (part.plan.Limit == nil && len(got.Entries) >= interfaces.CYPHER_DEFAULT_LIMIT) {
+			result.Limited = true
+		}
+		for _, entry := range got.Entries {
+			if len(result.Entries) >= interfaces.CYPHER_MAX_LIMIT {
+				result.Limited = true
+				break
+			}
+			if !compiled.plan.Union.All {
+				values := make([]any, len(result.Columns))
+				for j, column := range result.Columns {
+					values[j] = entry[column.Name]
+				}
+				key := canonicalTuple(values)
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+			}
+			result.Entries = append(result.Entries, entry)
+		}
+	}
+	return result, nil
 }

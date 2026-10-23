@@ -530,6 +530,7 @@ func TestQueryRejections(t *testing.T) {
 		{name: "not in the model", query: "MATCH (i:Invoice) RETURN i.id", status: http.StatusBadRequest},
 		{name: "writing", query: "CREATE (o:Order) RETURN o.id", status: http.StatusBadRequest},
 		{name: "limit above the ceiling", query: "MATCH (o:Order) RETURN o.id LIMIT 20000", status: http.StatusBadRequest},
+		{name: "limit above the ceiling in a UNION part", query: "MATCH (o:Order) RETURN o.id AS id LIMIT 20000 UNION MATCH (o:Order) RETURN o.id AS id", status: http.StatusBadRequest},
 		{name: "too long", query: "MATCH (o:Order) RETURN o.id //" + strings.Repeat("x", MaxQueryLength), status: http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

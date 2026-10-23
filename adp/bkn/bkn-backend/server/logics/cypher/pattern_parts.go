@@ -116,6 +116,13 @@ func crossProduct(plan *Plan) bool {
 	if plan.Intersection != nil && (crossProduct(plan.Intersection.Lists[0]) || crossProduct(plan.Intersection.Lists[1])) {
 		return true
 	}
+	if plan.Union != nil {
+		for _, part := range plan.Union.Parts {
+			if crossProduct(part) {
+				return true
+			}
+		}
+	}
 	found := false
 	var walk func(PlanPredicate)
 	walk = func(predicate PlanPredicate) {

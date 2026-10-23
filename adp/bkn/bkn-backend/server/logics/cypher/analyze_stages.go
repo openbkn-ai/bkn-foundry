@@ -462,6 +462,9 @@ func (q *Query) stages() []*Query {
 	if q.Carried != nil {
 		stages = append(stages, q.Carried.Stage)
 	}
+	if q.Union != nil {
+		stages = append(stages, q.Union.Parts...)
+	}
 	var walk func(Predicate)
 	walk = func(predicate Predicate) {
 		switch node := predicate.(type) {
