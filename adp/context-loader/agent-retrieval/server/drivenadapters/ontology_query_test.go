@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -382,12 +383,12 @@ func TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest(t *testin
 		_, err := client.QueryObjectInstances(ctx, req)
 		convey.So(err, convey.ShouldNotBeNil)
 
-		var he *infraErr.HTTPError
+		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusBadRequest)
 		// No longer classified as a dependency outage.
-		convey.So(strings.Contains(he.Code, "CommonExternalServerError"), convey.ShouldBeFalse)
-		convey.So(strings.Contains(he.Code, "BadRequest"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(he.ErrorCode, "CommonExternalServerError"), convey.ShouldBeFalse)
+		convey.So(strings.Contains(he.ErrorCode, "BadRequest"), convey.ShouldBeTrue)
 		// The actionable downstream cause survives so the caller can fix the query.
 		convey.So(strings.Contains(fmt.Sprintf("%v", he.ErrorDetails), "not a vector field"), convey.ShouldBeTrue)
 	})
@@ -414,11 +415,11 @@ func TestQueryObjectInstances_DownstreamNotFoundKeepsCode(t *testing.T) {
 			Return(http.StatusNotFound, nil, wrapped)
 
 		_, err := client.QueryObjectInstances(ctx, req)
-		var he *infraErr.HTTPError
+		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusNotFound)
-		convey.So(strings.Contains(he.Code, "NotFound"), convey.ShouldBeTrue)
-		convey.So(strings.Contains(he.Code, "CommonExternalServerError"), convey.ShouldBeFalse)
+		convey.So(strings.Contains(he.ErrorCode, "NotFound"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(he.ErrorCode, "CommonExternalServerError"), convey.ShouldBeFalse)
 	})
 }
 
@@ -449,10 +450,10 @@ func TestExecuteActions_PreservesConflictStatus(t *testing.T) {
 			Return(http.StatusConflict, nil, wrapped)
 
 		_, err := client.ExecuteActions(ctx, req)
-		var he *infraErr.HTTPError
+		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusConflict)
-		convey.So(strings.Contains(he.Code, "Conflict"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(he.ErrorCode, "Conflict"), convey.ShouldBeTrue)
 		convey.So(strings.Contains(fmt.Sprintf("%v", he.ErrorDetails), "DuplicateExecution"), convey.ShouldBeTrue)
 	})
 }
@@ -478,7 +479,7 @@ func TestQueryObjectInstances_DownstreamServerErrorUntouched(t *testing.T) {
 			Return(http.StatusInternalServerError, nil, wrapped)
 
 		_, err := client.QueryObjectInstances(ctx, req)
-		var he *infraErr.HTTPError
+		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusInternalServerError)
 	})

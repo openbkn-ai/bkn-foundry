@@ -8,7 +8,7 @@ package locale
 import (
 	"net/http"
 
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 type effectiveLocaleTransport struct {
@@ -19,8 +19,8 @@ func (t effectiveLocaleTransport) RoundTrip(request *http.Request) (*http.Respon
 	cloned := request.Clone(request.Context())
 	cloned.Header = request.Header.Clone()
 	cloned.Header.Set(
-		sharedrest.AcceptLanguageHeader,
-		sharedrest.GetLanguageByCtx(request.Context()),
+		i18n.AcceptLanguageHeader,
+		string(i18n.GetLanguageByCtx(request.Context())),
 	)
 	return t.next.RoundTrip(cloned)
 }

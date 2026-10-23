@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -81,11 +81,11 @@ func TestActionTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T)
 	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{
 		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, ID: "kn-1/at-1"}, Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL},
 		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, ID: "kn-1/at-2"}, Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL},
-	}).Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+	}).Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 
 	service := &actionTypeService{ata: ata, ps: ps}
 	_, err := service.GetActionTypesByIDs(context.Background(), "kn-1", interfaces.MAIN_BRANCH, ids)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("GetActionTypesByIDs() error = %v, want 403 when any child is denied", err)
 	}

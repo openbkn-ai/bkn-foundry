@@ -13,7 +13,9 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -70,7 +72,7 @@ func RegisterObjectMetricRoutes(
 }
 
 func (r *restHandler) objectMetricExternal(c *gin.Context, next func(*gin.Context, hydra.Visitor)) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -82,12 +84,12 @@ func objectMetricContext(c *gin.Context, vis hydra.Visitor) context.Context {
 }
 
 func replyObjectMetricError(c *gin.Context, err error) {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusInternalServerError, berrors.BknBackend_ObjectMetric_InternalError).WithErrorDetails(err.Error()))
+	rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusInternalServerError, berrors.BknBackend_ObjectMetric_InternalError).WithErrorDetails(err.Error()))
 }
 
 func parseObjectMetricVersion(c *gin.Context) (int, bool) {
@@ -97,7 +99,7 @@ func parseObjectMetricVersion(c *gin.Context) (int, bool) {
 	}
 	version, err := strconv.Atoi(raw)
 	if err != nil || version < 1 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version must be a positive integer"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version must be a positive integer"))
 		return 0, false
 	}
 	return version, true
@@ -153,7 +155,7 @@ func (r *restHandler) populateObjectMetricOwnerNames(
 
 func parseRequiredObjectMetricVersion(c *gin.Context) (int, bool) {
 	if c.Query("version") == "" {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return 0, false
 	}
 	return parseObjectMetricVersion(c)
@@ -166,7 +168,7 @@ func (r *restHandler) CreateObjectMetricDraftByEx(c *gin.Context) {
 func (r *restHandler) createObjectMetricDraft(c *gin.Context, vis hydra.Visitor) {
 	var definition interfaces.ObjectMetricDefinitionV1
 	if err := c.ShouldBindJSON(&definition); err != nil {
-		replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
+		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
 	record, err := r.oms.CreateDraft(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), &definition)
@@ -184,7 +186,7 @@ func (r *restHandler) UpdateObjectMetricDraftByEx(c *gin.Context) {
 func (r *restHandler) updateObjectMetricDraft(c *gin.Context, vis hydra.Visitor) {
 	var definition interfaces.ObjectMetricDefinitionV1
 	if err := c.ShouldBindJSON(&definition); err != nil {
-		replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
+		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
 	if c.Query("version") != "" {
@@ -193,7 +195,7 @@ func (r *restHandler) updateObjectMetricDraft(c *gin.Context, vis hydra.Visitor)
 			return
 		}
 		if definition.Version != version {
-			replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("definition.version must match query version"))
+			replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("definition.version must match query version"))
 			return
 		}
 	}
@@ -389,7 +391,7 @@ func (r *restHandler) validateObjectMetricVersion(c *gin.Context, vis hydra.Visi
 		return
 	}
 	if version == 0 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return
 	}
 	record, issues, err := r.oms.ValidateVersion(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
@@ -398,7 +400,7 @@ func (r *restHandler) validateObjectMetricVersion(c *gin.Context, vis hydra.Visi
 		return
 	}
 	if len(issues) > 0 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusUnprocessableEntity, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(issues))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusUnprocessableEntity, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(issues))
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, record)
@@ -407,7 +409,7 @@ func (r *restHandler) validateObjectMetricVersion(c *gin.Context, vis hydra.Visi
 func (r *restHandler) validateObjectMetric(c *gin.Context, vis hydra.Visitor) {
 	var definition interfaces.ObjectMetricDefinitionV1
 	if err := c.ShouldBindJSON(&definition); err != nil {
-		replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
+		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
 	result, err := r.oms.Validate(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), &definition)
@@ -431,7 +433,7 @@ func (r *restHandler) GetObjectMetricExecutionContextByIn(c *gin.Context) {
 		return
 	}
 	if version == 0 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("an immutable metric version is required for execution"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("an immutable metric version is required for execution"))
 		return
 	}
 	vis := visitor.GenerateVisitor(c)
@@ -452,7 +454,7 @@ func (r *restHandler) GetObjectMetricExecutionContextByIn(c *gin.Context) {
 func (r *restHandler) previewObjectMetric(c *gin.Context, vis hydra.Visitor) {
 	var definition interfaces.ObjectMetricDefinitionV1
 	if err := c.ShouldBindJSON(&definition); err != nil {
-		replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
+		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
 	result, err := r.oms.Preview(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), &definition)
@@ -473,7 +475,7 @@ func (r *restHandler) publishObjectMetric(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	if version == 0 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return
 	}
 	record, issues, err := r.oms.Publish(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
@@ -482,7 +484,7 @@ func (r *restHandler) publishObjectMetric(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	if len(issues) > 0 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusUnprocessableEntity, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(issues))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusUnprocessableEntity, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(issues))
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, record)
@@ -504,7 +506,7 @@ func (r *restHandler) deprecateObjectMetric(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	if version == 0 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return
 	}
 	record, err := r.oms.Deprecate(objectMetricContext(c, vis), c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH), c.Param("metric_id"), version)
@@ -529,12 +531,12 @@ func (r *restHandler) upgradeObjectMetricLogicProperty(c *gin.Context, vis hydra
 		return
 	}
 	if version == 0 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return
 	}
 	upgrader, ok := r.oms.(interfaces.ObjectMetricLogicPropertyUpgradeV1)
 	if !ok {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusNotImplemented, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("logical-property upgrade is unavailable"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusNotImplemented, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("logical-property upgrade is unavailable"))
 		return
 	}
 	ctx := objectMetricContext(c, vis)
@@ -547,7 +549,7 @@ func (r *restHandler) upgradeObjectMetricLogicProperty(c *gin.Context, vis hydra
 		return
 	}
 	if record == nil {
-		replyObjectMetricError(c, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectMetric_NotFound))
+		replyObjectMetricError(c, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectMetric_NotFound))
 		return
 	}
 	ownerID := record.Definition.OwnerObjectTypeID
@@ -580,12 +582,12 @@ func (r *restHandler) bindObjectMetricLogicProperty(c *gin.Context, vis hydra.Vi
 		return
 	}
 	if version == 0 {
-		rest.ReplyError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
+		rest.ReplyError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails("version is required"))
 		return
 	}
 	var binding interfaces.MetricPropertyBindingV1
 	if err := c.ShouldBindJSON(&binding); err != nil {
-		replyObjectMetricError(c, rest.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
+		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
 	ctx := objectMetricContext(c, vis)

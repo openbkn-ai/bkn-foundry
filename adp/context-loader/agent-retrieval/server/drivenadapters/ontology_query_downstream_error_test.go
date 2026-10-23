@@ -57,8 +57,8 @@ func TestQueryInstanceSubgraph_DownstreamPathErrorCarriesCodeAndDetails(t *testi
 	})
 
 	he := asHTTPError(t, err)
-	if he.HTTPCode != http.StatusBadRequest || he.Code != "Public.BadRequest" {
-		t.Fatalf("error = %d %s, want 400 Public.BadRequest", he.HTTPCode, he.Code)
+	if he.HTTPCode != http.StatusBadRequest || he.ErrorCode != "Public.BadRequest" {
+		t.Fatalf("error = %d %s, want 400 Public.BadRequest", he.HTTPCode, he.ErrorCode)
 	}
 	want := "OntologyQuery.KnowledgeNetwork.InvalidParameter.TypePath: " + pathDetail
 	if he.ErrorDetails != want {
@@ -106,7 +106,7 @@ func TestClassifyQueryError_DownstreamServerErrorIsUnchanged(t *testing.T) {
 	_, err := client.QueryInstanceSubgraph(context.Background(), &interfaces.QueryInstanceSubgraphReq{KnID: "kn-1"})
 
 	he := asHTTPError(t, err)
-	if he.HTTPCode != http.StatusInternalServerError || !strings.HasSuffix(he.Code, ".CommonExternalServerError") {
-		t.Fatalf("error = %d %s, want 500 CommonExternalServerError", he.HTTPCode, he.Code)
+	if he.HTTPCode != http.StatusInternalServerError || !strings.HasSuffix(he.ErrorCode, ".CommonExternalServerError") {
+		t.Fatalf("error = %d %s, want 500 CommonExternalServerError", he.HTTPCode, he.ErrorCode)
 	}
 }

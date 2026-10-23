@@ -10,7 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -64,7 +65,7 @@ func TestResolveTypeEdgeDirection(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := rest.WithLanguage(context.Background(), rest.SimplifiedChinese)
+			ctx := i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese)
 			direction, err := ResolveTypeEdgeDirection(ctx, 0, tt.edge, tt.relationType)
 			if len(tt.wantParts) == 0 {
 				if err != nil || direction != tt.wantDirection {
@@ -72,15 +73,15 @@ func TestResolveTypeEdgeDirection(t *testing.T) {
 				}
 				return
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error = %T %v, want *rest.HTTPError", err, err)
+				t.Fatalf("error = %T %v, want *httperrors.HTTPError", err, err)
 			}
 			if httpErr.HTTPCode != http.StatusBadRequest ||
-				httpErr.BaseError.ErrorCode != oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath {
-				t.Fatalf("error = %d %q, want 400 TypePath", httpErr.HTTPCode, httpErr.BaseError.ErrorCode)
+				httpErr.ErrorCode != oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath {
+				t.Fatalf("error = %d %q, want 400 TypePath", httpErr.HTTPCode, httpErr.ErrorCode)
 			}
-			details, _ := httpErr.BaseError.ErrorDetails.(string)
+			details, _ := httpErr.ErrorDetails.(string)
 			for _, part := range tt.wantParts {
 				if !strings.Contains(details, part) {
 					t.Errorf("error details = %q, want it to contain %q", details, part)

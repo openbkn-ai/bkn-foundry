@@ -15,8 +15,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -144,7 +144,7 @@ func Test_ListCapabilities_KNReadAccess(t *testing.T) {
 		Convey("A permission dependency failure remains an error", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", "main").Return("Network 1", true, nil)
 			kns.EXPECT().ResolveKNReadAccess(gomock.Any(), "kn1", "main").Return(interfaces.KNReadAccessMode(""),
-				rest.NewHTTPError(context.Background(), http.StatusServiceUnavailable, rest.PublicError_ServiceUnavailable))
+				httperrors.NewHTTPError(context.Background(), http.StatusServiceUnavailable, httperrors.PublicError_ServiceUnavailable))
 
 			w := serve()
 

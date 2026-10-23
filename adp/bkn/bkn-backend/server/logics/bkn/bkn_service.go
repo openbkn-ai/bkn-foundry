@@ -14,10 +14,10 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
@@ -93,7 +93,7 @@ func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch strin
 	v3 := spec == interfaces.BKN_EXPORT_SPEC_3 || (spec == interfaces.BKN_EXPORT_SPEC_AUTO && bknsdk.HasV3Declarations(bknNetwork))
 	if v3 {
 		if found := checkResult(bknNetwork); found.NeedsFix() {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck).
 				WithErrorDetails(found)
 		}
 		bknNetwork.BknSpec = bknsdk.BknSpecV3
@@ -112,7 +112,7 @@ func (bs *bknService) ExportToTar(ctx context.Context, knID string, branch strin
 	// refusal comes now, with its reason, instead of at the next import.
 	if v3 {
 		if _, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(tarData)); err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3).
 				WithErrorDetails(err.Error())
 		}
 	}
@@ -330,7 +330,7 @@ func (bs *bknService) exportCapabilities(ctx context.Context, knID, branch strin
 	// execution factory could not be reached they are all empty, and the section would still look
 	// well-formed while resolving to nothing on import. Failing the export says so instead.
 	if !list.MetadataAvailable {
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_CapabilityBinding_ExportMetadataUnavailable).
 			WithErrorDetails("capability names are unavailable, so the exported dependency section would not resolve elsewhere")
 	}

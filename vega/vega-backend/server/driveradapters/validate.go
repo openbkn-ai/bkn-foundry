@@ -15,7 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dlclark/regexp2"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -32,7 +32,7 @@ func validateID(ctx context.Context, ID string) error {
 	if err != nil || !match {
 		errDetails := `The ID can contain only lowercase letters, digits, underscores(_) and hyphens(-),
 			it must start with a lowercase letter or digit and cannot exceed 40 characters`
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
 			WithErrorDetails(errDetails)
 	}
 
@@ -41,7 +41,7 @@ func validateID(ctx context.Context, ID string) error {
 
 func validateExpectedUpdateTime(ctx context.Context, expectedUpdateTime int64) error {
 	if expectedUpdateTime <= 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("expected_update_time is required and must be greater than 0")
 	}
 	return nil
@@ -50,11 +50,11 @@ func validateExpectedUpdateTime(ctx context.Context, expectedUpdateTime int64) e
 // Name legitimacy verification
 func validateName(ctx context.Context, name string) error {
 	if name == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Name)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Name)
 	}
 
 	if utf8.RuneCountInString(name) > interfaces.NAME_MAX_LENGTH {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Name).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Name).
 			WithErrorDetails(fmt.Sprintf("The length of the name %v exceeds %v", name, interfaces.NAME_MAX_LENGTH))
 	}
 
@@ -64,7 +64,7 @@ func validateName(ctx context.Context, name string) error {
 // The legitimacy verification of tags
 func ValidateTags(ctx context.Context, Tags []string) error {
 	if len(Tags) > interfaces.TAGS_MAX_NUMBER {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag).
 			WithErrorDetails(fmt.Sprintf("The number of tags exceeds %v", interfaces.TAGS_MAX_NUMBER))
 	}
 
@@ -83,17 +83,17 @@ func validateTag(ctx context.Context, tag string) error {
 	tag = strings.Trim(tag, " ")
 
 	if tag == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag)
 		// .WithErrorDetails("Data tag name is null")
 	}
 
 	if utf8.RuneCountInString(tag) > interfaces.TAG_MAX_LENGTH {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag).
 			WithErrorDetails(fmt.Sprintf("The length of the tag name exceeds %d", interfaces.TAG_MAX_LENGTH))
 	}
 
 	if isInvalid := strings.ContainsAny(tag, interfaces.TAG_INVALID_CHARACTER); isInvalid {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag).
 			WithErrorDetails(fmt.Sprintf("Tag name contains special characters, such as %s", interfaces.TAG_INVALID_CHARACTER))
 	}
 
@@ -103,7 +103,7 @@ func validateTag(ctx context.Context, tag string) error {
 // Note Legality verification
 func validateDescription(ctx context.Context, description string) error {
 	if utf8.RuneCountInString(description) > interfaces.DESCRIPTION_MAX_LENGTH {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Description).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Description).
 			WithErrorDetails(fmt.Sprintf("The length of the description exceeds %v", interfaces.DESCRIPTION_MAX_LENGTH))
 	}
 	return nil
@@ -116,23 +116,23 @@ func validatePaginationQueryParams(ctx context.Context, offset, limit, sort, dir
 
 	off, err := strconv.Atoi(offset)
 	if err != nil {
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 			WithErrorDetails(err.Error())
 	}
 
 	if off < interfaces.MIN_OFFSET {
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 			WithErrorDetails(fmt.Sprintf("The offset is not greater than %d", interfaces.MIN_OFFSET))
 	}
 
 	lim, err := strconv.Atoi(limit)
 	if err != nil {
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails(err.Error())
 	}
 
 	if limit != interfaces.NO_LIMIT && (lim < interfaces.MIN_LIMIT || lim > interfaces.MAX_LIMIT) {
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Limit).
 			WithErrorDetails(fmt.Sprintf("The number per page does not equal %s is not in the range of [%d,%d]", interfaces.NO_LIMIT, interfaces.MIN_LIMIT, interfaces.MAX_LIMIT))
 	}
 
@@ -142,13 +142,13 @@ func validatePaginationQueryParams(ctx context.Context, offset, limit, sort, dir
 		for t := range supportedSortTypes {
 			types = append(types, t)
 		}
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Sort).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Sort).
 			WithErrorDetails(fmt.Sprintf("Wrong sort type, does not belong to any item in set %v ", types))
 	}
 
 	direction = strings.ToUpper(direction)
 	if direction != interfaces.DESC_DIRECTION && direction != interfaces.ASC_DIRECTION {
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Direction).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Direction).
 			WithErrorDetails("The sort direction is not desc or asc")
 	}
 
@@ -168,7 +168,7 @@ func parseTaskStatuses(ctx context.Context, values []string, isValid func(string
 	for _, value := range values {
 		status := strings.TrimSpace(value)
 		if status == "" || !isValid(status) {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
 				WithErrorDetails(fmt.Sprintf("invalid status: %s", status))
 		}
 		if _, exists := seen[status]; exists {
@@ -209,7 +209,7 @@ func checkDuplicateElements(ctx context.Context, arr []any, fieldName string) er
 	for _, item := range arr {
 		strItem := fmt.Sprintf("%v", item)
 		if seen[strItem] {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorConfig).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorConfig).
 				WithErrorDetails(fmt.Sprintf("duplicate element found in '%s': %s", fieldName, strItem))
 		}
 		seen[strItem] = true

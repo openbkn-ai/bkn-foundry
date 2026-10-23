@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -133,11 +133,11 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		rows, total, err := ds.ListDocuments(ctx, resource, params)
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", httpErr.BaseError.ErrorCode)
-		assert.Equal(t, map[string]any{"field": "status", "limit": 256}, httpErr.BaseError.Metadata)
+		assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", httpErr.ErrorCode)
+		assert.Equal(t, map[string]any{"field": "status", "limit": 256}, httpErr.Metadata)
 	})
 
 	t.Run("list documents answers 400 for a condition the index cannot build", func(t *testing.T) {
@@ -148,11 +148,11 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 		_, _, err := ds.ListDocuments(ctx, resource, params)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "re-save the resource configuration")
 	})
 
 	t.Run("get documents preserves positions for ignored missing documents", func(t *testing.T) {
@@ -223,7 +223,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
 		ds := &datasetService{rs: rs}
-		denied := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		denied := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 		rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID,
 			interfaces.OPERATION_TYPE_QUERY_DATA).Return(denied)
 
@@ -273,7 +273,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 		_, err := ds.CreateDocument(ctx, resource, map[string]any{"_id": "doc-1"})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
@@ -283,7 +283,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		rs := vmock.NewMockResourceService(ctrl)
 		ds := &datasetService{lim: lim, rs: rs}
-		denied := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		denied := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("Access denied: insufficient permissions for[data_write]")
 		rs.EXPECT().CheckResourcePermission(gomock.Any(), resource.ID,
 			interfaces.OPERATION_TYPE_DATA_WRITE).Return(denied)
@@ -298,10 +298,10 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		resource := &interfaces.Resource{ID: "dataset-1", LocalIndexName: "dataset-1", SchemaDefinition: []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json}}}
 		for _, operation := range []string{filter_condition.OperationNotExist, filter_condition.OperationNull} {
 			err := ds.DeleteDocumentsByQuery(ctx, resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "payload", Operation: operation}})
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			assert.Contains(t, httpErr.BaseError.ErrorDetails, "not found")
+			assert.Contains(t, httpErr.ErrorDetails, "not found")
 		}
 	})
 
@@ -382,10 +382,10 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 				err := ds.DeleteDocumentsByQuery(ctx, resource, params)
 
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-				assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+				assert.Equal(t, tc.code, httpErr.ErrorCode)
 				assert.Nil(t, params.ActualFilterCond)
 			})
 		}
@@ -403,11 +403,11 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		}}
 
 		err := ds.DeleteDocumentsByQuery(ctx, resource, params)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "value_from")
+		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "value_from")
 		assert.Nil(t, params.ActualFilterCond)
 	})
 
@@ -418,10 +418,10 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			FilterCondCfg: &interfaces.FilterCondCfg{},
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "non-empty filter")
+		assert.Contains(t, httpErr.ErrorDetails, "non-empty filter")
 	})
 
 	for _, operation := range []string{filter_condition.OperationAnd, filter_condition.OperationOr} {
@@ -435,10 +435,10 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 				},
 			})
 
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			assert.Contains(t, httpErr.BaseError.ErrorDetails, "no effective child conditions")
+			assert.Contains(t, httpErr.ErrorDetails, "no effective child conditions")
 		})
 	}
 
@@ -494,10 +494,10 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 
 		err := ds.DeleteDocumentsByQuery(ctx, resource, params)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
 	})
 }
 
@@ -515,7 +515,7 @@ func assertHTTPError(t *testing.T, err error) {
 	t.Helper()
 
 	require.Error(t, err)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
-	assert.NotEmpty(t, httpErr.BaseError.ErrorCode)
+	assert.NotEmpty(t, httpErr.ErrorCode)
 }

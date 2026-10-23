@@ -61,7 +61,7 @@ bkn-backend registers both `/api/bkn-backend/v1` and `/api/ontology-manager/v1` 
 
 | File | Content |
 |---|---|
-| [`_shared/errors.yaml`](_shared/errors.yaml) | Common Go service error envelope (`rest.BaseError`: `error_code / description / solution / error_link / error_details`). Reference: `$ref: '../_shared/errors.yaml#/components/schemas/Error'` |
+| [`_shared/errors.yaml`](_shared/errors.yaml) | Common Go service error envelope (`httperrors.BaseError`: `error_code / description / solution / error_link / error_details`). Reference: `$ref: '../_shared/errors.yaml#/components/schemas/Error'` |
 | [`_shared/auth.yaml`](_shared/auth.yaml) | Authentication schemes (OAuth2 client credentials and `bak_` AppKey). Reference: `$ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'` |
 
 > Model Factory uses its own FastAPI error envelope; chat-completion errors use the OpenAI-compatible envelope. Sandbox also has service-specific errors. See each operation rather than assuming the common Go error schema.

@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -62,7 +62,7 @@ func (ots *objectTypeService) checkNetworkDeclarations(ctx context.Context, obje
 	}
 	valueTypes, err := ots.vta.GetValueTypesByIDs(ctx, nil, objectType.KNID, objectType.Branch, ids)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 	doc := &bknsdk.BknNetwork{ObjectTypes: []*bknsdk.BknObjectType{logics.ToBKNObjectType(objectType)}}
@@ -91,13 +91,13 @@ func (ots *objectTypeService) checkAliasNames(ctx context.Context, knID, branch 
 	}
 	storedAliased, err := ots.ota.ListAliasedObjectTypes(ctx, knID, branch)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 	var storedNamed []*interfaces.ObjectType
 	if len(aliases) > 0 {
 		if storedNamed, err = ots.ota.GetObjectTypeIdentitiesByIDsOrNames(ctx, knID, branch, nil, aliases); err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
 	}
@@ -116,7 +116,7 @@ func namedObjectTypes(objectTypes []*interfaces.ObjectType) []logics.NamedDefini
 }
 
 func invalidDeclarations(ctx context.Context, detail string) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_Declarations).
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_Declarations).
 		WithErrorDetails(detail)
 }
 
@@ -202,7 +202,7 @@ func (ots *objectTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 	}
 	stored, err := ots.ota.GetObjectTypesByIDs(ctx, tx, updates[0].KNID, updates[0].Branch, ids)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
 			WithErrorDetails(err.Error())
 	}
 	var cleared []interfaces.ClearedDeclaration
@@ -226,7 +226,7 @@ func (ots *objectTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 			return err
 		}
 	}
-	return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared).
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared).
 		WithErrorDetails(map[string]any{
 			"cleared":      cleared,
 			"confirm_with": interfaces.QueryParam_ConfirmClearDeclarations + "=true",

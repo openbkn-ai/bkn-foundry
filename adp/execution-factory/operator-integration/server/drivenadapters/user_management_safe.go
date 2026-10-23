@@ -13,9 +13,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type safeUserManagement struct {
@@ -134,7 +135,7 @@ func (s *safeUserManagement) post(ctx context.Context, path string, body, out an
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return err

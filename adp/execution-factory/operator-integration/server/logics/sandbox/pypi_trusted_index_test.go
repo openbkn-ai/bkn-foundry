@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 func TestResolveTrustedPypiIndex(t *testing.T) {
@@ -67,7 +67,7 @@ func TestParsePypiQueriesOnlyTrustedIndex(t *testing.T) {
 	_, err := ParsePypi(context.Background(), &ParsePypiReq{
 		PypiRepoURL: "http://127.0.0.1:1/internal", PackageName: "requests", PythonVersion: "3.10",
 	}, trusted)
-	var httpErr *errors.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !stderrors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("untrusted index error = %v, want 400", err)
 	}

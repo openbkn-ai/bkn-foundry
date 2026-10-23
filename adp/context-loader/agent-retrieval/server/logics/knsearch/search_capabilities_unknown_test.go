@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -107,11 +109,19 @@ func TestSemanticInstanceRetrievalReportsUnknownCapabilitiesInsteadOfNoMatch(t *
 	if len(res.Nodes) != 0 || query.calls() != 0 {
 		t.Fatalf("nodes=%d queries=%d, want nothing searched", len(res.Nodes), query.calls())
 	}
-	want := infraErr.LocalizedDetail(ctx, "InstanceSearchCapabilitiesUnknown", "brand")
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.InstanceSearchCapabilitiesUnknown", map[string]any{"Arg1": "brand"})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	want := localizedText
 	if res.Message != want {
 		t.Fatalf("message = %q, want %q", res.Message, want)
 	}
-	if res.Message == infraErr.LocalizedDetail(ctx, "NoMatchingInstances") || !strings.Contains(res.Message, "brand") {
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.NoMatchingInstances", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	if res.Message == localizedText || !strings.Contains(res.Message, "brand") {
 		t.Fatalf("message does not name the unsearched object type: %q", res.Message)
 	}
 }
@@ -124,7 +134,11 @@ func TestSemanticInstanceRetrievalKeepsNoMatchForNothingSearchable(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Message != infraErr.LocalizedDetail(ctx, "NoMatchingInstances") {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.NoMatchingInstances", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	if res.Message != localizedText {
 		t.Fatalf("message = %q, want the plain no-match message", res.Message)
 	}
 }
@@ -152,7 +166,11 @@ func TestSemanticInstanceRetrievalReportsUnknownCapabilitiesAlongsideRows(t *tes
 	if len(res.Nodes) == 0 {
 		t.Fatal("the searchable object type must still return its rows")
 	}
-	if res.Message != infraErr.LocalizedDetail(ctx, "InstanceSearchCapabilitiesUnknown", "brand") {
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.InstanceSearchCapabilitiesUnknown", map[string]any{"Arg1": "brand"})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	if res.Message != localizedText {
 		t.Fatalf("message = %q, want the incomplete-result notice", res.Message)
 	}
 }

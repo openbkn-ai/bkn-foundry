@@ -65,7 +65,8 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 		if header.Typeflag == tar.TypeDir {
 			continue
 		}
-		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
+		// Typeflag zero is the legacy regular-file marker.
+		if header.Typeflag != tar.TypeReg && header.Typeflag != 0 {
 			return nil, "", fmt.Errorf("unsupported tar entry type for %q", header.Name)
 		}
 
@@ -92,6 +93,7 @@ func ExtractTarToMemory(reader io.Reader) (*MemoryFileSystem, string, error) {
 	return c.finish()
 }
 
+//nolint:unused // Intentionally retained.
 func normalizeTarEntryPath(name string) (string, error) {
 	return normalizeArchiveEntryPath("tar", name)
 }

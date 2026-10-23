@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 type actionEvidencePublisher interface {
@@ -110,7 +111,7 @@ func evidenceDropReporter(logger interfaces.Logger) EvidenceDropReporter {
 
 func (e *KafkaEmitter) Emit(_ context.Context, action Action, events []Event) error {
 	if e == nil || e.publisher == nil {
-		return evidencepublisherErr
+		return errEvidencePublisher
 	}
 	if action.conversationID == "" {
 		return errors.New("bkn trace evidence admission dropped: missing trusted conversation_id")
@@ -124,7 +125,7 @@ func (e *KafkaEmitter) Emit(_ context.Context, action Action, events []Event) er
 		})
 		if err != nil {
 			if publishErr == nil {
-				publishErr = evidencepublisherErr
+				publishErr = errEvidencePublisher
 			}
 			continue
 		}
@@ -150,4 +151,4 @@ func (e *KafkaEmitter) Emit(_ context.Context, action Action, events []Event) er
 	return publishErr
 }
 
-var evidencepublisherErr = errors.New("bkn trace evidence publisher unavailable")
+var errEvidencePublisher = errors.New("bkn trace evidence publisher unavailable")

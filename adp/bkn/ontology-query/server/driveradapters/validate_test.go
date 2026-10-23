@@ -12,7 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -72,22 +73,22 @@ func Test_ValidateHeaderMethodOverride(t *testing.T) {
 		Convey("失败 - 空字符串", func() {
 			err := ValidateHeaderMethodOverride(ctx, "")
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_NullParameter_OverrideMethod)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_NullParameter_OverrideMethod)
 		})
 
 		Convey("失败 - POST方法", func() {
 			err := ValidateHeaderMethodOverride(ctx, "POST")
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
 		})
 
 		Convey("失败 - PUT方法", func() {
 			err := ValidateHeaderMethodOverride(ctx, "PUT")
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
 		})
 	})
 }
@@ -95,38 +96,38 @@ func Test_ValidateHeaderMethodOverride(t *testing.T) {
 func Test_ValidateHeaderMethodOverrideLocalizesDetails(t *testing.T) {
 	tests := []struct {
 		name     string
-		language rest.Language
+		language i18n.Language
 		expected string
 	}{
 		{
 			name:     "Simplified Chinese",
-			language: rest.SimplifiedChinese,
+			language: i18n.SimplifiedChinese,
 			expected: "X-HTTP-Method-Override 必须为 GET，当前为 POST。",
 		},
 		{
 			name:     "American English",
-			language: rest.AmericanEnglish,
+			language: i18n.AmericanEnglish,
 			expected: "X-HTTP-Method-Override must be GET; got POST.",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := rest.WithLanguage(context.Background(), tt.language)
+			ctx := i18n.WithLanguage(context.Background(), tt.language)
 			err := ValidateHeaderMethodOverride(ctx, "POST")
 			if err == nil {
 				t.Fatal("ValidateHeaderMethodOverride() returned nil error")
 			}
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("ValidateHeaderMethodOverride() error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("ValidateHeaderMethodOverride() error type = %T, want *httperrors.HTTPError", err)
 			}
-			if httpErr.BaseError.ErrorCode != oerrors.OntologyQuery_InvalidParameter_OverrideMethod {
-				t.Fatalf("error code = %q, want %q", httpErr.BaseError.ErrorCode, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
+			if httpErr.ErrorCode != oerrors.OntologyQuery_InvalidParameter_OverrideMethod {
+				t.Fatalf("error code = %q, want %q", httpErr.ErrorCode, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
 			}
-			if details, ok := httpErr.BaseError.ErrorDetails.(string); !ok || details != tt.expected {
-				t.Fatalf("error details = %#v, want %q", httpErr.BaseError.ErrorDetails, tt.expected)
+			if details, ok := httpErr.ErrorDetails.(string); !ok || details != tt.expected {
+				t.Fatalf("error details = %#v, want %q", httpErr.ErrorDetails, tt.expected)
 			}
 		})
 	}
@@ -155,22 +156,22 @@ func Test_validateObjectsQueryParameters(t *testing.T) {
 		Convey("失败 - includeTypeInfo无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "invalid", "false", "false", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - includeLogicParams无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "true", "false", "invalid", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - ignoreLocalIndex无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "true", "invalid", "true", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
 		})
 	})
 }
@@ -196,15 +197,15 @@ func Test_validateSugraphQueryParameters(t *testing.T) {
 		Convey("失败 - includeLogicParams无效", func() {
 			_, err := validateSugraphQueryParameters(ctx, "invalid", "false", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - ignoreLocalIndex无效", func() {
 			_, err := validateSugraphQueryParameters(ctx, "true", "invalid", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
 		})
 	})
 }
@@ -234,8 +235,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 		})
 
 		Convey("失败 - Direction为空", func() {
@@ -246,8 +247,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_Direction)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_Direction)
 		})
 
 		Convey("失败 - Direction无效", func() {
@@ -258,8 +259,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_Direction)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_Direction)
 		})
 
 		Convey("失败 - PathLength超过3", func() {
@@ -270,8 +271,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength)
 		})
 
 		Convey("成功 - PathLength等于3", func() {
@@ -297,8 +298,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 排序方向为空", func() {
@@ -314,8 +315,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 排序方向无效", func() {
@@ -331,8 +332,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("成功 - 排序方向为desc", func() {
@@ -376,8 +377,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - Limit超过最大值", func() {
@@ -391,8 +392,8 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("成功 - Limit为0时设置默认值", func() {
@@ -488,8 +489,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 对象类型为空", func() {
@@ -511,8 +512,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathObjectTypes)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathObjectTypes)
 		})
 
 		Convey("失败 - 边为空", func() {
@@ -530,8 +531,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathRelationTypes)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathRelationTypes)
 		})
 
 		Convey("失败 - 关系类ID为空", func() {
@@ -556,8 +557,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
 		})
 
 		Convey("成功 - 起点对象类ID为空时按相邻节点推导", func() {
@@ -632,8 +633,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
 		Convey("失败 - 边的终点与对象类型数组不匹配", func() {
@@ -658,8 +659,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
 		Convey("失败 - 多条边时，当前边的起点不等于前一条边的终点", func() {
@@ -690,8 +691,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
 		Convey("成功 - Limit为0时设置默认值", func() {
@@ -747,8 +748,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 对象类型的Limit超过最大值", func() {
@@ -778,8 +779,8 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 	})
 }
@@ -807,7 +808,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 	tests := []struct {
 		name      string
 		query     *interfaces.SubGraphQueryBaseOnTypePath
-		language  rest.Language
+		language  i18n.Language
 		wantEdges []endpoints
 		wantCode  string
 		wantParts []string
@@ -843,7 +844,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			query: typePathQuery(issuePath,
 				interfaces.TypeEdge{RelationTypeId: "rel_address_user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "order", TargetObjectTypeId: "user"}),
-			language: rest.SimplifiedChinese,
+			language: i18n.SimplifiedChinese,
 			wantCode: oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"第 2 条边 rel_order_user 与路径节点不一致",
 				"路径要求 user → order，当前填写 order → user", "两者都可以省略"},
@@ -853,7 +854,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			query: typePathQuery(issuePath,
 				interfaces.TypeEdge{RelationTypeId: "rel_address_user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "order", TargetObjectTypeId: "user"}),
-			language:  rest.AmericanEnglish,
+			language:  i18n.AmericanEnglish,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"Edge 2 (rel_order_user)", "the path requires user → order, but the edge gives order → user"},
 		},
@@ -862,7 +863,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			query: typePathQuery(issuePath,
 				interfaces.TypeEdge{RelationTypeId: "rel_address_user", TargetObjectTypeId: "order"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user"}),
-			language:  rest.SimplifiedChinese,
+			language:  i18n.SimplifiedChinese,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"第 1 条边 rel_address_user", "路径要求 user_address → user，当前填写 user_address → order"},
 		},
@@ -871,14 +872,14 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			query: typePathQuery([]string{"user_address", "user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_address_user", SourceObjectTypeId: "user_address", TargetObjectTypeId: "user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user", SourceObjectTypeId: "user", TargetObjectTypeId: "order"}),
-			language:  rest.SimplifiedChinese,
+			language:  i18n.SimplifiedChinese,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"路径有 2 条边，object_types 需要 3 个节点，当前只有 2 个。"},
 		},
 		{
 			name:      "a node on the path needs an id",
 			query:     typePathQuery([]string{"order", ""}, interfaces.TypeEdge{RelationTypeId: "rel_order_user"}),
-			language:  rest.SimplifiedChinese,
+			language:  i18n.SimplifiedChinese,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"object_types 第 2 个节点必须提供 id。"},
 		},
@@ -886,7 +887,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			name: "direction must be forward or backward",
 			query: typePathQuery([]string{"order", "user"},
 				interfaces.TypeEdge{RelationTypeId: "rel_order_user", Direction: interfaces.DIRECTION_BIDIRECTIONAL}),
-			language:  rest.SimplifiedChinese,
+			language:  i18n.SimplifiedChinese,
 			wantCode:  oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath,
 			wantParts: []string{"第 1 条边的 direction 必须为 forward 或 backward，当前为 bidirectional"},
 		},
@@ -896,7 +897,7 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			if tt.language != "" {
-				ctx = rest.WithLanguage(ctx, tt.language)
+				ctx = i18n.WithLanguage(ctx, tt.language)
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, tt.query)
 			if tt.wantCode == "" {
@@ -912,14 +913,14 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 				}
 				return
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error = %T %v, want *rest.HTTPError", err, err)
+				t.Fatalf("error = %T %v, want *httperrors.HTTPError", err, err)
 			}
-			if httpErr.BaseError.ErrorCode != tt.wantCode {
-				t.Fatalf("error code = %q, want %q", httpErr.BaseError.ErrorCode, tt.wantCode)
+			if httpErr.ErrorCode != tt.wantCode {
+				t.Fatalf("error code = %q, want %q", httpErr.ErrorCode, tt.wantCode)
 			}
-			details, _ := httpErr.BaseError.ErrorDetails.(string)
+			details, _ := httpErr.ErrorDetails.(string)
 			for _, part := range tt.wantParts {
 				if !strings.Contains(details, part) {
 					t.Errorf("error details = %q, want it to contain %q", details, part)
@@ -944,15 +945,15 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 		})
 
 		Convey("失败 - Condition 解码错误保留具体原因", func() {
-			localizedCtx := rest.WithLanguage(ctx, rest.SimplifiedChinese)
+			localizedCtx := i18n.WithLanguage(ctx, i18n.SimplifiedChinese)
 			query := &interfaces.ObjectQueryBaseOnObjectType{
 				Condition: map[string]any{"sub_conditions": "invalid"},
 			}
 
 			err := validateObjectSearchRequest(localizedCtx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			details := httpErr.BaseError.ErrorDetails.(string)
+			httpErr := err.(*httperrors.HTTPError)
+			details := httpErr.ErrorDetails.(string)
 			So(details, ShouldStartWith, "解析过滤条件失败：")
 			So(details, ShouldContainSubstring, "sub_conditions")
 		})
@@ -965,8 +966,8 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - Limit超过最大值", func() {
@@ -977,8 +978,8 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("成功 - Limit为0时设置默认值", func() {
@@ -1006,8 +1007,8 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 排序方向为空", func() {
@@ -1021,8 +1022,8 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 排序方向无效", func() {
@@ -1036,8 +1037,8 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("成功 - 排序方向为desc", func() {
@@ -1088,7 +1089,7 @@ func Test_validateActionQuery(t *testing.T) {
 			}
 			err := validateActionQuery(ctx, query)
 			So(err, ShouldBeNil)
-			// httpErr := err.(*rest.HTTPError)
+			// httpErr := err.(*httperrors.HTTPError)
 			// So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionType_InvalidParameter)
 		})
 	})
@@ -1116,8 +1117,8 @@ func Test_validateObjectPropertyValueQuery(t *testing.T) {
 			}
 			err := validateObjectPropertyValueQuery(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - Properties为空", func() {
@@ -1129,8 +1130,8 @@ func Test_validateObjectPropertyValueQuery(t *testing.T) {
 			}
 			err := validateObjectPropertyValueQuery(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 	})
 }

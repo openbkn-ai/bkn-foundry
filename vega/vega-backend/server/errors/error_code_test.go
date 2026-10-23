@@ -1,49 +1,23 @@
 // Copyright openbkn.ai
-// Copyright The kweaver.ai Authors.
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 package errors
 
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
-func TestErrCodeLists(t *testing.T) {
-	lists := map[string][]string{
-		"common":            commonErrCodeList,
-		"catalog":           CatalogErrCodeList,
-		"health_schedule":   CatalogHealthCheckScheduleErrCodeList,
-		"resource":          ResourceErrCodeList,
-		"connector_type":    ConnectorTypeErrCodeList,
-		"build_task":        BuildTaskErrCodeList,
-		"discover_task":     DiscoverTaskErrCodeList,
-		"query":             QueryErrCodeList,
-		"logical_view":      LogicalViewErrCodeList,
-		"dataset":           DatasetErrCodeList,
-		"discover_schedule": DiscoverScheduleErrCodeList,
-	}
+func TestImportInitializesErrorCodes(t *testing.T) {
 
-	allCodes := make(map[string]string)
-	for name, codes := range lists {
-		t.Run(name+" list is registered without duplicate codes", func(t *testing.T) {
-			require.NotEmpty(t, codes)
-
-			seen := make(map[string]struct{})
-			for _, code := range codes {
-				require.NotEmpty(t, code)
-				assert.NotContains(t, seen, code)
-				seen[code] = struct{}{}
-
-				if previousList, ok := allCodes[code]; ok {
-					t.Fatalf("error code %q appears in both %s and %s", code, previousList, name)
-				}
-				allCodes[code] = name
-			}
-		})
+	code := VegaBackend_InvalidParameter_Name
+	for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+		httpErr := httperrors.NewHTTPError(i18n.WithLanguage(t.Context(), language), 400, code)
+		if err := httpErr.Render(); err != nil || httpErr.ErrorCode != code || httpErr.Description == "" {
+			t.Fatalf("initialized error = %#v, %v", httpErr, err)
+		}
 	}
 }

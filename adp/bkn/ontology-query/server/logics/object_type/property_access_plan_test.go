@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/maskrule"
@@ -56,7 +56,7 @@ func TestPropertyAccessPlanKeepsDeniedAndUnknownPropertiesIndistinguishable(t *t
 		},
 		{
 			name: "no returnable properties", query: interfaces.ObjectQueryBaseOnObjectType{Properties: []string{"notes"}},
-			status: http.StatusForbidden, code: rest.PublicError_Forbidden,
+			status: http.StatusForbidden, code: httperrors.PublicError_Forbidden,
 			details: "the request has no returnable properties",
 		},
 		{
@@ -78,12 +78,12 @@ func TestPropertyAccessPlanKeepsDeniedAndUnknownPropertiesIndistinguishable(t *t
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := buildPropertyAccessPlan(context.Background(), access, objectType, &test.query, true)
-			httpError, ok := err.(*rest.HTTPError)
-			if !ok || httpError.HTTPCode != test.status || httpError.BaseError.ErrorCode != test.code ||
-				httpError.BaseError.ErrorDetails != test.details {
+			httpError, ok := err.(*httperrors.HTTPError)
+			if !ok || httpError.HTTPCode != test.status || httpError.ErrorCode != test.code ||
+				httpError.ErrorDetails != test.details {
 				t.Fatalf("error = %#v, want status=%d code=%s details=%s", err, test.status, test.code, test.details)
 			}
-			if reason := httpError.BaseError.Metadata["reason"]; reason != "property_unavailable" {
+			if reason := httpError.Metadata["reason"]; reason != "property_unavailable" {
 				t.Fatalf("property reason = %#v", reason)
 			}
 			bodies[test.name] = httpError.Error()
@@ -115,7 +115,7 @@ func TestObjectQueryRejectsEmptyReturnBeforeProxyOrVega(t *testing.T) {
 		KNID: "kn-1", Branch: "main", ObjectTypeID: "customer", Properties: []string{"notes"},
 		PageQuery: interfaces.PageQuery{Sort: []*interfaces.SortParams{{Field: interfaces.SORT_FIELD_SCORE, Direction: "desc"}}},
 	})
-	httpError, ok := err.(*rest.HTTPError)
+	httpError, ok := err.(*httperrors.HTTPError)
 	if !ok || httpError.HTTPCode != http.StatusForbidden || len(proxy.bindings) != 0 {
 		t.Fatalf("result error = %#v, proxy bindings = %#v", err, proxy.bindings)
 	}
@@ -489,10 +489,10 @@ func TestPropertyAccessPlanRejectsHiddenAndMissingPropertiesIndistinguishably(t 
 		"id": interfaces.PropertyAccessFull, "mobile": interfaces.PropertyAccessFull,
 		"notes": interfaces.PropertyAccessSchema, "secret": interfaces.PropertyAccessNone,
 	}}
-	errorFor := func(property string) *rest.HTTPError {
+	errorFor := func(property string) *httperrors.HTTPError {
 		query := &interfaces.ObjectQueryBaseOnObjectType{Properties: []string{property}}
 		_, err := buildPropertyAccessPlan(context.Background(), resolver, objectType, query, true)
-		httpError, ok := err.(*rest.HTTPError)
+		httpError, ok := err.(*httperrors.HTTPError)
 		if !ok {
 			t.Fatalf("property %q error = %#v", property, err)
 		}
@@ -500,8 +500,8 @@ func TestPropertyAccessPlanRejectsHiddenAndMissingPropertiesIndistinguishably(t 
 	}
 	hidden := errorFor("secret")
 	missing := errorFor("does_not_exist")
-	if hidden.HTTPCode != missing.HTTPCode || hidden.BaseError.ErrorCode != missing.BaseError.ErrorCode ||
-		hidden.BaseError.ErrorDetails != missing.BaseError.ErrorDetails {
+	if hidden.HTTPCode != missing.HTTPCode || hidden.ErrorCode != missing.ErrorCode ||
+		hidden.ErrorDetails != missing.ErrorDetails {
 		t.Fatalf("hidden and missing errors differ: %#v %#v", hidden, missing)
 	}
 }
@@ -517,14 +517,14 @@ func TestPropertyAccessPlanRejectsNonFullOperationAndEmptyReturnBeforeRead(t *te
 		PageQuery:  interfaces.PageQuery{Sort: []*interfaces.SortParams{{Field: "mobile", Direction: "asc"}}},
 	}
 	_, err := buildPropertyAccessPlan(context.Background(), resolver, objectType, query, true)
-	httpError, ok := err.(*rest.HTTPError)
+	httpError, ok := err.(*httperrors.HTTPError)
 	if !ok || httpError.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("operation error = %#v", err)
 	}
 
 	query = &interfaces.ObjectQueryBaseOnObjectType{Properties: []string{"notes"}}
 	_, err = buildPropertyAccessPlan(context.Background(), resolver, objectType, query, true)
-	httpError, ok = err.(*rest.HTTPError)
+	httpError, ok = err.(*httperrors.HTTPError)
 	if !ok || httpError.HTTPCode != http.StatusForbidden {
 		t.Fatalf("empty return error = %#v", err)
 	}

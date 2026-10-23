@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -132,7 +132,7 @@ func (dss *discoverScheduleService) GetByID(ctx context.Context, id string) (*in
 	schedule, err := dss.dsa.GetByID(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get discover schedule failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	if schedule != nil {
@@ -179,7 +179,7 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 	schedules, total, err := dss.dsa.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List discover schedules failed")
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
+		return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	if err := dss.populateDiscoverScheduleReferences(ctx, schedules); err != nil {
@@ -268,7 +268,7 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 		return err
 	}
 	if rowsAffected == 0 {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
 	}
 	logger.Infof("Updated discover schedule: id=%s", schedule.ID)
 	return nil
@@ -280,7 +280,7 @@ func (dss *discoverScheduleService) Delete(ctx context.Context, schedule *interf
 	defer span.End()
 
 	if schedule == nil {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverSchedule_NotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverSchedule_NotFound)
 	}
 	// The handler has already resolved the schedule; use it for authorization.
 	if err := dss.requireTaskManage(ctx, schedule.CatalogID); err != nil {
@@ -343,7 +343,7 @@ func (dss *discoverScheduleService) updateEnabled(ctx context.Context,
 		return err
 	}
 	if rowsAffected == 0 {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
 	}
 
 	return nil
@@ -356,7 +356,7 @@ func (dss *discoverScheduleService) requireTaskManage(ctx context.Context, catal
 		return err
 	}
 	if !allowed {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	}
 	return nil
 }

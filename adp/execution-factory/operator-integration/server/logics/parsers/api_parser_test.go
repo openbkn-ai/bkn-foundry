@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	. "github.com/smartystreets/goconvey/convey"
+
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 // Test API metadata parsing.
@@ -164,11 +166,12 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 			_, err = parser.getAllContent(context.Background(), content)
 			fmt.Println(err)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.Code, ShouldContainSubstring, testcase.Code)
-			So(httpErr.Description, ShouldEqual, testcase.Description)
+			So(httpErr.ErrorCode, ShouldContainSubstring, testcase.Code)
+			So(httpErr.Render(), ShouldBeNil)
+			So(httpErr.Description, ShouldEqual, testcase.Description+"请联系管理员")
 		})
 	}
 }
@@ -228,7 +231,7 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 // 				httpErr := parseOpenAPIValidationError(ctx, mockErr)
 
 // 				So(httpErr, ShouldNotBeNil)
-// 				So(httpErr.Code, ShouldEqual, tc.expectedCode)
+// 				So(httpErr.BaseError.ErrorCode, ShouldEqual, tc.expectedCode)
 // 				// So(httpErr.ErrorParams, ShouldResemble, tc.expectedParams)
 // 			})
 // 		}
@@ -240,7 +243,7 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 
 // 			So(httpErr, ShouldNotBeNil)
 // // Should fall back to default error handling.
-// 			So(httpErr.Code, ShouldEqual, myErr.ErrExtOpenAPIInvalidParameter)
+// 			So(httpErr.BaseError.ErrorCode, ShouldEqual, myErr.ErrExtOpenAPIInvalidParameter)
 // 		})
 
 // Convey("Testing regular expression edge cases", func() {.

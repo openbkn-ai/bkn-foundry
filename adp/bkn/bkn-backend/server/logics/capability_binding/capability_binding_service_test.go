@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -144,7 +144,7 @@ func TestAttachCapabilities(t *testing.T) {
 					{CapabilityType: interfaces.CAPABILITY_TYPE_FUNCTION, CapabilityID: "tool-1"},
 				})
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -157,7 +157,7 @@ func TestAttachCapabilities(t *testing.T) {
 					{CapabilityType: "mcp_server", CapabilityID: "mcp-1"},
 				})
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -170,7 +170,7 @@ func TestAttachCapabilities(t *testing.T) {
 					{CapabilityType: interfaces.CAPABILITY_TYPE_SKILL, CapabilityID: "   "},
 				})
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -186,7 +186,7 @@ func TestAttachCapabilities(t *testing.T) {
 				_, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main",
 					[]*interfaces.AttachCapabilityEntry{entry})
 
-				httpErr, ok := err.(*rest.HTTPError)
+				httpErr, ok := err.(*httperrors.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			}
@@ -197,7 +197,7 @@ func TestAttachCapabilities(t *testing.T) {
 
 			_, err := service.AttachCapabilities(context.Background(), nil, "kn1", "main", nil)
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -258,7 +258,7 @@ func TestListCapabilities(t *testing.T) {
 				KNID: "kn1", Branch: "main", CapabilityType: "operator",
 			})
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -292,7 +292,7 @@ func TestListCapabilities(t *testing.T) {
 				ReadAccessMode: interfaces.KN_READ_ACCESS_NAVIGATION_ONLY,
 			})
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})

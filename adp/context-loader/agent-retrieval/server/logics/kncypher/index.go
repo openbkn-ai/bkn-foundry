@@ -18,9 +18,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -135,11 +136,15 @@ func classifyRunCypherFailure(err error) bkntrace.RunCypherFailure {
 		failure.Stage, failure.Code = "interrupted", "RUN_CYPHER_TIMEOUT"
 		return failure
 	}
-	var httpErr *infraErr.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
 		return failure
 	}
-	code := strings.ToLower(httpErr.Code)
+	code := httpErr.ErrorCode
+	if source, ok := httpErr.ErrorDetails.(httperrors.BaseError); ok {
+		code = source.ErrorCode
+	}
+	code = strings.ToLower(code)
 	switch {
 	case strings.Contains(code, "cypher.syntaxerror"):
 		failure.Stage, failure.Code = "parse", "RUN_CYPHER_PARSE_FAILED"

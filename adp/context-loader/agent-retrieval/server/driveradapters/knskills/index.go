@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -78,7 +79,7 @@ type skillIDReq struct {
 // not. Wrapping unconditionally nested a whole JSON error object inside the details of another,
 // so the reason a call was refused arrived as an escaped blob.
 func replyServiceError(c *gin.Context, ctx context.Context, err error) {
-	var httpErr *errors.HTTPError
+	var httpErr *httperrors.HTTPError
 	if goerrors.As(err, &httpErr) {
 		rest.ReplyError(c, httpErr)
 		return

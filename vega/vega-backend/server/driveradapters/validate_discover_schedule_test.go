@@ -10,7 +10,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -133,9 +133,9 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 				if tt.name == "invalid strategy" {
-					var httpErr *rest.HTTPError
+					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, err, &httpErr)
-					require.Contains(t, httpErr.BaseError.ErrorDetails, interfaces.DiscoverStrategyCountOnly)
+					require.Contains(t, httpErr.ErrorDetails, interfaces.DiscoverStrategyCountOnly)
 				}
 				return
 			}

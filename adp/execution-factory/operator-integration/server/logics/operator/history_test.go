@@ -7,16 +7,17 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
-	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 func TestQueryOperatorHistoryDetail(t *testing.T) {
@@ -58,7 +59,7 @@ func TestQueryOperatorHistoryDetail(t *testing.T) {
 			mockOpReleaseHistoryDB.EXPECT().SelectByOpIDAndMetdata(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, errors.New("mock SelectByOpIDAndMetdata error")).Times(1)
 			_, err := operator.QueryOperatorHistoryDetail(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -66,7 +67,7 @@ func TestQueryOperatorHistoryDetail(t *testing.T) {
 			mockOpReleaseHistoryDB.EXPECT().SelectByOpIDAndMetdata(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 			_, err := operator.QueryOperatorHistoryDetail(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -242,7 +243,7 @@ func TestQueryOperatorHistoryList(t *testing.T) {
 			mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, errors.New("mock SelectByOperatorID error")).Times(1)
 			_, err := operator.QueryOperatorHistoryList(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -250,7 +251,7 @@ func TestQueryOperatorHistoryList(t *testing.T) {
 			mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 			_, err := operator.QueryOperatorHistoryList(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -281,7 +282,7 @@ func TestQueryOperatorHistoryList(t *testing.T) {
 				nil).Times(1)
 			_, err := operator.QueryOperatorHistoryList(ctx, req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 		})
@@ -295,7 +296,7 @@ func TestQueryOperatorHistoryList(t *testing.T) {
 			mockOpReleaseHistoryDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(nil, errors.New("mock SelectByOpID error")).Times(1)
 			_, err := operator.QueryOperatorHistoryList(ctx, req)
 			So(err, ShouldNotBeNil)
-			httpErr := &myErr.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})

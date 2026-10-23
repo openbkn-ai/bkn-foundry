@@ -9,12 +9,13 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/mock/gomock"
 )
 
 // newGatedPublicEngine registers three public faces protected by access control according to the wiring method of rest_public_handler.go.
@@ -139,8 +140,8 @@ func TestFunctionExecuteAuthorizationOutcomes(t *testing.T) {
 
 		So(recorder.Code, ShouldEqual, http.StatusForbidden)
 		var reply struct {
-			Code    string         `json:"code"`
-			Details map[string]any `json:"details"`
+			Code    string         `json:"error_code"`
+			Details map[string]any `json:"error_details"`
 		}
 		So(json.Unmarshal(recorder.Body.Bytes(), &reply), ShouldBeNil)
 		So(reply.Code, ShouldEndWith, "."+errors.ErrExtCommonUseForbidden.String())

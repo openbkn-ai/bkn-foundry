@@ -10,14 +10,15 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
 // KeywordLimitHTTPError 将调用方的超限错误转换为稳定错误码与安全元数据。
 // 固定条件仍由视图查询层按定义失效处理。
-func KeywordLimitHTTPError(ctx context.Context, err error) *rest.HTTPError {
+func KeywordLimitHTTPError(ctx context.Context, err error) *httperrors.HTTPError {
 	var stored *interfaces.StoredConditionBuildError
 	if errors.As(err, &stored) {
 		return nil
@@ -26,6 +27,6 @@ func KeywordLimitHTTPError(ctx context.Context, err error) *rest.HTTPError {
 	if !errors.As(err, &limit) {
 		return nil
 	}
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_QueryValueExceedsKeywordLimit).
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_QueryValueExceedsKeywordLimit).
 		WithMetadata(map[string]any{"field": limit.Field, "limit": limit.Limit})
 }

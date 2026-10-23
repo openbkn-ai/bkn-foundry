@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -40,7 +40,7 @@ func TestCheckCatalogPermission(t *testing.T) {
 		ps := mock_interfaces.NewMockPermissionService(ctrl)
 		cs := &catalogService{ps: ps}
 		ps.EXPECT().CheckPermission(gomock.Any(), resource, ops).
-			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+			Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 
 		allowed, catalog, err := cs.CheckCatalogPermission(context.Background(), "cat-1", ops, true)
 		require.NoError(t, err)

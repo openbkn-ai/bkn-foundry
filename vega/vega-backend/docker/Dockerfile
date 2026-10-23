@@ -33,7 +33,6 @@ ARG GID=1001
 COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/vega-backend
 
 COPY config/vega-backend-config.yaml /opt/vega-backend/config/
-COPY locale /opt/vega-backend/locale
 
 # 预建滚动日志目录，确保非 root 运行用户可写。
 RUN mkdir -p /opt/vega-backend/logs \

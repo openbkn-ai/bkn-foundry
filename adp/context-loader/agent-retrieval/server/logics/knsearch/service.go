@@ -12,9 +12,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -63,8 +64,11 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 	// the knowledge network rather than of the caller's own object_types list, and sends an
 	// agent looking for the problem in the wrong place.
 	if len(conceptResult.ObjectTypes) == 0 && len(conceptResult.UnmatchedObjectTypes) > 0 {
-		response.Message = infraErr.LocalizedDetail(ctx, "ScopeObjectTypesNotFound",
-			strings.Join(conceptResult.UnmatchedObjectTypes, ", "))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ScopeObjectTypesNotFound", map[string]any{"Arg1": strings.Join(conceptResult.UnmatchedObjectTypes, ", ")})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		response.Message = localizedText
 		s.logger.WithContext(ctx).Infof("[KnSearchLocal] object_types matched no object type: %v",
 			conceptResult.UnmatchedObjectTypes)
 		return response, nil
@@ -76,16 +80,22 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 	// complete.
 	var scopeNotice string
 	if len(conceptResult.UnmatchedObjectTypes) > 0 {
-		scopeNotice = infraErr.LocalizedDetail(ctx, "ScopeObjectTypesIgnored",
-			strings.Join(conceptResult.UnmatchedObjectTypes, ", "))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ScopeObjectTypesIgnored", map[string]any{"Arg1": strings.Join(conceptResult.UnmatchedObjectTypes, ", ")})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		scopeNotice = localizedText
 		s.logger.WithContext(ctx).Infof("[KnSearchLocal] object_types partially matched, ignored: %v",
 			conceptResult.UnmatchedObjectTypes)
 	}
 	// Object types whose schema read timed out carry no properties. Say so, or
 	// an agent reads them as object types that have none.
 	if len(conceptResult.SchemaUnavailableObjectTypes) > 0 {
-		scopeNotice = joinMessages(scopeNotice, infraErr.LocalizedDetail(ctx, "ObjectTypeSchemaUnavailable",
-			strings.Join(conceptResult.SchemaUnavailableObjectTypes, ", ")))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ObjectTypeSchemaUnavailable", map[string]any{"Arg1": strings.Join(conceptResult.SchemaUnavailableObjectTypes, ", ")})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		scopeNotice = joinMessages(scopeNotice, localizedText)
 	}
 
 	// 4. Semantic instance recall: only done when the caller explicitly wants an instance (search_schema is always schema-only)

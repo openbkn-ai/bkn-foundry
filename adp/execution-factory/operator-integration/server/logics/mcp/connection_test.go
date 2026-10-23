@@ -1,10 +1,13 @@
 package mcp
 
 import (
+	"context"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
@@ -41,7 +44,7 @@ func TestGenerateExternalConnectionInfo(t *testing.T) {
 	})
 }
 
-// TestMCPErrorCodesHaveDescription reproduces "The missing i18n entry causes the response body to spit out desc.<Key> directly".
+// TestMCPErrorCodesHaveDescription verifies registered MCP messages in both languages.
 func TestMCPErrorCodesHaveDescription(t *testing.T) {
 	codes := []errors.ErrorCode{
 		errors.ErrExtMCPInstanceNotFound,
@@ -50,12 +53,14 @@ func TestMCPErrorCodesHaveDescription(t *testing.T) {
 		errors.ErrExtMCPServerNotAccessible,
 	}
 
-	for _, lang := range []string{"zh_CN", "en_US"} {
-		tr := localize.NewI18nTranslator(lang)
+	for _, lang := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
 		for _, code := range codes {
-			key := "desc." + code.String()
-			if got := tr.Trans(key); got == key {
-				t.Errorf("[%s] %s 缺少文案，接口会直接返回 key", lang, key)
+			err := errors.NewHTTPError(i18n.WithLanguage(context.Background(), lang), http.StatusBadRequest, code, nil, "endpoint")
+			if renderErr := err.Render(); renderErr != nil {
+				t.Fatalf("[%s] %s: %v", lang, code, renderErr)
+			}
+			if err.Description == "" {
+				t.Errorf("[%s] %s: empty description", lang, code)
 			}
 		}
 	}

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -50,13 +50,13 @@ func (ats *actionTypeService) checkAliasNames(ctx context.Context, knID, branch 
 	}
 	storedAliased, err := ats.ata.ListAliasedActionTypes(ctx, knID, branch)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 	var storedNamed []*interfaces.ActionType
 	if len(aliases) > 0 {
 		if storedNamed, err = ats.ata.GetActionTypeIdentitiesByIDsOrNames(ctx, knID, branch, nil, aliases); err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
 				WithErrorDetails(err.Error())
 		}
 	}
@@ -75,7 +75,7 @@ func namedActionTypes(actionTypes []*interfaces.ActionType) []logics.NamedDefini
 }
 
 func invalidDeclarations(ctx context.Context, detail string) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter_Declarations).
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter_Declarations).
 		WithErrorDetails(detail)
 }
 
@@ -87,7 +87,7 @@ func (ats *actionTypeService) keepStoredAliases(ctx context.Context, actionType 
 	}
 	stored, err := ats.ata.GetActionTypesByIDs(ctx, actionType.KNID, actionType.Branch, []string{actionType.ATID})
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 	if len(stored) == 1 {
@@ -113,7 +113,7 @@ func (ats *actionTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 	}
 	stored, err := ats.ata.GetActionTypesByIDs(ctx, updates[0].KNID, updates[0].Branch, ids)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 	var cleared []interfaces.ClearedDeclaration
@@ -135,7 +135,7 @@ func (ats *actionTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 			return err
 		}
 	}
-	return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ActionType_DeclarationsWouldBeCleared).
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ActionType_DeclarationsWouldBeCleared).
 		WithErrorDetails(map[string]any{
 			"cleared":      cleared,
 			"confirm_with": interfaces.QueryParam_ConfirmClearDeclarations + "=true",

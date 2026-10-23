@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -221,14 +222,14 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 			logger.Errorf("unmarshal ToolError failed: %v", err)
 			return toolResult, err
 		}
-		httpErr := &rest.HTTPError{HTTPCode: respCode,
-			BaseError: rest.BaseError{
+		httpErr := &httperrors.HTTPError{HTTPCode: respCode,
+			BaseError: httperrors.BaseError{
 				ErrorCode:    opError.Code,
 				Description:  opError.Description,
 				ErrorDetails: opError.Detail,
 			}}
 		logger.Errorf("Tool execution [%s/%s] failed with status [%d] and code [%s]",
-			boxID, toolID, httpErr.HTTPCode, httpErr.BaseError.ErrorCode)
+			boxID, toolID, httpErr.HTTPCode, httpErr.ErrorCode)
 		return toolResult, fmt.Errorf("proxy tool execution returned status %d", httpErr.HTTPCode)
 	}
 
@@ -297,14 +298,14 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 			logger.Errorf("unmarshal integration error failed: %v\n", err)
 			return mcpResult, err
 		}
-		httpErr := &rest.HTTPError{HTTPCode: respCode,
-			BaseError: rest.BaseError{
+		httpErr := &httperrors.HTTPError{HTTPCode: respCode,
+			BaseError: httperrors.BaseError{
 				ErrorCode:    opError.Code,
 				Description:  opError.Description,
 				ErrorDetails: opError.Detail,
 			}}
 		logger.Errorf("MCP execution [%s/%s] failed with status [%d] and code [%s]",
-			mcpID, toolName, httpErr.HTTPCode, httpErr.BaseError.ErrorCode)
+			mcpID, toolName, httpErr.HTTPCode, httpErr.ErrorCode)
 		return mcpResult, fmt.Errorf("proxy MCP execution returned status %d", httpErr.HTTPCode)
 	}
 

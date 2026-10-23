@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -75,24 +75,24 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 	if len(plan.RiskTypes) > 0 {
 		if _, err = kns.riskTypeS.CreateRiskTypes(ctx, tx, plan.RiskTypes, mode); err != nil {
 			logger.Errorf("CreateRiskTypes error: %s", err.Error())
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
 	if plan.ObjectMetrics != nil && (len(plan.ObjectMetrics) > 0 || logics.OMA != nil) {
 		archive, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1)
 		if !ok {
-			return rest.NewHTTPError(ctx, http.StatusNotImplemented,
+			return httperrors.NewHTTPError(ctx, http.StatusNotImplemented,
 				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails("object metric V1 archive access is unavailable")
 		}
 		if err := archive.ImportObjectMetricArchive(ctx, tx, plan.KNID, plan.Branch, plan.ObjectMetrics); err != nil {
 			logger.Errorf("Import object metric V1 archive failed: %v", err)
 			if errors.Is(err, interfaces.ErrObjectMetricArchiveConflict) {
-				return rest.NewHTTPError(ctx, http.StatusConflict,
+				return httperrors.NewHTTPError(ctx, http.StatusConflict,
 					berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails(err.Error())
 			}
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError).
 				WithErrorDetails("object metric V1 archive import failed")
 		}
@@ -116,7 +116,7 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 	if references, ok := logics.OMA.(interfaces.ObjectMetricLogicPropertyReferenceAccessV1); ok {
 		if err := references.RebuildObjectTypeMetricReferences(ctx, tx, plan.KNID, plan.Branch); err != nil {
 			logger.Errorf("Rebuild object metric logical-property references failed: %v", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError).
 				WithErrorDetails("object metric logical-property reference rebuild failed")
 		}
@@ -158,7 +158,7 @@ func (kns *knowledgeNetworkService) prepareNormalizedImportMembers(ctx context.C
 		existingMembers, err = kns.cga.GetConceptIDsGroupedByConceptGroupIDs(ctx,
 			plan.KNID, plan.Branch, groupIDs, interfaces.MODULE_TYPE_OBJECT_TYPE)
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_GetConceptIDsByConceptGroupIDsFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -194,7 +194,7 @@ func (kns *knowledgeNetworkService) prepareNormalizedImportMembers(ctx context.C
 		objects, err := kns.ota.GetObjectTypesByIDs(ctx, nil,
 			plan.KNID, plan.Branch, existingCandidates[start:end])
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -276,7 +276,7 @@ func (kns *knowledgeNetworkService) filterValidImportGroupReferences(ctx context
 		groups, err := kns.cga.GetConceptGroupsByIDs(ctx, tx,
 			plan.KNID, plan.Branch, candidateIDs[start:end])
 		if err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 		}
 		for _, group := range groups {
@@ -355,7 +355,7 @@ func (kns *knowledgeNetworkService) restoreImportGroupMembers(ctx context.Contex
 					ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, OTIDs: objectIDs,
 				})
 			if lookupErr != nil {
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(lookupErr.Error())
 			}
 			for _, objectType := range plan.ObjectTypes[start:end] {
@@ -395,7 +395,7 @@ func (kns *knowledgeNetworkService) restoreImportGroupMembers(ctx context.Contex
 	existingMembers, err := kns.cga.GetConceptIDsGroupedByConceptGroupIDs(ctx,
 		plan.KNID, plan.Branch, targetGroupIDs, interfaces.MODULE_TYPE_OBJECT_TYPE)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_GetConceptIDsByConceptGroupIDsFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -416,7 +416,7 @@ func (kns *knowledgeNetworkService) restoreImportGroupMembers(ctx context.Contex
 				ConceptType: interfaces.MODULE_TYPE_OBJECT_TYPE, OTIDs: removed,
 			})
 			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 			}
 		}
@@ -444,7 +444,7 @@ func (kns *knowledgeNetworkService) restoreImportGroupMembers(ctx context.Contex
 		err = kns.cga.CreateConceptGroupRelations(ctx, tx, relations)
 	}
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_CreateConceptGroupRelationFailed).
 			WithErrorDetails(err.Error())
 	}

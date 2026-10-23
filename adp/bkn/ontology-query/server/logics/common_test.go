@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	. "github.com/smartystreets/goconvey/convey"
+
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
 	dtype "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces/data_type"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 func Test_BuildViewSort(t *testing.T) {
@@ -1610,9 +1610,9 @@ func Test_BuildDslQuery(t *testing.T) {
 			result, err := BuildDslQuery(ctx, queryStr, query)
 			So(err, ShouldNotBeNil)
 			So(len(result), ShouldEqual, 0)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed)
 		})
 
 		Convey("成功 - 空查询字符串", func() {

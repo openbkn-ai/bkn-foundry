@@ -23,10 +23,13 @@ import (
 	"sync"
 	"time"
 
-	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -105,7 +108,7 @@ func (g *Guide) ForObjectTypeError(ctx context.Context, err error, knID, otID st
 // a resource other than the object type (a logic property's metric or tool).
 // It answers only when ontology-query's refusal names this object type.
 func (g *Guide) ForObjectTypeDenial(ctx context.Context, err error, knID, otID string) *interfaces.PermissionGuidance {
-	var httpErr *infraErr.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) ||
 		!strings.Contains(fmt.Sprint(httpErr.ErrorDetails), "object_type:"+knID+"/"+otID) {
 		return nil
@@ -225,28 +228,55 @@ func (g *Guide) build(ctx context.Context, knID, otID string,
 func message(ctx context.Context, guidance *interfaces.PermissionGuidance, linked bool) string {
 	name := guidance.Resource.Name
 	if name == "" {
-		name = infraErr.LocalizedDetail(ctx, "PermissionGuidanceUnnamedObjectType")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceUnnamedObjectType", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		name = localizedText
 	}
 	var parts []string
 	for _, shortfall := range guidance.Shortfalls {
 		switch shortfall.Scope {
 		case interfaces.PermissionScopeGrant:
-			parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceGrant", name))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceGrant", map[string]any{"Arg1": name})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			parts = append(parts, localizedText)
 		case interfaces.PermissionScopePropertyGrants:
-			separator := infraErr.LocalizedDetail(ctx, "PermissionGuidanceListSeparator")
-			parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidancePropertyGrants",
-				name, strings.Join(shortfall.Properties, separator)))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceListSeparator", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			separator := localizedText
+			localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidancePropertyGrants", map[string]any{"Arg1": name, "Arg2": strings.Join(shortfall.Properties, separator)})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			parts = append(parts, localizedText)
 		case interfaces.PermissionScopeRowFilter:
-			parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceRowFilter", name))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceRowFilter", map[string]any{"Arg1": name})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			parts = append(parts, localizedText)
 		}
 	}
 	if linked {
-		parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceRequestHint"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceRequestHint", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		parts = append(parts, localizedText)
 		if actions := requestActions(ctx, guidance.Shortfalls); actions != "" {
 			parts = append(parts, actions)
 		}
 	} else {
-		parts = append(parts, infraErr.LocalizedDetail(ctx, "PermissionGuidanceContactAdmin"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceContactAdmin", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		parts = append(parts, localizedText)
 	}
 	separator := ""
 	if language := strings.ToLower(string(common.GetLanguageFromCtx(ctx))); strings.HasPrefix(language, "en") {
@@ -278,7 +308,11 @@ func requestActions(ctx context.Context, shortfalls []interfaces.PermissionShort
 		default:
 			continue
 		}
-		label := infraErr.LocalizedDetail(ctx, labelKey)
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+labelKey, map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		label := localizedText
 		if strings.HasPrefix(shortfall.RequestPermissionURL, "http://") ||
 			strings.HasPrefix(shortfall.RequestPermissionURL, "https://") {
 			actions = append(actions, fmt.Sprintf("[%s](%s)", label, shortfall.RequestPermissionURL))
@@ -314,19 +348,38 @@ func (g *Guide) requestPath(ctx context.Context, knID, otID, name string,
 	).Replace(g.pathTemplate)
 
 	if name == "" {
-		name = infraErr.LocalizedDetail(ctx, "PermissionGuidanceUnnamedObjectType")
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceUnnamedObjectType", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		name = localizedText
 	}
 	var params []string
 	switch shortfall.Scope {
 	case interfaces.PermissionScopeGrant:
 		params = append(params, "operations="+escapedList(shortfall.Operations))
-		params = append(params, "reason="+queryEscape(infraErr.LocalizedDetail(ctx, "PermissionGuidanceReasonGrant", name)))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceReasonGrant", map[string]any{"Arg1": name})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		params = append(params, "reason="+queryEscape(localizedText))
 	case interfaces.PermissionScopePropertyGrants:
 		params = append(params, "properties="+escapedList(shortfall.Properties))
-		params = append(params, "reason="+queryEscape(infraErr.LocalizedDetail(ctx, "PermissionGuidanceReasonPropertyGrants",
-			name, strings.Join(shortfall.Properties, infraErr.LocalizedDetail(ctx, "PermissionGuidanceListSeparator")))))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceListSeparator", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceReasonPropertyGrants", map[string]any{"Arg1": name, "Arg2": strings.Join(shortfall.Properties, localizedText)})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		params = append(params, "reason="+queryEscape(localizedText))
 	case interfaces.PermissionScopeRowFilter:
-		params = append(params, "reason="+queryEscape(infraErr.LocalizedDetail(ctx, "PermissionGuidanceReasonRowFilter", name)))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.PermissionGuidanceReasonRowFilter", map[string]any{"Arg1": name})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		params = append(params, "reason="+queryEscape(localizedText))
 	}
 	params = append(params, "source=agent")
 

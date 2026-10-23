@@ -18,6 +18,10 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -281,9 +285,9 @@ func resolveAbsentTotal(hasCursor bool, total *int64) *int64 {
 // downstream ontology-query verdict is the only authoritative signal, so the
 // fix is to surface it clearly rather than guess here.
 func classifyQueryError(ctx context.Context, err error) error {
-	var he *infraErr.HTTPError
+	var he *httperrors.HTTPError
 	if errors.As(err, &he) && he.HTTPCode >= http.StatusBadRequest && he.HTTPCode < http.StatusInternalServerError {
-		return infraErr.DefaultHTTPError(ctx, he.HTTPCode, downstreamErrorDetails(he))
+		return infraErr.DefaultHTTPError(ctx, he.HTTPCode, downstreamErrorDetails(err))
 	}
 	return err
 }
@@ -294,13 +298,17 @@ func classifyQueryError(ctx context.Context, err error) error {
 // endpoints were expected). The shared HTTP client's own detail wraps both in a
 // transport string that also carries the internal service URL; it is kept only
 // when the body is not an ontology-query error envelope.
-func downstreamErrorDetails(he *infraErr.HTTPError) any {
+func downstreamErrorDetails(err error) any {
+	var he *httperrors.HTTPError
+	errors.As(err, &he)
+	var dependency *infraErr.DependencyError
+	errors.As(err, &dependency)
 	var envelope struct {
 		ErrorCode    string `json:"error_code"`
 		Description  string `json:"description"`
 		ErrorDetails any    `json:"error_details"`
 	}
-	if len(he.DownstreamBody) > 0 && sonic.Unmarshal(he.DownstreamBody, &envelope) == nil && envelope.ErrorCode != "" {
+	if dependency != nil && len(dependency.Body) > 0 && sonic.Unmarshal(dependency.Body, &envelope) == nil && envelope.ErrorCode != "" {
 		details := envelope.Description
 		switch d := envelope.ErrorDetails.(type) {
 		case nil:
@@ -336,12 +344,15 @@ func downstreamErrorDetails(he *infraErr.HTTPError) any {
 // "对象类 X 未绑定数据源", and get_action_info reported that as 502 "依赖服务不可用",
 // pointing triage at pod health instead of at the knowledge network. See #1225.
 func classifyActionError(ctx context.Context, err error, fallbackDetailKey string) error {
-	var he *infraErr.HTTPError
+	var he *httperrors.HTTPError
 	if errors.As(err, &he) && he.HTTPCode >= http.StatusBadRequest && he.HTTPCode < http.StatusInternalServerError {
 		return classifyQueryError(ctx, err)
 	}
-	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-		infraErr.LocalizedDetail(ctx, fallbackDetailKey))
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail."+fallbackDetailKey, map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 }
 
 // withFunctionRuntimeCredential forwards the caller's own credential, so a
@@ -421,8 +432,11 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryActions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "ActionQueryResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionQueryResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 		return nil, err
 	}
 
@@ -471,8 +485,11 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "ActionExecutionResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionExecutionResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 		return nil, err
 	}
 
@@ -513,8 +530,11 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 	result := map[string]any{}
 	if err = unmarshalPrecise(respBody, &result); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Unmarshal failed, body: %s, err: %v", string(respBody), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "ActionExecutionLookupResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionExecutionLookupResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 
 	return result, nil
@@ -573,8 +593,11 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	result := map[string]any{}
 	if err = unmarshalPrecise(respBody, &result); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "ActionExecutionHistoryResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionExecutionHistoryResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 
 	return result, nil
@@ -625,8 +648,11 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	resp = &interfaces.ExploreSubgraphResp{}
 	if err = unmarshalPrecise(respBody, resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExploreSubgraph] invalid response: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "SubgraphQueryResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SubgraphQueryResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 	resp.TotalCount = resolveAbsentTotal(len(req.SearchAfter) > 0, resp.TotalCount)
 
@@ -678,8 +704,11 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] invalid response: %v", err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "SubgraphQueryResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SubgraphQueryResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 		return nil, err
 	}
 

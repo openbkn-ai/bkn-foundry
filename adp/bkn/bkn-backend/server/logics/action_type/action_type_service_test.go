@@ -14,7 +14,8 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,14 +90,14 @@ func Test_actionTypeService_CheckActionTypeExistByID(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			atID := "at1"
 
-			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			name, exist, err := service.CheckActionTypeExistByID(ctx, knID, branch, atID)
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed)
 		})
 	})
 }
@@ -148,14 +149,14 @@ func Test_actionTypeService_CheckActionTypeExistByName(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			atName := "action_type1"
 
-			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			id, exist, err := service.CheckActionTypeExistByName(ctx, knID, branch, atName)
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 			So(id, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed)
 		})
 	})
 }
@@ -202,13 +203,13 @@ func Test_actionTypeService_GetActionTypeIDsByKnID(t *testing.T) {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 
-			ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ata.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			result, err := service.GetActionTypeIDsByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_GetActionTypesByIDsFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_GetActionTypesByIDsFailed)
 		})
 	})
 }
@@ -282,8 +283,8 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 			result, err := service.GetActionTypesByIDs(ctx, knID, branch, atIDs)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeNotFound)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeNotFound)
 		})
 
 		Convey("Failed when GetActionTypesByIDs returns error\n", func() {
@@ -291,7 +292,7 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			atIDs := []string{"at1"}
 
-			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			result, err := service.GetActionTypesByIDs(ctx, knID, branch, atIDs)
 			So(err, ShouldNotBeNil)
@@ -313,7 +314,7 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 			}
 
 			ata.EXPECT().GetActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(atArr, nil)
-			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			result, err := service.GetActionTypesByIDs(ctx, knID, branch, atIDs)
 			So(err, ShouldNotBeNil)
@@ -450,7 +451,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			ats, total, err := service.ListActionTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -474,7 +475,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 			}
 
 			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(atArr, nil)
-			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			ats, total, err := service.ListActionTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -503,7 +504,7 @@ func Test_actionTypeService_ListActionTypes(t *testing.T) {
 
 			ata.EXPECT().ListActionTypes(gomock.Any(), gomock.Any()).Return(atArr, nil)
 			ots.EXPECT().GetObjectTypesMapByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ObjectType{}, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			ats, total, err := service.ListActionTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -644,7 +645,7 @@ func Test_actionTypeService_GetTotal(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldNotBeNil)
@@ -703,7 +704,7 @@ func Test_actionTypeService_GetTotalWithATIDs(t *testing.T) {
 			}
 			atIDs := []string{"at1"}
 
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			total, err := service.GetTotalWithATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldNotBeNil)
@@ -759,7 +760,7 @@ func Test_actionTypeService_GetTotalWithLargeATIDs(t *testing.T) {
 			}
 			atIDs := []string{"at1", "at2"}
 
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			total, err := service.GetTotalWithLargeATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldNotBeNil)
@@ -823,7 +824,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			err := service.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -898,7 +899,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -929,7 +930,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 			}
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -1018,7 +1019,7 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			atIDs := []string{"at1"}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ActionType_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_ActionType_InternalError))
 
 			err := service.DeleteActionTypesByIDs(ctx, nil, knID, branch, atIDs)
 			So(err, ShouldNotBeNil)
@@ -1030,7 +1031,7 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			atIDs := []string{"at1"}
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ata.EXPECT().DeleteActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ata.EXPECT().DeleteActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			err := service.DeleteActionTypesByIDs(ctx, nil, knID, branch, atIDs)
 			So(err, ShouldNotBeNil)
@@ -1043,7 +1044,7 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().DeleteActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			err := service.DeleteActionTypesByIDs(ctx, nil, knID, branch, atIDs)
 			So(err, ShouldNotBeNil)
@@ -1128,7 +1129,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_ActionType_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_ActionType_InternalError))
 
 			err := service.UpdateActionType(ctx, nil, actionType, false)
 			So(err, ShouldNotBeNil)
@@ -1146,7 +1147,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			err := service.UpdateActionType(ctx, nil, actionType, false)
 			So(err, ShouldNotBeNil)
@@ -1165,7 +1166,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			err := service.UpdateActionType(ctx, nil, actionType, false)
 			So(err, ShouldNotBeNil)
@@ -1324,8 +1325,8 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldNotBeNil)
 			So(len(atIDs), ShouldEqual, 0)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeIDExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeIDExisted)
 		})
 
 		Convey("Success with empty ATID generates new ID\n", func() {
@@ -1448,7 +1449,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldNotBeNil)
@@ -1605,7 +1606,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			result, err := service.SearchActionTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -1622,7 +1623,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 			}
 
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
-			cga.EXPECT().GetActionTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			cga.EXPECT().GetActionTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			result, err := service.SearchActionTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -1656,7 +1657,7 @@ func Test_actionTypeService_DeleteActionTypesByKnID(t *testing.T) {
 		Convey("Failed when access layer returns error\n", func() {
 			tx := new(sql.Tx)
 			ata.EXPECT().DeleteActionTypesByKnID(gomock.Any(), tx, "kn1", interfaces.MAIN_BRANCH).
-				Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+				Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			err := service.DeleteActionTypesByKnID(ctx, tx, "kn1", interfaces.MAIN_BRANCH)
 			So(err, ShouldNotBeNil)
 		})
@@ -1704,7 +1705,7 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 
 		Convey("Failed when QueryResourceData returns error\n", func() {
 			query := &interfaces.ConceptsQuery{KNID: "kn1", Branch: interfaces.MAIN_BRANCH, Limit: 10}
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			result, err := service.SearchActionTypes(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(len(result.Entries), ShouldEqual, 0)
@@ -1803,7 +1804,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 		})
 
 		Convey("strictMode true fails when bound object type not found\n", func() {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError)
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError)
 			actionTypes := []*interfaces.ActionType{
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
@@ -1841,7 +1842,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 		})
 
 		Convey("strictMode true validates Affect.ObjectTypeID\n", func() {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError)
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError)
 			actionTypes := []*interfaces.ActionType{
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
@@ -1862,7 +1863,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 		})
 
 		Convey("strictMode true validates ImpactContracts ObjectTypeID\n", func() {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError)
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError)
 			actionTypes := []*interfaces.ActionType{
 				{
 					ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
@@ -1930,9 +1931,9 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 				interfaces.NewDependencyError("execution-factory", "get_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 			err := svc.ValidateActionTypes(ctx, "kn1", interfaces.MAIN_BRANCH, actionTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			dependencyDetails, ok := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(ok, ShouldBeTrue)
 			So(dependencyDetails.Detail, ShouldEqual, "行动类 [at1] 的工具绑定缺失或无效（box_id=b1，tool_id=t1）。")
 			So(dependencyDetails.Detail, ShouldNotContainSubstring, "tool not found")
@@ -2004,7 +2005,7 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 			defer mockCtrl.Finish()
 			aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 			svc := &actionTypeService{aoa: aoa}
-			ctx := rest.WithLanguage(context.Background(), rest.SimplifiedChinese)
+			ctx := i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese)
 			aoa.EXPECT().GetToolByID(gomock.Any(), "box-1", "tool-1").Return(
 				interfaces.NewDependencyError("execution-factory", "get_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 
@@ -2019,9 +2020,9 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 				},
 			})
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			dependencyDetails, ok := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(ok, ShouldBeTrue)
 			So(dependencyDetails.Detail, ShouldEqual, "行动类 [create_order] 的工具绑定缺失或无效（box_id=box-1，tool_id=tool-1）。")
 			So(dependencyDetails.Detail, ShouldNotContainSubstring, "downstream")
@@ -2032,7 +2033,7 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 			defer mockCtrl.Finish()
 			aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
 			svc := &actionTypeService{aoa: aoa}
-			ctx := rest.WithLanguage(context.Background(), rest.AmericanEnglish)
+			ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
 			aoa.EXPECT().GetMcpToolByName(gomock.Any(), "mcp-1", "create_order").Return(
 				interfaces.NewDependencyError("execution-factory", "get_mcp_tool", interfaces.DependencyNotFound, http.StatusNotFound))
 
@@ -2047,9 +2048,9 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 				},
 			})
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			dependencyDetails, ok := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(ok, ShouldBeTrue)
 			So(dependencyDetails.Detail, ShouldEqual, "Action type [create_order] MCP tool binding is missing or invalid (mcp_id=mcp-1, tool_name=create_order).")
 			So(dependencyDetails.Detail, ShouldNotContainSubstring, "downstream")
@@ -2103,10 +2104,10 @@ func TestActionTypeStrictDependencyErrorMapping(t *testing.T) {
 				},
 			})
 
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
-			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, tc.code, httpErr.ErrorCode)
 		})
 	}
 }

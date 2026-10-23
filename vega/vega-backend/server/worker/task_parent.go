@@ -9,11 +9,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 // isNotFoundError distinguishes between a deleted parent object and a temporary service error.
 func isNotFoundError(err error) bool {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	return errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusNotFound
 }

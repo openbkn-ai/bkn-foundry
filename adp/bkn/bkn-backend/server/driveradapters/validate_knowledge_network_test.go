@@ -10,7 +10,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -59,8 +60,8 @@ func Test_ValidateKN(t *testing.T) {
 			}
 			err := ValidateKN(ctx, kn)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch)
 		})
 	})
 }
@@ -87,8 +88,8 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 			}
 			err := ValidateRelationTypePathsQuery(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 		})
 
 		Convey("Failed with empty direction\n", func() {
@@ -99,8 +100,8 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 			}
 			err := ValidateRelationTypePathsQuery(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Direction)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Direction)
 		})
 
 		Convey("Failed with invalid direction\n", func() {
@@ -138,25 +139,25 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 func TestKnowledgeNetworkValidationDetailsRespectLanguage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "branch is required."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "必须提供 branch。"},
+		{"English", i18n.AmericanEnglish, "branch is required."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "必须提供 branch。"},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := ValidateKN(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				&interfaces.KN{KNID: "kn-1", KNName: "network"},
 			)
 			if err == nil {
 				t.Fatal("ValidateKN() error = nil, want missing branch error")
 			}
-			httpErr := err.(*rest.HTTPError)
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			httpErr := err.(*httperrors.HTTPError)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}

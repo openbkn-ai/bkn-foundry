@@ -67,7 +67,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -117,7 +117,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '415':
@@ -125,7 +125,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -142,19 +142,19 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Unauthorized:
       description: 凭据缺失或无效
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     InternalError:
       description: 服务内部错误
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   schemas:
     ComponentType:

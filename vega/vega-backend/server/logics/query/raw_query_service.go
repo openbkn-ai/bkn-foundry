@@ -17,15 +17,15 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
@@ -49,12 +49,12 @@ const rawQueryTotalCountColumn = "_raw_query_total_count"
 
 func connectorInitializationError(ctx context.Context, err error) error {
 	if errors.Is(err, factory.ErrConnectorEntitlementDenied) {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
 	}
 	if errors.Is(err, factory.ErrConnectorDisabled) {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled).WithErrorDetails(err.Error())
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled).WithErrorDetails(err.Error())
 	}
-	return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 		WithErrorDetails("connector initialization failed")
 }
 
@@ -120,13 +120,13 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 	case interfaces.QueryFormatDSL:
 		return rqs.executeInitialDSLQuery(ctx, req)
 	}
-	return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+	return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 		WithErrorDetails("unsupported raw query request")
 }
 
 func (rqs *rawQueryService) validateRequest(ctx context.Context, req *interfaces.RawQueryRequest) error {
 	if err := req.ValidateContract(); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
 	return nil
@@ -212,12 +212,12 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 		if ok {
 			rawQueryCursorSessions.release(session)
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor not found or expired")
 	}
 	defer rawQueryCursorSessions.release(session)
 	if session.AccountID != accountIDFromContext(ctx) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	}
 	if err := validateCursorResourceBinding(ctx, session, req); err != nil {
@@ -230,7 +230,7 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 		return nil, err
 	}
 	if catalog.ID != session.CatalogID {
-		return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("cursor catalog changed")
 	}
 	switch session.QueryFormat {
@@ -239,7 +239,7 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	case interfaces.QueryFormatDSL:
 		return rqs.executeOpenSearchCursorPage(queryCtx, session, catalog, warnings)
 	default:
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("cursor has unsupported query format")
 	}
 }
@@ -258,11 +258,11 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	inputDialect := req.EffectiveInputDialect()
 	resourceIDs, err := rqs.extractResourceIDs(ctx, req.Query, inputDialect)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
 	}
 	if len(resourceIDs) == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("at least one resource_id is required for SQL queries")
 	}
 	catalog, warnings, err := rqs.checkSameDataSource(ctx, resourceIDs)
@@ -307,7 +307,7 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		}
 		compiled, err := sqlglot.TranspileSQL(ctx, query, inputDialect, targetDialect)
 		if err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 				WithErrorDetails("failed to compile SQL query")
 		}
 		references, err := rqs.resourceSourceIdentifiers(ctx, resourceIDs)
@@ -320,7 +320,7 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 		}
 		bound, err := sqlglot.BindTableReferences(ctx, compiled.SQL, targetDialect, bindings)
 		if err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 				WithErrorDetails("failed to bind SQL resource references")
 		}
 		finalSQL = bound.SQL
@@ -342,14 +342,14 @@ func validateSQLPolicy(ctx context.Context, sql, dialect string, allowedReferenc
 		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
 			return httpErr
 		}
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("failed to validate SQL query")
 	}
 	if err := rawQueryPolicy.ValidateTableReferences(ctx, sql, dialect, allowedReferences); err != nil {
 		if httpErr := rawQueryValidationError(ctx, err); httpErr != nil {
 			return httpErr
 		}
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("failed to validate SQL resource references")
 	}
 	return nil
@@ -363,7 +363,7 @@ func (rqs *rawQueryService) resourceSourceIdentifiers(ctx context.Context, resou
 			return nil, err
 		}
 		if resource == nil || strings.TrimSpace(resource.SourceIdentifier) == "" {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 				WithErrorDetails(fmt.Sprintf("resource %s has no queryable source", resourceID))
 		}
 		identifiers = append(identifiers, resource.SourceIdentifier)
@@ -423,7 +423,7 @@ func (rqs *rawQueryService) executeInitialOpenSearchCursor(ctx context.Context, 
 		return nil, err
 	}
 	if hasOpenSearchAggregation(query) {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor paging does not support OpenSearch aggregation queries")
 	}
 	session, err := rawQueryCursorSessions.create(
@@ -465,11 +465,11 @@ func queryResourceID(query any) string {
 
 func cursorSessionCreateError(ctx context.Context, err error) error {
 	if errors.Is(err, errCursorAccountLimitReached) {
-		return rest.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
+		return httperrors.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
 			WithErrorDetails("per-account cursor session limit reached")
 	}
 	if errors.Is(err, errCursorSessionLimitReached) {
-		return rest.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
+		return httperrors.NewHTTPError(ctx, http.StatusTooManyRequests, verrors.VegaBackend_Query_CursorSessionLimitExceeded).
 			WithErrorDetails("global cursor session limit reached")
 	}
 	return err
@@ -487,18 +487,18 @@ func validateCursorResourceBinding(ctx context.Context, session *interfaces.Curs
 	req *interfaces.RawQueryRequest) error {
 	if session.ResourceDataResourceID == "" {
 		if req != nil && req.ResourceDataResourceID != "" {
-			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
 				WithErrorDetails("raw query cursor cannot be used for resource data paging")
 		}
 		return nil
 	}
 	if req == nil || req.ResourceDataResourceID != session.ResourceDataResourceID {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
 			WithErrorDetails("cursor does not belong to the current resource")
 	}
 	if req.ResourceDataUpdateTime != session.ResourceDataUpdateTime {
 		rawQueryCursorSessions.closeSession(session.ID)
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorResourceChanged).
 			WithErrorDetails("resource changed after cursor creation")
 	}
 	return nil
@@ -508,11 +508,11 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 	queryMap := req.Query.(map[string]any)
 	resourceID := queryResourceID(queryMap)
 	if resourceID == "" {
-		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("resource_id is required for DSL queries")
 	}
 	if sort, ok := queryMap["sort"].([]any); !ok || len(sort) == 0 {
-		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("sort is required for OpenSearch cursor paging")
 	}
 
@@ -521,7 +521,7 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 		return nil, "", nil, "", err
 	}
 	if resource == nil {
-		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 	}
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
@@ -535,14 +535,14 @@ func (rqs *rawQueryService) prepareOpenSearchCursorQuery(ctx context.Context, re
 		return nil, "", nil, "", err
 	}
 	if catalog == nil {
-		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
 	}
 	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
 		return nil, "", nil, "", err
 	}
 	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
-		return nil, "", nil, "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, "", nil, "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
 	}
 
@@ -590,7 +590,7 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("opensearch connector does not implement IndexConnector")
 	}
 
@@ -600,7 +600,7 @@ func (rqs *rawQueryService) executeOpenSearchCursorPage(ctx context.Context, ses
 
 	result, err := indexConnector.ExecuteRawQuery(pageCtx, session.OpenSearchIndex, query)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
 	}
 	if session.NeedTotal && !session.HasTotalCount && result.TotalCount != nil {
@@ -667,7 +667,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	}
 	resourceID, _ := queryMap["resource_id"].(string)
 	if resourceID == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("resource_id is required for DSL queries")
 	}
 
@@ -676,7 +676,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, err
 	}
 	if resource == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 			WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 	}
 	warning, err := resourcelogic.EnsureResourceQueryable(queryCtx, resource)
@@ -691,14 +691,14 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 		return nil, err
 	}
 	if catalog == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", resource.CatalogID))
 	}
 	if err := ensureCatalogEnabled(queryCtx, catalog); err != nil {
 		return nil, err
 	}
 	if catalog.ConnectorType != interfaces.ConnectorTypeOpenSearch {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("DSL input requires an opensearch catalog, got: %s", catalog.ConnectorType))
 	}
 
@@ -711,7 +711,7 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("opensearch connector does not implement IndexConnector")
 	}
 	if err := indexConnector.Connect(queryCtx); err != nil {
@@ -722,10 +722,10 @@ func (rqs *rawQueryService) executeInitialDSLQuery(ctx context.Context, req *int
 	if err != nil {
 		var validationErr *interfaces.RawAggregationValidationError
 		if errors.As(err, &validationErr) {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(validationErr.Error())
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
 	}
 	if isAggregation {
@@ -775,7 +775,7 @@ func targetDialectForCatalog(ctx context.Context, catalog *interfaces.Catalog) (
 	case interfaces.ConnectorTypeHANA:
 		return sqlglot.GenericDialect, nil
 	default:
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
 	}
 }
@@ -853,7 +853,7 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		}
 		for _, id := range resourceIDs {
 			if !resourceMap[id] {
-				return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+				return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 					WithErrorDetails(fmt.Sprintf("resource %s not found", id))
 			}
 		}
@@ -871,8 +871,12 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		catalogIDs[r.CatalogID] = true
 	}
 	if len(catalogIDs) > 1 {
-		return nil, nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_MultiCatalogNotSupported).
-			WithErrorDetails(locale.ValidationDetail(ctx, "MultiCatalogJoinNotSupported", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "VegaBackend.Validation.Detail.MultiCatalogJoinNotSupported", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_MultiCatalogNotSupported).
+			WithErrorDetails(localizedText)
 	}
 
 	// Load the catalog.
@@ -890,7 +894,7 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		return nil, nil, err
 	}
 	if catalog == nil {
-		return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_CatalogNotFound).
 			WithErrorDetails(fmt.Sprintf("catalog %s not found", catalogID))
 	}
 	if err := ensureCatalogEnabled(ctx, catalog); err != nil {
@@ -902,7 +906,7 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 
 func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) error {
 	if catalog != nil && !catalog.Enabled {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IsDisabled).
 			WithErrorDetails("catalog is disabled")
 	}
 	return nil
@@ -910,7 +914,7 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 
 // replaceResourceIDWithSchemaTable replaces resource placeholders with quoted source identifiers.
 func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context,
-	sql any, resourceIDs []string, catalog *interfaces.Catalog, inputDialect string) (string, error) {
+	sql any, resourceIDs []string, _ *interfaces.Catalog, inputDialect string) (string, error) {
 
 	replacedSQL := sql.(string)
 	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)
@@ -922,7 +926,7 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 			return "", err
 		}
 		if resource == nil {
-			return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
+			return "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound).
 				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 		}
 
@@ -1025,7 +1029,7 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 
 	tableConnector, ok := connector.(interfaces.TableConnector)
 	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported connector type: %s", catalog.ConnectorType))
 	}
 	// Establish the connection before any connector-specific operation. Some
@@ -1049,13 +1053,13 @@ func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.
 		otellog.LogError(ctx, "Execute SQL failed", err)
 		var sourceReadForbidden *interfaces.SourceReadForbiddenError
 		if errors.As(err, &sourceReadForbidden) {
-			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
+			return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Resource_SourceReadForbidden)
 		}
 		if detail, ok := interfaces.RequestSideQueryError(err); ok {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 				WithErrorDetails(detail)
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("query execution failed")
 	}
 
@@ -1068,7 +1072,7 @@ func rawQueryValidationError(ctx context.Context, err error) error {
 	if !errors.As(err, &validationErr) {
 		return nil
 	}
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 		WithErrorDetails("raw query rejected by read-only policy")
 }
 

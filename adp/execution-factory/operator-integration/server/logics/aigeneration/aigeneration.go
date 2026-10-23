@@ -10,11 +10,11 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
@@ -78,8 +78,11 @@ func (ag *aiGenerationService) generateChatCompletionParams(ctx context.Context,
 	case interfaces.PythonFunctionGenerator:
 		// Supply a default function request when the caller omits one.
 		if req.Query == "" {
-			tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
-			req.Query = tr.Trans("prompt.default_function_request")
+			text, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "AgentOperatorIntegration.prompt.default_function_request", nil)
+			if renderErr != nil {
+				return nil, renderErr
+			}
+			req.Query = text
 		}
 		userPrompt = promptTemplate.FormatUserPrompt(req.Query, req.Inputs, req.Outputs)
 	case interfaces.MetadataParamGenerator:

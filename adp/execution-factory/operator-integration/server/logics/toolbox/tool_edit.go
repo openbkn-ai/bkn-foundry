@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -14,7 +17,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/parsers"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 // UpdateTool update tool.
@@ -73,9 +75,9 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 		err = s.checkToolNameExist(ctx, req.BoxID, req.ToolName)
 		if err != nil {
 			// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
-			httErr := &oerrors.HTTPError{}
+			httErr := &httperrors.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
-				err = httErr.WithDescription(oerrors.ErrExtCommonNameExists)
+				err = oerrors.NewHTTPError(ctx, httErr.HTTPCode, oerrors.ErrExtCommonNameExists, httErr.ErrorDetails)
 			}
 			return
 		}

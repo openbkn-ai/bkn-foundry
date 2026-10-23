@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -40,15 +40,15 @@ func EnsureResourceQueryable(ctx context.Context, r *interfaces.Resource) (strin
 		return "", nil
 	}
 	if !r.Enabled {
-		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NotQueryable).
+		return "", httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NotQueryable).
 			WithErrorDetails(fmt.Sprintf("resource %s is disabled and cannot be queried", r.ID))
 	}
 	if r.Status == interfaces.ResourceStatusStale {
-		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NotQueryable).
+		return "", httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NotQueryable).
 			WithErrorDetails(fmt.Sprintf("resource %s is %s and cannot be queried", r.ID, r.Status))
 	}
 	if r.LastDiscoverStatus == interfaces.DiscoverStatusMissing {
-		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_MetadataUnavailable).
+		return "", httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_MetadataUnavailable).
 			WithErrorDetails("resource is missing from its source; run discovery and restore the source resource before querying")
 	}
 	if len(r.SchemaDefinition) == 0 {
@@ -56,7 +56,7 @@ func EnsureResourceQueryable(ctx context.Context, r *interfaces.Resource) (strin
 		if r.LastDiscoverStatus == interfaces.DiscoverStatusError {
 			details = "resource metadata discovery failed; refresh the resource schema before querying"
 		}
-		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_MetadataUnavailable).
+		return "", httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_MetadataUnavailable).
 			WithErrorDetails(details)
 	}
 	if r.Status == interfaces.ResourceStatusDeprecated {

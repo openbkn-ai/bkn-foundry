@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -31,13 +32,11 @@ func (r returningCypher) RunCypher(context.Context, *kncypher.RunCypherReq) (*in
 }
 
 // #1545: a bkn-backend refusal comes back to the agent as a tool error carrying
-// the compiler's own code and details, so the agent can tell a property it may
+// the compiler's code and details nested in the local error, so the agent can tell a property it may
 // not read, or a resource grant it lacks, from a query it wrote wrong.
 func TestRunCypherToolCarriesForbiddenCode(t *testing.T) {
-	handler := handleRunCypher(refusingCypher{err: &infraErr.HTTPError{
-		HTTPCode: http.StatusForbidden, Code: "BknBackend.Cypher.PropertyForbidden",
-		Description: "refused", ErrorDetails: "ot_user.phone",
-	}}, nil)
+	handler := handleRunCypher(refusingCypher{err: infraErr.NewHTTPError(context.Background(), http.StatusForbidden, infraErr.ErrExtCommonExternalServerError, httperrors.BaseError{ErrorCode: "BknBackend.Cypher.PropertyForbidden",
+		Description: "refused", ErrorDetails: "ot_user.phone"})}, nil)
 
 	result, err := handler(context.Background(), newCallToolRequest(map[string]any{
 		"kn_id": "kn-1", "query": "MATCH (u:user) RETURN u.phone", "response_format": "json",
@@ -49,22 +48,20 @@ func TestRunCypherToolCarriesForbiddenCode(t *testing.T) {
 		t.Fatalf("result = %+v, want one error content", result)
 	}
 	text, ok := mcp.AsTextContent(result.Content[0])
-	if !ok || !strings.Contains(text.Text, `"code":"BknBackend.Cypher.PropertyForbidden"`) ||
+	if !ok || !strings.Contains(text.Text, `"error_code":"BknBackend.Cypher.PropertyForbidden"`) ||
 		!strings.Contains(text.Text, "ot_user.phone") {
 		t.Fatalf("content = %+v, want the refusal's code and details", result.Content[0])
 	}
 }
 
 func TestRunCypherToolBuildsPropertyRequestLinksForEveryObjectType(t *testing.T) {
-	handler := handleRunCypher(refusingCypher{err: &infraErr.HTTPError{
-		HTTPCode: http.StatusForbidden, Code: "BknBackend.Cypher.PropertyForbidden",
+	handler := handleRunCypher(refusingCypher{err: infraErr.NewHTTPError(context.Background(), http.StatusForbidden, infraErr.ErrExtCommonExternalServerError, httperrors.BaseError{ErrorCode: "BknBackend.Cypher.PropertyForbidden",
 		Description: "refused", ErrorDetails: "ot_order.amount, ot_customer.name",
 		Metadata: map[string]any{"permission_impacts": []any{
 			map[string]any{"object_type_id": "ot_order", "properties": []any{"amount"}},
 			map[string]any{"object_type_id": "ot_order", "row_filter_applied": true},
 			map[string]any{"object_type_id": "ot_customer", "properties": []any{"name"}},
-		}},
-	}}, guidanceTestGuide())
+		}}})}, guidanceTestGuide())
 
 	result, err := handler(guidanceTestCtx(), newCallToolRequest(map[string]any{
 		"kn_id": "kn-1", "query": "MATCH (o:Order), (c:Customer) RETURN o.amount, c.name", "response_format": "json",

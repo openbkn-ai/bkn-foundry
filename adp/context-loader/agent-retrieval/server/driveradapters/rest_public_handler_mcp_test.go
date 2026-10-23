@@ -12,8 +12,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestMCPInfoBuildFailureIsLocalized(t *testing.T) {
@@ -28,14 +30,14 @@ func TestMCPInfoBuildFailureIsLocalized(t *testing.T) {
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			engine := gin.New()
-			engine.Use(sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware())
+			engine.Use(rest.LanguageMiddleware(), rest.PrivateNoCacheMiddleware())
 			handler := &restPublicHandler{}
 			engine.GET("/mcp/*path", handler.handleMCP)
 			request := httptest.NewRequest(http.MethodGet, "/mcp/info", nil)
-			request.Header.Set(sharedrest.AcceptLanguageHeader, test.language)
+			request.Header.Set(i18n.AcceptLanguageHeader, test.language)
 			response := httptest.NewRecorder()
 			engine.ServeHTTP(response, request)
-			if response.Code != http.StatusInternalServerError || response.Header().Get(sharedrest.ContentLanguageHeader) != test.language || response.Header().Get("Vary") != sharedrest.AcceptLanguageHeader || response.Header().Get("Cache-Control") != "private, no-cache" {
+			if response.Code != http.StatusInternalServerError || response.Header().Get(i18n.ContentLanguageHeader) != test.language || response.Header().Get("Vary") != i18n.AcceptLanguageHeader || response.Header().Get("Cache-Control") != "private, no-cache" {
 				t.Fatalf("unexpected response: status=%d headers=%v body=%s", response.Code, response.Header(), response.Body.String())
 			}
 			if !strings.Contains(response.Body.String(), "MCPInfoBuildFailed") || !strings.Contains(response.Body.String(), test.description) || strings.Contains(response.Body.String(), "embedded schema is invalid") {

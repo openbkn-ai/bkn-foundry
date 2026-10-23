@@ -15,7 +15,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -80,10 +80,10 @@ func TestQuerySourcePageVectorConditionErrorProvenance(t *testing.T) {
 			rows, total, err := rds.QuerySourcePage(context.Background(), resource, params)
 			assert.Nil(t, rows)
 			assert.Zero(t, total)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.statusCode, httpErr.HTTPCode)
-			assert.NotContains(t, httpErr.BaseError.ErrorDetails, "private")
+			assert.NotContains(t, httpErr.ErrorDetails, "private")
 		})
 	}
 }
@@ -192,18 +192,18 @@ func TestQuerySourcePageSearchPrerequisitesPrecedeOutputFields(t *testing.T) {
 					params := &interfaces.ResourceDataQueryParams{IgnoreLocalIndex: &ignore, OutputFields: []string{"id", "_score"}, FilterCondCfg: condition}
 					models := mock_interfaces.NewMockModelFactoryService(ctrl)
 					rows, total, err := (&resourceDataService{cs: catalogs, mfs: models}).QuerySourcePage(context.Background(), resource, params)
-					var httpErr *rest.HTTPError
+					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, err, &httpErr)
 					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-					assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+					assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
 					if ignore {
-						assert.Contains(t, httpErr.BaseError.ErrorDetails, "ignore_local_index")
+						assert.Contains(t, httpErr.ErrorDetails, "ignore_local_index")
 					} else if operation == filter_condition.OperationKnnVector {
-						assert.Contains(t, httpErr.BaseError.ErrorDetails, "build one before vector search")
+						assert.Contains(t, httpErr.ErrorDetails, "build one before vector search")
 					} else {
-						assert.Contains(t, httpErr.BaseError.ErrorDetails, "build one before full-text search")
+						assert.Contains(t, httpErr.ErrorDetails, "build one before full-text search")
 					}
-					assert.NotContains(t, httpErr.BaseError.ErrorDetails, "unknown output field")
+					assert.NotContains(t, httpErr.ErrorDetails, "unknown output field")
 					assert.Nil(t, rows)
 					assert.Zero(t, total)
 				})
@@ -223,10 +223,10 @@ func TestQuerySourcePageInvalidOutputFields(t *testing.T) {
 				resource := &interfaces.Resource{ID: "resource", CatalogID: "catalog", Category: category, SchemaDefinition: []*interfaces.Property{{Name: "id"}}}
 				params := &interfaces.ResourceDataQueryParams{OutputFields: fields}
 				rows, total, err := rds.QuerySourcePage(context.Background(), resource, params)
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-				assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter_OutputField, httpErr.BaseError.ErrorCode)
+				assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter_OutputField, httpErr.ErrorCode)
 				assert.Nil(t, rows)
 				assert.Zero(t, total)
 				assert.Equal(t, fields, params.OutputFields)
@@ -268,10 +268,10 @@ func TestQuerySourcePageClassifiesOutputFieldErrors(t *testing.T) {
 				require.ErrorAs(t, err, &stored)
 				require.ErrorIs(t, err, cause)
 			} else {
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-				assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+				assert.Equal(t, tc.code, httpErr.ErrorCode)
 			}
 			assert.Nil(t, rows)
 			assert.Zero(t, total)
@@ -460,11 +460,11 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 				return
 			}
 
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-			assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.BaseError.ErrorCode)
-			assert.Equal(t, test.wantDetails, httpErr.BaseError.ErrorDetails)
+			assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.ErrorCode)
+			assert.Equal(t, test.wantDetails, httpErr.ErrorDetails)
 		})
 	}
 }
@@ -479,10 +479,10 @@ func TestEnsureResourceQueryableDoesNotExposeStatusMessage(t *testing.T) {
 	}
 
 	_, err := resourcelogic.EnsureResourceQueryable(context.Background(), resource)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
-	assert.NotContains(t, httpErr.BaseError.ErrorDetails, resource.StatusMessage)
-	assert.NotContains(t, httpErr.BaseError.ErrorDetails, "syntax error at or near LATERAL")
+	assert.NotContains(t, httpErr.ErrorDetails, resource.StatusMessage)
+	assert.NotContains(t, httpErr.ErrorDetails, "syntax error at or near LATERAL")
 }
 
 func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *testing.T) {
@@ -503,10 +503,10 @@ func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *te
 	} {
 		_, err := rds.QueryWithPaging(context.Background(), resource, params)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.ErrorCode)
 	}
 }
 
@@ -514,7 +514,7 @@ func TestResourceDataServiceQueryWithPagingRequiresQueryDataPermission(t *testin
 	ctrl := gomock.NewController(t)
 	rs := mock_interfaces.NewMockResourceService(ctrl)
 	rds := &resourceDataService{rs: rs}
-	denied := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+	denied := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 	rs.EXPECT().CheckResourcePermission(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(denied)
 
 	_, err := rds.QueryWithPaging(context.Background(), &interfaces.Resource{ID: "resource-1"},
@@ -667,11 +667,11 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			Return(nil, int64(0), cause)
 
 		_, _, err := rds.query(context.Background(), resource, params)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "re-save the resource configuration")
 	})
 
 	t.Run("query table with local index preserves stored condition build failures", func(t *testing.T) {
@@ -772,7 +772,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
 		}
 		params := &interfaces.ResourceDataQueryParams{}
-		downstream := rest.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		downstream := httperrors.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("text field body has no keyword feature; re-save the resource configuration and rebuild the local index, or use match")
 
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
@@ -780,11 +780,11 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockDS.EXPECT().ListDocuments(gomock.Any(), resource, gomock.Any()).Return(nil, int64(0), downstream)
 
 		_, _, err := rds.query(context.Background(), resource, params)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "re-save the resource configuration")
 	})
 
 	t.Run("query dataset builds actual filter condition and delegates", func(t *testing.T) {
@@ -887,7 +887,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 			SchemaDefinition: []*interfaces.Property{{Name: "body", Type: interfaces.DataType_Text}},
 		}
 		params := &interfaces.ResourceDataQueryParams{}
-		downstream := rest.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		downstream := httperrors.NewHTTPError(context.Background(), http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("text field body has no keyword feature; re-save the resource configuration")
 
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
@@ -895,11 +895,11 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockLVS.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).Return(nil, downstream)
 
 		_, _, err := rds.query(context.Background(), resource, params)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "re-save the resource configuration")
 	})
 }
 
@@ -953,10 +953,10 @@ func TestResourceDataServiceRejectsIndexAggregationCursor(t *testing.T) {
 		},
 	})
 	require.Error(t, err)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
 }
 
 func TestResourceDataPaginationCategoryUsesPhysicalEngine(t *testing.T) {
@@ -999,7 +999,7 @@ func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
 	})
 	require.Error(t, err)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 }
@@ -1026,7 +1026,7 @@ func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.
 		Sort:   []*interfaces.SortField{{Field: "id", Direction: "asc"}},
 	})
 	require.Error(t, err)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 }
@@ -1124,10 +1124,10 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 	t.Helper()
 	require.Error(t, err)
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.ErrorCode)
 }
 
 // TestQueryClassifiesUnsupportedOperations 覆盖两个之前被抹平的分型点。
@@ -1170,10 +1170,10 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		rows, total, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
 		assert.NotContains(t, httpErr.Error(), "private driver column details")
 	})
 
@@ -1196,10 +1196,10 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		rows, total, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.ErrorCode)
 		assert.NotContains(t, httpErr.Error(), "source database error")
 	})
 
@@ -1220,10 +1220,10 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 			Return(nil, interfaces.NewSourceReadForbiddenError(errors.New("source database error")))
 
 		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.ErrorCode)
 	})
 
 	t.Run("index condition build error becomes HTTP 400", func(t *testing.T) {
@@ -1245,10 +1245,10 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		rows, total, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
 		assert.Contains(t, httpErr.Error(), "text field body has no keyword feature")
 	})
 
@@ -1269,10 +1269,10 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 			Return(nil, interfaces.NewSourceReadForbiddenError(errors.New("source database error")))
 
 		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.ErrorCode)
 	})
 
 	t.Run("raw driver code is not classified by the service", func(t *testing.T) {
@@ -1291,7 +1291,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 		mockConn.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(nil, &codedQueryError{258})
 
 		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	})
@@ -1352,7 +1352,7 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 			Return(nil, errors.New("connection reset by peer"))
 
 		_, _, err := rds.query(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.True(t, errors.As(err, &httpErr), "want an HTTPError, got %v", err)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	})
@@ -1360,11 +1360,11 @@ func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 
 func assertUnsupportedOperationHTTPError(t *testing.T, err error) {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.True(t, errors.As(err, &httpErr), "want an HTTPError, got %v", err)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode,
 		"算子不支持是请求侧问题：包成 500 会让 ontology-query 判成依赖故障")
-	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
 }
 
 func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
@@ -1394,11 +1394,11 @@ func TestResourceDataServiceQueryRejectsUnavailableIndexFields(t *testing.T) {
 					assert.Contains(t, storedErr.Cause.Error(), "not found")
 					return
 				}
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 				if !stored {
-					assert.Contains(t, httpErr.BaseError.ErrorDetails, "not found")
+					assert.Contains(t, httpErr.ErrorDetails, "not found")
 				}
 			})
 		}
@@ -1509,7 +1509,7 @@ func TestResourceDataServiceQueryDoris(t *testing.T) {
 			rows, total, err := service.QuerySourcePage(context.Background(), resource, &interfaces.ResourceDataQueryParams{FilterCondCfg: cfg})
 			assert.Nil(t, rows)
 			assert.Zero(t, total)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		}
@@ -1540,7 +1540,7 @@ func TestResourceDataServiceQueryJSON(t *testing.T) {
 					assert.Contains(t, storedErr.Cause.Error(), "not found")
 					return
 				}
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 			})
@@ -1603,15 +1603,15 @@ func TestResourceDataServiceQuerySourcePageVectorDimensions(t *testing.T) {
 				assert.Equal(t, "title_vector", cfg.Name)
 				return
 			}
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
 			assert.Nil(t, rows)
 			assert.Zero(t, total)
 			if tc.status == 400 {
-				assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
-				assert.Contains(t, httpErr.BaseError.ErrorDetails, "3")
-				assert.Contains(t, httpErr.BaseError.ErrorDetails, "1024")
+				assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+				assert.Contains(t, httpErr.ErrorDetails, "3")
+				assert.Contains(t, httpErr.ErrorDetails, "1024")
 			}
 		})
 	}
@@ -1655,10 +1655,10 @@ func TestResourceDataServiceQuerySourcePageLegacyVectorDimensions(t *testing.T) 
 				assert.Equal(t, int64(1), total)
 				return
 			}
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-			assert.Equal(t, verrors.VegaBackend_Resource_InternalError, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, verrors.VegaBackend_Resource_InternalError, httpErr.ErrorCode)
 			assert.Nil(t, rows)
 			assert.Zero(t, total)
 		})
@@ -1680,10 +1680,10 @@ func TestQuerySourcePageTemporalConfigurationErrors(t *testing.T) {
 			params.FixedFilterCondCfg = cfg
 		}
 		rows, total, err := svc.QuerySourcePage(context.Background(), source, params)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InternalError, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InternalError, httpErr.ErrorCode)
 		assert.Nil(t, rows)
 		assert.Zero(t, total)
 	}
@@ -1709,7 +1709,7 @@ func TestQuerySourcePageHavingTemporalErrors(t *testing.T) {
 			source := &interfaces.Resource{CatalogID: "catalog", Category: interfaces.ResourceCategoryTable, SchemaDefinition: []*interfaces.Property{field}}
 			params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "created", Aggr: "max"}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: tc.value}}
 			rows, total, err := svc.QuerySourcePage(context.Background(), source, params)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
 			assert.Nil(t, rows)
@@ -1739,11 +1739,11 @@ func TestResourceDataServiceQuerySourcePageKeywordLimit(t *testing.T) {
 				require.ErrorIs(t, err, cause)
 				return
 			}
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", httpErr.BaseError.ErrorCode)
-			assert.Equal(t, map[string]any{"field": "status", "limit": 256}, httpErr.BaseError.Metadata)
+			assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", httpErr.ErrorCode)
+			assert.Equal(t, map[string]any{"field": "status", "limit": 256}, httpErr.Metadata)
 			body, marshalErr := json.Marshal(httpErr.BaseError)
 			require.NoError(t, marshalErr)
 			assert.Contains(t, string(body), `"metadata":{"field":"status","limit":256}`)
