@@ -20,6 +20,12 @@ No container lifecycle is hidden in the test: start/stop dependencies separately
 
 ## Coverage
 
+The ordinary `make test-integration` CI job also runs a five-identity service
+window regression using `BKN_TRACE_TEST_MARIADB_DSN`. It checks pre-cursor totals,
+empty-page count fallback, and page equivalence to the legacy query, with unique
+fixture IDs and cleanup. It requires neither capacity settings nor OpenSearch,
+and applies no latency threshold.
+
 - 2,202 identities, including 2,100 service matches: empty first source modules,
   tied timestamps, retries, duplicate receipts, a descendant service, and foreign
   owners. All 2,100 matches traverse 11 HTTP cursor pages without truncation.
