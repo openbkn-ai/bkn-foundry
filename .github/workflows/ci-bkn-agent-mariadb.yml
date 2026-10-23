@@ -1,0 +1,46 @@
+name: ci-bkn-agent-mariadb
+
+on:
+  pull_request:
+    paths:
+      - 'infra/bkn-agent/**'
+      - 'migrations/bkn-agent/**'
+      - 'data-migrator/**'
+      - '.github/workflows/ci-bkn-agent-mariadb.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  mariadb-regressions:
+    runs-on: ubuntu-24.04
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: infra/bkn-agent
+    env:
+      BKN_AGENT_TEST_MARIADB_HOST: 127.0.0.1
+      BKN_AGENT_TEST_MARIADB_PORT: '3306'
+      OTEL_SDK_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install locked runtime and test dependencies
+        run: |
+          pip install --require-hashes -r requirements.lock
+          pip install --require-hashes -r test-requirements.lock
+      - name: Run real MariaDB regressions
+        run: python -m pytest app/test/test_*mariadb.py -q -s

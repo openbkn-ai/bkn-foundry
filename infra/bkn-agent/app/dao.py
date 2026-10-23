@@ -6,6 +6,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commons.i18n import localized_message
+from app.commons.locale import get_effective_locale
 from app.models import (
     AgentOut,
     AgentRow,
@@ -491,7 +492,18 @@ async def get_default_prompt(
     version = await session.get(PromptVersionRow, (prompt_id, head.f_current_version))
     if not version:
         return None
-    return version.f_content, version.f_vars_schema, version.f_version
+    return _localized_prompt_content(version), version.f_vars_schema, version.f_version
+
+
+def _localized_prompt_content(version: PromptVersionRow) -> str:
+    """Select a stored translation, never translate user-supplied content.
+
+    Canonical management/export/history reads deliberately do not call this.
+    New manually published versions have no inherited translations.
+    """
+    variants = version.f_localized_content or {}
+    translated = variants.get(get_effective_locale()) if isinstance(variants, dict) else None
+    return translated if isinstance(translated, str) and translated else version.f_content
 
 
 async def get_prompt_override(session: AsyncSession, agent_id: str, account_id: str) -> Optional[str]:
@@ -605,7 +617,7 @@ async def delete_user_setting(session: AsyncSession, agent_id: str, account_id: 
 # ---- Prompt management surface: versioned, append-only ----
 
 
-async def _prompt_out(session: AsyncSession, head: PromptRow):
+async def _prompt_out(session: AsyncSession, head: PromptRow, *, localized: bool = False):
     from app.models import PromptOut
 
     version = await session.get(PromptVersionRow, (head.f_prompt_id, head.f_current_version))
@@ -613,7 +625,7 @@ async def _prompt_out(session: AsyncSession, head: PromptRow):
         prompt_id=head.f_prompt_id,
         name=head.f_name,
         current_version=head.f_current_version,
-        content=version.f_content if version else "",
+        content=(_localized_prompt_content(version) if localized else version.f_content) if version else "",
         vars_schema=version.f_vars_schema if version else None,
         update_user=head.f_update_user,
         update_time=head.f_update_time,
@@ -650,9 +662,9 @@ async def create_prompt(
     return await _prompt_out(session, head)
 
 
-async def get_prompt(session: AsyncSession, prompt_id: str):
+async def get_prompt(session: AsyncSession, prompt_id: str, *, localized: bool = False):
     head = await session.get(PromptRow, prompt_id)
-    return await _prompt_out(session, head) if head else None
+    return await _prompt_out(session, head, localized=localized) if head else None
 
 
 async def list_prompts(session: AsyncSession, page: int, size: int):
