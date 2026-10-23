@@ -94,7 +94,7 @@ func Test_relationTypeService_CheckRelationTypeExistByID(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError_CheckRelationTypeIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError_CheckRelationTypeIfExistFailed)
 		})
 	})
 }
@@ -146,7 +146,7 @@ func Test_relationTypeService_GetRelationTypeIDsByKnID(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError_GetRelationTypesByIDsFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError_GetRelationTypesByIDsFailed)
 		})
 	})
 }
@@ -223,7 +223,7 @@ func Test_relationTypeService_GetRelationTypesByIDs(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_RelationTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_RelationTypeNotFound)
 		})
 
 		Convey("Failed when GetRelationTypesByIDs returns error\n", func() {
@@ -757,7 +757,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(result), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_RelationTypeIDExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_RelationTypeIDExisted)
 		})
 
 		Convey("Success with ignore mode when relation type ID exists\n", func() {
@@ -1768,7 +1768,7 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
-			So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError)
+			So(err.(*httperrors.HTTPError).ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError)
 		})
 
 		Convey("Failed when target object type not found\n", func() {
@@ -1790,7 +1790,7 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
-			So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError)
+			So(err.(*httperrors.HTTPError).ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError)
 		})
 
 		Convey("Failed when source property not found in DIRECT type\n", func() {
@@ -1826,7 +1826,7 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
 		})
 
 		Convey("Success DIRECT when GetObjectTypeByID returns OTs with DataProperties only (no PropertyMap; regression)\n", func() {
@@ -1905,7 +1905,7 @@ func Test_relationTypeService_validateDependency(t *testing.T) {
 			err := service.validateDependency(ctx, nil, relationType, true, nil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InvalidParameter)
 		})
 
 		Convey("Success when source/target resolved from batch preflight index\n", func() {
@@ -2040,7 +2040,7 @@ func TestRelationTypeStrictBackingResourceDependencyErrorMapping(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
-			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, tc.code, httpErr.ErrorCode)
 		})
 	}
 }
@@ -2134,7 +2134,7 @@ func Test_relationTypeService_ValidateRelationTypes(t *testing.T) {
 			smock.ExpectRollback()
 			err := service.ValidateRelationTypes(ctx, "kn1", interfaces.MAIN_BRANCH, relationTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
-			So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError)
+			So(err.(*httperrors.HTTPError).ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_InternalError)
 		})
 	})
 }

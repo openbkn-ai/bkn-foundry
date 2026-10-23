@@ -74,21 +74,21 @@ func Test_ValidateHeaderMethodOverride(t *testing.T) {
 			err := ValidateHeaderMethodOverride(ctx, "")
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_NullParameter_OverrideMethod)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_NullParameter_OverrideMethod)
 		})
 
 		Convey("失败 - POST方法", func() {
 			err := ValidateHeaderMethodOverride(ctx, "POST")
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
 		})
 
 		Convey("失败 - PUT方法", func() {
 			err := ValidateHeaderMethodOverride(ctx, "PUT")
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
 		})
 	})
 }
@@ -123,11 +123,11 @@ func Test_ValidateHeaderMethodOverrideLocalizesDetails(t *testing.T) {
 			if !ok {
 				t.Fatalf("ValidateHeaderMethodOverride() error type = %T, want *httperrors.HTTPError", err)
 			}
-			if httpErr.BaseError.ErrorCode != oerrors.OntologyQuery_InvalidParameter_OverrideMethod {
-				t.Fatalf("error code = %q, want %q", httpErr.BaseError.ErrorCode, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
+			if httpErr.ErrorCode != oerrors.OntologyQuery_InvalidParameter_OverrideMethod {
+				t.Fatalf("error code = %q, want %q", httpErr.ErrorCode, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
 			}
-			if details, ok := httpErr.BaseError.ErrorDetails.(string); !ok || details != tt.expected {
-				t.Fatalf("error details = %#v, want %q", httpErr.BaseError.ErrorDetails, tt.expected)
+			if details, ok := httpErr.ErrorDetails.(string); !ok || details != tt.expected {
+				t.Fatalf("error details = %#v, want %q", httpErr.ErrorDetails, tt.expected)
 			}
 		})
 	}
@@ -157,21 +157,21 @@ func Test_validateObjectsQueryParameters(t *testing.T) {
 			_, err := validateObjectsQueryParameters(ctx, "invalid", "false", "false", []string{})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - includeLogicParams无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "true", "false", "invalid", []string{})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - ignoreLocalIndex无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "true", "invalid", "true", []string{})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
 		})
 	})
 }
@@ -198,14 +198,14 @@ func Test_validateSugraphQueryParameters(t *testing.T) {
 			_, err := validateSugraphQueryParameters(ctx, "invalid", "false", []string{})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - ignoreLocalIndex无效", func() {
 			_, err := validateSugraphQueryParameters(ctx, "true", "invalid", []string{})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
 		})
 	})
 }
@@ -236,7 +236,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 		})
 
 		Convey("失败 - Direction为空", func() {
@@ -248,7 +248,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_Direction)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_Direction)
 		})
 
 		Convey("失败 - Direction无效", func() {
@@ -260,7 +260,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_Direction)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_Direction)
 		})
 
 		Convey("失败 - PathLength超过3", func() {
@@ -272,7 +272,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength)
 		})
 
 		Convey("成功 - PathLength等于3", func() {
@@ -299,7 +299,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 排序方向为空", func() {
@@ -316,7 +316,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 排序方向无效", func() {
@@ -333,7 +333,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("成功 - 排序方向为desc", func() {
@@ -378,7 +378,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - Limit超过最大值", func() {
@@ -393,7 +393,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("成功 - Limit为0时设置默认值", func() {
@@ -490,7 +490,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 对象类型为空", func() {
@@ -513,7 +513,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathObjectTypes)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathObjectTypes)
 		})
 
 		Convey("失败 - 边为空", func() {
@@ -532,7 +532,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathRelationTypes)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathRelationTypes)
 		})
 
 		Convey("失败 - 关系类ID为空", func() {
@@ -558,7 +558,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
 		})
 
 		Convey("成功 - 起点对象类ID为空时按相邻节点推导", func() {
@@ -634,7 +634,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
 		Convey("失败 - 边的终点与对象类型数组不匹配", func() {
@@ -660,7 +660,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
 		Convey("失败 - 多条边时，当前边的起点不等于前一条边的终点", func() {
@@ -692,7 +692,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
 		Convey("成功 - Limit为0时设置默认值", func() {
@@ -749,7 +749,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 对象类型的Limit超过最大值", func() {
@@ -780,7 +780,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 	})
 }
@@ -917,10 +917,10 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 			if !ok {
 				t.Fatalf("error = %T %v, want *httperrors.HTTPError", err, err)
 			}
-			if httpErr.BaseError.ErrorCode != tt.wantCode {
-				t.Fatalf("error code = %q, want %q", httpErr.BaseError.ErrorCode, tt.wantCode)
+			if httpErr.ErrorCode != tt.wantCode {
+				t.Fatalf("error code = %q, want %q", httpErr.ErrorCode, tt.wantCode)
 			}
-			details, _ := httpErr.BaseError.ErrorDetails.(string)
+			details, _ := httpErr.ErrorDetails.(string)
 			for _, part := range tt.wantParts {
 				if !strings.Contains(details, part) {
 					t.Errorf("error details = %q, want it to contain %q", details, part)
@@ -953,7 +953,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			err := validateObjectSearchRequest(localizedCtx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			details := httpErr.BaseError.ErrorDetails.(string)
+			details := httpErr.ErrorDetails.(string)
 			So(details, ShouldStartWith, "解析过滤条件失败：")
 			So(details, ShouldContainSubstring, "sub_conditions")
 		})
@@ -967,7 +967,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - Limit超过最大值", func() {
@@ -979,7 +979,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("成功 - Limit为0时设置默认值", func() {
@@ -1008,7 +1008,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 排序方向为空", func() {
@@ -1023,7 +1023,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - 排序方向无效", func() {
@@ -1038,7 +1038,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("成功 - 排序方向为desc", func() {
@@ -1118,7 +1118,7 @@ func Test_validateObjectPropertyValueQuery(t *testing.T) {
 			err := validateObjectPropertyValueQuery(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
 		Convey("失败 - Properties为空", func() {
@@ -1131,7 +1131,7 @@ func Test_validateObjectPropertyValueQuery(t *testing.T) {
 			err := validateObjectPropertyValueQuery(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 	})
 }

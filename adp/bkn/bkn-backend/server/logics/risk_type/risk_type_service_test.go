@@ -134,7 +134,7 @@ func TestRiskTypeServiceCreateRiskTypesUsesBatchAccess(t *testing.T) {
 			t.Fatalf("CreateRiskTypes() = (%v, %v), want empty ids and an error", ids, err)
 		}
 		httpErr, ok := err.(*httperrors.HTTPError)
-		if !ok || httpErr.BaseError.ErrorCode != berrors.BknBackend_RiskType_RiskTypeNameExisted {
+		if !ok || httpErr.ErrorCode != berrors.BknBackend_RiskType_RiskTypeNameExisted {
 			t.Fatalf("CreateRiskTypes() error = %#v, want %s", err,
 				berrors.BknBackend_RiskType_RiskTypeNameExisted)
 		}
@@ -419,7 +419,7 @@ func TestRiskTypeServiceHandleImportModeLocalizesInvalidMode(t *testing.T) {
 
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "import_mode \u5fc5\u987b\u4e3a overwrite\u3001normal \u6216 ignore\u3002")
+			So(httpErr.ErrorDetails, ShouldEqual, "import_mode \u5fc5\u987b\u4e3a overwrite\u3001normal \u6216 ignore\u3002")
 		})
 
 		Convey("English request uses the English catalog", func() {
@@ -431,7 +431,7 @@ func TestRiskTypeServiceHandleImportModeLocalizesInvalidMode(t *testing.T) {
 
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "import_mode must be one of overwrite, normal, or ignore.")
+			So(httpErr.ErrorDetails, ShouldEqual, "import_mode must be one of overwrite, normal, or ignore.")
 		})
 	})
 }

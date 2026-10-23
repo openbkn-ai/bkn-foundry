@@ -117,8 +117,8 @@ func TestVegaCursorSessionLimitIsReportedAsTooManyRequests(t *testing.T) {
 	_, err = service.GetObjectsByObjectTypeID(ctx, next)
 	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusTooManyRequests ||
-		httpErr.BaseError.ErrorCode != oerrors.OntologyQuery_ObjectType_TooManyRequests ||
-		httpErr.BaseError.ErrorDetails != "cursor session limit reached, please retry later" {
+		httpErr.ErrorCode != oerrors.OntologyQuery_ObjectType_TooManyRequests ||
+		httpErr.ErrorDetails != "cursor session limit reached, please retry later" {
 		t.Fatalf("error = %#v", err)
 	}
 }

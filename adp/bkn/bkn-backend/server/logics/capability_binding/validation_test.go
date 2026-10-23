@@ -29,7 +29,7 @@ func errorCodeOf(t *testing.T, err error) string {
 	t.Helper()
 	httpErr, ok := err.(*httperrors.HTTPError)
 	So(ok, ShouldBeTrue)
-	return httpErr.BaseError.ErrorCode
+	return httpErr.ErrorCode
 }
 
 // TestAttachValidatesTargets covers #1258: a binding names something in the execution factory, and

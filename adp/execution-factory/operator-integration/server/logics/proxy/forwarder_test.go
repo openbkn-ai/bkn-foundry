@@ -44,7 +44,7 @@ func TestForwardStream_MissingResponseWriterDoesNotPanic(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, 500)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "response writer not found in context")
+			So(httpErr.ErrorDetails, ShouldEqual, "response writer not found in context")
 		}, ShouldNotPanic)
 	})
 }
@@ -168,7 +168,7 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "resource_id")
+			So(httpErr.ErrorDetails, ShouldContainSubstring, "resource_id")
 		})
 
 		Convey("query 参数追加到 URL，且不丢模板里已有的 query", func() {

@@ -78,10 +78,10 @@ func TestResolveTypeEdgeDirection(t *testing.T) {
 				t.Fatalf("error = %T %v, want *httperrors.HTTPError", err, err)
 			}
 			if httpErr.HTTPCode != http.StatusBadRequest ||
-				httpErr.BaseError.ErrorCode != oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath {
-				t.Fatalf("error = %d %q, want 400 TypePath", httpErr.HTTPCode, httpErr.BaseError.ErrorCode)
+				httpErr.ErrorCode != oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath {
+				t.Fatalf("error = %d %q, want 400 TypePath", httpErr.HTTPCode, httpErr.ErrorCode)
 			}
-			details, _ := httpErr.BaseError.ErrorDetails.(string)
+			details, _ := httpErr.ErrorDetails.(string)
 			for _, part := range tt.wantParts {
 				if !strings.Contains(details, part) {
 					t.Errorf("error details = %q, want it to contain %q", details, part)

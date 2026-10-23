@@ -235,7 +235,7 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.ErrorCode)
 }
 
 func TestRawQueryValidationError(t *testing.T) {
@@ -247,7 +247,7 @@ func TestRawQueryValidationError(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
 		assert.NotContains(t, httpErr.Error(), "secret")
 	})
 	t.Run("ignores unrelated errors", func(t *testing.T) {
@@ -488,7 +488,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			assertHTTPError(t, err, http.StatusBadRequest)
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
-			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.BaseError.ErrorDetails)
+			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.ErrorDetails)
 		})
 	}
 	t.Run("revalidates transpiled SQL", func(t *testing.T) {
@@ -702,8 +702,8 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		assertHTTPError(t, err, http.StatusBadRequest)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Equal(t, "query references an unknown column", httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+		assert.Equal(t, "query references an unknown column", httpErr.ErrorDetails)
 	})
 
 	t.Run("returns source read forbidden for connector privilege errors", func(t *testing.T) {
@@ -727,8 +727,8 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		assertHTTPError(t, err, http.StatusForbidden)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
-		assert.Empty(t, httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.ErrorCode)
+		assert.Empty(t, httpErr.ErrorDetails)
 	})
 
 	t.Run("connects before executing unpaged SQL", func(t *testing.T) {
@@ -767,8 +767,8 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		assertHTTPError(t, err, http.StatusBadRequest)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Equal(t, "query references an unknown column", httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+		assert.Equal(t, "query references an unknown column", httpErr.ErrorDetails)
 	})
 
 	t.Run("uses generic detail for other source query parameter failures", func(t *testing.T) {
@@ -792,8 +792,8 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 		assertHTTPError(t, err, http.StatusBadRequest)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Equal(t, "invalid source query parameter", httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+		assert.Equal(t, "invalid source query parameter", httpErr.ErrorDetails)
 	})
 
 	t.Run("preserves internal errors for other database failures", func(t *testing.T) {
@@ -1591,8 +1591,8 @@ func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 				assertHTTPError(t, err, http.StatusNotImplemented)
 				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
-				assert.Equal(t, verrors.VegaBackend_Query_MultiCatalogNotSupported, httpErr.BaseError.ErrorCode)
-				assert.Equal(t, test.detail, httpErr.BaseError.ErrorDetails)
+				assert.Equal(t, verrors.VegaBackend_Query_MultiCatalogNotSupported, httpErr.ErrorCode)
+				assert.Equal(t, test.detail, httpErr.ErrorDetails)
 				assert.Nil(t, catalog)
 				assert.Nil(t, warnings)
 			})
@@ -1610,7 +1610,7 @@ func TestEnsureCatalogEnabled(t *testing.T) {
 		assertHTTPError(t, err, http.StatusConflict)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.ErrorCode)
 	})
 }
 
@@ -1637,8 +1637,8 @@ func TestCursorSessionCreateError(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusTooManyRequests, httpErr.HTTPCode)
-			assert.Equal(t, verrors.VegaBackend_Query_CursorSessionLimitExceeded, httpErr.BaseError.ErrorCode)
-			assert.Equal(t, testCase.details, httpErr.BaseError.ErrorDetails)
+			assert.Equal(t, verrors.VegaBackend_Query_CursorSessionLimitExceeded, httpErr.ErrorCode)
+			assert.Equal(t, testCase.details, httpErr.ErrorDetails)
 		})
 	}
 }

@@ -158,7 +158,7 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldContainSubstring, myErr.ErrExtOperatorDirectPublishErr.String())
+			So(httpErr.ErrorCode, ShouldContainSubstring, myErr.ErrExtOperatorDirectPublishErr.String())
 		})
 		Convey("注册算子-validateOperator：解析失败", func() {
 			req.MetadataType = interfaces.MetadataTypeFunc

@@ -276,7 +276,7 @@ func TestValidateFilterCondCfg(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, validateFilterCondCfg(ctx, cfg), &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.ErrorCode)
 	})
 }
 
@@ -332,7 +332,7 @@ func TestValidateAggregateParams(t *testing.T) {
 				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-				assert.Equal(t, verrors.VegaBackend_InvalidParameter_Aggregation, httpErr.BaseError.ErrorCode)
+				assert.Equal(t, verrors.VegaBackend_InvalidParameter_Aggregation, httpErr.ErrorCode)
 				assert.ErrorContains(t, err, "only supports count")
 			})
 		}
@@ -392,7 +392,7 @@ func TestValidateAggregateParams(t *testing.T) {
 					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, err, &httpErr)
 					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
+					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.ErrorCode)
 				})
 			}
 		}
@@ -427,7 +427,7 @@ func TestValidateAggregateParams(t *testing.T) {
 					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, err, &httpErr)
 					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
+					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.ErrorCode)
 				})
 			}
 		}
@@ -438,7 +438,7 @@ func TestValidateAggregateParams(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.ErrorCode)
 		}
 	})
 

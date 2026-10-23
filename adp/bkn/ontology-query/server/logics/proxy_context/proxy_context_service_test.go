@@ -159,7 +159,7 @@ func TestResolveMapsStableBKNProxyErrors(t *testing.T) {
 			}})
 			_, err := resolver.Resolve(callerContext(), validBinding())
 			httpErr, ok := err.(*httperrors.HTTPError)
-			if !ok || httpErr.BaseError.ErrorCode != test.want {
+			if !ok || httpErr.ErrorCode != test.want {
 				t.Fatalf("Resolve() error = %#v, want code %q", err, test.want)
 			}
 		})
@@ -201,7 +201,7 @@ func assertServiceUnavailable(t *testing.T, _ *interfaces.TrustedProxyContext, e
 func assertProxyError(t *testing.T, _ *interfaces.TrustedProxyContext, err error, status int, code string) {
 	t.Helper()
 	httpErr, ok := err.(*httperrors.HTTPError)
-	if !ok || httpErr.HTTPCode != status || httpErr.BaseError.ErrorCode != code {
+	if !ok || httpErr.HTTPCode != status || httpErr.ErrorCode != code {
 		t.Fatalf("expected status %d code %q, got %T %#v", status, code, err, err)
 	}
 }

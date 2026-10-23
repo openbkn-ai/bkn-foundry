@@ -19,7 +19,12 @@ func TestStageDeltaPersistsPlanAndEventInCallerTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	access := &outboxAccess{db: db}
 	source := interfaces.ProxyGrantSourceSpec{
 		KNID: "kn-1", BindingType: "relation_type", BindingID: "rt-1",
@@ -66,7 +71,12 @@ func TestCleanupTerminalDeletesOnlySafeRetainedEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	access := &outboxAccess{db: db}
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT GET_LOCK(CONCAT(DATABASE(), ':', ?), 0)")).
 		WithArgs(cleanupLockName).WillReturnRows(sqlmock.NewRows([]string{"acquired"}).AddRow(1))
@@ -93,7 +103,12 @@ func TestRetryPersistsCompletingStateAfterSafeAlreadyApplied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	access := &outboxAccess{db: db}
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT f_kn_id, f_proxy_account_id, f_generation FROM t_kn_proxy_sync_outbox").
@@ -120,7 +135,12 @@ func TestClaimNextClaimsOnlyDatabaseSelectedQueueHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	access := &outboxAccess{db: db}
 	payload, err := json.Marshal(&interfaces.KNProxyOutboxEvent{
 		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", Generation: 3,
@@ -158,7 +178,12 @@ func TestClaimNextKeepsCompletingFenceAndAttemptBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	access := &outboxAccess{db: db}
 	payload, err := json.Marshal(&interfaces.KNProxyOutboxEvent{
 		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", Generation: 3,
@@ -217,7 +242,12 @@ func TestCompleteKeepsLatestPendingVersionWhenNewerGenerationExists(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	access := &outboxAccess{db: db}
 	event := &interfaces.KNProxyOutboxEvent{
 		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", Generation: 1,
@@ -250,7 +280,12 @@ func TestCompleteRejectsAStaleBaseVersionBeforeChangingSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	access := &outboxAccess{db: db}
 	event := &interfaces.KNProxyOutboxEvent{
 		ID: "event-1", KNID: "kn-1", ProxyAccountID: "proxy-1", Generation: 2,

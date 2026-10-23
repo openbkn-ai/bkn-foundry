@@ -42,7 +42,7 @@ func TestSemanticUnderstandingTaskServiceList(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, "VegaBackend.SemanticUnderstandingTask.InternalError.GetFailed", httpErr.BaseError.ErrorCode)
+		assert.Equal(t, "VegaBackend.SemanticUnderstandingTask.InternalError.GetFailed", httpErr.ErrorCode)
 		assert.Nil(t, tasks)
 		assert.Zero(t, total)
 	})

@@ -521,7 +521,7 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 			// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
 			httErr := &httperrors.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
-				err = oerrors.NewHTTPError(ctx, httErr.HTTPCode, oerrors.ErrExtCommonNameExists, httErr.BaseError.ErrorDetails)
+				err = oerrors.NewHTTPError(ctx, httErr.HTTPCode, oerrors.ErrExtCommonNameExists, httErr.ErrorDetails)
 			}
 			return
 		}

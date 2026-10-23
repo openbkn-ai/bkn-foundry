@@ -136,20 +136,20 @@ func TestCreateValueTypes(t *testing.T) {
 		vt.Pattern = "^[A-Z]$"
 		_, err := f.svc.CreateValueTypes(ctx, nil, []*interfaces.ValueType{vt}, interfaces.ImportMode_Normal)
 		httpErr := httpError(t, err)
-		assert.Equal(t, berrors.BknBackend_ValueType_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "range, length and pattern do not go with it")
+		assert.Equal(t, berrors.BknBackend_ValueType_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "range, length and pattern do not go with it")
 
 		f.allow(interfaces.OPERATION_TYPE_MODIFY)
 		vt = lisStatus()
 		vt.Enum = append(vt.Enum, nil)
 		_, err = f.svc.CreateValueTypes(ctx, nil, []*interfaces.ValueType{vt}, interfaces.ImportMode_Normal)
-		assert.Contains(t, httpError(t, err).BaseError.ErrorDetails, "an enum item is null")
+		assert.Contains(t, httpError(t, err).ErrorDetails, "an enum item is null")
 
 		f.allow(interfaces.OPERATION_TYPE_MODIFY)
 		vt = amountCNY()
 		vt.BaseType = "money"
 		_, err = f.svc.CreateValueTypes(ctx, nil, []*interfaces.ValueType{vt}, interfaces.ImportMode_Normal)
-		assert.Contains(t, httpError(t, err).BaseError.ErrorDetails, "base_type must be one of")
+		assert.Contains(t, httpError(t, err).ErrorDetails, "base_type must be one of")
 	})
 
 	t.Run("import modes", func(t *testing.T) {
@@ -159,7 +159,7 @@ func TestCreateValueTypes(t *testing.T) {
 		f.allow(interfaces.OPERATION_TYPE_MODIFY)
 		f.vta.EXPECT().GetValueTypeIdentitiesByIDsOrNames(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(existing, nil)
 		_, err := f.svc.CreateValueTypes(ctx, nil, []*interfaces.ValueType{amountCNY()}, interfaces.ImportMode_Normal)
-		assert.Equal(t, berrors.BknBackend_ValueType_ValueTypeIDExisted, httpError(t, err).BaseError.ErrorCode)
+		assert.Equal(t, berrors.BknBackend_ValueType_ValueTypeIDExisted, httpError(t, err).ErrorCode)
 
 		f = newFixture(t)
 		f.allow(interfaces.OPERATION_TYPE_MODIFY)
@@ -186,7 +186,7 @@ func TestCreateValueTypes(t *testing.T) {
 		f.vta.EXPECT().GetValueTypeIdentitiesByIDsOrNames(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return([]*interfaces.ValueType{{VTID: "other", VTName: "人民币金额"}}, nil)
 		_, err = f.svc.CreateValueTypes(ctx, nil, []*interfaces.ValueType{amountCNY()}, interfaces.ImportMode_Overwrite)
-		assert.Equal(t, berrors.BknBackend_ValueType_ValueTypeNameExisted, httpError(t, err).BaseError.ErrorCode,
+		assert.Equal(t, berrors.BknBackend_ValueType_ValueTypeNameExisted, httpError(t, err).ErrorCode,
 			"overwrite does not take a name another value type holds")
 	})
 }
@@ -211,8 +211,8 @@ func TestUpdateValueType(t *testing.T) {
 		err := f.svc.UpdateValueType(ctx, nil, vt)
 		httpErr := httpError(t, err)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, berrors.BknBackend_ValueType_Referenced, httpErr.BaseError.ErrorCode)
-		details := httpErr.BaseError.ErrorDetails.(map[string]any)
+		assert.Equal(t, berrors.BknBackend_ValueType_Referenced, httpErr.ErrorCode)
+		details := httpErr.ErrorDetails.(map[string]any)
 		assert.Equal(t, []interfaces.ValueTypeReference{
 			{ObjectTypeID: "order", ObjectTypeName: "订单", Property: "amount", PropertyType: "decimal"},
 		}, details["references"])
@@ -246,7 +246,7 @@ func TestUpdateValueType(t *testing.T) {
 			Return([]*interfaces.ValueType{{VTID: "other", VTName: "人民币金额"}}, nil)
 		f.smock.ExpectRollback()
 		err := f.svc.UpdateValueType(ctx, nil, amountCNY())
-		assert.Equal(t, berrors.BknBackend_ValueType_ValueTypeNameExisted, httpError(t, err).BaseError.ErrorCode)
+		assert.Equal(t, berrors.BknBackend_ValueType_ValueTypeNameExisted, httpError(t, err).ErrorCode)
 	})
 
 	t.Run("not found", func(t *testing.T) {
@@ -273,8 +273,8 @@ func TestDeleteValueType(t *testing.T) {
 		f.smock.ExpectRollback()
 		err := f.svc.DeleteValueType(ctx, nil, "kn1", interfaces.MAIN_BRANCH, "amount_cny")
 		httpErr := httpError(t, err)
-		assert.Equal(t, berrors.BknBackend_ValueType_Referenced, httpErr.BaseError.ErrorCode)
-		assert.Len(t, httpErr.BaseError.ErrorDetails.(map[string]any)["references"], 1)
+		assert.Equal(t, berrors.BknBackend_ValueType_Referenced, httpErr.ErrorCode)
+		assert.Len(t, httpErr.ErrorDetails.(map[string]any)["references"], 1)
 		assert.NoError(t, f.smock.ExpectationsWereMet())
 	})
 

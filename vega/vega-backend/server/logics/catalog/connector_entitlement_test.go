@@ -24,7 +24,7 @@ func TestConnectorInitializationError(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.True(t, errors.As(err, &httpErr))
 		require.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
-		require.Equal(t, verrors.VegaBackend_Connector_EntitlementDenied, httpErr.BaseError.ErrorCode)
+		require.Equal(t, verrors.VegaBackend_Connector_EntitlementDenied, httpErr.ErrorCode)
 	})
 
 	t.Run("connector disabled", func(t *testing.T) {
@@ -32,6 +32,6 @@ func TestConnectorInitializationError(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.True(t, errors.As(err, &httpErr))
 		require.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		require.Equal(t, verrors.VegaBackend_Connector_Disabled, httpErr.BaseError.ErrorCode)
+		require.Equal(t, verrors.VegaBackend_Connector_Disabled, httpErr.ErrorCode)
 	})
 }

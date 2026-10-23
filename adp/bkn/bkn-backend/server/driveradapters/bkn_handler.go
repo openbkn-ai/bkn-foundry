@@ -202,7 +202,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate knowledge network[%s] failed: %s. %v", kn.KNName,
-			httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.ErrorCode, httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("kn_name").String(kn.KNName))

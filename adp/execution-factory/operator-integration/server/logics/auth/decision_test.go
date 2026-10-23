@@ -69,8 +69,8 @@ func TestOperationCheckAllSeparatesDenialFromDependencyFailure(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusServiceUnavailable)
-			So(strings.HasSuffix(httpErr.BaseError.ErrorCode, "."+oerrors.ErrExtCommonAuthorizationUnavailable.String()), ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldBeNil)
+			So(strings.HasSuffix(httpErr.ErrorCode, "."+oerrors.ErrExtCommonAuthorizationUnavailable.String()), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldBeNil)
 			So(err.Error(), ShouldNotContainSubstring, "10.43.0.17")
 			So(err.Error(), ShouldNotContainSubstring, "/api/safe/v1/authz/checks")
 			So(logged, ShouldContainSubstring, cause.Error())

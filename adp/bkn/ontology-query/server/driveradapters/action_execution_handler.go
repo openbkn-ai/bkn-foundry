@@ -124,7 +124,7 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -145,7 +145,7 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -209,7 +209,7 @@ func (r *restHandler) GetActionExecution(c *gin.Context, visitor hydra.Visitor, 
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -270,7 +270,7 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -331,7 +331,7 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -395,7 +395,7 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -435,7 +435,7 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -559,7 +559,7 @@ func normalizeActionResultsQuery(query *interfaces.ActionResultsQuery) error {
 func replyActionResultsError(ctx context.Context, c *gin.Context, span trace.Span, status int, code string, details string) {
 	httpErr := httperrors.NewHTTPError(ctx, status, code).WithErrorDetails(details)
 	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-	otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+	otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 	rest.ReplyError(c, httpErr)
 }
 
@@ -658,7 +658,7 @@ func (r *restHandler) CancelActionLog(c *gin.Context, visitor hydra.Visitor) {
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}

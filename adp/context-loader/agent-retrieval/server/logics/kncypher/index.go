@@ -140,8 +140,8 @@ func classifyRunCypherFailure(err error) bkntrace.RunCypherFailure {
 	if !errors.As(err, &httpErr) {
 		return failure
 	}
-	code := httpErr.BaseError.ErrorCode
-	if source, ok := httpErr.BaseError.ErrorDetails.(httperrors.BaseError); ok {
+	code := httpErr.ErrorCode
+	if source, ok := httpErr.ErrorDetails.(httperrors.BaseError); ok {
 		code = source.ErrorCode
 	}
 	code = strings.ToLower(code)

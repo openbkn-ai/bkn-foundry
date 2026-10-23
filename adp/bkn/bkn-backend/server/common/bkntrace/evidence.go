@@ -33,7 +33,7 @@ const (
 )
 
 const (
-	envProducerStreamID = "BKN_TRACE_PRODUCER_STREAM_ID"
+	envProducerStreamID = "BKN_TRACE_PRODUCER_STREAM_ID" //nolint:unused // Intentionally retained.
 )
 
 const (
@@ -112,8 +112,8 @@ type eventContext struct {
 }
 
 var (
-	safeErrorCodeRE = regexp.MustCompile(`^[0-9A-Za-z_.-]{1,128}$`)
-	safeErrorPathRE = regexp.MustCompile(`^\$(?:\.[0-9A-Za-z_.-]+|\[[0-9]+\])+$`)
+	safeErrorCodeRE = regexp.MustCompile(`^[0-9A-Za-z_.-]{1,128}$`)               //nolint:unused // Intentionally retained.
+	safeErrorPathRE = regexp.MustCompile(`^\$(?:\.[0-9A-Za-z_.-]+|\[[0-9]+\])+$`) //nolint:unused // Intentionally retained.
 )
 
 func EvidenceEnabled() bool {

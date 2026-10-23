@@ -326,8 +326,8 @@ func downstreamErrorDetails(err error) any {
 		}
 		return envelope.ErrorCode + ": " + details
 	}
-	if he.BaseError.ErrorDetails != nil {
-		return he.BaseError.ErrorDetails
+	if he.ErrorDetails != nil {
+		return he.ErrorDetails
 	}
 	return he.Error()
 }

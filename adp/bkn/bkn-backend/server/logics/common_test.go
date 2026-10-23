@@ -91,7 +91,7 @@ func Test_BuildDslQuery(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(dsl, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_InternalError_UnMarshalDataFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_InternalError_UnMarshalDataFailed)
 		})
 
 		Convey("Success with complex query string\n", func() {

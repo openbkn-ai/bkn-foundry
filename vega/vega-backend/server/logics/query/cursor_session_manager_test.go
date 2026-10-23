@@ -269,7 +269,7 @@ func TestCloseCursorSession(t *testing.T) {
 	err = CloseCursorSession(context.Background(), "account-a", session.ID)
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-	assert.Equal(t, verrors.VegaBackend_Query_CursorInUse, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, verrors.VegaBackend_Query_CursorInUse, httpErr.ErrorCode)
 	session.Unlock()
 
 	require.NoError(t, CloseCursorSession(context.Background(), "account-a", session.ID))

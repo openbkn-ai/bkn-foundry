@@ -50,6 +50,6 @@ func WriteCode(c *gin.Context, status int, code string, details any) {
 	c.Header(i18n.ContentLanguageHeader, string(err.Lang))
 	rest.ReplyOK(c, status, localizedErrorResponse{
 		BaseError: err.BaseError,
-		Error:     err.BaseError.Description,
+		Error:     err.Description,
 	})
 }

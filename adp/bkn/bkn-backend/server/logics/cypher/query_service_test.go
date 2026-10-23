@@ -42,7 +42,7 @@ type recordingSpan struct {
 
 func (s recordingSpan) SetAttributes(attributes ...attribute.KeyValue) {
 	for _, kv := range attributes {
-		s.recorder.attrs[string(kv.Key)] = kv.Value.Emit()
+		s.recorder.attrs[string(kv.Key)] = kv.Value.String()
 	}
 }
 
@@ -560,7 +560,7 @@ func errorCodeOf(t *testing.T, err error) string {
 	if !errors.As(err, &httpErr) {
 		t.Fatalf("error = %T (%v), want *httperrors.HTTPError", err, err)
 	}
-	return httpErr.BaseError.ErrorCode
+	return httpErr.ErrorCode
 }
 
 func errorDetailsOf(t *testing.T, err error) string {
@@ -569,7 +569,7 @@ func errorDetailsOf(t *testing.T, err error) string {
 	if !errors.As(err, &httpErr) {
 		t.Fatalf("error = %T (%v), want *httperrors.HTTPError", err, err)
 	}
-	details, _ := httpErr.BaseError.ErrorDetails.(string)
+	details, _ := httpErr.ErrorDetails.(string)
 	return details
 }
 
@@ -659,7 +659,7 @@ func TestQueryRefusesPropertyWithoutFullAccess(t *testing.T) {
 				if !errors.As(err, &httpErr) {
 					t.Fatalf("error = %T, want *httperrors.HTTPError", err)
 				}
-				encoded, marshalErr := json.Marshal(httpErr.BaseError.Metadata["permission_impacts"])
+				encoded, marshalErr := json.Marshal(httpErr.Metadata["permission_impacts"])
 				if marshalErr != nil {
 					t.Fatalf("marshal permission impacts: %v", marshalErr)
 				}
@@ -691,7 +691,7 @@ func TestPropertyRefusalIncludesTheRowFilterThatWouldAlsoShapeTheQuery(t *testin
 	if !errors.As(err, &httpErr) {
 		t.Fatalf("error = %T, want *httperrors.HTTPError", err)
 	}
-	encoded, marshalErr := json.Marshal(httpErr.BaseError.Metadata["permission_impacts"])
+	encoded, marshalErr := json.Marshal(httpErr.Metadata["permission_impacts"])
 	if marshalErr != nil {
 		t.Fatal(marshalErr)
 	}

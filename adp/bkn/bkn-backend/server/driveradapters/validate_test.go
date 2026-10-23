@@ -43,7 +43,7 @@ func Test_validateImportMode(t *testing.T) {
 			httpErr := validateImportMode(ctx, "invalid_mode")
 			So(httpErr, ShouldNotBeNil)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_InvalidParameter_ImportMode)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_InvalidParameter_ImportMode)
 		})
 	})
 }
@@ -62,7 +62,7 @@ func Test_validateObjectName(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_Name)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_Name)
 		})
 
 		Convey("Failed with name too long\n", func() {
@@ -75,7 +75,7 @@ func Test_validateObjectName(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_LengthExceeded_Name)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_LengthExceeded_Name)
 		})
 	})
 }
@@ -105,7 +105,7 @@ func Test_ValidateTags(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_CountExceeded_TagTotal)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_CountExceeded_TagTotal)
 		})
 
 		Convey("Failed with invalid tag name\n", func() {
@@ -815,8 +815,8 @@ func TestValidateRiskTypesLocalizesInvalidParameterDetails(t *testing.T) {
 			if !ok {
 				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}
@@ -845,8 +845,8 @@ func TestCommonValidationDetailsRespectLanguage(t *testing.T) {
 			if !ok {
 				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}

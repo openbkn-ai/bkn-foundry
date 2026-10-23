@@ -22,8 +22,8 @@ func TestDefaultHTTPErrorUsesBCP47Locale(t *testing.T) {
 	if renderErr := err.Render(); renderErr != nil {
 		t.Fatal(renderErr)
 	}
-	if err.BaseError.Description != "Authentication failed. Provide valid authentication credentials." {
-		t.Fatalf("description = %q", err.BaseError.Description)
+	if err.Description != "Authentication failed. Provide valid authentication credentials." {
+		t.Fatalf("description = %q", err.Description)
 	}
 }
 

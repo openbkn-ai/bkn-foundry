@@ -66,7 +66,7 @@ func TestDebugOperator(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, "Public.InternalServerError")
+			So(httpErr.ErrorCode, ShouldEqual, "Public.InternalServerError")
 		})
 		Convey("TestDebugOperator: 算子不存在", func() {
 			mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -76,7 +76,7 @@ func TestDebugOperator(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldContainSubstring, myErr.ErrExtOperatorNotFound.String())
+			So(httpErr.ErrorCode, ShouldContainSubstring, myErr.ErrExtOperatorNotFound.String())
 		})
 		Convey("TestDebugOperator: 获取accessor信息失败", func() {
 			mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).

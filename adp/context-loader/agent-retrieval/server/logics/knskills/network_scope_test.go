@@ -97,7 +97,7 @@ func detailOf(t *testing.T, err error) (int, string) {
 	if !ok {
 		t.Fatalf("error = %v, want an HTTP error", err)
 	}
-	detail, _ := httpErr.BaseError.ErrorDetails.(string)
+	detail, _ := httpErr.ErrorDetails.(string)
 	return httpErr.HTTPCode, detail
 }
 func skillContent() *interfaces.GetSkillContentResponse {
@@ -204,10 +204,6 @@ func TestProxiedSkillReadRefusalsAreActionable(t *testing.T) {
 		logger.Errorf("localized message rendering failed: %v", renderErr)
 	}
 	notProvisionedDetail := localizedText
-	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillNotProvisionedForNetwork", map[string]any{})
-	if renderErr != nil {
-		logger.Errorf("localized message rendering failed: %v", renderErr)
-	}
 	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.SkillAuthorizationUnavailable", map[string]any{})
 	if renderErr != nil {
 		logger.Errorf("localized message rendering failed: %v", renderErr)

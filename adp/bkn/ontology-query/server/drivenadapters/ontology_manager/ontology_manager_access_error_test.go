@@ -118,15 +118,15 @@ func TestDownstreamErrorsDistinguishDenialsAndOperationFailures(t *testing.T) {
 				case http.StatusForbidden:
 					expectedCode = httperrors.PublicError_Forbidden
 				}
-				if got.HTTPCode != status || got.BaseError.ErrorCode != expectedCode || got.Lang != i18n.AmericanEnglish {
+				if got.HTTPCode != status || got.ErrorCode != expectedCode || got.Lang != i18n.AmericanEnglish {
 					t.Fatalf("outer error=%#v", got)
 				}
-				if err := got.Render(); err != nil || got.BaseError.Description == "" {
+				if err := got.Render(); err != nil || got.Description == "" {
 					t.Fatalf("render=%v, %#v", err, got)
 				}
-				detail, ok := got.BaseError.ErrorDetails.(httperrors.BaseError)
-				if !ok || detail.ErrorCode != source.ErrorCode || detail.Description != source.Description || detail.ErrorDetails != source.ErrorDetails || detail.Metadata["resource"] != "example" || len(got.BaseError.Metadata) != 0 {
-					t.Fatalf("details=%#v", got.BaseError.ErrorDetails)
+				detail, ok := got.ErrorDetails.(httperrors.BaseError)
+				if !ok || detail.ErrorCode != source.ErrorCode || detail.Description != source.Description || detail.ErrorDetails != source.ErrorDetails || detail.Metadata["resource"] != "example" || len(got.Metadata) != 0 {
+					t.Fatalf("details=%#v", got.ErrorDetails)
 				}
 			})
 		}

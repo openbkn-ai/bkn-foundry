@@ -919,7 +919,7 @@ func usableProxy(mapping *interfaces.KNProxyAccount, knID string) bool {
 func proxyErrorCode(err error) string {
 	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) {
-		return httpErr.BaseError.ErrorCode
+		return httpErr.ErrorCode
 	}
 	return "proxy resolution failed"
 }

@@ -25,9 +25,9 @@ func TestOpenAPIMultiErrorDetailsUseRequestLanguage(t *testing.T) {
 			multiErr := openapi3.MultiError{errors.New("first failure"), errors.New("second failure")}
 
 			httpErr := parseOpenAPILoadError(ctx, &multiErr)
-			details, ok := httpErr.BaseError.ErrorDetails.([]string)
+			details, ok := httpErr.ErrorDetails.([]string)
 			if !ok || len(details) != 2 {
-				t.Fatalf("details = %#v, want two strings", httpErr.BaseError.ErrorDetails)
+				t.Fatalf("details = %#v, want two strings", httpErr.ErrorDetails)
 			}
 			if details[0] != test.want {
 				t.Fatalf("details[0] = %q, want %q", details[0], test.want)

@@ -78,7 +78,7 @@ func Test_ValidateActionType(t *testing.T) {
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_NullParameter_Name)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_NullParameter_Name)
 		})
 
 		Convey("Failed with invalid action source type\n", func() {
@@ -383,8 +383,8 @@ func Test_ValidateActionType(t *testing.T) {
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
 		})
 
 		Convey("Failed with empty or condition in strict mode\n", func() {
@@ -403,8 +403,8 @@ func Test_ValidateActionType(t *testing.T) {
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
 		})
 
 		Convey("Success with empty and condition when strictMode false\n", func() {
@@ -454,8 +454,8 @@ func Test_ValidateActionType(t *testing.T) {
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions[1].sub_conditions")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions[1].sub_conditions")
 		})
 
 		Convey("Failed with eq operation having array value\n", func() {
@@ -631,7 +631,7 @@ func Test_ValidateActionType(t *testing.T) {
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 		})
 
 		Convey("Success with empty ObjectTypeID and condition when strictMode false\n", func() {
@@ -674,7 +674,7 @@ func Test_ValidateActionType(t *testing.T) {
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 		})
 
 		Convey("Success with empty ObjectTypeID and parameter using property when strictMode false\n", func() {
@@ -1033,8 +1033,8 @@ func TestActionTypeValidationDetailsRespectLanguage(t *testing.T) {
 			if !ok {
 				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}

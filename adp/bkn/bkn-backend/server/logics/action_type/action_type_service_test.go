@@ -97,7 +97,7 @@ func Test_actionTypeService_CheckActionTypeExistByID(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed)
 		})
 	})
 }
@@ -156,7 +156,7 @@ func Test_actionTypeService_CheckActionTypeExistByName(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(id, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed)
 		})
 	})
 }
@@ -209,7 +209,7 @@ func Test_actionTypeService_GetActionTypeIDsByKnID(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_GetActionTypesByIDsFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InternalError_GetActionTypesByIDsFailed)
 		})
 	})
 }
@@ -284,7 +284,7 @@ func Test_actionTypeService_GetActionTypesByIDs(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeNotFound)
 		})
 
 		Convey("Failed when GetActionTypesByIDs returns error\n", func() {
@@ -1326,7 +1326,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(atIDs), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeIDExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_ActionTypeIDExisted)
 		})
 
 		Convey("Success with empty ATID generates new ID\n", func() {
@@ -1933,7 +1933,7 @@ func Test_actionTypeService_ValidateActionTypes(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			dependencyDetails, ok := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(ok, ShouldBeTrue)
 			So(dependencyDetails.Detail, ShouldEqual, "行动类 [at1] 的工具绑定缺失或无效（box_id=b1，tool_id=t1）。")
 			So(dependencyDetails.Detail, ShouldNotContainSubstring, "tool not found")
@@ -2022,7 +2022,7 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			dependencyDetails, ok := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(ok, ShouldBeTrue)
 			So(dependencyDetails.Detail, ShouldEqual, "行动类 [create_order] 的工具绑定缺失或无效（box_id=box-1，tool_id=tool-1）。")
 			So(dependencyDetails.Detail, ShouldNotContainSubstring, "downstream")
@@ -2050,7 +2050,7 @@ func Test_actionTypeService_validateActionSourceStrictLocalizesBindingErrors(t *
 
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			dependencyDetails, ok := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			dependencyDetails, ok := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(ok, ShouldBeTrue)
 			So(dependencyDetails.Detail, ShouldEqual, "Action type [create_order] MCP tool binding is missing or invalid (mcp_id=mcp-1, tool_name=create_order).")
 			So(dependencyDetails.Detail, ShouldNotContainSubstring, "downstream")
@@ -2107,7 +2107,7 @@ func TestActionTypeStrictDependencyErrorMapping(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
-			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, tc.code, httpErr.ErrorCode)
 		})
 	}
 }

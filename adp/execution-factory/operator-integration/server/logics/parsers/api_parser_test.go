@@ -169,9 +169,9 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldContainSubstring, testcase.Code)
+			So(httpErr.ErrorCode, ShouldContainSubstring, testcase.Code)
 			So(httpErr.Render(), ShouldBeNil)
-			So(httpErr.BaseError.Description, ShouldEqual, testcase.Description+"请联系管理员")
+			So(httpErr.Description, ShouldEqual, testcase.Description+"请联系管理员")
 		})
 	}
 }

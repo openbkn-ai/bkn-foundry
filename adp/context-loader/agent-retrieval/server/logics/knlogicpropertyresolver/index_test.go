@@ -35,19 +35,19 @@ func TestLogicPropertyErrorsLocalizeOwnedMessages(t *testing.T) {
 			ctx := common.SetLanguageToCtx(context.Background(), tt.locale)
 			missing := service.buildMissingParamsError(ctx, []interfaces.MissingPropertyParams{{Property: "region"}}, nil)
 			missingHTTPError := missing.(*httperrors.HTTPError)
-			if got := missingHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, tt.missingWant) {
+			if got := missingHTTPError.ErrorDetails.(string); !strings.Contains(got, tt.missingWant) {
 				t.Fatalf("missing error details = %q, want localized text %q", got, tt.missingWant)
 			}
 
 			failed := service.buildGenerationFailedError(ctx, []interfaces.MissingPropertyParams{{Property: "region", ErrorMsg: "provider timeout"}})
 			failedHTTPError := failed.(*httperrors.HTTPError)
-			if got := failedHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, tt.failedWant) {
+			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, tt.failedWant) {
 				t.Fatalf("generation error details = %q, want localized text %q", got, tt.failedWant)
 			}
-			if got := failedHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, "DYNAMIC_PARAMS_GENERATION_FAILED") {
+			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, "DYNAMIC_PARAMS_GENERATION_FAILED") {
 				t.Fatalf("generation error details lost stable discriminator: %q", got)
 			}
-			if got := failedHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, "provider timeout") {
+			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, "provider timeout") {
 				t.Fatalf("generation error details lost upstream diagnostic: %q", got)
 			}
 		})

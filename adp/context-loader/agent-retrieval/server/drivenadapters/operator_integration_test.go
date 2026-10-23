@@ -103,7 +103,7 @@ func TestGetToolDetail_HTTPError(t *testing.T) {
 		convey.So(err, convey.ShouldNotBeNil)
 		httpErr, ok := err.(*httperrors.HTTPError)
 		convey.So(ok, convey.ShouldBeTrue)
-		convey.So(httpErr.BaseError.ErrorDetails, convey.ShouldEqual, "Unable to retrieve the tool details.")
+		convey.So(httpErr.ErrorDetails, convey.ShouldEqual, "Unable to retrieve the tool details.")
 	})
 }
 

@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"go.uber.org/mock/gomock"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
-	"go.uber.org/mock/gomock"
 )
 
 func TestSkillIndexChangesRequireCommittedSource(t *testing.T) {
@@ -24,7 +25,12 @@ func TestSkillIndexChangesRequireCommittedSource(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer db.Close()
+			defer func() {
+				mock.ExpectClose()
+				if err := db.Close(); err != nil {
+					t.Errorf("close mock database: %v", err)
+				}
+			}()
 			mock.ExpectBegin()
 			tx, err := db.Begin()
 			if err != nil {

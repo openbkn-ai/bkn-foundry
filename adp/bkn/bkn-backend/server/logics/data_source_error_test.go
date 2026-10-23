@@ -18,13 +18,13 @@ func TestUnsupportedDataSourceErrorsUseLocalizedDetails(t *testing.T) {
 		Convey("Object type details use the Chinese catalog\n", func() {
 			ctx := i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese)
 			httpErr := UnsupportedObjectTypeDataSourceError(ctx, "order", "table")
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "对象类 order 的数据来源类型 table 不支持，仅支持 resource。")
+			So(httpErr.ErrorDetails, ShouldEqual, "对象类 order 的数据来源类型 table 不支持，仅支持 resource。")
 		})
 
 		Convey("Relation type details use the English catalog\n", func() {
 			ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
 			httpErr := UnsupportedRelationBackingDataSourceError(ctx, "order_item", "table")
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "backing_data_source.type must be resource; received table.")
+			So(httpErr.ErrorDetails, ShouldEqual, "backing_data_source.type must be resource; received table.")
 		})
 	})
 }

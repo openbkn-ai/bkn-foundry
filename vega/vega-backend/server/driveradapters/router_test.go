@@ -196,7 +196,7 @@ func TestHTTPErrorOrInternal(t *testing.T) {
 		t.Fatal("wrapped public error was replaced")
 	}
 	internal := httpErrorOrInternal(ctx, errors.New("private connection details"), verrors.VegaBackend_Resource_InternalError)
-	if internal.HTTPCode != 500 || internal.BaseError.ErrorCode != verrors.VegaBackend_Resource_InternalError || internal.BaseError.ErrorDetails != "" {
+	if internal.HTTPCode != 500 || internal.ErrorCode != verrors.VegaBackend_Resource_InternalError || internal.ErrorDetails != "" {
 		t.Fatalf("unsafe internal response: %#v", internal.BaseError)
 	}
 }

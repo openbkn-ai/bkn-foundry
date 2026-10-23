@@ -95,8 +95,8 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -108,8 +108,8 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -124,8 +124,8 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 		return
@@ -141,8 +141,8 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 
@@ -161,8 +161,8 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
-			httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), httpErr)
 
 		rest.ReplyError(c, httpErr)
 

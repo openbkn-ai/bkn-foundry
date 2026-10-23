@@ -59,8 +59,8 @@ func TestCatalogHealthCheckScheduleServiceGetByCatalogID(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sql.ErrNoRows.Error())
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sql.ErrNoRows.Error())
 		assert.Nil(t, got)
 	})
 
@@ -76,8 +76,8 @@ func TestCatalogHealthCheckScheduleServiceGetByCatalogID(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sensitiveError)
 		assert.Nil(t, got)
 	})
 }
@@ -133,7 +133,7 @@ func TestCatalogHealthCheckScheduleServiceCreate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter, httpErr.ErrorCode)
 		assert.Nil(t, got)
 	})
 
@@ -192,7 +192,7 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_NotFound, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_NotFound, httpErr.ErrorCode)
 		assert.Nil(t, got)
 	})
 
@@ -208,8 +208,8 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), catalogErr.Error())
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), catalogErr.Error())
 		assert.Nil(t, got)
 	})
 
@@ -277,8 +277,8 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sql.ErrNoRows.Error())
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sql.ErrNoRows.Error())
 		assert.Nil(t, got)
 	})
 
@@ -363,8 +363,8 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), accessErr.Error())
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed, httpErr.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), accessErr.Error())
 		assert.Nil(t, got)
 	})
 
@@ -390,8 +390,8 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), updateErr.Error())
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_UpdateFailed, httpErr.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), updateErr.Error())
 		assert.Nil(t, got)
 	})
 
@@ -425,7 +425,7 @@ func TestCatalogHealthCheckScheduleServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_CatalogHealthCheckSchedule_UpdateConflict, httpErr.ErrorCode)
 		assert.Nil(t, got)
 	})
 }

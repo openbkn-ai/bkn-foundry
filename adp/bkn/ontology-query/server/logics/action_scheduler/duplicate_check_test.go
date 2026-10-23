@@ -198,6 +198,6 @@ func Test_ExecuteAction_DuplicateCheck(t *testing.T) {
 		httpErr, ok := err.(*httperrors.HTTPError)
 		So(ok, ShouldBeTrue)
 		So(httpErr.HTTPCode, ShouldEqual, http.StatusConflict)
-		So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionExecution_DuplicateExecution)
+		So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionExecution_DuplicateExecution)
 	})
 }

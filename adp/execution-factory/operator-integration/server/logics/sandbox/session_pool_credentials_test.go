@@ -82,7 +82,7 @@ func assertSpansCarryNoToken(t *testing.T, recorder *tracetest.SpanRecorder) {
 	sawExecuteSpan := false
 	for _, span := range spans {
 		for _, kv := range span.Attributes() {
-			if strings.Contains(kv.Value.Emit(), callerToken) {
+			if strings.Contains(kv.Value.String(), callerToken) {
 				t.Fatalf("span %q attribute %q leaks the caller token", span.Name(), kv.Key)
 			}
 			if kv.Key == "language" && kv.Value.AsString() == "python" {
@@ -91,7 +91,7 @@ func assertSpansCarryNoToken(t *testing.T, recorder *tracetest.SpanRecorder) {
 		}
 		for _, event := range span.Events() {
 			for _, kv := range event.Attributes {
-				if strings.Contains(kv.Value.Emit(), callerToken) {
+				if strings.Contains(kv.Value.String(), callerToken) {
 					t.Fatalf("span %q event %q leaks the caller token", span.Name(), event.Name)
 				}
 			}
@@ -148,7 +148,7 @@ func TestDependencyInstallFailureCarriesNoCredentials(t *testing.T) {
 	if strings.Contains(string(raw), callerToken) {
 		t.Fatalf("error details leak the caller token: %s", raw)
 	}
-	details, _ := httpErr.BaseError.ErrorDetails.(map[string]any)
+	details, _ := httpErr.ErrorDetails.(map[string]any)
 	if details["dependencies"] == nil || details["dependencies_url"] == nil {
 		t.Fatalf("error details lost the dependency context: %s", raw)
 	}

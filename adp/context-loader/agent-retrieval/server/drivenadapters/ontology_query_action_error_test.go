@@ -81,7 +81,7 @@ func TestQueryActions_DownstreamClientErrorIsNotReportedAsBadGateway(t *testing.
 	if he.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("downstream 400 must stay a 400, got %d", he.HTTPCode)
 	}
-	details := fmt.Sprintf("%v", he.BaseError.ErrorDetails)
+	details := fmt.Sprintf("%v", he.ErrorDetails)
 	if !strings.Contains(details, "对象类 contract 未绑定数据源。") {
 		t.Fatalf("downstream cause must reach the caller, got details: %s", details)
 	}

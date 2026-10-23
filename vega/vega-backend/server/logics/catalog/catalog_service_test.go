@@ -54,9 +54,9 @@ func requireRedactedConnectorInitializationError(t *testing.T, err error, sensit
 	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-	assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
-	assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
-	assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), connectorInitializationFailedResult)
+	assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.ErrorCode)
+	assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sensitiveError)
+	assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), connectorInitializationFailedResult)
 }
 
 func TestValidateAndDecryptSensitiveFields(t *testing.T) {
@@ -310,7 +310,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Catalog_NameExists, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_NameExists, httpErr.ErrorCode)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
 
@@ -348,8 +348,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "built-in catalogs must be logical")
+		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "built-in catalogs must be logical")
 	})
 
 	t.Run("does not expose connector error when connection test fails", func(t *testing.T) {
@@ -378,9 +378,9 @@ func TestCatalogServiceCreate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.BaseError.ErrorCode)
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "Connection test failed")
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sensitiveError)
+		assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "Connection test failed")
 	})
 
 	t.Run("create logical catalog defaults to disabled and unchecked", func(t *testing.T) {
@@ -446,9 +446,9 @@ func TestCatalogServiceCreate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to create catalog")
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "failed to create catalog")
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sensitiveError)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
@@ -469,8 +469,8 @@ func TestCatalogServiceCreate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "only supported for physical catalogs")
+		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "only supported for physical catalogs")
 	})
 
 	t.Run("create enabled true", func(t *testing.T) {
@@ -760,9 +760,9 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to get catalog for connection test")
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "failed to get catalog for connection test")
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sensitiveError)
 		assert.Nil(t, result)
 	})
 	t.Run("redacts health status update error", func(t *testing.T) {
@@ -797,9 +797,9 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update catalog health check status")
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.ErrorCode)
+		assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "failed to update catalog health check status")
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sensitiveError)
 		assert.Nil(t, result)
 	})
 	t.Run("test connection logical catalog returns an explicit failure", func(t *testing.T) {
@@ -976,7 +976,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-				assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
+				assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.ErrorCode)
 			} else {
 				require.NoError(t, err)
 			}
@@ -1019,7 +1019,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorType, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorType, httpErr.ErrorCode)
 	})
 
 	t.Run("rejects enabled state change", func(t *testing.T) {
@@ -1040,7 +1040,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_EnabledFieldNotAllowed, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_EnabledFieldNotAllowed, httpErr.ErrorCode)
 	})
 
 	t.Run("rejects duplicate changed name", func(t *testing.T) {
@@ -1062,7 +1062,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_NameExists, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_NameExists, httpErr.ErrorCode)
 	})
 
 	t.Run("explicit empty config fails construction even when unhealthy is allowed", func(t *testing.T) {
@@ -1127,9 +1127,9 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.BaseError.ErrorCode)
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "Connection test failed")
+		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.ErrorCode)
+		assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sensitiveError)
+		assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "Connection test failed")
 	})
 
 	t.Run("successful connection test updates health check status", func(t *testing.T) {
@@ -1280,7 +1280,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.ErrorCode)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
@@ -1304,7 +1304,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.ErrorCode)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
@@ -1941,9 +1941,9 @@ func TestCatalogServiceGetDeletionImpactDependencyFailure(t *testing.T) {
 	require.ErrorAs(t, err, &httpErr)
 	assert.Nil(t, impact)
 	assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-	assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_DeleteFailed, httpErr.BaseError.ErrorCode)
-	assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
-	assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to inspect catalog dependencies")
+	assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_DeleteFailed, httpErr.ErrorCode)
+	assert.NotContains(t, fmt.Sprint(httpErr.ErrorDetails), sensitiveError)
+	assert.Contains(t, fmt.Sprint(httpErr.ErrorDetails), "failed to inspect catalog dependencies")
 }
 
 func TestCatalogServiceGetDeletionImpactReturnsNotFoundWhenCatalogDisappears(t *testing.T) {
@@ -1963,7 +1963,7 @@ func TestCatalogServiceGetDeletionImpactReturnsNotFoundWhenCatalogDisappears(t *
 	require.ErrorAs(t, err, &httpErr)
 	assert.Nil(t, impact)
 	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
-	assert.Equal(t, verrors.VegaBackend_Catalog_NotFound, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, verrors.VegaBackend_Catalog_NotFound, httpErr.ErrorCode)
 }
 
 func expectCatalogDeletionImpact(
@@ -2028,7 +2028,7 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_NotFound, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_NotFound, httpErr.ErrorCode)
 	})
 
 	t.Run("commits database deletion and tolerates permission cleanup failures", func(t *testing.T) {

@@ -47,12 +47,12 @@ func TestRunCypherQueryWrapsForbiddenWithSourceDetails(t *testing.T) {
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("RunCypherQuery() error = %T %v, want *HTTPError", err, err)
 			}
-			if httpErr.HTTPCode != http.StatusForbidden || httpErr.BaseError.ErrorCode != "agentRetrieval.Forbidden.CommonExternalServerError" {
-				t.Fatalf("RunCypherQuery() error = %d %s, want 403 %s", httpErr.HTTPCode, httpErr.BaseError.ErrorCode, code)
+			if httpErr.HTTPCode != http.StatusForbidden || httpErr.ErrorCode != "agentRetrieval.Forbidden.CommonExternalServerError" {
+				t.Fatalf("RunCypherQuery() error = %d %s, want 403 %s", httpErr.HTTPCode, httpErr.ErrorCode, code)
 			}
-			source, ok := httpErr.BaseError.ErrorDetails.(httperrors.BaseError)
+			source, ok := httpErr.ErrorDetails.(httperrors.BaseError)
 			if !ok || source.ErrorCode != code || source.Description != "refused" || source.ErrorDetails != "ot_user.phone" {
-				t.Fatalf("details = %v, want the property the refusal names", httpErr.BaseError.ErrorDetails)
+				t.Fatalf("details = %v, want the property the refusal names", httpErr.ErrorDetails)
 			}
 			if source.Metadata == nil {
 				t.Fatal("machine-readable permission metadata was lost")

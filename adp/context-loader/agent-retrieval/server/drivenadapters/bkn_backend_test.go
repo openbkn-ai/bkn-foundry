@@ -563,7 +563,7 @@ func TestBknBackendAccess_NotFoundWithBodyUsesBknError(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			convey.So(ok, convey.ShouldBeTrue)
 			convey.So(httpErr.HTTPCode, convey.ShouldEqual, http.StatusNotFound)
-			source, ok := httpErr.BaseError.ErrorDetails.(httperrors.BaseError)
+			source, ok := httpErr.ErrorDetails.(httperrors.BaseError)
 			convey.So(ok, convey.ShouldBeTrue)
 			convey.So(source.ErrorCode, convey.ShouldEqual, "BknBackend.KnowledgeNetwork.NotFound")
 			convey.So(source.Description, convey.ShouldEqual, "knowledge network not found")
@@ -586,8 +586,8 @@ func TestGetRelationTypeDetailPreservesCurrentSharedEnvelope(t *testing.T) {
 	if !errors.As(err, &public) {
 		t.Fatalf("error type = %T", err)
 	}
-	source, ok := public.BaseError.ErrorDetails.(httperrors.BaseError)
+	source, ok := public.ErrorDetails.(httperrors.BaseError)
 	if !ok || source.ErrorCode != "BknBackend.RelationType.NotFound" || source.Description != "Relation type not found. Check its ID." || source.Metadata["field"] != "relation_type_id" || source.ErrorDetails != "{{ literal }}" {
-		t.Fatalf("source envelope = %#v", public.BaseError.ErrorDetails)
+		t.Fatalf("source envelope = %#v", public.ErrorDetails)
 	}
 }

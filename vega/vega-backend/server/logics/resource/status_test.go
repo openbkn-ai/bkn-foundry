@@ -110,8 +110,8 @@ func TestEnsureResourceQueryable(t *testing.T) {
 				if he.HTTPCode != http.StatusConflict {
 					t.Errorf("expected status 409, got %d", he.HTTPCode)
 				}
-				if he.BaseError.ErrorCode != tc.wantErrCode {
-					t.Errorf("expected error code %q, got %q", tc.wantErrCode, he.BaseError.ErrorCode)
+				if he.ErrorCode != tc.wantErrCode {
+					t.Errorf("expected error code %q, got %q", tc.wantErrCode, he.ErrorCode)
 				}
 				return
 			}

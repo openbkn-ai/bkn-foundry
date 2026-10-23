@@ -110,7 +110,7 @@ func (g *Guide) ForObjectTypeError(ctx context.Context, err error, knID, otID st
 func (g *Guide) ForObjectTypeDenial(ctx context.Context, err error, knID, otID string) *interfaces.PermissionGuidance {
 	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) ||
-		!strings.Contains(fmt.Sprint(httpErr.BaseError.ErrorDetails), "object_type:"+knID+"/"+otID) {
+		!strings.Contains(fmt.Sprint(httpErr.ErrorDetails), "object_type:"+knID+"/"+otID) {
 		return nil
 	}
 	return g.ForObjectTypeError(ctx, err, knID, otID)

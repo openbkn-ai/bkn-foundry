@@ -61,7 +61,7 @@ func Test_ValidateKN(t *testing.T) {
 			err := ValidateKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch)
 		})
 	})
 }
@@ -89,7 +89,7 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 			err := ValidateRelationTypePathsQuery(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 		})
 
 		Convey("Failed with empty direction\n", func() {
@@ -101,7 +101,7 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 			err := ValidateRelationTypePathsQuery(ctx, query)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Direction)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Direction)
 		})
 
 		Convey("Failed with invalid direction\n", func() {
@@ -156,8 +156,8 @@ func TestKnowledgeNetworkValidationDetailsRespectLanguage(t *testing.T) {
 				t.Fatal("ValidateKN() error = nil, want missing branch error")
 			}
 			httpErr := err.(*httperrors.HTTPError)
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}

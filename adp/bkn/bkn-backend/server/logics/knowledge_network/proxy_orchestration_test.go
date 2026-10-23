@@ -48,11 +48,11 @@ func TestInvalidProxyTargetErrorUsesValidationCode(t *testing.T) {
 	if err.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", err.HTTPCode, http.StatusBadRequest)
 	}
-	if err.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyTargetInvalid {
-		t.Fatalf("error code = %s", err.BaseError.ErrorCode)
+	if err.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyTargetInvalid {
+		t.Fatalf("error code = %s", err.ErrorCode)
 	}
-	if err.BaseError.ErrorDetails != "published model contains an invalid proxy target: missing bound tools in toolbox box-1: tool-1" {
-		t.Fatalf("error details = %q", err.BaseError.ErrorDetails)
+	if err.ErrorDetails != "published model contains an invalid proxy target: missing bound tools in toolbox box-1: tool-1" {
+		t.Fatalf("error details = %q", err.ErrorDetails)
 	}
 }
 
@@ -61,8 +61,8 @@ func TestInvalidProxyTargetErrorKeepsModelValidationFailuresAsBadRequests(t *tes
 	if err.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", err.HTTPCode, http.StatusBadRequest)
 	}
-	if err.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_InternalError {
-		t.Fatalf("error code = %s", err.BaseError.ErrorCode)
+	if err.ErrorCode != berrors.BknBackend_KnowledgeNetwork_InternalError {
+		t.Fatalf("error code = %s", err.ErrorCode)
 	}
 }
 
@@ -975,13 +975,13 @@ func TestPublishKNChildMutationInvalidRetainedTargetDoesNotMutate(t *testing.T) 
 		})
 	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusForbidden ||
-		httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
+		httpErr.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
 		t.Fatalf("PublishKNChildMutation() error = %#v, want HTTP 403", err)
 	}
-	details, ok := httpErr.BaseError.ErrorDetails.(missingProxyPermissionDetails)
+	details, ok := httpErr.ErrorDetails.(missingProxyPermissionDetails)
 	if !ok || len(details.MissingPermissions) != 2 || details.MissingPermissions[0].ResourceID != "resource-stable" ||
 		details.MissingPermissions[1].ResourceID != "resource-stable" {
-		t.Fatalf("missing permission details = %#v, want retained target operations", httpErr.BaseError.ErrorDetails)
+		t.Fatalf("missing permission details = %#v, want retained target operations", httpErr.ErrorDetails)
 	}
 	if mutationCalled || kpa.pendingCount != 0 || !kpa.lockReleased {
 		t.Fatalf("denied mutation state: called=%t pending=%d lock_released=%t",
@@ -1462,7 +1462,7 @@ func TestResolveKNProxyBindingReturnsStableStateErrors(t *testing.T) {
 			service := &knowledgeNetworkService{kpa: &proxyAccessStub{mapping: test.mapping}}
 			_, err := service.ResolveKNProxyBinding(t.Context(), "kn-1", interfaces.KNProxyBinding{})
 			httpErr, ok := err.(*httperrors.HTTPError)
-			if !ok || httpErr.HTTPCode != test.status || httpErr.BaseError.ErrorCode != test.code {
+			if !ok || httpErr.HTTPCode != test.status || httpErr.ErrorCode != test.code {
 				t.Fatalf("ResolveKNProxyBinding() error = %#v, want status %d code %q", err, test.status, test.code)
 			}
 		})
@@ -1546,7 +1546,7 @@ func TestResolveKNProxyBindingsKeepsOnlyPublishedSnapshotBindings(t *testing.T) 
 	mapping.SyncedModelVersion = "stale-version"
 	_, resolved, err = service.ResolveKNProxyBindings(t.Context(), "kn-1", want)
 	httpErr, ok := err.(*httperrors.HTTPError)
-	if !ok || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxySyncPending || resolved != nil {
+	if !ok || httpErr.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxySyncPending || resolved != nil {
 		t.Fatalf("stale synchronized model version: resolved = %v, error = %#v", resolved, err)
 	}
 }
@@ -1556,13 +1556,13 @@ func TestResolveKNProxyBindingsReturnsStableStateErrors(t *testing.T) {
 	_, resolved, err := service.ResolveKNProxyBindings(t.Context(), "kn-1", []interfaces.KNProxyBinding{{}})
 	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusNotFound ||
-		httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound || resolved != nil {
+		httpErr.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound || resolved != nil {
 		t.Fatalf("ResolveKNProxyBindings() = %v, %#v", resolved, err)
 	}
 
 	_, _, err = (&knowledgeNetworkService{}).ResolveKNProxyBindings(t.Context(), "kn-1", nil)
 	httpErr, ok = err.(*httperrors.HTTPError)
-	if !ok || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable {
+	if !ok || httpErr.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable {
 		t.Fatalf("disabled orchestration: %#v", err)
 	}
 }

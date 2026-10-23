@@ -206,7 +206,7 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
-		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.ErrorCode)
 	})
 
 	t.Run("list enriches creators", func(t *testing.T) {
@@ -258,7 +258,7 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
-		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.ErrorCode)
 	})
 }
 

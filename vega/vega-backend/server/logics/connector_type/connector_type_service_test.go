@@ -208,7 +208,7 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable, httpErr.ErrorCode)
 	})
 
 	t.Run("returns detail without connector permission", func(t *testing.T) {

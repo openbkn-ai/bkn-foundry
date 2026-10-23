@@ -229,6 +229,7 @@ const (
 	UnknownOperation OperationCode = "unknown_operation"
 )
 
+//nolint:unused // Intentionally retained.
 func (b *AuditLogBuilder) getToolDetailsAndExMsg(param interface{}) (detils interface{}, exMsg string) {
 	if param == nil {
 		return
@@ -296,6 +297,8 @@ func (p *AuditLogBuilderParams) GetOperatorType() error {
 }
 
 // Build build audit log model.
+//
+//nolint:unused // Intentionally retained.
 func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 	if p.TokenInfo == nil {
 		return nil, fmt.Errorf("token info is nil")

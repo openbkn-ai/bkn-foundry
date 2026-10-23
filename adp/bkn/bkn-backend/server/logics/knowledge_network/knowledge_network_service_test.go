@@ -428,7 +428,7 @@ func Test_knowledgeNetworkService_CheckKNExistByID(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed)
 		})
 	})
 }
@@ -483,7 +483,7 @@ func Test_knowledgeNetworkService_CheckKNExistByName(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(id, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed)
 		})
 	})
 }
@@ -523,7 +523,7 @@ func Test_knowledgeNetworkService_UpdateKNDetail(t *testing.T) {
 			err := service.UpdateKNDetail(ctx, knID, branch, detail)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError)
 		})
 	})
 }
@@ -603,7 +603,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed)
 		})
 
 		Convey("Failed when getting relation types total returns error\n", func() {
@@ -619,7 +619,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
 		})
 
 		Convey("Failed when getting action types total returns error\n", func() {
@@ -636,7 +636,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
 		})
 
 		Convey("Failed when getting concept groups total returns error\n", func() {
@@ -654,7 +654,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
 		})
 
 		Convey("Failed when getting risk types total returns error\n", func() {
@@ -673,7 +673,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed)
 		})
 
 		Convey("Failed when getting metrics total returns error\n", func() {
@@ -694,7 +694,7 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed)
 		})
 	})
 }
@@ -1015,7 +1015,7 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		})
 
 		Convey("Failed when GetKNByID returns error\n", func() {
@@ -1029,7 +1029,7 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed)
 		})
 
 		Convey("Failed when FilterResources returns error\n", func() {
@@ -1068,7 +1068,7 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
+			So(httpErr.ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
 		})
 
 		Convey("Failed when GetAccountNames returns error\n", func() {
@@ -1296,7 +1296,7 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 		result, err = service.GetKNByID(ctx, "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export)
 		So(result, ShouldBeNil)
 		So(err, ShouldNotBeNil)
-		So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
+		So(err.(*httperrors.HTTPError).ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
 	})
 
 	Convey("Restricted statistics count only visible child resources", t, func() {
@@ -2359,7 +2359,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Failed when GetNeighborPathsBatch returns error\n", func() {
@@ -2436,7 +2436,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 			paths, err := service.GetRelationTypePaths(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(paths, ShouldBeNil)
-			So(err.(*httperrors.HTTPError).BaseError.ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
+			So(err.(*httperrors.HTTPError).ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
 		})
 	})
 }
@@ -2547,7 +2547,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(knID, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_KNIDExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_KNIDExisted)
 		})
 
 		Convey("Success with empty KNID generates new ID\n", func() {
@@ -2617,7 +2617,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			knID, err := service.CreateKN(ctx, kn, interfaces.ImportMode_Ignore, true)
 			So(err, ShouldNotBeNil)
 			So(knID, ShouldBeEmpty)
-			So(err.(*httperrors.HTTPError).BaseError.ErrorCode,
+			So(err.(*httperrors.HTTPError).ErrorCode,
 				ShouldEqual, berrors.BknBackend_KnowledgeNetwork_KNNameExisted)
 			So(kn.KNID, ShouldEqual, "new-kn-id")
 		})
@@ -2876,7 +2876,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			So(knID, ShouldEqual, "")
 			So(err, ShouldEqual, childErr)
 			httpErr := err.(*httperrors.HTTPError)
-			details := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			details := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(details.Kind, ShouldEqual, interfaces.DependencyTimeout)
 		})
 

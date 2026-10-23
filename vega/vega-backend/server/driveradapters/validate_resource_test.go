@@ -96,7 +96,7 @@ func TestValidateResourceRequestDatasetDisplayName(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.ErrorCode)
 		assert.Equal(t, "Title", req.SchemaDefinition[1].DisplayName)
 	})
 
@@ -107,7 +107,7 @@ func TestValidateResourceRequestDatasetDisplayName(t *testing.T) {
 		)
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.ErrorCode)
 	})
 }
 
@@ -149,13 +149,13 @@ func TestValidateResourceRequestRejectsDuplicateFeatureTypes(t *testing.T) {
 					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, ValidateResourceRequest(i18n.WithLanguage(context.Background(), i18n.AmericanEnglish), req), &httpErr)
 					require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-					require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.BaseError.ErrorCode)
-					require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.BaseError.Metadata)
+					require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.ErrorCode)
+					require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.Metadata)
 					renderErr := httpErr.Render()
 					rendered := httpErr.BaseError
 					require.NoError(t, renderErr)
 					require.Equal(t, "Field title already has a fulltext feature. Please keep only one feature of this type for the field", rendered.Description)
-					require.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+					require.Contains(t, httpErr.ErrorDetails, `property "title" has more than one "fulltext" feature`)
 				})
 			}
 		})

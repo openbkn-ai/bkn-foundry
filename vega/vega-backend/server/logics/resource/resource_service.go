@@ -107,7 +107,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if err != nil {
 		span.SetStatus(codes.Error, "Check catalog permission failed")
 		var httpErr *httperrors.HTTPError
-		if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_NotFound {
+		if errors.As(err, &httpErr) && httpErr.ErrorCode == verrors.VegaBackend_Catalog_NotFound {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
 				WithErrorDetails(fmt.Sprintf("catalog %s not found", req.CatalogID))
 		}

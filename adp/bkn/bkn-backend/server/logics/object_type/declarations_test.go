@@ -45,7 +45,7 @@ func errorCode(t *testing.T, err error) string {
 	t.Helper()
 	var httpErr *httperrors.HTTPError
 	require.True(t, errors.As(err, &httpErr), "%v", err)
-	return httpErr.BaseError.ErrorCode
+	return httpErr.ErrorCode
 }
 
 func decodeProperty(t *testing.T, text string) *interfaces.DataProperty {
@@ -64,7 +64,7 @@ func TestValidateDeclarations(t *testing.T) {
 	ot.DataProperties[1].Semantic = "end_time"
 	err := validateDeclarations(ctx, ot)
 	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-	assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, "Semantic end_time needs an event_time property")
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, "Semantic end_time needs an event_time property")
 
 	ot = declaredObjectType()
 	ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
@@ -73,12 +73,12 @@ func TestValidateDeclarations(t *testing.T) {
 	ot = declaredObjectType()
 	ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny", Unit: "元"}
 	err = validateDeclarations(ctx, ot)
-	assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, "write range, length, pattern and unit in the value type")
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, "write range, length, pattern and unit in the value type")
 
 	ot = declaredObjectType()
 	ot.DataProperties[0] = decodeProperty(t, `{"name":"id","type":"string","required":false}`)
 	err = validateDeclarations(ctx, ot)
-	assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, `data property "id": a primary key is required by definition`)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `data property "id": a primary key is required by definition`)
 
 	ot = declaredObjectType()
 	ot.DataProperties[2] = decodeProperty(t, `{"name":"amount","type":"decimal","constraints":{}}`)
@@ -117,8 +117,8 @@ func TestCheckOverwriteKeepsDeclarations(t *testing.T) {
 	require.Error(t, err)
 	httpErr := err.(*httperrors.HTTPError)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-	assert.Equal(t, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared, httpErr.BaseError.ErrorCode)
-	details := httpErr.BaseError.ErrorDetails.(map[string]any)
+	assert.Equal(t, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared, httpErr.ErrorCode)
+	details := httpErr.ErrorDetails.(map[string]any)
 	assert.Len(t, details["cleared"], 2)
 	assert.Equal(t, "confirm_clear_declarations=true", details["confirm_with"])
 
@@ -257,12 +257,12 @@ func TestCheckNetworkDeclarations(t *testing.T) {
 		Return([]*interfaces.ValueType{}, nil)
 	err := ots.checkNetworkDeclarations(ctx, referencing())
 	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-	assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, `value type "amount_cny" is not defined in this network`)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `value type "amount_cny" is not defined in this network`)
 
 	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
 		Return([]*interfaces.ValueType{{VTID: "amount_cny", VTName: "人民币金额", BaseType: "integer"}}, nil)
 	err = ots.checkNetworkDeclarations(ctx, referencing())
-	assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, `value type "amount_cny" has base_type integer`)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `value type "amount_cny" has base_type integer`)
 
 	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
 		Return(nil, errors.New("db down"))
@@ -362,7 +362,7 @@ func TestCheckAliasNames(t *testing.T) {
 			Return([]*interfaces.ObjectType{named("customer", "客户")}, nil)
 		err := ots.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{named("order", "订单", "订货单", "客户")})
 		assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-		assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, `object type "order" alias "客户" is the name of object type "customer"`)
+		assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `object type "order" alias "客户" is the name of object type "customer"`)
 	})
 
 	t.Run("a new object type named like a stored alias", func(t *testing.T) {
@@ -371,7 +371,7 @@ func TestCheckAliasNames(t *testing.T) {
 		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
 			Return([]*interfaces.ObjectType{named("order", "订单", "客户")}, nil)
 		err := ots.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{named("customer", "客户")})
-		assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
+		assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
 	})
 
 	t.Run("without aliases only the aliased object types are read", func(t *testing.T) {
@@ -384,7 +384,7 @@ func TestCheckAliasNames(t *testing.T) {
 	ot := declaredObjectType()
 	ot.Aliases = []string{"订单"}
 	err := validateDeclarations(ctx, ot)
-	assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, "订单", "an alias is not the object type's own name")
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, "订单", "an alias is not the object type's own name")
 }
 
 // The vector text has the aliases right after the name; without aliases it is as before.
@@ -430,5 +430,5 @@ func TestValidateObjectTypesIgnoreKeepsStoredAliasesInTheCheck(t *testing.T) {
 
 	err := ots.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{order, customer}, false, nil, interfaces.ImportMode_Ignore)
 	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-	assert.Contains(t, err.(*httperrors.HTTPError).BaseError.ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
 }

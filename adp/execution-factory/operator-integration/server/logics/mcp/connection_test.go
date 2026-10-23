@@ -59,7 +59,7 @@ func TestMCPErrorCodesHaveDescription(t *testing.T) {
 			if renderErr := err.Render(); renderErr != nil {
 				t.Fatalf("[%s] %s: %v", lang, code, renderErr)
 			}
-			if err.BaseError.Description == "" {
+			if err.Description == "" {
 				t.Errorf("[%s] %s: empty description", lang, code)
 			}
 		}

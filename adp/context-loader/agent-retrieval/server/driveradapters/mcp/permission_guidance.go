@@ -59,8 +59,8 @@ func cypherPermissionImpactsFromError(err error) []interfaces.ObjectPermissionIm
 	if !errors.As(err, &httpErr) {
 		return nil
 	}
-	metadata := httpErr.BaseError.Metadata
-	if source, ok := httpErr.BaseError.ErrorDetails.(httperrors.BaseError); ok {
+	metadata := httpErr.Metadata
+	if source, ok := httpErr.ErrorDetails.(httperrors.BaseError); ok {
 		metadata = source.Metadata
 	}
 	raw, ok := metadata["permission_impacts"]

@@ -79,7 +79,7 @@ func Test_conceptGroupService_CheckConceptGroupExistByID(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed)
 		})
 	})
 }
@@ -137,7 +137,7 @@ func Test_conceptGroupService_CheckConceptGroupExistByName(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(id, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed)
 		})
 	})
 }
@@ -179,7 +179,7 @@ func Test_conceptGroupService_UpdateConceptGroupDetail(t *testing.T) {
 			err := service.UpdateConceptGroupDetail(ctx, knID, branch, cgID, detail)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError)
 		})
 	})
 }
@@ -281,7 +281,7 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
 		})
 
 		Convey("Failed when listing action types returns error\n", func() {
@@ -293,7 +293,7 @@ func Test_conceptGroupService_GetStatByConceptGroup(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetRelationTypesTotalFailed)
 		})
 	})
 }
@@ -578,7 +578,7 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
 		})
 
 		Convey("Failed when GetConceptGroupByID returns error\n", func() {
@@ -593,7 +593,7 @@ func Test_conceptGroupService_GetConceptGroupByID(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetConceptGroupByIDFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_InternalError_GetConceptGroupByIDFailed)
 		})
 
 		Convey("Failed when GetConceptIDsByConceptGroupIDs returns error\n", func() {
@@ -1484,7 +1484,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(cgID, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted)
 		})
 
 		Convey("Success with empty CGID generates new ID\n", func() {
@@ -1688,7 +1688,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			So(cgID, ShouldEqual, "")
 			So(err, ShouldEqual, childErr)
 			httpErr := err.(*httperrors.HTTPError)
-			details := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			details := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(details.Kind, ShouldEqual, interfaces.DependencyTimeout)
 		})
 
@@ -1974,7 +1974,7 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(cgrIDs), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ObjectTypeNotFound)
 		})
 
 		Convey("Failed when relation already exists in normal mode\n", func() {
@@ -2011,7 +2011,7 @@ func Test_conceptGroupService_AddObjectTypesToConceptGroup(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(cgrIDs), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupRelationExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ConceptGroup_ConceptGroupRelationExisted)
 		})
 
 		Convey("Failed when ListObjectTypes returns error\n", func() {

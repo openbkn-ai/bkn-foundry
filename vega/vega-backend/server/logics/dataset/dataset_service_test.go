@@ -136,8 +136,8 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", httpErr.BaseError.ErrorCode)
-		assert.Equal(t, map[string]any{"field": "status", "limit": 256}, httpErr.BaseError.Metadata)
+		assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", httpErr.ErrorCode)
+		assert.Equal(t, map[string]any{"field": "status", "limit": 256}, httpErr.Metadata)
 	})
 
 	t.Run("list documents answers 400 for a condition the index cannot build", func(t *testing.T) {
@@ -151,8 +151,8 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "re-save the resource configuration")
 	})
 
 	t.Run("get documents preserves positions for ignored missing documents", func(t *testing.T) {
@@ -301,7 +301,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			assert.Contains(t, httpErr.BaseError.ErrorDetails, "not found")
+			assert.Contains(t, httpErr.ErrorDetails, "not found")
 		}
 	})
 
@@ -385,7 +385,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-				assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+				assert.Equal(t, tc.code, httpErr.ErrorCode)
 				assert.Nil(t, params.ActualFilterCond)
 			})
 		}
@@ -406,8 +406,8 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "value_from")
+		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.ErrorCode)
+		assert.Contains(t, httpErr.ErrorDetails, "value_from")
 		assert.Nil(t, params.ActualFilterCond)
 	})
 
@@ -421,7 +421,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "non-empty filter")
+		assert.Contains(t, httpErr.ErrorDetails, "non-empty filter")
 	})
 
 	for _, operation := range []string{filter_condition.OperationAnd, filter_condition.OperationOr} {
@@ -438,7 +438,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-			assert.Contains(t, httpErr.BaseError.ErrorDetails, "no effective child conditions")
+			assert.Contains(t, httpErr.ErrorDetails, "no effective child conditions")
 		})
 	}
 
@@ -497,7 +497,7 @@ func TestDatasetServiceDocumentOperations(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_InvalidParameter, httpErr.ErrorCode)
 	})
 }
 
@@ -517,5 +517,5 @@ func assertHTTPError(t *testing.T, err error) {
 	require.Error(t, err)
 	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
-	assert.NotEmpty(t, httpErr.BaseError.ErrorCode)
+	assert.NotEmpty(t, httpErr.ErrorCode)
 }

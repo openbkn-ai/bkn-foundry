@@ -86,11 +86,11 @@ func TestQueryOutsideSQLRefusesWhatOnlySQLAnswers(t *testing.T) {
 		})
 		var httpErr *httperrors.HTTPError
 		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest ||
-			httpErr.BaseError.ErrorCode != "BknBackend.Cypher.Unsupported" {
+			httpErr.ErrorCode != "BknBackend.Cypher.Unsupported" {
 			t.Errorf("%s: err = %v", query, err)
 			continue
 		}
-		if details, _ := httpErr.BaseError.ErrorDetails.(string); !strings.Contains(details, "数据集") {
+		if details, _ := httpErr.ErrorDetails.(string); !strings.Contains(details, "数据集") {
 			t.Errorf("%s: details = %q, want them to say why", query, details)
 		}
 		if len(vega.readers) != 0 {
@@ -229,7 +229,7 @@ func TestBindJoinOnADatasetRunsOnce(t *testing.T) {
 		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.id",
 	})
 	var httpErr *httperrors.HTTPError
-	if !errors.As(err, &httpErr) || httpErr.BaseError.ErrorCode != "BknBackend.Cypher.ReadBudgetExceeded" {
+	if !errors.As(err, &httpErr) || httpErr.ErrorCode != "BknBackend.Cypher.ReadBudgetExceeded" {
 		t.Fatalf("err = %v", err)
 	}
 	if reads, statements := vega.reads.Load(), vega.statements.Load(); reads != 1 || statements != 1 {

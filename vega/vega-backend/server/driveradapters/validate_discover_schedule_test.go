@@ -135,7 +135,7 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 				if tt.name == "invalid strategy" {
 					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, err, &httpErr)
-					require.Contains(t, httpErr.BaseError.ErrorDetails, interfaces.DiscoverStrategyCountOnly)
+					require.Contains(t, httpErr.ErrorDetails, interfaces.DiscoverStrategyCountOnly)
 				}
 				return
 			}

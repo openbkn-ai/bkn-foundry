@@ -139,8 +139,8 @@ func (r *restHandler) listSemanticUnderstandingTasks(c *gin.Context, visitor hyd
 	params, err := parseSemanticUnderstandingTaskListParams(ctx, c)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_SemanticUnderstandingTask_InternalError_DeleteFailed)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

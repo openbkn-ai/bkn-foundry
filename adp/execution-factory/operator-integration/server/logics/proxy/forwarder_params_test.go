@@ -136,8 +136,8 @@ func TestBuildRequest_PathParams(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEndWith, string(myErr.ErrExtProxyPathParamMissing))
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "operator_id")
+			So(httpErr.ErrorCode, ShouldEndWith, string(myErr.ErrExtProxyPathParamMissing))
+			So(httpErr.ErrorDetails, ShouldContainSubstring, "operator_id")
 		})
 
 		Convey("path 参数只给一半时同样被拒绝", func() {
@@ -155,7 +155,7 @@ func TestBuildRequest_PathParams(t *testing.T) {
 
 			So(httpReq, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			So(err.(*httperrors.HTTPError).BaseError.ErrorDetails, ShouldContainSubstring, "tool_id")
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldContainSubstring, "tool_id")
 		})
 
 		Convey("query 里的花括号是业务值，不触发占位符拦截", func() {

@@ -55,8 +55,8 @@ func MapDependencyError(ctx context.Context, err error, forbiddenIsUserScoped bo
 }
 
 func markDependencyHTTPError(httpErr *httperrors.HTTPError, kind interfaces.DependencyErrorKind) *httperrors.HTTPError {
-	httpErr.BaseError.ErrorDetails = DependencyPublicErrorDetails{
-		Kind: kind, Detail: httpErr.BaseError.ErrorDetails,
+	httpErr.ErrorDetails = DependencyPublicErrorDetails{
+		Kind: kind, Detail: httpErr.ErrorDetails,
 	}
 	return httpErr
 }
@@ -66,7 +66,7 @@ func IsDependencyHTTPError(err error) bool {
 	if !errors.As(err, &httpErr) {
 		return false
 	}
-	_, ok := httpErr.BaseError.ErrorDetails.(DependencyPublicErrorDetails)
+	_, ok := httpErr.ErrorDetails.(DependencyPublicErrorDetails)
 	return ok
 }
 

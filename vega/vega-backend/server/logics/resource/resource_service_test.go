@@ -158,7 +158,7 @@ func TestValidateSchemaDefinitionRejectsDuplicateFeatureTypes(t *testing.T) {
 	}})
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "code" has more than one "keyword" feature`)
+	assert.Contains(t, httpErr.ErrorDetails, `property "code" has more than one "keyword" feature`)
 }
 
 func TestValidateSchemaDefinitionRejectsDefaultFeatureNameCollision(t *testing.T) {
@@ -175,7 +175,7 @@ func TestValidateSchemaDefinitionRejectsDefaultFeatureNameCollision(t *testing.T
 	err := validateSchemaDefinition(context.Background(), schema)
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "body" has more than one feature named "keyword"`)
+	assert.Contains(t, httpErr.ErrorDetails, `property "body" has more than one feature named "keyword"`)
 }
 
 func TestValidateSchemaDefinitionRejectsQualifiedFeatureName(t *testing.T) {
@@ -189,7 +189,7 @@ func TestValidateSchemaDefinitionRejectsQualifiedFeatureName(t *testing.T) {
 	}})
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, `feature name "title.keyword" must be relative to property "title"`)
+	assert.Contains(t, httpErr.ErrorDetails, `feature name "title.keyword" must be relative to property "title"`)
 }
 
 func TestValidateLocalIndexVectorOutputs(t *testing.T) {
@@ -205,7 +205,7 @@ func TestValidateLocalIndexVectorOutputs(t *testing.T) {
 	})
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, `generated vector field "content_vector" conflicts with a logical property "content_vector"`)
+	assert.Contains(t, httpErr.ErrorDetails, `generated vector field "content_vector" conflicts with a logical property "content_vector"`)
 }
 
 func TestResourceServiceInternalMetadataUpdateConflict(t *testing.T) {
@@ -262,7 +262,7 @@ func TestValidateIndexConfigKeyFields(t *testing.T) {
 		})
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
 		require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		require.Contains(t, httpErr.BaseError.ErrorDetails, `primary_key_fields field "missing_id"`)
+		require.Contains(t, httpErr.ErrorDetails, `primary_key_fields field "missing_id"`)
 	})
 
 	t.Run("rejects duplicate primary keys and unsupported incremental types", func(t *testing.T) {
@@ -275,7 +275,7 @@ func TestValidateIndexConfigKeyFields(t *testing.T) {
 			IncrementalFields: []string{"body"},
 		})
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, `unsupported type "text"`)
+		assert.Contains(t, httpErr.ErrorDetails, `unsupported type "text"`)
 	})
 }
 
@@ -956,8 +956,8 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_Analyzer)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "english")
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "summary")
+		assert.Contains(t, httpErr.ErrorDetails, "english")
+		assert.Contains(t, httpErr.ErrorDetails, "summary")
 	})
 
 	t.Run("returns capability unavailable when the startup probe failed", func(t *testing.T) {
@@ -969,7 +969,7 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_IndexCapability_InternalError_Unavailable)
 		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "connection refused")
+		assert.Contains(t, httpErr.ErrorDetails, "connection refused")
 	})
 
 	t.Run("returns an internal error for other analyzer validation failures", func(t *testing.T) {
@@ -981,7 +981,7 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 		err := rs.validateIndexConfigAnalyzers(context.Background(), schema, &interfaces.ResourceIndexConfig{DefaultFulltextAnalyzer: "standard"})
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InternalError)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "unexpected validation failure")
+		assert.Contains(t, httpErr.ErrorDetails, "unexpected validation failure")
 	})
 
 	t.Run("validates each configured fulltext feature without collection", func(t *testing.T) {
@@ -1008,7 +1008,7 @@ func requireResourceHTTPError(t *testing.T, err error, wantCode string) *httperr
 	var httpErr *httperrors.HTTPError
 	ok := errors.As(err, &httpErr)
 	require.Truef(t, ok, "expected HTTPError, got %T", err)
-	assert.Equal(t, wantCode, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, wantCode, httpErr.ErrorCode)
 	return httpErr
 }
 
@@ -1038,7 +1038,7 @@ func TestResourceServiceValidateIndexConfigModelsRejectsReferencedVectorConfig(t
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, `vector feature on field "content" that references "embedding" must not define config`)
+	assert.Contains(t, httpErr.ErrorDetails, `vector feature on field "content" that references "embedding" must not define config`)
 }
 
 func TestResourceServiceValidateIndexConfigModelsLogicalViewHiddenVectorReference(t *testing.T) {
@@ -1061,13 +1061,13 @@ func TestResourceServiceValidateIndexConfigModelsLogicalViewHiddenVectorReferenc
 		interfaces.ResourceCategoryTable)
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, "references invalid vector field")
+	assert.Contains(t, httpErr.ErrorDetails, "references invalid vector field")
 
 	schema[0].Features[0].Config = map[string]any{"embedding_model": "invalid"}
 	err = rs.validateIndexConfigModels(context.Background(), schema, nil,
 		interfaces.ResourceCategoryLogicalView)
 	httpErr = requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, "must not define config")
+	assert.Contains(t, httpErr.ErrorDetails, "must not define config")
 }
 
 func TestValidateKeywordConfig(t *testing.T) {
@@ -1107,7 +1107,7 @@ func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
 	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{Name: "id"}, nil})
 
 	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, "cannot contain null fields")
+	assert.Contains(t, httpErr.ErrorDetails, "cannot contain null fields")
 }
 
 func TestJSONNumbersEqual(t *testing.T) {
@@ -1270,7 +1270,7 @@ func TestResourceServiceCreate(t *testing.T) {
 
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "must match its catalog")
+		assert.Contains(t, httpErr.ErrorDetails, "must match its catalog")
 	})
 	t.Run("rejects normal resource in an internal catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1290,7 +1290,7 @@ func TestResourceServiceCreate(t *testing.T) {
 
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "must match its catalog")
+		assert.Contains(t, httpErr.ErrorDetails, "must match its catalog")
 	})
 	t.Run("returns internal catalog visibility error", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1457,8 +1457,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		if httpErr.HTTPCode != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
 		}
-		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
-			t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+		if httpErr.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
+			t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.ErrorCode)
 		}
 	})
 	t.Run("create rejects vector feature without an embedding model", func(t *testing.T) {
@@ -1486,8 +1486,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		if httpErr.HTTPCode != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
 		}
-		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
-			t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+		if httpErr.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
+			t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.ErrorCode)
 		}
 		if !strings.Contains(httpErr.Error(), "embedding model is required") {
 			t.Fatalf("expected actionable missing-model error, got %v", httpErr)
@@ -2105,8 +2105,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 				err := updateResourceForTest(t, rs, resource, req)
 				httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 				assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-				assert.Contains(t, httpErr.BaseError.ErrorDetails, "content")
-				assert.Contains(t, httpErr.BaseError.ErrorDetails, "rebuild")
+				assert.Contains(t, httpErr.ErrorDetails, "content")
+				assert.Contains(t, httpErr.ErrorDetails, "rebuild")
 				assert.Equal(t, "dataset-index", resource.LocalIndexName)
 				assert.Equal(t, tc.current, resource.SchemaDefinition[0].Features[1].Config["analyzer"])
 			})
@@ -2163,7 +2163,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "immutable")
+		assert.Contains(t, httpErr.ErrorDetails, "immutable")
 	})
 	t.Run("allows dataset feature metadata and order changes without rebuilding the index", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
@@ -2465,7 +2465,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_UpdateConflict, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_UpdateConflict, httpErr.ErrorCode)
 	})
 	t.Run("returns conflict when no resource is updated", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
@@ -2483,7 +2483,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_UpdateConflict, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_UpdateConflict, httpErr.ErrorCode)
 	})
 	t.Run("update rejects build relevant change when active build task exists", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
@@ -2530,8 +2530,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 		if httpErr.HTTPCode != http.StatusConflict {
 			t.Fatalf("expected 409, got %d", httpErr.HTTPCode)
 		}
-		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_HasRunningExecution {
-			t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_HasRunningExecution, httpErr.BaseError.ErrorCode)
+		if httpErr.ErrorCode != verrors.VegaBackend_BuildTask_HasRunningExecution {
+			t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_HasRunningExecution, httpErr.ErrorCode)
 		}
 	})
 	t.Run("update allows non build relevant change when active build task exists", func(t *testing.T) {
@@ -2720,8 +2720,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 		if httpErr.HTTPCode != http.StatusConflict {
 			t.Fatalf("expected 409, got %d", httpErr.HTTPCode)
 		}
-		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_HasRunningExecution {
-			t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_HasRunningExecution, httpErr.BaseError.ErrorCode)
+		if httpErr.ErrorCode != verrors.VegaBackend_BuildTask_HasRunningExecution {
+			t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_HasRunningExecution, httpErr.ErrorCode)
 		}
 	})
 	t.Run("update clears local index name when index config changes", func(t *testing.T) {
@@ -2853,8 +2853,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 		if httpErr.HTTPCode != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d", httpErr.HTTPCode)
 		}
-		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
-			t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.BaseError.ErrorCode)
+		if httpErr.ErrorCode != verrors.VegaBackend_InvalidParameter_RequestBody {
+			t.Fatalf("expected %s, got %s", verrors.VegaBackend_InvalidParameter_RequestBody, httpErr.ErrorCode)
 		}
 	})
 	t.Run("update allows unused default embedding model", func(t *testing.T) {

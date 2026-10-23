@@ -54,7 +54,7 @@ func TestTwoWholeTablesAreRefused(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		details := ""
 		if errors.As(err, &httpErr) {
-			details, _ = httpErr.BaseError.ErrorDetails.(string)
+			details, _ = httpErr.ErrorDetails.(string)
 		}
 		gotRefused := strings.Contains(details, "a.code = b.code")
 		if gotRefused != refused {

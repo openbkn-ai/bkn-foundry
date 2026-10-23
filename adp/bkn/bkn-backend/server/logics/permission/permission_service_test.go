@@ -66,7 +66,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "\u5e10\u6237\u4fe1\u606f\u4e0d\u53ef\u7528\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002")
+			So(httpErr.ErrorDetails, ShouldEqual, "\u5e10\u6237\u4fe1\u606f\u4e0d\u53ef\u7528\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002")
 		})
 
 		Convey("Success: pa returns true\n", func() {
@@ -85,7 +85,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "You do not have permission to perform this operation.")
+			So(httpErr.ErrorDetails, ShouldEqual, "You do not have permission to perform this operation.")
 		})
 
 		Convey("Failed: pa returns error\n", func() {

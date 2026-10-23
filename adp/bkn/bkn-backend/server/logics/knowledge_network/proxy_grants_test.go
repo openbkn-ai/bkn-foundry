@@ -71,6 +71,7 @@ func newProjectionService(t *testing.T, fixture *projectionFixture, kpa interfac
 	return &knowledgeNetworkService{kna: kna, cga: cga, ota: ota, rta: rta, ata: ata, cba: cba, kpa: kpa, mpa: mpa}
 }
 
+//nolint:unused // Intentionally retained.
 func fixtureVersion(t *testing.T, fixture *projectionFixture) string {
 	t.Helper()
 	_, version, err := buildProxyGrantSourcesWithCapabilities(fixture.kn, fixture.bindings)
@@ -150,12 +151,12 @@ func TestPreflightStillRefusesMissingDataPermissionWithoutListingSkills(t *testi
 	_, err := service.preflightProxySources(t.Context(), "proxy-1", "editor-1", skillAndDataSources())
 	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden ||
-		httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
+		httpErr.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
 		t.Fatalf("preflight error = %v, want ProxyPermissionMissing", err)
 	}
-	details, ok := httpErr.BaseError.ErrorDetails.(missingProxyPermissionDetails)
+	details, ok := httpErr.ErrorDetails.(missingProxyPermissionDetails)
 	if !ok || len(details.MissingPermissions) != 1 || details.MissingPermissions[0].ResourceID != "resource-1" {
-		t.Fatalf("missing permissions = %#v, want only the data source", httpErr.BaseError.ErrorDetails)
+		t.Fatalf("missing permissions = %#v, want only the data source", httpErr.ErrorDetails)
 	}
 }
 
@@ -314,7 +315,7 @@ func TestResolveKNProxyBindingFollowsPublishedSkillSnapshot(t *testing.T) {
 	}
 	_, err = service.ResolveKNProxyBinding(t.Context(), "kn-1", skill("binding-skill-1", "skill-1"))
 	var httpErr *httperrors.HTTPError
-	if !errors.As(err, &httpErr) || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid {
+	if !errors.As(err, &httpErr) || httpErr.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid {
 		t.Fatalf("released skill resolve error = %v, want ProxyBindingInvalid", err)
 	}
 }
@@ -345,19 +346,24 @@ func TestPublishKNCapabilityMutationRequiresExecuteOnANewlyMountedSkill(t *testi
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer db.Close()
+		defer func() {
+			sqlMock.ExpectClose()
+			if err := db.Close(); err != nil {
+				t.Errorf("close mock database: %v", err)
+			}
+		}()
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectRollback()
 		service.db = db
 
 		_, err = service.PublishKNCapabilityMutation(ctx, "kn-1", interfaces.MAIN_BRANCH, nil, mutate)
 		var httpErr *httperrors.HTTPError
-		if !errors.As(err, &httpErr) || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
+		if !errors.As(err, &httpErr) || httpErr.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
 			t.Fatalf("mount error = %v, want ProxyPermissionMissing", err)
 		}
-		details, _ := httpErr.BaseError.ErrorDetails.(missingProxyPermissionDetails)
+		details, _ := httpErr.ErrorDetails.(missingProxyPermissionDetails)
 		if len(details.MissingPermissions) != 1 || details.MissingPermissions[0].ResourceType != interfaces.KNProxyTargetTypeSkill {
-			t.Fatalf("missing permissions = %#v", httpErr.BaseError.ErrorDetails)
+			t.Fatalf("missing permissions = %#v", httpErr.ErrorDetails)
 		}
 		if kpa.pendingCount != 0 || safe.syncCalls != 0 {
 			t.Fatal("a refused mount marked the proxy pending or synchronized it")
@@ -378,7 +384,12 @@ func TestPublishKNCapabilityMutationRequiresExecuteOnANewlyMountedSkill(t *testi
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer db.Close()
+		defer func() {
+			sqlMock.ExpectClose()
+			if err := db.Close(); err != nil {
+				t.Errorf("close mock database: %v", err)
+			}
+		}()
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectCommit()
 		service.db = db
@@ -409,7 +420,12 @@ func TestPublishKNCapabilityMutationMountsASkillWhileSafePredatesSkillSources(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		sqlMock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	sqlMock.ExpectBegin()
 	sqlMock.ExpectCommit()
 	service.db = db
@@ -453,7 +469,12 @@ func TestPublishKNCapabilityMutationKeepsFunctionGrantType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		sqlMock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
 	sqlMock.ExpectBegin()
 	sqlMock.ExpectCommit()
 	service.db = db

@@ -63,7 +63,7 @@ func (cond *KnnCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 		// Ignore this KNN condition and return an empty string when DefaultSmallModelEnabled is false.
 		var httpErr *httperrors.HTTPError
 		if errors.As(err, &httpErr) && httpErr != nil &&
-			httpErr.BaseError.ErrorDetails == DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR {
+			httpErr.ErrorDetails == DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR {
 			return "", nil
 		}
 		return "", fmt.Errorf("condition [knn]: vectorizer [%s] failed, error: %s", v, err.Error())
@@ -158,7 +158,7 @@ func convertKnnCondToDatasetFilterCondition(ctx context.Context, cfg *CondCfg,
 		// Ignore this KNN condition and return an empty string when DefaultSmallModelEnabled is false.
 		var httpErr *httperrors.HTTPError
 		if errors.As(err, &httpErr) && httpErr != nil &&
-			httpErr.BaseError.ErrorDetails == DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR {
+			httpErr.ErrorDetails == DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("condition [knn]: vectorizer [%s] failed, error: %s", v, err.Error())

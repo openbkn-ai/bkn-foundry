@@ -147,6 +147,8 @@ func (s *knToolsService) boundToolRefs(ctx context.Context, knID, toolboxID stri
 // They are read in one call and kept apart because they are called differently — a toolbox tool
 // goes through the toolbox proxy, an MCP tool through the MCP proxy — and the ranking endpoint
 // only understands the first kind.
+//
+//nolint:unused // Intentionally retained.
 func (s *knToolsService) boundRefs(ctx context.Context, knID, toolboxID string) ([]functionRef, []mcpRef, error) {
 	// Both entry points come through here, so the per-caller check lives here rather than in each
 	// of them: the network's bindings and the execution factory's ranking are both read with this
@@ -693,6 +695,7 @@ func (s *knToolsService) resolveCapabilityProxy(ctx context.Context, knID, bindi
 	return &interfaces.KNProxyExecution{Mapping: mapping, Binding: binding}, nil
 }
 
+//nolint:unused // Intentionally retained.
 func containsTool(listed *interfaces.ListPublishedToolsResponse, toolID string) bool {
 	if listed == nil {
 		return false

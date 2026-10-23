@@ -156,7 +156,7 @@ func TestBuildTaskServiceFillBuildTaskIndexSnapshot(t *testing.T) {
 		}, buildTask)
 
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+		assert.Contains(t, httpErr.ErrorDetails, `property "title" has more than one "fulltext" feature`)
 	})
 	t.Run("uses only referenced vector field owner model", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -212,7 +212,7 @@ func TestValidateBuildTaskAnalyzers(t *testing.T) {
 
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_IndexCapability_InternalError_Unavailable)
 		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "connection refused")
+		assert.Contains(t, httpErr.ErrorDetails, "connection refused")
 	})
 }
 
@@ -288,7 +288,7 @@ func TestBuildTaskServiceList(t *testing.T) {
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		assert.Nil(t, got)
 		assert.Zero(t, total)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "list failed")
+		assert.Contains(t, httpErr.ErrorDetails, "list failed")
 	})
 }
 
@@ -347,7 +347,7 @@ func TestBuildTaskServiceGetByID(t *testing.T) {
 
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
 		assert.Nil(t, got)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "get failed")
+		assert.Contains(t, httpErr.ErrorDetails, "get failed")
 	})
 
 	t.Run("returns not found", func(t *testing.T) {
@@ -427,7 +427,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		assert.Empty(t, id)
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "price")
+		assert.Contains(t, httpErr.ErrorDetails, "price")
 		assert.Empty(t, service.dispatchCh)
 	})
 
@@ -466,7 +466,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 
 		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "analyzer")
+		assert.Contains(t, httpErr.ErrorDetails, "analyzer")
 		assert.Len(t, validator.captured, 1)
 	})
 	t.Run("rejects batch task without primary key fields", func(t *testing.T) {
@@ -524,9 +524,9 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		})
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "id")
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "material_number")
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+		assert.Contains(t, httpErr.ErrorDetails, "id")
+		assert.Contains(t, httpErr.ErrorDetails, "material_number")
+		assert.Contains(t, httpErr.ErrorDetails, "re-save the resource configuration")
 	})
 	t.Run("rejects streaming task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -588,7 +588,7 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, `unsupported type "text"`)
+		assert.Contains(t, httpErr.ErrorDetails, `unsupported type "text"`)
 	})
 
 	t.Run("rejects disabled catalog", func(t *testing.T) {
@@ -1205,7 +1205,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_IndexConfigChanged)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "create a new build task")
+		assert.Contains(t, httpErr.ErrorDetails, "create a new build task")
 	})
 
 	t.Run("rejects a legacy string or text schema until the resource is re-saved", func(t *testing.T) {
@@ -1234,7 +1234,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "re-save the resource configuration")
+		assert.Contains(t, httpErr.ErrorDetails, "re-save the resource configuration")
 	})
 
 	t.Run("persists full reset before requesting dispatch", func(t *testing.T) {
@@ -1567,7 +1567,7 @@ func TestBuildTaskServiceStart(t *testing.T) {
 		err := service.Start(context.Background(), "task-1", false)
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Contains(t, httpErr.BaseError.ErrorDetails, "unavailable")
+		assert.Contains(t, httpErr.ErrorDetails, "unavailable")
 		assert.Equal(t, []string{"hanlp_index"}, validator.captured)
 	})
 }
@@ -1584,7 +1584,7 @@ func requireHTTPError(t *testing.T, err error, wantErrorCode string) *httperrors
 	var httpErr *httperrors.HTTPError
 	ok := errors.As(err, &httpErr)
 	require.Truef(t, ok, "expected HTTPError, got %T", err)
-	assert.Equal(t, wantErrorCode, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, wantErrorCode, httpErr.ErrorCode)
 	return httpErr
 }
 
@@ -1758,7 +1758,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		bta.EXPECT().GetByIDs(gomock.Any(), []string{"missing"}).Return(map[string]*interfaces.BuildTask{}, nil)
 
 		httpErr := requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"missing"}, false), verrors.VegaBackend_BuildTask_NotFound)
-		assert.Equal(t, map[string]any{"missing_ids": []string{"missing"}}, httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, map[string]any{"missing_ids": []string{"missing"}}, httpErr.ErrorDetails)
 	})
 
 	t.Run("ignores missing ids and deletes returned terminal tasks", func(t *testing.T) {
@@ -1786,7 +1786,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "c1", []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, nil, nil)
 
 		httpErr := requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"active", "missing"}, false), verrors.VegaBackend_BuildTask_HasRunningExecution)
-		assert.Equal(t, map[string]any{"active_ids": []string{"active"}}, httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, map[string]any{"active_ids": []string{"active"}}, httpErr.ErrorDetails)
 	})
 
 	for _, tt := range []struct {

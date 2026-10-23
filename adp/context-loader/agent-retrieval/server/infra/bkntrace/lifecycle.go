@@ -508,6 +508,7 @@ func (c *LifecycleClient) finishAttempt(
 	return result, apiErr, err
 }
 
+//nolint:unused // Intentionally retained.
 func boundedJSONPayload(raw json.RawMessage) PayloadEnvelope {
 	payload, _, _ := boundedJSONPayloadWithWriter(context.Background(), nil, raw)
 	return payload

@@ -133,7 +133,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 			So(result.TotalCount, ShouldEqual, 0)
 		})
 

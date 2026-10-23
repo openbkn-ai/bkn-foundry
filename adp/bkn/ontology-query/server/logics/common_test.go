@@ -1612,7 +1612,7 @@ func Test_BuildDslQuery(t *testing.T) {
 			So(len(result), ShouldEqual, 0)
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed)
 		})
 
 		Convey("成功 - 空查询字符串", func() {

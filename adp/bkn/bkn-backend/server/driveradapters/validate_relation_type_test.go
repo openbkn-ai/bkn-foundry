@@ -85,7 +85,7 @@ func Test_ValidateRelationType(t *testing.T) {
 			err := ValidateRelationType(ctx, rt, true)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_NullParameter_Name)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_NullParameter_Name)
 		})
 
 		Convey("Failed with invalid type\n", func() {
@@ -343,8 +343,8 @@ func TestValidateRelationTypeLocalizesInvalidParameterDetails(t *testing.T) {
 			if !ok {
 				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}
@@ -392,7 +392,7 @@ func Test_ValidateRelationTypes(t *testing.T) {
 			err := ValidateRelationTypes(ctx, knID, relationTypes, true)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_Duplicated_IDInFile)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_Duplicated_IDInFile)
 		})
 
 		Convey("Success with multiple distinct relation types\n", func() {
@@ -429,8 +429,8 @@ func TestRelationTypeValidationDetailsRespectLanguage(t *testing.T) {
 				t.Fatal("ValidateRelationTypes() error = nil, want invalid module type error")
 			}
 			httpErr := err.(*httperrors.HTTPError)
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}

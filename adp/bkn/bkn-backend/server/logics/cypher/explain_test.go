@@ -92,7 +92,7 @@ func TestExplainRefusesWhatRunningRefuses(t *testing.T) {
 			t.Errorf("%s: explain err = %v, run err = %v", query, explained, ran)
 			continue
 		}
-		if a.HTTPCode != b.HTTPCode || a.BaseError.ErrorCode != b.BaseError.ErrorCode || a.BaseError.ErrorDetails != b.BaseError.ErrorDetails {
+		if a.HTTPCode != b.HTTPCode || a.ErrorCode != b.ErrorCode || a.ErrorDetails != b.ErrorDetails {
 			t.Errorf("%s: explain %+v, run %+v", query, a.BaseError, b.BaseError)
 		}
 	}

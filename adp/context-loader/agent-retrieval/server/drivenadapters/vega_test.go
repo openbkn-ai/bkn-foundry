@@ -57,10 +57,10 @@ func TestVegaRawQuery_ResourceDenialExplainsDirectPermission(t *testing.T) {
 			})
 
 			he := asHTTPError(t, err)
-			if he.HTTPCode != http.StatusForbidden || he.BaseError.ErrorCode != "Public.Forbidden" {
-				t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.BaseError.ErrorCode)
+			if he.HTTPCode != http.StatusForbidden || he.ErrorCode != "Public.Forbidden" {
+				t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.ErrorCode)
 			}
-			details, _ := he.BaseError.ErrorDetails.(string)
+			details, _ := he.ErrorDetails.(string)
 			for _, want := range tc.want {
 				if !strings.Contains(details, want) {
 					t.Errorf("details = %q, want it to mention %q", details, want)
@@ -106,8 +106,8 @@ func TestVegaRawQuery_OtherFailuresKeepDownstreamDetail(t *testing.T) {
 			if he.HTTPCode != tc.status {
 				t.Fatalf("status = %d, want %d", he.HTTPCode, tc.status)
 			}
-			if want := "vega raw query failed: " + tc.body; he.BaseError.ErrorDetails != want {
-				t.Errorf("details = %#v, want %q", he.BaseError.ErrorDetails, want)
+			if want := "vega raw query failed: " + tc.body; he.ErrorDetails != want {
+				t.Errorf("details = %#v, want %q", he.ErrorDetails, want)
 			}
 		})
 	}

@@ -87,8 +87,8 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_ConnectorType_InternalError)
 
 		// Log the error.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 
 		// Attach error details to the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -107,8 +107,8 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 
 	if err := ValidateConnectorTypeListQueryParams(ctx, params); err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_ConnectorType_InternalError)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

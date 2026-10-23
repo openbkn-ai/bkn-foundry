@@ -61,17 +61,17 @@ func TestClassifyMCPConnErrorAuthFailed(t *testing.T) {
 			if httpErr.HTTPCode != http.StatusBadRequest {
 				t.Errorf("HTTPCode = %d, want %d", httpErr.HTTPCode, http.StatusBadRequest)
 			}
-			if !strings.HasSuffix(httpErr.BaseError.ErrorCode, string(errors.ErrExtMCPServerAuthFailed)) {
-				t.Errorf("Code = %s, want suffix %s", httpErr.BaseError.ErrorCode, errors.ErrExtMCPServerAuthFailed)
+			if !strings.HasSuffix(httpErr.ErrorCode, string(errors.ErrExtMCPServerAuthFailed)) {
+				t.Errorf("Code = %s, want suffix %s", httpErr.ErrorCode, errors.ErrExtMCPServerAuthFailed)
 			}
-			if strings.Contains(httpErr.BaseError.ErrorCode, "InternalServerError") {
-				t.Errorf("Code = %s, should not be classified as InternalServerError", httpErr.BaseError.ErrorCode)
+			if strings.Contains(httpErr.ErrorCode, "InternalServerError") {
+				t.Errorf("Code = %s, should not be classified as InternalServerError", httpErr.ErrorCode)
 			}
-			if !strings.Contains(httpErr.BaseError.Description, c.wantStatus) {
-				t.Errorf("Description = %q, want upstream status %s in it", httpErr.BaseError.Description, c.wantStatus)
+			if !strings.Contains(httpErr.Description, c.wantStatus) {
+				t.Errorf("Description = %q, want upstream status %s in it", httpErr.Description, c.wantStatus)
 			}
-			if strings.Contains(httpErr.BaseError.Description, "是否正常运行") {
-				t.Errorf("Solution = %q, should not point at server liveness", httpErr.BaseError.Description)
+			if strings.Contains(httpErr.Description, "是否正常运行") {
+				t.Errorf("Solution = %q, should not point at server liveness", httpErr.Description)
 			}
 		})
 	}
@@ -92,11 +92,11 @@ func TestClassifyMCPConnErrorNotAccessible(t *testing.T) {
 			if httpErr.HTTPCode != http.StatusServiceUnavailable {
 				t.Errorf("HTTPCode = %d, want %d", httpErr.HTTPCode, http.StatusServiceUnavailable)
 			}
-			if !strings.Contains(httpErr.BaseError.ErrorCode, "ServiceUnavailable") {
-				t.Errorf("Code = %s, want ServiceUnavailable segment", httpErr.BaseError.ErrorCode)
+			if !strings.Contains(httpErr.ErrorCode, "ServiceUnavailable") {
+				t.Errorf("Code = %s, want ServiceUnavailable segment", httpErr.ErrorCode)
 			}
-			if !strings.HasSuffix(httpErr.BaseError.ErrorCode, string(errors.ErrExtMCPServerNotAccessible)) {
-				t.Errorf("Code = %s, want suffix %s", httpErr.BaseError.ErrorCode, errors.ErrExtMCPServerNotAccessible)
+			if !strings.HasSuffix(httpErr.ErrorCode, string(errors.ErrExtMCPServerNotAccessible)) {
+				t.Errorf("Code = %s, want suffix %s", httpErr.ErrorCode, errors.ErrExtMCPServerNotAccessible)
 			}
 		})
 	}
@@ -110,8 +110,8 @@ func TestNewMCPClientModeNotSupported(t *testing.T) {
 	})
 	httpErr := requireHTTPError(t, err)
 
-	if !strings.HasSuffix(httpErr.BaseError.ErrorCode, string(errors.ErrExtMCPModeNotSupported)) {
-		t.Errorf("Code = %s, want suffix %s", httpErr.BaseError.ErrorCode, errors.ErrExtMCPModeNotSupported)
+	if !strings.HasSuffix(httpErr.ErrorCode, string(errors.ErrExtMCPModeNotSupported)) {
+		t.Errorf("Code = %s, want suffix %s", httpErr.ErrorCode, errors.ErrExtMCPModeNotSupported)
 	}
 	if httpErr.HTTPCode != http.StatusBadRequest {
 		t.Errorf("HTTPCode = %d, want %d", httpErr.HTTPCode, http.StatusBadRequest)

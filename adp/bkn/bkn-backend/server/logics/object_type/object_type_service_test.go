@@ -98,7 +98,7 @@ func Test_objectTypeService_CheckObjectTypeExistByID(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
 		})
 	})
 }
@@ -157,7 +157,7 @@ func Test_objectTypeService_CheckObjectTypeExistByName(t *testing.T) {
 			So(exist, ShouldBeFalse)
 			So(id, ShouldEqual, "")
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
 		})
 	})
 }
@@ -210,7 +210,7 @@ func Test_objectTypeService_GetObjectTypeIDsByKnID(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed)
 		})
 	})
 }
@@ -338,7 +338,7 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(result, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Failed when GetObjectTypesByIDs returns error\n", func() {
@@ -587,7 +587,7 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
 		})
 
 		Convey("Keeps not found when access layer returns a structured 404\n", func() {
@@ -601,7 +601,7 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Returns not found when access layer returns no object type\n", func() {
@@ -614,7 +614,7 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Wraps a plain database error as internal error\n", func() {
@@ -628,7 +628,7 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
 		})
 	})
 }
@@ -741,7 +741,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			So(result, ShouldBeEmpty)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 			assert.NotContains(t, err.Error(), "object_type1")
 		})
 
@@ -766,7 +766,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(result), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeIDExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeIDExisted)
 		})
 
 		Convey("Success with ignore mode when object type exists\n", func() {
@@ -1259,7 +1259,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
 		})
 
 		Convey("Success strict mode when tool binding resolves\n", func() {
@@ -1395,7 +1395,7 @@ func TestObjectTypeStrictResourceDependencyErrorMapping(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
-			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, tc.code, httpErr.ErrorCode)
 		})
 	}
 }
@@ -1472,7 +1472,7 @@ func TestObjectTypeStrictToolDependencyErrorMapping(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
-			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, tc.code, httpErr.ErrorCode)
 		})
 	}
 }
@@ -3191,7 +3191,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeIDExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeIDExisted)
 		})
 
 		Convey("Failed with Normal mode when name exists\n", func() {
@@ -3214,7 +3214,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 		})
 
 		Convey("Success with Ignore mode when object type exists\n", func() {
@@ -3279,7 +3279,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 		})
 
 		Convey("Success with Overwrite mode when only ID exists\n", func() {
@@ -3323,7 +3323,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 		})
 
 		Convey("Failed when CheckObjectTypeExistByID returns error\n", func() {
@@ -3410,7 +3410,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(updates, ShouldHaveLength, 0)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual,
+			So(httpErr.ErrorCode, ShouldEqual,
 				berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
 		})
 	})

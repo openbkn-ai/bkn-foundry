@@ -20,7 +20,7 @@ func TestSharedHTTPErrorEnvelope(t *testing.T) {
 			ctx := i18n.WithLanguage(context.Background(), language)
 			details := map[string]any{"reason": "{{ literal }}"}
 			err := NewHTTPError(ctx, http.StatusBadRequest, ErrExtCommonInternalComponentNotAllowed, details, "tool-1")
-			if err.BaseError.Description != "" {
+			if err.Description != "" {
 				t.Fatal("constructor rendered the description")
 			}
 			if err.Lang != language {
@@ -29,8 +29,8 @@ func TestSharedHTTPErrorEnvelope(t *testing.T) {
 			if renderErr := err.Render(); renderErr != nil {
 				t.Fatal(renderErr)
 			}
-			if !strings.Contains(err.BaseError.Description, "tool-1") || err.BaseError.Metadata["Arg1"] != "tool-1" || strings.Contains(err.BaseError.Description, "<no value>") {
-				t.Fatalf("description = %q", err.BaseError.Description)
+			if !strings.Contains(err.Description, "tool-1") || err.Metadata["Arg1"] != "tool-1" || strings.Contains(err.Description, "<no value>") {
+				t.Fatalf("description = %q", err.Description)
 			}
 			data, encodeErr := json.Marshal(err)
 			if encodeErr != nil {
@@ -40,7 +40,7 @@ func TestSharedHTTPErrorEnvelope(t *testing.T) {
 			if decodeErr := json.Unmarshal(data, &body); decodeErr != nil {
 				t.Fatal(decodeErr)
 			}
-			if body["error_code"] != err.BaseError.ErrorCode || body["description"] != err.BaseError.Description || body["error_details"].(map[string]any)["reason"] != "{{ literal }}" {
+			if body["error_code"] != err.ErrorCode || body["description"] != err.Description || body["error_details"].(map[string]any)["reason"] != "{{ literal }}" {
 				t.Fatalf("body = %s", data)
 			}
 			for _, legacy := range []string{"code", "details", "solution", "link", "error_link"} {
@@ -59,7 +59,7 @@ func TestPublicStatusMessagesRender(t *testing.T) {
 			if renderErr := err.Render(); renderErr != nil {
 				t.Fatalf("status %d language %s: %v", status, language, renderErr)
 			}
-			if err.BaseError.Description == "" {
+			if err.Description == "" {
 				t.Fatalf("status %d: empty description", status)
 			}
 		}

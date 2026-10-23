@@ -496,8 +496,8 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
-			found := httpErr.BaseError.ErrorDetails.(*interfaces.NetworkCheckResult)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
+			found := httpErr.ErrorDetails.(*interfaces.NetworkCheckResult)
 			So(found.MisplacedParameters, ShouldHaveLength, 1)
 			So(found.MisplacedParameters[0].ActionTypeID, ShouldEqual, "restart_pod")
 		})
@@ -509,8 +509,8 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			_, err := svc.ExportToTar(context.Background(), "kn3", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
 			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
-			found := httpErr.BaseError.ErrorDetails.(*interfaces.NetworkCheckResult)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
+			found := httpErr.ErrorDetails.(*interfaces.NetworkCheckResult)
 			So(found.MisplacedParameters, ShouldBeEmpty)
 			So(found.InvalidParameters, ShouldResemble, []interfaces.NetworkCheckInvalidParameter{{
 				ActionTypeID: "restart_pod", Parameter: "pod", Current: interfaces.NetworkCheckParameterValue{Source: "Body"},
@@ -529,8 +529,8 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			So(data, ShouldBeNil)
 			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "pod")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3)
+			So(httpErr.ErrorDetails, ShouldContainSubstring, "pod")
 		})
 
 		Convey("3.0 is written as 3.0 when the check finds nothing\n", func() {

@@ -958,7 +958,7 @@ func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*in
 		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
 	if err != nil {
 		var httpErr *httperrors.HTTPError
-		if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_InternalError_GetFailed {
+		if errors.As(err, &httpErr) && httpErr.ErrorCode == verrors.VegaBackend_Catalog_InternalError_GetFailed {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 				WithErrorDetails("failed to inspect catalog dependencies")
@@ -1116,7 +1116,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	if err != nil {
 		span.SetStatus(codes.Error, "Authorize catalog deletion failed")
 		var httpErr *httperrors.HTTPError
-		if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_InternalError_GetFailed {
+		if errors.As(err, &httpErr) && httpErr.ErrorCode == verrors.VegaBackend_Catalog_InternalError_GetFailed {
 			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 				WithErrorDetails("failed to inspect catalog dependencies")

@@ -24,8 +24,8 @@ func TestKeywordLimitHTTPError(t *testing.T) {
 		got := KeywordLimitHTTPError(context.Background(), fmt.Errorf("private diagnostic: %w", cause))
 		require.NotNil(t, got)
 		assert.Equal(t, http.StatusBadRequest, got.HTTPCode)
-		assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", got.BaseError.ErrorCode)
-		assert.Equal(t, map[string]any{"field": "status", "limit": 256}, got.BaseError.Metadata)
+		assert.Equal(t, "VegaBackend.Resource.QueryValueExceedsKeywordLimit", got.ErrorCode)
+		assert.Equal(t, map[string]any{"field": "status", "limit": 256}, got.Metadata)
 		assert.NotContains(t, got.Error(), "private diagnostic")
 	})
 	for name, err := range map[string]error{"nil": nil, "unknown": errors.New("ignore_above 256"), "generic condition": interfaces.NewConditionBuildError("ignore_above 256"), "stored": interfaces.NewStoredConditionBuildError(cause)} {

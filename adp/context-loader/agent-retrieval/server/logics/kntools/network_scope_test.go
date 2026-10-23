@@ -22,7 +22,7 @@ func refusalDetail(t *testing.T, err error) (int, string) {
 	if !ok {
 		t.Fatalf("error = %v, want an HTTP error", err)
 	}
-	detail, _ := httpErr.BaseError.ErrorDetails.(string)
+	detail, _ := httpErr.ErrorDetails.(string)
 	return httpErr.HTTPCode, detail
 }
 

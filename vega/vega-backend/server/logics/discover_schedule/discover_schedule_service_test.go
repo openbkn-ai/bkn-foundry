@@ -204,7 +204,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.ErrorCode)
 	})
 
 	t.Run("returns conflict when no schedule is updated", func(t *testing.T) {
@@ -221,7 +221,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.ErrorCode)
 	})
 
 	t.Run("update rejects nil schedule", func(t *testing.T) {
@@ -264,7 +264,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
-		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.ErrorCode)
 	})
 
 	t.Run("list enriches all creator and updater accounts", func(t *testing.T) {
@@ -338,7 +338,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
-		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.ErrorCode)
 	})
 
 	t.Run("delegates enable disable delete and run metadata", func(t *testing.T) {
@@ -374,7 +374,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.ErrorCode)
 	})
 
 	t.Run("rejects a nil schedule", func(t *testing.T) {

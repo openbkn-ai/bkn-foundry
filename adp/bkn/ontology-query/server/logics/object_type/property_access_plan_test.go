@@ -79,11 +79,11 @@ func TestPropertyAccessPlanKeepsDeniedAndUnknownPropertiesIndistinguishable(t *t
 		t.Run(test.name, func(t *testing.T) {
 			_, err := buildPropertyAccessPlan(context.Background(), access, objectType, &test.query, true)
 			httpError, ok := err.(*httperrors.HTTPError)
-			if !ok || httpError.HTTPCode != test.status || httpError.BaseError.ErrorCode != test.code ||
-				httpError.BaseError.ErrorDetails != test.details {
+			if !ok || httpError.HTTPCode != test.status || httpError.ErrorCode != test.code ||
+				httpError.ErrorDetails != test.details {
 				t.Fatalf("error = %#v, want status=%d code=%s details=%s", err, test.status, test.code, test.details)
 			}
-			if reason := httpError.BaseError.Metadata["reason"]; reason != "property_unavailable" {
+			if reason := httpError.Metadata["reason"]; reason != "property_unavailable" {
 				t.Fatalf("property reason = %#v", reason)
 			}
 			bodies[test.name] = httpError.Error()
@@ -500,8 +500,8 @@ func TestPropertyAccessPlanRejectsHiddenAndMissingPropertiesIndistinguishably(t 
 	}
 	hidden := errorFor("secret")
 	missing := errorFor("does_not_exist")
-	if hidden.HTTPCode != missing.HTTPCode || hidden.BaseError.ErrorCode != missing.BaseError.ErrorCode ||
-		hidden.BaseError.ErrorDetails != missing.BaseError.ErrorDetails {
+	if hidden.HTTPCode != missing.HTTPCode || hidden.ErrorCode != missing.ErrorCode ||
+		hidden.ErrorDetails != missing.ErrorDetails {
 		t.Fatalf("hidden and missing errors differ: %#v %#v", hidden, missing)
 	}
 }

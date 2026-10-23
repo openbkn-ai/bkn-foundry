@@ -57,12 +57,12 @@ func TestQueryInstanceSubgraph_DownstreamPathErrorCarriesCodeAndDetails(t *testi
 	})
 
 	he := asHTTPError(t, err)
-	if he.HTTPCode != http.StatusBadRequest || he.BaseError.ErrorCode != "Public.BadRequest" {
-		t.Fatalf("error = %d %s, want 400 Public.BadRequest", he.HTTPCode, he.BaseError.ErrorCode)
+	if he.HTTPCode != http.StatusBadRequest || he.ErrorCode != "Public.BadRequest" {
+		t.Fatalf("error = %d %s, want 400 Public.BadRequest", he.HTTPCode, he.ErrorCode)
 	}
 	want := "OntologyQuery.KnowledgeNetwork.InvalidParameter.TypePath: " + pathDetail
-	if he.BaseError.ErrorDetails != want {
-		t.Errorf("details = %#v, want %q", he.BaseError.ErrorDetails, want)
+	if he.ErrorDetails != want {
+		t.Errorf("details = %#v, want %q", he.ErrorDetails, want)
 	}
 	if strings.Contains(he.Error(), internalURL) {
 		t.Errorf("error exposes the internal service URL: %s", he.Error())
@@ -80,8 +80,8 @@ func TestClassifyQueryError_DownstreamCodeWithoutDetailsFallsBackToDescription(t
 	if he.HTTPCode != http.StatusNotFound {
 		t.Fatalf("downstream 404 must stay a 404, got %d", he.HTTPCode)
 	}
-	if want := "OntologyQuery.KnowledgeNetwork.RelationTypeNotFound: 关系类不存在"; he.BaseError.ErrorDetails != want {
-		t.Errorf("details = %#v, want %q", he.BaseError.ErrorDetails, want)
+	if want := "OntologyQuery.KnowledgeNetwork.RelationTypeNotFound: 关系类不存在"; he.ErrorDetails != want {
+		t.Errorf("details = %#v, want %q", he.ErrorDetails, want)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestClassifyQueryError_NonEnvelopeBodyKeepsClientDetail(t *testing.T) {
 
 	_, err := client.QueryInstanceSubgraph(context.Background(), &interfaces.QueryInstanceSubgraphReq{KnID: "kn-1"})
 
-	details, _ := asHTTPError(t, err).BaseError.ErrorDetails.(string)
+	details, _ := asHTTPError(t, err).ErrorDetails.(string)
 	if !strings.Contains(details, "upstream proxy said no") {
 		t.Errorf("details = %q, want the downstream body", details)
 	}
@@ -106,7 +106,7 @@ func TestClassifyQueryError_DownstreamServerErrorIsUnchanged(t *testing.T) {
 	_, err := client.QueryInstanceSubgraph(context.Background(), &interfaces.QueryInstanceSubgraphReq{KnID: "kn-1"})
 
 	he := asHTTPError(t, err)
-	if he.HTTPCode != http.StatusInternalServerError || !strings.HasSuffix(he.BaseError.ErrorCode, ".CommonExternalServerError") {
-		t.Fatalf("error = %d %s, want 500 CommonExternalServerError", he.HTTPCode, he.BaseError.ErrorCode)
+	if he.HTTPCode != http.StatusInternalServerError || !strings.HasSuffix(he.ErrorCode, ".CommonExternalServerError") {
+		t.Fatalf("error = %d %s, want 500 CommonExternalServerError", he.HTTPCode, he.ErrorCode)
 	}
 }

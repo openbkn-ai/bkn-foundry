@@ -236,6 +236,8 @@ const (
 // (NULL, a) would fold into one key; and either way a row without a key was left in the row count,
 // where it read as a duplicate. The rows with a complete key are counted separately so a missing
 // key and a repeated key come back as the two different faults they are.
+//
+//nolint:unused // Intentionally retained.
 func buildStatsSQL(ctx context.Context, resourceID string, keyColumns []string) (string, error) {
 	return buildStatsSQLWithWhere(ctx, resourceID, keyColumns, "")
 }

@@ -143,8 +143,8 @@ func TestGetKnowledgeNetworkDetail_ShellRefusalStopsBeforeLists(t *testing.T) {
 		var httpErr *httperrors.HTTPError
 		convey.So(errors.As(err, &httpErr), convey.ShouldBeTrue)
 		convey.So(httpErr.HTTPCode, convey.ShouldEqual, http.StatusForbidden)
-		convey.So(httpErr.BaseError.ErrorCode, convey.ShouldEqual, "agentRetrieval.Forbidden.CommonExternalServerError")
-		source, ok := httpErr.BaseError.ErrorDetails.(httperrors.BaseError)
+		convey.So(httpErr.ErrorCode, convey.ShouldEqual, "agentRetrieval.Forbidden.CommonExternalServerError")
+		source, ok := httpErr.ErrorDetails.(httperrors.BaseError)
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(source.ErrorCode, convey.ShouldEqual, "Public.Forbidden")
 		convey.So(source.Description, convey.ShouldEqual, "forbidden")

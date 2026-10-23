@@ -1173,7 +1173,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			// Reporting parameter issues as 500 makes callers check service health, while the real fix is changing the query or building the index.
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, details)
+			So(httpErr.ErrorDetails, ShouldEqual, details)
 		})
 
 		for _, tc := range []struct {
@@ -1224,19 +1224,19 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 				if tc.expectedProperty != "" {
-					So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, tc.expectedProperty)
-					So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "256 UTF-16")
-					So(httpErr.BaseError.Metadata["field"], ShouldEqual, tc.expectedProperty)
-					So(len(httpErr.BaseError.Metadata), ShouldEqual, 2)
+					So(httpErr.ErrorDetails, ShouldContainSubstring, tc.expectedProperty)
+					So(httpErr.ErrorDetails, ShouldContainSubstring, "256 UTF-16")
+					So(httpErr.Metadata["field"], ShouldEqual, tc.expectedProperty)
+					So(len(httpErr.Metadata), ShouldEqual, 2)
 				} else {
-					_, hasField := httpErr.BaseError.Metadata["field"]
+					_, hasField := httpErr.Metadata["field"]
 					So(hasField, ShouldBeFalse)
-					So(len(httpErr.BaseError.Metadata), ShouldEqual, 1)
+					So(len(httpErr.Metadata), ShouldEqual, 1)
 				}
-				So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, tc.field)
+				So(httpErr.ErrorDetails, ShouldNotContainSubstring, tc.field)
 				So(downstream.Metadata["field"], ShouldEqual, tc.field)
-				So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "private")
-				So(httpErr.BaseError.Metadata["limit"], ShouldEqual, float64(256))
+				So(httpErr.ErrorDetails, ShouldNotContainSubstring, "private")
+				So(httpErr.Metadata["limit"], ShouldEqual, float64(256))
 			})
 
 		}
@@ -1368,7 +1368,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(result, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual,
+			So(httpErr.ErrorDetails, ShouldEqual,
 				"Toolbox box1 tool tool1 failed while evaluating logic property logic_prop1: tool execution failed")
 		})
 
@@ -1382,7 +1382,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				interfaces.MetricProperty{}, &interfaces.LogicProperty{}, dynamicParams)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			details := httpErr.BaseError.ErrorDetails.(string)
+			details := httpErr.ErrorDetails.(string)
 			So(details, ShouldStartWith, "解析属性 metric_prop 的动态参数失败：")
 			So(details, ShouldContainSubstring, "chan")
 		})

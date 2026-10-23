@@ -587,7 +587,7 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 			So(result.Entries, ShouldBeNil)
 		})
 	})

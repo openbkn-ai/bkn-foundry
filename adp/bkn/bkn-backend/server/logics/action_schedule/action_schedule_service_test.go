@@ -147,8 +147,8 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 			_, err := svc.CreateSchedule(ctx, schedule)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidCronExpression)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "Cron 表达式无效。")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidCronExpression)
+			So(httpErr.ErrorDetails, ShouldEqual, "Cron 表达式无效。")
 		})
 
 		Convey("Failed when GetActionTypesByIDs returns error\n", func() {
@@ -164,7 +164,7 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 			_, err := svc.CreateSchedule(ctx, schedule)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetActionTypeFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetActionTypeFailed)
 		})
 
 		Convey("Failed when action type not found\n", func() {
@@ -180,8 +180,8 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 			_, err := svc.CreateSchedule(ctx, schedule)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_ActionTypeNotFound)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "行动类 at_missing 不存在。")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_ActionTypeNotFound)
+			So(httpErr.ErrorDetails, ShouldEqual, "行动类 at_missing 不存在。")
 		})
 
 		Convey("Failed when asa.CreateSchedule returns error\n", func() {
@@ -198,7 +198,7 @@ func Test_actionScheduleService_CreateSchedule(t *testing.T) {
 			_, err := svc.CreateSchedule(ctx, schedule)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_CreateFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_CreateFailed)
 		})
 	})
 }
@@ -245,7 +245,7 @@ func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 			err := svc.UpdateSchedule(ctx, scheduleID, &interfaces.ActionScheduleUpdateRequest{Name: "x"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
 		})
 
 		Convey("Failed when schedule not found\n", func() {
@@ -254,7 +254,7 @@ func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 			err := svc.UpdateSchedule(ctx, scheduleID, &interfaces.ActionScheduleUpdateRequest{Name: "x"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_NotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_NotFound)
 		})
 
 		Convey("Failed with invalid new cron expression\n", func() {
@@ -263,7 +263,7 @@ func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 			err := svc.UpdateSchedule(ctx, scheduleID, &interfaces.ActionScheduleUpdateRequest{CronExpression: "invalid"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidCronExpression)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidCronExpression)
 		})
 
 		Convey("Failed when asa.UpdateSchedule returns error\n", func() {
@@ -273,7 +273,7 @@ func Test_actionScheduleService_UpdateSchedule(t *testing.T) {
 			err := svc.UpdateSchedule(ctx, scheduleID, &interfaces.ActionScheduleUpdateRequest{Name: "x"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_UpdateFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_UpdateFailed)
 		})
 	})
 }
@@ -313,8 +313,8 @@ func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 			err := svc.UpdateScheduleStatus(ctx, scheduleID, "unknown")
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidStatus)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "status must be active or inactive; received unknown.")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidStatus)
+			So(httpErr.ErrorDetails, ShouldEqual, "status must be active or inactive; received unknown.")
 		})
 
 		Convey("Failed when GetSchedule returns error\n", func() {
@@ -323,7 +323,7 @@ func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 			err := svc.UpdateScheduleStatus(ctx, scheduleID, interfaces.ScheduleStatusActive)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
 		})
 
 		Convey("Failed when schedule not found\n", func() {
@@ -332,7 +332,7 @@ func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 			err := svc.UpdateScheduleStatus(ctx, scheduleID, interfaces.ScheduleStatusActive)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_NotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_NotFound)
 		})
 
 		Convey("Failed when UpdateScheduleStatus access returns error\n", func() {
@@ -342,7 +342,7 @@ func Test_actionScheduleService_UpdateScheduleStatus(t *testing.T) {
 			err := svc.UpdateScheduleStatus(ctx, scheduleID, interfaces.ScheduleStatusInactive)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_UpdateFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_UpdateFailed)
 		})
 	})
 }
@@ -380,7 +380,7 @@ func Test_actionScheduleService_DeleteSchedules(t *testing.T) {
 			err := svc.DeleteSchedules(ctx, knID, branch, []string{"s1"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
 		})
 
 		Convey("Failed when schedule not found in result\n", func() {
@@ -389,7 +389,7 @@ func Test_actionScheduleService_DeleteSchedules(t *testing.T) {
 			err := svc.DeleteSchedules(ctx, knID, branch, []string{"s_missing"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_NotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_NotFound)
 		})
 
 		Convey("Failed when schedule belongs to different kn\n", func() {
@@ -400,7 +400,7 @@ func Test_actionScheduleService_DeleteSchedules(t *testing.T) {
 			err := svc.DeleteSchedules(ctx, knID, branch, []string{"s1"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_InvalidParameter)
 		})
 
 		Convey("Failed when DeleteSchedules access returns error\n", func() {
@@ -412,7 +412,7 @@ func Test_actionScheduleService_DeleteSchedules(t *testing.T) {
 			err := svc.DeleteSchedules(ctx, knID, branch, []string{"s1"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_DeleteFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_DeleteFailed)
 		})
 	})
 }
@@ -442,7 +442,7 @@ func Test_actionScheduleService_GetSchedule(t *testing.T) {
 			_, err := svc.GetSchedule(ctx, scheduleID)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
 		})
 
 		Convey("Failed when schedule not found (nil)\n", func() {
@@ -451,7 +451,7 @@ func Test_actionScheduleService_GetSchedule(t *testing.T) {
 			_, err := svc.GetSchedule(ctx, scheduleID)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_NotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_NotFound)
 		})
 	})
 }
@@ -482,7 +482,7 @@ func Test_actionScheduleService_GetSchedules(t *testing.T) {
 			_, err := svc.GetSchedules(ctx, []string{"s1"})
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
 		})
 	})
 }
@@ -513,7 +513,7 @@ func Test_actionScheduleService_ListSchedules(t *testing.T) {
 			_, _, err := svc.ListSchedules(ctx, params)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
 		})
 
 		Convey("Failed when GetSchedulesTotal access returns error\n", func() {
@@ -523,7 +523,7 @@ func Test_actionScheduleService_ListSchedules(t *testing.T) {
 			_, _, err := svc.ListSchedules(ctx, params)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ActionSchedule_GetFailed)
 		})
 	})
 }

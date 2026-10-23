@@ -8,7 +8,7 @@ import (
 func TestManagementAuditOwnershipIsRequestLocal(t *testing.T) {
 	base := context.Background()
 	managed := WithManagementAuditOwner(base)
-	if ManagementAuditOwned(base) || !ManagementAuditOwned(managed) || ManagementAuditOwned(nil) {
+	if ManagementAuditOwned(base) || !ManagementAuditOwned(managed) || ManagementAuditOwned(context.TODO()) {
 		t.Fatal("only the registered management request may suppress business Audit")
 	}
 }

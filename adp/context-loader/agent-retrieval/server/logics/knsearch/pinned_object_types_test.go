@@ -129,7 +129,7 @@ func TestPinnedObjectTypeDoesNotDependOnRecalledRelations(t *testing.T) {
 	got := conceptIDs(retrievePinned(t, withoutRelation, "teams").ObjectTypes)
 
 	withRelation, backend := newPinnedScenario(t, []string{"players"}, []string{"players", "teams"})
-	backend.mockBknBackend.relationTypesResp = &interfaces.RelationTypeConcepts{
+	backend.relationTypesResp = &interfaces.RelationTypeConcepts{
 		Entries: []*interfaces.RelationType{{
 			ID: "plays_for", Name: "plays_for",
 			SourceObjectTypeID: "players", TargetObjectTypeID: "teams",

@@ -286,7 +286,7 @@ func assertForbidden(t *testing.T, paths []interfaces.RelationTypePath, err erro
 	t.Helper()
 	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden ||
-		httpErr.BaseError.ErrorCode != httperrors.PublicError_Forbidden {
+		httpErr.ErrorCode != httperrors.PublicError_Forbidden {
 		t.Fatalf("GetRelationTypePaths() error = %v, want 403 %s", err, httperrors.PublicError_Forbidden)
 	}
 	if paths != nil {

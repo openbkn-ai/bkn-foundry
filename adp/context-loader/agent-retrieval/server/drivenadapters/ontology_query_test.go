@@ -387,10 +387,10 @@ func TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest(t *testin
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusBadRequest)
 		// No longer classified as a dependency outage.
-		convey.So(strings.Contains(he.BaseError.ErrorCode, "CommonExternalServerError"), convey.ShouldBeFalse)
-		convey.So(strings.Contains(he.BaseError.ErrorCode, "BadRequest"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(he.ErrorCode, "CommonExternalServerError"), convey.ShouldBeFalse)
+		convey.So(strings.Contains(he.ErrorCode, "BadRequest"), convey.ShouldBeTrue)
 		// The actionable downstream cause survives so the caller can fix the query.
-		convey.So(strings.Contains(fmt.Sprintf("%v", he.BaseError.ErrorDetails), "not a vector field"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(fmt.Sprintf("%v", he.ErrorDetails), "not a vector field"), convey.ShouldBeTrue)
 	})
 }
 
@@ -418,8 +418,8 @@ func TestQueryObjectInstances_DownstreamNotFoundKeepsCode(t *testing.T) {
 		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusNotFound)
-		convey.So(strings.Contains(he.BaseError.ErrorCode, "NotFound"), convey.ShouldBeTrue)
-		convey.So(strings.Contains(he.BaseError.ErrorCode, "CommonExternalServerError"), convey.ShouldBeFalse)
+		convey.So(strings.Contains(he.ErrorCode, "NotFound"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(he.ErrorCode, "CommonExternalServerError"), convey.ShouldBeFalse)
 	})
 }
 
@@ -453,8 +453,8 @@ func TestExecuteActions_PreservesConflictStatus(t *testing.T) {
 		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusConflict)
-		convey.So(strings.Contains(he.BaseError.ErrorCode, "Conflict"), convey.ShouldBeTrue)
-		convey.So(strings.Contains(fmt.Sprintf("%v", he.BaseError.ErrorDetails), "DuplicateExecution"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(he.ErrorCode, "Conflict"), convey.ShouldBeTrue)
+		convey.So(strings.Contains(fmt.Sprintf("%v", he.ErrorDetails), "DuplicateExecution"), convey.ShouldBeTrue)
 	})
 }
 

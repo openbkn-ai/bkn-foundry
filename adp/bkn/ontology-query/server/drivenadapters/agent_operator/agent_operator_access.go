@@ -229,7 +229,7 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 				ErrorDetails: opError.Detail,
 			}}
 		logger.Errorf("Tool execution [%s/%s] failed with status [%d] and code [%s]",
-			boxID, toolID, httpErr.HTTPCode, httpErr.BaseError.ErrorCode)
+			boxID, toolID, httpErr.HTTPCode, httpErr.ErrorCode)
 		return toolResult, fmt.Errorf("proxy tool execution returned status %d", httpErr.HTTPCode)
 	}
 
@@ -305,7 +305,7 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 				ErrorDetails: opError.Detail,
 			}}
 		logger.Errorf("MCP execution [%s/%s] failed with status [%d] and code [%s]",
-			mcpID, toolName, httpErr.HTTPCode, httpErr.BaseError.ErrorCode)
+			mcpID, toolName, httpErr.HTTPCode, httpErr.ErrorCode)
 		return mcpResult, fmt.Errorf("proxy MCP execution returned status %d", httpErr.HTTPCode)
 	}
 

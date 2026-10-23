@@ -104,7 +104,7 @@ func TestObjectMetricV1PropertyUniquenessUsesRequestedLanguage(t *testing.T) {
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("error = %v, want an HTTP error", err)
 			}
-			details, ok := httpErr.BaseError.ErrorDetails.(string)
+			details, ok := httpErr.ErrorDetails.(string)
 			if !ok || !strings.Contains(details, test.fragment) {
 				t.Fatalf("error details = %v, want %q", err, test.fragment)
 			}
@@ -135,8 +135,8 @@ func TestObjectMetricV1PropertyUniquenessAppliesWithoutStrictMode(t *testing.T) 
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
 		want := localizedText
-		if httpErr.BaseError.ErrorDetails != want {
-			t.Fatalf("error details = %#v, want %q", httpErr.BaseError.ErrorDetails, want)
+		if httpErr.ErrorDetails != want {
+			t.Fatalf("error details = %#v, want %q", httpErr.ErrorDetails, want)
 		}
 	}
 
@@ -267,7 +267,7 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			So(err.(*httperrors.HTTPError).BaseError.ErrorDetails, ShouldEqual, localizedText)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("rejects a V1 reference when the object-metric extension is unavailable", func() {
@@ -288,7 +288,7 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			So(err.(*httperrors.HTTPError).BaseError.ErrorDetails, ShouldEqual, localizedText)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 			So(access.lookups, ShouldResemble, []objectMetricLookup{{
 				knID: "kn1", branch: interfaces.MAIN_BRANCH, metricID: "metric1", version: 2,
 			}})
@@ -304,7 +304,7 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			So(err.(*httperrors.HTTPError).BaseError.ErrorDetails, ShouldEqual, localizedText)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("rejects another owner object", func() {
@@ -317,7 +317,7 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			So(err.(*httperrors.HTTPError).BaseError.ErrorDetails, ShouldEqual, localizedText)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("rejects a draft version", func() {
@@ -332,7 +332,7 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			So(err.(*httperrors.HTTPError).BaseError.ErrorDetails, ShouldEqual, localizedText)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("rejects an object-set metric", func() {
@@ -347,7 +347,7 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			So(err.(*httperrors.HTTPError).BaseError.ErrorDetails, ShouldEqual, localizedText)
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("accepts a deprecated pinned object-instance version", func() {
