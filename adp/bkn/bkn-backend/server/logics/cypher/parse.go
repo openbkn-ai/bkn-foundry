@@ -105,7 +105,10 @@ func startsWithWord(text, word string) bool {
 func Parse(query string) (parsing.IOC_CypherContext, error) {
 	c := &collector{lines: strings.Split(query, "\n")}
 
-	lexer := parsing.NewCypherLexer(antlr.NewInputStream(notEqualAsStandard(query)))
+	lexer := parsing.NewCypherLexer(&writtenStream{
+		InputStream: antlr.NewInputStream(notEqualAsStandard(query)),
+		written:     []rune(query),
+	})
 	lexer.RemoveErrorListeners()
 	lexer.AddErrorListener(c)
 
@@ -118,6 +121,23 @@ func Parse(query string) (parsing.IOC_CypherContext, error) {
 		return nil, c.errs
 	}
 	return tree, nil
+}
+
+// writtenStream is what the lexer reads, != already read as <>, together
+// with the query as it was written. Tokens keep the text they are read as;
+// sourceText takes the written text, so a column named after the query reads
+// as the caller wrote it. Both have the same length, so every position holds.
+type writtenStream struct {
+	*antlr.InputStream
+	written []rune
+}
+
+// writtenText is the query as written between two positions.
+func (s *writtenStream) writtenText(start, stop int) string {
+	if start < 0 || stop >= len(s.written) || start > stop {
+		return s.GetTextFromInterval(antlr.NewInterval(start, stop))
+	}
+	return string(s.written[start : stop+1])
 }
 
 // notEqualAsStandard reads != as <>, the not-equal openCypher spells, so a
