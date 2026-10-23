@@ -14,6 +14,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
@@ -36,7 +37,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 		bodyStr, err = sonic.MarshalString(body)
 		if err != nil {
 			logger.Error("response JSON encoding failed")
-			httpErr := NewHTTPError(i18n.GetLanguageCtx(c), http.StatusInternalServerError, PublicError_InternalServerError)
+			httpErr := httperrors.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
 			ReplyError(c, httpErr)
 			return
 		}
@@ -53,11 +54,11 @@ func ReplyOkWithHeaders(c *gin.Context, statusCode int, body interface{}, header
 
 // ReplyError writes an error response.
 func ReplyError(c *gin.Context, err error) {
-	var httpErr *HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr == nil {
 		// Preserve the original error text in the public internal-error response.
 		logger.Errorf("unhandled response error: %v", err)
-		httpErr = NewHTTPError(i18n.GetLanguageCtx(c), http.StatusInternalServerError, PublicError_InternalServerError)
+		httpErr = httperrors.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
 		httpErr = httpErr.WithErrorDetails(err.Error())
 	}
 	renderErr := httpErr.Render()
@@ -66,9 +67,9 @@ func ReplyError(c *gin.Context, err error) {
 	}
 	body, encodeErr := sonic.Marshal(httpErr.BaseError)
 	if encodeErr != nil {
-		logger.Errorf("error response JSON encoding failed: error_code=%s", httpErr.BaseError.ErrorCode)
+		logger.Errorf("error response JSON encoding failed: error_code=%s", httpErr.ErrorCode)
 		ctx := i18n.WithLanguage(c.Request.Context(), httpErr.Lang)
-		httpErr = NewHTTPError(ctx, http.StatusInternalServerError, PublicError_InternalServerError)
+		httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
 		renderErr = httpErr.Render()
 		if renderErr != nil {
 			logger.Errorf("localized error rendering failed: %v", renderErr)

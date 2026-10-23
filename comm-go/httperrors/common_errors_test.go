@@ -2,11 +2,12 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-package rest
+package httperrors
 
 import (
-	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 func TestEmbeddedPublicErrorsContainBothLocales(t *testing.T) {
@@ -15,7 +16,7 @@ func TestEmbeddedPublicErrorsContainBothLocales(t *testing.T) {
 			e := NewHTTPError(i18n.WithLanguage(t.Context(), lang), 400, code)
 			err := e.Render()
 			expected, lookupErr := i18n.Render(lang, code, nil)
-			if err != nil || lookupErr != nil || e.BaseError.Description == "" || e.BaseError.Description != expected {
+			if err != nil || lookupErr != nil || e.Description == "" || e.Description != expected {
 				t.Fatalf("render %s/%s: %#v, %v", code, lang, e.BaseError, err)
 			}
 		}
