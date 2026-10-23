@@ -30,6 +30,11 @@
       "name": "limited marks a result cut at the default",
       "zh": "\\blimited:\\s*(?:true|type:\\s*boolean)",
       "en": "\\blimited:\\s*(?:true|type:\\s*boolean)"
+    },
+    {
+      "name": "UNION works on datasets, part by part",
+      "zh": "(?:UNION|数据集)[^。]{0,20}每段各自读取",
+      "en": "(?:UNION|datasets)[^.]{0,40}each part read on its own"
     }
   ]
 }
