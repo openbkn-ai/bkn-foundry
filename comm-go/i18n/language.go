@@ -4,16 +4,15 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-package rest
+package i18n
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 // Language identifies a supported response language.
@@ -32,12 +31,13 @@ const (
 	ContentLanguageHeader = "Content-Language"
 )
 
+// Languages is shared by message validation and HTTP language negotiation.
 var (
 	Languages = map[Language]Language{
 		SimplifiedChinese: SimplifiedChinese,
 		AmericanEnglish:   AmericanEnglish,
 	}
-	DefaultLanguage = SimplifiedChinese
+	DefaultLanguage Language = SimplifiedChinese
 )
 
 type languageRange struct {
@@ -47,11 +47,19 @@ type languageRange struct {
 	wildcard bool
 }
 
+// SetDefaultLocale configures the startup default after its language is registered.
+func SetDefaultLocale(locale Language) {
+	_, exists := compiledI18nMessagesBundle[locale]
+	if !exists {
+		panic(fmt.Errorf("i18n: default locale %s is not loaded", locale))
+	}
+	DefaultLanguage = locale
+}
+
 // SetLang configures the service fallback language during startup.
 func SetLang(langStr string) {
-	if lang, ok := normalizeLanguage(langStr); ok {
-		DefaultLanguage = lang
-		i18n.SetDefaultLocale(lang)
+	if lang, ok := NormalizeLanguage(langStr); ok {
+		SetDefaultLocale(lang)
 	}
 }
 
@@ -108,7 +116,7 @@ func ResolveLanguage(acceptLanguage string) Language {
 
 func supportedLanguagesByDefault() []Language {
 	languages := []Language{DefaultLanguage}
-	for _, lang := range []Language{SimplifiedChinese, AmericanEnglish} {
+	for _, lang := range Languages {
 		if lang != DefaultLanguage {
 			languages = append(languages, lang)
 		}
@@ -123,7 +131,7 @@ func GetLanguageCtx(c *gin.Context) context.Context {
 
 // WithLanguage attaches a supported language to a context.
 func WithLanguage(ctx context.Context, lang Language) context.Context {
-	canonical, ok := normalizeLanguage(lang)
+	canonical, ok := NormalizeLanguage(lang)
 	if !ok {
 		lang = DefaultLanguage
 	} else {
@@ -165,7 +173,7 @@ func parseAcceptLanguage(header string) []languageRange {
 		}
 
 		wildcard := rangeValue == "*"
-		lang, supported := normalizeLanguage(rangeValue)
+		lang, supported := NormalizeLanguage(rangeValue)
 		if !wildcard && !supported {
 			continue
 		}
@@ -238,7 +246,8 @@ func parseQValue(value string) (float64, bool) {
 	return quality, true
 }
 
-func normalizeLanguage(value string) (Language, bool) {
+// NormalizeLanguage maps a supported language or regional variant to its canonical ID.
+func NormalizeLanguage(value string) (Language, bool) {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	if normalized == "zh_cn" {
 		normalized = "zh-cn"
@@ -285,7 +294,7 @@ func defaultAllowedLanguage(explicitRanges map[Language]languageRange, wildcard 
 	if !isRejected(DefaultLanguage, explicitRanges, wildcard, hasWildcard) {
 		return DefaultLanguage, true
 	}
-	for _, lang := range []Language{SimplifiedChinese, AmericanEnglish} {
+	for _, lang := range Languages {
 		if !isRejected(lang, explicitRanges, wildcard, hasWildcard) {
 			return lang, true
 		}

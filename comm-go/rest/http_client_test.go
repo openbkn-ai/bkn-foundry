@@ -10,19 +10,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 func TestHTTPClientPropagatesEffectiveLanguage(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get(AcceptLanguageHeader); got != AmericanEnglish {
-			t.Errorf("Accept-Language = %q, want %q", got, AmericanEnglish)
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != i18n.AmericanEnglish {
+			t.Errorf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
 	client := NewHTTPClientWithRawClient(server.Client())
-	ctx := WithLanguage(context.Background(), AmericanEnglish)
+	ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
 	status, _, err := client.GetNoUnmarshal(ctx, server.URL, nil, nil)
 	if err != nil {
 		t.Fatalf("GetNoUnmarshal() error = %v", err)
@@ -34,17 +36,17 @@ func TestHTTPClientPropagatesEffectiveLanguage(t *testing.T) {
 
 func TestHTTPClientOverridesExplicitAcceptLanguageWithEffectiveLocale(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get(AcceptLanguageHeader); got != AmericanEnglish {
-			t.Errorf("Accept-Language = %q, want %q", got, AmericanEnglish)
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != i18n.AmericanEnglish {
+			t.Errorf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
 	client := NewHTTPClientWithRawClient(server.Client())
-	ctx := WithLanguage(context.Background(), AmericanEnglish)
+	ctx := i18n.WithLanguage(context.Background(), i18n.AmericanEnglish)
 	status, _, err := client.GetNoUnmarshal(ctx, server.URL, nil, map[string]string{
-		AcceptLanguageHeader: "zh-CN, en-US;q=0.8",
+		i18n.AcceptLanguageHeader: "zh-CN, en-US;q=0.8",
 	})
 	if err != nil {
 		t.Fatalf("GetNoUnmarshal() error = %v", err)

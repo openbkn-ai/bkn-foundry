@@ -77,3 +77,83 @@ grep -rlE 'openbkn-ai/bkn-foundry/comm-go v[0-9]' --include=go.mod . | xargs -n1
 `db/driver/kingbase/gokb/` 是人大金仓（KingbaseES）官方 Go 驱动的源码，版权归
 中电科金仓（北京）科技股份有限公司。它被 `db/driver/rds.go` 无条件 import，因此
 链接进每个用到 `db/driver` 的服务。来源说明与第三方 license 例外待归档。
+
+## REST 错误与 i18n
+
+`i18n` 提供语言协商、context 语言传递和消息模板渲染；`rest` 提供错误码注册、HTTP 错误构造与响应写出。
+设计说明见[共享错误国际化与 metadata 方案](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/shared/decisions/issue-2375-error-i18n-metadata.md)。
+
+消息使用 Go map 定义，随代码编译。每个模块按 `<module>_zh_cn.go`、`<module>_en_us.go` 分别维护中文和英文消息，
+消息 key 使用错误码，文案包含完整的错误描述及处理指引。例如：
+
+```go
+// errors_en_us.go
+var errorsEnUS = i18n.I18nMessages{
+    Locale: i18n.AmericanEnglish,
+    Messages: map[string]string{
+        "Example.InvalidField": "Field {{ .field }} must not exceed {{ .limit }} characters.",
+    },
+}
+
+// errors_zh_cn.go
+var errorsZhCN = i18n.I18nMessages{
+    Locale: i18n.SimplifiedChinese,
+    Messages: map[string]string{
+        "Example.InvalidField": "字段 {{ .field }} 不能超过 {{ .limit }} 个字符。",
+    },
+}
+```
+
+启动时串行注册消息、设置默认语言、检查语言包，最后注册错误码：
+
+```go
+i18n.RegisterI18n(&errorsZhCN)
+i18n.RegisterI18n(&errorsEnUS)
+i18n.SetDefaultLocale(i18n.SimplifiedChinese)
+if err := i18n.ValidateMessageBundles(); err != nil {
+    panic(err)
+}
+rest.Register([]string{"Example.InvalidField"})
+```
+
+`RegisterI18n` 每次接收一个 `*I18nMessages`，去除消息 key 和文案的首尾空白后编译模板。
+空 key、空文案、非法模板或重复 key 会导致 panic；同次注册在检查全部 key 冲突后才追加消息。
+语言值直接使用 `i18n.SimplifiedChinese`、`i18n.AmericanEnglish` 等语言常量，不做规范化。
+公共消息及公共错误码由包初始化自动注册，业务消息和错误码由启动层显式注册；已有消息不得覆盖。
+注册仅用于启动阶段，不支持运行时注册或重载。
+
+`ValidateMessageBundles()` 以 `DefaultLanguage` 为基准检查各语言的消息 key 集合，要求提供 zh-CN 和 en-US，发现第一个问题即返回 error。
+不同语言允许使用不同的模板参数。`ValidateMessages(ids...)` 检查指定消息 ID 在全部已注册语言包中是否存在，不执行模板；
+`rest.Register` 会调用该检查，重复错误码或缺失消息会导致 panic。
+
+HTTP 语言协商、context 读写和请求头常量位于 `i18n/language.go`。
+默认语言为中文，可在启动时通过 `SetDefaultLocale` 设置已注册的语言，或通过 `SetLang` 解析支持的语言别名。
+请求可使用 `rest.LanguageMiddleware()` 解析 Accept-Language，也可通过 `i18n.WithLanguage` 显式传递语言。
+
+```go
+err := rest.NewHTTPError(ctx, http.StatusBadRequest, "Example.InvalidField").
+    WithMetadata(map[string]any{"field": "title", "limit": 10})
+rest.ReplyError(c, err)
+```
+
+`NewHTTPError` 保存选定语言，不立即生成文案。`WithMetadata` 将参数复制到错误自身的 map 并原地合并，后写覆盖同名键（含 nil），
+nil/空 map 不改变已有值。metadata 同时用于模板渲染和响应 JSON，只能传入允许公开的数据；嵌套值共享，传入后不得修改。
+`WithErrorDetails` 设置允许公开的 JSON 数据，不参与模板渲染。
+
+`Render() error` 直接更新错误的 `BaseError.Description`，失败时清空旧描述并返回渲染错误，不写日志。
+装配和渲染会修改错误对象，不支持对同一对象并发操作。
+`BaseError` 是响应 DTO，直接编码或调用其 `Error()` 只输出现有字段，不执行渲染。
+需要读取文案的调用点应先显式调用 `Render()`。
+
+`i18n.Render(language, messageID, metadata)` 按语言和消息 ID 精确查找模板，不回退到默认语言。
+模板使用 `missingkey=default`：缺失参数输出 `<no value>`，条件按空值处理；参数类型错误、越界索引等执行失败会丢弃部分输出并返回错误。
+`*i18n.RenderError.Kind` 区分 `LocaleMissing`、`MessageMissing` 和 `TemplateExecution`，诊断只包含语言、消息 ID 和错误类型。
+
+`HTTPError.MarshalJSON` 在值副本上渲染并编码 `BaseError`，不写日志，仅返回 JSON 编码错误；需要检查渲染错误时应显式调用 `Render()`。
+`HTTPError.Error()` 返回 JSON 字符串，编码失败时记录诊断并返回错误码。
+`ReplyError` 显式渲染、记录渲染诊断并编码响应；渲染失败保留业务状态码、错误码、metadata 和 error_details，JSON 编码失败转公共 500。
+非 HTTPError 转为公共 500，其原始错误文本写入 error_details，调用方应将需要控制公开内容的错误显式映射为 HTTPError。
+Content-Language 使用最终响应错误选定的语言。
+
+响应包含 error_code、description、error_details 及非空时的 metadata，不包含 solution/error_link。
+消费者可在 description 为空时展示 error_code。

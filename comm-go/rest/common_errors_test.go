@@ -4,37 +4,20 @@
 
 package rest
 
-import "testing"
+import (
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"testing"
+)
 
 func TestEmbeddedPublicErrorsContainBothLocales(t *testing.T) {
 	for _, code := range publicErrorCodes {
-		messages, ok := PublicErrorI18n[code]
-		if !ok {
-			t.Fatalf("missing public error code %s", code)
-		}
-		for _, lang := range []Language{SimplifiedChinese, AmericanEnglish} {
-			message, ok := messages[lang]
-			if !ok {
-				t.Fatalf("missing locale %s for %s", lang, code)
+		for _, lang := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
+			e := NewHTTPError(i18n.WithLanguage(t.Context(), lang), 400, code)
+			err := e.Render()
+			expected, lookupErr := i18n.Render(lang, code, nil)
+			if err != nil || lookupErr != nil || e.BaseError.Description == "" || e.BaseError.Description != expected {
+				t.Fatalf("render %s/%s: %#v, %v", code, lang, e.BaseError, err)
 			}
-			if message.Description == "" || message.Solution == "" {
-				t.Fatalf("incomplete message for %s in %s: %#v", code, lang, message)
-			}
-			if message.ErrorLink != "" {
-				t.Fatalf("ErrorLink for %s in %s = %q, want empty", code, lang, message.ErrorLink)
-			}
-		}
-	}
-}
-
-func TestPublicHTTPErrorUsesEmbeddedLocaleMessage(t *testing.T) {
-	for _, lang := range []Language{SimplifiedChinese, AmericanEnglish} {
-		err := NewHTTPError(WithLanguage(t.Context(), lang), 400, PublicError_BadRequest)
-		if err == nil || err.BaseError.ErrorLink != "" {
-			t.Fatalf("unexpected public error for %s: %#v", lang, err)
-		}
-		if err.BaseError.Description != PublicErrorI18n[PublicError_BadRequest][lang].Description {
-			t.Fatalf("description for %s = %q", lang, err.BaseError.Description)
 		}
 	}
 }

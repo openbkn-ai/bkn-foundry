@@ -6,15 +6,6 @@
 
 package rest
 
-import (
-	_ "embed"
-
-	"github.com/BurntSushi/toml"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-)
-
 // System default error codes.
 const (
 	PublicError_BadRequest          = "Public.BadRequest"
@@ -40,62 +31,6 @@ var publicErrorCodes = []string{
 	PublicError_ServiceUnavailable,
 }
 
-var publicErrorLocales = []Language{SimplifiedChinese, AmericanEnglish}
-
-//go:embed locales/public-errors.zh-CN.toml
-var publicErrorsChinese []byte
-
-//go:embed locales/public-errors.en-US.toml
-var publicErrorsEnglish []byte
-
-type publicErrorMessage struct {
-	Description string
-	Solution    string
-	ErrorLink   string
-}
-
-// PublicErrorI18n is loaded from resources embedded in comm-go. Embedding keeps
-// the public HTTP error catalog available in every consumer image.
-var PublicErrorI18n = loadPublicErrorI18n()
-
-func loadPublicErrorI18n() map[string]map[string]BaseError {
-	resources := map[Language][]byte{
-		SimplifiedChinese: publicErrorsChinese,
-		AmericanEnglish:   publicErrorsEnglish,
-	}
-	parsed := make(map[Language]map[string]publicErrorMessage, len(resources))
-	for lang, contents := range resources {
-		messages := make(map[string]publicErrorMessage)
-		if err := toml.Unmarshal(contents, &messages); err != nil {
-			logger.Warnf("load embedded public error locale %s: %v", lang, err)
-			continue
-		}
-		parsed[lang] = messages
-	}
-
-	errors := make(map[string]map[string]BaseError, len(publicErrorCodes))
-	for _, code := range publicErrorCodes {
-		errors[code] = make(map[string]BaseError, len(publicErrorLocales))
-		for _, lang := range publicErrorLocales {
-			message, ok := parsed[lang][code]
-			if !ok || message.Description == "" || message.Solution == "" {
-				logger.Warnf("embedded public error locale missing message: locale=%s error_code=%s", lang, code)
-				message = fallbackPublicError(lang)
-			}
-			errors[code][lang] = BaseError{
-				ErrorCode:   code,
-				Description: message.Description,
-				Solution:    message.Solution,
-				ErrorLink:   message.ErrorLink,
-			}
-		}
-	}
-	return errors
-}
-
-func fallbackPublicError(lang Language) publicErrorMessage {
-	return publicErrorMessage{
-		Description: i18n.Translate(lang, PublicError_InternalServerError+".Description", nil),
-		Solution:    i18n.Translate(lang, PublicError_InternalServerError+".Solution", nil),
-	}
+func init() {
+	Register(publicErrorCodes)
 }
