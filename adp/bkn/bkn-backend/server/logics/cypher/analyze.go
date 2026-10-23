@@ -1254,6 +1254,9 @@ func sourceText(ctx antlr.ParserRuleContext) string {
 	if start == nil || stop == nil || start.GetInputStream() == nil {
 		return ctx.GetText()
 	}
+	if stream, ok := start.GetInputStream().(*writtenStream); ok {
+		return stream.writtenText(start.GetStart(), stop.GetStop())
+	}
 	return start.GetInputStream().GetTextFromInterval(antlr.NewInterval(start.GetStart(), stop.GetStop()))
 }
 
