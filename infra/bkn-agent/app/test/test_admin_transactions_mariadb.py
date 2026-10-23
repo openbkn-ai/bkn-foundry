@@ -114,6 +114,63 @@ async def main(monkeypatch):
             versions = await dao.list_versions(s, AGENT)
             check('concurrent-prompt-writes-both-recorded', {p.content for p in prompts} == {'canonical', 'prompt-A', 'prompt-B'} and {2, 3}.issubset({v.f_prompt_version for v in versions}))
             check('concurrent-prompt-single-current', sum((v.f_current for v in versions)) == 1)
+        # An import and an administrator must both acquire Agent before Prompt.
+        # The hook signals when the import has reached history recording: before
+        # the fix it holds Prompt and blocks on the administrator's Agent lock.
+        reached_history = asyncio.Event()
+        original_record_prompt = dao._record_for_prompt
+        async def record_prompt(*args, **kwargs):
+            reached_history.set()
+            return await original_record_prompt(*args, **kwargs)
+        monkeypatch.setattr(dao, "_record_for_prompt", record_prompt)
+        async with factory() as admin_session, factory() as import_session:
+            await dao._lock_agent(admin_session, AGENT)
+            async def import_prompt():
+                try:
+                    await dao.upsert_prompt_with_id(import_session, PROMPT,
+                        'Fixture prompt', 'imported prompt', None, 'admin', commit=False)
+                    await import_session.commit()
+                except BaseException:
+                    await import_session.rollback()
+                    raise
+            pending = asyncio.create_task(import_prompt())
+            try:
+                await asyncio.wait_for(reached_history.wait(), .2)
+            except asyncio.TimeoutError:
+                pass  # Correct order: import waits for Agent, not while holding Prompt.
+            async def record_admin():
+                try:
+                    await dao.record_version(admin_session, AGENT, 'admin', commit=False)
+                    await admin_session.commit()
+                except BaseException:
+                    await admin_session.rollback()
+                    raise
+            outcomes = await asyncio.wait_for(asyncio.gather(record_admin(), pending, return_exceptions=True), 5)
+            assert not any(isinstance(value, BaseException) for value in outcomes), outcomes
+            check('import-and-admin-use-consistent-lock-order', True)
+        # Two supported Agents can share one Prompt. Both administrator entry
+        # points must acquire the same complete Agent set in the same order.
+        other_agent = 'studio_smart_qa'
+        async with factory() as s:
+            s.add(AgentRow(f_agent_id=other_agent, f_name='Second fixture',
+                f_mode='chat', f_prompt_id=PROMPT, f_status='published',
+                f_create_user='seed', f_update_user='seed', f_create_time=1, f_update_time=1))
+            await s.commit()
+            await dao.record_version(s, other_agent, 'seed')
+        async def publish_shared(agent_id, content):
+            async with factory() as s:
+                return await routes.publish_shared_prompt(PromptPublish(content=content),
+                    agent_id, Account('admin', 'user'), s)
+        await asyncio.wait_for(asyncio.gather(
+            publish_shared(AGENT, 'shared-first'),
+            publish_shared(other_agent, 'shared-second')), 5)
+        async with factory() as s:
+            prompt = await dao.get_prompt(s, PROMPT)
+            for agent_id in (AGENT, other_agent):
+                versions = await dao.list_versions(s, agent_id)
+                current = [v for v in versions if v.f_current]
+                assert len(current) == 1 and current[0].f_prompt_version == prompt.current_version
+            check('shared-prompt-admins-lock-all-agents-in-order', True)
     finally:
         await engine.dispose()
         with db.cursor() as c:

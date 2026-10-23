@@ -175,6 +175,15 @@ async def _lock_agent(session: AsyncSession, agent_id: str) -> Optional[AgentRow
     ).scalar_one_or_none()
 
 
+async def lock_prompt_agents(session: AsyncSession, prompt_id: str) -> None:
+    """Lock every bound Agent in stable order before locking its shared Prompt."""
+    await session.execute(
+        select(AgentRow).where(AgentRow.f_prompt_id == prompt_id)
+        .order_by(AgentRow.f_agent_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )
+
+
 async def _make_current(session: AsyncSession, agent_id: str, version: int) -> None:
     """One statement leaves exactly `version` current among the Agent's versions.
 
@@ -693,6 +702,9 @@ async def publish_prompt_version(
     session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str,
     commit: bool = True,
 ):
+    if not commit:
+        # Imports reach this function without already owning an Agent lock.
+        await lock_prompt_agents(session, prompt_id)
     head = await session.get(
         PromptRow, prompt_id, **({"populate_existing": True, "with_for_update": True} if not commit else {})
     )

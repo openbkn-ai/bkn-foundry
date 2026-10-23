@@ -259,6 +259,11 @@ async def _shared_editor(
     state is recorded as a version first, so the change is never the first
     thing history knows about."""
     await _require_shared_admin(account)
+    agent = await _builtin_agent(session, agent_id)
+    if agent.prompt_id:
+        # A Prompt may be shared by several Agents; acquire the whole set in
+        # stable order before the individual Agent and then Prompt locks.
+        await dao.lock_prompt_agents(session, agent.prompt_id)
     if agent_id not in BUILTIN_AGENT_IDS or not await dao._lock_agent(session, agent_id):
         raise not_found("agent", agent_id)
     await dao.record_version(session, agent_id, account.account_id, commit=False)
