@@ -658,3 +658,29 @@ def test_activating_the_version_a_request_started_on_keeps_it_current(monkeypatc
                 assert [v.f_version for v in versions if v.f_current] == [2]
 
     asyncio.run(run())
+
+
+def test_repeated_prompt_rebinding_returns_conflict_without_writes(monkeypatch):
+    from app import dao
+
+    async def run():
+        async with environment(monkeypatch) as (client, _, _):
+            before = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()
+            versions = (await client.get(f"{ADMIN}/versions", headers=AUTH)).json()
+            calls = 0
+
+            async def binding_changed(session, prompt_id):
+                nonlocal calls
+                calls += 1
+                return []
+
+            monkeypatch.setattr(dao, "lock_prompt_agents", binding_changed)
+            response = await client.put(f"{ADMIN}/prompt",
+                json={"content": "must not publish"}, headers=AUTH)
+            assert response.status_code == 409, response.text
+            assert response.json()["code"] == "BknAgent.ParamError.Conflict"
+            assert calls == 3
+            assert (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json() == before
+            assert (await client.get(f"{ADMIN}/versions", headers=AUTH)).json() == versions
+
+    asyncio.run(run())

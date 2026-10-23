@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal, Optional
 from jsonschema.exceptions import SchemaError
 from jsonschema.validators import validator_for
 from pydantic import AfterValidator, BaseModel, Field, field_serializer, model_validator
-from sqlalchemy import BigInteger, Boolean, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, Index, Integer, String, Text
 from sqlalchemy.dialects.mysql import JSON
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -14,6 +14,7 @@ class Base(DeclarativeBase):
 
 class AgentRow(Base):
     __tablename__ = "t_agent"
+    __table_args__ = (Index("ix_agent_prompt_id_agent_id", "f_prompt_id", "f_agent_id"),)
 
     f_agent_id: Mapped[str] = mapped_column(String(50), primary_key=True)
     f_name: Mapped[str] = mapped_column(String(100), unique=True)

@@ -11,11 +11,11 @@ from pathlib import Path
 import pymysql
 import pytest
 
-from app.test.test_shared_agent_seeds import CLAIM_LOCALES, MIGRATIONS, statements, selected_migrations
+from app.test.test_shared_agent_seeds import CLAIM_LOCALES, PROMPT_INDEX, MIGRATIONS, statements, selected_migrations
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
-@pytest.mark.parametrize("upgrade", ["fresh", "0.2.0", "0.2.1"])
+@pytest.mark.parametrize("upgrade", ["fresh", "0.2.0", "0.2.1", "0.2.2"])
 def test_claim_locale_migration_on_mariadb(upgrade):
     db = pymysql.connect(
         host=os.environ["BKN_AGENT_TEST_MARIADB_HOST"],
@@ -34,22 +34,44 @@ def test_claim_locale_migration_on_mariadb(upgrade):
         with db.cursor() as cursor:
             cursor.execute(f"CREATE DATABASE `{name}` CHARACTER SET utf8mb4")
             cursor.execute(f"USE `{name}`")
+        def saved_rows():
+            with db.cursor() as cursor:
+                result = []
+                for table in ("t_agent", "t_agent_version", "t_agent_prompt", "t_agent_prompt_version"):
+                    cursor.execute(f"SELECT * FROM {table} ORDER BY 1, 2")
+                    result.append(cursor.fetchall())
+                return result
         fresh, selected = selected_migrations(upgrade if upgrade != "fresh" else "0.0.0")
         if upgrade == "fresh":
-            assert fresh[1] == "0.2.2"
+            assert fresh[1] == "0.2.3"
             apply(Path(fresh[0]))
         else:
             apply(MIGRATIONS / upgrade / "init.sql")
             with db.cursor() as cursor:
-                with pytest.raises(pymysql.err.OperationalError, match="Unknown column"):
-                    cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
-            assert selected[1:] == ["0.2.2", True]
+                if upgrade != "0.2.2":
+                    with pytest.raises(pymysql.err.OperationalError, match="Unknown column"):
+                        cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
+                with pytest.raises(pymysql.err.OperationalError, match="doesn.t exist"):
+                    cursor.execute("SELECT f_agent_id FROM t_agent FORCE INDEX (ix_agent_prompt_id_agent_id) LIMIT 0")
+            before_upgrade = saved_rows() if upgrade == "0.2.2" else None
+            assert selected[1:] == ["0.2.3", True]
             for _, paths in selected[0]:
                 for path in paths:
                     apply(Path(path))
+        if upgrade == "0.2.2":
+            assert saved_rows() == before_upgrade
         with db.cursor() as cursor:
             cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
             assert cursor.fetchall() == ()
+        before_index_rerun = saved_rows()
+        apply(PROMPT_INDEX)
+        apply(PROMPT_INDEX)
+        assert saved_rows() == before_index_rerun
+        with db.cursor() as cursor:
+            cursor.execute("SELECT COLUMN_NAME, NON_UNIQUE, INDEX_TYPE FROM information_schema.STATISTICS "
+                           "WHERE TABLE_SCHEMA=%s AND TABLE_NAME='t_agent' "
+                           "AND INDEX_NAME='ix_agent_prompt_id_agent_id' ORDER BY SEQ_IN_INDEX", (name,))
+            assert cursor.fetchall() == (("f_prompt_id", 1, "BTREE"), ("f_agent_id", 1, "BTREE"))
         query = "SELECT f_content, f_localized_content FROM t_agent_prompt_version WHERE f_prompt_id='business_provenance_claim_attribution_prompt' AND f_version=1"
         with db.cursor() as cursor:
             cursor.execute(query)
