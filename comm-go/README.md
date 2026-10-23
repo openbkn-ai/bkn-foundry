@@ -129,6 +129,9 @@ rest.Register([]string{"Example.InvalidField"})
 HTTP 语言协商、context 读写和请求头常量位于 `i18n/language.go`。
 默认语言为中文，可在启动时通过 `SetDefaultLocale` 设置已注册的语言，或通过 `SetLang` 解析支持的语言别名。
 请求可使用 `rest.LanguageMiddleware()` 解析 Accept-Language，也可通过 `i18n.WithLanguage` 显式传递语言。
+`WithLanguage` 直接保存已解析的 `Language`，应传入语言常量或 `NormalizeLanguage` / `ResolveLanguage` 的结果，不再规范化别名。
+`Language` 是独立字符串类型，并不保证值合法；例如 `"en-us"`、`"fr-FR"` 经 `WithLanguage` 存入后，
+`GetLanguageByCtx` 会回退到 `DefaultLanguage`。
 
 ```go
 err := rest.NewHTTPError(ctx, http.StatusBadRequest, "Example.InvalidField").
