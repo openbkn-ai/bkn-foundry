@@ -269,7 +269,12 @@ async def _shared_editor(
             binding_stable = row is not None and not row.f_prompt_id
         if binding_stable:
             await dao.record_version(session, agent_id, account.account_id, commit=False)
-            return await _builtin_agent(session, agent_id)
+            # Keep a strong reference through conversion. A later plain get can
+            # fall back to the initial RR snapshot after weak ORM entries expire.
+            row = await dao._lock_agent(session, agent_id)
+            if row is None:
+                raise not_found("agent", agent_id)
+            return dao._to_out(row)
         # A concurrent internal edit rebound the Agent after the initial read.
         # Release the old range before retrying; never acquire a second Prompt's
         # Agent set out of order. No business mutation has occurred yet.

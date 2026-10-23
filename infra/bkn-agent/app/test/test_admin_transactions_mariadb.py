@@ -291,6 +291,28 @@ async def main(monkeypatch):
                 check('admin-restarts-before-locking-rebound-prompt', result.prompt.prompt_id == other_prompt and result.prompt.content == 'new binding admin')
         finally:
             monkeypatch.setattr(dao, 'lock_prompt_agents', original_lock)
+        # ORM identity-map entries are weak references. Even with the binding
+        # unchanged, the editor must return current values after lock acquisition,
+        # not perform a plain read against its initial repeatable-read snapshot.
+        updated_once = False
+        latest_tools = [{'type': 'context_loader', 'profile': 'latest-profile'}]
+        async def update_before_lock(session, prompt_id):
+            nonlocal updated_once
+            if not updated_once:
+                updated_once = True
+                async with factory() as writer:
+                    await dao.update_shared_agent(writer, AGENT,
+                        {'model': 'latest-model', 'tools': latest_tools}, 'other-admin')
+            return await original_lock(session, prompt_id)
+        monkeypatch.setattr(dao, 'lock_prompt_agents', update_before_lock)
+        try:
+            async with factory() as s:
+                editor_agent = await routes._shared_editor(s, Account('admin', 'user'), AGENT)
+                check('editor-returns-current-model-and-tools-after-lock',
+                    editor_agent.model == 'latest-model' and editor_agent.tools == latest_tools)
+                await s.rollback()
+        finally:
+            monkeypatch.setattr(dao, 'lock_prompt_agents', original_lock)
     finally:
         await engine.dispose()
         with db.cursor() as c:
