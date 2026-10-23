@@ -3,14 +3,15 @@ package pkg_test
 import (
 	"net/http"
 	"net/http/httptest"
-	"oss-gateway/internal/middleware"
-	"oss-gateway/pkg/errors"
-	"oss-gateway/pkg/response"
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
+
+	"oss-gateway/internal/middleware"
+	"oss-gateway/pkg/errors"
+	"oss-gateway/pkg/response"
 )
 
 func setupTestContext() (*gin.Context, *httptest.ResponseRecorder) {
@@ -18,7 +19,7 @@ func setupTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	c.Request = req.WithContext(sharedrest.WithLanguage(req.Context(), sharedrest.SimplifiedChinese))
+	c.Request = req.WithContext(i18n.WithLanguage(req.Context(), i18n.SimplifiedChinese))
 	return c, w
 }
 
@@ -223,7 +224,7 @@ func TestInvalidParamNegotiatesLanguage(t *testing.T) {
 	}{
 		{
 			name:           "accept language selects Chinese",
-			header:         sharedrest.AcceptLanguageHeader,
+			header:         i18n.AcceptLanguageHeader,
 			language:       "zh-CN",
 			wantLanguage:   "zh-CN",
 			wantMessage:    "参数无效",
@@ -231,7 +232,7 @@ func TestInvalidParamNegotiatesLanguage(t *testing.T) {
 		},
 		{
 			name:           "accept language selects English",
-			header:         sharedrest.AcceptLanguageHeader,
+			header:         i18n.AcceptLanguageHeader,
 			language:       "en-US",
 			wantLanguage:   "en-US",
 			wantMessage:    "Invalid parameter",
@@ -247,7 +248,7 @@ func TestInvalidParamNegotiatesLanguage(t *testing.T) {
 		},
 		{
 			name:           "unsupported language falls back to Chinese",
-			header:         sharedrest.AcceptLanguageHeader,
+			header:         i18n.AcceptLanguageHeader,
 			language:       "fr-FR",
 			wantLanguage:   "zh-CN",
 			wantMessage:    "参数无效",
@@ -269,7 +270,7 @@ func TestInvalidParamNegotiatesLanguage(t *testing.T) {
 			router.ServeHTTP(recorder, request)
 
 			assert.Equal(t, http.StatusBadRequest, recorder.Code)
-			assert.Equal(t, tt.wantLanguage, recorder.Header().Get(sharedrest.ContentLanguageHeader))
+			assert.Equal(t, tt.wantLanguage, recorder.Header().Get(i18n.ContentLanguageHeader))
 			assert.Contains(t, recorder.Body.String(), tt.wantMessage)
 			assert.Contains(t, recorder.Body.String(), tt.wantStableCode)
 		})
