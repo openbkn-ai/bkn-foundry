@@ -26,7 +26,7 @@ func TestReplyErrorMarksOnlyLocallyGeneratedTextAsLocalized(t *testing.T) {
 
 		ReplyError(c, http.ErrNotSupported)
 
-		if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != i18n.AmericanEnglish {
+		if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != string(i18n.AmericanEnglish) {
 			t.Fatalf("Content-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 	})

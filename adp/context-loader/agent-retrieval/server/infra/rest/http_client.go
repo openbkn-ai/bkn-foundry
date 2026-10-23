@@ -318,6 +318,6 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod, url string,
 			req.Header.Add(k, v)
 		}
 	}
-	req.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	return
 }

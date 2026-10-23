@@ -211,7 +211,7 @@ func localizedAuthMessage(c *gin.Context, key string) string {
 
 func localizedAuthPageData(c *gin.Context) authPageData {
 	message := func(key string) string { return localizedAuthMessage(c, key) }
-	return authPageData{Language: i18n.GetLanguageByCtx(c.Request.Context()), Text: authPageText{
+	return authPageData{Language: string(i18n.GetLanguageByCtx(c.Request.Context())), Text: authPageText{
 		AccountPlaceholder:         message("AccountPlaceholder"),
 		PasswordPlaceholder:        message("PasswordPlaceholder"),
 		LoginButton:                message("LoginButton"),

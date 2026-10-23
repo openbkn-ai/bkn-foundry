@@ -103,7 +103,7 @@ var (
 // DefaultHTTPError creates a public error with a standard error code.
 func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *HTTPError {
 	language := common.GetLanguageFromCtx(ctx)
-	tr := localize.NewI18nTranslator(language)
+	tr := localize.NewI18nTranslator(string(language))
 	errCode := errCodeMap[httpCode]
 	if errCode == "" {
 		errCode = errCodeMap[http.StatusInternalServerError]
@@ -123,7 +123,7 @@ func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *H
 
 	return &HTTPError{
 		HTTPCode:     httpCode,
-		Language:     language,
+		Language:     string(language),
 		Code:         "Public." + errCode,
 		Description:  tr.Trans("desc." + errCode),
 		Solution:     solution,
@@ -136,7 +136,7 @@ func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *H
 // The underlying error is intentionally kept in server-side logs rather than returned
 // to callers.
 func LocalizedDetail(ctx context.Context, key string, params ...interface{}) string {
-	tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
+	tr := localize.NewI18nTranslator(string(common.GetLanguageFromCtx(ctx)))
 	messageID := "detail." + key
 	detail := tr.Trans(messageID)
 	if detail == messageID {
@@ -148,7 +148,7 @@ func LocalizedDetail(ctx context.Context, key string, params ...interface{}) str
 // NewHTTPError creates an HTTPError with an extension error code.
 func NewHTTPError(ctx context.Context, httpCode int, extCode string, details interface{}, descParams ...interface{}) *HTTPError {
 	language := common.GetLanguageFromCtx(ctx)
-	tr := localize.NewI18nTranslator(language)
+	tr := localize.NewI18nTranslator(string(language))
 	errCode := errCodeMap[httpCode]
 	if errCode == "" {
 		errCode = errCodeMap[http.StatusInternalServerError]
@@ -167,7 +167,7 @@ func NewHTTPError(ctx context.Context, httpCode int, extCode string, details int
 	}
 	return &HTTPError{
 		HTTPCode:     httpCode,
-		Language:     language,
+		Language:     string(language),
 		Code:         fmt.Sprintf("%s.%s.%s", errServerName, errCode, extCode),
 		Description:  fmt.Sprintf(tr.Trans("desc."+extCode), descParams...), // Supports standard fmt placeholders.
 		Solution:     solution,

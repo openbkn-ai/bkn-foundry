@@ -135,7 +135,7 @@ func (s *safeUserManagement) post(ctx context.Context, path string, body, out an
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	resp, err := s.http.Do(req)
 	if err != nil {
 		return err

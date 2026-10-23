@@ -133,7 +133,7 @@ func Test_ValidateActionScheduleUpdate(t *testing.T) {
 func TestActionScheduleValidationDetailsRespectLanguage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{"English", i18n.AmericanEnglish, "name is required."},

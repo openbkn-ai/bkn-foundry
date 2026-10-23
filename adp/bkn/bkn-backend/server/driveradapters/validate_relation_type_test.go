@@ -309,7 +309,7 @@ func Test_ValidateRelationType(t *testing.T) {
 func TestValidateRelationTypeLocalizesInvalidParameterDetails(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{
@@ -410,7 +410,7 @@ func Test_ValidateRelationTypes(t *testing.T) {
 func TestRelationTypeValidationDetailsRespectLanguage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{"English", i18n.AmericanEnglish, "Relation type module type must be relation_type."},

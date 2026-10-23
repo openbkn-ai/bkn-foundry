@@ -26,7 +26,7 @@ type TemplateHandler interface {
 }
 
 type templateHandler struct {
-	I18nTranslator map[string]*localize.I18nTranslator
+	I18nTranslator map[common.Language]*localize.I18nTranslator
 	Validator      interfaces.Validator
 }
 
@@ -39,9 +39,9 @@ func NewTemplateHandler() TemplateHandler {
 	tOnce.Do(func() {
 		th = &templateHandler{
 			Validator: validator.NewValidator(),
-			I18nTranslator: map[string]*localize.I18nTranslator{
-				common.SimplifiedChinese: localize.NewI18nTranslator(common.SimplifiedChinese),
-				common.AmericanEnglish:   localize.NewI18nTranslator(common.AmericanEnglish),
+			I18nTranslator: map[common.Language]*localize.I18nTranslator{
+				common.SimplifiedChinese: localize.NewI18nTranslator(string(common.SimplifiedChinese)),
+				common.AmericanEnglish:   localize.NewI18nTranslator(string(common.AmericanEnglish)),
 			},
 		}
 	})

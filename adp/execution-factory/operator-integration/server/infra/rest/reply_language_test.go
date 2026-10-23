@@ -31,7 +31,7 @@ func TestReplyErrorMarksOnlyLocallyGeneratedTextAsLocalized(t *testing.T) {
 
 		ReplyError(c, http.ErrNotSupported)
 
-		if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != i18n.AmericanEnglish {
+		if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != string(i18n.AmericanEnglish) {
 			t.Fatalf("Content-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 	})
@@ -53,14 +53,15 @@ func TestReplyErrorMarksOnlyLocallyGeneratedTextAsLocalized(t *testing.T) {
 func TestReplyWithExecutionModeLocalizesUnexpectedSSEErrors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tests := []struct {
-		language, description string
+		language    i18n.Language
+		description string
 	}{
 		{i18n.SimplifiedChinese, "内部错误"},
 		{i18n.AmericanEnglish, "Internal server error"},
 	}
 
 	for _, test := range tests {
-		t.Run(test.language, func(t *testing.T) {
+		t.Run(string(test.language), func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(recorder)
 			ctx := i18n.WithLanguage(httptest.NewRequest(http.MethodGet, "/", nil).Context(), test.language)
@@ -70,7 +71,7 @@ func TestReplyWithExecutionModeLocalizesUnexpectedSSEErrors(t *testing.T) {
 
 			ReplyWithExecutionMode(c, nil, errors.New("internal diagnostic"))
 
-			if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != test.language {
+			if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != string(test.language) {
 				t.Fatalf("Content-Language = %q, want %q", got, test.language)
 			}
 			body := recorder.Body.String()

@@ -586,7 +586,7 @@ func (c *LifecycleClient) do(
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	if err := setTrustedLifecycleHeaders(ctx, req.Header); err != nil {
 		return &APIError{
 			Code: "permission_denied", Message: err.Error(),

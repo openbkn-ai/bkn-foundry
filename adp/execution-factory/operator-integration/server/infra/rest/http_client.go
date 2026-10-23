@@ -257,7 +257,7 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod, url string,
 			req.Header.Add(k, v)
 		}
 	}
-	req.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	return
 }
 
@@ -290,7 +290,7 @@ func (c *httpClient) PostStream(ctx context.Context, url string, headers map[str
 		for k, v := range headers {
 			req.Header.Add(k, v)
 		}
-		req.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+		req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 		// Set streaming request headers.
 		req.Header.Set("Accept", "text/event-stream")
 		req.Header.Set("Cache-Control", "no-cache")

@@ -29,7 +29,7 @@ func Register() {
 // Translate resolves a BKN Safe message after ensuring the bundled message bundle is
 // registered. Callers pass the effective request language selected by the
 // platform language middleware.
-func Translate(language, messageID string) string {
+func Translate(language i18n.Language, messageID string) string {
 	Register()
 	text, err := i18n.Render(language, messageID, nil)
 	if err != nil {

@@ -46,7 +46,7 @@ func WriteCode(c *gin.Context, status int, code string, details any) {
 	if renderErr != nil {
 		logger.Errorf("localized error rendering failed: %v", renderErr)
 	}
-	c.Header(i18n.ContentLanguageHeader, err.Lang)
+	c.Header(i18n.ContentLanguageHeader, string(err.Lang))
 	rest.ReplyOK(c, status, localizedErrorResponse{
 		BaseError: err.BaseError,
 		Error:     err.BaseError.Description,

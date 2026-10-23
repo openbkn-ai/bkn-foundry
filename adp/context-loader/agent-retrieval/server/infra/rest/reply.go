@@ -125,7 +125,7 @@ func formatValidatorErrorDetails(ctx context.Context, err validator.FieldError) 
 	// Get language settings (format: zh-CN or en-US)
 	lang := common.GetLanguageFromCtx(ctx)
 	// Convert zh-CN to zh_CN format (the format used by internationalization systems)
-	langKey := strings.ReplaceAll(lang, "-", "_")
+	langKey := strings.ReplaceAll(string(lang), "-", "_")
 	tr := localize.NewI18nTranslator(langKey)
 
 	fieldName := err.Field()

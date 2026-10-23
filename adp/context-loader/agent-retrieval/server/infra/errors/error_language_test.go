@@ -16,18 +16,14 @@ import (
 )
 
 func TestDefaultHTTPErrorUsesBCP47Locale(t *testing.T) {
-	for _, locale := range []string{i18n.AmericanEnglish, "en-us"} {
-		t.Run(locale, func(t *testing.T) {
-			ctx := common.SetLanguageToCtx(context.Background(), locale)
-			err := DefaultHTTPError(ctx, http.StatusUnauthorized, "token is invalid")
+	ctx := common.SetLanguageToCtx(context.Background(), i18n.AmericanEnglish)
+	err := DefaultHTTPError(ctx, http.StatusUnauthorized, "token is invalid")
 
-			if err.Description != "Authentication failed" {
-				t.Errorf("Description = %q, want English translation", err.Description)
-			}
-			if err.Solution != "Contact administrator" {
-				t.Errorf("Solution = %q, want English translation", err.Solution)
-			}
-		})
+	if err.Description != "Authentication failed" {
+		t.Errorf("Description = %q, want English translation", err.Description)
+	}
+	if err.Solution != "Contact administrator" {
+		t.Errorf("Solution = %q, want English translation", err.Solution)
 	}
 }
 
@@ -41,7 +37,7 @@ func TestLocalizedDetailUsesBCP47Locale(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.locale, func(t *testing.T) {
-			ctx := common.SetLanguageToCtx(context.Background(), tt.locale)
+			ctx := common.SetLanguageToCtx(context.Background(), i18n.ResolveLanguage(tt.locale))
 			if got := LocalizedDetail(ctx, "FunctionCodeRequired"); got != tt.want {
 				t.Fatalf("LocalizedDetail() = %q, want %q", got, tt.want)
 			}

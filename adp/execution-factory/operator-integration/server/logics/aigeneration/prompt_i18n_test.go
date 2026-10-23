@@ -16,7 +16,10 @@ func TestLocalizedPromptTemplateUsesRequestLanguage(t *testing.T) {
 		SystemPrompt: "# 函数生成 Prompt 模板",
 	}
 	tests := []struct {
-		language, description, userPrompt, systemPromptPrefix string
+		language           i18n.Language
+		description        string
+		userPrompt         string
+		systemPromptPrefix string
 	}{
 		{
 			language:           i18n.SimplifiedChinese,
@@ -33,7 +36,7 @@ func TestLocalizedPromptTemplateUsesRequestLanguage(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.language, func(t *testing.T) {
+		t.Run(string(test.language), func(t *testing.T) {
 			ctx := i18n.WithLanguage(context.Background(), test.language)
 			localized := localizedPromptTemplate(ctx, interfaces.PythonFunctionGenerator, source)
 			if localized.Description != test.description || localized.UserPromptTemplate != test.userPrompt {

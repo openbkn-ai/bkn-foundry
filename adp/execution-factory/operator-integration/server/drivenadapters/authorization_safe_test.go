@@ -209,7 +209,7 @@ func TestSafeAuthorizationResourceList(t *testing.T) {
 
 func TestSafeAuthorizationUsesEffectiveLocale(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != i18n.AmericanEnglish {
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != string(i18n.AmericanEnglish) {
 			t.Errorf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{

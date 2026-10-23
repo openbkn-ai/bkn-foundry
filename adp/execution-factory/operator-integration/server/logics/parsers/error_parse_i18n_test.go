@@ -12,7 +12,7 @@ import (
 func TestOpenAPIMultiErrorDetailsUseRequestLanguage(t *testing.T) {
 	tests := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{name: "Chinese", language: i18n.SimplifiedChinese, want: "错误1：first failure"},

@@ -41,14 +41,14 @@ const vegaViewDetailDenied = `{"error_code":"Public.Forbidden","description":"�
 // Vega's body. See #1543.
 func TestVegaRawQuery_ResourceDenialExplainsDirectPermission(t *testing.T) {
 	for _, tc := range []struct {
-		locale string
+		locale common.Language
 		want   []string
 	}{
-		{"en-US", []string{"view_detail", "knowledge-network authorization", "object types",
+		{common.AmericanEnglish, []string{"view_detail", "knowledge-network authorization", "object types",
 			"query_object_instance", "run_cypher"}},
-		{"zh-CN", []string{"view_detail", "知识网络授权", "对象类", "query_object_instance", "run_cypher"}},
+		{common.SimplifiedChinese, []string{"view_detail", "知识网络授权", "对象类", "query_object_instance", "run_cypher"}},
 	} {
-		t.Run(tc.locale, func(t *testing.T) {
+		t.Run(string(tc.locale), func(t *testing.T) {
 			ctx := common.SetLanguageToCtx(context.Background(), tc.locale)
 			client := vegaRawQueryAnswering(http.StatusForbidden, vegaViewDetailDenied)
 

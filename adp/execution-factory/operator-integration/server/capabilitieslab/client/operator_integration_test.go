@@ -43,7 +43,7 @@ func TestExecuteFunctionForwardsSandboxRuntimeContext(t *testing.T) {
 		if r.URL.Path != "/api/agent-operator-integration/v1/function/execute" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != i18n.AmericanEnglish {
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != string(i18n.AmericanEnglish) {
 			t.Fatalf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {

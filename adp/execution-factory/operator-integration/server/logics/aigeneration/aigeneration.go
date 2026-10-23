@@ -78,7 +78,7 @@ func (ag *aiGenerationService) generateChatCompletionParams(ctx context.Context,
 	case interfaces.PythonFunctionGenerator:
 		// Supply a default function request when the caller omits one.
 		if req.Query == "" {
-			tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
+			tr := localize.NewI18nTranslator(string(common.GetLanguageFromCtx(ctx)))
 			req.Query = tr.Trans("prompt.default_function_request")
 		}
 		userPrompt = promptTemplate.FormatUserPrompt(req.Query, req.Inputs, req.Outputs)

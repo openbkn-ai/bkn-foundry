@@ -64,7 +64,7 @@ func handleMultiError(ctx context.Context, multiErr *openapi3.MultiError, errorT
 		errorDetails  []string
 	)
 
-	tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
+	tr := localize.NewI18nTranslator(string(common.GetLanguageFromCtx(ctx)))
 
 	// Iterate over every nested error.
 	for i, subErr := range *multiErr {

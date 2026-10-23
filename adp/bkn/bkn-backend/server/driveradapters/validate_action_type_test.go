@@ -1010,7 +1010,7 @@ func Test_ValidateActionType(t *testing.T) {
 func TestActionTypeValidationDetailsRespectLanguage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{"English", i18n.AmericanEnglish, "The action type must be one of [add, modify, delete]; got unsupported."},

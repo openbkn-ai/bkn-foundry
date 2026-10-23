@@ -99,7 +99,7 @@ func (l *PromptLoader) GetTemplate(ctx context.Context, tempType interfaces.Prom
 
 func localizedPromptTemplate(ctx context.Context, tempType interfaces.PromptTemplateType, source *interfaces.PromptTemplate) *interfaces.PromptTemplate {
 	temp := *source
-	tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
+	tr := localize.NewI18nTranslator(string(common.GetLanguageFromCtx(ctx)))
 	switch tempType {
 	case interfaces.PythonFunctionGenerator:
 		temp.Description = tr.Trans("prompt.python_function_description")

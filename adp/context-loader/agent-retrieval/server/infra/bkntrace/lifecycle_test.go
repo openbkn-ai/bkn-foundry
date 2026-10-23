@@ -96,7 +96,7 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 		if got := r.Header.Get("X-BKN-Trace-Query-Token"); got != "" {
 			t.Errorf("internal lifecycle request must not carry gateway token, got %q", got)
 		}
-		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != i18n.AmericanEnglish {
+		if got := r.Header.Get(i18n.AcceptLanguageHeader); got != string(i18n.AmericanEnglish) {
 			t.Errorf("Accept-Language = %q, want %q", got, i18n.AmericanEnglish)
 		}
 		switch r.URL.Path {

@@ -117,7 +117,7 @@ func (c *categoryManager) GetCategoryList(ctx context.Context) (categoryList []*
 
 func (c *categoryManager) getCategoryOther(ctx context.Context) *interfaces.CategoryInfo {
 	language := common.GetLanguageByCtx(ctx)
-	tr := localize.NewI18nTranslator(language)
+	tr := localize.NewI18nTranslator(string(language))
 	categoryName := tr.Trans("category." + interfaces.CategoryTypeOther.String())
 	return &interfaces.CategoryInfo{
 		CategoryType: interfaces.CategoryTypeOther,
@@ -127,7 +127,7 @@ func (c *categoryManager) getCategoryOther(ctx context.Context) *interfaces.Cate
 
 func (c *categoryManager) getCategorySystem(ctx context.Context) *interfaces.CategoryInfo {
 	language := common.GetLanguageByCtx(ctx)
-	tr := localize.NewI18nTranslator(language)
+	tr := localize.NewI18nTranslator(string(language))
 	categoryName := tr.Trans("category." + interfaces.CategoryTypeSystem.String())
 	return &interfaces.CategoryInfo{
 		CategoryType: interfaces.CategoryTypeSystem,

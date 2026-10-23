@@ -28,7 +28,7 @@ func TestCategoryListMarksLocalizedCacheableResponse(t *testing.T) {
 
 	handler.CategoryList(ctx)
 
-	if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != i18n.AmericanEnglish {
+	if got := recorder.Header().Get(i18n.ContentLanguageHeader); got != string(i18n.AmericanEnglish) {
 		t.Fatalf("Content-Language = %q, want %q", got, i18n.AmericanEnglish)
 	}
 	if got := recorder.Header().Get("Vary"); got != i18n.AcceptLanguageHeader {

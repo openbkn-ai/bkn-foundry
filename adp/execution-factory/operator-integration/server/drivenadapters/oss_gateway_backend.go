@@ -378,7 +378,7 @@ func (c *ossGatewayBackendClient) doSignedRequestRaw(ctx context.Context, method
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
-	req.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+	req.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err

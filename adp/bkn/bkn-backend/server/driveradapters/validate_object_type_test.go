@@ -689,7 +689,7 @@ func Test_ValidateObjectType(t *testing.T) {
 func TestValidateObjectTypeLocalizesInvalidParameterDetails(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{"English", i18n.AmericanEnglish, "Object type customer uses unsupported data-source type table; only resource is supported."},

@@ -790,7 +790,7 @@ func Test_validateCond(t *testing.T) {
 func TestValidateRiskTypesLocalizesInvalidParameterDetails(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{"English", i18n.AmericanEnglish, "Risk type ID 'risk-1' already exists in the request body."},
@@ -825,7 +825,7 @@ func TestValidateRiskTypesLocalizesInvalidParameterDetails(t *testing.T) {
 func TestCommonValidationDetailsRespectLanguage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{"English", i18n.AmericanEnglish, "x-http-method-override must be GET; got POST."},

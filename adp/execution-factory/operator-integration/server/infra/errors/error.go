@@ -68,7 +68,7 @@ var (
 // DefaultHTTPError public error code.
 func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *HTTPError {
 	language := common.GetLanguageFromCtx(ctx)
-	tr := localize.NewI18nTranslator(language)
+	tr := localize.NewI18nTranslator(string(language))
 	errCode := errCodeMap[httpCode]
 	if errCode == "" {
 		errCode = errCodeMap[http.StatusInternalServerError]
@@ -88,7 +88,7 @@ func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *H
 
 	return &HTTPError{
 		HTTPCode:     httpCode,
-		Language:     language,
+		Language:     string(language),
 		Code:         "Public." + errCode,
 		Description:  tr.Trans("desc." + errCode),
 		Solution:     solution,
@@ -100,7 +100,7 @@ func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *H
 // NewHTTPError creates HTTPError @extCode: extended error code.
 func NewHTTPError(ctx context.Context, httpCode int, extCode ErrorCode, details interface{}, descParams ...interface{}) *HTTPError {
 	language := common.GetLanguageFromCtx(ctx)
-	tr := localize.NewI18nTranslator(language)
+	tr := localize.NewI18nTranslator(string(language))
 	errCode := errCodeMap[httpCode]
 	if errCode == "" {
 		errCode = errCodeMap[http.StatusInternalServerError]
@@ -119,7 +119,7 @@ func NewHTTPError(ctx context.Context, httpCode int, extCode ErrorCode, details 
 	}
 	return &HTTPError{
 		HTTPCode:     httpCode,
-		Language:     language,
+		Language:     string(language),
 		Code:         fmt.Sprintf("%s.%s.%s", errServerName, errCode, extCode),
 		Description:  fmt.Sprintf(tr.Trans("desc."+extCode.String()), descParams...), // Can handle formatting placeholders such as %d, %s, and %v.
 		Solution:     solution,

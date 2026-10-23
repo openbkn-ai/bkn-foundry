@@ -139,7 +139,7 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 func TestKnowledgeNetworkValidationDetailsRespectLanguage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{"English", i18n.AmericanEnglish, "branch is required."},

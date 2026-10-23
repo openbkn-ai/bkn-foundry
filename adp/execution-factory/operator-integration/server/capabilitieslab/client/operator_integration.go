@@ -41,7 +41,7 @@ func WithForwardedAuth(ctx context.Context, authorization string, cookie string)
 }
 
 func applyLanguageHeader(ctx context.Context, header http.Header) {
-	header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+	header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 }
 
 func NewOperatorIntegrationClient(baseURL string) *OperatorIntegrationClient {

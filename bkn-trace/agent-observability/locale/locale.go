@@ -8,13 +8,10 @@ package locale
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
 const messagePrefix = "AgentObservability.Message."
@@ -23,27 +20,15 @@ var registerOnce sync.Once
 
 type negotiatedLocaleKey struct{}
 
-// Register loads resources next to the deployed binary, retaining the source
-// directory as the local-development fallback. Resource failures are handled by
-// comm-go's non-fatal runtime fallback.
+// Register validates the compiled-in resources during startup.
 func Register() {
-	registerOnce.Do(register)
-}
-
-func register() {
-	if executable, err := os.Executable(); err == nil {
-		deployedDir := filepath.Join(filepath.Dir(executable), "locale")
-		if entries, readErr := os.ReadDir(deployedDir); readErr == nil && len(entries) > 0 {
-			i18n.RegisterI18n(deployedDir, sharedrest.SimplifiedChinese)
-			return
+	registerOnce.Do(func() {
+		i18n.RegisterI18n(&agentObservabilityEnUS)
+		i18n.RegisterI18n(&agentObservabilityZhCN)
+		if err := i18n.ValidateMessageBundles(); err != nil {
+			panic(err)
 		}
-	}
-
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		return
-	}
-	i18n.RegisterI18n(filepath.Dir(filename), sharedrest.SimplifiedChinese)
+	})
 }
 
 // Translate localizes an existing English response message without changing
@@ -55,14 +40,18 @@ func Translate(ctx context.Context, message string) string {
 // TranslateWithData localizes a message and renders its runtime template data.
 func TranslateWithData(ctx context.Context, message string, data map[string]any) string {
 	Register()
-	return i18n.Translate(sharedrest.GetLanguageByCtx(ctx), messagePrefix+message, data)
+	text, err := i18n.Render(i18n.GetLanguageByCtx(ctx), messagePrefix+message, data)
+	if err != nil {
+		logger.Errorf("localized service message failed: %v", err)
+	}
+	return text
 }
 
 // WithLanguage attaches an explicitly negotiated locale. The marker lets
 // adapter-level unit tests that call handlers directly retain their legacy
 // English fixtures unless they opt into the HTTP language contract.
-func WithLanguage(ctx context.Context, language sharedrest.Language) context.Context {
-	ctx = sharedrest.WithLanguage(ctx, language)
+func WithLanguage(ctx context.Context, language i18n.Language) context.Context {
+	ctx = i18n.WithLanguage(ctx, language)
 	return context.WithValue(ctx, negotiatedLocaleKey{}, true)
 }
 

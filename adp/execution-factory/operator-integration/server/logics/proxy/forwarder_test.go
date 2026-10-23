@@ -251,7 +251,7 @@ func TestBuildRequestUsesEffectiveLocale(t *testing.T) {
 		})
 
 		So(err, ShouldBeNil)
-		So(httpReq.Header.Get(i18n.AcceptLanguageHeader), ShouldEqual, i18n.AmericanEnglish)
+		So(httpReq.Header.Get(i18n.AcceptLanguageHeader), ShouldEqual, string(i18n.AmericanEnglish))
 	})
 }
 

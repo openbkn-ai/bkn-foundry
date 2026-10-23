@@ -645,8 +645,8 @@ func findCookie(response *httptest.ResponseRecorder, name string) *http.Cookie {
 }
 
 func oppositeAuthLanguage(language string) string {
-	if language == i18n.SimplifiedChinese {
-		return i18n.AmericanEnglish
+	if language == string(i18n.SimplifiedChinese) {
+		return string(i18n.AmericanEnglish)
 	}
-	return i18n.SimplifiedChinese
+	return string(i18n.SimplifiedChinese)
 }

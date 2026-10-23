@@ -14,5 +14,5 @@ const (
 )
 
 func capabilitiesLabErrorMessage(language, code string) string {
-	return localize.NewI18nTranslator(language).Trans("capabilities_lab." + code)
+	return localize.NewI18nTranslator(string(language)).Trans("capabilities_lab." + code)
 }

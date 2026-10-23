@@ -337,7 +337,7 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	}
 	// Internal requests carry the resolved, single-value locale rather than the
 	// caller's original Accept-Language preference list.
-	httpReq.Header.Set(i18n.AcceptLanguageHeader, i18n.GetLanguageByCtx(ctx))
+	httpReq.Header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 
 	// If Content-Type is not set in the request header but we have a definite type, set it.
 	if contentType != "" && (forceContentType || httpReq.Header.Get("Content-Type") == "") {

@@ -81,7 +81,7 @@ func writeError(c *gin.Context, status int, code, message string) {
 
 func writeLocalizedError(c *gin.Context, status int, code string) {
 	rest.MarkLocalizedCacheableResponse(c)
-	writeError(c, status, code, capabilitiesLabErrorMessage(i18n.GetLanguageByCtx(c.Request.Context()), code))
+	writeError(c, status, code, capabilitiesLabErrorMessage(string(i18n.GetLanguageByCtx(c.Request.Context())), code))
 }
 
 func writeBadGateway(c *gin.Context, message string) {
