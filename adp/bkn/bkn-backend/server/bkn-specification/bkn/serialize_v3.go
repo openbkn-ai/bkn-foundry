@@ -315,8 +315,8 @@ func boundNode(v any) *yaml.Node {
 	return strNode(fmt.Sprint(v))
 }
 
-// serializeValueType writes a value type file. Value types exist only in 3.0.
-func serializeValueType(vt *BknValueType) string {
+// SerializeValueType writes a value type file. Value types exist only in 3.0.
+func SerializeValueType(vt *BknValueType) string {
 	var sb strings.Builder
 	opts := serializeOptions{v3: true}
 	writeDefinitionFrontmatter(&sb, opts, kindValueType, vt.ID, vt.Name, vt.Tags)

@@ -32,10 +32,6 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 		if p == nil {
 			continue
 		}
-		// Value types are stored from #2281; a reference to one could not be resolved.
-		if p.Constraints != nil && p.Constraints.ValueType != "" {
-			return invalidDeclarations(ctx, fmt.Sprintf("data property %q: constraints value_type is not supported by this version yet", p.Name))
-		}
 		if p.Declares(interfaces.DECLARATION_REQUIRED) && !p.Required && slices.Contains(objectType.PrimaryKeys, p.Name) {
 			return invalidDeclarations(ctx, fmt.Sprintf("data property %q: a primary key is required by definition; leave required out instead of writing false", p.Name))
 		}
@@ -44,6 +40,33 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 		}
 	}
 	if err := bknsdk.ValidateObjectTypeDeclarations(logics.ToBKNObjectType(objectType)); err != nil {
+		return invalidDeclarations(ctx, err.Error())
+	}
+	return nil
+}
+
+// checkValueTypes resolves the value types the data properties name: each must be a value type of
+// the network, with the property's Type as its base_type.
+func (ots *objectTypeService) checkValueTypes(ctx context.Context, objectType *interfaces.ObjectType) error {
+	var ids []string
+	for _, p := range objectType.DataProperties {
+		if p != nil && p.Constraints != nil && p.Constraints.ValueType != "" && !slices.Contains(ids, p.Constraints.ValueType) {
+			ids = append(ids, p.Constraints.ValueType)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	valueTypes, err := ots.vta.GetValueTypesByIDs(ctx, nil, objectType.KNID, objectType.Branch, ids)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+			WithErrorDetails(err.Error())
+	}
+	doc := &bknsdk.BknNetwork{ObjectTypes: []*bknsdk.BknObjectType{logics.ToBKNObjectType(objectType)}}
+	for _, vt := range valueTypes {
+		doc.ValueTypes = append(doc.ValueTypes, logics.ToBKNValueType(vt))
+	}
+	if err = bknsdk.ValidateNetworkDeclarations(doc); err != nil {
 		return invalidDeclarations(ctx, err.Error())
 	}
 	return nil

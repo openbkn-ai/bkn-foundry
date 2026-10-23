@@ -34,6 +34,7 @@ var (
 	RiskTypeAccess interfaces.RiskTypeAccess
 	UMA            interfaces.UserMgmtAccess
 	VBA            interfaces.VegaBackendAccess
+	VTA            interfaces.ValueTypeAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -118,4 +119,8 @@ func SetUserMgmtAccess(uma interfaces.UserMgmtAccess) {
 
 func SetVegaBackendAccess(vba interfaces.VegaBackendAccess) {
 	VBA = vba
+}
+
+func SetValueTypeAccess(vta interfaces.ValueTypeAccess) {
+	VTA = vta
 }

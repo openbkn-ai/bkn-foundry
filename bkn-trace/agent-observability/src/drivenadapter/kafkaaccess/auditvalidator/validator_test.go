@@ -75,7 +75,7 @@ func TestCanonicalAuditFixturesHavePinnedDigestsAndExecutionFactoryIsAdmitted(t 
 	}
 	for file, expected := range map[string]string{
 		"schema.json":                   "5aa7018a4b0b93cb3e336e1507b0d58a3d9f828c5e7be25e79863e345ef1e01f",
-		"registry-runtime-v1.json":      "1026e55ae58e27c70644b46b9cc7f84781ab54ba726df861dfad4f4bdf4b30fd",
+		"registry-runtime-v1.json":      "2a8bc571c636d173622195e71d18f2959a1de42a77d479ff226933fc49e1284d",
 		"audit-record-golden.json":      "fa5115dd176c2539a6ce94a329324d8b257211699e6e3ef020a9a91f56ddbcf3",
 		"audit-kafka-golden.json":       "8e6598557c196f536149404f28cb2113520b518543a9fc0ca648d22d7f8af29f",
 		"execution-factory-golden.json": "2f39af3735b13f96b8d3205dfd584974ed5c2ce5d53e7458039a9e4234d757d0",
@@ -486,6 +486,17 @@ func TestBackendObservedOperationIsAdmittedOnlyAfterSourceCutover(t *testing.T) 
 	}
 	if _, err := validator.Validate(context.Background(), record); err != nil {
 		t.Fatalf("registered Backend operation must pass Writer validation after cutover: %v", err)
+	}
+
+	// Value types (bkn-foundry#2281) are audited as their own target.
+	value["target"] = map[string]any{"type": "value_type", "id": "amount_cny"}
+	value["facts"] = map[string]any{"action": "update", "decision": "allowed", "changed_fields": []string{"base_type"}}
+	if record.Value, err = json.Marshal(value); err != nil {
+		t.Fatal(err)
+	}
+	record.Key = []byte("bkn-backend\x1fvalue_type\x1famount_cny")
+	if _, err := validator.Validate(context.Background(), record); err != nil {
+		t.Fatalf("a value type operation must pass Writer validation: %v", err)
 	}
 }
 

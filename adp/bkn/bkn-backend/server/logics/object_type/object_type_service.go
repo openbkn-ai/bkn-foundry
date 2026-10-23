@@ -52,6 +52,7 @@ type objectTypeService struct {
 	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
 	ps         interfaces.PermissionService
+	vta        interfaces.ValueTypeAccess
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
 	// kpr overrides the registered knowledge-network proxy resolver; tests set it directly.
@@ -96,6 +97,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			cga:        logics.CGA,
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ota:        logics.OTA,
+			vta:        logics.VTA,
 			ps:         permission.NewPermissionService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
@@ -234,6 +236,9 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			return []string{}, err
 		}
 		if err := validateDeclarations(ctx, objectType); err != nil {
+			return []string{}, err
+		}
+		if err := ots.checkValueTypes(ctx, objectType); err != nil {
 			return []string{}, err
 		}
 		if strictMode {
@@ -466,6 +471,9 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 			return err
 		}
 		if err := validateDeclarations(ctx, objectType); err != nil {
+			return err
+		}
+		if err := ots.checkValueTypes(ctx, objectType); err != nil {
 			return err
 		}
 		if strictMode {
@@ -1166,6 +1174,9 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 	if err := validateDeclarations(ctx, objectType); err != nil {
 		return err
 	}
+	if err := ots.checkValueTypes(ctx, objectType); err != nil {
+		return err
+	}
 	if strictMode {
 		if err := ots.validateObjectTypeStrictExternalDeps(ctx, objectType); err != nil {
 			return err
@@ -1289,6 +1300,9 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		}
 	}
 	if err := validateDeclarations(ctx, objectType); err != nil {
+		return err
+	}
+	if err := ots.checkValueTypes(ctx, objectType); err != nil {
 		return err
 	}
 

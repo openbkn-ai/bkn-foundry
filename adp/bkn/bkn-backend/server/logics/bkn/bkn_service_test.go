@@ -40,6 +40,17 @@ func (archiveAccessStub) DeleteObjectMetricArchive(context.Context, *sql.Tx, str
 	return nil
 }
 
+// valueTypesStub holds the value types of the network under test; nothing else of the value type
+// service is used by export.
+type valueTypesStub struct {
+	interfaces.ValueTypeService
+	list []*interfaces.ValueType
+}
+
+func (s valueTypesStub) GetAllValueTypesByKnID(context.Context, string, string) ([]*interfaces.ValueType, error) {
+	return s.list, nil
+}
+
 type archivePermissionStub struct {
 	interfaces.PermissionService
 	visible map[string]bool
@@ -82,6 +93,7 @@ func newTestBKNServiceWithCapabilities(t *testing.T) (*bknService, *gomock.Contr
 		kns:        kns,
 		cbs:        cbs,
 		ps:         archivePermissionStub{},
+		vts:        valueTypesStub{},
 	}
 	return svc, mockCtrl, kns, cbs
 }
@@ -609,6 +621,40 @@ func Test_bknService_ExportDeclarations(t *testing.T) {
 			So(props[1].Semantic, ShouldEqual, "event_time")
 			So(props[1].Required, ShouldBeTrue)
 			So(props[2].Constraints, ShouldResemble, &bknsdk.PropertyConstraints{Range: &bknsdk.ValueRange{Min: int64(0)}, Unit: "元"})
+		})
+
+		Convey("A property naming a value type is written with the value type\n", func() {
+			kn := declaredKN("kn1", true)
+			kn.ObjectTypes[0].DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
+			svc.vts = valueTypesStub{list: []*interfaces.ValueType{{
+				VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal",
+				ValueTypeDefinition: interfaces.ValueTypeDefinition{Range: &interfaces.ValueRange{Min: float64(0)}, Unit: "元"},
+			}}}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
+			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+			So(err, ShouldBeNil)
+			So(network.BknSpec, ShouldEqual, bknsdk.BknSpecV3)
+			So(len(network.ValueTypes), ShouldEqual, 1)
+			So(network.ValueTypes[0].Range, ShouldResemble, &bknsdk.ValueRange{Min: int64(0)})
+			So(network.ObjectTypes[0].DataProperties[2].Constraints.ValueType, ShouldEqual, "amount_cny")
+		})
+
+		Convey("2.0 leaves value types out, byte for byte as a network that never had them\n", func() {
+			svc.vts = valueTypesStub{list: []*interfaces.ValueType{{VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal"}}}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
+			withValueTypes, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_2)
+			So(err, ShouldBeNil)
+			svc.vts = valueTypesStub{}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
+			plain, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			So(exportedFiles(t, withValueTypes), ShouldResemble, exportedFiles(t, plain))
+			network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(withValueTypes))
+			So(err, ShouldBeNil)
+			So(network.ValueTypes, ShouldBeEmpty)
+			So(string(withValueTypes), ShouldNotContainSubstring, "value_type")
 		})
 
 		Convey("2.0 leaves the declarations out, byte for byte as a network that never had them\n", func() {

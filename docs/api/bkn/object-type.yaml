@@ -1794,9 +1794,14 @@ components:
       description: |
         BKN spec 3.0 property constraints (SPECIFICATION.md §6.8). They describe the data for understanding
         and display; nothing checks the source data against them. An update that leaves the field out keeps
-        the stored value; a value replaces it whole; null or {} clears it. value_type is not supported yet.
+        the stored value; a value replaces it whole; null or {} clears it.
       type: object
       properties:
+        value_type:
+          description: |
+            ID of a value type of the same network (value-types.yaml) whose base_type is the property's Type.
+            A property that names one writes no range, length, pattern or unit of its own.
+          type: string
         range:
           description: Closed interval; numbers for a numeric property, ISO 8601 text for date, datetime and timestamp.
           type: object
