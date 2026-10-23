@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Service-filtered Trace lists compute the total and nonempty page in one SQL statement, reducing repeated canonical service lookups while preserving cursor totals and empty-page behavior. Added isolated MariaDB/OpenSearch capacity coverage. (#2150)
+
 - Interaction operation reads support a payload-free `view=summary` while retaining the default full response. Service-only Trace filtering now uses canonical MariaDB identity count/page queries instead of a fixed projection candidate scan. (#2005, #2143, #2145)
 
 - Record-integrity materialization failures now use process-local exponential backoff from 30 seconds to 5 minutes, reducing repeated evidence reads and error logs. Source changes bypass backoff; dependency recovery remains retryable without changing integrity verdicts. (#2133)
