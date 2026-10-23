@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -261,7 +261,7 @@ func TestCloseCursorSession(t *testing.T) {
 	require.NoError(t, err)
 
 	err = CloseCursorSession(context.Background(), "account-b", session.ID)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 

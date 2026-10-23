@@ -22,10 +22,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -89,7 +89,7 @@ func NewResourceService(appSetting *common.AppSetting, datasetService interfaces
 func (rs *resourceService) checkResourcePermission(ctx context.Context,
 	resourceID string, builtin bool, op string) error {
 	if builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
 	}
 	return rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -106,15 +106,15 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Check catalog permission failed")
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_NotFound {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound).
 				WithErrorDetails(fmt.Sprintf("catalog %s not found", req.CatalogID))
 		}
 		return nil, err
 	}
 	if !allowed {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("Access denied: insufficient permissions for catalog's resource_manage operation.")
 	}
 
@@ -126,7 +126,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			return nil, err
 		}
 		if exists {
-			return nil, rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_IDExists).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_IDExists).
 				WithErrorDetails(fmt.Sprintf("id %s already exists", req.ID))
 		}
 	}
@@ -139,7 +139,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 
 	resourceBuiltin := req.Builtin != nil && *req.Builtin
 	if resourceBuiltin != parentCatalog.Builtin {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("resource built_in must match its catalog built_in value")
 	}
 
@@ -239,7 +239,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	tx, err := rs.db.BeginTx(ctx, nil)
 	if err != nil {
 		otellog.LogError(ctx, "Create resource transaction failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("failed to create resource")
 	}
@@ -248,13 +248,13 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	err = rs.ra.Create(ctx, tx, resource)
 	if err != nil {
 		otellog.LogError(ctx, "Create resource failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("failed to create resource")
 	}
 
 	if err := tx.Commit(); err != nil {
 		otellog.LogError(ctx, "Commit resource creation transaction failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("failed to create resource")
 	}
@@ -298,18 +298,18 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	resource, err := rs.ra.GetByID(ctx, nil, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	if resource == nil {
 		span.SetStatus(codes.Error, "Resource not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	populateResourceColumnCount(resource)
 
 	// Apply the fixed internal guard before checking resource permissions.
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
 	}
 
@@ -323,7 +323,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	if resrc, exist := matchResoucesMap[resource.ID]; exist {
 		resource.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 	} else {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 	}
 
@@ -342,17 +342,17 @@ func (rs *resourceService) CheckResourcePermission(ctx context.Context, resource
 	defer span.End()
 
 	if resourceID == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
 			WithErrorDetails("resource_id is required")
 	}
 	resource, err := rs.ra.GetByID(ctx, nil, resourceID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if resource == nil {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 	}
 
@@ -422,7 +422,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 	resourcesByID, err := rs.ra.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resources failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	resources := make([]*interfaces.Resource, 0, len(resourcesByID))
@@ -438,7 +438,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 	if !interfaces.IsBuiltinAdmin(ctx) {
 		for _, resource := range resources {
 			if resource.Builtin {
-				return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+				return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 					WithErrorDetails("built-in resources are restricted to the built-in administrator")
 			}
 		}
@@ -455,7 +455,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string, includeRo
 		if resrc, exist := matchResoucesMap[resource.ID]; exist {
 			resource.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		} else {
-			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 		}
 		accountInfos = append(accountInfos, &resource.Creator, &resource.Updater)
@@ -534,7 +534,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	refs, err := rs.ra.ListPermissionRefs(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List resource IDs failed")
-		return []*interfaces.ResourceSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+		return []*interfaces.ResourceSummary{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -622,7 +622,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		summariesByID, err := rs.ra.GetSummariesByIDs(ctx, batchIDs)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get resources by IDs failed")
-			return []*interfaces.ResourceSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+			return []*interfaces.ResourceSummary{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 				WithErrorDetails(err.Error())
 		}
 
@@ -683,23 +683,23 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	resource, err := rs.ra.GetByID(ctx, nil, req.ID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if resource == nil {
 		span.SetStatus(codes.Error, "Resource not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
 	}
 	if req.Builtin != nil && *req.Builtin != resource.Builtin {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("resource built_in is immutable")
 	}
 	if req.Enabled != resource.Enabled {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_EnabledFieldNotAllowed).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_EnabledFieldNotAllowed).
 			WithErrorDetails("use POST /resources/{id}/enable or /disable to change enabled state")
 	}
 
@@ -720,7 +720,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	}
 	if resource.Category == interfaces.ResourceCategoryDataset && resource.LocalIndexName != "" {
 		if field := changedDatasetFulltextAnalyzer(resource, req); field != "" {
-			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_RequestBody).
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_RequestBody).
 				WithErrorDetails(fmt.Sprintf("dataset fulltext analyzer for field %q cannot be changed on an existing index; rebuild the dataset instead", field))
 		}
 	}
@@ -748,7 +748,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 			return err
 		}
 		if len(documents) > 0 {
-			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_RequestBody).
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_RequestBody).
 				WithErrorDetails("dataset index structure cannot be changed while it contains documents; rebuild the dataset instead")
 		}
 	}
@@ -758,7 +758,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		previousFingerprint, err = resourceLocalIndexMappingFingerprint(resource)
 		if err != nil {
 			span.SetStatus(codes.Error, "Fingerprint current resource index config failed")
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 				WithErrorDetails(fmt.Sprintf("invalid current resource index configuration: %v", err))
 		}
 	}
@@ -809,7 +809,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		currentFingerprint, err = resourceLocalIndexMappingFingerprint(resource)
 		if err != nil {
 			span.SetStatus(codes.Error, "Fingerprint updated resource index config failed")
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 				WithErrorDetails(fmt.Sprintf("invalid updated resource index configuration: %v", err))
 		}
 	}
@@ -820,7 +820,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 		return err
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
 	// Apply updates
@@ -843,7 +843,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	if err != nil {
 		span.SetStatus(codes.Error, "Update resource transaction failed")
 		otellog.LogError(ctx, "Update resource transaction failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update resource")
 	}
@@ -853,19 +853,19 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	if err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
 		otellog.LogError(ctx, "Update resource failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update resource")
 	}
 	if rowsAffected == 0 {
 		span.SetStatus(codes.Error, "Resource update conflict")
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicalView && buildRelevantChanged {
 		resource.RowCount = nil
 		resource.RowCountTime = nil
 		if _, err := rs.ra.UpdateRowCount(ctx, tx, resource, resource.UpdateTime); err != nil {
 			otellog.LogError(ctx, "Clear changed view row count failed", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 				WithErrorDetails("failed to update resource")
 		}
 	}
@@ -887,7 +887,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 			if err != nil {
 				otellog.LogError(ctx, "Mark resource local index stale failed", err)
 			}
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 				WithErrorDetails("failed to mark resource local index stale")
 		}
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusStale
@@ -897,7 +897,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 			updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, resource.ID,
 				resource.LocalIndexStatus, resource.LocalIndexName, "")
 			if err != nil || !updated {
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 					WithErrorDetails("failed to clear resource incremental checkpoint")
 			}
 		}
@@ -906,7 +906,7 @@ func (rs *resourceService) Update(ctx context.Context, req *interfaces.ResourceR
 	if err := tx.Commit(); err != nil {
 		span.SetStatus(codes.Error, "Commit resource update transaction failed")
 		otellog.LogError(ctx, "Commit resource update transaction failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update resource")
 	}
@@ -1026,15 +1026,15 @@ func (rs *resourceService) SetEnabled(ctx context.Context, id string, enabled bo
 	resource, err := rs.ra.GetByID(ctx, nil, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if resource == nil {
 		span.SetStatus(codes.Error, "Resource not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in resources are restricted to the built-in administrator")
 	}
 	if resource.Enabled == enabled {
@@ -1048,7 +1048,7 @@ func (rs *resourceService) SetEnabled(ctx context.Context, id string, enabled bo
 	}
 	if err := rs.ra.UpdateEnabled(ctx, resource.ID, enabled, time.Now().UnixMilli(), accountInfo); err != nil {
 		span.SetStatus(codes.Error, "Set resource enabled failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1063,7 +1063,7 @@ func (rs *resourceService) UpdateStatus(ctx context.Context, id string, status s
 
 	if err := rs.ra.UpdateStatus(ctx, nil, id, status, statusMessage); err != nil {
 		span.SetStatus(codes.Error, "Update resource status failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -1078,7 +1078,7 @@ func (rs *resourceService) UpdateDiscoverStatus(ctx context.Context, id string, 
 
 	if err := rs.ra.UpdateDiscoverStatus(ctx, id, status); err != nil {
 		span.SetStatus(codes.Error, "Update resource discover status failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -1092,7 +1092,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	defer span.End()
 
 	if ignoreMissing && onlyIfStale {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("only_if_stale cannot be combined with ignore_missing")
 	}
 	if len(ids) == 0 {
@@ -1127,7 +1127,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 			if allowedByID[id] {
 				continue
 			}
-			return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 				WithErrorDetails("Access denied: insufficient permissions for resource's delete operation.")
 		}
 	}
@@ -1137,7 +1137,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	resourcesByID, err := rs.ra.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resources failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	existingIDs := make([]string, 0, len(resourcesByID))
@@ -1152,7 +1152,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	if ignoreMissing {
 		for _, id := range existingIDs {
 			if !allowedByID[id] {
-				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+				return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 					WithErrorDetails("Access denied: insufficient permissions for resource's delete operation.")
 			}
 		}
@@ -1160,7 +1160,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	if !interfaces.IsBuiltinAdmin(ctx) {
 		for _, resource := range resources {
 			if resource.Builtin {
-				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+				return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 					WithErrorDetails("built-in resources are restricted to the built-in administrator")
 			}
 		}
@@ -1169,7 +1169,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	if !ignoreMissing {
 		for _, id := range ids {
 			if _, exists := resourcesByID[id]; !exists {
-				return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+				return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
 					WithErrorDetails(fmt.Sprintf("id %s not found", id))
 			}
 		}
@@ -1181,7 +1181,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 	if onlyIfStale {
 		for _, resource := range resources {
 			if resource.Status != interfaces.ResourceStatusStale || resource.LastDiscoverStatus != interfaces.DiscoverStatusMissing {
-				return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_DeleteConflict)
+				return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_DeleteConflict)
 			}
 		}
 	}
@@ -1199,10 +1199,10 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string, ignore
 
 	if err := rs.ra.DeleteByIDs(ctx, existingIDs, onlyIfStale); err != nil {
 		if errors.Is(err, interfaces.ErrResourceDeleteConditionNotMet) {
-			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_DeleteConflict)
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_DeleteConflict)
 		}
 		span.SetStatus(codes.Error, "Delete resources failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails("failed to delete resources")
 	}
 
@@ -1251,7 +1251,7 @@ func (rs *resourceService) checkExistByID(ctx context.Context, id string) (bool,
 	resource, err := rs.ra.GetByID(ctx, nil, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "GetByID failed")
-		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+		return false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -1284,7 +1284,7 @@ func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context,
 		return err
 	}
 	if rowsAffected == 0 {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
 	return nil
 }
@@ -1296,7 +1296,7 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 
 	if resource == nil {
 		span.SetStatus(codes.Error, "Resource is required")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	ownedTx := false
 	if tx == nil {
@@ -1304,7 +1304,7 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 		tx, err = rs.db.BeginTx(ctx, nil)
 		if err != nil {
 			span.SetStatus(codes.Error, "Begin discovery metadata transaction failed")
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 				WithErrorDetails("failed to update discovery metadata")
 		}
@@ -1315,24 +1315,24 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 	current, err := rs.ra.GetByID(ctx, tx, resource.ID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Read resource for discovery metadata update failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update discovery metadata")
 	}
 	if current == nil {
 		span.SetStatus(codes.Error, "Resource not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	previousFingerprint, err := ResourceIndexConfigFingerprint(current)
 	if err != nil {
 		span.SetStatus(codes.Error, "Fingerprint current discovered resource failed")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(fmt.Sprintf("invalid current resource index configuration: %v", err))
 	}
 	currentFingerprint, err := ResourceIndexConfigFingerprint(resource)
 	if err != nil {
 		span.SetStatus(codes.Error, "Fingerprint discovered resource failed")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(fmt.Sprintf("invalid discovered resource index configuration: %v", err))
 	}
 
@@ -1341,14 +1341,14 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 		return err
 	}
 	if rowsAffected == 0 {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
 	if previousFingerprint != currentFingerprint && current.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable {
 		updated, err := rs.ra.UpdateLocalIndexState(ctx, tx, current.ID,
 			interfaces.ResourceLocalIndexStatusStale, current.LocalIndexName, "")
 		if err != nil || !updated {
 			span.SetStatus(codes.Error, "Mark discovered resource local index stale failed")
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 				WithErrorDetails("failed to mark resource local index stale")
 		}
@@ -1359,7 +1359,7 @@ func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, 
 	if ownedTx {
 		if err := tx.Commit(); err != nil {
 			span.SetStatus(codes.Error, "Commit discovery metadata transaction failed")
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 				WithErrorDetails("failed to update discovery metadata")
 		}
@@ -1465,15 +1465,15 @@ func (rs *resourceService) rejectResourceOperationWhenActiveBuildTask(ctx contex
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Check active build task failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	if len(tasks) > 0 {
 		if includePending && tasks[0].Status == interfaces.BuildTaskStatusPending {
-			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_Exist).
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_Exist).
 				WithErrorDetails("resource has a pending build task; wait until it finishes")
 		}
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_HasRunningExecution).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_HasRunningExecution).
 			WithErrorDetails("resource has a running build task; wait until it finishes")
 	}
 	return nil
@@ -1490,11 +1490,11 @@ func (rs *resourceService) rejectResourceOperationWhenActiveDiscoverTask(ctx con
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Check active resource refresh task failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if len(tasks) > 0 {
-		return rest.NewHTTPError(ctx, http.StatusConflict,
+		return httperrors.NewHTTPError(ctx, http.StatusConflict,
 			verrors.VegaBackend_DiscoverTask_ResourceRefreshInProgress).
 			WithErrorDetails("resource has a pending or running metadata refresh task; wait until it finishes")
 	}
@@ -1566,7 +1566,7 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 			}
 			if feature.RefProperty != "" && feature.RefProperty != prop.Name {
 				if len(feature.Config) > 0 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 						WithErrorDetails(fmt.Sprintf("vector feature on field %q that references %q must not define config", prop.Name, feature.RefProperty))
 				}
 				continue
@@ -1584,7 +1584,7 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 				modelID = defaultEmbeddingModelID
 			}
 			if modelID == "" {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 					WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", fieldName))
 			}
 
@@ -1593,7 +1593,7 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 				var err error
 				model, err = rs.mfs.GetModelByID(ctx, modelID)
 				if err != nil || model == nil || model.EmbeddingDim <= 0 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 						WithErrorDetails(fmt.Sprintf("embedding model ID %q for field %q not found", modelID, fieldName))
 				}
 
@@ -1610,7 +1610,7 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 	// reference against the complete source schema before reaching this point.
 	if category != interfaces.ResourceCategoryLogicalView {
 		if err := ValidateVectorFeatureReferences(schema); err != nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 				WithErrorDetails(err.Error())
 		}
 	}
@@ -1645,14 +1645,14 @@ func (rs *resourceService) validateIndexConfigAnalyzers(ctx context.Context, sch
 			if err != nil {
 				var unavailableErr *interfaces.IndexCapabilitiesUnavailableError
 				if errors.As(err, &unavailableErr) {
-					return rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
+					return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_IndexCapability_InternalError_Unavailable).
 						WithErrorDetails(err.Error())
 				}
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 					WithErrorDetails(err.Error())
 			}
 			if !available {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_Analyzer).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_Analyzer).
 					WithErrorDetails(fmt.Sprintf("analyzer %q for field %q is unavailable", analyzer, fieldName))
 			}
 		}
@@ -1722,13 +1722,13 @@ func validateIndexConfigKeyFields(ctx context.Context, schema []*interfaces.Prop
 	for _, field := range indexConfig.PrimaryKeyFields {
 		prop, exists := schemaFields[field]
 		if !exists {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q is not in the resource schema", field))
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q is not in the resource schema", field))
 		}
 		if _, duplicate := primaryKeys[field]; duplicate {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields contains duplicate field %q", field))
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields contains duplicate field %q", field))
 		}
 		if !interfaces.IndexConfig_IsPrimaryKeyType(prop.Type) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q has unsupported type %q", field, prop.Type))
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields).WithErrorDetails(fmt.Sprintf("primary_key_fields field %q has unsupported type %q", field, prop.Type))
 		}
 		primaryKeys[field] = struct{}{}
 	}
@@ -1737,13 +1737,13 @@ func validateIndexConfigKeyFields(ctx context.Context, schema []*interfaces.Prop
 	for _, field := range indexConfig.IncrementalFields {
 		prop, exists := schemaFields[field]
 		if !exists {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q is not in the resource schema", field))
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q is not in the resource schema", field))
 		}
 		if _, duplicate := incrementalKeys[field]; duplicate {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields contains duplicate field %q", field))
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields contains duplicate field %q", field))
 		}
 		if !interfaces.IndexConfig_IsIncrementalFieldType(prop.Type) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q has unsupported type %q", field, prop.Type))
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields).WithErrorDetails(fmt.Sprintf("incremental_fields field %q has unsupported type %q", field, prop.Type))
 		}
 		incrementalKeys[field] = struct{}{}
 	}
@@ -1751,7 +1751,7 @@ func validateIndexConfigKeyFields(ctx context.Context, schema []*interfaces.Prop
 }
 
 func unsupportedResourceUpdateError(ctx context.Context, details string) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 		WithErrorDetails(details)
 }
 
@@ -2032,7 +2032,7 @@ func (rs *resourceService) ListAuthResourceEntries(ctx context.Context, params i
 	entries, total, err := rs.ra.ListAuthResourceEntries(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "ListAuthResourceEntries failed")
-		return []*interfaces.AuthResourceEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+		return []*interfaces.AuthResourceEntry{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	if len(entries) == 0 {
@@ -2053,7 +2053,7 @@ func (rs *resourceService) CheckExistByCategories(ctx context.Context, catalogID
 
 func (rs *resourceService) InternalUpdateRowCount(ctx context.Context, tx *sql.Tx, source *interfaces.Resource, count, countTime int64) error {
 	if source == nil || count < 0 || countTime <= 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody)
 	}
 	source.RowCount = &count
 	source.RowCountTime = &countTime
@@ -2065,7 +2065,7 @@ func (rs *resourceService) InternalUpdateRowCount(ctx context.Context, tx *sql.T
 		return err
 	}
 	if updated != 1 {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
 	return nil
 }

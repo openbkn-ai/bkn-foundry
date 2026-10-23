@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -73,21 +73,21 @@ func Test_ValidateHeaderMethodOverride(t *testing.T) {
 		Convey("失败 - 空字符串", func() {
 			err := ValidateHeaderMethodOverride(ctx, "")
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_NullParameter_OverrideMethod)
 		})
 
 		Convey("失败 - POST方法", func() {
 			err := ValidateHeaderMethodOverride(ctx, "POST")
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
 		})
 
 		Convey("失败 - PUT方法", func() {
 			err := ValidateHeaderMethodOverride(ctx, "PUT")
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
 		})
 	})
@@ -119,9 +119,9 @@ func Test_ValidateHeaderMethodOverrideLocalizesDetails(t *testing.T) {
 				t.Fatal("ValidateHeaderMethodOverride() returned nil error")
 			}
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("ValidateHeaderMethodOverride() error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("ValidateHeaderMethodOverride() error type = %T, want *httperrors.HTTPError", err)
 			}
 			if httpErr.BaseError.ErrorCode != oerrors.OntologyQuery_InvalidParameter_OverrideMethod {
 				t.Fatalf("error code = %q, want %q", httpErr.BaseError.ErrorCode, oerrors.OntologyQuery_InvalidParameter_OverrideMethod)
@@ -156,21 +156,21 @@ func Test_validateObjectsQueryParameters(t *testing.T) {
 		Convey("失败 - includeTypeInfo无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "invalid", "false", "false", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - includeLogicParams无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "true", "false", "invalid", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - ignoreLocalIndex无效", func() {
 			_, err := validateObjectsQueryParameters(ctx, "true", "invalid", "true", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
 		})
 	})
@@ -197,14 +197,14 @@ func Test_validateSugraphQueryParameters(t *testing.T) {
 		Convey("失败 - includeLogicParams无效", func() {
 			_, err := validateSugraphQueryParameters(ctx, "invalid", "false", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo)
 		})
 
 		Convey("失败 - ignoreLocalIndex无效", func() {
 			_, err := validateSugraphQueryParameters(ctx, "true", "invalid", []string{})
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex)
 		})
 	})
@@ -235,7 +235,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 		})
 
@@ -247,7 +247,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_Direction)
 		})
 
@@ -259,7 +259,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_Direction)
 		})
 
@@ -271,7 +271,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength)
 		})
 
@@ -298,7 +298,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -315,7 +315,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -332,7 +332,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -377,7 +377,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -392,7 +392,7 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 			}
 			err := validateSubgraphSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -489,7 +489,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -512,7 +512,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathObjectTypes)
 		})
 
@@ -531,7 +531,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathRelationTypes)
 		})
 
@@ -557,7 +557,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter)
 		})
 
@@ -633,7 +633,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
@@ -659,7 +659,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
@@ -691,7 +691,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 		})
 
@@ -748,7 +748,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -779,7 +779,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 			}
 			err := validateSubgraphQueryByPathRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 	})
@@ -913,9 +913,9 @@ func Test_validateSubgraphQueryByPathRequestEdgeEndpoints(t *testing.T) {
 				}
 				return
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error = %T %v, want *rest.HTTPError", err, err)
+				t.Fatalf("error = %T %v, want *httperrors.HTTPError", err, err)
 			}
 			if httpErr.BaseError.ErrorCode != tt.wantCode {
 				t.Fatalf("error code = %q, want %q", httpErr.BaseError.ErrorCode, tt.wantCode)
@@ -952,7 +952,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 
 			err := validateObjectSearchRequest(localizedCtx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			details := httpErr.BaseError.ErrorDetails.(string)
 			So(details, ShouldStartWith, "解析过滤条件失败：")
 			So(details, ShouldContainSubstring, "sub_conditions")
@@ -966,7 +966,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -978,7 +978,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -1007,7 +1007,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -1022,7 +1022,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -1037,7 +1037,7 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 			}
 			err := validateObjectSearchRequest(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -1089,7 +1089,7 @@ func Test_validateActionQuery(t *testing.T) {
 			}
 			err := validateActionQuery(ctx, query)
 			So(err, ShouldBeNil)
-			// httpErr := err.(*rest.HTTPError)
+			// httpErr := err.(*httperrors.HTTPError)
 			// So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionType_InvalidParameter)
 		})
 	})
@@ -1117,7 +1117,7 @@ func Test_validateObjectPropertyValueQuery(t *testing.T) {
 			}
 			err := validateObjectPropertyValueQuery(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 
@@ -1130,7 +1130,7 @@ func Test_validateObjectPropertyValueQuery(t *testing.T) {
 			}
 			err := validateObjectPropertyValueQuery(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 		})
 	})

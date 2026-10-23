@@ -14,9 +14,9 @@ import (
 	"strings"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
@@ -60,14 +60,14 @@ func parseSearchAfterQuery(raw string) (interfaces.SearchAfterArray, error) {
 // ValidateHeaderMethodOverride validates the method override passed in the request header.
 func ValidateHeaderMethodOverride(ctx context.Context, headerMethod string) error {
 	if headerMethod == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_NullParameter_OverrideMethod)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_NullParameter_OverrideMethod)
 	}
 	if headerMethod != "GET" {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.OverrideMethodInvalid", map[string]any{"value": headerMethod})
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_OverrideMethod).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_OverrideMethod).
 			WithErrorDetails(localizedText)
 	}
 
@@ -84,7 +84,7 @@ func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
+		return interfaces.CommonQueryParameters{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
 			WithErrorDetails(localizedText)
 	}
 
@@ -94,7 +94,7 @@ func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
+		return interfaces.CommonQueryParameters{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
 			WithErrorDetails(localizedText)
 	}
 
@@ -104,7 +104,7 @@ func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex).
+		return interfaces.CommonQueryParameters{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex).
 			WithErrorDetails(localizedText)
 	}
 
@@ -120,7 +120,7 @@ func validateObjectsQueryParameters(ctx context.Context, includeTypeInfo string,
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			return interfaces.CommonQueryParameters{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -143,7 +143,7 @@ func validateSugraphQueryParameters(ctx context.Context,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
+		return interfaces.CommonQueryParameters{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IncludeTypeInfo).
 			WithErrorDetails(localizedText)
 	}
 
@@ -153,7 +153,7 @@ func validateSugraphQueryParameters(ctx context.Context,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex).
+		return interfaces.CommonQueryParameters{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter_IgnoreLocalIndex).
 			WithErrorDetails(localizedText)
 	}
 
@@ -169,7 +169,7 @@ func validateSugraphQueryParameters(ctx context.Context,
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return interfaces.CommonQueryParameters{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			return interfaces.CommonQueryParameters{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -192,19 +192,19 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
 			WithErrorDetails(localizedText)
 	}
 	query.ActualCondition = actualCond
 
 	// Require the source object type.
 	if query.SourceObjecTypeId == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 	}
 
 	// Require a direction.
 	if query.Direction == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_Direction)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_Direction)
 	}
 
 	// Validate the direction.
@@ -213,7 +213,7 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_Direction).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_Direction).
 			WithErrorDetails(localizedText)
 	}
 
@@ -223,7 +223,7 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_PathLength).WithErrorDetails(localizedText)
 	}
 
 	// Validate each optional sort definition. Field membership is validated by the service after loading the object type.
@@ -234,7 +234,7 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			if sp.Direction == "" {
@@ -242,7 +242,7 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			if sp.Direction != interfaces.DESC_DIRECTION && sp.Direction != interfaces.ASC_DIRECTION {
@@ -250,7 +250,7 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 		}
@@ -265,7 +265,7 @@ func validateSubgraphSearchRequest(ctx context.Context, query *interfaces.SubGra
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -281,7 +281,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		if query.Paths.TypePaths[i].Limit == 0 {
@@ -292,11 +292,11 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 	for pathIndex, path := range query.Paths.TypePaths {
 		// 1. Require nodes for every path.
 		if len(path.ObjectTypes) == 0 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathObjectTypes)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathObjectTypes)
 		}
 		// 2. Require edges for every path.
 		if len(path.Edges) == 0 {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathRelationTypes)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_NullParameter_TypePathRelationTypes)
 		}
 
 		// 3. A path of n edges walks n+1 nodes. Nodes past that have always been ignored
@@ -308,7 +308,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
 		}
 		for i := 0; i <= len(path.Edges); i++ {
 			// Object-type existence is validated by the service.
@@ -317,7 +317,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
 					WithErrorDetails(localizedText)
 			}
@@ -332,7 +332,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			if edge.Direction != "" && edge.Direction != interfaces.DIRECTION_FORWARD &&
@@ -343,7 +343,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
 			}
 
 			// The endpoints are the nodes this hop walks from and to, so both follow from
@@ -364,7 +364,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
 			}
 			edge.SourceObjectTypeId, edge.TargetObjectTypeId = from, to
 		}
@@ -378,7 +378,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
 					WithErrorDetails(localizedText)
 			}
 			query.Paths.TypePaths[pathIndex].ObjectTypes[i].ActualCondition = actualCond
@@ -391,7 +391,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 						if renderErr != nil {
 							logger.Errorf("localized message rendering failed: %v", renderErr)
 						}
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+						return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 							WithErrorDetails(localizedText)
 					}
 					if sp.Direction == "" {
@@ -399,7 +399,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 						if renderErr != nil {
 							logger.Errorf("localized message rendering failed: %v", renderErr)
 						}
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+						return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 							WithErrorDetails(localizedText)
 					}
 					if sp.Direction != interfaces.DESC_DIRECTION && sp.Direction != interfaces.ASC_DIRECTION {
@@ -407,7 +407,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 						if renderErr != nil {
 							logger.Errorf("localized message rendering failed: %v", renderErr)
 						}
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+						return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 							WithErrorDetails(localizedText)
 					}
 				}
@@ -422,7 +422,7 @@ func validateSubgraphQueryByPathRequest(ctx context.Context, query *interfaces.S
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 		}
 	}
@@ -441,7 +441,7 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InvalidParameter_Condition).
 			WithErrorDetails(localizedText)
 	}
 	query.ActualCondition = actualCond
@@ -454,7 +454,7 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			if sp.Direction == "" {
@@ -462,7 +462,7 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			if sp.Direction != interfaces.DESC_DIRECTION && sp.Direction != interfaces.ASC_DIRECTION {
@@ -470,7 +470,7 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 
@@ -484,7 +484,7 @@ func validateObjectSearchRequest(ctx context.Context, query *interfaces.ObjectQu
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	if query.Limit == 0 {
 		query.Limit = interfaces.DEFAULT_OBJECT_LIMIT
@@ -498,7 +498,7 @@ func validateActionQuery(ctx context.Context, query *interfaces.ActionQuery) err
 
 	// An empty identity list is allowed; the action-type condition is used instead.
 	// if len(query.InstanceIdentities) == 0 {
-	// 	return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionType_InvalidParameter).
+	// 	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionType_InvalidParameter).
 	// 		WithErrorDetails("行动查询的唯一标识不能为空")
 	// }
 	return nil
@@ -513,7 +513,7 @@ func validateObjectPropertyValueQuery(ctx context.Context, query *interfaces.Obj
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -523,7 +523,7 @@ func validateObjectPropertyValueQuery(ctx context.Context, query *interfaces.Obj
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -541,7 +541,7 @@ func validateSubgraphQueryByObjectsRequest(ctx context.Context, query *interface
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -551,7 +551,7 @@ func validateSubgraphQueryByObjectsRequest(ctx context.Context, query *interface
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -563,7 +563,7 @@ func validateSubgraphQueryByObjectsRequest(ctx context.Context, query *interface
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		// Require _instance_identity.
@@ -572,7 +572,7 @@ func validateSubgraphQueryByObjectsRequest(ctx context.Context, query *interface
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}

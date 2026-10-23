@@ -18,9 +18,9 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	commRest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -285,7 +285,7 @@ func resolveAbsentTotal(hasCursor bool, total *int64) *int64 {
 // downstream ontology-query verdict is the only authoritative signal, so the
 // fix is to surface it clearly rather than guess here.
 func classifyQueryError(ctx context.Context, err error) error {
-	var he *commRest.HTTPError
+	var he *httperrors.HTTPError
 	if errors.As(err, &he) && he.HTTPCode >= http.StatusBadRequest && he.HTTPCode < http.StatusInternalServerError {
 		return infraErr.DefaultHTTPError(ctx, he.HTTPCode, downstreamErrorDetails(err))
 	}
@@ -299,7 +299,7 @@ func classifyQueryError(ctx context.Context, err error) error {
 // transport string that also carries the internal service URL; it is kept only
 // when the body is not an ontology-query error envelope.
 func downstreamErrorDetails(err error) any {
-	var he *commRest.HTTPError
+	var he *httperrors.HTTPError
 	errors.As(err, &he)
 	var dependency *infraErr.DependencyError
 	errors.As(err, &dependency)
@@ -344,7 +344,7 @@ func downstreamErrorDetails(err error) any {
 // "对象类 X 未绑定数据源", and get_action_info reported that as 502 "依赖服务不可用",
 // pointing triage at pod health instead of at the knowledge network. See #1225.
 func classifyActionError(ctx context.Context, err error, fallbackDetailKey string) error {
-	var he *commRest.HTTPError
+	var he *httperrors.HTTPError
 	if errors.As(err, &he) && he.HTTPCode >= http.StatusBadRequest && he.HTTPCode < http.StatusInternalServerError {
 		return classifyQueryError(ctx, err)
 	}

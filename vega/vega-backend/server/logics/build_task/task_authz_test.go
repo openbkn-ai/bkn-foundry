@@ -11,11 +11,10 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -200,7 +199,7 @@ func TestBuildTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, cs := newSvc(ctrl)
 
-		boom := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
+		boom := httperrors.NewHTTPError(context.Background(), http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed)
 		cs.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil, boom)
@@ -208,7 +207,7 @@ func TestBuildTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 
 		_, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
 		require.Error(t, err, "鉴权故障必须上抛")
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.True(t, errors.As(err, &httpErr))
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	})

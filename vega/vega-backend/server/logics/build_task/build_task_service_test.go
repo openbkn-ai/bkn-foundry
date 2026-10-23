@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -373,14 +373,14 @@ func TestBuildTaskServiceCreate(t *testing.T) {
 				bta := vmock.NewMockBuildTaskAccess(ctrl)
 				cs := vmock.NewMockCatalogService(ctrl)
 				service := &buildTaskService{rs: rs, bta: bta, cs: cs, dispatchCh: make(chan struct{}, 1)}
-				code := rest.PublicError_Forbidden
+				code := httperrors.PublicError_Forbidden
 				if status == http.StatusNotFound {
 					code = verrors.VegaBackend_Resource_NotFound
 				}
 				if status == http.StatusServiceUnavailable {
 					code = verrors.VegaBackend_Resource_InternalError_GetFailed
 				}
-				cause := rest.NewHTTPError(context.Background(), status, code)
+				cause := httperrors.NewHTTPError(context.Background(), status, code)
 				downstream := fmt.Errorf("lookup: %w", cause)
 				if status == http.StatusInternalServerError {
 					downstream = errors.New("lookup failed")
@@ -1134,11 +1134,11 @@ func TestBuildTaskServiceStart(t *testing.T) {
 			bta.EXPECT().GetByID(gomock.Any(), task.ID).Return(task, nil)
 			cs.EXPECT().CheckCatalogPermission(gomock.Any(), task.CatalogID, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}, true).Return(true, &interfaces.Catalog{ID: task.CatalogID, Enabled: true}, nil)
 			bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-			code := rest.PublicError_Forbidden
+			code := httperrors.PublicError_Forbidden
 			if status == http.StatusNotFound {
 				code = verrors.VegaBackend_Resource_NotFound
 			}
-			cause := rest.NewHTTPError(context.Background(), status, code)
+			cause := httperrors.NewHTTPError(context.Background(), status, code)
 			downstream := fmt.Errorf("lookup: %w", cause)
 			if status == http.StatusInternalServerError {
 				downstream = errors.New("lookup failed")
@@ -1578,10 +1578,10 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 }
 
-func requireHTTPError(t *testing.T, err error, wantErrorCode string) *rest.HTTPError {
+func requireHTTPError(t *testing.T, err error, wantErrorCode string) *httperrors.HTTPError {
 	t.Helper()
 	require.Error(t, err)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	ok := errors.As(err, &httpErr)
 	require.Truef(t, ok, "expected HTTPError, got %T", err)
 	assert.Equal(t, wantErrorCode, httpErr.BaseError.ErrorCode)
@@ -1894,7 +1894,7 @@ func TestBuildTaskServiceValidateConnectorBuildSchema(t *testing.T) {
 				require.NoError(t, err)
 				return
 			}
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
 		})

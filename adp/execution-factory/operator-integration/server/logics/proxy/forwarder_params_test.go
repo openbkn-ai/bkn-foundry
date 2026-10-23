@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -133,7 +133,7 @@ func TestBuildRequest_PathParams(t *testing.T) {
 
 			So(httpReq, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorCode, ShouldEndWith, string(myErr.ErrExtProxyPathParamMissing))
@@ -155,7 +155,7 @@ func TestBuildRequest_PathParams(t *testing.T) {
 
 			So(httpReq, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldContainSubstring, "tool_id")
+			So(err.(*httperrors.HTTPError).BaseError.ErrorDetails, ShouldContainSubstring, "tool_id")
 		})
 
 		Convey("query 里的花括号是业务值，不触发占位符拦截", func() {

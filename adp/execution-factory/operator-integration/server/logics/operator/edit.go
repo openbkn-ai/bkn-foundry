@@ -8,8 +8,8 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -519,7 +519,7 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 		err = m.checkDuplicateName(ctx, req.Name, operator.OperatorID)
 		if err != nil {
 			// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
-			httErr := &rest.HTTPError{}
+			httErr := &httperrors.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
 				err = oerrors.NewHTTPError(ctx, httErr.HTTPCode, oerrors.ErrExtCommonNameExists, httErr.BaseError.ErrorDetails)
 			}

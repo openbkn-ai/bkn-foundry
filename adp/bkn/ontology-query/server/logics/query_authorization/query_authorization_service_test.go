@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
@@ -212,7 +212,7 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullPropertyAccess(t *testing.T) {
 			}},
 		}},
 	}, nil)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v, want 403", err)
 	}
@@ -254,7 +254,7 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullQueryFilterProperty(t *testing.
 			ObjectTypeID: "orders", PropertyName: "status",
 		}},
 	}})
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v, want 403", err)
 	}
@@ -356,7 +356,7 @@ func TestAuthorizeObjectMetricTrialRejectsNonFullParentQueryProperties(t *testin
 				}
 				return
 			}
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 				t.Fatalf("parent query must require full property access: %v", err)
 			}
@@ -399,7 +399,7 @@ func TestAuthorizeObjectMetricTrialRejectsRelationPathOutsidePublishedModel(t *t
 			},
 		},
 	}, nil)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("AuthorizeObjectMetricTrial() error = %v, want 400", err)
 	}
@@ -554,7 +554,7 @@ func TestAuthorizeSubgraphByTypePathRejectsEdgeThatCannotWalkRelation(t *testing
 			models.EXPECT().GetRelationType(gomock.Any(), "kn-a", "main", tt.relation.RTID).Return(tt.relation, true, nil)
 
 			err := service.AuthorizeSubgraphByTypePath(context.Background(), userOrderPathQuery(tt.edge))
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest {
 				t.Fatalf("AuthorizeSubgraphByTypePath() error = %v, want 400", err)
 			}
@@ -651,7 +651,7 @@ func TestAuthorizeObjectTypePreservesModelPermissionDenial(t *testing.T) {
 	}
 	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
 		interfaces.ObjectType{}, false,
-		rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+		httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 
 	err := service.AuthorizeObjectTypeQuery(context.Background(), "kn-a", "main", "orders")
 	assertQueryAuthHTTPStatus(t, err, http.StatusForbidden)
@@ -665,7 +665,7 @@ func TestAuthorizeActionTypePreservesWrappedModelPermissionDenial(t *testing.T) 
 	models.EXPECT().GetActionType(gomock.Any(), "kn-a", "main", "action-1").Return(
 		interfaces.ActionType{}, nil, false,
 		fmt.Errorf("get action type failed: %w",
-			rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)))
+			httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)))
 
 	err := service.AuthorizeActionTypeQuery(context.Background(), "kn-a", "main", "action-1")
 	assertQueryAuthHTTPStatus(t, err, http.StatusForbidden)
@@ -735,7 +735,7 @@ func TestAuthorizeSubgraphByObjectsFailsClosedWithoutModelAccess(t *testing.T) {
 
 func assertQueryAuthHTTPStatus(t *testing.T, err error, expected int) {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
 		t.Fatalf("error = %T %v", err, err)
 	}

@@ -16,8 +16,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -655,7 +655,7 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
 		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"doc-1"}, false).
-			Return(nil, rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden).
+			Return(nil, httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden).
 				WithErrorDetails("Access denied: insufficient permissions for[query_data]"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/doc-1", nil)
@@ -671,7 +671,7 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
 		ds.EXPECT().GetDocuments(gomock.Any(), gomock.Any(), []string{"missing"}, false).
-			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+			Return(nil, httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
 				WithErrorDetails("document missing not found"))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/missing", nil)
@@ -831,7 +831,7 @@ func Test_ResourceDataRestHandler_DeleteResourceData(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
 		ds.EXPECT().DeleteDocuments(gomock.Any(), gomock.Any(), []string{"doc-1", "missing"}, false).
-			Return(rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+			Return(httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
 				WithErrorDetails("document missing not found"))
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1/data/doc-1,missing", nil)
@@ -859,7 +859,7 @@ func Test_ResourceDataRestHandler_DeleteResourceData(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
 		ds.EXPECT().DeleteDocuments(gomock.Any(), gomock.Any(), []string{"missing"}, false).
-			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+			Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/resources/res-1/data/missing", nil)
 		w := httptest.NewRecorder()

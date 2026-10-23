@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -98,7 +98,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 			CronExpr:  "0 0 * * *",
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 	})
@@ -201,7 +201,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 			ExpectedUpdateTime: expectedUpdateTime,
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
@@ -218,7 +218,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 			Strategy: "full_sync",
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
@@ -261,7 +261,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 		got, err := service.GetByID(context.Background(), "schedule-1")
 
 		require.Nil(t, got)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
@@ -335,7 +335,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 
 		require.Nil(t, got)
 		assert.Zero(t, total)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
@@ -369,7 +369,7 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 
 		err := service.UpdateEnabled(context.Background(), schedule, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)

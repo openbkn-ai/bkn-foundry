@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -27,7 +27,7 @@ func ValidateValueTypes(ctx context.Context, valueTypes []*interfaces.ValueType)
 	names := map[string]bool{}
 	for _, vt := range valueTypes {
 		if vt == nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
 		}
 		if err := ValidateValueType(ctx, vt); err != nil {
 			return err
@@ -38,7 +38,7 @@ func ValidateValueTypes(ctx context.Context, valueTypes []*interfaces.ValueType)
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_Duplicated_IDInFile).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_Duplicated_IDInFile).
 					WithErrorDetails(localizedText)
 			}
 			ids[vt.VTID] = true
@@ -48,7 +48,7 @@ func ValidateValueTypes(ctx context.Context, valueTypes []*interfaces.ValueType)
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_Duplicated_Name).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_Duplicated_Name).
 				WithErrorDetails(localizedText)
 		}
 		names[vt.VTName] = true
@@ -64,7 +64,7 @@ func ValidateValueType(ctx context.Context, vt *interfaces.ValueType) error {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ModuleType).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ModuleType).
 			WithErrorDetails(localizedText)
 	}
 	if err := validateID(ctx, vt.VTID); err != nil {
@@ -81,7 +81,7 @@ func ValidateValueType(ctx context.Context, vt *interfaces.ValueType) error {
 	vt.BaseType = strings.ToLower(strings.TrimSpace(vt.BaseType))
 	for n, item := range vt.Enum {
 		if item == nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("value type %q enum item %d is null", vt.VTID, n+1))
 		}
 	}

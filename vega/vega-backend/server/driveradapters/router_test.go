@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -191,7 +191,7 @@ func Test_RestHandler_TraceContextMiddleware(t *testing.T) {
 
 func TestHTTPErrorOrInternal(t *testing.T) {
 	ctx := t.Context()
-	public := rest.NewHTTPError(ctx, http.StatusBadRequest, rest.PublicError_BadRequest).WithErrorDetails("approved validation detail")
+	public := httperrors.NewHTTPError(ctx, http.StatusBadRequest, httperrors.PublicError_BadRequest).WithErrorDetails("approved validation detail")
 	if got := httpErrorOrInternal(ctx, fmt.Errorf("wrapped: %w", public), verrors.VegaBackend_Resource_InternalError); got != public {
 		t.Fatal("wrapped public error was replaced")
 	}

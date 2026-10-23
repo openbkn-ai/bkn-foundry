@@ -7,8 +7,8 @@ package errors
 import (
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/locale"
 )
@@ -25,5 +25,5 @@ func init() {
 			ids = append(ids, id)
 		}
 	}
-	rest.Register(ids)
+	httperrors.Register(ids)
 }

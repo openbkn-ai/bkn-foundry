@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -1002,10 +1002,10 @@ func TestValidateIndexConfigAnalyzers(t *testing.T) {
 	})
 }
 
-func requireResourceHTTPError(t *testing.T, err error, wantCode string) *rest.HTTPError {
+func requireResourceHTTPError(t *testing.T, err error, wantCode string) *httperrors.HTTPError {
 	t.Helper()
 	require.Error(t, err)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	ok := errors.As(err, &httpErr)
 	require.Truef(t, ok, "expected HTTPError, got %T", err)
 	assert.Equal(t, wantCode, httpErr.BaseError.ErrorCode)
@@ -1144,7 +1144,7 @@ func TestResourceServiceCreate(t *testing.T) {
 					"field": "created", "operation": ">=", "value": "2026-10-19",
 				},
 			}}
-		invalid := rest.NewHTTPError(context.Background(), http.StatusBadRequest,
+		invalid := httperrors.NewHTTPError(context.Background(), http.StatusBadRequest,
 			verrors.VegaBackend_LogicalView_InvalidParameter_LogicDefinition).
 			WithErrorDetails("field created: invalid datetime value 2026-10-19")
 		viewService.EXPECT().Prepare(gomock.Any(), req).Return("", nil, invalid)
@@ -1296,8 +1296,8 @@ func TestResourceServiceCreate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := vmock.NewMockCatalogService(ctrl)
 		rs := &resourceService{cs: mockCS}
-		visibilityErr := rest.NewHTTPError(context.Background(), http.StatusForbidden,
-			rest.PublicError_Forbidden).WithErrorDetails("internal catalogs are restricted to the built-in administrator")
+		visibilityErr := httperrors.NewHTTPError(context.Background(), http.StatusForbidden,
+			httperrors.PublicError_Forbidden).WithErrorDetails("internal catalogs are restricted to the built-in administrator")
 		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-internal",
 			[]string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true).
 			Return(false, nil, visibilityErr)
@@ -1310,7 +1310,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			Builtin:   &internal,
 		})
 
-		httpErr := requireResourceHTTPError(t, err, rest.PublicError_Forbidden)
+		httpErr := requireResourceHTTPError(t, err, httperrors.PublicError_Forbidden)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 	})
 	t.Run("rejects missing catalog resource manage permission", func(t *testing.T) {
@@ -1328,7 +1328,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			Category:  interfaces.ResourceCategoryTable,
 		})
 
-		httpErr := requireResourceHTTPError(t, err, rest.PublicError_Forbidden)
+		httpErr := requireResourceHTTPError(t, err, httperrors.PublicError_Forbidden)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 	})
 	t.Run("rejects duplicate explicit id after catalog permission", func(t *testing.T) {
@@ -1449,7 +1449,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			},
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
@@ -1478,7 +1478,7 @@ func TestResourceServiceCreate(t *testing.T) {
 			}},
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
@@ -1627,7 +1627,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 
 		httpErr := requireResourceHTTPError(t,
 			rs.DeleteByIDs(context.Background(), []string{"probe"}, false, false),
-			rest.PublicError_Forbidden)
+			httperrors.PublicError_Forbidden)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 	})
 	t.Run("ignores missing resources after authorizing existing resources", func(t *testing.T) {
@@ -2065,7 +2065,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 					"field": "created", "operation": ">=", "value": "2026-10-19",
 				},
 			}}
-		invalid := rest.NewHTTPError(context.Background(), http.StatusBadRequest,
+		invalid := httperrors.NewHTTPError(context.Background(), http.StatusBadRequest,
 			verrors.VegaBackend_LogicalView_InvalidParameter_LogicDefinition).
 			WithErrorDetails("field created: invalid datetime value 2026-10-19")
 		viewService.EXPECT().Prepare(gomock.Any(), req).Return("", nil, invalid)
@@ -2217,7 +2217,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 	})
 	t.Run("does not query resource when permission is denied", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, _ := newTestService(t)
-		permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+		permissionErr := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 			ID:   "r1",
@@ -2462,7 +2462,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			ExpectedUpdateTime: expectedUpdateTime,
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Resource_UpdateConflict, httpErr.BaseError.ErrorCode)
@@ -2480,7 +2480,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Category:  interfaces.ResourceCategoryTable,
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Resource_UpdateConflict, httpErr.BaseError.ErrorCode)
@@ -2522,7 +2522,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			}},
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
@@ -2712,7 +2712,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
@@ -2845,7 +2845,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
@@ -2989,7 +2989,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Category:  interfaces.ResourceCategoryTable,
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
@@ -3005,7 +3005,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Category:  interfaces.ResourceCategoryDataset,
 		}, &interfaces.ResourceRequest{})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
@@ -3026,7 +3026,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Category: interfaces.ResourceCategoryTable,
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
@@ -3057,7 +3057,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			},
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		if !ok {
 			t.Fatalf("expected HTTPError, got %T", err)
@@ -3125,7 +3125,7 @@ func TestResourceServiceSetEnabledAuthorizesIdempotentRequest(t *testing.T) {
 
 func TestResourceServiceSetEnabledDoesNotQueryWhenPermissionDenied(t *testing.T) {
 	rs, _, mockPS, _, _, _, _ := newTestService(t)
-	permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+	permissionErr := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 	mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 		ID:   "r1",
@@ -3397,7 +3397,7 @@ func TestValidateMutableSchemaUpdateJSONEnabled(t *testing.T) {
 			requested := []*interfaces.Property{{Name: "payload", Type: interfaces.DataType_Json, Attributes: tc.requested, DisplayName: "Updated"}}
 			changed, err := validateMutableSchemaUpdate(context.Background(), current, requested, true)
 			if tc.wantError {
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 			} else {

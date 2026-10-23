@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -149,9 +149,9 @@ func TestActionScheduleValidationDetailsRespectLanguage(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateActionScheduleCreate() error = nil, want missing name error")
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
 			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
 				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)

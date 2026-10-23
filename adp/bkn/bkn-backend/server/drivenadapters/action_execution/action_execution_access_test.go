@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	restmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"go.uber.org/mock/gomock"
 
@@ -65,7 +65,7 @@ func TestCheckActionExecutionFailsClosed(t *testing.T) {
 
 func assertActionExecutionStatus(t *testing.T, err error, want int) {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != want {
 		t.Fatalf("error = %T %v, want HTTP %d", err, err, want)
 	}

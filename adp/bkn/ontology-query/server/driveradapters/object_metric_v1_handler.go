@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -84,13 +85,13 @@ func (r *restHandler) postObjectMetricDrillThroughV1(c *gin.Context, visitorInfo
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	version, err := strconv.Atoi(c.Query("version"))
 	if err != nil || version < 1 {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("version must identify an immutable published metric version"))
 		return
 	}
 	var body interfaces.ObjectMetricDrillThroughRequestV1
 	if err := c.ShouldBindJSON(&body); err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("bind json: "+err.Error()))
 		return
 	}
@@ -101,7 +102,7 @@ func (r *restHandler) postObjectMetricDrillThroughV1(c *gin.Context, visitorInfo
 	}
 	service, ok := r.oms.(interfaces.ObjectMetricDrillThroughServiceV1)
 	if !ok {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusNotImplemented, oerrors.OntologyQuery_Metric_InvalidParameter).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("object metric drill-through is unavailable"))
 		return
 	}
@@ -119,7 +120,7 @@ func (r *restHandler) postObjectMetricTrialDrillThroughV1(c *gin.Context, visito
 	knID, branch := c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	var body interfaces.ObjectMetricTrialDrillThroughRequestV1
 	if err := c.ShouldBindJSON(&body); err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("bind json: "+err.Error()))
 		return
 	}
@@ -130,7 +131,7 @@ func (r *restHandler) postObjectMetricTrialDrillThroughV1(c *gin.Context, visito
 	}
 	service, ok := r.oms.(interfaces.ObjectMetricDrillThroughServiceV1)
 	if !ok {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusNotImplemented, oerrors.OntologyQuery_Metric_InvalidParameter).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusNotImplemented, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("object metric drill-through is unavailable"))
 		return
 	}
@@ -143,11 +144,11 @@ func (r *restHandler) postObjectMetricTrialDrillThroughV1(c *gin.Context, visito
 }
 
 func replyObjectMetricDrillThroughErrorV1(c *gin.Context, ctx context.Context, err error) {
-	if httpErr, ok := err.(*rest.HTTPError); ok {
+	if httpErr, ok := err.(*httperrors.HTTPError); ok {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
+	rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 		WithErrorDetails(err.Error()))
 }
 
@@ -184,7 +185,7 @@ func (r *restHandler) postObjectMetricTrialV1(c *gin.Context, visitorInfo hydra.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	var body interfaces.ObjectMetricTrialRequestV1
 	if err := c.ShouldBindJSON(&body); err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("bind json: "+err.Error()))
 		return
 	}
@@ -195,11 +196,11 @@ func (r *restHandler) postObjectMetricTrialV1(c *gin.Context, visitorInfo hydra.
 	}
 	result, err := r.oms.TrialObjectMetricDataV1(ctx, knID, branch, &body)
 	if err != nil {
-		if httpErr, ok := err.(*rest.HTTPError); ok {
+		if httpErr, ok := err.(*httperrors.HTTPError); ok {
 			rest.ReplyError(c, httpErr)
 			return
 		}
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails(err.Error()))
 		return
 	}
@@ -214,13 +215,13 @@ func (r *restHandler) postObjectMetricDataV1(c *gin.Context, visitorInfo hydra.V
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	version, err := strconv.Atoi(c.Query("version"))
 	if err != nil || version < 1 {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("version must identify an immutable published metric version"))
 		return
 	}
 	var body interfaces.ObjectMetricQueryRequestV1
 	if err := c.ShouldBindJSON(&body); err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("bind json: "+err.Error()))
 		return
 	}
@@ -231,11 +232,11 @@ func (r *restHandler) postObjectMetricDataV1(c *gin.Context, visitorInfo hydra.V
 	}
 	result, err := r.oms.QueryObjectMetricDataV1(ctx, knID, branch, metricID, version, &body)
 	if err != nil {
-		if httpErr, ok := err.(*rest.HTTPError); ok {
+		if httpErr, ok := err.(*httperrors.HTTPError); ok {
 			rest.ReplyError(c, httpErr)
 			return
 		}
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails(err.Error()))
 		return
 	}

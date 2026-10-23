@@ -15,9 +15,9 @@ import (
 	"github.com/PaesslerAG/jsonpath"
 	"github.com/dlclark/regexp2"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -34,7 +34,7 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
+			return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
 				WithErrorDetails(localizedText)
 		}
 
@@ -48,7 +48,7 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
 			errDetails := localizedText
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_Duplicated_IDInFile).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_Duplicated_IDInFile).
 				WithErrorDetails(errDetails)
 		}
 
@@ -62,7 +62,7 @@ func ValidateObjectTypes(ctx context.Context, knID string, objectTypes []*interf
 		if _, ok := tmpNameMap[objectTypes[i].OTName]; !ok {
 			tmpNameMap[objectTypes[i].OTName] = nil
 		} else {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_Duplicated_Name)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_Duplicated_Name)
 		}
 
 		objectTypes[i].KNID = knID
@@ -138,7 +138,7 @@ func validateObjectTypeDataSource(ctx context.Context, objectType *interfaces.Ob
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	return nil
 }
@@ -163,7 +163,7 @@ func validateObjectTypeDataProperties(ctx context.Context, objectType *interface
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	for _, prop := range objectType.DataProperties {
@@ -181,7 +181,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 	// Validate primary keys. Strict mode requires them; configured keys must exist and use supported types.
 	if len(objectType.PrimaryKeys) == 0 {
 		if strictMode {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_NullParameter_PrimaryKeys)
 		}
 	} else {
@@ -192,7 +192,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
@@ -202,7 +202,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 		}
 	}
@@ -210,7 +210,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 	// Validate the display key. Strict mode requires it; configured keys must exist and use supported types.
 	if objectType.DisplayKey == "" {
 		if strictMode {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_NullParameter_DisplayKey)
 		}
 	} else {
@@ -220,7 +220,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
@@ -230,7 +230,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 	}
 
@@ -242,7 +242,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
@@ -253,7 +253,7 @@ func validateObjectTypeKeys(ctx context.Context, objectType *interfaces.ObjectTy
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 	}
 
@@ -268,7 +268,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	dataPropNames := make(map[string]struct{}, len(objectType.DataProperties))
@@ -287,7 +287,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		// Validate displayName.
@@ -296,7 +296,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		if utf8.RuneCountInString(prop.DisplayName) > interfaces.OBJECT_NAME_MAX_LENGTH {
@@ -304,7 +304,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		// Type is required and supports only metric or tool.
@@ -313,7 +313,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 		if prop.Type != interfaces.LOGIC_PROPERTY_TYPE_METRIC &&
 			prop.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
@@ -321,7 +321,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 
 		// Validate data_source:
@@ -335,7 +335,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			if !interfaces.ValidLogicSourceTypes[prop.DataSource.Type] {
@@ -343,7 +343,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			if prop.Type != prop.DataSource.Type {
@@ -351,7 +351,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 			if prop.DataSource.Type == interfaces.LOGIC_PROPERTY_TYPE_TOOL {
 				if prop.DataSource.BoxID == "" || prop.DataSource.ToolID == "" {
@@ -359,7 +359,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 					if renderErr != nil {
 						logger.Errorf("localized message rendering failed: %v", renderErr)
 					}
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 						WithErrorDetails(localizedText)
 				}
 			} else if prop.DataSource.ID == "" {
@@ -367,7 +367,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 			if prop.DataSource.ResultPath != "" {
 				if prop.DataSource.Type != interfaces.LOGIC_PROPERTY_TYPE_TOOL {
@@ -375,7 +375,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 					if renderErr != nil {
 						logger.Errorf("localized message rendering failed: %v", renderErr)
 					}
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 				if _, err := jsonpath.New(prop.DataSource.ResultPath); err != nil {
 					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyResultPathInvalid", map[string]any{"objectType": objectType.OTName, "property": prop.Name, "error": err.Error()})
@@ -383,7 +383,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 						logger.Errorf("localized message rendering failed: %v", renderErr)
 					}
 					// Strict mode rejects a missing data source.
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 						WithErrorDetails(localizedText)
 				}
 			}
@@ -393,7 +393,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
 			// Strict mode rejects a missing data source.
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 
 		// Parameter names are required.
@@ -403,7 +403,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 			if param.ValueFrom == interfaces.VALUE_FROM_PROPERTY {
 				propName, ok := param.Value.(string)
@@ -412,7 +412,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 					if renderErr != nil {
 						logger.Errorf("localized message rendering failed: %v", renderErr)
 					}
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 						WithErrorDetails(localizedText)
 				}
 				if _, exists := dataPropNames[propName]; !exists {
@@ -420,7 +420,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 					if renderErr != nil {
 						logger.Errorf("localized message rendering failed: %v", renderErr)
 					}
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			}
 		}
@@ -461,7 +461,7 @@ func validateObjectTypeLogicProperties(ctx context.Context, objectType *interfac
 
 func ValidatePropertyName(ctx context.Context, name string) error {
 	if name == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_NullParameter_PropertyName)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_NullParameter_PropertyName)
 	}
 	// IDs contain letters, digits, underscores, and hyphens; they cannot start with an underscore and are limited to 40 characters.
 	re := regexp2.MustCompile(interfaces.RegexPattern_Property_Name, regexp2.RE2)
@@ -472,7 +472,7 @@ func ValidatePropertyName(ctx context.Context, name string) error {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
 		errDetails := localizedText
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_PropertyName).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_PropertyName).
 			WithErrorDetails(errDetails)
 	}
 	return nil
@@ -484,7 +484,7 @@ func ValidateDataProperties(ctx context.Context, propertyNames []string, dataPro
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		return httpErr
 	}
@@ -499,7 +499,7 @@ func ValidateDataProperties(ctx context.Context, propertyNames []string, dataPro
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 			return httpErr
 		}
@@ -524,7 +524,7 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 	if utf8.RuneCountInString(dataProperty.DisplayName) > interfaces.OBJECT_NAME_MAX_LENGTH {
@@ -532,7 +532,7 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	// When data_property.type is set, it must be a supported type: integer, unsigned integer, float, decimal, string, keyword, text, date, timestamp, time, datetime, boolean, binary, json, vector, point, shape, or ip.
@@ -542,7 +542,7 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 	}
 	if err := maskrule.Validate(dataProperty.Type, dataProperty.MaskRule); err != nil {
@@ -550,7 +550,7 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 	// When data_property.mapped_field is set, name is required.
@@ -559,7 +559,7 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 	if dataProperty.HasRetiredIndexConfig() {
@@ -567,7 +567,7 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	return nil
 }

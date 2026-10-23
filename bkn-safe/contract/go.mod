@@ -8,7 +8,7 @@ go 1.26.0
 
 require (
 	github.com/casbin/casbin/v2 v2.135.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023123451-2466c45fb835
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2
 )
 
 require (

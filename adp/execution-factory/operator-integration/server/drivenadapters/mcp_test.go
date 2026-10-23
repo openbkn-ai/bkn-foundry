@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -118,12 +118,12 @@ func TestNewMCPClientModeNotSupported(t *testing.T) {
 	}
 }
 
-func requireHTTPError(t *testing.T, err error) *rest.HTTPError {
+func requireHTTPError(t *testing.T, err error) *httperrors.HTTPError {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok {
 		t.Fatalf("error type = %T, want *errors.HTTPError", err)
 	}

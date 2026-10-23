@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
@@ -117,7 +117,7 @@ func (cgs *conceptGroupService) withConceptGroupIdentityCache(ctx context.Contex
 		identities, err := cgs.cga.GetConceptGroupIdentitiesByIDsOrNames(
 			ctx, scope.knID, scope.branch, request.ids, request.names)
 		if err != nil {
-			return ctx, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return ctx, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -161,7 +161,7 @@ func (cgs *conceptGroupService) CheckConceptGroupExistByID(ctx context.Context, 
 	cgName, exist, err := cgs.cga.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("按ID[%v]获取概念分组失败", knID), err)
-		return "", exist, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", exist, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed).WithErrorDetails(err.Error())
 	}
 
@@ -176,7 +176,7 @@ func (cgs *conceptGroupService) CheckConceptGroupExistByName(ctx context.Context
 	cgID, exist, err := cgs.cga.CheckConceptGroupExistByName(ctx, knID, branch, cgName)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("按名称[%v]获取概念分组失败", cgName), err)
-		return cgID, exist, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return cgID, exist, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed).WithErrorDetails(err.Error())
 	}
 
@@ -223,7 +223,7 @@ func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql
 	if tx == nil {
 		tx, err = cgs.db.Begin()
 		if err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -311,15 +311,15 @@ func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql
 			logger.Errorf("CreateConceptGroups error: %s", err.Error())
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
 				if strings.Contains(constraint, "name") {
-					return nil, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ConceptGroup_ConceptGroupNameExisted).
 						WithErrorDetails("One or more concept group names already exist")
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted).
 					WithErrorDetails("One or more concept group IDs already exist")
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_CreateConceptGroupFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -338,7 +338,7 @@ func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql
 	if len(updateGroups) > 0 {
 		if err = cgs.cga.UpdateConceptGroups(ctx, tx, updateGroups); err != nil {
 			logger.Errorf("UpdateConceptGroups error: %s", err.Error())
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_UpdateConceptGroupFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -348,7 +348,7 @@ func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql
 		len(createGroups)+len(updateGroups)), createGroups...), updateGroups...)
 	if err = cgs.InsertDatasetDatas(ctx, changedGroups); err != nil {
 		logger.Errorf("InsertDatasetDatas error: %s", err.Error())
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -476,7 +476,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -514,7 +514,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			logger.Errorf("CreateConceptGroup error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建概念分组失败")
 
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_CreateConceptGroupFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -541,7 +541,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("AddObjectTypesToConceptGroup error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建概念分组与对象类的关系失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ConceptGroup_InternalError_AddObjectTypesToConceptGroupFailed).
 					WithErrorDetails(err.Error())
 			}
@@ -574,7 +574,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 		if err != nil {
 			logger.Errorf("UpdateConceptGroup error: %s", err.Error())
 			span.SetStatus(codes.Error, "修改概念分组失败")
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_UpdateConceptGroupFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -594,7 +594,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			if err != nil {
 				logger.Errorf("AddObjectTypesToConceptGroup error: %s", err.Error())
 				span.SetStatus(codes.Error, "创建概念分组与对象类的关系失败")
-				return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ConceptGroup_InternalError_AddObjectTypesToConceptGroupFailed).
 					WithErrorDetails(err.Error())
 			}
@@ -627,7 +627,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			logger.Errorf("InsertDatasetData error: %s", err.Error())
 			span.SetStatus(codes.Error, "概念分组概念索引写入失败")
 
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_InsertOpenSearchDataFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -689,7 +689,7 @@ func (cgs *conceptGroupService) validateConceptGroupDependencies(ctx context.Con
 	if effectiveBatch == nil {
 		effectiveBatch, err = batchindex.CollectFromConceptGroups(knID, branch, conceptGroups)
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ConceptGroup_InvalidParameter).
 				WithErrorDetails(err.Error())
 		}
@@ -739,7 +739,7 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 		logger.Errorf("ListConceptGroups error: %s", err.Error())
 		span.SetStatus(codes.Error, "List concept groups error")
 
-		return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.ConceptGroup{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 	if interfaces.IsAuthorizationResourceCatalog(ctx) {
@@ -772,7 +772,7 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 		if err != nil {
 			span.SetStatus(codes.Error, "GetAccountNames error")
 
-			return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.ConceptGroup{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 		}
 	}
@@ -791,7 +791,7 @@ func (cgs *conceptGroupService) ListConceptGroups(ctx context.Context,
 		logger.Errorf(errStr)
 		span.SetStatus(codes.Error, errStr)
 
-		return []*interfaces.ConceptGroup{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.ConceptGroup{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 	if interfaces.IsConceptGroupMemberScopeDeferred(ctx) {
@@ -838,7 +838,7 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 		span.SetStatus(codes.Error, fmt.Sprintf("Get concept group[%s] error: %v", knID, err))
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_GetConceptGroupByIDFailed).WithErrorDetails(err.Error())
 	}
 
@@ -848,7 +848,7 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 		span.SetStatus(codes.Error, errStr)
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 			WithErrorDetails(errStr)
 	}
 	operations, err := permission.GetKNChildOperations(ctx, cgs.ps,
@@ -867,7 +867,7 @@ func (cgs *conceptGroupService) GetConceptGroupByID(ctx context.Context, knID st
 		span.SetStatus(codes.Error, errStr)
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_GetConceptIDsByConceptGroupIDsFailed).WithErrorDetails(err.Error())
 	}
 
@@ -930,7 +930,7 @@ func (cgs *conceptGroupService) GetConceptGroupIDsByKnID(ctx context.Context, kn
 		span.SetStatus(codes.Error, fmt.Sprintf("Get concept group ids by kn_id[%s] error: %v", knID, err))
 		span.End()
 
-		return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -956,7 +956,7 @@ func (cgs *conceptGroupService) GetStatByConceptGroup(ctx context.Context, conce
 		span.SetStatus(codes.Error, errStr)
 		span.End()
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_GetConceptIDsByConceptGroupIDsFailed).WithErrorDetails(err.Error())
 	}
 
@@ -979,11 +979,11 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 	}
 	_, exists, err := cgs.cga.CheckConceptGroupExistByID(ctx, conceptGroup.KNID, conceptGroup.Branch, conceptGroup.CGID)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed).WithErrorDetails(err.Error())
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
 	}
 	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
 		conceptGroup.KNID, conceptGroup.CGID)
@@ -1016,7 +1016,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 		logger.Errorf(errStr)
 		span.SetStatus(codes.Error, errStr)
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_GetConceptIDsByConceptGroupIDsFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1050,7 +1050,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -1080,7 +1080,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 		logger.Errorf("UpdateConceptGroup error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改概念分组失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -1090,7 +1090,7 @@ func (cgs *conceptGroupService) UpdateConceptGroup(ctx context.Context, tx *sql.
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
 		span.SetStatus(codes.Error, "概念分组概念索引写入失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1118,11 +1118,11 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 	}
 	_, exists, err := cgs.cga.CheckConceptGroupExistByID(ctx, knID, branch, cgID)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed).WithErrorDetails(err.Error())
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ConceptGroup_ConceptGroupNotFound)
 	}
 	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, cgID)
 	err = cgs.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_DELETE})
@@ -1135,7 +1135,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -1166,7 +1166,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 		logger.Errorf("DeleteConceptGroupsByIDs error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除概念分组失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 	logger.Infof("DeleteConceptGroupByID: Rows affected is %v, request delete CGID is %s in knowledge network [%s] branch [%s]!",
@@ -1185,7 +1185,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 	if err != nil {
 		logger.Errorf("DeleteObjectTypesFromGroup error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除概念与分组的关系失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 	logger.Infof("DeleteObjectTypesFromGroup: Rows affected is %v, request delete cgID is %s!", cgrsRowsAffect, cgID)
@@ -1212,13 +1212,13 @@ func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, t
 
 	if tx == nil {
 		otellog.LogError(ctx, "missing transaction", nil)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_MissingTransaction).
 			WithErrorDetails("missing transaction")
 	}
 	cgIDs, err := cgs.cga.GetConceptGroupIDsByKnID(ctx, knID, branch)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -1227,7 +1227,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, t
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除概念分组失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 	logger.Infof("DeleteConceptGroupsByKnID: Rows affected is %v, request delete knID is %s in knowledge network [%s] branch [%s]!",
@@ -1238,7 +1238,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupsByKnID(ctx context.Context, t
 	if err != nil {
 		logger.Errorf("DeleteConceptGroupRelationsByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除概念与分组的关系失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 	logger.Infof("DeleteConceptGroupRelationsByKnID: Rows affected is %v, request delete knID is %s in knowledge network [%s] branch [%s]!",
@@ -1261,7 +1261,7 @@ func (cgs *conceptGroupService) UpdateConceptGroupDetail(ctx context.Context, kn
 		logger.Errorf("UpdateConceptGroupDetail error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改知识网络详情失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -1312,7 +1312,7 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 					conceptGroup.CGID, conceptGroup.KNID, conceptGroup.Branch)
 				logger.Error(errDetails)
 				span.SetStatus(codes.Error, errDetails)
-				return false, false, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return false, false, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ConceptGroup_ConceptGroupIDExisted).
 					WithErrorDetails(errDetails)
 			}
@@ -1322,7 +1322,7 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 					conceptGroup.CGName, conceptGroup.KNID, conceptGroup.Branch)
 				logger.Error(errDetails)
 				span.SetStatus(codes.Error, errDetails)
-				return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
+				return false, false, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 					berrors.BknBackend_ConceptGroup_ConceptGroupNameExisted).
 					WithErrorDetails(errDetails)
 			}
@@ -1338,7 +1338,7 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 						conceptGroup.CGID, conceptGroup.CGName, conceptGroup.KNID, conceptGroup.Branch, existID)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return false, false, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ConceptGroup_ConceptGroupNameExisted).
 						WithErrorDetails(errDetails)
 				} else {
@@ -1360,7 +1360,7 @@ func (cgs *conceptGroupService) handleConceptGroupImportMode(ctx context.Context
 					conceptGroup.CGID, conceptGroup.CGName, conceptGroup.KNID, conceptGroup.Branch)
 				logger.Error(errDetails)
 				span.SetStatus(codes.Error, errDetails)
-				return false, false, rest.NewHTTPError(ctx, http.StatusForbidden,
+				return false, false, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 					berrors.BknBackend_ConceptGroup_ConceptGroupNameExisted).
 					WithErrorDetails(errDetails)
 			}
@@ -1458,7 +1458,7 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -1503,7 +1503,7 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 			logger.Errorf(errStr)
 			span.SetStatus(codes.Error, errStr)
 
-			return []string{}, rest.NewHTTPError(ctx, http.StatusNotFound,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ConceptGroup_ObjectTypeNotFound).WithErrorDetails(errStr)
 		}
 	}
@@ -1527,7 +1527,7 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 		logger.Errorf(errStr)
 		span.SetStatus(codes.Error, errStr)
 
-		return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -1542,7 +1542,7 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 			logger.Errorf(errStr)
 			span.SetStatus(codes.Error, errStr)
 
-			return []string{}, rest.NewHTTPError(ctx, http.StatusNotFound,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ConceptGroup_ConceptGroupRelationExisted).WithErrorDetails(errStr)
 
 		case interfaces.ImportMode_Ignore, interfaces.ImportMode_Overwrite:
@@ -1604,7 +1604,7 @@ func (cgs *conceptGroupService) addObjectTypesToConceptGroup(ctx context.Context
 		logger.Errorf(errStr)
 		span.SetStatus(codes.Error, errStr)
 
-		return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_CreateConceptGroupRelationFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1650,7 +1650,7 @@ func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 	tx, err := cgs.db.Begin()
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
-		return []interfaces.ConceptGroupRelation{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []interfaces.ConceptGroupRelation{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1679,7 +1679,7 @@ func (cgs *conceptGroupService) ListConceptGroupRelations(ctx context.Context,
 		logger.Errorf("ListConceptGroupRelations error: %s", err.Error())
 		span.SetStatus(codes.Error, "List concept group relations error")
 
-		return []interfaces.ConceptGroupRelation{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []interfaces.ConceptGroupRelation{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 	if len(cgrArr) == 0 {
@@ -1730,7 +1730,7 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 		tx, err = cgs.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ConceptGroup_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -1765,7 +1765,7 @@ func (cgs *conceptGroupService) DeleteObjectTypesFromGroup(ctx context.Context, 
 	if err != nil {
 		logger.Errorf("DeleteObjectTypesFromGroup error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除概念与分组的关系失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ConceptGroup_InternalError).WithErrorDetails(err.Error())
 	}
 

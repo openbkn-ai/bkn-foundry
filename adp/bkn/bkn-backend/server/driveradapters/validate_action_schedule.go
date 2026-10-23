@@ -10,9 +10,9 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -26,7 +26,7 @@ func ValidateActionScheduleCreate(ctx context.Context, req *interfaces.ActionSch
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 	if len(req.Name) > 100 {
@@ -34,7 +34,7 @@ func ValidateActionScheduleCreate(ctx context.Context, req *interfaces.ActionSch
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -44,7 +44,7 @@ func ValidateActionScheduleCreate(ctx context.Context, req *interfaces.ActionSch
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -54,7 +54,7 @@ func ValidateActionScheduleCreate(ctx context.Context, req *interfaces.ActionSch
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -64,7 +64,7 @@ func ValidateActionScheduleCreate(ctx context.Context, req *interfaces.ActionSch
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -74,7 +74,7 @@ func ValidateActionScheduleCreate(ctx context.Context, req *interfaces.ActionSch
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
 			WithErrorDetails(localizedText)
 	}
 
@@ -89,7 +89,7 @@ func ValidateActionScheduleUpdate(ctx context.Context, req *interfaces.ActionSch
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -99,7 +99,7 @@ func ValidateActionScheduleUpdate(ctx context.Context, req *interfaces.ActionSch
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 

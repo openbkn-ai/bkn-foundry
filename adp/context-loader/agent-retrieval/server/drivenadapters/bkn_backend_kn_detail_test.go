@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -140,11 +140,11 @@ func TestGetKnowledgeNetworkDetail_ShellRefusalStopsBeforeLists(t *testing.T) {
 
 		_, err := client.GetKnowledgeNetworkDetail(context.Background(), "kn1")
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		convey.So(errors.As(err, &httpErr), convey.ShouldBeTrue)
 		convey.So(httpErr.HTTPCode, convey.ShouldEqual, http.StatusForbidden)
 		convey.So(httpErr.BaseError.ErrorCode, convey.ShouldEqual, "agentRetrieval.Forbidden.CommonExternalServerError")
-		source, ok := httpErr.BaseError.ErrorDetails.(rest.BaseError)
+		source, ok := httpErr.BaseError.ErrorDetails.(httperrors.BaseError)
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(source.ErrorCode, convey.ShouldEqual, "Public.Forbidden")
 		convey.So(source.Description, convey.ShouldEqual, "forbidden")
@@ -169,7 +169,7 @@ func TestGetKnowledgeNetworkDetail_AnyListFailureFailsTheWhole(t *testing.T) {
 
 			detail, err := client.GetKnowledgeNetworkDetail(context.Background(), "kn1")
 
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			convey.So(errors.As(err, &httpErr), convey.ShouldBeTrue)
 			convey.So(httpErr.HTTPCode, convey.ShouldEqual, http.StatusServiceUnavailable)
 			convey.So(detail, convey.ShouldResemble, &interfaces.KnowledgeNetworkDetail{ID: "kn1"})
@@ -194,7 +194,7 @@ func TestGetKnowledgeNetworkDetail_AnyListFailureFailsTheWhole(t *testing.T) {
 
 			_, err := client.GetKnowledgeNetworkDetail(context.Background(), "kn1")
 
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			convey.So(errors.As(err, &httpErr), convey.ShouldBeTrue)
 			convey.So(httpErr.HTTPCode, convey.ShouldEqual, http.StatusServiceUnavailable)
 		})

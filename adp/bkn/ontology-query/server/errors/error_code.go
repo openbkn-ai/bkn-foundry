@@ -8,7 +8,7 @@
 package errors
 
 import (
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
@@ -83,11 +83,11 @@ var (
 func init() {
 	locale.Register()
 
-	rest.Register(errCodeList)
-	rest.Register(objectTypeErrCodeList)
-	rest.Register(knowledgeNetworkErrCodeList)
-	rest.Register(actionExecutionErrCodeList)
-	rest.Register(actionTypeErrCodeList)
-	rest.Register(riskTypeErrCodeList)
-	rest.Register(metricErrCodeList)
+	httperrors.Register(errCodeList)
+	httperrors.Register(objectTypeErrCodeList)
+	httperrors.Register(knowledgeNetworkErrCodeList)
+	httperrors.Register(actionExecutionErrCodeList)
+	httperrors.Register(actionTypeErrCodeList)
+	httperrors.Register(riskTypeErrCodeList)
+	httperrors.Register(metricErrCodeList)
 }

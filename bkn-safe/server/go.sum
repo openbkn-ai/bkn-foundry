@@ -210,8 +210,8 @@ github.com/modocache/gover v0.0.0-20171022184752-b58185e213c5/go.mod h1:caMODM3P
 github.com/montanaflynn/stats v0.7.0/go.mod h1:etXPPgVO6n31NxCd9KQUMvCM+ve0ruNzt6R8Bnaayow=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023123451-2466c45fb835 h1:9MyLKbNOno5PXg+LpaCL/1XsCvaHJV1JoIAm0Dg0TqQ=
-github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023123451-2466c45fb835/go.mod h1:b8EveJJV3LAtsvUumXc12BOjCEBje6dxMsl8MRlGH0I=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2 h1:wfd2ACdVYS7wgCE3uV7JMYNa1xy+Mycsu7v6ky4Dmqs=
+github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2/go.mod h1:b8EveJJV3LAtsvUumXc12BOjCEBje6dxMsl8MRlGH0I=
 github.com/openbkn-ai/licverify v0.5.1 h1:mQVlRKvFNLDyjG41lti+MNt0BRmyrAxKdQDHSX3MPPs=
 github.com/openbkn-ai/licverify v0.5.1/go.mod h1:9Cnmt/tl7JN48+EjsGCjQERs1mNjuaBHdM+oVx0gvS4=
 github.com/opensearch-project/opensearch-go/v2 v2.3.0 h1:nQIEMr+A92CkhHrZgUhcfsrZjibvB3APXf2a1VwCmMQ=

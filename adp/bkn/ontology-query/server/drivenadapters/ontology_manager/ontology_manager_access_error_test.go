@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"go.uber.org/mock/gomock"
 
@@ -26,7 +26,7 @@ func TestListRelationTypesPreservesForbiddenError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := rmock.NewMockHTTPClient(ctrl)
 	access := newTestOntologyManagerAccess(&common.AppSetting{BKNBackendUrl: "http://test-om"}, client)
-	body, err := json.Marshal(rest.BaseError{ErrorCode: "Public.Forbidden", Description: "forbidden"})
+	body, err := json.Marshal(httperrors.BaseError{ErrorCode: "Public.Forbidden", Description: "forbidden"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestGetRiskTypesByIDsPreservesForbiddenError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := rmock.NewMockHTTPClient(ctrl)
 	access := newTestOntologyManagerAccess(&common.AppSetting{BKNBackendUrl: "http://test-om"}, client)
-	body, err := json.Marshal(rest.BaseError{ErrorCode: "Public.Forbidden", Description: "forbidden"})
+	body, err := json.Marshal(httperrors.BaseError{ErrorCode: "Public.Forbidden", Description: "forbidden"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestDownstreamErrorsDistinguishDenialsAndOperationFailures(t *testing.T) {
 				ctrl := gomock.NewController(t)
 				client := rmock.NewMockHTTPClient(ctrl)
 				access := newTestOntologyManagerAccess(&common.AppSetting{BKNBackendUrl: "http://test-om"}, client)
-				source := rest.BaseError{ErrorCode: "BknBackend.Denied", Description: "downstream reason", ErrorDetails: "source detail", Metadata: map[string]any{"resource": "example"}}
+				source := httperrors.BaseError{ErrorCode: "BknBackend.Denied", Description: "downstream reason", ErrorDetails: "source detail", Metadata: map[string]any{"resource": "example"}}
 				body, err := json.Marshal(source)
 				if err != nil {
 					t.Fatal(err)
@@ -107,16 +107,16 @@ func TestDownstreamErrorsDistinguishDenialsAndOperationFailures(t *testing.T) {
 					client.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(status, body, nil)
 				}
 				err = tc.call(i18n.WithLanguage(t.Context(), i18n.AmericanEnglish), access)
-				var got *rest.HTTPError
+				var got *httperrors.HTTPError
 				if !errors.As(err, &got) {
 					t.Fatalf("error=%T %v", err, err)
 				}
 				expectedCode := tc.code
 				switch status {
 				case http.StatusUnauthorized:
-					expectedCode = rest.PublicError_Unauthorized
+					expectedCode = httperrors.PublicError_Unauthorized
 				case http.StatusForbidden:
-					expectedCode = rest.PublicError_Forbidden
+					expectedCode = httperrors.PublicError_Forbidden
 				}
 				if got.HTTPCode != status || got.BaseError.ErrorCode != expectedCode || got.Lang != i18n.AmericanEnglish {
 					t.Fatalf("outer error=%#v", got)
@@ -124,7 +124,7 @@ func TestDownstreamErrorsDistinguishDenialsAndOperationFailures(t *testing.T) {
 				if err := got.Render(); err != nil || got.BaseError.Description == "" {
 					t.Fatalf("render=%v, %#v", err, got)
 				}
-				detail, ok := got.BaseError.ErrorDetails.(rest.BaseError)
+				detail, ok := got.BaseError.ErrorDetails.(httperrors.BaseError)
 				if !ok || detail.ErrorCode != source.ErrorCode || detail.Description != source.Description || detail.ErrorDetails != source.ErrorDetails || detail.Metadata["resource"] != "example" || len(got.BaseError.Metadata) != 0 {
 					t.Fatalf("details=%#v", got.BaseError.ErrorDetails)
 				}

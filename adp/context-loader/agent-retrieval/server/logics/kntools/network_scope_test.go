@@ -9,16 +9,16 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 )
 
 func refusalDetail(t *testing.T, err error) (int, string) {
 	t.Helper()
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok {
 		t.Fatalf("error = %v, want an HTTP error", err)
 	}

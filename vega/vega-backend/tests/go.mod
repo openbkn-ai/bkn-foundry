@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/go-sql-driver/mysql v1.10.1
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023123451-2466c45fb835
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
 )

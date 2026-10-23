@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -71,7 +71,7 @@ func (rts *riskTypeService) CheckRiskTypeExistByID(ctx context.Context, knID str
 	rtName, exist, err := rts.rta.CheckRiskTypeExistByID(ctx, knID, branch, rtID)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("按ID[%s]获取风险类失败", rtID), err)
-		return "", false, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).WithErrorDetails(err.Error())
 	}
 	span.SetStatus(codes.Ok, "")
@@ -85,7 +85,7 @@ func (rts *riskTypeService) CheckRiskTypeExistByName(ctx context.Context, knID s
 	rtID, exist, err := rts.rta.CheckRiskTypeExistByName(ctx, knID, branch, rtName)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("按名称[%s]获取风险类失败", rtName), err)
-		return "", false, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).WithErrorDetails(err.Error())
 	}
 	span.SetStatus(codes.Ok, "")
@@ -127,7 +127,7 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 		if err != nil {
 			logger.Errorf("Begin transaction error: %s", err.Error())
 			span.SetStatus(codes.Error, "事务开启失败")
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 		defer func() {
@@ -177,7 +177,7 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 	if len(createList) == 1 {
 		if err = rts.rta.CreateRiskType(ctx, tx, createList[0]); err != nil {
 			logger.Errorf("CreateRiskType error: %s", err.Error())
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 	} else if len(createList) > 1 {
@@ -185,15 +185,15 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 			logger.Errorf("CreateRiskTypes error: %s", err.Error())
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
 				if strings.Contains(constraint, "name") {
-					return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeNameExisted).
 						WithErrorDetails("One or more risk type names already exist")
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_RiskType_RiskTypeIDExisted).
 					WithErrorDetails("One or more risk type IDs already exist")
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
@@ -214,7 +214,7 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 	} else if len(updateList) > 1 {
 		if err = rts.rta.UpdateRiskTypes(ctx, tx, updateList); err != nil {
 			logger.Errorf("UpdateRiskTypes error: %s", err.Error())
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
@@ -225,7 +225,7 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 		if err != nil {
 			logger.Errorf("InsertDatasetData error: %s", err.Error())
 			span.SetStatus(codes.Error, "风险类索引写入失败")
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -241,7 +241,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 		if renderErr != nil {
 			logger.Errorf("localized service message failed: %v", renderErr)
 		}
-		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_ImportMode).
 			WithErrorDetails(localizedText)
 	}
@@ -259,7 +259,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 		names := make([]string, 0, len(riskTypes))
 		for _, riskType := range riskTypes {
 			if riskType.KNID != knID || riskType.Branch != branch {
-				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_RiskType_InvalidParameter)
 			}
 			ids = append(ids, riskType.RTID)
@@ -267,7 +267,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 		}
 		existing, queryErr := rts.rta.GetRiskTypeIdentitiesByIDsOrNames(ctx, knID, branch, ids, names)
 		if queryErr != nil {
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).
 				WithErrorDetails(queryErr.Error())
 		}
@@ -284,13 +284,13 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 		if len(riskTypes) == 1 {
 			_, idExist, err = rts.rta.CheckRiskTypeExistByID(ctx, rt.KNID, rt.Branch, rt.RTID)
 			if err != nil {
-				return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).WithErrorDetails(err.Error())
 			}
 
 			existID, nameExist, err = rts.rta.CheckRiskTypeExistByName(ctx, rt.KNID, rt.Branch, rt.RTName)
 			if err != nil {
-				return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_RiskType_InternalError_CheckRiskTypeIfExistFailed).WithErrorDetails(err.Error())
 			}
 		} else {
@@ -306,7 +306,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 					if renderErr != nil {
 						logger.Errorf("localized message rendering failed: %v", renderErr)
 					}
-					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeIDExisted).
 						WithErrorDetails(localizedText)
 				}
@@ -314,7 +314,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 					errDetails := fmt.Sprintf("risk type name '%s' already exists", rt.RTName)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeNameExisted).
 						WithErrorDetails(errDetails)
 				}
@@ -329,7 +329,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 							rt.RTID, rt.RTName, existID)
 						logger.Error(errDetails)
 						span.SetStatus(codes.Error, errDetails)
-						return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+						return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 							berrors.BknBackend_RiskType_RiskTypeNameExisted).
 							WithErrorDetails(errDetails)
 					}
@@ -345,7 +345,7 @@ func (rts *riskTypeService) handleImportMode(ctx context.Context, mode string, r
 						rt.RTID, rt.RTName)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_RiskType_RiskTypeNameExisted).
 						WithErrorDetails(errDetails)
 				}
@@ -365,7 +365,7 @@ func (rts *riskTypeService) ListRiskTypes(ctx context.Context, query interfaces.
 	list, err := rts.rta.ListRiskTypes(ctx, candidateQuery)
 	if err != nil {
 		logger.Errorf("ListRiskTypes error: %s", err.Error())
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -404,12 +404,12 @@ func (rts *riskTypeService) GetRiskTypesByIDs(ctx context.Context, knID string, 
 	list, err := rts.rta.GetRiskTypesByIDs(ctx, knID, branch, rtIDs)
 	if err != nil {
 		logger.Errorf("GetRiskTypesByIDs error: %s", err.Error())
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError_GetRiskTypesByIDsFailed).WithErrorDetails(err.Error())
 	}
 	if len(rtIDs) == 1 {
 		if len(list) != 1 {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
+			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 		}
 		operations, err := permission.GetKNChildOperations(ctx, rts.ps,
 			interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs[0])
@@ -434,7 +434,7 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 		return err
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 	}
 	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_RISK_TYPE,
 		riskType.KNID, riskType.RTID)
@@ -453,7 +453,7 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 	if tx == nil {
 		tx, err = rts.db.Begin()
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 		defer func() {
@@ -467,7 +467,7 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 
 	if err = rts.rta.UpdateRiskType(ctx, tx, riskType); err != nil {
 		logger.Errorf("UpdateRiskType error: %s", err.Error())
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -475,7 +475,7 @@ func (rts *riskTypeService) UpdateRiskType(ctx context.Context, tx *sql.Tx, risk
 	if err != nil {
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
 		span.SetStatus(codes.Error, "风险类索引写入失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -508,7 +508,7 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 			return err
 		}
 		if !exists {
-			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 		}
 		resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs[0])
 		if err := rts.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
@@ -517,11 +517,11 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 	} else {
 		riskTypes, queryErr := rts.rta.GetRiskTypesByIDs(ctx, knID, branch, rtIDs)
 		if queryErr != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError_GetRiskTypesByIDsFailed).WithErrorDetails(queryErr.Error())
 		}
 		if len(riskTypes) != len(rtIDs) {
-			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_RiskType_RiskTypeNotFound)
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, rts.ps,
 			interfaces.RESOURCE_TYPE_RISK_TYPE, knID, rtIDs, interfaces.OPERATION_TYPE_DELETE); err != nil {
@@ -531,7 +531,7 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 	if tx == nil {
 		tx, err = rts.db.Begin()
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 		}
 		defer func() {
@@ -551,7 +551,7 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 	_, err = rts.rta.DeleteRiskTypesByIDs(ctx, tx, knID, branch, rtIDs)
 	if err != nil {
 		logger.Errorf("DeleteRiskTypesByIDs error: %s", err.Error())
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -643,7 +643,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 
 	candidates, candidateErr := rts.rta.GetAllRiskTypesByKnID(ctx, query.KNID, query.Branch)
 	if candidateErr != nil {
-		return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError).WithErrorDetails(candidateErr.Error())
 	}
 	candidateIDs := make([]string, 0, len(candidates))
@@ -668,7 +668,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 				if !rts.appSetting.ServerSetting.DefaultSmallModelEnabled || rts.mfs == nil {
 					err = errors.New(cond.DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR)
 					span.SetStatus(codes.Error, err.Error())
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_RiskType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -676,7 +676,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_RiskType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -684,7 +684,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 				if err != nil {
 					logger.Errorf("GetVector error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取风险类向量失败")
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_RiskType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -696,7 +696,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			if renderErr != nil {
 				logger.Errorf("localized service message failed: %v", renderErr)
 			}
-			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_RiskType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
@@ -716,7 +716,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "风险类检索查询总数失败")
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -750,7 +750,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "风险类检索查询失败")
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_RiskType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -762,14 +762,14 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 		for _, entry := range datasetResp.Entries {
 			jsonByte, err := json.Marshal(entry)
 			if err != nil {
-				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_InternalError_MarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Marshal dataset entry, %s", err.Error()))
 			}
 			var riskType interfaces.RiskType
 			err = json.Unmarshal(jsonByte, &riskType)
 			if err != nil {
-				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_InternalError_UnMarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal dataset entry to RiskType, %s", err.Error()))
 			}
@@ -817,7 +817,7 @@ func (rts *riskTypeService) DeleteRiskTypesByKnID(ctx context.Context, tx *sql.T
 
 	if tx == nil {
 		otellog.LogError(ctx, "missing transaction", nil)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RiskType_InternalError).WithErrorDetails("missing transaction")
 	}
 	riskTypes, err := rts.rta.GetAllRiskTypesByKnID(ctx, knID, branch)

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -110,7 +110,7 @@ func TestEditOperator(t *testing.T) {
 				Return(false, nil, errMock)
 			_, err := m.EditOperator(context.TODO(), &interfaces.OperatorEditReq{})
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -119,7 +119,7 @@ func TestEditOperator(t *testing.T) {
 				Return(false, nil, nil)
 			_, err := m.EditOperator(context.TODO(), &interfaces.OperatorEditReq{})
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -557,7 +557,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 			err := m.UpdateOperatorStatus(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -565,7 +565,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 			mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, nil)
 			err := m.UpdateOperatorStatus(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -575,7 +575,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 			}, nil)
 			err := m.UpdateOperatorStatus(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -603,7 +603,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 				err := m.UpdateOperatorStatus(context.TODO(), req, "")
 				So(err, ShouldNotBeNil)
 				fmt.Println(err.Error())
-				httpErr := &rest.HTTPError{}
+				httpErr := &httperrors.HTTPError{}
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
@@ -613,7 +613,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 				err := m.UpdateOperatorStatus(context.TODO(), req, "")
 				So(err, ShouldNotBeNil)
 				fmt.Println(err.Error())
-				httpErr := &rest.HTTPError{}
+				httpErr := &httperrors.HTTPError{}
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusConflict)
 			})
@@ -623,7 +623,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 				mockDBOperatorManager.EXPECT().UpdateOperatorStatus(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("mock UpdateOperatorStatus error")).Times(1)
 				err := m.UpdateOperatorStatus(context.TODO(), req, "")
 				So(err, ShouldNotBeNil)
-				httpErr := &rest.HTTPError{}
+				httpErr := &httperrors.HTTPError{}
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
@@ -634,7 +634,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 				mockOpReleaseDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(false, nil, errors.New("mock SelectByOpID error")).Times(1)
 				err := m.UpdateOperatorStatus(context.TODO(), req, "")
 				So(err, ShouldNotBeNil)
-				httpErr := &rest.HTTPError{}
+				httpErr := &httperrors.HTTPError{}
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
@@ -646,7 +646,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 				mockOpReleaseDB.EXPECT().UpdateByOpID(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("mock UpdateByOpID error")).Times(1)
 				err := m.UpdateOperatorStatus(context.TODO(), req, "")
 				So(err, ShouldNotBeNil)
-				httpErr := &rest.HTTPError{}
+				httpErr := &httperrors.HTTPError{}
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
@@ -659,7 +659,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 				mockOpReleaseHistoryDB.EXPECT().Insert(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("mock Insert error")).Times(1)
 				err := m.UpdateOperatorStatus(context.TODO(), req, "")
 				So(err, ShouldNotBeNil)
-				httpErr := &rest.HTTPError{}
+				httpErr := &httperrors.HTTPError{}
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
@@ -671,7 +671,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 				mockOpReleaseDB.EXPECT().Insert(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("mock insert release error")).Times(1)
 				err := m.UpdateOperatorStatus(context.TODO(), req, "")
 				So(err, ShouldNotBeNil)
-				httpErr := &rest.HTTPError{}
+				httpErr := &httperrors.HTTPError{}
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})

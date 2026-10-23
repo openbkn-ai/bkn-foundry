@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -110,7 +110,7 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 			resp, err := toolbox.UpdateToolBox(context.TODO(), newReq())
 			So(err, ShouldNotBeNil)
 			So(resp, ShouldBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})

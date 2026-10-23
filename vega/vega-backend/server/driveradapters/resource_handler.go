@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -70,7 +71,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 	if enabledStr := strings.TrimSpace(c.Query("enabled")); enabledStr != "" {
 		value, err := strconv.ParseBool(enabledStr)
 		if err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("invalid enabled: %s", enabledStr))
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
@@ -166,7 +167,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 
 	var req interfaces.ResourceRequest
 	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -237,7 +238,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 
 	ids := parseRawIDs(c.Param("id"))
 	if len(ids) == 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
 			WithErrorDetails("at least one resource id is required")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -270,7 +271,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 				}
 			}
 			if !found {
-				httpErr := rest.NewHTTPError(ctx, http.StatusNotFound,
+				httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound,
 					verrors.VegaBackend_Resource_NotFound).WithErrorDetails(fmt.Sprintf("id %s not found", id))
 				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 				rest.ReplyError(c, httpErr)
@@ -321,7 +322,7 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 
 	var req interfaces.ResourceRequest
 	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -329,7 +330,7 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if req.ID != "" && req.ID != id {
-		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_ID).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_InvalidParameter_ID).
 			WithErrorDetails(fmt.Sprintf("path id %q != body id %q", id, req.ID))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -455,7 +456,7 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 
 	ids := parseRawIDs(c.Param("id"))
 	if len(ids) == 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
 			WithErrorDetails("at least one resource id is required")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -465,7 +466,7 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
 	onlyIfStale := strings.EqualFold(c.Query("only_if_stale"), "true")
 	if onlyIfStale && ignoreMissing {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("only_if_stale cannot be combined with ignore_missing")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -524,14 +525,14 @@ func (r *restHandler) discoverResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	if resource == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	strategy, err := readResourceDiscoverStrategy(c)
 	if err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error()))
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(err.Error()))
 		return
 	}
 	taskID, err := r.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{

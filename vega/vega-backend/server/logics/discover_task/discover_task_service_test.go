@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -133,7 +133,7 @@ func TestDiscoverTaskServiceCreateCountOnly(t *testing.T) {
 					require.ErrorIs(t, err, lookupErr)
 					return
 				}
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, tt.wantStatus, httpErr.HTTPCode)
 				if tt.wantStatus == http.StatusBadRequest {
@@ -203,7 +203,7 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 		got, err := service.GetByID(context.Background(), "task-1")
 
 		require.Nil(t, got)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
@@ -255,7 +255,7 @@ func TestDiscoverTaskServiceGetAndList(t *testing.T) {
 
 		require.Nil(t, got)
 		assert.Zero(t, total)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed, httpErr.BaseError.ErrorCode)

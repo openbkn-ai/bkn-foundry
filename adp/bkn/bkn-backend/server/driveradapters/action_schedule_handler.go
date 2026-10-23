@@ -12,6 +12,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -66,13 +67,13 @@ func (r *restHandler) CreateActionSchedule(c *gin.Context, visitor hydra.Visitor
 	// Verify KN exists
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -85,7 +86,7 @@ func (r *restHandler) CreateActionSchedule(c *gin.Context, visitor hydra.Visitor
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -96,7 +97,7 @@ func (r *restHandler) CreateActionSchedule(c *gin.Context, visitor hydra.Visitor
 
 	// Validate request
 	if err := ValidateActionScheduleCreate(ctx, &reqBody); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -118,7 +119,7 @@ func (r *restHandler) CreateActionSchedule(c *gin.Context, visitor hydra.Visitor
 
 	scheduleID, err := r.ass.CreateSchedule(ctx, schedule)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -172,13 +173,13 @@ func (r *restHandler) UpdateActionSchedule(c *gin.Context, visitor hydra.Visitor
 	// Verify schedule exists and belongs to this KN
 	schedule, err := r.ass.GetSchedule(ctx, scheduleID)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if schedule.KNID != knID || schedule.Branch != branch {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -191,7 +192,7 @@ func (r *restHandler) UpdateActionSchedule(c *gin.Context, visitor hydra.Visitor
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -202,14 +203,14 @@ func (r *restHandler) UpdateActionSchedule(c *gin.Context, visitor hydra.Visitor
 
 	// Validate request
 	if err := ValidateActionScheduleUpdate(ctx, &reqBody); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
 	if err := r.ass.UpdateSchedule(ctx, scheduleID, &reqBody); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -263,13 +264,13 @@ func (r *restHandler) UpdateActionScheduleStatus(c *gin.Context, visitor hydra.V
 	// Verify schedule exists
 	schedule, err := r.ass.GetSchedule(ctx, scheduleID)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if schedule.KNID != knID || schedule.Branch != branch {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -282,7 +283,7 @@ func (r *restHandler) UpdateActionScheduleStatus(c *gin.Context, visitor hydra.V
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -290,7 +291,7 @@ func (r *restHandler) UpdateActionScheduleStatus(c *gin.Context, visitor hydra.V
 	}
 
 	if err := r.ass.UpdateScheduleStatus(ctx, scheduleID, reqBody.Status); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -346,14 +347,14 @@ func (r *restHandler) DeleteActionSchedules(c *gin.Context, visitor hydra.Visito
 	// Preserve the existing not-found validation before deletion.
 	schedules, err := r.ass.GetSchedules(ctx, scheduleIDs)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
 	if err := r.ass.DeleteSchedules(ctx, knID, branch, scheduleIDs); err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -413,13 +414,13 @@ func (r *restHandler) ListActionSchedules(c *gin.Context, visitor hydra.Visitor)
 	// Verify KN exists
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -436,7 +437,7 @@ func (r *restHandler) ListActionSchedules(c *gin.Context, visitor hydra.Visitor)
 
 	pageParam, err := validatePaginationQueryParameters(ctx, offset, limit, sort, direction, interfaces.ACTION_SCHEDULE_SORT)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -448,7 +449,7 @@ func (r *restHandler) ListActionSchedules(c *gin.Context, visitor hydra.Visitor)
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -469,7 +470,7 @@ func (r *restHandler) ListActionSchedules(c *gin.Context, visitor hydra.Visitor)
 
 	schedules, total, err := r.ass.ListSchedules(ctx, queryParams)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -526,14 +527,14 @@ func (r *restHandler) GetActionSchedule(c *gin.Context, visitor hydra.Visitor) {
 
 	schedule, err := r.ass.GetSchedule(ctx, scheduleID)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 
 	if schedule.KNID != knID || schedule.Branch != branch {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

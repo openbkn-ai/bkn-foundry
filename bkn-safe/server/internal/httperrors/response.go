@@ -8,26 +8,27 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type localizedErrorResponse struct {
-	rest.BaseError
+	httperrors.BaseError
 	// Error retains BKN Safe's former field while callers migrate to the stable
 	// error_code contract. Its value is localized and duplicates description.
 	Error string `json:"error"`
 }
 
 // New creates a localized HTTP error for the stable BKN Safe status mapping.
-func New(ctx context.Context, status int) *rest.HTTPError {
+func New(ctx context.Context, status int) *httperrors.HTTPError {
 	return NewCode(ctx, status, ForStatus(status))
 }
 
 // NewCode creates a localized HTTP error with a handler-specific stable code.
-func NewCode(ctx context.Context, status int, code string) *rest.HTTPError {
-	return rest.NewHTTPError(ctx, status, code)
+func NewCode(ctx context.Context, status int, code string) *httperrors.HTTPError {
+	return httperrors.NewHTTPError(ctx, status, code)
 }
 
 // Write sends the common localized BKN Safe error envelope. Optional details

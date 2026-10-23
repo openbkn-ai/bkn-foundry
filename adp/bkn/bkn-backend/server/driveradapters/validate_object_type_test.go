@@ -11,8 +11,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
@@ -64,7 +64,7 @@ func Test_ValidateObjectType(t *testing.T) {
 			}
 			err := ValidateObjectType(ctx, ot, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_Name)
 		})
 
@@ -86,7 +86,7 @@ func Test_ValidateObjectType(t *testing.T) {
 			}
 			err := ValidateObjectType(ctx, ot, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_PrimaryKeys)
 		})
 
@@ -128,7 +128,7 @@ func Test_ValidateObjectType(t *testing.T) {
 			}
 			err := ValidateObjectType(ctx, ot, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_DisplayKey)
 		})
 
@@ -709,9 +709,9 @@ func TestValidateObjectTypeLocalizesInvalidParameterDetails(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateObjectType() error = nil, want invalid parameter error")
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
 			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
 				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
@@ -732,7 +732,7 @@ func Test_ValidatePropertyName(t *testing.T) {
 		Convey("Failed with empty property name\n", func() {
 			err := ValidatePropertyName(ctx, "")
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_PropertyName)
 		})
 
@@ -850,7 +850,7 @@ func Test_ValidateDataProperty(t *testing.T) {
 			}
 			err := ValidateDataProperty(i18n.WithLanguage(ctx, i18n.AmericanEnglish), prop, true)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.BaseError.ErrorDetails, ShouldEqual,
 				"Data property secret has invalid mask_rule: property type is required when mask_rule is set.")

@@ -13,9 +13,9 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -30,7 +30,7 @@ func ValidateRelationTypes(ctx context.Context, knID string, relationTypes []*in
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
+			return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
 				WithErrorDetails(localizedText)
 		}
 
@@ -44,7 +44,7 @@ func ValidateRelationTypes(ctx context.Context, knID string, relationTypes []*in
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
 			errDetails := localizedText
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_Duplicated_IDInFile).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_Duplicated_IDInFile).
 				WithMetadata(map[string]any{"relationTypeID": rtID}).
 				WithErrorDetails(errDetails)
 		}
@@ -103,7 +103,7 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -113,7 +113,7 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -125,7 +125,7 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -136,7 +136,7 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		return nil
@@ -147,7 +147,7 @@ func ValidateRelationType(ctx context.Context, relationType *interfaces.Relation
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	rules, err := validateMappingRules(ctx, relationType.Type, relationType.MappingRules, strictMode)
@@ -174,7 +174,7 @@ func validateMappingRules(ctx context.Context, relationType string, mappingRules
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
 		// Reject unsupported relation types.
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 }
@@ -188,7 +188,7 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -199,7 +199,7 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -213,7 +213,7 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		// Validate the target property.
@@ -222,7 +222,7 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 
@@ -232,7 +232,7 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		mappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
@@ -252,7 +252,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -263,7 +263,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	} else {
@@ -272,7 +272,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		if mapping.BackingDataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
@@ -283,7 +283,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		// Validate that the referenced data-view ID is present.
@@ -292,7 +292,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -303,7 +303,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 	} else {
 		// Each source-to-bridge mapping pair must be unique.
@@ -315,7 +315,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			// Validate the bridge property.
@@ -324,7 +324,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 
@@ -334,7 +334,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			sourceMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
@@ -348,7 +348,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	} else {
@@ -361,7 +361,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			// Validate the target object-type property.
@@ -370,7 +370,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 
@@ -380,7 +380,7 @@ func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictM
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+				return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 			targetMappingsRuleMap[item.SourceProp.Name+":"+item.TargetProp.Name] = true
@@ -397,7 +397,7 @@ func validateFilteredCrossJoinMappingRules(ctx context.Context, mappingRules any
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 	// source_condition and target_condition are optional; nil means no extra filter for that side.

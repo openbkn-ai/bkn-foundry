@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -187,7 +187,7 @@ func (s *localSearchImpl) lookupOneObjectType(
 // mistake: an agent told its object type does not exist will rewrite a request
 // that was correct.
 func objectTypeLookupRefused(err error) bool {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
 		return false
 	}

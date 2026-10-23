@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -86,9 +86,9 @@ func lisStatus() *interfaces.ValueType {
 	}
 }
 
-func httpError(t *testing.T, err error) *rest.HTTPError {
+func httpError(t *testing.T, err error) *httperrors.HTTPError {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.True(t, errors.As(err, &httpErr), "%v", err)
 	return httpErr
 }
@@ -124,7 +124,7 @@ func TestCreateValueTypes(t *testing.T) {
 	t.Run("needs modify on the network", func(t *testing.T) {
 		f := newFixture(t)
 		f.ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_MODIFY}).
-			Return(rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ValueType_InternalError))
+			Return(httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ValueType_InternalError))
 		_, err := f.svc.CreateValueTypes(ctx, nil, []*interfaces.ValueType{amountCNY()}, interfaces.ImportMode_Normal)
 		assert.Equal(t, http.StatusForbidden, httpError(t, err).HTTPCode)
 	})

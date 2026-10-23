@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -66,7 +66,7 @@ func TestOperationCheckAllSeparatesDenialFromDependencyFailure(t *testing.T) {
 				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute)
 
 			So(allowed, ShouldBeFalse)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusServiceUnavailable)
 			So(strings.HasSuffix(httpErr.BaseError.ErrorCode, "."+oerrors.ErrExtCommonAuthorizationUnavailable.String()), ShouldBeTrue)

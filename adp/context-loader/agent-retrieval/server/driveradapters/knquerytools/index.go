@@ -14,9 +14,9 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	commRest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -120,7 +120,7 @@ func (h *knQueryToolsHandler) RunCypher(c *gin.Context) {
 		// the construct it refused; that message is what tells the caller how
 		// to rewrite the query, so it is passed through untouched. Only the
 		// errors raised in this service need a status of their own.
-		httpErr := &commRest.HTTPError{}
+		httpErr := &httperrors.HTTPError{}
 		if !stderrors.As(err, &httpErr) {
 			err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 		}
@@ -405,7 +405,7 @@ func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
 	if err != nil {
 		h.logger.WithContext(ctx).Warnf("[KnQueryToolsHandler#QueryMetric] kn=%s metric=%s failed: %v",
 			req.KnID, req.MetricID, err)
-		if httpErr, ok := err.(*commRest.HTTPError); ok {
+		if httpErr, ok := err.(*httperrors.HTTPError); ok {
 			rest.ReplyError(c, httpErr)
 			return
 		}

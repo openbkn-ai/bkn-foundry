@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -30,7 +30,7 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
+			return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
 				WithErrorDetails(localizedText)
 		}
 
@@ -42,7 +42,7 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_IDInFile).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_IDInFile).
 				WithMetadata(map[string]any{"riskTypeID": rtID}).
 				WithErrorDetails(localizedText)
 		}
@@ -59,7 +59,7 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_Name).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_Name).
 				WithMetadata(map[string]any{"riskTypeName": riskType.RTName}).
 				WithErrorDetails(localizedText)
 		}

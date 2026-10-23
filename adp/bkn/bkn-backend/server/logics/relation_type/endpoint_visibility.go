@@ -8,7 +8,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -84,7 +84,7 @@ func (rts *relationTypeService) withVisibleEndpointIDs(ctx context.Context, knID
 		Branch:                    branch,
 	})
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_RelationType_InternalError).WithErrorDetails(err.Error())
 	}
 	requested := make(map[string]struct{}, len(relationTypeIDs))

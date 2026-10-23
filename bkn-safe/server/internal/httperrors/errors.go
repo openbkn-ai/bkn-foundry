@@ -8,7 +8,7 @@ package httperrors
 import (
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/locale"
 )
@@ -63,7 +63,8 @@ var (
 // init prepares messages before registering the service error codes.
 func init() {
 	locale.Register()
-	rest.Register(errorCodes)
+
+	httperrors.Register(errorCodes)
 }
 
 // ForStatus maps an HTTP status to the stable BKN Safe error code exposed to

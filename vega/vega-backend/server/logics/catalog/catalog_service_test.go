@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -51,7 +51,7 @@ func (m *mockCipher) Signature(data string) (string, error) {
 func requireRedactedConnectorInitializationError(t *testing.T, err error, sensitiveError string) {
 	t.Helper()
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
@@ -287,7 +287,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 	t.Run("checks permission before catalog uniqueness", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := vmock.NewMockPermissionService(ctrl)
-		permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+		permissionErr := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(permissionErr)
 
 		cs := &catalogService{ps: mockPS}
@@ -308,7 +308,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		cs := &catalogService{ps: mockPS, ca: mockCA}
 		_, err := cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "duplicate"}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Catalog_NameExists, httpErr.BaseError.ErrorCode)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
@@ -345,7 +345,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 			ConnectorType: interfaces.ConnectorTypePostgreSQL,
 		}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
@@ -375,7 +375,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 			ConnectorType: "mariadb",
 		}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.BaseError.ErrorCode)
@@ -443,7 +443,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
 		_, err = cs.Create(context.Background(), &interfaces.CatalogRequest{Name: "catalog"}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
@@ -466,7 +466,7 @@ func TestCatalogServiceCreate(t *testing.T) {
 			},
 		}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter, httpErr.BaseError.ErrorCode)
@@ -718,7 +718,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		cs := &catalogService{ca: ca, ps: ps}
 		result, err := cs.TestConnection(context.Background(), "missing")
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		ok := errors.As(err, &httpErr)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
@@ -741,7 +741,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		result, err := cs.TestConnection(context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY,
 			interfaces.AccountInfo{ID: "regular-user", Type: interfaces.ACCESSOR_TYPE_USER}), "internal-catalog")
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 		assert.Nil(t, result)
@@ -757,7 +757,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		cs := &catalogService{ca: ca, ps: ps}
 		result, err := cs.TestConnection(context.Background(), "catalog-1")
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_GetFailed, httpErr.BaseError.ErrorCode)
@@ -794,7 +794,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		}
 		result, err := cs.TestConnection(context.Background(), "catalog-1")
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
@@ -973,7 +973,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			}}
 			err = cs.Update(context.Background(), &req, tc.allowUnhealthy)
 			if tc.rowsAffected == 0 {
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 				assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
@@ -1016,7 +1016,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ID: "catalog-1", Name: "catalog", Enabled: true, ConnectorType: "postgresql",
 		}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorType, httpErr.BaseError.ErrorCode)
@@ -1037,7 +1037,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ID: "catalog-1", Name: "catalog", Enabled: false, ConnectorType: "mariadb",
 		}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_EnabledFieldNotAllowed, httpErr.BaseError.ErrorCode)
@@ -1059,7 +1059,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ID: "catalog-1", Name: "duplicate", Enabled: true, ConnectorType: "mariadb",
 		}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_NameExists, httpErr.BaseError.ErrorCode)
@@ -1124,7 +1124,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed, httpErr.BaseError.ErrorCode)
@@ -1277,7 +1277,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 			ExpectedUpdateTime: expectedUpdateTime,
 		}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
@@ -1301,7 +1301,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
 		err = cs.Update(context.Background(), &interfaces.CatalogRequest{ID: "catalog-1", Name: "catalog"}, false)
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
@@ -1937,7 +1937,7 @@ func TestCatalogServiceGetDeletionImpactDependencyFailure(t *testing.T) {
 	cs := &catalogService{ca: ca, ps: ps}
 	impact, err := cs.GetDeletionImpact(context.Background(), "catalog-1")
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Nil(t, impact)
 	assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
@@ -1959,7 +1959,7 @@ func TestCatalogServiceGetDeletionImpactReturnsNotFoundWhenCatalogDisappears(t *
 	cs := &catalogService{ca: ca, ps: ps}
 	impact, err := cs.GetDeletionImpact(context.Background(), "catalog-1")
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Nil(t, impact)
 	assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
@@ -2025,7 +2025,7 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 		cs := &catalogService{ca: ca, ps: ps}
 		err := cs.DeleteByID(context.Background(), "c1")
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Catalog_NotFound, httpErr.BaseError.ErrorCode)
@@ -2127,7 +2127,7 @@ func TestCatalogServiceDeleteByID(t *testing.T) {
 
 		cs := &catalogService{ca: ca, ps: ps, ra: ra, bta: bta, dsa: dsa, dta: dta, suta: suta, hcss: hcss}
 		err := cs.DeleteByID(context.Background(), "c1")
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -53,7 +54,7 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 
 	var req interfaces.CreateSemanticUnderstandingTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -67,7 +68,7 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 	switch req.Scope {
 	case interfaces.SemanticUnderstandingTaskScopeResource:
 		if req.ResourceID == "" {
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
 				WithErrorDetails("resource_id is required")
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
@@ -76,13 +77,13 @@ func (r *restHandler) createSemanticUnderstandingTask(c *gin.Context, visitor hy
 		task, err = r.suts.CreateResourceTask(ctx, req.ResourceID, &req)
 	case interfaces.SemanticUnderstandingTaskScopeCatalog:
 		// Catalog 任务生成的 Logic View 尚未适配 derived 契约，暂时拒绝创建。
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("catalog semantic understanding tasks are temporarily unavailable")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	default:
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("scope must be resource")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -194,7 +195,7 @@ func (r *restHandler) getSemanticUnderstandingTask(c *gin.Context, visitor hydra
 		return
 	}
 	if task == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -232,7 +233,7 @@ func (r *restHandler) deleteSemanticUnderstandingTasks(c *gin.Context, visitor h
 
 	ids := parseRawIDs(c.Param("ids"))
 	if len(ids) == 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("ids path parameter is required")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -280,7 +281,7 @@ func parseSemanticUnderstandingTaskListParams(ctx context.Context, c *gin.Contex
 	}
 	scope := c.Query("scope")
 	if scope != "" && scope != interfaces.SemanticUnderstandingTaskScopeResource && scope != interfaces.SemanticUnderstandingTaskScopeCatalog {
-		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+		return params, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("scope must be resource or catalog")
 	}
 
@@ -296,13 +297,13 @@ func parseSemanticUnderstandingTaskListParams(ctx context.Context, c *gin.Contex
 	if applyMode != "" && applyMode != interfaces.SemanticUnderstandingApplyModeDryRun &&
 		applyMode != interfaces.SemanticUnderstandingApplyModeFillEmpty &&
 		applyMode != interfaces.SemanticUnderstandingApplyModeForce {
-		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+		return params, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 			WithErrorDetails("invalid apply_mode")
 	}
 	if raw := c.Query("applied"); raw != "" {
 		applied, err := strconv.ParseBool(raw)
 		if err != nil {
-			return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
+			return params, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Format).
 				WithErrorDetails("applied must be true or false")
 		}
 		params.Applied = &applied

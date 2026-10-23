@@ -7,14 +7,14 @@ package errors
 import (
 	"encoding/json"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 // DependencyError retains a dependency response for internal classification.
 // Only Err is serialized at the response boundary; Body never enters the public envelope.
 type DependencyError struct {
-	Err  *rest.HTTPError `json:"-"`
-	Body []byte          `json:"-"`
+	Err  *httperrors.HTTPError `json:"-"`
+	Body []byte                `json:"-"`
 }
 
 func (e *DependencyError) Error() string { return e.Err.Error() }

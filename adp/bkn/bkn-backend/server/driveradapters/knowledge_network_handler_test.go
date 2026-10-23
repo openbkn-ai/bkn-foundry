@@ -22,10 +22,10 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -293,10 +293,10 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 		})
 
 		Convey("CreateKN failed\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError,
 				},
 			}
@@ -561,10 +561,10 @@ func Test_KnowledgeNetworkRestHandler_GetKN(t *testing.T) {
 		})
 
 		Convey("KN not found\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusNotFound,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_NotFound,
 				},
 			}
@@ -931,10 +931,10 @@ func Test_KnowledgeNetworkRestHandler_DeleteKN_extraCases(t *testing.T) {
 		url := "/api/bkn-backend/v1/knowledge-networks/" + knID
 
 		Convey("Failed when GetKNByID returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
 			}
 			kns.EXPECT().GetKNByID(gomock.Any(), knID, gomock.Any(), gomock.Any()).Return(nil, httpErr)
 			req := httptest.NewRequest(http.MethodDelete, url, nil)
@@ -944,10 +944,10 @@ func Test_KnowledgeNetworkRestHandler_DeleteKN_extraCases(t *testing.T) {
 		})
 
 		Convey("Failed when DeleteKN service returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
 			}
 			kns.EXPECT().GetKNByID(gomock.Any(), knID, gomock.Any(), gomock.Any()).Return(&interfaces.KN{
 				KNID: knID, KNName: "kn1",

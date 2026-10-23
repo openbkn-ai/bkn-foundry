@@ -11,8 +11,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -101,7 +101,7 @@ func TestGetToolDetail_HTTPError(t *testing.T) {
 
 		_, err := client.GetToolDetail(ctx, req)
 		convey.So(err, convey.ShouldNotBeNil)
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(httpErr.BaseError.ErrorDetails, convey.ShouldEqual, "Unable to retrieve the tool details.")
 	})

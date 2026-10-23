@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -69,7 +70,7 @@ func (r *restHandler) valueTypeRequest(c *gin.Context, visitor hydra.Visitor) (c
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err == nil && !exist {
-		err = rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		err = httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 	}
 	if err != nil {
 		replyError(c, span, err)
@@ -79,7 +80,7 @@ func (r *restHandler) valueTypeRequest(c *gin.Context, visitor hydra.Visitor) (c
 }
 
 func replyError(c *gin.Context, span trace.Span, err error) {
-	httpErr := err.(*rest.HTTPError)
+	httpErr := err.(*httperrors.HTTPError)
 	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 	rest.ReplyError(c, httpErr)
 }
@@ -103,7 +104,7 @@ func (r *restHandler) CreateValueTypes(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
 			WithErrorDetails(localizedText))
 		return
 	}
@@ -112,7 +113,7 @@ func (r *restHandler) CreateValueTypes(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(localizedText))
 		return
 	}
@@ -196,7 +197,7 @@ func (r *restHandler) UpdateValueType(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		replyError(c, span, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
 			WithErrorDetails(localizedText))
 		return
 	}

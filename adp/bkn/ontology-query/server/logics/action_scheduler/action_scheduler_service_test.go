@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -981,7 +981,7 @@ func Test_ExecuteAction_InputDynamicParamsValidation(t *testing.T) {
 
 			_, err := service.ExecuteAction(ctx, req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionExecution_InvalidParameter)
@@ -1005,7 +1005,7 @@ func Test_ExecuteAction_InputDynamicParamsValidation(t *testing.T) {
 
 			_, err := service.ExecuteAction(ctx, req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionExecution_InvalidParameter)
@@ -1027,7 +1027,7 @@ func Test_ExecuteAction_InputDynamicParamsValidation(t *testing.T) {
 
 			_, err := service.ExecuteAction(ctx, req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionExecution_InvalidParameter)
@@ -1171,7 +1171,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 			_, err := service.ExecuteAction(ctx, req)
 
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionExecution_InvalidParameter)
@@ -1200,13 +1200,13 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 
 			// Mock GetObjectsByObjectTypeID to return error
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).
-				Return(interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
+				Return(interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
 					WithErrorDetails("scan failed"))
 
 			_, err := service.ExecuteAction(ctx, req)
 
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -1254,7 +1254,7 @@ func Test_ExecuteAction_ScanMode(t *testing.T) {
 			_, err := service.ExecuteAction(ctx, req)
 
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_ActionExecution_InvalidParameter)

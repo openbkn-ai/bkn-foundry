@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -36,7 +37,7 @@ func (r *restHandler) HandleObjectTypeGetOverrideByIn(c *gin.Context) {
 	case http.MethodGet:
 		r.SearchObjectTypesByIn(c)
 	default:
-		httpErr := rest.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
+		httpErr := httperrors.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_OverrideMethod)
 		rest.ReplyError(c, httpErr)
 	}
@@ -49,7 +50,7 @@ func (r *restHandler) HandleObjectTypeGetOverrideByEx(c *gin.Context) {
 	case http.MethodGet:
 		r.SearchObjectTypesByEx(c)
 	default:
-		httpErr := rest.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
+		httpErr := httperrors.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_OverrideMethod)
 		rest.ReplyError(c, httpErr)
 	}
@@ -115,7 +116,7 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -125,14 +126,14 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -149,7 +150,7 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 
 		// Record the error log.
@@ -169,7 +170,7 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(localizedText)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -189,7 +190,7 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	// Validate model names in the request body.
 	err = ValidateObjectTypes(ctx, knID, objectTypes, strictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -198,7 +199,7 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	// Create the resources.
 	otIDs, err := r.createObjectTypes(ctx, knID, branch, objectTypes, mode, strictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -250,7 +251,7 @@ func (r *restHandler) ValidateObjectTypesForKN(c *gin.Context, visitor hydra.Vis
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -269,13 +270,13 @@ func (r *restHandler) ValidateObjectTypesForKN(c *gin.Context, visitor hydra.Vis
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -289,7 +290,7 @@ func (r *restHandler) ValidateObjectTypesForKN(c *gin.Context, visitor hydra.Vis
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -301,7 +302,7 @@ func (r *restHandler) ValidateObjectTypesForKN(c *gin.Context, visitor hydra.Vis
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -382,7 +383,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -393,14 +394,14 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 	var exist bool
 	_, exist, err = r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -419,7 +420,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 
 		// Record the error log.
@@ -441,7 +442,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 	// Load the existing resource by ID.
 	oldObjectTypeName, exist, err := r.ots.CheckObjectTypeExistByID(ctx, knID, branch, otID)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -449,7 +450,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -460,7 +461,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 	// Validate required object type fields, lengths, and enum values.
 	err = ValidateObjectType(ctx, &objectType, strictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate object type[%s] failed: %s. %v", objectType.OTName,
@@ -479,7 +480,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 		ifNameModify = true
 		_, exist, err = r.ots.CheckObjectTypeExistByName(ctx, knID, branch, objectType.OTName)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 
 			// Set trace attributes for the error.
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -487,7 +488,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 			return
 		}
 		if exist {
-			httpErr := rest.NewHTTPError(ctx, http.StatusForbidden,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusForbidden,
 				berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 
 			// Set trace attributes for the error.
@@ -501,7 +502,7 @@ func (r *restHandler) UpdateObjectType(c *gin.Context, visitor hydra.Visitor) {
 	// Update the resource by ID.
 	err = r.updateObjectType(ctx, &objectType, strictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -551,7 +552,7 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -561,14 +562,14 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -582,14 +583,14 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 	// Load the existing resource by ID.
 	objectType, err := r.ots.GetObjectTypeByID(ctx, nil, knID, branch, otID)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if objectType == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -611,7 +612,7 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 
 		// Record the error log.
@@ -626,7 +627,7 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 	// Validate data properties.
 	err = ValidateDataProperties(ctx, propertyNames, requestData.Entries, strictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -636,7 +637,7 @@ func (r *restHandler) UpdateDataProperties(c *gin.Context) {
 	// Update the resource by ID.
 	err = r.ots.UpdateDataProperties(ctx, objectType, requestData.Entries)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -684,14 +685,14 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -713,7 +714,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -728,7 +729,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 		// Validate the object type ID in the specified knowledge network.
 		name, exist, err := r.ots.CheckObjectTypeExistByID(ctx, knID, branch, otID)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 
 			// Set trace attributes for the error.
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -737,7 +738,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			return
 		}
 		if !exist {
-			httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 
 			// Set trace attributes for the error.
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -761,7 +762,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			},
 		})
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -781,7 +782,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 				logger.Errorf("localized service message failed: %v", renderErr)
 			}
 			errorDetails := localizedText
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_ObjectTypeBoundByRelationType).
 				WithErrorDetails(errorDetails)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -799,7 +800,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 			},
 		})
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -816,7 +817,7 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 				logger.Errorf("localized service message failed: %v", renderErr)
 			}
 			errorDetails := localizedText
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_ObjectTypeBoundByActionType).
 				WithErrorDetails(errorDetails)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -829,13 +830,13 @@ func (r *restHandler) DeleteObjectTypes(c *gin.Context) {
 	err = r.deleteObjectTypes(ctx, knID, branch, otIDs)
 	if err != nil {
 		// Guard against a plain downstream error: normalize it to 500 instead of panicking into a 502.
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		if !ok {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.InternalRequestFailed", nil)
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(localizedText)
 		}
 		// Set trace attributes for the error.
@@ -900,14 +901,14 @@ func (r *restHandler) ListObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -929,7 +930,7 @@ func (r *restHandler) ListObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	pageParam, err := validatePaginationQueryParameters(ctx,
 		offset, limit, sort, direction, interfaces.OBJECT_TYPE_SORT)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -959,7 +960,7 @@ func (r *restHandler) ListObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	otList, total, err := r.ots.ListObjectTypeSummaries(ctx, nil, parameter)
 	result := map[string]any{"entries": otList, "total_count": total}
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -1024,14 +1025,14 @@ func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor, filt
 	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -1048,7 +1049,7 @@ func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor, filt
 	// Get object type details; include data-view filters only when include_view is set.
 	result, err := r.ots.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1058,7 +1059,7 @@ func (r *restHandler) GetObjectTypes(c *gin.Context, visitor hydra.Visitor, filt
 	if filterProperties {
 		result, err = r.ots.FilterObjectTypesForRead(ctx, knID, result)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -1109,7 +1110,7 @@ func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visi
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -1121,7 +1122,7 @@ func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visi
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -1135,7 +1136,7 @@ func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visi
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(localizedText)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
@@ -1151,13 +1152,13 @@ func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visi
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -1170,7 +1171,7 @@ func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visi
 		SearchAfter: searchAfter,
 	})
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -1231,14 +1232,14 @@ func (r *restHandler) SearchObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	// Verify that the knowledge network exists.
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -1253,7 +1254,7 @@ func (r *restHandler) SearchObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(localizedText)
 
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -1288,7 +1289,7 @@ func (r *restHandler) SearchObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	err = validateConceptsQuery(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
 			httpErr.BaseError.ErrorDetails), nil)
@@ -1301,7 +1302,7 @@ func (r *restHandler) SearchObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 	// Search concepts.
 	result, err := r.ots.SearchObjectTypes(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

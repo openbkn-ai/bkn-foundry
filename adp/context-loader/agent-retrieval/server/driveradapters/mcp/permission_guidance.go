@@ -10,7 +10,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -38,7 +38,7 @@ func toolErrorWithPermissionGuidances(err error, guidance []*interfaces.Permissi
 }
 
 func toolErrorWithPermissionGuidanceValue(err error, guidance any) *mcp.CallToolResult {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if guidance == nil || !errors.As(err, &httpErr) {
 		return mcp.NewToolResultError(err.Error())
 	}
@@ -55,12 +55,12 @@ func toolErrorWithPermissionGuidanceValue(err error, guidance any) *mcp.CallTool
 }
 
 func cypherPermissionImpactsFromError(err error) []interfaces.ObjectPermissionImpact {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
 		return nil
 	}
 	metadata := httpErr.BaseError.Metadata
-	if source, ok := httpErr.BaseError.ErrorDetails.(rest.BaseError); ok {
+	if source, ok := httpErr.BaseError.ErrorDetails.(httperrors.BaseError); ok {
 		metadata = source.Metadata
 	}
 	raw, ok := metadata["permission_impacts"]

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -46,7 +46,7 @@ func TestValidateResourceRequestLogicalViewService(t *testing.T) {
 	require.ErrorIs(t, ValidateResourceRequest(context.Background(), req), want)
 
 	resourcelogic.SetLogicalViewService(nil)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
 	require.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)
 }
@@ -93,7 +93,7 @@ func TestValidateResourceRequestDatasetDisplayName(t *testing.T) {
 			&interfaces.Property{Name: "first", Type: interfaces.DataType_String, DisplayName: "Title"},
 			&interfaces.Property{Name: "second", Type: interfaces.DataType_String, DisplayName: " Title "},
 		)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.BaseError.ErrorCode)
@@ -105,7 +105,7 @@ func TestValidateResourceRequestDatasetDisplayName(t *testing.T) {
 			&interfaces.Property{Name: "first", Type: interfaces.DataType_String, DisplayName: "second"},
 			&interfaces.Property{Name: "second", Type: interfaces.DataType_String, DisplayName: "  "},
 		)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.BaseError.ErrorCode)
 	})
@@ -146,7 +146,7 @@ func TestValidateResourceRequestRejectsDuplicateFeatureTypes(t *testing.T) {
 						}},
 					}
 
-					var httpErr *rest.HTTPError
+					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, ValidateResourceRequest(i18n.WithLanguage(context.Background(), i18n.AmericanEnglish), req), &httpErr)
 					require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 					require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.BaseError.ErrorCode)

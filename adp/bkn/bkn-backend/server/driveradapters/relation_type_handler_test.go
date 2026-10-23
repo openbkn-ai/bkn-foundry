@@ -15,9 +15,9 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -146,10 +146,10 @@ func Test_RelationTypeRestHandler_CreateRelationTypes(t *testing.T) {
 		})
 
 		Convey("CheckKNExistByID failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_RelationType_InternalError,
 				},
 			}
@@ -165,10 +165,10 @@ func Test_RelationTypeRestHandler_CreateRelationTypes(t *testing.T) {
 		})
 
 		Convey("CreateRelationTypes failed\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_RelationType_InternalError,
 				},
 			}
@@ -300,10 +300,10 @@ func Test_RelationTypeRestHandler_UpdateRelationType(t *testing.T) {
 		})
 
 		Convey("UpdateRelationType failed\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_RelationType_InternalError,
 				},
 			}
@@ -414,10 +414,10 @@ func Test_RelationTypeRestHandler_DeleteRelationTypes(t *testing.T) {
 		})
 
 		Convey("DeleteRelationTypes failed\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_RelationType_InternalError,
 				},
 			}
@@ -482,10 +482,10 @@ func Test_RelationTypeRestHandler_ListRelationTypes(t *testing.T) {
 		})
 
 		Convey("ListRelationTypes failed\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_RelationType_InternalError,
 				},
 			}
@@ -549,10 +549,10 @@ func Test_RelationTypeRestHandler_GetRelationTypes(t *testing.T) {
 		})
 
 		Convey("GetRelationTypes failed\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_RelationType_InternalError,
 				},
 			}
@@ -640,10 +640,10 @@ func Test_RelationTypeRestHandler_SearchRelationTypes(t *testing.T) {
 		})
 
 		Convey("SearchRelationTypes failed\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
 				Lang:     i18n.DefaultLanguage,
-				BaseError: rest.BaseError{
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_RelationType_InternalError,
 				},
 			}

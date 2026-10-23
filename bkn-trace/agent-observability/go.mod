@@ -7,7 +7,7 @@ require (
 	github.com/IBM/sarama v1.61.1
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/go-sql-driver/mysql v1.10.1
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023123451-2466c45fb835
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/segmentio/kafka-go v0.4.51
 	github.com/swaggo/http-swagger/v2 v2.0.2

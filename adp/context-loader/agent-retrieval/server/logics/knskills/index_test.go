@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -281,7 +281,7 @@ func TestKnIDIsRequired(t *testing.T) {
 	// as a platform fault rather than a call the caller can fix.
 	assert400 := func(err error, what string) {
 		t.Helper()
-		var he *rest.HTTPError
+		var he *httperrors.HTTPError
 		if !errors.As(err, &he) || he.HTTPCode != http.StatusBadRequest {
 			t.Fatalf("%s: err = %v，want 400", what, err)
 		}

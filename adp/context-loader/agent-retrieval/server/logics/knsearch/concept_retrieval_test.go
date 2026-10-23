@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -771,7 +771,7 @@ func TestSearchSchemaKeepsObjectTypeWhoseSchemaIsUnavailable(t *testing.T) {
 	local := &localSearchImpl{
 		logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail},
 		schemaAccess: failingSchemaAccess{fail: map[string]error{
-			"order": &infraErr.DependencyError{Err: &rest.HTTPError{HTTPCode: 503}, Body: []byte(`{}`)},
+			"order": &infraErr.DependencyError{Err: &httperrors.HTTPError{HTTPCode: 503}, Body: []byte(`{}`)},
 		}},
 	}
 	svc := &knSearchService{Logger: &mockLogger{}, LocalSearch: local}

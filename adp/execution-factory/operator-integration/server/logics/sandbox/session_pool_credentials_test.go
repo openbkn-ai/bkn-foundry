@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.opentelemetry.io/otel"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -140,7 +140,7 @@ func TestDependencyInstallFailureCarriesNoCredentials(t *testing.T) {
 
 	_, err := newCredentialTestPool(client).ExecuteCode(context.Background(), credentialBearingRequest())
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !stderrors.As(err, &httpErr) {
 		t.Fatalf("want an HTTP error, got %v", err)
 	}

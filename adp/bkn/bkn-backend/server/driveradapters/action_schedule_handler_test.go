@@ -14,9 +14,9 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -97,10 +97,10 @@ func Test_ActionScheduleRestHandler_CreateActionSchedule(t *testing.T) {
 		})
 
 		Convey("Failed when KN check returns error\n", func() {
-			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, &rest.HTTPError{
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("", false, &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
 			body, _ := sonic.Marshal(validReq)
@@ -125,10 +125,10 @@ func Test_ActionScheduleRestHandler_CreateActionSchedule(t *testing.T) {
 
 		Convey("Failed when CreateSchedule returns error\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("kn1", true, nil)
-			ass.EXPECT().CreateSchedule(gomock.Any(), gomock.Any()).Return("", &rest.HTTPError{
+			ass.EXPECT().CreateSchedule(gomock.Any(), gomock.Any()).Return("", &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
 			body, _ := sonic.Marshal(validReq)
@@ -191,10 +191,10 @@ func Test_ActionScheduleRestHandler_UpdateActionSchedule(t *testing.T) {
 		})
 
 		Convey("Failed when schedule not found\n", func() {
-			ass.EXPECT().GetSchedule(gomock.Any(), "sched1").Return(nil, &rest.HTTPError{
+			ass.EXPECT().GetSchedule(gomock.Any(), "sched1").Return(nil, &httperrors.HTTPError{
 				HTTPCode:  http.StatusNotFound,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_NotFound},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_NotFound},
 			})
 
 			body, _ := sonic.Marshal(validReq)
@@ -222,10 +222,10 @@ func Test_ActionScheduleRestHandler_UpdateActionSchedule(t *testing.T) {
 
 		Convey("Failed when UpdateSchedule returns error\n", func() {
 			ass.EXPECT().GetSchedule(gomock.Any(), "sched1").Return(existingSchedule, nil)
-			ass.EXPECT().UpdateSchedule(gomock.Any(), "sched1", gomock.Any()).Return(&rest.HTTPError{
+			ass.EXPECT().UpdateSchedule(gomock.Any(), "sched1", gomock.Any()).Return(&httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
 			body, _ := sonic.Marshal(validReq)
@@ -295,10 +295,10 @@ func Test_ActionScheduleRestHandler_UpdateActionScheduleStatus(t *testing.T) {
 
 		Convey("Failed when UpdateScheduleStatus returns error\n", func() {
 			ass.EXPECT().GetSchedule(gomock.Any(), "sched1").Return(existingSchedule, nil)
-			ass.EXPECT().UpdateScheduleStatus(gomock.Any(), "sched1", gomock.Any()).Return(&rest.HTTPError{
+			ass.EXPECT().UpdateScheduleStatus(gomock.Any(), "sched1", gomock.Any()).Return(&httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
 			body, _ := sonic.Marshal(interfaces.ActionScheduleStatusRequest{Status: interfaces.ScheduleStatusActive})
@@ -349,10 +349,10 @@ func Test_ActionScheduleRestHandler_DeleteActionSchedules(t *testing.T) {
 		})
 
 		Convey("Failed when GetSchedules returns error\n", func() {
-			ass.EXPECT().GetSchedules(gomock.Any(), gomock.Any()).Return(nil, &rest.HTTPError{
+			ass.EXPECT().GetSchedules(gomock.Any(), gomock.Any()).Return(nil, &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
 			req := httptest.NewRequest(http.MethodDelete, url, nil)
@@ -364,10 +364,10 @@ func Test_ActionScheduleRestHandler_DeleteActionSchedules(t *testing.T) {
 
 		Convey("Failed when DeleteSchedules returns error\n", func() {
 			ass.EXPECT().GetSchedules(gomock.Any(), gomock.Any()).Return(map[string]*interfaces.ActionSchedule{}, nil)
-			ass.EXPECT().DeleteSchedules(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any()).Return(&rest.HTTPError{
+			ass.EXPECT().DeleteSchedules(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any()).Return(&httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
 			req := httptest.NewRequest(http.MethodDelete, url, nil)
@@ -435,10 +435,10 @@ func Test_ActionScheduleRestHandler_ListActionSchedules(t *testing.T) {
 
 		Convey("Failed when ListSchedules returns error\n", func() {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return("kn1", true, nil)
-			ass.EXPECT().ListSchedules(gomock.Any(), gomock.Any()).Return(nil, int64(0), &rest.HTTPError{
+			ass.EXPECT().ListSchedules(gomock.Any(), gomock.Any()).Return(nil, int64(0), &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_InternalError},
 			})
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)
@@ -486,10 +486,10 @@ func Test_ActionScheduleRestHandler_GetActionSchedule(t *testing.T) {
 		})
 
 		Convey("Failed when schedule not found\n", func() {
-			ass.EXPECT().GetSchedule(gomock.Any(), "sched1").Return(nil, &rest.HTTPError{
+			ass.EXPECT().GetSchedule(gomock.Any(), "sched1").Return(nil, &httperrors.HTTPError{
 				HTTPCode:  http.StatusNotFound,
 				Lang:      i18n.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_NotFound},
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ActionSchedule_NotFound},
 			})
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)

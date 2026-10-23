@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -264,9 +264,9 @@ func TestBoxScopedToolPathsTreatToolOfAnotherBoxAsMissing(t *testing.T) {
 	}
 }
 
-func requireHTTPError(t *testing.T, err error) *rest.HTTPError {
+func requireHTTPError(t *testing.T, err error) *httperrors.HTTPError {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
 		t.Fatalf("error = %v, want an HTTP error", err)
 	}

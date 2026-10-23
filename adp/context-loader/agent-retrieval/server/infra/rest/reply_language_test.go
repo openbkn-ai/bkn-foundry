@@ -16,8 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestReplyErrorMarksOnlyLocallyGeneratedTextAsLocalized(t *testing.T) {
@@ -55,7 +55,7 @@ func TestReplyErrorUnwrapsSharedError(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil).WithContext(i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese))
-	public := rest.NewHTTPError(i18n.WithLanguage(context.Background(), i18n.AmericanEnglish), http.StatusForbidden, rest.PublicError_Forbidden).WithErrorDetails("request denied")
+	public := httperrors.NewHTTPError(i18n.WithLanguage(context.Background(), i18n.AmericanEnglish), http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails("request denied")
 	ReplyError(c, fmt.Errorf("operation failed: %w", public))
 	if recorder.Code != http.StatusForbidden || recorder.Header().Get(i18n.ContentLanguageHeader) != string(i18n.AmericanEnglish) {
 		t.Fatalf("status/header = %d %v", recorder.Code, recorder.Header())
@@ -64,7 +64,7 @@ func TestReplyErrorUnwrapsSharedError(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if body["error_code"] != rest.PublicError_Forbidden || body["description"] == "" || body["error_details"] != "request denied" {
+	if body["error_code"] != httperrors.PublicError_Forbidden || body["description"] == "" || body["error_details"] != "request denied" {
 		t.Fatalf("body = %s", recorder.Body.String())
 	}
 	for _, legacy := range []string{"code", "details", "solution", "link"} {
@@ -86,11 +86,11 @@ func TestReplyErrorForUnmappedValidationTag(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
 	ReplyError(c, err)
-	var body rest.BaseError
+	var body httperrors.BaseError
 	if decodeErr := json.Unmarshal(recorder.Body.Bytes(), &body); decodeErr != nil {
 		t.Fatal(decodeErr)
 	}
-	if recorder.Code != http.StatusBadRequest || body.ErrorCode != rest.PublicError_BadRequest || body.Description == "" {
+	if recorder.Code != http.StatusBadRequest || body.ErrorCode != httperrors.PublicError_BadRequest || body.Description == "" {
 		t.Fatalf("response = %d %s", recorder.Code, recorder.Body.String())
 	}
 }

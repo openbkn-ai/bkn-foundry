@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -46,20 +46,20 @@ func (b *recallingBackend) GetObjectTypeDetail(
 	// holding * or / is refused with 400 for the whole batch.
 	for _, id := range otIDs {
 		if strings.ContainsAny(id, "*/") {
-			return nil, &rest.HTTPError{HTTPCode: http.StatusBadRequest, BaseError: rest.BaseError{ErrorCode: "InvalidParameter.ID"}}
+			return nil, &httperrors.HTTPError{HTTPCode: http.StatusBadRequest, BaseError: httperrors.BaseError{ErrorCode: "InvalidParameter.ID"}}
 		}
 		// The id travels in a URL path. A % that opens no valid escape fails
 		// url.Parse inside this process, and the adapter reports that with no
 		// status code at all — the shape nothing can classify.
 		if strings.Contains(id, "%") {
-			return nil, &rest.HTTPError{HTTPCode: 0, BaseError: rest.BaseError{ErrorCode: "RequestFailed"}}
+			return nil, &httperrors.HTTPError{HTTPCode: 0, BaseError: httperrors.BaseError{ErrorCode: "RequestFailed"}}
 		}
 	}
 	out := make([]*interfaces.ObjectType, 0, len(otIDs))
 	for _, id := range otIDs {
 		found, ok := b.existing[id]
 		if !ok {
-			return nil, &rest.HTTPError{HTTPCode: http.StatusNotFound, BaseError: rest.BaseError{ErrorCode: "ObjectTypeNotFound"}}
+			return nil, &httperrors.HTTPError{HTTPCode: http.StatusNotFound, BaseError: httperrors.BaseError{ErrorCode: "ObjectTypeNotFound"}}
 		}
 		out = append(out, found)
 	}
@@ -179,7 +179,7 @@ func TestPinnedObjectTypesFallBackToOneLookupEach(t *testing.T) {
 // type does not exist" would send an agent rewriting a correct request.
 func TestPinnedObjectTypeLookupFailurePropagates(t *testing.T) {
 	svc, backend := newPinnedScenario(t, []string{"players"}, []string{"teams"})
-	backend.lookupErr = &rest.HTTPError{HTTPCode: http.StatusInternalServerError, BaseError: rest.BaseError{ErrorCode: "Boom"}}
+	backend.lookupErr = &httperrors.HTTPError{HTTPCode: http.StatusInternalServerError, BaseError: httperrors.BaseError{ErrorCode: "Boom"}}
 
 	cfg := DefaultConceptRetrievalConfig()
 	cfg.ObjectTypes = []string{"teams"}

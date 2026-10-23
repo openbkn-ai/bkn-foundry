@@ -10,9 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // sqlService is the relation model on the SQL executor.
@@ -50,7 +51,7 @@ func TestTwoWholeTablesAreRefused(t *testing.T) {
 		_, err := sqlService(vega).Query(callerContext(), interfaces.CypherQuery{
 			KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: query,
 		})
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		details := ""
 		if errors.As(err, &httpErr) {
 			details, _ = httpErr.BaseError.ErrorDetails.(string)

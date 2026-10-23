@@ -11,16 +11,17 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/stretchr/testify/require"
+
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
-	"github.com/stretchr/testify/require"
 )
 
 func TestConnectorInitializationError(t *testing.T) {
 	t.Run("entitlement denied", func(t *testing.T) {
 		err := connectorInitializationError(context.Background(), factory.ErrConnectorEntitlementDenied)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.True(t, errors.As(err, &httpErr))
 		require.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 		require.Equal(t, verrors.VegaBackend_Connector_EntitlementDenied, httpErr.BaseError.ErrorCode)
@@ -28,7 +29,7 @@ func TestConnectorInitializationError(t *testing.T) {
 
 	t.Run("connector disabled", func(t *testing.T) {
 		err := connectorInitializationError(context.Background(), factory.ErrConnectorDisabled)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.True(t, errors.As(err, &httpErr))
 		require.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		require.Equal(t, verrors.VegaBackend_Connector_Disabled, httpErr.BaseError.ErrorCode)

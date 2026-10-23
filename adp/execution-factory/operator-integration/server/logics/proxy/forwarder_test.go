@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/mock/gomock"
@@ -41,7 +41,7 @@ func TestForwardStream_MissingResponseWriterDoesNotPanic(t *testing.T) {
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, 500)
 			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "response writer not found in context")
@@ -165,7 +165,7 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 			})
 
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "resource_id")

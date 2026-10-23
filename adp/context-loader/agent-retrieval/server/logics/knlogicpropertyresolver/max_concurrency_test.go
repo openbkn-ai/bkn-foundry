@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -33,7 +33,7 @@ func TestEffectiveMaxConcurrency(t *testing.T) {
 	}
 	for _, in := range []int{maxAllowedConcurrency + 1, math.MaxInt} {
 		_, err := effectiveMaxConcurrency(context.Background(), in)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if !stderrors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest {
 			t.Errorf("effectiveMaxConcurrency(%d) error = %v, want 400", in, err)
 		}
@@ -54,7 +54,7 @@ func TestResolveLogicPropertiesRejectsAbusiveMaxConcurrency(t *testing.T) {
 		Options:            &interfaces.ResolveOptions{MaxConcurrency: math.MaxInt},
 	}
 	_, err := service.ResolveLogicProperties(context.Background(), req)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !stderrors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("ResolveLogicProperties error = %v, want 400", err)
 	}

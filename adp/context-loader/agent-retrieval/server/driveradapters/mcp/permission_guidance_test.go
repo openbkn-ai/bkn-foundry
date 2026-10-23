@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -40,8 +40,8 @@ func guidanceTestCtx() context.Context {
 }
 
 func TestQueryObjectInstanceRefusalCarriesPermissionGuidance(t *testing.T) {
-	stub := &stubOntologyQuery{err: &rest.HTTPError{
-		HTTPCode: http.StatusForbidden, BaseError: rest.BaseError{ErrorCode: "Public.Forbidden",
+	stub := &stubOntologyQuery{err: &httperrors.HTTPError{
+		HTTPCode: http.StatusForbidden, BaseError: httperrors.BaseError{ErrorCode: "Public.Forbidden",
 			ErrorDetails: "Public.Forbidden: query_data was not granted for object_type:kn-1/ot-1"},
 	}}
 	handler := handleQueryObjectInstance(stub, guidanceTestGuide())
@@ -72,7 +72,7 @@ func TestQueryObjectInstanceRefusalCarriesPermissionGuidance(t *testing.T) {
 }
 
 func TestQueryObjectInstanceOtherErrorsStayUnchanged(t *testing.T) {
-	downstream := &rest.HTTPError{HTTPCode: http.StatusBadRequest, BaseError: rest.BaseError{ErrorCode: "Public.BadRequest", ErrorDetails: "bad"}}
+	downstream := &httperrors.HTTPError{HTTPCode: http.StatusBadRequest, BaseError: httperrors.BaseError{ErrorCode: "Public.BadRequest", ErrorDetails: "bad"}}
 	handler := handleQueryObjectInstance(&stubOntologyQuery{err: downstream}, guidanceTestGuide())
 
 	result, _ := handler(guidanceTestCtx(), mcpReq(map[string]any{"kn_id": "kn-1", "ot_id": "ot-1"}))
@@ -147,7 +147,7 @@ func TestGetLogicPropertiesRefusalCarriesPermissionGuidance(t *testing.T) {
 		"kn_id": "kn-1", "ot_id": "ot-1", "properties": []any{"score"},
 		"_instance_identities": []any{map[string]any{"id": "1"}},
 	}
-	objectTypeRefusal := &rest.HTTPError{HTTPCode: http.StatusForbidden, BaseError: rest.BaseError{ErrorCode: "Public.Forbidden",
+	objectTypeRefusal := &httperrors.HTTPError{HTTPCode: http.StatusForbidden, BaseError: httperrors.BaseError{ErrorCode: "Public.Forbidden",
 		ErrorDetails: "Public.Forbidden: query_data was not granted for object_type:kn-1/ot-1"}}
 	result, _ := handleGetLogicPropertiesValues(&stubLogicPropertyResolverService{err: objectTypeRefusal},
 		guidanceTestGuide())(guidanceTestCtx(), mcpReq(args))
@@ -157,7 +157,7 @@ func TestGetLogicPropertiesRefusalCarriesPermissionGuidance(t *testing.T) {
 
 	// A 403 from the metric or tool behind a logic property is not an object
 	// type grant, so no object type link is offered for it.
-	metricRefusal := &rest.HTTPError{HTTPCode: http.StatusForbidden, BaseError: rest.BaseError{ErrorCode: "Public.Forbidden",
+	metricRefusal := &httperrors.HTTPError{HTTPCode: http.StatusForbidden, BaseError: httperrors.BaseError{ErrorCode: "Public.Forbidden",
 		ErrorDetails: "Public.Forbidden: execute was not granted for metric:m-1"}}
 	result, _ = handleGetLogicPropertiesValues(&stubLogicPropertyResolverService{err: metricRefusal},
 		guidanceTestGuide())(guidanceTestCtx(), mcpReq(args))

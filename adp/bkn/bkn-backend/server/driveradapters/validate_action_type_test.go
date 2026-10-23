@@ -10,8 +10,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
@@ -77,7 +77,7 @@ func Test_ValidateActionType(t *testing.T) {
 			}
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_NullParameter_Name)
 		})
 
@@ -382,7 +382,7 @@ func Test_ValidateActionType(t *testing.T) {
 			}
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
 		})
@@ -402,7 +402,7 @@ func Test_ValidateActionType(t *testing.T) {
 			}
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions")
 		})
@@ -453,7 +453,7 @@ func Test_ValidateActionType(t *testing.T) {
 			}
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "condition.sub_conditions[1].sub_conditions")
 		})
@@ -630,7 +630,7 @@ func Test_ValidateActionType(t *testing.T) {
 			}
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 		})
 
@@ -673,7 +673,7 @@ func Test_ValidateActionType(t *testing.T) {
 			}
 			err := ValidateActionType(ctx, at, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ActionType_InvalidParameter)
 		})
 
@@ -1029,9 +1029,9 @@ func TestActionTypeValidationDetailsRespectLanguage(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateActionType() error = nil, want invalid action type error")
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
 			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
 				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)

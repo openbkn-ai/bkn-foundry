@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -47,11 +47,11 @@ func newActionErrorClient(t *testing.T) (*ontologyQueryClient, *mocks.MockHTTPCl
 	}, mockHTTPClient, ctrl
 }
 
-func asHTTPError(t *testing.T, err error) *rest.HTTPError {
+func asHTTPError(t *testing.T, err error) *httperrors.HTTPError {
 	t.Helper()
-	var he *rest.HTTPError
+	var he *httperrors.HTTPError
 	if !errors.As(err, &he) {
-		t.Fatalf("expected *rest.HTTPError, got %T: %v", err, err)
+		t.Fatalf("expected *httperrors.HTTPError, got %T: %v", err, err)
 	}
 	if renderErr := he.Render(); renderErr != nil {
 		t.Fatal(renderErr)

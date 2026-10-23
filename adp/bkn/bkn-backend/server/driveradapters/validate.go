@@ -15,9 +15,9 @@ import (
 
 	"github.com/dlclark/regexp2"
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -63,7 +63,7 @@ var objectNameErrorCode = map[string][]string{
 	},
 }
 
-func validateImportMode(ctx context.Context, mode string) *rest.HTTPError {
+func validateImportMode(ctx context.Context, mode string) *httperrors.HTTPError {
 	switch mode {
 	case interfaces.ImportMode_Normal,
 		interfaces.ImportMode_Ignore,
@@ -73,7 +73,7 @@ func validateImportMode(ctx context.Context, mode string) *rest.HTTPError {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_InvalidParameter_ImportMode).
 			WithErrorDetails(localizedText)
 	}
@@ -84,7 +84,7 @@ func validateImportMode(ctx context.Context, mode string) *rest.HTTPError {
 // validateObjectName validates an object name.
 func validateObjectName(ctx context.Context, objectName string, objectType string) error {
 	if objectName == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][0])
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][0])
 	}
 
 	if utf8.RuneCountInString(objectName) > interfaces.OBJECT_NAME_MAX_LENGTH {
@@ -92,7 +92,7 @@ func validateObjectName(ctx context.Context, objectName string, objectType strin
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][1]).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][1]).WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -101,7 +101,7 @@ func validateObjectName(ctx context.Context, objectName string, objectType strin
 // ValidateTags validates tag values.
 func ValidateTags(ctx context.Context, Tags []string) error {
 	if len(Tags) > interfaces.TAGS_MAX_NUMBER {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_TagTotal)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_TagTotal)
 	}
 
 	for _, tag := range Tags {
@@ -119,7 +119,7 @@ func validateDataTagName(ctx context.Context, dataTagName string) error {
 	dataTagName = strings.Trim(dataTagName, " ")
 
 	if dataTagName == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName)
 		// .WithErrorDetails("Data tag name is null")
 	}
 
@@ -128,7 +128,7 @@ func validateDataTagName(ctx context.Context, dataTagName string) error {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName).
 			WithErrorDetails(localizedText)
 	}
 
@@ -137,7 +137,7 @@ func validateDataTagName(ctx context.Context, dataTagName string) error {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_DataTagName).
 			WithErrorDetails(localizedText)
 	}
 
@@ -155,7 +155,7 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Offset).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Offset).
 			WithErrorDetails(localizedText)
 	}
 
@@ -164,7 +164,7 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Offset).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Offset).
 			WithErrorDetails(localizedText)
 	}
 
@@ -174,7 +174,7 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).
 			WithErrorDetails(localizedText)
 	}
 
@@ -183,7 +183,7 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).WithErrorDetails(localizedText)
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Limit).WithErrorDetails(localizedText)
 	}
 
 	_, ok := supportedSortTypes[sort]
@@ -196,7 +196,7 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Sort).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Sort).
 			WithErrorDetails(localizedText)
 	}
 
@@ -205,7 +205,7 @@ func validatePaginationQueryParameters(ctx context.Context, offset, limit, sort,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return pageParams, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Direction).
+		return pageParams, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Direction).
 			WithErrorDetails(localizedText)
 	}
 
@@ -227,7 +227,7 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Condition).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Condition).
 			WithErrorDetails(localizedText)
 	}
 	query.ActualCondition = actualCond
@@ -282,12 +282,12 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 
 	// Validate the filter operation.
 	if cfg.Operation == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_NullParameter_ConditionOperation)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_NullParameter_ConditionOperation)
 	}
 
 	_, exists := cond.OperationMap[cfg.Operation]
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_UnsupportConditionOperation)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_UnsupportConditionOperation)
 	}
 
 	switch cfg.Operation {
@@ -298,7 +298,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
 				WithErrorDetails(localizedText)
 		}
 
@@ -311,12 +311,12 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 	default:
 		// A field is required except for multi-match operations.
 		if cfg.Operation != cond.OperationMultiMatch && cfg.Field == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_NullParameter_ConditionName)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_NullParameter_ConditionName)
 		}
 
 		// if _, ok := cond.NotRequiredValueOperationMap[cfg.Operation]; !ok {
 		// 	if cfg.ValueFrom != cond.ValueFrom_Const {
-		// 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.Uniquery_InvalidParameter_ValueFrom).
+		// 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.Uniquery_InvalidParameter_ValueFrom).
 		// 			WithErrorDetails(fmt.Sprintf("condition does not support value_from type('%s')", cfg.ValueFrom))
 		// 	}
 		// }
@@ -333,7 +333,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
 				WithErrorDetails(localizedText)
 		}
 
@@ -345,7 +345,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
 					WithErrorDetails(localizedText)
 			}
 		}
@@ -357,7 +357,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
 					WithErrorDetails(localizedText)
 			}
 
@@ -367,7 +367,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
 					WithErrorDetails(localizedText)
 			}
 
@@ -381,7 +381,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
 				WithErrorDetails(localizedText)
 		}
 
@@ -390,7 +390,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
 				WithErrorDetails(localizedText)
 		}
 	case cond.OperationRange, cond.OperationOutRange, cond.OperationBefore, cond.OperationBetween:
@@ -402,7 +402,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
 				WithErrorDetails(localizedText)
 		}
 
@@ -411,7 +411,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ConditionValue).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -429,7 +429,7 @@ func validateID(ctx context.Context, id string) error {
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ID).
 				WithErrorDetails(localizedText)
 		}
 	}
@@ -445,7 +445,7 @@ func ValidateHeaderMethodOverride(ctx context.Context, methodOverride string) er
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_OverrideMethod).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_OverrideMethod).
 			WithErrorDetails(localizedText)
 	}
 
@@ -454,7 +454,7 @@ func ValidateHeaderMethodOverride(ctx context.Context, methodOverride string) er
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_OverrideMethod).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_OverrideMethod).
 			WithErrorDetails(localizedText)
 	}
 	return nil

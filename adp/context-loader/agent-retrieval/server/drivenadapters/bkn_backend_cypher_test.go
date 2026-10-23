@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
@@ -43,14 +43,14 @@ func TestRunCypherQueryWrapsForbiddenWithSourceDetails(t *testing.T) {
 				KnID: "kn-1", Query: "MATCH (u:user) RETURN u.phone",
 			})
 
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("RunCypherQuery() error = %T %v, want *HTTPError", err, err)
 			}
 			if httpErr.HTTPCode != http.StatusForbidden || httpErr.BaseError.ErrorCode != "agentRetrieval.Forbidden.CommonExternalServerError" {
 				t.Fatalf("RunCypherQuery() error = %d %s, want 403 %s", httpErr.HTTPCode, httpErr.BaseError.ErrorCode, code)
 			}
-			source, ok := httpErr.BaseError.ErrorDetails.(rest.BaseError)
+			source, ok := httpErr.BaseError.ErrorDetails.(httperrors.BaseError)
 			if !ok || source.ErrorCode != code || source.Description != "refused" || source.ErrorDetails != "ot_user.phone" {
 				t.Fatalf("details = %v, want the property the refusal names", httpErr.BaseError.ErrorDetails)
 			}

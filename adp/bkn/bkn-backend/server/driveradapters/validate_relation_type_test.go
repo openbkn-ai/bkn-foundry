@@ -10,8 +10,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -84,7 +84,7 @@ func Test_ValidateRelationType(t *testing.T) {
 			}
 			err := ValidateRelationType(ctx, rt, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_NullParameter_Name)
 		})
 
@@ -339,9 +339,9 @@ func TestValidateRelationTypeLocalizesInvalidParameterDetails(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateRelationType() error = nil, want invalid parameter error")
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
 			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
 				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
@@ -391,7 +391,7 @@ func Test_ValidateRelationTypes(t *testing.T) {
 			}
 			err := ValidateRelationTypes(ctx, knID, relationTypes, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_Duplicated_IDInFile)
 		})
 
@@ -428,7 +428,7 @@ func TestRelationTypeValidationDetailsRespectLanguage(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateRelationTypes() error = nil, want invalid module type error")
 			}
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
 				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
 			}

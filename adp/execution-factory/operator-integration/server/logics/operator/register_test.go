@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -78,7 +78,7 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			mockAuthService.EXPECT().CheckCreatePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			_, err := operator.RegisterOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -92,7 +92,7 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			mockAuthService.EXPECT().CheckCreatePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			_, err := operator.RegisterOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -107,7 +107,7 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false).Times(1)
 			_, err := operator.RegisterOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -118,7 +118,7 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 			_, err := operator.RegisterOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -155,7 +155,7 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			mockValidator.EXPECT().ValidateOperatorImportCount(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			_, err := operator.RegisterOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorCode, ShouldContainSubstring, myErr.ErrExtOperatorDirectPublishErr.String())
@@ -592,7 +592,7 @@ func TestUpdateOperatorByOpenAPI(t *testing.T) {
 			mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false).Times(1)
 			_, err := operator.UpdateOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -607,7 +607,7 @@ func TestUpdateOperatorByOpenAPI(t *testing.T) {
 			mockValidator.EXPECT().ValidateOperatorImportCount(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			_, err := operator.UpdateOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -619,7 +619,7 @@ func TestUpdateOperatorByOpenAPI(t *testing.T) {
 			mockValidator.EXPECT().ValidateOperatorImportCount(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			_, err := operator.UpdateOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
@@ -648,7 +648,7 @@ func TestUpdateOperatorByOpenAPI(t *testing.T) {
 			mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 			_, err := operator.UpdateOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -749,7 +749,7 @@ func TestUpdateOperatorByOpenAPI(t *testing.T) {
 				mockMetadataService.EXPECT().CheckMetadataExists(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 				_, err := operator.UpdateOperatorByOpenAPI(context.TODO(), req, "")
 				So(err, ShouldNotBeNil)
-				httpErr := &rest.HTTPError{}
+				httpErr := &httperrors.HTTPError{}
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 			})

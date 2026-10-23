@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 var errCodeMap = map[int]string{
@@ -30,16 +30,16 @@ var errCodeMap = map[int]string{
 }
 
 // DefaultHTTPError returns a shared public error for an HTTP status.
-func DefaultHTTPError(ctx context.Context, httpCode int, details any) *rest.HTTPError {
+func DefaultHTTPError(ctx context.Context, httpCode int, details any) *httperrors.HTTPError {
 	name := errCodeMap[httpCode]
 	if name == "" {
 		name = "InternalServerError"
 	}
-	return rest.NewHTTPError(ctx, httpCode, "Public."+name).WithErrorDetails(details)
+	return httperrors.NewHTTPError(ctx, httpCode, "Public."+name).WithErrorDetails(details)
 }
 
 // NewHTTPError constructs a registered service error without rendering it.
-func NewHTTPError(ctx context.Context, httpCode int, extCode string, details any, descParams ...any) *rest.HTTPError {
+func NewHTTPError(ctx context.Context, httpCode int, extCode string, details any, descParams ...any) *httperrors.HTTPError {
 	name := errCodeMap[httpCode]
 	if name == "" {
 		name = "InternalServerError"
@@ -49,12 +49,12 @@ func NewHTTPError(ctx context.Context, httpCode int, extCode string, details any
 	for index, value := range descParams {
 		metadata[fmt.Sprintf("Arg%d", index+1)] = value
 	}
-	return rest.NewHTTPError(ctx, httpCode, code).WithErrorDetails(details).WithMetadata(metadata)
+	return httperrors.NewHTTPError(ctx, httpCode, code).WithErrorDetails(details).WithMetadata(metadata)
 }
 
 // HTTPStatus extracts a shared public status, including wrapped dependency failures.
 func HTTPStatus(err error) (int, bool) {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr == nil {
 		return 0, false
 	}

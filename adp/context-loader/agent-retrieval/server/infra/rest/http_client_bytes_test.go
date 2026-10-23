@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 )
@@ -74,7 +74,7 @@ func TestPostBytesKeepsHTTPErrorSemantics(t *testing.T) {
 			PostBytes(context.Background(), srv.URL, nil, map[string]string{})
 		srv.Close()
 
-		var he *rest.HTTPError
+		var he *httperrors.HTTPError
 		if !errors.As(err, &he) {
 			t.Fatalf("status %d: error = %v, want *infraErr.HTTPError", status, err)
 		}

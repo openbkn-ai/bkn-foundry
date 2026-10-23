@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -34,13 +34,13 @@ func TestLogicPropertyErrorsLocalizeOwnedMessages(t *testing.T) {
 		t.Run(string(tt.locale), func(t *testing.T) {
 			ctx := common.SetLanguageToCtx(context.Background(), tt.locale)
 			missing := service.buildMissingParamsError(ctx, []interfaces.MissingPropertyParams{{Property: "region"}}, nil)
-			missingHTTPError := missing.(*rest.HTTPError)
+			missingHTTPError := missing.(*httperrors.HTTPError)
 			if got := missingHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, tt.missingWant) {
 				t.Fatalf("missing error details = %q, want localized text %q", got, tt.missingWant)
 			}
 
 			failed := service.buildGenerationFailedError(ctx, []interfaces.MissingPropertyParams{{Property: "region", ErrorMsg: "provider timeout"}})
-			failedHTTPError := failed.(*rest.HTTPError)
+			failedHTTPError := failed.(*httperrors.HTTPError)
 			if got := failedHTTPError.BaseError.ErrorDetails.(string); !strings.Contains(got, tt.failedWant) {
 				t.Fatalf("generation error details = %q, want localized text %q", got, tt.failedWant)
 			}

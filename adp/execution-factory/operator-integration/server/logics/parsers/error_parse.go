@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 )
@@ -29,7 +29,7 @@ var (
 )
 
 // parseOpenAPILoadError maps an OpenAPI loading failure to a public error.
-func parseOpenAPILoadError(ctx context.Context, originalErr error) *rest.HTTPError {
+func parseOpenAPILoadError(ctx context.Context, originalErr error) *httperrors.HTTPError {
 	if originalErr == nil {
 		return nil
 	}
@@ -38,7 +38,7 @@ func parseOpenAPILoadError(ctx context.Context, originalErr error) *rest.HTTPErr
 }
 
 // parseOpenAPIValidationError maps an OpenAPI validation failure to a public error.
-func parseOpenAPIValidationError(ctx context.Context, originalErr error) *rest.HTTPError {
+func parseOpenAPIValidationError(ctx context.Context, originalErr error) *httperrors.HTTPError {
 	if originalErr == nil {
 		return nil
 	}

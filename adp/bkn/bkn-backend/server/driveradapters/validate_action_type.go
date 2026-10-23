@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -32,7 +32,7 @@ func ValidateActionTypes(ctx context.Context, knID string, actionTypes []*interf
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
+			return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
 				WithErrorDetails(localizedText)
 		}
 
@@ -46,7 +46,7 @@ func ValidateActionTypes(ctx context.Context, knID string, actionTypes []*interf
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
 			errDetails := localizedText
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_Duplicated_IDInFile).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_Duplicated_IDInFile).
 				WithMetadata(map[string]any{"actionTypeID": atID}).
 				WithErrorDetails(errDetails)
 		}
@@ -61,7 +61,7 @@ func ValidateActionTypes(ctx context.Context, knID string, actionTypes []*interf
 		if _, ok := tmpNameMap[actionTypes[i].ATName]; !ok {
 			tmpNameMap[actionTypes[i].ATName] = nil
 		} else {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_Duplicated_Name)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_Duplicated_Name)
 		}
 
 		actionTypes[i].KNID = knID
@@ -104,7 +104,7 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -116,7 +116,7 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 
@@ -127,7 +127,7 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 		}
@@ -141,7 +141,7 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		// strict_mode off: allow empty or draft combinations for McpID, ToolName, BoxID, ToolID (no cross-kind checks).
@@ -154,7 +154,7 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 					if renderErr != nil {
 						logger.Errorf("localized message rendering failed: %v", renderErr)
 					}
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			case interfaces.ACTION_SOURCE_TYPE_MCP:
 				// For map mappings, box_id and tool_id must be empty.
@@ -163,7 +163,7 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 					if renderErr != nil {
 						logger.Errorf("localized message rendering failed: %v", renderErr)
 					}
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			}
 		}
@@ -177,7 +177,7 @@ func ValidateActionType(ctx context.Context, actionType *interfaces.ActionType, 
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 		}
@@ -220,7 +220,7 @@ func syncIntentWithType(ctx context.Context, actionType *interfaces.ActionType) 
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 	if at != "" && ai == "" {
@@ -246,7 +246,7 @@ func validateAffectExpectedOperation(ctx context.Context, aff *interfaces.Action
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 	return nil
@@ -259,7 +259,7 @@ func validateImpactContracts(ctx context.Context, items []interfaces.ImpactContr
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		op := strings.TrimSpace(string(items[i].ExpectedOperation))
@@ -268,7 +268,7 @@ func validateImpactContracts(ctx context.Context, items []interfaces.ImpactContr
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		if !interfaces.IsValidExpectedOperation(op) {
@@ -276,7 +276,7 @@ func validateImpactContracts(ctx context.Context, items []interfaces.ImpactContr
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		for j := range items[i].AffectedFields {
@@ -285,7 +285,7 @@ func validateImpactContracts(ctx context.Context, items []interfaces.ImpactContr
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 		}
@@ -306,7 +306,7 @@ func syncImpactAffect(ctx context.Context, actionType *interfaces.ActionType) er
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 	if !hasAff || hasIC {
@@ -368,7 +368,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		cfg.ObjectTypeID = objectTypeID
 	}
 	// if cfg.ObjectTypeID == "" {
-	// 	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+	// 	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 	// 		WithErrorDetails("The action condition object type is required.")
 	// }
 
@@ -378,7 +378,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -388,7 +388,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 			WithErrorDetails(localizedText)
 	}
 
@@ -400,7 +400,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 		}
 
 		if len(cfg.SubConds) > cond.MaxSubCondition {
@@ -408,7 +408,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_CountExceeded_Conditions).
 				WithErrorDetails(localizedText)
 		}
 
@@ -425,7 +425,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 
 		}
@@ -440,7 +440,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 
@@ -452,7 +452,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 
@@ -461,7 +461,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	case cond.OperationRange, cond.OperationOutRange, cond.OperationBefore, cond.OperationBetween:
@@ -473,7 +473,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 
@@ -482,7 +482,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	case cond.OperationExist, cond.OperationNotExist, cond.OperationNull, cond.OperationNotNull:
@@ -497,7 +497,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		_, ok = cfg.Value.(string)
@@ -506,7 +506,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 
@@ -517,7 +517,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		if arr, ok := cfg.Value.([]any); ok {
@@ -526,7 +526,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 					WithErrorDetails(localizedText)
 			}
 		}
@@ -539,7 +539,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		unit, ok := cfg.Value.(string)
@@ -548,7 +548,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 		// Validate the unit value.
@@ -565,7 +565,7 @@ func validateActionConditionWithPath(ctx context.Context, cfg *interfaces.Action
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
 				WithErrorDetails(localizedText)
 		}
 	}

@@ -10,7 +10,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -90,7 +90,7 @@ func Test_BuildDslQuery(t *testing.T) {
 			dsl, err := BuildDslQuery(ctx, queryStr, query)
 			So(err, ShouldNotBeNil)
 			So(dsl, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_InternalError_UnMarshalDataFailed)
 		})
 

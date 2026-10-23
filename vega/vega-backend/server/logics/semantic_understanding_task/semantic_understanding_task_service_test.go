@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -39,7 +39,7 @@ func TestSemanticUnderstandingTaskServiceList(t *testing.T) {
 
 		tasks, total, err := service.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 		assert.Equal(t, "VegaBackend.SemanticUnderstandingTask.InternalError.GetFailed", httpErr.BaseError.ErrorCode)
@@ -52,7 +52,7 @@ func TestSemanticUnderstandingTaskServiceList(t *testing.T) {
 		taskAccess := vmock.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		catalogService := vmock.NewMockCatalogService(ctrl)
 		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService}
-		permissionErr := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
+		permissionErr := httperrors.NewHTTPError(context.Background(), http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed)
 		catalogService.EXPECT().ListPermittedCatalogIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil, permissionErr)
@@ -197,7 +197,7 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 			require.NoError(t, sonic.Unmarshal(fmt.Appendf(nil, `{"language":%q,"apply_mode":"dry_run"}`, tc.language), &req))
 			got, err := service.CreateResourceTask(ctx, "resource-1", &req)
 			if tc.expected == "" {
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 				assert.Nil(t, got)
@@ -596,7 +596,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resource := sampleSemanticResource()
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
 		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
-			Return(nil, rest.NewHTTPError(context.Background(), http.StatusTooManyRequests, verrors.VegaBackend_Query_ConcurrencyLimitExceeded))
+			Return(nil, httperrors.NewHTTPError(context.Background(), http.StatusTooManyRequests, verrors.VegaBackend_Query_ConcurrencyLimitExceeded))
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
@@ -871,7 +871,7 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		wantInput     bool
 	}{
 		{name: "retains input with query_data", resourceID: "r-1", wantInput: true},
-		{name: "clears input without query_data", resourceID: "r-1", permissionErr: rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)},
+		{name: "clears input without query_data", resourceID: "r-1", permissionErr: httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)},
 		{name: "propagates authorization failure", resourceID: "r-1", permissionErr: errors.New("authorization unavailable")},
 		{name: "clears input without a resource"},
 		{name: "skips query_data check for empty input", resourceID: "r-1", emptyInput: true},

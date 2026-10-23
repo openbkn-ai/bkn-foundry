@@ -11,7 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/json-iterator/go v1.1.12
 	github.com/mark3labs/mcp-go v0.57.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023123451-2466c45fb835
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2
 	github.com/openbkn-ai/licverify v0.5.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/smartystreets/goconvey v1.8.1

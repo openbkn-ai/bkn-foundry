@@ -15,8 +15,8 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -178,7 +178,7 @@ func Test_RestHandler_GetObjectsSubgraphByEx(t *testing.T) {
 		})
 
 		Convey("失败 - Token验证失败", func() {
-			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, rest.NewHTTPError(context.TODO(), http.StatusUnauthorized, rest.PublicError_Unauthorized))
+			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, httperrors.NewHTTPError(context.TODO(), http.StatusUnauthorized, httperrors.PublicError_Unauthorized))
 
 			reqParamByte, _ := sonic.Marshal(subgraphQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
@@ -312,7 +312,7 @@ func Test_RestHandler_GetObjectsSubgraph(t *testing.T) {
 		})
 
 		Convey("失败 - Service返回错误", func() {
-			kns.EXPECT().SearchSubgraph(gomock.Any(), gomock.Any()).Return(interfaces.ObjectSubGraph{}, rest.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetKnowledgeNetworksByIDFailed))
+			kns.EXPECT().SearchSubgraph(gomock.Any(), gomock.Any()).Return(interfaces.ObjectSubGraph{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetKnowledgeNetworksByIDFailed))
 
 			reqParamByte, _ := sonic.Marshal(subgraphQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
@@ -457,7 +457,7 @@ func Test_RestHandler_GetObjectsSubgraphByTypePath(t *testing.T) {
 		})
 
 		Convey("失败 - Service返回错误", func() {
-			kns.EXPECT().SearchSubgraphByTypePath(gomock.Any(), gomock.Any()).Return(interfaces.PathsEntries{}, rest.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetKnowledgeNetworksByIDFailed))
+			kns.EXPECT().SearchSubgraphByTypePath(gomock.Any(), gomock.Any()).Return(interfaces.PathsEntries{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_KnowledgeNetwork_InternalError_GetKnowledgeNetworksByIDFailed))
 
 			reqParamByte, _ := sonic.Marshal(pathsQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))

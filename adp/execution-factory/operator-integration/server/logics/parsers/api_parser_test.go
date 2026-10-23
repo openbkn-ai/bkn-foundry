@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -166,7 +166,7 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 			_, err = parser.getAllContent(context.Background(), content)
 			fmt.Println(err)
 			So(err, ShouldNotBeNil)
-			httpErr := &rest.HTTPError{}
+			httpErr := &httperrors.HTTPError{}
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorCode, ShouldContainSubstring, testcase.Code)

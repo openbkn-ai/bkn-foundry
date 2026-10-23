@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -173,7 +173,7 @@ func Test_DiscoverTaskRestHandler_GetDiscoverTask(t *testing.T) {
 	t.Run("preserves not found error returned by service", func(t *testing.T) {
 		engine, dts := setup(t)
 		dts.EXPECT().GetByID(gomock.Any(), "missing").Return(nil,
-			fmt.Errorf("get discover task: %w", rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)))
+			fmt.Errorf("get discover task: %w", httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)))
 
 		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/discover-tasks/missing", nil)
 		w := httptest.NewRecorder()

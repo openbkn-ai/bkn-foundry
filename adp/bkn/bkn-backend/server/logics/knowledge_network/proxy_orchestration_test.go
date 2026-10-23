@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -67,7 +67,7 @@ func TestInvalidProxyTargetErrorKeepsModelValidationFailuresAsBadRequests(t *tes
 }
 
 func TestInvalidProxyTargetErrorPreservesUpstreamHTTPError(t *testing.T) {
-	upstream := rest.NewHTTPError(t.Context(), http.StatusServiceUnavailable,
+	upstream := httperrors.NewHTTPError(t.Context(), http.StatusServiceUnavailable,
 		berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable)
 	err := invalidProxyTargetError(t.Context(), upstream)
 	if err != upstream {
@@ -313,7 +313,7 @@ func TestPreflightProxySourcesRejectsLegacySafeResponseWithoutDelegators(t *test
 		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-1",
 		KNID: "kn-1", BindingType: interfaces.MODULE_TYPE_OBJECT_TYPE, BindingID: "ot-1",
 	}})
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusServiceUnavailable {
 		t.Fatalf("preflight legacy response error = %#v, want HTTP 503", err)
 	}
@@ -973,7 +973,7 @@ func TestPublishKNChildMutationInvalidRetainedTargetDoesNotMutate(t *testing.T) 
 			mutationCalled = true
 			return nil
 		})
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusForbidden ||
 		httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
 		t.Fatalf("PublishKNChildMutation() error = %#v, want HTTP 403", err)
@@ -1461,7 +1461,7 @@ func TestResolveKNProxyBindingReturnsStableStateErrors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			service := &knowledgeNetworkService{kpa: &proxyAccessStub{mapping: test.mapping}}
 			_, err := service.ResolveKNProxyBinding(t.Context(), "kn-1", interfaces.KNProxyBinding{})
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok || httpErr.HTTPCode != test.status || httpErr.BaseError.ErrorCode != test.code {
 				t.Fatalf("ResolveKNProxyBinding() error = %#v, want status %d code %q", err, test.status, test.code)
 			}
@@ -1545,7 +1545,7 @@ func TestResolveKNProxyBindingsKeepsOnlyPublishedSnapshotBindings(t *testing.T) 
 
 	mapping.SyncedModelVersion = "stale-version"
 	_, resolved, err = service.ResolveKNProxyBindings(t.Context(), "kn-1", want)
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxySyncPending || resolved != nil {
 		t.Fatalf("stale synchronized model version: resolved = %v, error = %#v", resolved, err)
 	}
@@ -1554,14 +1554,14 @@ func TestResolveKNProxyBindingsKeepsOnlyPublishedSnapshotBindings(t *testing.T) 
 func TestResolveKNProxyBindingsReturnsStableStateErrors(t *testing.T) {
 	service := &knowledgeNetworkService{kpa: &proxyAccessStub{}}
 	_, resolved, err := service.ResolveKNProxyBindings(t.Context(), "kn-1", []interfaces.KNProxyBinding{{}})
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusNotFound ||
 		httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound || resolved != nil {
 		t.Fatalf("ResolveKNProxyBindings() = %v, %#v", resolved, err)
 	}
 
 	_, _, err = (&knowledgeNetworkService{}).ResolveKNProxyBindings(t.Context(), "kn-1", nil)
-	httpErr, ok = err.(*rest.HTTPError)
+	httpErr, ok = err.(*httperrors.HTTPError)
 	if !ok || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyUnavailable {
 		t.Fatalf("disabled orchestration: %#v", err)
 	}
@@ -1626,7 +1626,7 @@ func TestReconcileKNProxiesAuthorizesNetworksWithoutMappings(t *testing.T) {
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   "kn-unmapped",
 	}, []string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(
-		rest.NewHTTPError(t.Context(), http.StatusForbidden, rest.PublicError_Forbidden))
+		httperrors.NewHTTPError(t.Context(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 	mpa := &managedProxyAccessStub{}
 	service := &knowledgeNetworkService{kna: kna, kpa: kpa, mpa: mpa, ps: permissionService}
 
@@ -1649,7 +1649,7 @@ func TestReconcileKNProxiesAuthorizesAllLiveMappingsBeforeMutation(t *testing.T)
 	}}}
 	permissionService := bmock.NewMockPermissionService(ctrl)
 	permissionService.EXPECT().CheckPermission(gomock.Any(), gomock.Any(),
-		[]string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(rest.NewHTTPError(t.Context(), http.StatusForbidden, rest.PublicError_Forbidden))
+		[]string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(httperrors.NewHTTPError(t.Context(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 	mpa := &managedProxyAccessStub{}
 	service := &knowledgeNetworkService{kna: kna, kpa: kpa, mpa: mpa, ps: permissionService}
 
@@ -1837,7 +1837,7 @@ func TestPrepareProxyPublishDeniedPreflightCompensatesNewProxy(t *testing.T) {
 	if err == nil {
 		t.Fatal("prepareProxyPublish() error = nil, want denied preflight")
 	}
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("prepareProxyPublish() error = %#v, want HTTP 403", err)
 	}

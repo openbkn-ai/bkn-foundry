@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -273,7 +273,7 @@ func TestValidateFilterCondCfg(t *testing.T) {
 	t.Run("rejects unsupported value source before querying", func(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{Name: "age", Operation: filter_condition.OperationGt,
 			ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: "unknown", Value: 1}}
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, validateFilterCondCfg(ctx, cfg), &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom, httpErr.BaseError.ErrorCode)
@@ -329,7 +329,7 @@ func TestValidateAggregateParams(t *testing.T) {
 			t.Run(aggr, func(t *testing.T) {
 				params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "*", Aggr: aggr}}
 				err := ValidateResourceDataQueryParams(ctx, params)
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 				assert.Equal(t, verrors.VegaBackend_InvalidParameter_Aggregation, httpErr.BaseError.ErrorCode)
@@ -389,7 +389,7 @@ func TestValidateAggregateParams(t *testing.T) {
 						assert.Equal(t, tc.value, params.Having.Value)
 						return
 					}
-					var httpErr *rest.HTTPError
+					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, err, &httpErr)
 					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
@@ -424,7 +424,7 @@ func TestValidateAggregateParams(t *testing.T) {
 						require.NoError(t, err)
 						return
 					}
-					var httpErr *rest.HTTPError
+					var httpErr *httperrors.HTTPError
 					require.ErrorAs(t, err, &httpErr)
 					assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 					assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)
@@ -435,7 +435,7 @@ func TestValidateAggregateParams(t *testing.T) {
 	t.Run("HAVING comparisons reject typed string arrays", func(t *testing.T) {
 		for _, value := range []any{[]string{"1", "2"}, []string(nil), []string{}} {
 			err := ValidateResourceDataQueryParams(ctx, &interfaces.ResourceDataQueryParams{Having: &interfaces.HavingClause{Field: "count(*)", Operation: "==", Value: value}})
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 			assert.Equal(t, verrors.VegaBackend_InvalidParameter_Having, httpErr.BaseError.ErrorCode)

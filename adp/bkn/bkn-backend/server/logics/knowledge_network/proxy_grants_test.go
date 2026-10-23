@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -148,7 +148,7 @@ func TestPreflightStillRefusesMissingDataPermissionWithoutListingSkills(t *testi
 	service := &knowledgeNetworkService{mpa: safe}
 
 	_, err := service.preflightProxySources(t.Context(), "proxy-1", "editor-1", skillAndDataSources())
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden ||
 		httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
 		t.Fatalf("preflight error = %v, want ProxyPermissionMissing", err)
@@ -188,7 +188,7 @@ func TestPreflightKeepsSkillsWhenSafeIsUnavailable(t *testing.T) {
 	service := &knowledgeNetworkService{mpa: safe}
 
 	_, err := service.preflightProxySources(t.Context(), "proxy-1", "editor-1", skillAndDataSources())
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusServiceUnavailable {
 		t.Fatalf("preflight error = %v, want unavailable", err)
 	}
@@ -313,7 +313,7 @@ func TestResolveKNProxyBindingFollowsPublishedSkillSnapshot(t *testing.T) {
 		t.Fatalf("newly mounted skill was refused: %v", err)
 	}
 	_, err = service.ResolveKNProxyBinding(t.Context(), "kn-1", skill("binding-skill-1", "skill-1"))
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyBindingInvalid {
 		t.Fatalf("released skill resolve error = %v, want ProxyBindingInvalid", err)
 	}
@@ -351,7 +351,7 @@ func TestPublishKNCapabilityMutationRequiresExecuteOnANewlyMountedSkill(t *testi
 		service.db = db
 
 		_, err = service.PublishKNCapabilityMutation(ctx, "kn-1", interfaces.MAIN_BRANCH, nil, mutate)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if !errors.As(err, &httpErr) || httpErr.BaseError.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
 			t.Fatalf("mount error = %v, want ProxyPermissionMissing", err)
 		}

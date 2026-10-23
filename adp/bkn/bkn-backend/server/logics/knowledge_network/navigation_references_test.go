@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -95,7 +95,7 @@ func TestNavigation_ARelationTypeWithAHiddenEndpointDoesNotOpenTheNetwork(t *tes
 
 	_, err := f.service.GetKNByID(context.Background(), "kn1", interfaces.MAIN_BRANCH, "")
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("GetKNByID() error = %v, want 403", err)
 	}

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -383,7 +383,7 @@ func TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest(t *testin
 		_, err := client.QueryObjectInstances(ctx, req)
 		convey.So(err, convey.ShouldNotBeNil)
 
-		var he *rest.HTTPError
+		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusBadRequest)
 		// No longer classified as a dependency outage.
@@ -415,7 +415,7 @@ func TestQueryObjectInstances_DownstreamNotFoundKeepsCode(t *testing.T) {
 			Return(http.StatusNotFound, nil, wrapped)
 
 		_, err := client.QueryObjectInstances(ctx, req)
-		var he *rest.HTTPError
+		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusNotFound)
 		convey.So(strings.Contains(he.BaseError.ErrorCode, "NotFound"), convey.ShouldBeTrue)
@@ -450,7 +450,7 @@ func TestExecuteActions_PreservesConflictStatus(t *testing.T) {
 			Return(http.StatusConflict, nil, wrapped)
 
 		_, err := client.ExecuteActions(ctx, req)
-		var he *rest.HTTPError
+		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusConflict)
 		convey.So(strings.Contains(he.BaseError.ErrorCode, "Conflict"), convey.ShouldBeTrue)
@@ -479,7 +479,7 @@ func TestQueryObjectInstances_DownstreamServerErrorUntouched(t *testing.T) {
 			Return(http.StatusInternalServerError, nil, wrapped)
 
 		_, err := client.QueryObjectInstances(ctx, req)
-		var he *rest.HTTPError
+		var he *httperrors.HTTPError
 		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
 		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusInternalServerError)
 	})

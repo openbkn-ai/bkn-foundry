@@ -461,7 +461,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
 		taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").Return(true, nil)
 		catalogService.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", false).
-			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+			Return(nil, &httperrors.HTTPError{HTTPCode: http.StatusNotFound})
 		taskService.EXPECT().InternalMarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
 			Return(true, nil)
 

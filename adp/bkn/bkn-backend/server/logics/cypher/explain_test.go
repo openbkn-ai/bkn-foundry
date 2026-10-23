@@ -11,8 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func explainQuery(t *testing.T, service *cypherQueryService, query string) (*interfaces.CypherPlan, *recordingVega, error) {
@@ -86,7 +87,7 @@ func TestExplainRefusesWhatRunningRefuses(t *testing.T) {
 		_, ran := graphService(&recordingVega{}).Query(callerContext(), interfaces.CypherQuery{
 			KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: query,
 		})
-		var a, b *rest.HTTPError
+		var a, b *httperrors.HTTPError
 		if !errors.As(explained, &a) || !errors.As(ran, &b) {
 			t.Errorf("%s: explain err = %v, run err = %v", query, explained, ran)
 			continue

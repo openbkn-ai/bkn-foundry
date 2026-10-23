@@ -11,9 +11,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -64,7 +64,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 		Convey("Failed: missing account info in context uses the Chinese catalog", func() {
 			err := svc.CheckPermission(i18n.WithLanguage(context.Background(), i18n.SimplifiedChinese), resource, ops)
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "\u5e10\u6237\u4fe1\u606f\u4e0d\u53ef\u7528\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u3002")
 		})
@@ -83,7 +83,7 @@ func Test_PermissionServiceImpl_CheckPermission(t *testing.T) {
 
 			err := svc.CheckPermission(ctx, resource, ops)
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.BaseError.ErrorDetails, ShouldEqual, "You do not have permission to perform this operation.")
 		})
@@ -135,7 +135,7 @@ func Test_PermissionServiceImpl_RequireFullPropertyAccess(t *testing.T) {
 				}
 				return
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok || httpErr.HTTPCode != test.wantStatus {
 				t.Fatalf("RequireFullPropertyAccess() error = %#v, want HTTP %d", err, test.wantStatus)
 			}
@@ -274,7 +274,7 @@ func TestPermissionServiceImplResolveRowFilters(t *testing.T) {
 				}
 				return
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok || httpErr.HTTPCode != test.wantStatus {
 				t.Fatalf("ResolveRowFilters() error = %#v, want HTTP %d", err, test.wantStatus)
 			}

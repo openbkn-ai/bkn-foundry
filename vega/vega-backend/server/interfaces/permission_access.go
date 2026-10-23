@@ -11,7 +11,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 const (
@@ -88,7 +88,7 @@ var (
 // "there is nothing here" — the caller sees a table with no tasks and a
 // monitor sees a successful request.
 func IsPermissionRefusal(err error) bool {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	return errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusForbidden
 }
 

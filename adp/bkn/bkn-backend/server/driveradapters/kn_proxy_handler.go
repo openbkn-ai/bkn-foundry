@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -36,7 +37,7 @@ func (r *restHandler) GetKNProxy(c *gin.Context) {
 	ctx, _ := proxyRequestContext(c)
 	mapping, err := r.kns.GetKNProxy(ctx, c.Param("kn_id"))
 	if err != nil {
-		rest.ReplyError(c, err.(*rest.HTTPError))
+		rest.ReplyError(c, err.(*httperrors.HTTPError))
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, mapping)
@@ -72,13 +73,13 @@ func (r *restHandler) ResolveKNProxyBinding(c *gin.Context) {
 	ctx, _ := proxyRequestContext(c)
 	var binding interfaces.KNProxyBinding
 	if err := c.ShouldBindJSON(&binding); err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails("invalid proxy binding request"))
 		return
 	}
 	mapping, err := r.kns.ResolveKNProxyBinding(ctx, c.Param("kn_id"), binding)
 	if err != nil {
-		rest.ReplyError(c, err.(*rest.HTTPError))
+		rest.ReplyError(c, err.(*httperrors.HTTPError))
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, mapping)
@@ -135,7 +136,7 @@ func (r *restHandler) planKNProxySync(c *gin.Context, ctx context.Context) {
 func (r *restHandler) FinalizeKNProxyDeletion(c *gin.Context) {
 	ctx, _ := proxyRequestContext(c)
 	if err := r.kns.FinalizeKNProxyDeletion(ctx, c.Param("kn_id")); err != nil {
-		rest.ReplyError(c, err.(*rest.HTTPError))
+		rest.ReplyError(c, err.(*httperrors.HTTPError))
 		return
 	}
 	c.Status(http.StatusNoContent)

@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -32,9 +32,9 @@ func approve(aliases ...string) *interfaces.ActionType {
 	}
 }
 
-func httpError(t *testing.T, err error) *rest.HTTPError {
+func httpError(t *testing.T, err error) *httperrors.HTTPError {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.True(t, errors.As(err, &httpErr), "%v", err)
 	return httpErr
 }
@@ -120,7 +120,7 @@ func TestCheckActionTypeOverwriteKeepsDeclarations(t *testing.T) {
 		"changed aliases are not cleared")
 
 	ps.EXPECT().RequirePermissions(gomock.Any(), gomock.Any()).
-		Return(rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ActionType_InternalError))
+		Return(httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ActionType_InternalError))
 	err = ats.checkOverwriteKeepsDeclarations(ctx, []*interfaces.ActionType{approve()}, true)
 	assert.Equal(t, http.StatusForbidden, httpError(t, err).HTTPCode, "the list is shown only to who may modify")
 

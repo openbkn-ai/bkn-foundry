@@ -14,9 +14,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -120,12 +120,12 @@ func (s *objectDataStatsService) sideStats(ctx context.Context,
 		return nil, err
 	}
 	if objectType == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KNDiff_ObjectTypeNotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KNDiff_ObjectTypeNotFound).
 			WithErrorDetails(fmt.Sprintf("object type %q not found in knowledge network %q branch %q",
 				ref.OTID, ref.KNID, branch))
 	}
 	if objectType.DataSource == nil || objectType.DataSource.ID == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_DataStatsUnavailable).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_DataStatsUnavailable).
 			WithErrorDetails(fmt.Sprintf("object type %q is not bound to a data resource", ref.OTID))
 	}
 
@@ -166,10 +166,10 @@ func (s *objectDataStatsService) sideStats(ctx context.Context,
 		// The statement names physical tables and columns and the dependency's message may quote
 		// it, so only the code travels back.
 		logger.Errorf("object data stats query failed: kn_id=%s ot_id=%s err=%s", ref.KNID, ref.OTID, err.Error())
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KNDiff_DataStatsQueryFailed)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KNDiff_DataStatsQueryFailed)
 	}
 	if len(response.Entries) == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KNDiff_DataStatsQueryFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KNDiff_DataStatsQueryFailed).
 			WithErrorDetails("the aggregate returned no row")
 	}
 
@@ -210,7 +210,7 @@ func primaryKeyColumns(ctx context.Context, objectType *interfaces.ObjectType) (
 	for _, key := range objectType.PrimaryKeys {
 		column, ok := columnByProperty[key]
 		if !ok || column == "" {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_DataStatsUnavailable).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_DataStatsUnavailable).
 				WithErrorDetails(fmt.Sprintf("primary key %q has no mapped column", key))
 		}
 		columns = append(columns, column)
@@ -290,12 +290,12 @@ func (s *objectDataStatsService) statsRowFilter(ctx context.Context, knID string
 	}
 	if len(entries) != 1 || entries[0].ObjectTypeRef != ref ||
 		strings.TrimSpace(entries[0].EffectiveRowFilterDigest) == "" {
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KNDiff_DataStatsQueryFailed).WithErrorDetails("invalid row-filter decision")
 	}
 	where, err := compileStatsRowFilter(ctx, entries[0].Predicate, objectType)
 	if err != nil {
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KNDiff_DataStatsQueryFailed).WithErrorDetails("invalid row-filter predicate")
 	}
 	return where, nil
@@ -486,7 +486,7 @@ func statsRowFilterValueTypeAllowed(propertyType, valueType string) bool {
 // statement at the connector.
 func quoteIdentifier(ctx context.Context, name string) (string, error) {
 	if name == "" || strings.ContainsRune(name, 0) {
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_DataStatsUnavailable).
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_DataStatsUnavailable).
 			WithErrorDetails("a mapped column name is empty or contains a null byte")
 	}
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`", nil

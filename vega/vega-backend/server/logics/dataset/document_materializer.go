@@ -11,7 +11,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
@@ -216,5 +216,5 @@ func vectorElementNumber(value any) (float64, bool) {
 }
 
 func invalidDocumentError(ctx context.Context, details string) error {
-	return rest.NewHTTPError(ctx, 400, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(details)
+	return httperrors.NewHTTPError(ctx, 400, verrors.VegaBackend_InvalidParameter_RequestBody).WithErrorDetails(details)
 }

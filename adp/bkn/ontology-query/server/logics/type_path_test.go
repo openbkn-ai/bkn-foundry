@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -73,9 +73,9 @@ func TestResolveTypeEdgeDirection(t *testing.T) {
 				}
 				return
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error = %T %v, want *rest.HTTPError", err, err)
+				t.Fatalf("error = %T %v, want *httperrors.HTTPError", err, err)
 			}
 			if httpErr.HTTPCode != http.StatusBadRequest ||
 				httpErr.BaseError.ErrorCode != oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath {

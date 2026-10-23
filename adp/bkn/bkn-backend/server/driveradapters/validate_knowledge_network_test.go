@@ -10,8 +10,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -60,7 +60,7 @@ func Test_ValidateKN(t *testing.T) {
 			}
 			err := ValidateKN(ctx, kn)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Branch)
 		})
 	})
@@ -88,7 +88,7 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 			}
 			err := ValidateRelationTypePathsQuery(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_SourceObjectTypeId)
 		})
 
@@ -100,7 +100,7 @@ func Test_ValidateRelationTypePathsQuery(t *testing.T) {
 			}
 			err := ValidateRelationTypePathsQuery(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NullParameter_Direction)
 		})
 
@@ -155,7 +155,7 @@ func TestKnowledgeNetworkValidationDetailsRespectLanguage(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateKN() error = nil, want missing branch error")
 			}
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
 				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
 			}

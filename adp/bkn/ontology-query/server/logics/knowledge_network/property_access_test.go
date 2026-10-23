@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
@@ -56,7 +56,7 @@ func TestRelationMappingRequiresFullPropertiesOnBothSides(t *testing.T) {
 	}}
 
 	err := service.requireFullRelationInputs(context.Background(), "kn-1", objectTypes, relationTypes)
-	httpError, ok := err.(*rest.HTTPError)
+	httpError, ok := err.(*httperrors.HTTPError)
 	if !ok || httpError.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("relation property access error = %#v", err)
 	}
@@ -113,7 +113,7 @@ func TestFilteredCrossJoinWildcardRequiresEveryPropertyToBeFull(t *testing.T) {
 	}}
 
 	err := service.requireFullRelationInputs(context.Background(), "kn-1", objectTypes, relationTypes)
-	httpError, ok := err.(*rest.HTTPError)
+	httpError, ok := err.(*httperrors.HTTPError)
 	if !ok || httpError.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("filtered cross join property access error = %#v", err)
 	}

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -439,7 +439,7 @@ func TestSearchRequiresKnID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a request without kn_id to fail")
 	}
-	var he *rest.HTTPError
+	var he *httperrors.HTTPError
 	if !errors.As(err, &he) || he.HTTPCode != 400 {
 		t.Fatalf("expected a 400, got %v", err)
 	}

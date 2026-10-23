@@ -1,6 +1,6 @@
 # Shared error response bodies — single source of truth
 #
-# `Error` is the JSON representation of comm-go/rest.BaseError. Vega, BKN,
+# `Error` is the JSON representation of comm-go/httperrors.BaseError. Vega, BKN,
 # dataflow, execution-factory, and bkn-safe use this envelope. Module YAML files
 # reference it with:
 #   $ref: '../_shared/errors.yaml#/components/schemas/Error'
@@ -41,7 +41,7 @@ components:
   schemas:
     Error:
       description: |
-        Common error response serialized from `comm-go/rest.BaseError`.
+        Common error response serialized from `comm-go/httperrors.BaseError`.
       type: object
       required:
         - error_code

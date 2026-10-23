@@ -18,6 +18,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	i18nlogger "github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -92,7 +93,7 @@ func ReplyError(c *gin.Context, err error) {
 		}
 	}
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr == nil {
 		logger.DefaultLogger().Errorf("unhandled response error: %v", err)
 		err = myErr.DefaultHTTPError(c.Request.Context(), http.StatusInternalServerError, err.Error())

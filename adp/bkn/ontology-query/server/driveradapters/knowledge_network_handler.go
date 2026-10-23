@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -103,7 +104,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 	// Validate query parameters.
 	queryParams, err := validateSugraphQueryParameters(ctx, includeLogicParams, ignoreLocalIndex, excludeSystemProperties)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
@@ -117,7 +118,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -132,7 +133,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 	query := interfaces.SubGraphQueryBaseOnSource{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -144,7 +145,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 		return
 	}
 	if len(query.SearchAfter) > 0 {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("raw search_after is not accepted; use cursor"))
 		return
@@ -159,7 +160,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 
 	err = validateSubgraphSearchRequest(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -179,7 +180,7 @@ func (r *restHandler) GetObjectsSubgraph(c *gin.Context, visitor hydra.Visitor) 
 	// Execute the query.
 	result, err := r.kns.SearchSubgraph(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -236,7 +237,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	// Validate query parameters.
 	queryParams, err := validateSugraphQueryParameters(ctx, includeLogicParams, ignoreLocalIndex, excludeSystemProperties)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
@@ -250,7 +251,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -265,7 +266,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	paths := interfaces.QueryRelationTypePaths{}
 	err = c.ShouldBindJSON(&paths)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -279,7 +280,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	for _, path := range paths.TypePaths {
 		for _, objectType := range path.ObjectTypes {
 			if len(objectType.SearchAfter) > 0 {
-				rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 					WithErrorDetails("raw search_after is not accepted; use cursor"))
 				return
@@ -295,7 +296,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 
 	err = validateSubgraphQueryByPathRequest(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -315,7 +316,7 @@ func (r *restHandler) GetObjectsSubgraphByTypePath(c *gin.Context, visitor hydra
 	// Execute the query.
 	result, err := r.kns.SearchSubgraphByTypePath(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -397,7 +398,7 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	// Validate query parameters.
 	queryParams, err := validateObjectsQueryParameters(ctx, includeTypeInfo, ignoreLocalIndex, includeLogicParams, excludeSystemProperties)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
@@ -413,7 +414,7 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	query := interfaces.SubGraphQueryBaseOnObjects{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -431,7 +432,7 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 
 	err = validateSubgraphQueryByObjectsRequest(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -451,7 +452,7 @@ func (r *restHandler) GetObjectsSubgraphByObjects(c *gin.Context, visitor hydra.
 	// Execute the query.
 	result, err := r.kns.SearchSubgraphByObjects(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,

@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -232,7 +232,7 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 	t.Helper()
 	require.Error(t, err)
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
@@ -244,7 +244,7 @@ func TestRawQueryValidationError(t *testing.T) {
 			Reason: "READ_ONLY_SQL_REJECTED: invalid SQL SELECT * FROM accounts WHERE password = 'secret'",
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
@@ -486,7 +486,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 				InputDialect: "postgres",
 			})
 			assertHTTPError(t, err, http.StatusBadRequest)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.BaseError.ErrorDetails)
 		})
@@ -624,7 +624,7 @@ func TestValidateCursorResourceBinding(t *testing.T) {
 		rawSession, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 60)
 		require.NoError(t, err)
 		err = validateCursorResourceBinding(context.Background(), rawSession, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-1"})
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		require.NoError(t, validateCursorResourceBinding(context.Background(), rawSession, &interfaces.RawQueryRequest{}))
@@ -700,7 +700,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
 
 		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
 		assert.Equal(t, "query references an unknown column", httpErr.BaseError.ErrorDetails)
@@ -725,7 +725,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 
 		assert.Nil(t, result)
 		assertHTTPError(t, err, http.StatusForbidden)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
 		assert.Empty(t, httpErr.BaseError.ErrorDetails)
@@ -765,7 +765,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
 
 		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
 		assert.Equal(t, "query references an unknown column", httpErr.BaseError.ErrorDetails)
@@ -790,7 +790,7 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 
 		assert.Nil(t, result)
 		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
 		assert.Equal(t, "invalid source query parameter", httpErr.BaseError.ErrorDetails)
@@ -1037,7 +1037,7 @@ func TestRawQueryServicePrepareOpenSearchCursorQuery(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{rs: mockRS}
-		permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+		permissionErr := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 
 		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).
 			Return(permissionErr)
@@ -1589,7 +1589,7 @@ func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 				catalog, warnings, err := svc.checkSameDataSource(ctx, []string{"r1", "r2"})
 
 				assertHTTPError(t, err, http.StatusNotImplemented)
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, verrors.VegaBackend_Query_MultiCatalogNotSupported, httpErr.BaseError.ErrorCode)
 				assert.Equal(t, test.detail, httpErr.BaseError.ErrorDetails)
@@ -1608,7 +1608,7 @@ func TestEnsureCatalogEnabled(t *testing.T) {
 		err := ensureCatalogEnabled(context.Background(), &interfaces.Catalog{Enabled: false})
 
 		assertHTTPError(t, err, http.StatusConflict)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
 	})
@@ -1618,7 +1618,7 @@ func assertHTTPError(t *testing.T, err error, status int) {
 	t.Helper()
 	require.Error(t, err)
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, status, httpErr.HTTPCode)
 }
@@ -1634,7 +1634,7 @@ func TestCursorSessionCreateError(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := cursorSessionCreateError(context.Background(), testCase.err)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusTooManyRequests, httpErr.HTTPCode)
 			assert.Equal(t, verrors.VegaBackend_Query_CursorSessionLimitExceeded, httpErr.BaseError.ErrorCode)

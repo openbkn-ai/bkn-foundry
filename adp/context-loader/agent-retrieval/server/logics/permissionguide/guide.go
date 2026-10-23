@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
@@ -108,7 +108,7 @@ func (g *Guide) ForObjectTypeError(ctx context.Context, err error, knID, otID st
 // a resource other than the object type (a logic property's metric or tool).
 // It answers only when ontology-query's refusal names this object type.
 func (g *Guide) ForObjectTypeDenial(ctx context.Context, err error, knID, otID string) *interfaces.PermissionGuidance {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) ||
 		!strings.Contains(fmt.Sprint(httpErr.BaseError.ErrorDetails), "object_type:"+knID+"/"+otID) {
 		return nil

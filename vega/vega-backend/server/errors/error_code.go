@@ -8,7 +8,7 @@
 package errors
 
 import (
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 )
@@ -110,17 +110,17 @@ var (
 func init() {
 	locale.Register()
 
-	rest.Register(commonErrCodeList)
-	rest.Register(CatalogErrCodeList)
-	rest.Register(CatalogHealthCheckScheduleErrCodeList)
-	rest.Register(ResourceErrCodeList)
-	rest.Register(ConnectorTypeErrCodeList)
-	rest.Register(BuildTaskErrCodeList)
-	rest.Register(DiscoverTaskErrCodeList)
-	rest.Register(QueryErrCodeList)
-	rest.Register(LogicalViewErrCodeList)
-	rest.Register(DatasetErrCodeList)
-	rest.Register(DiscoverScheduleErrCodeList)
-	rest.Register(SemanticUnderstandingTaskErrCodeList)
-	rest.Register(IndexCapabilityErrCodeList)
+	httperrors.Register(commonErrCodeList)
+	httperrors.Register(CatalogErrCodeList)
+	httperrors.Register(CatalogHealthCheckScheduleErrCodeList)
+	httperrors.Register(ResourceErrCodeList)
+	httperrors.Register(ConnectorTypeErrCodeList)
+	httperrors.Register(BuildTaskErrCodeList)
+	httperrors.Register(DiscoverTaskErrCodeList)
+	httperrors.Register(QueryErrCodeList)
+	httperrors.Register(LogicalViewErrCodeList)
+	httperrors.Register(DatasetErrCodeList)
+	httperrors.Register(DiscoverScheduleErrCodeList)
+	httperrors.Register(SemanticUnderstandingTaskErrCodeList)
+	httperrors.Register(IndexCapabilityErrCodeList)
 }

@@ -22,9 +22,9 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/dlclark/regexp2"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
@@ -601,7 +601,7 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Objec
 	var dslMap map[string]any
 	err := common.UnmarshalPreciseJSON([]byte(queryStr), &dslMap)
 	if err != nil {
-		return map[string]any{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return map[string]any{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 			WithErrorDetails(fmt.Sprintf("failed to unMarshal dslStr to map, %s", err.Error()))
 	}

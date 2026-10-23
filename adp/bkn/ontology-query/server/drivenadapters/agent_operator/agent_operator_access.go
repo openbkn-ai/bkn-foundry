@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -221,8 +222,8 @@ func (aoa *agentOperatorAccess) executeTool(ctx context.Context, boxID string,
 			logger.Errorf("unmarshal ToolError failed: %v", err)
 			return toolResult, err
 		}
-		httpErr := &rest.HTTPError{HTTPCode: respCode,
-			BaseError: rest.BaseError{
+		httpErr := &httperrors.HTTPError{HTTPCode: respCode,
+			BaseError: httperrors.BaseError{
 				ErrorCode:    opError.Code,
 				Description:  opError.Description,
 				ErrorDetails: opError.Detail,
@@ -297,8 +298,8 @@ func (aoa *agentOperatorAccess) executeMCP(ctx context.Context, mcpID string,
 			logger.Errorf("unmarshal integration error failed: %v\n", err)
 			return mcpResult, err
 		}
-		httpErr := &rest.HTTPError{HTTPCode: respCode,
-			BaseError: rest.BaseError{
+		httpErr := &httperrors.HTTPError{HTTPCode: respCode,
+			BaseError: httperrors.BaseError{
 				ErrorCode:    opError.Code,
 				Description:  opError.Description,
 				ErrorDetails: opError.Detail,

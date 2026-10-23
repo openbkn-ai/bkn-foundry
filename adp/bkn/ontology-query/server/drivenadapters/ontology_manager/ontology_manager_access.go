@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -103,7 +104,7 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 
 	if respCode != http.StatusOK {
 
-		var baseError rest.BaseError
+		var baseError httperrors.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 
 			// Add trace attributes for the exception.
@@ -189,7 +190,7 @@ func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Co
 		return nil, fmt.Errorf("get object metric execution context: %w", err)
 	}
 	if respCode != http.StatusOK {
-		var baseError rest.BaseError
+		var baseError httperrors.BaseError
 		if err := sonic.Unmarshal(result, &baseError); err != nil {
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal BaseError failed")
 			return nil, err
@@ -255,7 +256,7 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 
 	if respCode != http.StatusOK {
 
-		var baseError rest.BaseError
+		var baseError httperrors.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 
 			// Add trace attributes for the exception.
@@ -424,7 +425,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 
 	if respCode != http.StatusOK {
 
-		var baseError rest.BaseError
+		var baseError httperrors.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 
 			// Add trace attributes for the exception.
@@ -538,7 +539,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 
 	if respCode != http.StatusOK {
 
-		var baseError rest.BaseError
+		var baseError httperrors.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaseError failed")
 			otellog.LogError(ctx, fmt.Sprintf("Unmalshal BaseError failed: %v", err), err)
@@ -637,7 +638,7 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 
 	if respCode != http.StatusOK {
 
-		var baseError rest.BaseError
+		var baseError httperrors.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 
 			// Add trace attributes for the exception.
@@ -744,7 +745,7 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 
 	if respCode != http.StatusOK {
 		logger.Errorf("GetRiskTypesByIDs failed: %v", result)
-		var baseError rest.BaseError
+		var baseError httperrors.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 			return nil, fmt.Errorf("decode risk types error response: %w", err)
 		}
@@ -766,12 +767,12 @@ func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID st
 
 // newOntologyManagerError keeps dependency details under a locally owned error.
 // Authentication and permission refusals must not use an internal-failure message.
-func newOntologyManagerError(ctx context.Context, status int, code string, source rest.BaseError) *rest.HTTPError {
+func newOntologyManagerError(ctx context.Context, status int, code string, source httperrors.BaseError) *httperrors.HTTPError {
 	switch status {
 	case http.StatusUnauthorized:
-		code = rest.PublicError_Unauthorized
+		code = httperrors.PublicError_Unauthorized
 	case http.StatusForbidden:
-		code = rest.PublicError_Forbidden
+		code = httperrors.PublicError_Forbidden
 	}
-	return rest.NewHTTPError(ctx, status, code).WithErrorDetails(source)
+	return httperrors.NewHTTPError(ctx, status, code).WithErrorDetails(source)
 }

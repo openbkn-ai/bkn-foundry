@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -90,7 +91,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo, interfaces.DEFAULT_IGNORE_LOCAL_INDEX,
 		interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS, excludeSystemProperties)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		// Log the exception.
@@ -104,7 +105,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -119,7 +120,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	query := interfaces.ActionQuery{}
 	err = c.ShouldBindJSON(&query)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Paramter Failed:%s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -137,7 +138,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 
 	err = validateActionQuery(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,
@@ -157,7 +158,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	// Execute the query.
 	result, err := r.ats.GetActionsByActionTypeID(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.ErrorCode,

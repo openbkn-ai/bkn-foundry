@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -48,7 +48,7 @@ func (kns *knowledgeNetworkService) requireFullPathInputs(ctx context.Context, k
 			return err
 		}
 		if !found {
-			return rest.NewHTTPError(ctx, http.StatusNotFound,
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound,
 				oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 		}
 		objectTypes[objectTypeID] = &resolved
@@ -108,13 +108,13 @@ func (kns *knowledgeNetworkService) resolvePathObjectType(ctx context.Context, k
 		}, true, nil
 	}
 	if kns.omAccess == nil {
-		return interfaces.ObjectType{}, false, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return interfaces.ObjectType{}, false, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).
 			WithErrorDetails("object type schema resolver is not configured")
 	}
 	objectType, exists, err := kns.omAccess.GetObjectType(ctx, knID, branch, pathObjectType.OTID)
 	if err != nil {
-		return interfaces.ObjectType{}, false, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return interfaces.ObjectType{}, false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).
 			WithErrorDetails("failed to load object type schema for relation access")
 	}
@@ -156,7 +156,7 @@ func (kns *knowledgeNetworkService) requireFullRelationProperties(ctx context.Co
 			names = append(names, name)
 		}
 		if !plan.AllFull(propertyaccess.ObjectTypeRef(knID, objectTypeID), names) {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails("the relation depends on a property unavailable for this operation")
 		}

@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
@@ -106,7 +106,7 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 		return actionPermissionUnavailable(ctx, err)
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound)
 	}
 	if missing := logics.MissingActionInputDynamicParamNames(&actionType, req.DynamicParams); len(missing) > 0 {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.ActionDynamicParamsMissing", map[string]any{
@@ -115,7 +115,7 @@ func (s *actionSchedulerService) CheckActionExecution(ctx context.Context, req *
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).WithErrorDetails(localizedText)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).WithErrorDetails(localizedText)
 	}
 	_, err = s.authorizeActionType(ctx, req.KNID, &actionType)
 	if err != nil {
@@ -148,11 +148,11 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	actionType, actionTypeSnapshot, exists, err := s.omAccess.GetActionType(ctx, req.KNID, req.Branch, req.ActionTypeID)
 	if err != nil {
 		logger.Errorf("Failed to get action type: %v", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
 			WithErrorDetails(err.Error())
 	}
 	if !exists {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound).
 			WithErrorDetails(fmt.Sprintf("Action type not found: %s", req.ActionTypeID))
 	}
 
@@ -163,7 +163,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).WithErrorDetails(localizedText)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).WithErrorDetails(localizedText)
 	}
 
 	// Resolve the authenticated execution subject before any instance scan or
@@ -194,7 +194,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	// If no matching instances found after scanning, return appropriate response
 	if len(req.Instances) == 0 {
 		logger.Infof("No matching instances found for action type %s", req.ActionTypeID)
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails("No matching instances found for the action type condition")
 	}
 
@@ -204,7 +204,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	// Check execution objects limit
 	if len(req.Instances) > maxExecutionObjects {
 		logger.Warnf("Execution objects count %d exceeds limit %d", len(req.Instances), maxExecutionObjects)
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Number of objects (%d) exceeds the maximum limit (%d). Please reduce the scope or adjust the ACTION_EXECUTION_MAX_OBJECTS environment variable.",
 				len(req.Instances), maxExecutionObjects))
 	}
@@ -212,7 +212,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	instanceHash, err := computeDuplicateFingerprint(req.Instances, req.DynamicParams)
 	if err != nil {
 		logger.Errorf("Failed to compute duplicate fingerprint: %v", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
 			WithErrorDetails(fmt.Sprintf("failed to compute duplicate fingerprint: %v", err))
 	}
 	req.InstanceIdentityHash = instanceHash
@@ -221,14 +221,14 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	if s.duplicateCheckHook != nil {
 		proceed, dupErr := s.duplicateCheckHook(ctx, req)
 		if dupErr != nil {
-			if httpErr, ok := dupErr.(*rest.HTTPError); ok {
+			if httpErr, ok := dupErr.(*httperrors.HTTPError); ok {
 				return nil, httpErr
 			}
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_QueryExecutionsFailed).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_QueryExecutionsFailed).
 				WithErrorDetails(dupErr.Error())
 		}
 		if !proceed {
-			return nil, rest.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_DuplicateExecution).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, oerrors.OntologyQuery_ActionExecution_DuplicateExecution).
 				WithErrorDetails(fmt.Sprintf(
 					"Duplicate execution detected for action_type_id=%s within %ds window",
 					req.ActionTypeID, duplicateWindowSeconds,
@@ -249,7 +249,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	// Generate execution ID
 	generatedExecutionID, err := uuid.NewV7()
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
 			WithErrorDetails(fmt.Sprintf("failed to generate execution UUIDv7: %v", err))
 	}
 	executionID := generatedExecutionID.String()
@@ -297,7 +297,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	// Save initial execution record (metadata only)
 	if err := s.logsService.CreateExecution(ctx, execution); err != nil {
 		logger.Errorf("Failed to create execution record: %v", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CreateExecutionFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -332,7 +332,7 @@ func (s *actionSchedulerService) GetExecution(ctx context.Context, knID, executi
 	}
 	exec, err := s.logsService.GetExecution(ctx, query)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ExecutionNotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ExecutionNotFound).
 			WithErrorDetails(err.Error())
 	}
 
@@ -829,11 +829,11 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 				objectType, exists, err := s.omAccess.GetObjectType(ctx, knID, branch, actionType.ObjectTypeID)
 				if err != nil {
 					logger.Errorf("Failed to get object type: %v", err)
-					return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
+					return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_GetActionTypeFailed).
 						WithErrorDetails(fmt.Sprintf("Failed to get object type: %v", err))
 				}
 				if !exists {
-					return nil, nil, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound).
+					return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ActionTypeNotFound).
 						WithErrorDetails(fmt.Sprintf("Object type not found: %s", actionType.ObjectTypeID))
 				}
 

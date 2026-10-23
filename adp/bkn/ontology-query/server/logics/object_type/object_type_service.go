@@ -19,11 +19,11 @@ import (
 
 	"github.com/PaesslerAG/jsonpath"
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/tidwall/sjson"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -78,20 +78,20 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 	knID, branch, objectTypeID string) (*interfaces.ResourceSchemaResponse, error) {
 	if branch != interfaces.MAIN_BRANCH {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails("only the published main branch can be queried")
 	}
 	objectType, exists, err := ots.omAccess.GetObjectType(ctx, knID, branch, objectTypeID)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 	}
 	if !exists {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 	}
 	if objectType.KNID != "" && objectType.KNID != knID {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("object type belongs to another knowledge network")
 	}
 	objectType.KNID = knID
@@ -102,11 +102,11 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 	if objectType.DataSource == nil || strings.TrimSpace(objectType.DataSource.ID) == "" ||
 		(strings.TrimSpace(objectType.DataSource.Type) != "" &&
 			objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE) {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("object type has no published resource data source")
 	}
 	if ots.proxy == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
@@ -124,9 +124,9 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 	response, err := ots.vba.GetResourceSchema(interfaces.WithTrustedProxyContext(ctx, proxyContext), objectType.DataSource.ID)
 	if err != nil {
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
-			return nil, rest.NewHTTPError(ctx, downstream.StatusCode, proxyDownstreamErrorCode(downstream.StatusCode))
+			return nil, httperrors.NewHTTPError(ctx, downstream.StatusCode, proxyDownstreamErrorCode(downstream.StatusCode))
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed)
 	}
 	plan.filterResourceSchema(response)
@@ -136,7 +136,7 @@ func (ots *objectTypeService) GetObjectTypeSchema(ctx context.Context,
 func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	query *interfaces.ObjectQueryBaseOnObjectType) (*interfaces.ObjectTypeSampleData, error) {
 	if query == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter)
 	}
 	if query.Limit <= 0 {
 		query.Limit = 20
@@ -159,7 +159,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		return nil, err
 	}
 	if objects.ObjectType == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed)
 	}
 	result := &interfaces.ObjectTypeSampleData{
@@ -208,7 +208,7 @@ func (ots *objectTypeService) AggregateObjectsByObjectTypeID(ctx context.Context
 	query *interfaces.ObjectQueryBaseOnObjectType, measureProperty, operation string,
 	groupBy []string) (interfaces.Objects, error) {
 	if query == nil || measureProperty == "" || operation != "count" || len(groupBy) > 1 {
-		return interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails("unsupported object aggregate")
 	}
 	queryCopy := *query
@@ -234,7 +234,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 
 	var resps interfaces.Objects
 	if query == nil || query.Branch != interfaces.MAIN_BRANCH {
-		return resps, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails("only the published main branch can be queried")
 	}
@@ -244,14 +244,14 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		span.SetAttributes(attribute.Key("model_id").String(query.ObjectTypeID))
 		otellog.LogError(ctx, fmt.Sprintf("Get Object Type error: %v", err), err)
 
-		return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return resps, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 	}
 	if !exists {
 		logger.Debugf("Object Type %d not found!", query.ObjectTypeID)
 
 		span.SetAttributes(attribute.Key("model_id").String(query.ObjectTypeID))
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 		otellog.LogError(ctx, fmt.Sprintf("Object Type [%s] not found!", query.ObjectTypeID), httpErr)
 
 		return resps, httpErr
@@ -261,7 +261,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		for _, instanceIdentity := range query.ObjectQueryInfo.InstanceIdentity {
 			for _, key := range objectType.PrimaryKeys {
 				if _, exists := instanceIdentity[key]; !exists {
-					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 						oerrors.OntologyQuery_ObjectType_InvalidParameter).
 						WithErrorDetails("one or more instance identities are invalid")
 				}
@@ -287,7 +287,7 @@ func (ots *objectTypeService) getObjectsByObjectTypeID(ctx context.Context,
 		return resps, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, dataSourceType)
 	}
 	if ots.proxy == nil {
-		return resps, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return resps, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
@@ -478,7 +478,7 @@ func (*objectTypeService) addLogicProperties(ctx context.Context, object map[str
 					value := object[param.Value.(string)]
 					paramsJson, err = sjson.Set(paramsJson, param.Name, value)
 					if err != nil {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+						return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 							WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s parameter path %s: %v",
 								logicProp.Name, param.Name, err.Error()))
 					}
@@ -486,14 +486,14 @@ func (*objectTypeService) addLogicProperties(ctx context.Context, object map[str
 				case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
 					paramsJson, err = sjson.Set(paramsJson, param.Name, param.Value)
 					if err != nil {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+						return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 							WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s parameter path %s: %v",
 								logicProp.Name, param.Name, err.Error()))
 					}
 				case interfaces.LOGIC_PARAMS_VALUE_FROM_INPUT:
 					dynamicParamsJson, err = sjson.Set(dynamicParamsJson, param.Name, param)
 					if err != nil {
-						return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+						return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 							WithErrorDetails(fmt.Sprintf("Error setting logic property[%s]'s dynamic parameter path %s: %v",
 								logicProp.Name, param.Name, err.Error()))
 					}
@@ -502,7 +502,7 @@ func (*objectTypeService) addLogicProperties(ctx context.Context, object map[str
 			params := map[string]any{}
 			err = sonic.Unmarshal([]byte(paramsJson), &params)
 			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s paramtersJson to map, %s",
 						logicProp.Name, err.Error()))
 			}
@@ -510,7 +510,7 @@ func (*objectTypeService) addLogicProperties(ctx context.Context, object map[str
 			dynamicParams := map[string]any{}
 			err = sonic.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
 			if err != nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s dynamicParamsJson to map, %s",
 						logicProp.Name, err.Error()))
 			}
@@ -540,18 +540,18 @@ func downstreamErrorCode(statusCode int) string {
 	case http.StatusBadRequest:
 		return oerrors.OntologyQuery_ObjectType_InvalidParameter
 	case http.StatusUnauthorized:
-		return rest.PublicError_Unauthorized
+		return httperrors.PublicError_Unauthorized
 	case http.StatusForbidden:
-		return rest.PublicError_Forbidden
+		return httperrors.PublicError_Forbidden
 	case http.StatusNotFound:
-		return rest.PublicError_NotFound
+		return httperrors.PublicError_NotFound
 	case http.StatusConflict:
-		return rest.PublicError_Conflict
+		return httperrors.PublicError_Conflict
 	case http.StatusTooManyRequests:
 		return oerrors.OntologyQuery_ObjectType_TooManyRequests
 	default:
 		// Other 4xx statuses (405/413/422, etc.) do not have semantically corresponding public error codes. Do not fall back here to
-		// rest.PublicError_BadRequest: its en-US message is "Internal Server Error",
+		// httperrors.PublicError_BadRequest: its en-US message is "Internal Server Error",
 		// English callers would read "Internal Server Error" for a 413, which is exactly the misleading behavior this change avoids.
 		// Fall back to this service's parameter error code: messages in both languages are correct and behavior stays consistent with before. The real
 		// semantics are carried by the faithfully passed-through status code and the reason returned by downstream.
@@ -570,7 +570,7 @@ func proxyDownstreamErrorCode(statusCode int) string {
 }
 
 // resourceQueryClientError reports keyword-limit fields in the object's property namespace.
-func resourceQueryClientError(ctx context.Context, downstream *interfaces.VegaDownstreamError, properties []cond.DataProperty) *rest.HTTPError {
+func resourceQueryClientError(ctx context.Context, downstream *interfaces.VegaDownstreamError, properties []cond.DataProperty) *httperrors.HTTPError {
 	mapped := *downstream
 	metadata := downstream.ClientMetadata()
 	if metadata != nil {
@@ -589,7 +589,7 @@ func resourceQueryClientError(ctx context.Context, downstream *interfaces.VegaDo
 		}
 		mapped.Metadata = metadata
 	}
-	return rest.NewHTTPError(ctx, downstream.StatusCode, proxyDownstreamErrorCode(downstream.StatusCode)).
+	return httperrors.NewHTTPError(ctx, downstream.StatusCode, proxyDownstreamErrorCode(downstream.StatusCode)).
 		WithErrorDetails(mapped.ClientMessage()).WithMetadata(metadata)
 }
 
@@ -599,7 +599,7 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 
 	resourceSort, err := logics.MapSortFieldsForDataView(ctx, query.Sort, objectType)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
 	// A legacy object type may expose a schema-only primary key without a
@@ -624,14 +624,14 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 				return ots.handlerVector(ctx, property, word)
 			}))
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				oerrors.OntologyQuery_InvalidParameter_Condition).
 				WithErrorDetails(fmt.Sprintf("failed to rewrite ontology condition for resource, %s", err.Error()))
 		}
 		viewQuery.Filters = rewriteCondition
 	}
 	if objectType.DataSource == nil || objectType.DataSource.ID == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("object type [%s] has empty data source", objectType.OTID))
 	}
@@ -685,12 +685,12 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return resourceQueryClientError(ctx, downstream, objectType.DataProperties)
 		}
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).
 			WithErrorDetails("object resource query failed")
 	}
 	if resp == nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetViewDataByIDFailed).WithErrorDetails("vega resource query returned nil")
 	}
 	if aggregate != nil {
@@ -1030,7 +1030,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 		for err := range errChan {
 			errors = append(errors, err.Error())
 		}
-		return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return resps, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_ProcessLogicPropertiesFailed).
 			WithErrorDetails(strings.Join(errors, "; "))
 	}
@@ -1093,7 +1093,7 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
 			WithErrorDetails(localizedText)
 	}
@@ -1104,7 +1104,7 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
 			WithErrorDetails(localizedText)
 	}
@@ -1122,7 +1122,7 @@ func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 				if renderErr != nil {
 					logger.Errorf("localized message rendering failed: %v", renderErr)
 				}
-				return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
 					WithErrorDetails(localizedText)
 			}
@@ -1160,7 +1160,7 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter_DynamicParams).
 			WithErrorDetails(localizedText)
 	}
@@ -1174,7 +1174,7 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 		Timeout: 300,
 	}
 	if ots.proxy == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_InternalError_CheckPermissionFailed).
 			WithErrorDetails("knowledge network proxy resolver is not configured")
 	}
@@ -1198,7 +1198,7 @@ func (ots *objectTypeService) handleToolProperty(ctx context.Context,
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).WithErrorDetails(localizedText)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ObjectType_InternalError_ExecuteToolFailed).WithErrorDetails(localizedText)
 	}
 
 	if logicProp.DataSource.ResultPath != "" {

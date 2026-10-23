@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
@@ -115,7 +115,7 @@ func TestVegaCursorSessionLimitIsReportedAsTooManyRequests(t *testing.T) {
 	next := resourcePagingQuery(1)
 	next.Cursor = first.Cursor
 	_, err = service.GetObjectsByObjectTypeID(ctx, next)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusTooManyRequests ||
 		httpErr.BaseError.ErrorCode != oerrors.OntologyQuery_ObjectType_TooManyRequests ||
 		httpErr.BaseError.ErrorDetails != "cursor session limit reached, please retry later" {
@@ -297,7 +297,7 @@ func TestObjectAggregateRejectsMaskedMeasureBeforeVega(t *testing.T) {
 		"secret": interfaces.PropertyAccessNone,
 	}}
 	_, err := service.AggregateObjectsByObjectTypeID(resourcePagingContext(), resourcePagingQuery(100), "id", "count", nil)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusBadRequest || len(vega.paramsHistory) != 0 {
 		t.Fatalf("masked aggregate error = %v, Vega requests = %d", err, len(vega.paramsHistory))
 	}

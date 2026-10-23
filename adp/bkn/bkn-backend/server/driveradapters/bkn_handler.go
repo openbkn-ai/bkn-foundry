@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -74,7 +75,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -91,7 +92,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails(localizedText)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
@@ -107,7 +108,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		httpErr = httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -126,17 +127,17 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(localizedText)
 		if strings.Contains(err.Error(), "legacy metrics") {
-			httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails("legacy metrics/*.bkn is unsupported; migrate metrics to object metrics V1 before import")
 		}
 		// A package refused by its declared bkn_spec says which definition to fix; the generic
 		// load failure would leave the author only the server log to find out.
 		var specErr *bknsdk.SpecError
 		if errors.As(err, &specErr) {
-			httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails(err.Error())
 		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -144,7 +145,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		return
 	}
 	if detail := unstoredDeclaration(bknNetwork); detail != "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(detail)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -186,7 +187,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	for _, rawMetric := range bknNetwork.ObjectMetrics {
 		var metric interfaces.ObjectMetricRecordV1
 		if err := json.Unmarshal(rawMetric, &metric); err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails(err.Error())
 			rest.ReplyError(c, httpErr)
 			return
@@ -197,7 +198,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	// Validate required knowledge network creation fields, lengths, and enum values.
 	err = ValidateKN(ctx, kn)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate knowledge network[%s] failed: %s. %v", kn.KNName,
@@ -214,7 +215,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	if len(kn.ObjectTypes) > 0 {
 		err = ValidateObjectTypes(ctx, kn.KNID, kn.ObjectTypes, strictMode)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -223,7 +224,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	if len(kn.RelationTypes) > 0 {
 		err = ValidateRelationTypes(ctx, kn.KNID, kn.RelationTypes, strictMode)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -232,7 +233,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	if len(kn.ActionTypes) > 0 {
 		err = ValidateActionTypes(ctx, kn.KNID, kn.ActionTypes, strictMode)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -242,7 +243,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		for _, conceptGroup := range kn.ConceptGroups {
 			err = ValidateConceptGroup(ctx, conceptGroup)
 			if err != nil {
-				httpErr := err.(*rest.HTTPError)
+				httpErr := err.(*httperrors.HTTPError)
 				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 				rest.ReplyError(c, httpErr)
 				return
@@ -252,7 +253,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	if len(kn.RiskTypes) > 0 {
 		err = ValidateRiskTypes(ctx, kn.KNID, kn.RiskTypes)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -268,7 +269,7 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	// Create the knowledge network.
 	knID, err := r.kns.CreateKN(ctx, kn, mode, persistenceStrictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -426,7 +427,7 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -439,7 +440,7 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 	switch spec {
 	case interfaces.BKN_EXPORT_SPEC_AUTO, interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3:
 	default:
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_BknSpec).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter_BknSpec).
 			WithErrorDetails(fmt.Sprintf("bkn_spec must be %s or %s, or left out, got %q",
 				interfaces.BKN_EXPORT_SPEC_2, interfaces.BKN_EXPORT_SPEC_3, spec))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -456,13 +457,13 @@ func (r *restHandler) DownloadBKN(c *gin.Context) {
 		// An error the service already classified travels as it is. Flattening every failure into
 		// "internal error" hides the one the caller can act on: an export refused because the
 		// execution factory is unreachable is worth retrying, and a generic 500 does not say so.
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if !errors.As(err, &httpErr) {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.InternalRequestFailed", nil)
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
 				WithErrorDetails(localizedText)
 		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -502,7 +503,7 @@ func (r *restHandler) CheckBKN(c *gin.Context) {
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -512,13 +513,13 @@ func (r *restHandler) CheckBKN(c *gin.Context) {
 
 	result, err := r.bs.CheckNetwork(ctx, knID, branch)
 	if err != nil {
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if !errors.As(err, &httpErr) {
 			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.InternalRequestFailed", nil)
 			if renderErr != nil {
 				logger.Errorf("localized message rendering failed: %v", renderErr)
 			}
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError).
 				WithErrorDetails(localizedText)
 		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

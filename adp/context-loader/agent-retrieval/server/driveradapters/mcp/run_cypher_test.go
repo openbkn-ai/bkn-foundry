@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -35,7 +35,7 @@ func (r returningCypher) RunCypher(context.Context, *kncypher.RunCypherReq) (*in
 // the compiler's code and details nested in the local error, so the agent can tell a property it may
 // not read, or a resource grant it lacks, from a query it wrote wrong.
 func TestRunCypherToolCarriesForbiddenCode(t *testing.T) {
-	handler := handleRunCypher(refusingCypher{err: infraErr.NewHTTPError(context.Background(), http.StatusForbidden, infraErr.ErrExtCommonExternalServerError, rest.BaseError{ErrorCode: "BknBackend.Cypher.PropertyForbidden",
+	handler := handleRunCypher(refusingCypher{err: infraErr.NewHTTPError(context.Background(), http.StatusForbidden, infraErr.ErrExtCommonExternalServerError, httperrors.BaseError{ErrorCode: "BknBackend.Cypher.PropertyForbidden",
 		Description: "refused", ErrorDetails: "ot_user.phone"})}, nil)
 
 	result, err := handler(context.Background(), newCallToolRequest(map[string]any{
@@ -55,7 +55,7 @@ func TestRunCypherToolCarriesForbiddenCode(t *testing.T) {
 }
 
 func TestRunCypherToolBuildsPropertyRequestLinksForEveryObjectType(t *testing.T) {
-	handler := handleRunCypher(refusingCypher{err: infraErr.NewHTTPError(context.Background(), http.StatusForbidden, infraErr.ErrExtCommonExternalServerError, rest.BaseError{ErrorCode: "BknBackend.Cypher.PropertyForbidden",
+	handler := handleRunCypher(refusingCypher{err: infraErr.NewHTTPError(context.Background(), http.StatusForbidden, infraErr.ErrExtCommonExternalServerError, httperrors.BaseError{ErrorCode: "BknBackend.Cypher.PropertyForbidden",
 		Description: "refused", ErrorDetails: "ot_order.amount, ot_customer.name",
 		Metadata: map[string]any{"permission_impacts": []any{
 			map[string]any{"object_type_id": "ot_order", "properties": []any{"amount"}},

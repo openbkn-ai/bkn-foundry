@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestSharedHTTPErrorEnvelope(t *testing.T) {
@@ -72,7 +72,7 @@ func TestPublicStatusMessagesRender(t *testing.T) {
 func TestDependencyResponseBodyIsPrivate(t *testing.T) {
 	public := DefaultHTTPError(context.Background(), http.StatusBadGateway, "dependency request failed")
 	dependency := &DependencyError{Err: public, Body: []byte("internal-body-sentinel")}
-	var extracted *rest.HTTPError
+	var extracted *httperrors.HTTPError
 	if !errors.As(fmt.Errorf("read failed: %w", dependency), &extracted) || extracted != public {
 		t.Fatal("shared error not unwrapped")
 	}

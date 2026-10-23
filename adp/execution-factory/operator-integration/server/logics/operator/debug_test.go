@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -63,7 +63,7 @@ func TestDebugOperator(t *testing.T) {
 				Return(false, nil, errors.New("mock SelectByOperatorID error")).Times(1)
 			_, err := operator.DebugOperator(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			So(httpErr.BaseError.ErrorCode, ShouldEqual, "Public.InternalServerError")
@@ -73,7 +73,7 @@ func TestDebugOperator(t *testing.T) {
 				Return(false, nil, nil).Times(1)
 			_, err := operator.DebugOperator(context.TODO(), req)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 			So(httpErr.BaseError.ErrorCode, ShouldContainSubstring, myErr.ErrExtOperatorNotFound.String())

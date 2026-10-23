@@ -8,9 +8,9 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -36,7 +36,7 @@ func ResolveTypeEdgeDirection(ctx context.Context, index int, edge interfaces.Ty
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
 	}
 
 	params := map[string]any{
@@ -63,7 +63,7 @@ func ResolveTypeEdgeDirection(ctx context.Context, index int, edge interfaces.Ty
 	if renderErr != nil {
 		logger.Errorf("localized message rendering failed: %v", renderErr)
 	}
-	return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+	return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 		oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
 		WithErrorDetails(localizedText)
 }
