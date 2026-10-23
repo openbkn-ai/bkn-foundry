@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -88,7 +88,7 @@ func TestDiscoverTaskWorkerCancelsTaskWhenCatalogWasDeleted(t *testing.T) {
 	}, nil)
 	dts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").Return(true, nil)
 	cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
-		Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+		Return(nil, &httperrors.HTTPError{HTTPCode: http.StatusNotFound})
 	dts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted").Return(true, nil)
 
 	require.NoError(t, worker.Run(context.Background(), "task-1"))

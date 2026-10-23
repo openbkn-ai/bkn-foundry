@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -41,27 +42,27 @@ func (r *restHandler) GetRowFilterCapabilities(c *gin.Context) {
 	operatorID := strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_ID))
 	operatorType := strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_ACCOUNT_TYPE))
 	if operatorID == "" || operatorType != "user" {
-		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusForbidden, rest.PublicError_Forbidden))
+		rest.ReplyError(c, httperrors.NewHTTPError(c, http.StatusForbidden, httperrors.PublicError_Forbidden))
 		return
 	}
 	var request rowFilterCapabilityRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter))
+		rest.ReplyError(c, httperrors.NewHTTPError(c, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter))
 		return
 	}
 	parts := strings.Split(strings.TrimSpace(request.ObjectTypeRef), "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter))
+		rest.ReplyError(c, httperrors.NewHTTPError(c, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter))
 		return
 	}
 	if r.oma == nil {
-		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusServiceUnavailable, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
+		rest.ReplyError(c, httperrors.NewHTTPError(c, http.StatusServiceUnavailable, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 		return
 	}
 	ctx := context.WithValue(c, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: operatorID, Type: operatorType})
 	objectType, exists, err := r.oma.GetObjectType(ctx, parts[0], interfaces.MAIN_BRANCH, parts[1])
 	if err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(c, http.StatusServiceUnavailable, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
+		rest.ReplyError(c, httperrors.NewHTTPError(c, http.StatusServiceUnavailable, oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed))
 		return
 	}
 	if !exists || (objectType.KNID != "" && objectType.KNID != parts[0]) {

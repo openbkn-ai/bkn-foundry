@@ -55,6 +55,7 @@ func newResourceSearchService(t *testing.T, visible []string, entries []map[stri
 	vbs := bmock.NewMockVegaBackendService(ctrl)
 	ps := bmock.NewMockPermissionService(ctrl)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return(visible, nil).AnyTimes()
 	ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(allowAllPermissionResources).AnyTimes()

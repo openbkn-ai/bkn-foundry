@@ -10,10 +10,27 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/require"
 )
 
-func TestLocaleCatalogs(t *testing.T) {
-	require.NoError(t, i18n.ValidateLocaleDir(".", rest.SimplifiedChinese, rest.SimplifiedChinese, rest.AmericanEnglish))
+func TestLocaleMessages(t *testing.T) {
+	Register()
+	Register()
+	require.NoError(t, i18n.ValidateMessageBundles())
+}
+
+func TestAuditMessagesPreserveBusinessLanguageAndLiteralNames(t *testing.T) {
+	Register()
+	if got := AuditSummary("create", "knowledge_network", "{{ literal }}"); got != "新建领域知识网络“{{ literal }}”" {
+		t.Fatalf("summary = %q", got)
+	}
+	if got := AuditNames([]string{"a", "b"}); got != "a、b，共2个" {
+		t.Fatalf("names = %q", got)
+	}
+	if got := AuditNames([]string{"a", "b", "c", "d", "e", "f"}); got != "a、b、c、d、e等，共6个（名称摘要已截断）" {
+		t.Fatalf("truncated names = %q", got)
+	}
+	if got := AuditNames(nil); got != "" {
+		t.Fatalf("empty names = %q", got)
+	}
 }

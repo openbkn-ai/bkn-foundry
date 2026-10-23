@@ -7,20 +7,18 @@ package driveradapters
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
-
-func valueTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail."+name, templateData)
-}
 
 // ValidateValueTypes checks the value types of one request or file: each on its own, and no ID or
 // name twice. The value rules are checked by the service, with the checks a 3.0 import runs.
@@ -29,21 +27,29 @@ func ValidateValueTypes(ctx context.Context, valueTypes []*interfaces.ValueType)
 	names := map[string]bool{}
 	for _, vt := range valueTypes {
 		if vt == nil {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
 		}
 		if err := ValidateValueType(ctx, vt); err != nil {
 			return err
 		}
 		if vt.VTID != "" {
 			if ids[vt.VTID] {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_Duplicated_IDInFile).
-					WithErrorDetails(valueTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"valueTypeID": vt.VTID}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.DuplicatedIDInFile", map[string]any{"valueTypeID": vt.VTID})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_Duplicated_IDInFile).
+					WithErrorDetails(localizedText)
 			}
 			ids[vt.VTID] = true
 		}
 		if names[vt.VTName] {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_Duplicated_Name).
-				WithErrorDetails(valueTypeInvalidDetail(ctx, "DuplicatedNameInFile", map[string]any{"valueTypeName": vt.VTName}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.DuplicatedNameInFile", map[string]any{"valueTypeName": vt.VTName})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_Duplicated_Name).
+				WithErrorDetails(localizedText)
 		}
 		names[vt.VTName] = true
 	}
@@ -54,8 +60,12 @@ func ValidateValueTypes(ctx context.Context, valueTypes []*interfaces.ValueType)
 // name and tags.
 func ValidateValueType(ctx context.Context, vt *interfaces.ValueType) error {
 	if vt.ModuleType != "" && vt.ModuleType != interfaces.MODULE_TYPE_VALUE_TYPE {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ModuleType).
-			WithErrorDetails(valueTypeInvalidDetail(ctx, "ModuleType", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.ModuleType", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ModuleType).
+			WithErrorDetails(localizedText)
 	}
 	if err := validateID(ctx, vt.VTID); err != nil {
 		return err
@@ -69,5 +79,11 @@ func ValidateValueType(ctx context.Context, vt *interfaces.ValueType) error {
 	}
 	vt.Tags = libCommon.TagSliceTransform(vt.Tags)
 	vt.BaseType = strings.ToLower(strings.TrimSpace(vt.BaseType))
+	for n, item := range vt.Enum {
+		if item == nil {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+				WithErrorDetails(fmt.Sprintf("value type %q enum item %d is null", vt.VTID, n+1))
+		}
+	}
 	return nil
 }

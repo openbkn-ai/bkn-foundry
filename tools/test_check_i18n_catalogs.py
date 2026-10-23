@@ -4,6 +4,9 @@
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +20,16 @@ SPEC.loader.exec_module(catalog_check)
 
 
 class TestPythonCatalogValidation(unittest.TestCase):
+    def test_repository_validation_does_not_require_go(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH)],
+            env={**os.environ, "PATH": ""},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_rejects_positional_placeholders(self) -> None:
         with self.assertRaisesRegex(ValueError, "positional placeholder"):
             catalog_check.placeholders("Missing parameter: {}")

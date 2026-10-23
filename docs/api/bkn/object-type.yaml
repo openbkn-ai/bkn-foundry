@@ -640,10 +640,10 @@ paths:
         - name: confirm_clear_declarations
           in: query
           description: |
-            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
-            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
-            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
-            the declarations; pass true to clear them.
+            With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
+            (aliases and property declarations), such as a 2.x package or an old JSON export, would clear them.
+            Without this parameter the request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared,
+            whose details list the declarations; pass true to clear them.
           schema:
             type: boolean
             default: false
@@ -1632,10 +1632,10 @@ paths:
         - name: confirm_clear_declarations
           in: query
           description: |
-            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
-            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
-            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
-            the declarations; pass true to clear them.
+            With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
+            (aliases and property declarations), such as a 2.x package or an old JSON export, would clear them.
+            Without this parameter the request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared,
+            whose details list the declarations; pass true to clear them.
           schema:
             type: boolean
             default: false
@@ -1766,6 +1766,13 @@ components:
         mask_rule:
           $ref: "#/components/schemas/MaskRule"
           description: Optional Column Masking rule used when the effective property access level is `masked`. It applies only to query results and never modifies source data.
+        aliases:
+          description: |
+            BKN spec 3.0 property declaration: other names of the property. An update that leaves the field
+            out keeps the stored aliases; null or [] clears them.
+          type: array
+          items:
+            type: string
         semantic:
           description: |
             BKN spec 3.0 property declaration: what the property means. One of event_time, end_time,
@@ -2088,6 +2095,12 @@ components:
         name:
           description: Name
           type: string
+        aliases:
+          description: |
+            Other names of the object type (BKN spec 3.0), for concept search and understanding; not its own name or another object type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
+          type: array
+          items:
+            type: string
         tags:
           description: Tags used for business identification
           type: array
@@ -2145,6 +2158,12 @@ components:
         name:
           description: Name
           type: string
+        aliases:
+          description: |
+            Other names of the object type (BKN spec 3.0), for concept search and understanding; not its own name or another object type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
+          type: array
+          items:
+            type: string
         tags:
           description: Tags used for business identification
           type: array
@@ -2345,6 +2364,12 @@ components:
         name:
           description: Object type name
           type: string
+        aliases:
+          description: |
+            Other names of the object type (BKN spec 3.0), for concept search and understanding; not its own name or another object type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
+          type: array
+          items:
+            type: string
         tags:
           description: Tags. May be empty.
           type: array

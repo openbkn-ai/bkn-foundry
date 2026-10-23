@@ -1,0 +1,55 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package locale
+
+import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
+var TextMessagesZhCN = i18n.I18nMessages{Locale: i18n.SimplifiedChinese, Messages: map[string]string{
+	"AgentOperatorIntegration.category.other_category":               "未分类",
+	"AgentOperatorIntegration.category.data_process":                 "数据处理",
+	"AgentOperatorIntegration.category.data_transform":               "数据转换",
+	"AgentOperatorIntegration.category.data_store":                   "数据存储",
+	"AgentOperatorIntegration.category.data_analysis":                "数据分析",
+	"AgentOperatorIntegration.category.data_query":                   "数据查询",
+	"AgentOperatorIntegration.category.data_extract":                 "数据提取",
+	"AgentOperatorIntegration.category.data_split":                   "数据分割",
+	"AgentOperatorIntegration.category.model_train":                  "模型训练",
+	"AgentOperatorIntegration.category.system":                       "系统工具",
+	"AgentOperatorIntegration.capabilities_lab.invalid_request":      "请求参数无效。",
+	"AgentOperatorIntegration.capabilities_lab.not_found":            "未找到资源。",
+	"AgentOperatorIntegration.capabilities_lab.file_required":        "缺少必需的文件。",
+	"AgentOperatorIntegration.capabilities_lab.feature_disabled":     "该功能未启用。",
+	"AgentOperatorIntegration.prompt.python_function_description":    "Python函数生成Prompt模板",
+	"AgentOperatorIntegration.prompt.python_function_user_template":  "函数内容描述:%s; inputs:%v; outputs:%v;",
+	"AgentOperatorIntegration.prompt.metadata_parameter_description": "元数据参数生成Prompt模板",
+	"AgentOperatorIntegration.prompt.default_function_request":       "根据输入参数和输出参数，生成符合标准的Python函数代码",
+	"AgentOperatorIntegration.audit_log.operator_create":             "创建算子“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.operator_edit":               "编辑算子“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.operator_delete":             "删除算子“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.operator_publish":            "发布算子“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.operator_unpublish":          "取消发布算子“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.operator_execute":            "执行算子“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.tool_create":                 "创建工具箱“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.tool_edit":                   "编辑工具箱“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.tool_delete":                 "删除工具箱“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.tool_publish":                "发布工具箱“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.tool_unpublish":              "取消发布工具箱“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.tool_execute":                "执行工具“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.mcp_create":                  "创建MCP“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.mcp_edit":                    "编辑MCP“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.mcp_delete":                  "删除MCP“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.mcp_publish":                 "发布MCP“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.mcp_unpublish":               "取消发布MCP“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.mcp_execute":                 "执行MCP“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.add_tool":                    "添加工具“{{.Name}}”到工具箱成功",
+	"AgentOperatorIntegration.audit_log.remove_tool":                 "从工具箱移除工具“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.import_tool_from_operator":   "从算子导入工具“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.edit_tool":                   "编辑工具“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.update_tool_status":          "更新工具状态“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.debug_tool":                  "调试工具“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.execute_tool":                "执行工具“{{.Name}}”成功",
+	"AgentOperatorIntegration.audit_log.unknown_operation":           "未知操作“{{.Name}}”",
+	"AgentOperatorIntegration.template.python":                       "from sandbox_sdk import tool\nfrom bkn_osdk import kn\n\n\n@tool\ndef kn_object_types(kn_id: str) -> dict:\n    \"\"\"\n    列出某个知识网络里的对象类（示例：演示如何调用 BKN）。\n\n    参数的类型注解与默认值会被自动推导成输入 schema，docstring 会成为工具\n    描述；不需要在别处再手填 inputs / outputs。带默认值的参数即为可选。\n\n    平台地址、凭据与会话上下文都由平台经环境变量注入，函数里看不到、也不用传，\n    更不要调 bkn_osdk.configure()。\n\n    Parameters:\n    kn_id (str): 知识网络 ID。\n\n    Returns:\n    dict: 对象类名列表。\n    \"\"\"\n    detail = kn.get_kn_detail(kn_id, detail_level=\"summary\")\n    return {\"object_types\": [ot[\"name\"] for ot in detail.get(\"object_types\", [])]}\n\n\n# 常用 BKN 能力（都以调用方身份访问，配置走环境变量）：\n#   kn.get_kn_detail(kn_id)                          取知识网络 schema\n#   kn.search_schema(kn_id, query)                   按语义找对象类\n#   kn.query_object_instance(kn_id, ot_id, limit=10) 查实例\n#   kn.list_resources(kn_id)                         列资源\n#   kn.run_sql(kn_id, sql)                           只读聚合；SQL 里的表名要用\n#     resource_id 占位符（取自 search_schema 的 data_source.id），写法见生成的函数模板/文档\n#\n# 地址没配好或调用失败会抛 bkn_osdk.BknError。让它抛出去，不要吞掉换成空结果——\n# 那会把配置问题伪装成“查无数据”。\n#\n# 不需要访问知识网络时，去掉 bkn_osdk 的导入与调用，返回任意可 JSON 序列化的对象即可。\n# 旧的 handler(event) 写法仍受支持，但推荐用上面的 @tool：签名即 schema。\n",
+}}

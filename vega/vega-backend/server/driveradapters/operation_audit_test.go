@@ -18,8 +18,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -483,7 +483,7 @@ func TestOperationAuditBuildControlRealHandler(t *testing.T) {
 				}
 				var err error
 				if tc.denied {
-					err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+					err = httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 				}
 				if action == "start" {
 					tasks.EXPECT().Start(gomock.Any(), "task-1", false).Return(err)
@@ -551,7 +551,7 @@ func TestOperationAuditRenameRealHandlers(t *testing.T) {
 				}
 				var err error
 				if tc.denied {
-					err = rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+					err = httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 				}
 				body := `{"name":"New Name","expected_update_time":1,"connector_type":"mariadb","connector_config":{}}`
 				if kind == "catalog" {

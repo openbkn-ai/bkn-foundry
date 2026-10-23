@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -466,7 +466,7 @@ func TestBuildTaskWorkerValidatesCatalogBeforeClaim(t *testing.T) {
 		bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
-			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+			Return(nil, &httperrors.HTTPError{HTTPCode: http.StatusNotFound})
 		bts.EXPECT().InternalMarkCancelled(gomock.Any(), nil, "task-1", "catalog deleted").Return(true, nil)
 
 		require.NoError(t, worker.runBatchTask(context.Background(), "task-1"))

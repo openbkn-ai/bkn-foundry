@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	. "github.com/smartystreets/goconvey/convey"
@@ -171,7 +172,7 @@ func Test_ontologyManagerAccess_GetObjectType(t *testing.T) {
 			}
 			ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-			baseError := rest.BaseError{
+			baseError := httperrors.BaseError{
 				ErrorCode:   "ERROR_CODE",
 				Description: "Error description",
 			}
@@ -184,7 +185,7 @@ func Test_ontologyManagerAccess_GetObjectType(t *testing.T) {
 			result, exists, err := oma.GetObjectType(ctx, knID, branch, otID)
 
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 			So(exists, ShouldBeFalse)
@@ -395,7 +396,7 @@ func Test_ontologyManagerAccess_GetRelationType(t *testing.T) {
 			}
 			ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-			baseError := rest.BaseError{
+			baseError := httperrors.BaseError{
 				ErrorCode:   "ERROR_CODE",
 				Description: "Error description",
 			}
@@ -590,7 +591,7 @@ func Test_ontologyManagerAccess_GetActionType(t *testing.T) {
 			}
 			ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-			baseError := rest.BaseError{
+			baseError := httperrors.BaseError{
 				ErrorCode:   "ERROR_CODE",
 				Description: "Error description",
 			}
@@ -808,7 +809,7 @@ func Test_ontologyManagerAccess_GetRelationTypePathsBaseOnSource(t *testing.T) {
 			}
 			ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-			baseError := rest.BaseError{
+			baseError := httperrors.BaseError{
 				ErrorCode:   "ERROR_CODE",
 				Description: "Error description",
 			}
@@ -885,9 +886,9 @@ func Test_ontologyManagerAccess_GetRelationTypePathsBaseOnSource(t *testing.T) {
 
 func assertOntologyManagerHTTPStatus(t *testing.T, err error, expected int) {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
-		t.Fatalf("error = %T %v, want a wrapped *rest.HTTPError", err, err)
+		t.Fatalf("error = %T %v, want a wrapped *httperrors.HTTPError", err, err)
 	}
 	if httpErr.HTTPCode != expected {
 		t.Fatalf("HTTP status = %d, want %d", httpErr.HTTPCode, expected)

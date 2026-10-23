@@ -25,7 +25,7 @@ type KafkaRuntime struct {
 }
 
 // ErrInvalidKafkaConfiguration means a deployment setting is missing or invalid.
-var ErrInvalidKafkaConfiguration = errors.New("Audit Kafka brokers and SASL PLAIN credentials are required")
+var ErrInvalidKafkaConfiguration = errors.New("audit Kafka brokers and SASL PLAIN credentials are required")
 
 func NewKafkaRuntimeFromEnv(telemetry *PublishTelemetry) (*KafkaRuntime, error) {
 	brokers := strings.Split(strings.TrimSpace(os.Getenv("BKN_AUDIT_KAFKA_BROKERS")), ",")

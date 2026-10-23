@@ -9,6 +9,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -18,7 +20,7 @@ import (
 
 // GetIndexCapabilitiesByEx handles GET /api/vega-backend/v1/index-capabilities.
 func (r *restHandler) GetIndexCapabilitiesByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -31,7 +33,7 @@ func (r *restHandler) GetIndexCapabilitiesByEx(c *gin.Context) {
 
 	capabilities, err := r.lim.GetIndexCapabilities(ctx)
 	if err != nil {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			verrors.VegaBackend_IndexCapability_InternalError_Unavailable).WithErrorDetails(err.Error()))
 		return
 	}

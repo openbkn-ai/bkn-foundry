@@ -2,15 +2,16 @@ package parsers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 )
 
 const (
@@ -28,7 +29,7 @@ var (
 )
 
 // parseOpenAPILoadError maps an OpenAPI loading failure to a public error.
-func parseOpenAPILoadError(ctx context.Context, originalErr error) *errors.HTTPError {
+func parseOpenAPILoadError(ctx context.Context, originalErr error) *httperrors.HTTPError {
 	if originalErr == nil {
 		return nil
 	}
@@ -37,7 +38,7 @@ func parseOpenAPILoadError(ctx context.Context, originalErr error) *errors.HTTPE
 }
 
 // parseOpenAPIValidationError maps an OpenAPI validation failure to a public error.
-func parseOpenAPIValidationError(ctx context.Context, originalErr error) *errors.HTTPError {
+func parseOpenAPIValidationError(ctx context.Context, originalErr error) *httperrors.HTTPError {
 	if originalErr == nil {
 		return nil
 	}
@@ -64,8 +65,6 @@ func handleMultiError(ctx context.Context, multiErr *openapi3.MultiError, errorT
 		errorDetails  []string
 	)
 
-	tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
-
 	// Iterate over every nested error.
 	for i, subErr := range *multiErr {
 		if subErr != nil {
@@ -76,9 +75,13 @@ func handleMultiError(ctx context.Context, multiErr *openapi3.MultiError, errorT
 				mainErrorCode = subErrorCode
 				mainParams = subParams
 			}
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "AgentOperatorIntegration.Detail.openapi_error_item", map[string]any{"Arg1": i + 1, "Arg2": subErrorDetails})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
 
 			// Include every nested error in the client-visible details.
-			errorDetails = append(errorDetails, fmt.Sprintf(tr.Trans("detail.openapi_error_item"), i+1, subErrorDetails))
+			errorDetails = append(errorDetails, localizedText)
 		}
 	}
 

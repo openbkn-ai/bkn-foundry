@@ -13,10 +13,10 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/tidwall/sjson"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -65,14 +65,14 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		span.SetAttributes(attribute.Key("at_id").String(query.ActionTypeID))
 		otellog.LogError(ctx, fmt.Sprintf("Get Action Type error: %v", err), err)
 
-		return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return resps, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 	}
 	if !exists {
 		logger.Debugf("Action Type %d not found!", query.ActionTypeID)
 
 		span.SetAttributes(attribute.Key("model_id").String(query.ActionTypeID))
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 		otellog.LogError(ctx, fmt.Sprintf("Action Type [%s] not found!", query.ActionTypeID), httpErr)
 
 		return resps, httpErr
@@ -93,12 +93,12 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		objectType, exists, err = ats.omAccess.GetObjectType(ctx, query.KNID, query.Branch, actionType.ObjectTypeID)
 		if err != nil {
 			logger.Errorf("Get Object Type error: %s", err.Error())
-			return resps, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return resps, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 		}
 		if !exists {
 			logger.Debugf("Object Type %s not found!", actionType.ObjectTypeID)
-			return resps, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+			return resps, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 		}
 	} else {
 		// Unbound object type case.
@@ -109,7 +109,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			virtualAction, err := buildActionFromInstanceData(map[string]any{}, &actionType, query.DynamicParams)
 			if err != nil {
 				logger.Errorf("Error building virtual action: %v", err)
-				return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+				return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 					WithErrorDetails(err.Error())
 			}
 
@@ -132,7 +132,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 				action, err := buildActionFromInstanceData(identity, &actionType, query.DynamicParams)
 				if err != nil {
 					logger.Errorf("Error building action from instance data: %v", err)
-					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+					return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 						WithErrorDetails(err.Error())
 				}
 
@@ -206,7 +206,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 				action, err := buildActionFromInstanceData(instanceIdentity, &actionType, query.DynamicParams)
 				if err != nil {
 					logger.Errorf("Error building action from instance data: %v", err)
-					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+					return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 						WithErrorDetails(err.Error())
 				}
 
@@ -278,7 +278,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 				value := object[param.Value.(string)]
 				paramsJson, err = sjson.Set(paramsJson, param.Name, value)
 				if err != nil {
-					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+					return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 						WithErrorDetails(fmt.Sprintf("Error setting action type[%s]'s parameter path %s: %v",
 							actionType.ATName, param.Name, err.Error()))
 				}
@@ -286,14 +286,14 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 				val := logics.ActionDynamicParamGetValue(query.DynamicParams, param.Name)
 				dynamicParamsJson, err = sjson.Set(dynamicParamsJson, param.Name, val)
 				if err != nil {
-					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+					return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 						WithErrorDetails(fmt.Sprintf("Error setting action type[%s]'s dynamic parameter path %s: %v",
 							actionType.ATName, param.Name, err.Error()))
 				}
 			case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
 				paramsJson, err = sjson.Set(paramsJson, param.Name, param.Value)
 				if err != nil {
-					return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+					return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 						WithErrorDetails(fmt.Sprintf("Error setting action type[%s]'s parameter path %s: %v",
 							actionType.ATName, param.Name, err.Error()))
 				}
@@ -302,7 +302,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		params := map[string]any{}
 		err = sonic.Unmarshal([]byte(paramsJson), &params)
 		if err != nil {
-			return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+			return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 				WithErrorDetails(fmt.Sprintf("failed to Unmarshal action type[%s]'s paramtersJson to map, %s",
 					actionType.ATName, err.Error()))
 		}
@@ -310,7 +310,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		dynamicParams := map[string]any{}
 		err = sonic.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
 		if err != nil {
-			return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
+			return resps, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 				WithErrorDetails(fmt.Sprintf("failed to Unmarshal action type[%s]'s dynamicParamsJson to map, %s",
 					actionType.ATName, err.Error()))
 		}

@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
@@ -23,22 +23,22 @@ func ValidateDiscoverScheduleRequest(ctx context.Context, req *interfaces.Discov
 		return err
 	}
 	if req.CatalogID == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("catalog_id is required")
 	}
 	if req.CronExpr == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidCronExpr).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidCronExpr).
 			WithErrorDetails("cron_expr is required")
 	}
 	if _, err := common.ParseHourlyCronExpr(req.CronExpr); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidCronExpr).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidCronExpr).
 			WithErrorDetails(fmt.Sprintf("invalid cron expression: %v", err))
 	}
 	if req.Strategy == "" {
 		req.Strategy = interfaces.DiscoverStrategyFullSync
 	}
 	if !interfaces.IsValidDiscoverStrategy(req.Strategy) {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidStrategies).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidStrategies).
 			WithErrorDetails(fmt.Sprintf("invalid strategy: %s, must be one of: %s, %s, %s, %s",
 				req.Strategy,
 				interfaces.DiscoverStrategyFullSync,
@@ -56,7 +56,7 @@ func ValidateDiscoverScheduleRequest(ctx context.Context, req *interfaces.Discov
 		errDetails = "start_time must be less than or equal to end_time"
 	}
 	if errDetails != "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidTimeRange).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_DiscoverSchedule_InvalidTimeRange).
 			WithErrorDetails(errDetails)
 	}
 	return nil

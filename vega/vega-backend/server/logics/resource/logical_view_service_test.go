@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -74,7 +74,7 @@ func TestLogicalViewServiceEntryPoints(t *testing.T) {
 			return err
 		}(),
 	} {
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)
 	}
@@ -135,7 +135,7 @@ func TestResourceServiceCreateLogicalViewRejectsMissingPreparedSourceMetadata(t 
 		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		SourceMetadata:   map[string]any{"source_resource": map[string]any{"original_name": "forged"}},
 	})
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	assert.Nil(t, viewService.metadataAtPrepare)
@@ -158,7 +158,7 @@ func TestPrepareLogicalViewRejectsIncompleteSourceMetadata(t *testing.T) {
 
 			req := &interfaces.ResourceRequest{SourceMetadata: map[string]any{"source_resource": map[string]any{"original_name": "forged"}}}
 			logicType, fields, err := PrepareLogicalView(context.Background(), req)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 			assert.Empty(t, logicType)
@@ -292,7 +292,7 @@ func TestResourceServiceUpdateLogicalViewSourceMetadata(t *testing.T) {
 				SourceMetadata:   map[string]any{"properties": map[string]any{"row_count": 999}, "injected": true},
 			})
 			if tc.withoutPreparedMetadata {
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
 				assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 			} else {

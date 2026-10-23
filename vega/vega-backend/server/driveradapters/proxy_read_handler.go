@@ -14,6 +14,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -139,14 +140,14 @@ func (r *restHandler) loadProxyResource(c *gin.Context, ctx context.Context, spa
 		return nil, false
 	}
 	if resource == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return nil, false
 	}
 	if resource.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
 		r.recordProxyReadAudit(ctx, request, "deny", "internal_resource")
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return nil, false
@@ -205,12 +206,12 @@ func (r *restHandler) authorizeProxyRead(
 ) bool {
 	if contextErr != nil {
 		r.recordProxyReadAudit(ctx, request, "deny", "invalid_trusted_context")
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden))
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden))
 		return false
 	}
 	if r.pas == nil {
 		r.recordProxyReadAudit(ctx, request, "deny", "authorization_unavailable")
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusServiceUnavailable, rest.PublicError_ServiceUnavailable))
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, httperrors.PublicError_ServiceUnavailable))
 		return false
 	}
 	err := r.pas.Authorize(ctx, request)
@@ -219,11 +220,11 @@ func (r *restHandler) authorizeProxyRead(
 	}
 	if errors.Is(err, interfaces.ErrProxyAuthorizationDenied) {
 		r.recordProxyReadAudit(ctx, request, "deny", "proxy_or_policy_denied")
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden))
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden))
 		return false
 	}
 	r.recordProxyReadAudit(ctx, request, "deny", "authorization_unavailable")
-	rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusServiceUnavailable, rest.PublicError_ServiceUnavailable))
+	rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, httperrors.PublicError_ServiceUnavailable))
 	return false
 }
 

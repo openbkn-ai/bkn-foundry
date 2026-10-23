@@ -546,7 +546,7 @@ class SharedPromptOut(BaseModel):
 
 async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPromptOut:
     if not agent.prompt_id or not (
-        prompt := await dao.get_prompt(session, agent.prompt_id)
+        prompt := await dao.get_prompt(session, agent.prompt_id, localized=True)
     ):
         raise not_found("prompt", agent.prompt_id or agent.agent_id)
     return SharedPromptOut(prompt=prompt)

@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -42,6 +42,7 @@ func TestObjectTypeSingleResourceAuthorization(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			ota := bmock.NewMockObjectTypeAccess(ctrl)
+			ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			ps := bmock.NewMockPermissionService(ctrl)
 			denied := errors.New("denied")
 			service := &objectTypeService{ota: ota, ps: ps}
@@ -99,6 +100,7 @@ func TestUpdateDataPropertiesRequiresCanonicalObjectTypeModify(t *testing.T) {
 func TestObjectTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(ctrl)
 	db, sqlMock, err := sqlmock.New()
 	if err != nil {
@@ -116,12 +118,12 @@ func TestObjectTypeMultiResourceDetailRequiresEveryChildPermission(t *testing.T)
 	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{
 		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/ot-1"}, Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL},
 		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/ot-2"}, Operation: interfaces.OPERATION_TYPE_VIEW_DETAIL},
-	}).Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+	}).Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 	sqlMock.ExpectRollback()
 
 	service := &objectTypeService{db: db, ota: ota, ps: ps}
 	_, err = service.GetObjectTypesByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH, ids)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("GetObjectTypesByIDs() error = %v, want 403 when any child is denied", err)
 	}

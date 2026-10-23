@@ -15,7 +15,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	sq "github.com/Masterminds/squirrel"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -26,7 +26,7 @@ var (
 	testUpdateTime = int64(1735786555379)
 	testTags       = []string{"tag1", "tag2", "tag3"}
 
-	testCtx = rest.WithLanguage(context.Background(), rest.DefaultLanguage)
+	testCtx = i18n.WithLanguage(context.Background(), i18n.DefaultLanguage)
 
 	testConceptGroup = &interfaces.ConceptGroup{
 		CGID:   "cg1",

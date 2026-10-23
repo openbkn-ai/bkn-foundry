@@ -28,7 +28,7 @@ func (r *restHandler) ListResources(c *gin.Context) {
 	case interfaces.RESOURCE_TYPE_KN:
 		r.ListKnSrcs(c)
 	default:
-		// httpErr := rest.NewHTTPError(rest.GetLanguageCtx(c), http.StatusNotFound,
+		// httpErr := httperrors.NewHTTPError(rest.GetLanguageCtx(c), http.StatusNotFound,
 		// 	derrors.DataModel_MetricModel_MetricTaskNotFound)
 
 		// // Set trace attributes for the error.

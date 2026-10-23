@@ -11,7 +11,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/maskrule"
@@ -63,8 +64,8 @@ func Test_ValidateObjectType(t *testing.T) {
 			}
 			err := ValidateObjectType(ctx, ot, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_Name)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_Name)
 		})
 
 		Convey("Failed with empty primary keys\n", func() {
@@ -85,8 +86,8 @@ func Test_ValidateObjectType(t *testing.T) {
 			}
 			err := ValidateObjectType(ctx, ot, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_PrimaryKeys)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_PrimaryKeys)
 		})
 
 		Convey("Failed with invalid primary key type\n", func() {
@@ -127,8 +128,8 @@ func Test_ValidateObjectType(t *testing.T) {
 			}
 			err := ValidateObjectType(ctx, ot, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_DisplayKey)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_DisplayKey)
 		})
 
 		Convey("Failed with invalid data source type\n", func() {
@@ -688,11 +689,11 @@ func Test_ValidateObjectType(t *testing.T) {
 func TestValidateObjectTypeLocalizesInvalidParameterDetails(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "Object type customer uses unsupported data-source type table; only resource is supported."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "对象类 customer 的数据来源类型 table 不支持，仅支持 resource。"},
+		{"English", i18n.AmericanEnglish, "Object type customer uses unsupported data-source type table; only resource is supported."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "对象类 customer 的数据来源类型 table 不支持，仅支持 resource。"},
 	}
 
 	for _, testCase := range testCases {
@@ -704,16 +705,16 @@ func TestValidateObjectTypeLocalizesInvalidParameterDetails(t *testing.T) {
 					DataSource: &interfaces.ResourceInfo{Type: "table"},
 				},
 			}
-			err := ValidateObjectType(rest.WithLanguage(context.Background(), testCase.language), objectType, false)
+			err := ValidateObjectType(i18n.WithLanguage(context.Background(), testCase.language), objectType, false)
 			if err == nil {
 				t.Fatal("ValidateObjectType() error = nil, want invalid parameter error")
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}
@@ -731,8 +732,8 @@ func Test_ValidatePropertyName(t *testing.T) {
 		Convey("Failed with empty property name\n", func() {
 			err := ValidatePropertyName(ctx, "")
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_PropertyName)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_PropertyName)
 		})
 
 		Convey("Failed with property name starting with underscore\n", func() {
@@ -847,11 +848,11 @@ func Test_ValidateDataProperty(t *testing.T) {
 				DisplayName: "Secret",
 				MaskRule:    &maskrule.Rule{Kind: maskrule.KindFixed, Replacement: "*"},
 			}
-			err := ValidateDataProperty(rest.WithLanguage(ctx, rest.AmericanEnglish), prop, true)
+			err := ValidateDataProperty(i18n.WithLanguage(ctx, i18n.AmericanEnglish), prop, true)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual,
+			So(httpErr.ErrorDetails, ShouldEqual,
 				"Data property secret has invalid mask_rule: property type is required when mask_rule is set.")
 		})
 

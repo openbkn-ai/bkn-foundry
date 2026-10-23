@@ -35,7 +35,6 @@ RUN groupadd -r -g $GID openbkn \
 COPY --from=builder --chown=$UID:$GID /workspace/adp/bkn/bkn-backend/server/bin /opt/bkn-backend
 
 ADD adp/bkn/bkn-backend/server/config/bkn-backend-config.yaml /opt/bkn-backend/config/
-ADD adp/bkn/bkn-backend/server/locale /opt/bkn-backend/locale
 
 # Set the working directory.
 WORKDIR /opt/bkn-backend/

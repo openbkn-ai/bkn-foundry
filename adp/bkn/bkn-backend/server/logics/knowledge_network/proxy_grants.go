@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -191,6 +191,6 @@ func refuseNewlyMountedSkillsWithoutGrant(ctx context.Context, selection *proxyG
 	if len(missing) == 0 {
 		return nil
 	}
-	return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing).
+	return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing).
 		WithErrorDetails(missingProxyPermissionDetails{MissingPermissions: missing})
 }

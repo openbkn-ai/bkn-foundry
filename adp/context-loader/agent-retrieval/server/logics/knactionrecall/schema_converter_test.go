@@ -1019,7 +1019,7 @@ func TestActionDriverSchemaDescriptionsUseRequestLocale(t *testing.T) {
 		},
 	} {
 		t.Run(tt.locale, func(t *testing.T) {
-			ctx := common.SetLanguageToCtx(context.Background(), tt.locale)
+			ctx := common.SetLanguageToCtx(context.Background(), common.Language(tt.locale))
 			result, err := service.convertMCPSchemaToActionDriver(ctx, map[string]any{
 				"type": "object",
 				"properties": map[string]any{

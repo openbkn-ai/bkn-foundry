@@ -5,8 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestLocalizedPromptTemplateUsesRequestLanguage(t *testing.T) {
@@ -15,16 +16,19 @@ func TestLocalizedPromptTemplateUsesRequestLanguage(t *testing.T) {
 		SystemPrompt: "# 函数生成 Prompt 模板",
 	}
 	tests := []struct {
-		language, description, userPrompt, systemPromptPrefix string
+		language           i18n.Language
+		description        string
+		userPrompt         string
+		systemPromptPrefix string
 	}{
 		{
-			language:           sharedrest.SimplifiedChinese,
+			language:           i18n.SimplifiedChinese,
 			description:        "Python函数生成Prompt模板",
 			userPrompt:         "函数内容描述:%s; inputs:%v; outputs:%v;",
 			systemPromptPrefix: "# 函数生成 Prompt 模板",
 		},
 		{
-			language:           sharedrest.AmericanEnglish,
+			language:           i18n.AmericanEnglish,
 			description:        "Prompt template for Python function generation",
 			userPrompt:         "Function description: %s; inputs: %v; outputs: %v;",
 			systemPromptPrefix: "# Function Generation Prompt Template",
@@ -32,8 +36,8 @@ func TestLocalizedPromptTemplateUsesRequestLanguage(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.language, func(t *testing.T) {
-			ctx := sharedrest.WithLanguage(context.Background(), test.language)
+		t.Run(string(test.language), func(t *testing.T) {
+			ctx := i18n.WithLanguage(context.Background(), test.language)
 			localized := localizedPromptTemplate(ctx, interfaces.PythonFunctionGenerator, source)
 			if localized.Description != test.description || localized.UserPromptTemplate != test.userPrompt {
 				t.Fatalf("localized prompt = %#v", localized)
@@ -41,7 +45,7 @@ func TestLocalizedPromptTemplateUsesRequestLanguage(t *testing.T) {
 			if !strings.HasPrefix(localized.SystemPrompt, test.systemPromptPrefix) {
 				t.Fatalf("system prompt starts with %q", localized.SystemPrompt)
 			}
-			if test.language == sharedrest.AmericanEnglish && containsHan(localized.SystemPrompt+localized.Description+localized.UserPromptTemplate) {
+			if test.language == i18n.AmericanEnglish && containsHan(localized.SystemPrompt+localized.Description+localized.UserPromptTemplate) {
 				t.Fatalf("English prompt contains Chinese text")
 			}
 			if source.Description != "" || source.UserPromptTemplate != "" || source.SystemPrompt != "# 函数生成 Prompt 模板" {

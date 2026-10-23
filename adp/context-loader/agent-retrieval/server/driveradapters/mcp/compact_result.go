@@ -58,7 +58,7 @@ func projectCompactResult(result *mcp.CallToolResult) *mcp.CallToolResult {
 	}
 	payload, isObject := structuredContentAsMap(result.StructuredContent)
 	receipt, hasReceipt := payload["bkn_receipt"]
-	if result.IsError && !(isObject && hasReceipt && onlyReceipt(payload)) {
+	if result.IsError && (!isObject || !hasReceipt || !onlyReceipt(payload)) {
 		return result
 	}
 	projected := *result

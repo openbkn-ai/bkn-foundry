@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -74,8 +77,11 @@ func (s *knActionRecallServiceImpl) getBoundMCPToolDefinitionAsProxy(ctx context
 func (s *knActionRecallServiceImpl) resolveActionTypeProxy(ctx context.Context, knID, atID,
 	targetType, targetID, toolRef string) (interfaces.AccountIdentity, error) {
 	if s.actionAuthz == nil || s.proxyResolver == nil || s.toolReaderAs == nil {
-		return interfaces.AccountIdentity{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.AccountIdentity{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	if err := s.actionAuthz.AuthorizeActionTypeView(ctx, knID, atID); err != nil {
 		return interfaces.AccountIdentity{}, err
@@ -83,8 +89,11 @@ func (s *knActionRecallServiceImpl) resolveActionTypeProxy(ctx context.Context, 
 	// An action source with no target names nothing the proxy could stand in for; the caller's
 	// own refusal is the answer.
 	if strings.TrimSpace(targetID) == "" || strings.TrimSpace(toolRef) == "" {
-		return interfaces.AccountIdentity{}, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.AccountIdentity{}, infraErr.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 	}
 	mapping, err := s.proxyResolver.ResolveKNProxyBinding(ctx, interfaces.KNProxyBinding{
 		KNID:       knID,
@@ -99,8 +108,11 @@ func (s *knActionRecallServiceImpl) resolveActionTypeProxy(ctx context.Context, 
 	}
 	if mapping == nil || strings.TrimSpace(mapping.ProxyAccountID) == "" ||
 		mapping.ProxyAccountType != string(interfaces.AccessorTypeApp) {
-		return interfaces.AccountIdentity{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.AccountIdentity{}, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	return interfaces.AccountIdentity{ID: mapping.ProxyAccountID, Type: interfaces.AccessorTypeApp}, nil
 }

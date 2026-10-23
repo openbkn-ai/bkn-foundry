@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -329,7 +329,7 @@ func (kns *knowledgeNetworkService) preflightProxySources(ctx context.Context, p
 				missing[j].ResourceID, missing[j].Operation, missing[j].BindingType, missing[j].BindingID)
 			return left < right
 		})
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 			berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing).
 			WithErrorDetails(missingProxyPermissionDetails{MissingPermissions: missing})
 	}
@@ -1456,15 +1456,15 @@ func accountIDFromContext(ctx context.Context) string {
 	return account.ID
 }
 
-func proxyHTTPError(ctx context.Context, status int, detail string) *rest.HTTPError {
-	return rest.NewHTTPError(ctx, status, berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(detail)
+func proxyHTTPError(ctx context.Context, status int, detail string) *httperrors.HTTPError {
+	return httperrors.NewHTTPError(ctx, status, berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(detail)
 }
 
-func proxyStateHTTPError(ctx context.Context, status int, code, detail string) *rest.HTTPError {
-	return rest.NewHTTPError(ctx, status, code).WithErrorDetails(detail)
+func proxyStateHTTPError(ctx context.Context, status int, code, detail string) *httperrors.HTTPError {
+	return httperrors.NewHTTPError(ctx, status, code).WithErrorDetails(detail)
 }
 
-func invalidProxyTargetError(ctx context.Context, cause error) *rest.HTTPError {
+func invalidProxyTargetError(ctx context.Context, cause error) *httperrors.HTTPError {
 	detail := "published model contains an invalid proxy target"
 	if cause != nil {
 		detail += ": " + cause.Error()
@@ -1474,7 +1474,7 @@ func invalidProxyTargetError(ctx context.Context, cause error) *rest.HTTPError {
 		return proxyStateHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_ProxyTargetInvalid, detail)
 	}
-	var upstream *rest.HTTPError
+	var upstream *httperrors.HTTPError
 	if errors.As(cause, &upstream) {
 		return upstream
 	}

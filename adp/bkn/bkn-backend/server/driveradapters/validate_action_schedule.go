@@ -10,55 +10,72 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
-func actionScheduleDetail(ctx context.Context, name string) string {
-	return i18n.Translate(
-		rest.GetLanguageByCtx(ctx),
-		"BknBackend.ActionSchedule.Detail."+name,
-		nil,
-	)
-}
-
 // ValidateActionScheduleCreate validates the create schedule request
 func ValidateActionScheduleCreate(ctx context.Context, req *interfaces.ActionScheduleCreateRequest) error {
 	// Validate name
 	if req.Name == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(actionScheduleDetail(ctx, "NameRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.NameRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 	if len(req.Name) > 100 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(actionScheduleDetail(ctx, "NameLength"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.NameLength", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate action_type_id
 	if req.ActionTypeID == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(actionScheduleDetail(ctx, "ActionTypeIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.ActionTypeIDRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate cron_expression
 	if req.CronExpression == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(actionScheduleDetail(ctx, "CronExpressionRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.CronExpressionRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate _instance_identities
 	if len(req.InstanceIdentities) == 0 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(actionScheduleDetail(ctx, "InstanceIdentitiesRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.InstanceIdentitiesRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 
 	// Validate status if provided
 	if req.Status != "" && req.Status != interfaces.ScheduleStatusActive && req.Status != interfaces.ScheduleStatusInactive {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
-			WithErrorDetails(actionScheduleDetail(ctx, "StatusInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.StatusInvalid", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidStatus).
+			WithErrorDetails(localizedText)
 	}
 
 	return nil
@@ -68,14 +85,22 @@ func ValidateActionScheduleCreate(ctx context.Context, req *interfaces.ActionSch
 func ValidateActionScheduleUpdate(ctx context.Context, req *interfaces.ActionScheduleUpdateRequest) error {
 	// Validate name if provided
 	if req.Name != "" && len(req.Name) > 100 {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(actionScheduleDetail(ctx, "NameLength"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.NameLength", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 
 	// At least one field should be provided
 	if req.Name == "" && req.CronExpression == "" && req.InstanceIdentities == nil && req.DynamicParams == nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
-			WithErrorDetails(actionScheduleDetail(ctx, "UpdateFieldRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionSchedule.Detail.UpdateFieldRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 
 	return nil

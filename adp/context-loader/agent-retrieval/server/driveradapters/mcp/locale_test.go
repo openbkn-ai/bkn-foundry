@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"io/fs"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -60,29 +61,10 @@ func TestMCPLocaleBundle(t *testing.T) {
 	})
 }
 
-func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreUnavailable(t *testing.T) {
-	resources := fstest.MapFS{
-		"schemas/locales/zh-CN/instructions.txt":         &fstest.MapFile{Data: []byte("Chinese baseline instructions")},
-		"schemas/locales/zh-CN/instructions_compact.txt": &fstest.MapFile{Data: []byte("Chinese baseline compact instructions")},
-		"schemas/locales/zh-CN/ptc_instructions.txt":     &fstest.MapFile{Data: []byte("Chinese baseline PTC instructions")},
-	}
-
-	bundle := buildMCPLocaleBundleFromFS(resources, "en-US")
-
-	if got := bundle.ServerInstructions(); got != "Chinese baseline instructions" {
-		t.Fatalf("instructions = %q, want baseline instructions", got)
-	}
-	if got := bundle.CompactServerInstructions(); got != "Chinese baseline compact instructions" {
-		t.Fatalf("compact instructions = %q, want baseline instructions", got)
-	}
-	if got := bundle.PTCServerInstructions(); got != "Chinese baseline PTC instructions" {
-		t.Fatalf("PTC instructions = %q, want baseline instructions", got)
-	}
-	if bundle.toolMeta != nil {
-		t.Fatalf("tool metadata = %#v, want no overlay", bundle.toolMeta)
-	}
-	if bundle.schemaDescriptions != nil {
-		t.Fatalf("schema descriptions = %#v, want no overlay", bundle.schemaDescriptions)
+func TestMCPLocaleResourcesRejectMissingLanguage(t *testing.T) {
+	resources := fstest.MapFS{"schemas/locales/zh-CN/instructions.txt": &fstest.MapFile{Data: []byte("baseline")}}
+	if _, err := loadMCPMessages(resources); err == nil {
+		t.Fatal("expected missing language to fail startup")
 	}
 }
 
@@ -98,37 +80,6 @@ PTC instructions`)},
 
 	if got := mustReadMCPResource(resources, defaultMCPLocale, "ptc_instructions.txt"); got != "PTC instructions" {
 		t.Fatalf("resource = %q, want license header stripped", got)
-	}
-}
-
-func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreMalformed(t *testing.T) {
-	resources := fstest.MapFS{
-		"schemas/locales/zh-CN/instructions.txt":         &fstest.MapFile{Data: []byte("Chinese baseline instructions")},
-		"schemas/locales/zh-CN/instructions_compact.txt": &fstest.MapFile{Data: []byte("Chinese baseline compact instructions")},
-		"schemas/locales/zh-CN/ptc_instructions.txt":     &fstest.MapFile{Data: []byte("Chinese baseline PTC instructions")},
-		"schemas/locales/en-US/instructions.txt":         &fstest.MapFile{Data: []byte("English instructions")},
-		"schemas/locales/en-US/instructions_compact.txt": &fstest.MapFile{Data: []byte("English compact instructions")},
-		"schemas/locales/en-US/ptc_instructions.txt":     &fstest.MapFile{Data: []byte("English PTC instructions")},
-		"schemas/locales/en-US/tools_meta.json":          &fstest.MapFile{Data: []byte(`{`)},
-		"schemas/locales/en-US/schema_descriptions.json": &fstest.MapFile{Data: []byte(`{`)},
-	}
-
-	bundle := buildMCPLocaleBundleFromFS(resources, "en-US")
-
-	if got := bundle.ServerInstructions(); got != "English instructions" {
-		t.Fatalf("instructions = %q, want localized instructions", got)
-	}
-	if got := bundle.CompactServerInstructions(); got != "English compact instructions" {
-		t.Fatalf("compact instructions = %q, want localized instructions", got)
-	}
-	if got := bundle.PTCServerInstructions(); got != "English PTC instructions" {
-		t.Fatalf("PTC instructions = %q, want localized instructions", got)
-	}
-	if bundle.toolMeta != nil {
-		t.Fatalf("tool metadata = %#v, want no overlay", bundle.toolMeta)
-	}
-	if bundle.schemaDescriptions != nil {
-		t.Fatalf("schema descriptions = %#v, want no overlay", bundle.schemaDescriptions)
 	}
 }
 
@@ -374,5 +325,59 @@ func TestOverlayKeepsAnAbsentOutputSchemaAbsent(t *testing.T) {
 	}
 	if strings.Contains(string(translated), "行动类") {
 		t.Fatalf("input schema was not translated: %s", translated)
+	}
+}
+
+func TestPTCMessageParametersRemainLiteral(t *testing.T) {
+	bundle := loadMCPLocaleBundle("en-US")
+	got := bundle.PTCError("unsupported_tool_wrap", "{{ literal }}")
+	if got != "Unsupported PTC tool wrapper: {{ literal }}." {
+		t.Fatalf("rendered PTC error = %q", got)
+	}
+}
+
+func mustReadMCPInstructions(resources fs.FS, locale string) string {
+	return mustReadMCPResource(resources, locale, "instructions.txt")
+}
+
+func mustReadMCPResource(resources fs.FS, locale, resource string) string {
+	content, err := readMCPResource(resources, locale, resource)
+	if err != nil {
+		panic("cannot load MCP baseline resource: " + err.Error())
+	}
+	instructions := strings.TrimSpace(content)
+	if instructions == "" {
+		panic("MCP baseline resource must not be empty")
+	}
+	return instructions
+}
+
+func TestMCPMessagesRejectMalformedAndInvalidStructuredResources(t *testing.T) {
+	resources := fstest.MapFS{}
+	err := fs.WalkDir(schemasFS, "schemas", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, readErr := fs.ReadFile(schemasFS, path)
+		if readErr != nil {
+			return readErr
+		}
+		resources[path] = &fstest.MapFile{Data: data}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{`{`, `[]`} {
+		t.Run(invalid, func(t *testing.T) {
+			resources["schemas/locales/en-US/tools_meta.json"] = &fstest.MapFile{Data: []byte(invalid)}
+			_, err := loadMCPMessages(resources)
+			if err == nil || !strings.Contains(err.Error(), "tools_meta.json") {
+				t.Fatalf("invalid metadata must fail startup: %v", err)
+			}
+		})
 	}
 }

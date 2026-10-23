@@ -8,13 +8,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 // RegisterOperatorByOpenAPI operator registration.
@@ -130,7 +132,7 @@ func (m *operatorManager) UpdateOperatorByOpenAPI(ctx context.Context, req *inte
 	editRes, err := m.editOperator(ctx, updateReq, operator, metadataDB, needUpdateMetadata, req.DirectPublish, isDataSource)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("edit operator failed, err: %v", err)
-		httpErr := &errors.HTTPError{}
+		httpErr := &httperrors.HTTPError{}
 		if inErr.As(err, &httpErr) {
 			result.Error = err
 		} else {

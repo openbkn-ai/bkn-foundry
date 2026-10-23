@@ -212,7 +212,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -229,19 +229,19 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Forbidden:
       description: 非超管调用
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     InternalError:
       description: 服务内部错误，或沙箱控制面不可达
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   schemas:
     SessionStatus:

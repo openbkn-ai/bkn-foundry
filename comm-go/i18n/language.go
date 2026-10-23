@@ -16,7 +16,7 @@ import (
 )
 
 // Language identifies a supported response language.
-type Language = string
+type Language string
 
 const (
 	SimplifiedChinese Language = "zh-CN"
@@ -129,14 +129,8 @@ func GetLanguageCtx(c *gin.Context) context.Context {
 	return WithLanguage(c.Request.Context(), ResolveLanguage(c.GetHeader(AcceptLanguageHeader)))
 }
 
-// WithLanguage attaches a supported language to a context.
+// WithLanguage attaches an already resolved language to a context.
 func WithLanguage(ctx context.Context, lang Language) context.Context {
-	canonical, ok := NormalizeLanguage(lang)
-	if !ok {
-		lang = DefaultLanguage
-	} else {
-		lang = canonical
-	}
 	return context.WithValue(ctx, LanguageKey, lang)
 }
 

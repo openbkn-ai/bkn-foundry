@@ -16,6 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -1049,10 +1052,14 @@ func (s *knLogicPropertyResolverService) buildMissingParamsError(
 			errorMsg += fmt.Sprintf("missing %s", mp.Property)
 		}
 	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.LogicPropertyInputMissing", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 
 	missingError := &interfaces.MissingParamsError{
 		ErrorCode: "MISSING_INPUT_PARAMS",
-		Message:   errors.LocalizedDetail(ctx, "LogicPropertyInputMissing"),
+		Message:   localizedText,
 		ErrorMsg:  errorMsg,
 		Debug:     debugInfo,
 		TraceID:   "",
@@ -1093,8 +1100,11 @@ func (s *knLogicPropertyResolverService) buildGenerationFailedError(
 		}
 		errorMsg += fmt.Sprintf("%s: %s", f.Property, f.ErrorMsg)
 	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.LogicPropertyGenerationFailed", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 
 	return errors.DefaultHTTPError(ctx, http.StatusInternalServerError,
-		fmt.Sprintf("DYNAMIC_PARAMS_GENERATION_FAILED: %s: %s",
-			errors.LocalizedDetail(ctx, "LogicPropertyGenerationFailed"), errorMsg))
+		fmt.Sprintf("DYNAMIC_PARAMS_GENERATION_FAILED: %s: %s", localizedText, errorMsg))
 }

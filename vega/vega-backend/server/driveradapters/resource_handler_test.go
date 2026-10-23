@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -267,7 +267,7 @@ func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 	t.Run("rejects missing catalog", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil,
-			rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound))
+			httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Resource_CatalogNotFound))
 
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -498,7 +498,7 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 	t.Run("rejects enabled change through put", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Update(gomock.Any(), gomock.Any()).Return(
-			rest.NewHTTPError(context.Background(), http.StatusConflict,
+			httperrors.NewHTTPError(context.Background(), http.StatusConflict,
 				verrors.VegaBackend_Resource_EnabledFieldNotAllowed))
 
 		req := httptest.NewRequest(http.MethodPut, url,
@@ -553,7 +553,7 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 	t.Run("rejects category change", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
 		rs.EXPECT().Update(gomock.Any(), gomock.Any()).Return(
-			rest.NewHTTPError(context.Background(), http.StatusBadRequest,
+			httperrors.NewHTTPError(context.Background(), http.StatusBadRequest,
 				verrors.VegaBackend_InvalidParameter_RequestBody))
 
 		body := `{"id":"res-1","catalog_id":"catalog-1","name":"dataset-new","category":"table","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`
@@ -687,7 +687,7 @@ func TestRestHandlerDiscoverResource(t *testing.T) {
 				assert.Equal(t, "cat", req.CatalogID)
 				assert.Equal(t, interfaces.DiscoverStrategyCountOnly, req.Strategy)
 				if tt.status == http.StatusBadRequest {
-					return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+					return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 						WithErrorDetails("resource category dataset does not support count_only")
 				}
 				return "task", nil

@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/auditpublisher"
+
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
 )
 
@@ -201,3 +202,6 @@ func validAuditEnvironment(value string) bool {
 func auditSummary(action, target, name string) string {
 	return locale.AuditSummary(action, target, name)
 }
+
+// init loads immutable audit copy before this package builds ledger snapshots.
+func init() { locale.Register() }

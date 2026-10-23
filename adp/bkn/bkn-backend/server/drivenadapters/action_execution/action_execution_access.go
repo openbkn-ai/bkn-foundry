@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -31,12 +32,12 @@ func NewActionExecutionAccess(appSetting *common.AppSetting) interfaces.ActionEx
 func (a *actionExecutionAccess) CheckActionExecution(ctx context.Context,
 	request interfaces.ActionExecutionCheckRequest) error {
 	if a == nil || a.httpClient == nil || a.baseURL == "" {
-		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_ActionSchedule_InternalError).WithErrorDetails("action execution authorization is not configured")
 	}
 	account, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	if !ok || account.ID == "" || account.Type == "" {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	}
 	url := fmt.Sprintf("%s/api/ontology-query/in/v1/knowledge-networks/%s/action-types/%s/execute/check",
 		a.baseURL, request.KNID, request.ActionTypeID)
@@ -46,20 +47,20 @@ func (a *actionExecutionAccess) CheckActionExecution(ctx context.Context,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: account.Type,
 	}, map[string]any{"dynamic_params": request.DynamicParams})
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_ActionSchedule_InternalError).WithErrorDetails("action execution permission check failed")
 	}
 	switch status {
 	case http.StatusNoContent, http.StatusOK:
 		return nil
 	case http.StatusBadRequest:
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionSchedule_InvalidParameter)
 	case http.StatusForbidden, http.StatusUnauthorized:
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	case http.StatusNotFound:
-		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_ActionTypeNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionSchedule_ActionTypeNotFound)
 	default:
-		return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			berrors.BknBackend_ActionSchedule_InternalError).WithErrorDetails("action execution permission check unavailable")
 	}
 }

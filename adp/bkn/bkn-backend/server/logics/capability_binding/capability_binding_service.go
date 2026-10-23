@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -81,29 +81,29 @@ func normalizeAttachEntry(ctx context.Context, entry *interfaces.AttachCapabilit
 	capabilityID = strings.TrimSpace(entry.CapabilityID)
 
 	if !interfaces.IsValidCapabilityType(capabilityType) {
-		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return "", "", "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidCapabilityType).
 			WithErrorDetails(fmt.Sprintf("unsupported capability_type: %s", capabilityType))
 	}
 	if capabilityID == "" {
-		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return "", "", "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_NullParameter_CapabilityID)
 	}
 	// Column widths are checked here rather than left to the database: an over-long value would
 	// otherwise surface as a 500 under strict SQL mode, or be silently truncated into a binding
 	// that points at a different capability.
 	if len(capabilityID) > maxCapabilityIDLength {
-		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return "", "", "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("capability_id exceeds %d characters", maxCapabilityIDLength))
 	}
 	if len(ownerID) > maxOwnerIDLength {
-		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return "", "", "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("owner_id exceeds %d characters", maxOwnerIDLength))
 	}
 	if len(strings.TrimSpace(entry.Comment)) > maxCommentLength {
-		return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return "", "", "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("comment exceeds %d characters", maxCommentLength))
 	}
@@ -114,7 +114,7 @@ func normalizeAttachEntry(ctx context.Context, entry *interfaces.AttachCapabilit
 		// Both name a tool inside a container — a tool box, or an MCP Server — and the id alone
 		// does not identify one: tool ids are scoped to their box, tool names to their server.
 		if ownerID == "" {
-			return "", "", "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return "", "", "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_CapabilityBinding_NullParameter_OwnerID)
 		}
 	}
@@ -134,7 +134,7 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 	}
 
 	if len(entries) == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidParameter).
 			WithErrorDetails("capabilities must not be empty")
 	}
@@ -171,7 +171,7 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 		if err != nil {
 			logger.Errorf("GetBindingByCapability in knowledge network[%s] error: %v", knID, err)
 			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_CapabilityBinding_InternalError_CreateBindingsFailed).WithErrorDetails(err.Error())
 		}
 		// Mounting an already bound capability returns the existing row. Mounting is a statement
@@ -185,7 +185,7 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 		generatedID, generateErr := uuid.NewV7()
 		if generateErr != nil {
 			span.SetStatus(codes.Error, common.SafeErrorSummary(generateErr))
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_CapabilityBinding_InternalError).WithErrorDetails(generateErr.Error())
 		}
 		binding := &interfaces.CapabilityBinding{
@@ -211,7 +211,7 @@ func (cbs *capabilityBindingService) AttachCapabilities(ctx context.Context, tx 
 		if err := cbs.cba.CreateBindings(ctx, tx, toCreate); err != nil {
 			logger.Errorf("CreateBindings in knowledge network[%s] error: %v", knID, err)
 			span.SetStatus(codes.Error, common.SafeErrorSummary(err))
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_CapabilityBinding_InternalError_CreateBindingsFailed).WithErrorDetails(err.Error())
 		}
 	}
@@ -247,7 +247,7 @@ func (cbs *capabilityBindingService) DetachCapabilities(ctx context.Context, tx 
 	if err != nil {
 		logger.Errorf("DeleteBindingsByIDs in knowledge network[%s] error: %v", knID, err)
 		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
-		return 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_DeleteBindingsFailed).WithErrorDetails(err.Error())
 	}
 	span.SetStatus(codes.Ok, "")
@@ -260,14 +260,14 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 	defer span.End()
 
 	if query.CapabilityType != "" && !interfaces.IsValidCapabilityType(query.CapabilityType) {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidCapabilityType).
 			WithErrorDetails(fmt.Sprintf("unsupported capability_type: %s", query.CapabilityType))
 	}
 	if metadataType := strings.TrimSpace(query.MetadataType); metadataType != "" &&
 		metadataType != interfaces.EXEC_BOX_METADATA_TYPE_OPENAPI &&
 		metadataType != interfaces.EXEC_BOX_METADATA_TYPE_FUNCTION {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("unsupported metadata_type: %s", metadataType))
 	}
@@ -328,7 +328,7 @@ func (cbs *capabilityBindingService) ListCapabilities(ctx context.Context,
 	if err != nil {
 		logger.Errorf("ListBindings in knowledge network[%s] error: %v", query.KNID, err)
 		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).WithErrorDetails(err.Error())
 	}
 
@@ -357,7 +357,7 @@ func (cbs *capabilityBindingService) GetCapabilityTotalsByType(ctx context.Conte
 	if err != nil {
 		logger.Errorf("GetBindingsTotalByType in knowledge network[%s] error: %v", knID, err)
 		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_GetBindingsTotalFailed).WithErrorDetails(err.Error())
 	}
 
@@ -424,7 +424,7 @@ func (cbs *capabilityBindingService) boxesOfKind(ctx context.Context, knID, bran
 	metadataType string, sources *provenance) ([]string, error) {
 	perBox, err := cbs.cba.GetFunctionTotalsByOwner(ctx, knID, branch)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -443,7 +443,7 @@ func (cbs *capabilityBindingService) boxesOfKind(ctx context.Context, knID, bran
 
 	kinds, failedBox, err := cbs.boxKinds(ctx, candidates)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadGateway,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadGateway,
 			berrors.BknBackend_CapabilityBinding_ExecutionFactoryUnavailable).
 			WithErrorDetails(fmt.Sprintf("tool box lookup failed: box_id=%s", failedBox))
 	}
@@ -574,7 +574,7 @@ func (cbs *capabilityBindingService) DeleteCapabilitiesByKnID(ctx context.Contex
 	if _, err := cbs.cba.DeleteBindingsByKnID(ctx, tx, knID, branch); err != nil {
 		logger.Errorf("DeleteBindingsByKnID in knowledge network[%s] error: %v", knID, err)
 		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_DeleteBindingsFailed).WithErrorDetails(err.Error())
 	}
 	span.SetStatus(codes.Ok, "")
@@ -606,7 +606,7 @@ func (cbs *capabilityBindingService) ResolveCapabilities(ctx context.Context, kn
 
 	capabilityType = strings.TrimSpace(capabilityType)
 	if capabilityType != "" && !interfaces.IsValidCapabilityType(capabilityType) {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidCapabilityType).
 			WithErrorDetails(fmt.Sprintf("unsupported capability_type: %s", capabilityType))
 	}
@@ -619,7 +619,7 @@ func (cbs *capabilityBindingService) ResolveCapabilities(ctx context.Context, kn
 	if err != nil {
 		logger.Errorf("ResolveCapabilities in knowledge network[%s] error: %v", knID, err)
 		span.SetStatus(codes.Error, common.SafeErrorSummary(err))
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_CapabilityBinding_InternalError_ListBindingsFailed).WithErrorDetails(err.Error())
 	}
 

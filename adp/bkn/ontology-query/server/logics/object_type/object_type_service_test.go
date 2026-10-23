@@ -13,7 +13,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -268,7 +269,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 			So(result.Datas, ShouldBeNil)
@@ -281,7 +282,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				ObjectTypeID: objectTypeID,
 			}
 
-			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ObjectType{}, false, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.ObjectType{}, false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -313,7 +314,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(result.Datas, ShouldBeNil)
@@ -340,7 +341,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(result.Datas, ShouldBeNil)
@@ -550,7 +551,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(result.Datas, ShouldBeNil)
@@ -648,7 +649,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(result.Datas, ShouldBeNil)
@@ -690,7 +691,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(result.Datas, ShouldBeNil)
@@ -778,7 +779,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(result.Datas, ShouldBeNil)
@@ -825,7 +826,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(result.Datas, ShouldBeNil)
@@ -1168,11 +1169,11 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			_, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			// Reporting parameter issues as 500 makes callers check service health, while the real fix is changing the query or building the index.
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual, details)
+			So(httpErr.ErrorDetails, ShouldEqual, details)
 		})
 
 		for _, tc := range []struct {
@@ -1219,23 +1220,23 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				_, err := service.GetObjectsByObjectTypeID(ctx, query)
 				So(err, ShouldNotBeNil)
 
-				httpErr, ok := err.(*rest.HTTPError)
+				httpErr, ok := err.(*httperrors.HTTPError)
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 				if tc.expectedProperty != "" {
-					So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, tc.expectedProperty)
-					So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "256 UTF-16")
-					So(httpErr.BaseError.Metadata["field"], ShouldEqual, tc.expectedProperty)
-					So(len(httpErr.BaseError.Metadata), ShouldEqual, 2)
+					So(httpErr.ErrorDetails, ShouldContainSubstring, tc.expectedProperty)
+					So(httpErr.ErrorDetails, ShouldContainSubstring, "256 UTF-16")
+					So(httpErr.Metadata["field"], ShouldEqual, tc.expectedProperty)
+					So(len(httpErr.Metadata), ShouldEqual, 2)
 				} else {
-					_, hasField := httpErr.BaseError.Metadata["field"]
+					_, hasField := httpErr.Metadata["field"]
 					So(hasField, ShouldBeFalse)
-					So(len(httpErr.BaseError.Metadata), ShouldEqual, 1)
+					So(len(httpErr.Metadata), ShouldEqual, 1)
 				}
-				So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, tc.field)
+				So(httpErr.ErrorDetails, ShouldNotContainSubstring, tc.field)
 				So(downstream.Metadata["field"], ShouldEqual, tc.field)
-				So(httpErr.BaseError.ErrorDetails, ShouldNotContainSubstring, "private")
-				So(httpErr.BaseError.Metadata["limit"], ShouldEqual, float64(256))
+				So(httpErr.ErrorDetails, ShouldNotContainSubstring, "private")
+				So(httpErr.Metadata["limit"], ShouldEqual, float64(256))
 			})
 
 		}
@@ -1272,7 +1273,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			_, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldNotBeNil)
 
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
@@ -1349,7 +1350,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 		})
 
 		Convey("失败 - 工具执行错误不回显下游载荷", func() {
-			localizedCtx := rest.WithLanguage(ctx, rest.AmericanEnglish)
+			localizedCtx := i18n.WithLanguage(ctx, i18n.AmericanEnglish)
 			logicProp := &interfaces.LogicProperty{
 				Name: "logic_prop1",
 				Type: interfaces.LOGIC_PROPERTY_TYPE_TOOL,
@@ -1366,13 +1367,13 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			result, err := service.handleToolProperty(localizedCtx, "kn1", "ot1", "logic_prop1", toolValue, logicProp, nil)
 			So(result, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorDetails, ShouldEqual,
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorDetails, ShouldEqual,
 				"Toolbox box1 tool tool1 failed while evaluating logic property logic_prop1: tool execution failed")
 		})
 
 		Convey("失败 - 指标动态参数错误保留具体原因", func() {
-			localizedCtx := rest.WithLanguage(ctx, rest.SimplifiedChinese)
+			localizedCtx := i18n.WithLanguage(ctx, i18n.SimplifiedChinese)
 			dynamicParams := map[string]map[string]any{
 				"metric_prop": {"invalid": make(chan int)},
 			}
@@ -1380,8 +1381,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			_, err := service.handleMetricProperty(localizedCtx, "kn1", "main", "ot1", "metric_prop",
 				interfaces.MetricProperty{}, &interfaces.LogicProperty{}, dynamicParams)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			details := httpErr.BaseError.ErrorDetails.(string)
+			httpErr := err.(*httperrors.HTTPError)
+			details := httpErr.ErrorDetails.(string)
 			So(details, ShouldStartWith, "解析属性 metric_prop 的动态参数失败：")
 			So(details, ShouldContainSubstring, "chan")
 		})

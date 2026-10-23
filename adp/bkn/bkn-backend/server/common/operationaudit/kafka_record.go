@@ -73,22 +73,22 @@ func BuildKafkaAuditRecord(entry Entry, environment string) ([]byte, error) {
 		return nil, fmt.Errorf("invalid Audit outcome %q", entry.Outcome)
 	}
 	if entry.HTTPStatus < 100 || entry.HTTPStatus > 599 {
-		return nil, errors.New("Audit HTTP status is missing or invalid")
+		return nil, errors.New("audit HTTP status is missing or invalid")
 	}
 	changedFields, ok := entry.ChangeSummary["changed_fields"].([]string)
 	if !ok {
-		return nil, errors.New("Audit fact has no bounded changed_fields")
+		return nil, errors.New("audit fact has no bounded changed_fields")
 	}
 	if len(changedFields) > 100 {
-		return nil, errors.New("Audit changed_fields exceeds schema limit")
+		return nil, errors.New("audit changed_fields exceeds schema limit")
 	}
 	seen := make(map[string]struct{}, len(changedFields))
 	for _, field := range changedFields {
 		if field == "" || len(field) > 128 {
-			return nil, errors.New("Audit changed_fields contains an invalid field")
+			return nil, errors.New("audit changed_fields contains an invalid field")
 		}
 		if _, duplicate := seen[field]; duplicate {
-			return nil, errors.New("Audit changed_fields contains a duplicate")
+			return nil, errors.New("audit changed_fields contains a duplicate")
 		}
 		seen[field] = struct{}{}
 	}
@@ -194,3 +194,6 @@ func validAuditEnvironment(value string) bool {
 func auditSummary(action, target, name string) string {
 	return locale.AuditSummary(action, target, name)
 }
+
+// init loads immutable audit copy before this package builds ledger snapshots.
+func init() { locale.Register() }

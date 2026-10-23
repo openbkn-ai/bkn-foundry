@@ -451,7 +451,7 @@ func (a *access) DeletePublishedSnapshot(ctx context.Context, knID string) error
 }
 
 func (a *access) ResolvePublishedBinding(ctx context.Context, knID string,
-	binding interfaces.KNProxyBinding) (*interfaces.KNProxyBinding, error) {
+	binding interfaces.KNProxyBinding) (resolved *interfaces.KNProxyBinding, err error) {
 	where := sq.Eq{
 		"f_kn_id": knID, "f_binding_type": binding.ChildType, "f_binding_id": binding.ChildID,
 		"f_resource_id": binding.TargetID, "f_operation": binding.Operation,
@@ -469,11 +469,15 @@ func (a *access) ResolvePublishedBinding(ctx context.Context, knID string,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
 	if !rows.Next() {
 		return nil, nil
 	}
-	resolved := &interfaces.KNProxyBinding{}
+	resolved = &interfaces.KNProxyBinding{}
 	if err := rows.Scan(&resolved.ChildType, &resolved.ChildID, &resolved.TargetType,
 		&resolved.TargetID, &resolved.Operation); err != nil {
 		return nil, err
@@ -485,7 +489,7 @@ func (a *access) ResolvePublishedBinding(ctx context.Context, knID string,
 }
 
 func (a *access) ResolvePublishedBindings(ctx context.Context, knID string,
-	bindings []interfaces.KNProxyBinding) ([]interfaces.KNProxyBinding, error) {
+	bindings []interfaces.KNProxyBinding) (resolved []interfaces.KNProxyBinding, err error) {
 	if len(bindings) == 0 {
 		return []interfaces.KNProxyBinding{}, nil
 	}
@@ -499,7 +503,11 @@ func (a *access) ResolvePublishedBindings(ctx context.Context, knID string,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
 	published := make(map[string]struct{})
 	for rows.Next() {
 		var source interfaces.KNProxyBinding
@@ -511,7 +519,7 @@ func (a *access) ResolvePublishedBindings(ctx context.Context, knID string,
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	resolved := make([]interfaces.KNProxyBinding, 0, len(bindings))
+	resolved = make([]interfaces.KNProxyBinding, 0, len(bindings))
 	for _, binding := range bindings {
 		if _, ok := published[proxyBindingKey(binding)]; ok {
 			resolved = append(resolved, binding)

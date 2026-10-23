@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -133,28 +133,28 @@ func Test_ValidateActionScheduleUpdate(t *testing.T) {
 func TestActionScheduleValidationDetailsRespectLanguage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "name is required."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "必须提供 name。"},
+		{"English", i18n.AmericanEnglish, "name is required."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "必须提供 name。"},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := ValidateActionScheduleCreate(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				&interfaces.ActionScheduleCreateRequest{},
 			)
 			if err == nil {
 				t.Fatal("ValidateActionScheduleCreate() error = nil, want missing name error")
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}

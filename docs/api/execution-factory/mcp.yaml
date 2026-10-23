@@ -76,7 +76,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   /mcp/:
     post:
@@ -400,7 +400,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -585,7 +585,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   /mcp/proxy/{mcp_id}/tool/call:
     post:
@@ -643,7 +643,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -806,31 +806,31 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Unauthorized:
       description: 凭据缺失或无效
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Forbidden:
       description: 当前主体缺少所需资源权限
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     NotFound:
       description: MCP Server 或工具不存在
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     InternalError:
       description: 服务内部错误
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   schemas:
     MCPMode:

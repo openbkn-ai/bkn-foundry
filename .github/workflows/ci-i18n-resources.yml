@@ -9,7 +9,10 @@ on:
     branches: [main]
     paths:
       - 'comm-go/i18n/**'
-      - 'adp/**/locale/**/*.toml'
+      - 'adp/**/server/locale/**'
+      - 'vega/**/server/locale/**'
+      - 'bkn-safe/server/locale/**'
+      - 'infra/oss-gateway-backend/locale/**'
       - 'adp/**/server/infra/localize/locales/**'
       - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
       - 'bkn-trace/agent-observability/locale/**'
@@ -21,7 +24,10 @@ on:
   pull_request:
     paths:
       - 'comm-go/i18n/**'
-      - 'adp/**/locale/**/*.toml'
+      - 'adp/**/server/locale/**'
+      - 'vega/**/server/locale/**'
+      - 'bkn-safe/server/locale/**'
+      - 'infra/oss-gateway-backend/locale/**'
       - 'adp/**/server/infra/localize/locales/**'
       - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
       - 'bkn-trace/agent-observability/locale/**'
@@ -42,6 +48,8 @@ jobs:
   validate:
     name: validate i18n resources
     runs-on: ubuntu-24.04
+    env:
+      GOWORK: 'off'
     steps:
       - uses: actions/checkout@v4
 
@@ -53,6 +61,14 @@ jobs:
       - name: Validate Go locale catalogs
         working-directory: comm-go
         run: go test ./i18n
+
+      - name: Validate Context Loader locale catalogs
+        working-directory: adp/context-loader/agent-retrieval
+        run: go test ./server/locale
+
+      - name: Validate Operator Integration locale catalogs
+        working-directory: adp/execution-factory/operator-integration
+        run: go test ./server/locale
 
       - name: Validate Agent Observability locale catalogs
         working-directory: bkn-trace/agent-observability

@@ -76,6 +76,46 @@ There is none. Published Agents used to be registered automatically in the Execu
 
 Built-in Agents use fixed IDs. Their configuration, shared Prompts, and Prompt history live in existing database tables. `core-data-migrator` installs all default data; there is no JSON config package, extra bootstrap table, or application startup Job, and the former `deploy/` directory has been removed. Administrators edit shared configuration through the existing management API. Initialization does not overwrite existing Agents.
 
+The claim-identification Agent ships a database-backed English system Prompt
+variant. Execution and the effective/shared Agent Prompt read endpoints select
+the same stored variant using the request's negotiated `Accept-Language`.
+Chinese remains the canonical fallback. Request and personal overrides retain
+their existing precedence; shared-only executions still ignore those overrides.
+Publishing a custom shared Prompt creates a new version without inherited
+translations, so that exact administrator content applies in every language.
+Raw Prompt management, export and version history continue to return canonical
+content. Re-activating an official version also restores its language variants.
+Saving the English effective/shared content as a new administrator version, even
+without editing it, publishes that English text as canonical for every language.
+
+The Agent component schema advances to `0.2.2` without changing the product
+release version. The normal migrator selects `0.2.2/01-claim-prompt-locales.sql`
+for already-installed `0.2.1` databases; earlier versions run their intervening
+deltas first. Fresh installations select `0.2.2/init.sql`. Do not modify migration
+progress records or rerun the previous version's initialization snapshot.
+
+Run the platform migration phase before starting the new Agent image: the ORM
+requires the nullable `f_localized_content` column. The backfill matches the
+official owner, exact Chinese content hash, absent variable schema (SQL NULL or
+JSON null), and absent translations. It never rewrites canonical bodies,
+current-version pointers, caller overrides, or existing translations. An older
+controlled preview migration is safe: the new delta is idempotent.
+
+After the migrator succeeds, the deployment can perform this read-only schema
+preflight with its approved connection options; stop rollout if it fails:
+
+```sh
+mysql --defaults-extra-file="$MYSQL_DEFAULTS_FILE" < infra/bkn-agent/scripts/check-prompt-locales.sql
+```
+
+The preflight returns no Prompt body. Normal migration backup/approval applies;
+DDL is not transactionally rolled back. Validate both languages in the target
+environment after rollout. Isolated migration tests do not replace deployment
+acceptance.
+Rolling back the application can retain the extra column; deleting it is
+unnecessary and would discard translations. No online translation, additional
+Prompt query, or Trace list/detail loading is involved.
+
 The 0.2.1 fresh-install and upgrade paths are:
 
 - Fresh installation runs `migrations/bkn-agent/mariadb/0.2.1/init.sql`, retaining the original ten tables and semantic-understanding definitions while adding the Agent settings/version tables, Studio Smart QA, Cypher generation, Object Metric Designer, and two business-provenance Agents.

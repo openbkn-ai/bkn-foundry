@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -365,12 +365,12 @@ func TestCheckKNChildBatchPermissionRequiresEveryCanonicalChild(t *testing.T) {
 	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{
 		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_METRIC, ID: "kn-1/one"}, Operation: interfaces.OPERATION_TYPE_DELETE},
 		{Resource: interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_METRIC, ID: "kn-1/two"}, Operation: interfaces.OPERATION_TYPE_DELETE},
-	}).Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+	}).Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 
 	err := CheckKNChildBatchPermission(context.Background(), ps,
 		interfaces.RESOURCE_TYPE_METRIC, "kn-1", []string{"one", "two"},
 		interfaces.OPERATION_TYPE_DELETE)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 		t.Fatalf("CheckKNChildBatchPermission() error = %v, want HTTP 403", err)
 	}

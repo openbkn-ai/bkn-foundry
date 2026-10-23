@@ -11,16 +11,16 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/licverify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
-	"github.com/openbkn-ai/licverify"
 )
 
 func TestConnectorFactoryRegisterCoreLocalConnectors(t *testing.T) {
@@ -514,14 +514,14 @@ func TestPostgresqlOptionsFollowRequestLanguage(t *testing.T) {
 	cf.RegisterCoreLocalConnectors()
 	ct := &interfaces.ConnectorType{Type: interfaces.ConnectorTypePostgreSQL, Mode: interfaces.ConnectorModeLocal, Category: interfaces.ConnectorCategoryTable}
 	for _, test := range []struct {
-		language          rest.Language
+		language          i18n.Language
 		name, description string
 	}{
-		{rest.SimplifiedChinese, "连接参数", "可选；仅支持"},
-		{rest.AmericanEnglish, "Connection options", "Optional; only"},
-		{rest.SimplifiedChinese, "连接参数", "可选；仅支持"},
+		{i18n.SimplifiedChinese, "连接参数", "可选；仅支持"},
+		{i18n.AmericanEnglish, "Connection options", "Optional; only"},
+		{i18n.SimplifiedChinese, "连接参数", "可选；仅支持"},
 	} {
-		ctx := context.WithValue(context.Background(), rest.LanguageKey, test.language)
+		ctx := context.WithValue(context.Background(), i18n.LanguageKey, test.language)
 		fields, err := cf.GetConnectorFieldConfig(ctx, ct)
 		require.NoError(t, err)
 		require.Equal(t, test.name, fields["options"].Name)

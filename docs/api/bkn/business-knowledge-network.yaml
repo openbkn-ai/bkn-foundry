@@ -75,10 +75,11 @@ paths:
         - name: confirm_clear_declarations
           in: query
           description: |
-            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
-            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
-            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
-            the declarations; pass true to clear them.
+            With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
+            (aliases and property declarations) or action type (aliases), such as a 2.x package or an old JSON
+            export, would clear them. Without this parameter the request is refused with 409
+            BknBackend.ObjectType.DeclarationsWouldBeCleared or BknBackend.ActionType.DeclarationsWouldBeCleared,
+            whose details list the declarations; pass true to clear them.
           schema:
             type: boolean
             default: false
@@ -255,10 +256,11 @@ paths:
         - name: confirm_clear_declarations
           in: query
           description: |
-            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
-            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
-            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
-            the declarations; pass true to clear them.
+            With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
+            (aliases and property declarations) or action type (aliases), such as a 2.x package or an old JSON
+            export, would clear them. Without this parameter the request is refused with 409
+            BknBackend.ObjectType.DeclarationsWouldBeCleared or BknBackend.ActionType.DeclarationsWouldBeCleared,
+            whose details list the declarations; pass true to clear them.
           schema:
             type: boolean
             default: false
@@ -491,10 +493,11 @@ paths:
         - name: confirm_clear_declarations
           in: query
           description: |
-            With overwrite, a file that does not carry the BKN spec 3.0 property declarations of an existing
-            object type (a 2.x package or an old JSON export) would clear them. Without this parameter the
-            request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared, whose details list
-            the declarations; pass true to clear them.
+            With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
+            (aliases and property declarations) or action type (aliases), such as a 2.x package or an old JSON
+            export, would clear them. Without this parameter the request is refused with 409
+            BknBackend.ObjectType.DeclarationsWouldBeCleared or BknBackend.ActionType.DeclarationsWouldBeCleared,
+            whose details list the declarations; pass true to clear them.
           schema:
             type: boolean
             default: false

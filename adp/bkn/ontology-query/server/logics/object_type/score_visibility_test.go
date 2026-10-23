@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -133,7 +133,7 @@ func TestScoreIsOnlyReturnedForExplicitFullPropertySearch(t *testing.T) {
 		ActualCondition: &cond.CondCfg{Name: "mobile", Operation: cond.OperationMatch},
 	}
 	_, err = buildPropertyAccessPlan(context.Background(), resolver, objectType, maskedSearch, true)
-	httpError, ok := err.(*rest.HTTPError)
+	httpError, ok := err.(*httperrors.HTTPError)
 	if !ok || httpError.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("masked search property error = %#v", err)
 	}
@@ -197,7 +197,7 @@ func TestRequiredFullDependencyIsFetchedButNotAutomaticallyReturned(t *testing.T
 		"id": interfaces.PropertyAccessFull, "mobile": interfaces.PropertyAccessMasked,
 		"notes": interfaces.PropertyAccessSchema, "secret": interfaces.PropertyAccessNone,
 	}}, objectType, query, true)
-	httpError, ok := err.(*rest.HTTPError)
+	httpError, ok := err.(*httperrors.HTTPError)
 	if !ok || httpError.HTTPCode != http.StatusBadRequest {
 		t.Fatalf("masked internal dependency error = %#v", err)
 	}

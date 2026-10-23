@@ -12,22 +12,13 @@ import (
 	"strings"
 
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
-
-// ValidateRiskTypes validates risk type creation requests.
-
-func riskTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(
-		rest.GetLanguageByCtx(ctx),
-		"BknBackend.RiskType.InvalidParameter.Detail."+name,
-		templateData,
-	)
-}
 
 func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces.RiskType) error {
 	tmpNameMap := make(map[string]any)
@@ -35,17 +26,25 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 	for i := range riskTypes {
 		riskType := riskTypes[i]
 		if riskType.ModuleType != "" && riskType.ModuleType != interfaces.MODULE_TYPE_RISK_TYPE {
-			return rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
-				WithErrorDetails(riskTypeInvalidDetail(ctx, "ModuleType", nil))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail.ModuleType", nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
+				WithErrorDetails(localizedText)
 		}
 
 		rtID := riskType.RTID
 		if _, ok := idMap[rtID]; !ok || rtID == "" {
 			idMap[rtID] = nil
 		} else {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_IDInFile).
-				WithDescription(map[string]any{"riskTypeID": rtID}).
-				WithErrorDetails(riskTypeInvalidDetail(ctx, "DuplicatedIDInFile", map[string]any{"riskTypeID": rtID}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail.DuplicatedIDInFile", map[string]any{"riskTypeID": rtID})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_IDInFile).
+				WithMetadata(map[string]any{"riskTypeID": rtID}).
+				WithErrorDetails(localizedText)
 		}
 
 		err := ValidateRiskType(ctx, riskType)
@@ -56,9 +55,13 @@ func ValidateRiskTypes(ctx context.Context, knID string, riskTypes []*interfaces
 		if _, ok := tmpNameMap[riskType.RTName]; !ok {
 			tmpNameMap[riskType.RTName] = nil
 		} else {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_Name).
-				WithDescription(map[string]any{"riskTypeName": riskType.RTName}).
-				WithErrorDetails(riskTypeInvalidDetail(ctx, "DuplicatedNameInFile", map[string]any{"riskTypeName": riskType.RTName}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RiskType.InvalidParameter.Detail.DuplicatedNameInFile", map[string]any{"riskTypeName": riskType.RTName})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RiskType_Duplicated_Name).
+				WithMetadata(map[string]any{"riskTypeName": riskType.RTName}).
+				WithErrorDetails(localizedText)
 		}
 
 		riskType.KNID = knID
