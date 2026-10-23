@@ -604,3 +604,47 @@ def test_progress_sends_each_new_plan_once_with_its_data():
     assert provider.progress(run) is None
     _invoke(tools["remove_instances"], ids=["teams-9"])
     assert [a["type"] for a in provider.progress(run)["actions"]] == ["remove_nodes"]
+
+
+def test_removing_an_aggregate_keeps_the_result_valid():
+    # Regression: removal named the aggregate, and the result checked it as a node.
+    run, tools, _ = _expand_run({9: 50}, threshold=20)
+    _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")
+    assert _invoke(tools["remove_instances"], ids=["agg|teams-9|rel_home|in"])["planned_removed"] == 1
+    result = builtin_tools.get("graph_explorer").result(run)
+    assert result["actions"][-1] == {"action_id": "2", "type": "remove_nodes", "node_ids": ["agg|teams-9|rel_home|in"]}
+
+
+def test_scalar_rows_cut_at_the_default_limit_say_so():
+    # bkn-backend marks it at the top level; execution only comes with graph values.
+    _, tools, _ = _run(cypher={"entries": [{"name": "Messi"}], "limited": True})
+    out = _invoke(tools["run_cypher"], query="MATCH (p:players) RETURN p.name AS name")
+    assert "default limit" in out["limited"]
+
+
+def test_a_node_shown_again_takes_room_and_stays_off_when_there_is_none():
+    run, tools = _canvas_run()
+    run.context.limits.max_nodes = 3
+    _invoke(tools["remove_instances"], ids=["teams-9"])
+    # A full canvas again before teams-9 comes back: it stays off, and is not in the merge.
+    run.state["nodes"]["x-1"] = {"id": "x-1", "object_type_id": "x", "properties": {}, "identity": {}}
+    out = _invoke(tools["show_instances"], ids=["teams-9"])
+    assert out.get("left_out") == 1
+    merges = [a for a in builtin_tools.get("graph_explorer").result(run)["actions"] if a["type"] == "merge_subgraph"]
+    assert all("teams-9" not in a["node_ids"] for a in merges)
+
+
+def test_manual_group_ids_do_not_repeat_across_runs():
+    run, tools = _canvas_run(view={"canvas": {"manual_groups": [{"id": "g-ai-1", "name": "上一轮"}]}})
+    created = _invoke(tools["manual_group"], action="create", name="南美", ids=["teams-1"])
+    assert created["planned"]["id"] != "g-ai-1"
+
+
+def test_cypher_fills_in_only_nodes_the_canvas_has_room_for():
+    cypher = {"entries": [{"t": _obj("teams", i)} for i in (1, 9, 21, 22, 23)]}
+    run, tools, calls = _run(cypher=cypher)
+    run.context.limits.max_nodes = 2
+    out = _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t")
+    looked_up = [v for c in calls if c[0] == "query_object_instance" for v in c[1]["condition"]["value"]]
+    # Two fit; the other three are left out, so they are not looked up either.
+    assert looked_up == [1, 9] and out["left_out"] == 3

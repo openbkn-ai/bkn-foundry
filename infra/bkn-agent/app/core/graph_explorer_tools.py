@@ -19,6 +19,7 @@ import asyncio
 import inspect
 import json
 import re
+import uuid
 from typing import Annotated, Any, Literal, Optional
 
 from typing_extensions import Required, TypedDict
@@ -342,12 +343,21 @@ def _merge(
     canvas_edges = {e.id for e in canvas.edges}
     planned_nodes, planned_edges = _planned_nodes(run), _planned_edges(run)
     room = _room(run)
-    added_nodes, kept, cut = [], set(on_canvas) | set(planned_nodes), 0
+    removed = _removed(run)
+    added_nodes, kept, cut = [], (set(on_canvas) | set(planned_nodes)) - removed, 0
     for node in nodes:
-        if node["id"] in _removed(run):
-            # Shown again after this run took it off: back on, with its data.
-            _removed(run).discard(node["id"])
+        if node["id"] in removed:
+            # Shown again after this run took it off: back on, with its data, taking room like a
+            # new node. The Web completes its relations to the canvas when it adds it.
+            if room <= 0:
+                cut += 1
+                continue
+            removed.discard(node["id"])
             planned_nodes.setdefault(node["id"], node)
+            kept.add(node["id"])
+            added_nodes.append(node["id"])
+            room -= 1
+            continue
         if node["id"] in kept:
             existing = planned_nodes.get(node["id"])
             if existing is not None:
@@ -928,10 +938,14 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         network = await _network(run)
         names = {i: r["name"] for i, r in network["relation_types"].items()}
         graph = data.graph_from_cypher(result, metas, names)
-        await _enrich(run, graph.nodes, metas)
+        # Only new nodes the canvas has room for get filled in; _merge leaves the rest out.
+        known = _present_nodes(run) | set(_planned_nodes(run))
+        fresh = [n for n in graph.nodes if n["id"] not in known]
+        await _enrich(run, fresh[: max(0, _room(run))], metas)
         out: dict[str, Any] = {"rows": len(entries)}
         execution = result.get("execution") if isinstance(result.get("execution"), dict) else {}
-        if execution.get("conclusions_limited"):
+        # Scalar rows cut at the default limit say so at the top; graph values in execution.
+        if result.get("limited") or execution.get("conclusions_limited"):
             out["limited"] = "The rows stop at the platform's default limit; narrow the query or add LIMIT for a smaller, complete answer."
         if graph.holds_graph:
             out.update(_summary(graph.nodes, with_properties=False))
@@ -1232,7 +1246,8 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         if action == "create":
             if not (name or "").strip() or not members:
                 raise ToolException("create needs a name and node ids, or a selection.")
-            id = f"g-ai-{len(_actions(run)) + 1}"
+            # Unique across runs: an earlier run's g-ai group may already be on the canvas.
+            id = f"g-ai-{uuid.uuid4().hex[:8]}"
             run.state["groups"].append(id)
             fields.update(id=id, name=name.strip(), ids=members, **({"color": color} if color else {}))
         elif action == "exclude":
@@ -1368,14 +1383,15 @@ def _result(run: builtin_tools.Run) -> dict:
     for action in actions:
         if action.get("type") not in ACTION_TYPES:
             raise ValueError(f"action type {action.get('type')!r} is not allowed")
-        for node_id in action.get("node_ids", ()):
-            if node_id not in known:
-                raise ValueError(f"action {action.get('action_id')} names unknown node {node_id}")
+        # Removal names aggregates too, so it is checked against both.
         if action["type"] == "remove_nodes":
             for node_id in action["node_ids"]:
                 if node_id not in removable:
                     raise ValueError(f"action {action['action_id']} removes unknown {node_id}")
             continue
+        for node_id in action.get("node_ids", ()):
+            if node_id not in known:
+                raise ValueError(f"action {action.get('action_id')} names unknown node {node_id}")
         for edge_id in action.get("edge_ids", ()):
             if edge_id not in edges:
                 raise ValueError(f"action {action.get('action_id')} names unknown edge {edge_id}")
