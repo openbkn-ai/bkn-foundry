@@ -22,8 +22,9 @@ import (
 )
 
 var (
-	ErrNothingToArchive = errors.New("archive has no eligible records")
-	ErrCleanupRequired  = errors.New("archive cleanup must be completed before another archive of this kind")
+	ErrIncompleteCandidates = errors.New("archive candidates are incomplete or unverifiable")
+	ErrNothingToArchive     = errors.New("archive has no eligible records")
+	ErrCleanupRequired      = errors.New("archive cleanup must be completed before another archive of this kind")
 )
 
 type Candidate struct {

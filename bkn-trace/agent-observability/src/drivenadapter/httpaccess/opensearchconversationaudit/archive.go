@@ -36,7 +36,8 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 		return nil, nil
 	}
 	body, _ := json.Marshal(map[string]any{
-		"size": 10000,
+		"size":             10000,
+		"track_total_hits": true,
 		"sort": []any{map[string]any{
 			"@timestamp": map[string]any{"order": "asc"},
 		}},
@@ -59,7 +60,15 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 		return nil, err
 	}
 	var response struct {
+		TimedOut *bool `json:"timed_out"`
+		Shards   *struct {
+			Failed *int `json:"failed"`
+		} `json:"_shards"`
 		Hits struct {
+			Total *struct {
+				Value    *int   `json:"value"`
+				Relation string `json:"relation"`
+			} `json:"total"`
 			Hits []struct {
 				ID     string          `json:"_id"`
 				Source json.RawMessage `json:"_source"`
@@ -68,6 +77,27 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 	}
 	if err := json.Unmarshal(payload, &response); err != nil {
 		return nil, err
+	}
+	// A partial search must never become a successful archive of the entire
+	// requested range. Reject it before creating a job or deleting hot data.
+	if response.TimedOut == nil || response.Shards == nil || response.Shards.Failed == nil || *response.Shards.Failed < 0 {
+		return nil, fmt.Errorf("%w: log archive search lacks valid completeness metadata", archivesvc.ErrIncompleteCandidates)
+	}
+	if *response.TimedOut {
+		return nil, fmt.Errorf("%w: log archive search timed out; refusing incomplete candidates", archivesvc.ErrIncompleteCandidates)
+	}
+	if *response.Shards.Failed > 0 {
+		return nil, fmt.Errorf("%w: log archive search has %d failed shards; refusing incomplete candidates", archivesvc.ErrIncompleteCandidates, *response.Shards.Failed)
+	}
+	total := response.Hits.Total
+	if total == nil || total.Value == nil || *total.Value < 0 || total.Relation != "eq" {
+		return nil, fmt.Errorf("%w: log archive search did not return an exact candidate total", archivesvc.ErrIncompleteCandidates)
+	}
+	if *total.Value > len(response.Hits.Hits) {
+		return nil, fmt.Errorf("%w: log archive search incomplete: returned %d of %d eligible records (batch limit 10000)", archivesvc.ErrIncompleteCandidates, len(response.Hits.Hits), *total.Value)
+	}
+	if *total.Value < len(response.Hits.Hits) {
+		return nil, fmt.Errorf("%w: log archive search total is inconsistent with returned candidates: total %d, returned %d", archivesvc.ErrIncompleteCandidates, *total.Value, len(response.Hits.Hits))
 	}
 	candidates := make([]archivesvc.Candidate, 0, len(response.Hits.Hits))
 	for _, hit := range response.Hits.Hits {

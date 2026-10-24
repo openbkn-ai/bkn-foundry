@@ -118,6 +118,19 @@ OpenSearch Security 时，需要对回执索引／别名授予
 `indices:data/read/point_in_time/readall` 读取清单，确认自己创建的 PIT 已清理。
 参见 [OpenSearch 2.19 PIT 权限说明](https://docs.opensearch.org/2.19/search-plugins/searching-data/point-in-time/#security-model)。
 
+## 日志归档创建限制
+
+具有归档权限的用户调用 `POST /api/observability/v1/log-archive-jobs` 时，
+如果 OpenSearch 候选结果不完整或无法验证，接口返回 HTTP 409，错误码为
+`archive_incomplete_candidates`。包括候选超过10,000条、总数不精确或与结果
+不一致、搜索超时、部分分片失败。此类拒绝不会创建归档任务、写入归档对象或
+清理热数据；接口尚不支持将超大范围拆成可恢复批次。
+
+精确空集仍返回 `archive_nothing_to_do`，其他失败沿用原错误处理。
+上述“不创建任务”仅适用于候选拒绝，不代表后续所有取消或归档失败。
+接收最多10,000条完整正文仍可能占用大量内存，此保护不等于流式归档。
+生成的 Trace Swagger 使用另一 API 前缀，目前尚未覆盖这些归档路由。
+
 ## 验证
 
 在 Foundry 仓库根目录运行 BKN Trace 许可证头检查：

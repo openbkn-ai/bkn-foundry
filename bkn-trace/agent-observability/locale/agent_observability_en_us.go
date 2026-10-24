@@ -12,9 +12,13 @@ const queryTimeoutMessageID = "AgentObservability.Message.trace query exceeded i
 
 const queryBudgetMessageID = "AgentObservability.Message.trace query exceeds its resource budget; narrow the time range or filters, or use cursor pagination instead of a deep page"
 
+const archiveIncompleteCandidatesMessageID = "AgentObservability.Message.archive candidates are incomplete, unverifiable, or exceed the batch limit; no archive job was created and no hot data was deleted"
+
 var agentObservabilityEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		archiveIncompleteCandidatesMessageID: "archive candidates are incomplete, unverifiable, or exceed the batch limit; no archive job was created and no hot data was deleted",
+
 		"AgentObservability.Message.event payload conflicts with durable ledger":      "event payload conflicts with durable ledger",
 		"AgentObservability.Message.producer sequence conflicts with durable ledger":  "producer sequence conflicts with durable ledger",
 		"AgentObservability.Message.event causality conflicts with durable ledger":    "event causality conflicts with durable ledger",

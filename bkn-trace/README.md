@@ -149,6 +149,24 @@ test uses `indices:data/read/point_in_time/readall` only to check its own PIT
 cleanup through the read-only inventory. See the
 [OpenSearch 2.19 PIT security model](https://docs.opensearch.org/2.19/search-plugins/searching-data/point-in-time/#security-model).
 
+## Log archive creation limits
+
+For an authorized `POST /api/observability/v1/log-archive-jobs`, an incomplete
+or unverifiable OpenSearch candidate response returns HTTP 409 with
+`error_code: archive_incomplete_candidates`. This includes more than 10,000
+eligible records, an inexact or inconsistent total, a timed-out search, or failed
+shards. This rejection creates no archive job, writes no archive object, and
+deletes no hot records. This endpoint does not yet split an oversized range into
+resumable batches; processing larger ranges requires a subsequent bounded-batch
+implementation.
+
+An exact empty result retains `archive_nothing_to_do`; other failures retain
+their existing error handling. The no-job guarantee above applies to the
+candidate rejection, not every later cancellation or archive failure. Receiving
+up to 10,000 full payloads can still consume substantial memory; this guard is
+not a streaming archive implementation. The generated Trace Swagger uses a
+different API prefix and does not currently document these archive routes.
+
 ## Verification
 
 Run the BKN Trace license-header check from the Foundry repository root:
