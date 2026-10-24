@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -58,8 +59,19 @@ func TestQueryMetricOutputSchemaMatchesRuntimeContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	valid := `{"kn_id":"kn","metric_id":"metric","version":1,"model":{},"entries":[{"status":"ok","dimension_cells":[{"ref":{"object_type_id":"order","property_name":"status"},"value":"paid"}],"time_bucket":{"start":1,"end":2},"available_actions":["filter","drill"]}],"status":"ok","total_count":1,"overall_ms":3,"evaluated_at":4}`
-	if err := validateJSONSchemaDocument(compiled, valid); err != nil {
+	valid, err := json.Marshal(interfaces.QueryMetricResp{
+		KnID: "kn", MetricID: "metric", Version: 1, Model: map[string]any{}, Status: "ok",
+		Entries: []interfaces.ObjectMetricDataEntry{{
+			Status: "ok", TimeBucket: &interfaces.ObjectMetricTimeRange{Start: 1, End: 2},
+			DimensionCells: []interfaces.ObjectMetricDimensionCell{{
+				Ref: interfaces.ObjectMetricPropertyRef{ObjectTypeID: "order", PropertyName: "status"}, Value: "paid",
+			}}, AvailableActions: []string{"filter", "drill"},
+		}}, TotalCount: 1, OverallMs: 3, EvaluatedAt: 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateJSONSchemaDocument(compiled, string(valid)); err != nil {
 		t.Fatalf("valid metric output was rejected: %v", err)
 	}
 
