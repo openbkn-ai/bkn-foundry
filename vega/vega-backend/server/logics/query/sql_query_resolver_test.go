@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -26,7 +26,7 @@ func TestSQLQueryResolverResolveSQLQueryResource(t *testing.T) {
 		r, err := newSQLQueryResolver(compileTestContext(), mock_interfaces.NewMockResourceService(ctrl), mock_interfaces.NewMockCatalogService(ctrl))
 		require.NoError(t, err)
 		_, _, err = r.ResolveSQLQueryResource(compileTestContext(), "orders", r.identity)
-		var he *rest.HTTPError
+		var he *httperrors.HTTPError
 		require.ErrorAs(t, err, &he)
 		assert.Equal(t, http.StatusForbidden, he.HTTPCode)
 		forged := r.identity
@@ -63,7 +63,7 @@ func TestSQLQueryResolverResolveSQLQueryResource(t *testing.T) {
 			_, err = r.AuthorizeSQLQueryResource(compileTestContext(), "orders", r.identity, interfaces.OPERATION_TYPE_QUERY_DATA)
 			require.NoError(t, err)
 			_, _, err = r.ResolveSQLQueryResource(compileTestContext(), "orders", r.identity)
-			var he *rest.HTTPError
+			var he *httperrors.HTTPError
 			require.ErrorAs(t, err, &he)
 			assert.Equal(t, tc.code, he.HTTPCode)
 		})
