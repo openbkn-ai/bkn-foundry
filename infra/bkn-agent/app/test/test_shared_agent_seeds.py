@@ -270,12 +270,17 @@ def test_object_metric_designer_default_is_english_and_respects_user_language():
         assert "changes empty" in content
 
 
-def test_graph_explorer_mounts_the_provider_without_context_loader_tools():
+def test_graph_explorer_mounts_the_provider_with_only_schema_context_loader_tools():
     with database() as db:
         apply(db, GRAPH_EXPLORER)
         seeded = item_from_db(db, "graph_explorer")
+        # Data tools stay behind the provider, which plans what they return for the canvas.
         assert seeded["spec"]["tools"] == [
-            {"type": "context_loader", "profile": "full", "allowed_tools": []},
+            {
+                "type": "context_loader",
+                "profile": "full",
+                "allowed_tools": ["search_schema", "get_object_types", "get_relation_types"],
+            },
             {"type": "builtin", "provider": "graph_explorer"},
         ]
         assert "expand_neighbours" in seeded["prompt"]["content"]

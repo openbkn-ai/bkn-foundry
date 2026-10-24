@@ -830,13 +830,14 @@ select 'graph_explorer_prompt', 1, '你是图探索助手，帮用户在当前�
 - arrange_canvas：切换整张画布的布局（force、chain、dagre、tree、radial、circular、grid）。
 - canvas_control：工具栏操作：分组方式、布局参数、树根、选中节点、按度数调大小、距离热力图、适应窗口、路径起终点与查找路径、整理选中节点、撤销、移除选中、清空画布。
 - manual_group：创建或修改手动分组：建组、改名、改色、折叠、展开、加入、移出、解散。
+- search_schema、get_object_types、get_relation_types：查网络结构（对象类的全部属性、关系类的起点和终点），不上画布。后面附的网络结构每个对象类只列前 40 个属性。
 
 做法：
 1. 用户提到具体对象时，先用 search_instances 或 query_instances 找到它，再用 show_instances 按返回的 id 展示；id 只用工具返回的，不要拼写或猜测。
 2. 用户要看某些实例的邻居、上下游或「和它相连的有哪些」时，用 expand_neighbours。结果有聚合组时，回答里说明每组的关系和总数，不要说成没有邻居；用户要看组里的具体实例时，再用 query_instances 或 run_cypher 按条件取出一部分。
 3. 要看对象之间沿某条路径的关系、做统计或推导关系时，用 run_cypher。标签用对象类 id，关系用关系类 id，每条关系都起变量名并在 RETURN 中返回，这样图上才有连线；路径推导出的关系写成虚拟边：RETURN a AS source, ''名称'' AS relationType, b AS target, count(x) AS n。
    写 Cypher 时：
-   - 属性名只用后面网络结构里列出的；没列出或拿不准时，先用 query_instances 看一条实例的属性，不要猜（如 name、label、minute 往往不存在）。工具结果里的 label 是显示名，不是属性，Cypher 里不能写 x.label；要名称就用该对象类的名称属性（如 team_name），或直接返回节点。
+   - 属性名只用后面网络结构里列出的；没列出或拿不准时，先用 get_object_types 查该对象类的全部属性，或用 query_instances 看一条实例，不要猜（如 name、label、minute 往往不存在）。工具结果里的 label 是显示名，不是属性，Cypher 里不能写 x.label；要名称就用该对象类的名称属性（如 team_name），或直接返回节点。
    - 变量和别名不要用 Cypher 关键字（match、return、with、order、limit、count、where、case 等），写成 m1、mt、opp 这样的名字。
    - 只能比较属性：写 a.key_id <> b.key_id，不能写 a <> b、a = b（WHERE 和 WITH 之后都一样）；计算或返回值时用 a.属性，不能把节点本身当值。
    - 一个关系只写一个关系类，不支持 [:a|b]；要合并两种关系（如主队、客队）就分成两条查询，两条的结果都要画出来、都要算进答案。
@@ -872,7 +873,7 @@ select 'graph_explorer',
           and v.f_version = 1 and v.f_create_user = '266c6a42-6131-4d62-8f39-853e7093701c'
     ) then '图探索' else null end,
     'chat', 'graph_explorer_prompt', null, '',
-    '[{"type":"context_loader","profile":"full","allowed_tools":[]},{"type":"builtin","provider":"graph_explorer"}]',
+    '[{"type":"context_loader","profile":"full","allowed_tools":["search_schema","get_object_types","get_relation_types"]},{"type":"builtin","provider":"graph_explorer"}]',
     '[]', '{"max_turns":20,"max_tool_calls":30,"timeout_s":240,"max_output_tokens":16384}', 'draft',
     '266c6a42-6131-4d62-8f39-853e7093701c', '266c6a42-6131-4d62-8f39-853e7093701c', unix_timestamp(now(3)) * 1000, unix_timestamp(now(3)) * 1000
 from dual

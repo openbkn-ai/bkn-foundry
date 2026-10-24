@@ -10,8 +10,9 @@ changes as actions; the Web applies the actions after the run succeeds. The
 run never waits for the browser.
 
 Query tools call Context Loader as the run's user through the run's session
-(the Agent also mounts context_loader with an empty allow-list, so the session
-opens but none of its tools reach the model). Found instances stay candidates;
+(the Agent also mounts context_loader; its allow-list lets only the schema
+tools reach the model, since data the model fetched itself would never reach
+the canvas). Found instances stay candidates;
 show_instances and run_cypher plan nodes and edges as merge_subgraph actions.
 """
 
