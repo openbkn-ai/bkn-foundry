@@ -163,6 +163,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/ObjectMetricRecord" }
+        "404": { description: The requested metric does not exist in the requested knowledge-network branch. }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/publish:
     parameters:
       - $ref: "#/components/parameters/KnowledgeNetworkId"
