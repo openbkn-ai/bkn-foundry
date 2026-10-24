@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
@@ -42,7 +43,7 @@ func (r *restHandler) CheckActionExecutionByIn(c *gin.Context) {
 
 	req := interfaces.ActionExecutionRequest{}
 	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -53,9 +54,9 @@ func (r *restHandler) CheckActionExecutionByIn(c *gin.Context) {
 	req.Branch = c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 
 	if err := r.ass.CheckActionExecution(ctx, &req); err != nil {
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		if !ok {
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
 				WithErrorDetails(err.Error())
 		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -119,11 +120,11 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	// Bind request body
 	req := interfaces.ActionExecutionRequest{}
 	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -137,14 +138,14 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	// Execute action
 	result, err := r.ass.ExecuteAction(ctx, &req)
 	if err != nil {
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		if !ok {
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
 				WithErrorDetails(err.Error())
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -201,14 +202,14 @@ func (r *restHandler) GetActionExecution(c *gin.Context, visitor hydra.Visitor, 
 	// Get execution
 	result, err := r.ass.GetExecution(ctx, knID, executionID)
 	if err != nil {
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		if !ok {
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError).
 				WithErrorDetails(err.Error())
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -265,11 +266,11 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 	// Bind query parameters
 	query := interfaces.ActionLogQuery{}
 	if err := c.ShouldBindQuery(&query); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -278,7 +279,7 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 
 	keyword, err := normalizeActionLogKeyword(query.Keyword)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -293,7 +294,7 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 
 	searchAfter, err := parseSearchAfterQuery(query.SearchAfterStr)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails("invalid search_after cursor")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -305,7 +306,7 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 	// together with search_after, so reject the combination here instead of letting it come back
 	// as an opaque search_phase_execution_exception behind a 500.
 	if len(query.SearchAfter) > 0 && query.Offset > 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails("offset and search_after cannot be used together; drop offset when paging with a cursor")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -323,14 +324,14 @@ func (r *restHandler) QueryActionLogs(c *gin.Context, visitor hydra.Visitor, inc
 	// Query executions
 	result, err := r.als.QueryExecutions(ctx, &query)
 	if err != nil {
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		if !ok {
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_QueryExecutionsFailed).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_QueryExecutionsFailed).
 				WithErrorDetails(err.Error())
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -390,11 +391,11 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 	// Bind query parameters for results pagination
 	query := interfaces.ActionLogDetailQuery{}
 	if err := c.ShouldBindQuery(&query); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -413,7 +414,7 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 		query.ResultsOffset = 0
 	}
 	if query.ResultsOffset+query.ResultsLimit > interfaces.MaxActionResultsWindow {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(interfaces.ErrActionResultsWindowExceeded.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -423,18 +424,18 @@ func (r *restHandler) GetActionLog(c *gin.Context, visitor hydra.Visitor, includ
 	// Get execution log with pagination
 	result, err := r.als.GetExecution(ctx, &query)
 	if err != nil {
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		if !ok {
-			httpErr = rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ExecutionNotFound).
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ExecutionNotFound).
 				WithErrorDetails(err.Error())
 			if errors.Is(err, interfaces.ErrActionResultsWindowExceeded) {
-				httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+				httpErr = httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 					WithErrorDetails(err.Error())
 			}
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
@@ -556,9 +557,9 @@ func normalizeActionResultsQuery(query *interfaces.ActionResultsQuery) error {
 }
 
 func replyActionResultsError(ctx context.Context, c *gin.Context, span trace.Span, status int, code string, details string) {
-	httpErr := rest.NewHTTPError(ctx, status, code).WithErrorDetails(details)
+	httpErr := httperrors.NewHTTPError(ctx, status, code).WithErrorDetails(details)
 	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-	otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+	otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 	rest.ReplyError(c, httpErr)
 }
 
@@ -641,23 +642,23 @@ func (r *restHandler) CancelActionLog(c *gin.Context, visitor hydra.Visitor) {
 	// Cancel execution
 	result, err := r.als.CancelExecution(ctx, knID, logID, req.Reason)
 	if err != nil {
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		if !ok {
 			// Check if it's a "not found" error
 			if strings.Contains(err.Error(), "not found") {
-				httpErr = rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ExecutionNotFound).
+				httpErr = httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionExecution_ExecutionNotFound).
 					WithErrorDetails(err.Error())
 			} else if strings.Contains(err.Error(), "cannot be cancelled") {
-				httpErr = rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
+				httpErr = httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 					WithErrorDetails(err.Error())
 			} else {
-				httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CancelExecutionFailed).
+				httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_ActionExecution_CancelExecutionFailed).
 					WithErrorDetails(err.Error())
 			}
 		}
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), httpErr)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}

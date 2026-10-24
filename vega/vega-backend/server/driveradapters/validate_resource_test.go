@@ -13,7 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -45,7 +46,7 @@ func TestValidateResourceRequestLogicalViewService(t *testing.T) {
 	require.ErrorIs(t, ValidateResourceRequest(context.Background(), req), want)
 
 	resourcelogic.SetLogicalViewService(nil)
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
 	require.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)
 }
@@ -92,10 +93,10 @@ func TestValidateResourceRequestDatasetDisplayName(t *testing.T) {
 			&interfaces.Property{Name: "first", Type: interfaces.DataType_String, DisplayName: "Title"},
 			&interfaces.Property{Name: "second", Type: interfaces.DataType_String, DisplayName: " Title "},
 		)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.ErrorCode)
 		assert.Equal(t, "Title", req.SchemaDefinition[1].DisplayName)
 	})
 
@@ -104,9 +105,9 @@ func TestValidateResourceRequestDatasetDisplayName(t *testing.T) {
 			&interfaces.Property{Name: "first", Type: interfaces.DataType_String, DisplayName: "second"},
 			&interfaces.Property{Name: "second", Type: interfaces.DataType_String, DisplayName: "  "},
 		)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, ValidateResourceRequest(context.Background(), req), &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Dataset_Duplicated_FieldDisplayName, httpErr.ErrorCode)
 	})
 }
 
@@ -145,13 +146,16 @@ func TestValidateResourceRequestRejectsDuplicateFeatureTypes(t *testing.T) {
 						}},
 					}
 
-					var httpErr *rest.HTTPError
-					require.ErrorAs(t, ValidateResourceRequest(rest.WithLanguage(context.Background(), rest.AmericanEnglish), req), &httpErr)
+					var httpErr *httperrors.HTTPError
+					require.ErrorAs(t, ValidateResourceRequest(i18n.WithLanguage(context.Background(), i18n.AmericanEnglish), req), &httpErr)
 					require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-					require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.BaseError.ErrorCode)
-					require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.BaseError.DescriptionTemplateData)
-					require.Equal(t, "Field title already has a fulltext feature", httpErr.BaseError.Description)
-					require.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+					require.Equal(t, verrors.VegaBackend_Resource_Duplicated_FieldFeatureType, httpErr.ErrorCode)
+					require.Equal(t, map[string]any{"FieldName": "title", "FieldFeatureType": interfaces.PropertyFeatureType_Fulltext}, httpErr.Metadata)
+					renderErr := httpErr.Render()
+					rendered := httpErr.BaseError
+					require.NoError(t, renderErr)
+					require.Equal(t, "Field title already has a fulltext feature. Please keep only one feature of this type for the field", rendered.Description)
+					require.Contains(t, httpErr.ErrorDetails, `property "title" has more than one "fulltext" feature`)
 				})
 			}
 		})

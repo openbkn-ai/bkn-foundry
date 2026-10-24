@@ -10,7 +10,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -83,8 +84,8 @@ func Test_ValidateRelationType(t *testing.T) {
 			}
 			err := ValidateRelationType(ctx, rt, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_NullParameter_Name)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_NullParameter_Name)
 		})
 
 		Convey("Failed with invalid type\n", func() {
@@ -308,24 +309,24 @@ func Test_ValidateRelationType(t *testing.T) {
 func TestValidateRelationTypeLocalizesInvalidParameterDetails(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
 		{
 			name:     "English",
-			language: rest.AmericanEnglish,
+			language: i18n.AmericanEnglish,
 			want:     "Relation type must be direct, indirect, or filtered_cross_join; received unsupported.",
 		},
 		{
 			name:     "SimplifiedChinese",
-			language: rest.SimplifiedChinese,
+			language: i18n.SimplifiedChinese,
 			want:     "关系类型仅支持 direct、indirect 和 filtered_cross_join，当前为 unsupported。",
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			ctx := rest.WithLanguage(context.Background(), testCase.language)
+			ctx := i18n.WithLanguage(context.Background(), testCase.language)
 			relationType := &interfaces.RelationType{
 				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
 					RTID:   "rt1",
@@ -338,12 +339,12 @@ func TestValidateRelationTypeLocalizesInvalidParameterDetails(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateRelationType() error = nil, want invalid parameter error")
 			}
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			if !ok {
-				t.Fatalf("error type = %T, want *rest.HTTPError", err)
+				t.Fatalf("error type = %T, want *httperrors.HTTPError", err)
 			}
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}
@@ -390,8 +391,8 @@ func Test_ValidateRelationTypes(t *testing.T) {
 			}
 			err := ValidateRelationTypes(ctx, knID, relationTypes, true)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_Duplicated_IDInFile)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_Duplicated_IDInFile)
 		})
 
 		Convey("Success with multiple distinct relation types\n", func() {
@@ -409,17 +410,17 @@ func Test_ValidateRelationTypes(t *testing.T) {
 func TestRelationTypeValidationDetailsRespectLanguage(t *testing.T) {
 	testCases := []struct {
 		name     string
-		language string
+		language i18n.Language
 		want     string
 	}{
-		{"English", rest.AmericanEnglish, "Relation type module type must be relation_type."},
-		{"SimplifiedChinese", rest.SimplifiedChinese, "关系类模块类型必须为 relation_type。"},
+		{"English", i18n.AmericanEnglish, "Relation type module type must be relation_type."},
+		{"SimplifiedChinese", i18n.SimplifiedChinese, "关系类模块类型必须为 relation_type。"},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := ValidateRelationTypes(
-				rest.WithLanguage(context.Background(), testCase.language),
+				i18n.WithLanguage(context.Background(), testCase.language),
 				"kn-1",
 				[]*interfaces.RelationType{{ModuleType: "object_type"}},
 				true,
@@ -427,9 +428,9 @@ func TestRelationTypeValidationDetailsRespectLanguage(t *testing.T) {
 			if err == nil {
 				t.Fatal("ValidateRelationTypes() error = nil, want invalid module type error")
 			}
-			httpErr := err.(*rest.HTTPError)
-			if got, ok := httpErr.BaseError.ErrorDetails.(string); !ok || got != testCase.want {
-				t.Fatalf("error_details = %#v, want %q", httpErr.BaseError.ErrorDetails, testCase.want)
+			httpErr := err.(*httperrors.HTTPError)
+			if got, ok := httpErr.ErrorDetails.(string); !ok || got != testCase.want {
+				t.Fatalf("error_details = %#v, want %q", httpErr.ErrorDetails, testCase.want)
 			}
 		})
 	}

@@ -14,7 +14,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -50,13 +52,13 @@ func parseDiscoverTaskListParams(ctx context.Context, c *gin.Context) (interface
 
 	strategy := c.Query("strategy")
 	if strategy != "" && !interfaces.IsValidDiscoverStrategy(strategy) {
-		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		return params, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(fmt.Sprintf("invalid strategy: %s", strategy))
 	}
 
 	triggerType := c.Query("trigger_type")
 	if triggerType != "" && !isValidDiscoverTaskTriggerType(triggerType) {
-		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		return params, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(fmt.Sprintf("invalid trigger_type: %s", triggerType))
 	}
 
@@ -74,7 +76,7 @@ func parseDiscoverTaskListParams(ctx context.Context, c *gin.Context) (interface
 
 // ListDiscoverTasksByEx handles GET /api/vega-backend/v1/discover-tasks (External)
 func (r *restHandler) ListDiscoverTasksByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -98,8 +100,8 @@ func (r *restHandler) listDiscoverTasks(c *gin.Context, visitor hydra.Visitor) {
 	params, err := parseDiscoverTaskListParams(ctx, c)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -125,7 +127,7 @@ func (r *restHandler) listDiscoverTasks(c *gin.Context, visitor hydra.Visitor) {
 
 // GetDiscoverTaskByEx handles GET /api/vega-backend/v1/discover-tasks/:id (External)
 func (r *restHandler) GetDiscoverTaskByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -156,7 +158,7 @@ func (r *restHandler) getDiscoverTask(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	if task == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -171,7 +173,7 @@ func (r *restHandler) getDiscoverTask(c *gin.Context, visitor hydra.Visitor) {
 // DeleteDiscoverTasksByEx handles DELETE /api/vega-backend/v1/discover-tasks/:ids (External).
 // `ids` is comma-separated. Optional query: ?ignore_missing=true
 func (r *restHandler) DeleteDiscoverTasksByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -194,7 +196,7 @@ func (r *restHandler) deleteDiscoverTasks(c *gin.Context, visitor hydra.Visitor)
 
 	ids := parseRawIDs(c.Param("ids"))
 	if len(ids) == 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("ids path parameter is required")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

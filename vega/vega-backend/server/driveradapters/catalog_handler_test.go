@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -295,7 +295,7 @@ func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
 	t.Run("rejects duplicate name", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().Create(gomock.Any(), gomock.Any(), false).Return("",
-			rest.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_NameExists))
+			httperrors.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_NameExists))
 
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -310,7 +310,7 @@ func Test_CatalogRestHandler_CreateCatalog(t *testing.T) {
 	t.Run("rejects duplicate id", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().Create(gomock.Any(), gomock.Any(), false).Return("",
-			rest.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_IDExists))
+			httperrors.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_IDExists))
 
 		req := httptest.NewRequest(http.MethodPost, url, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -385,7 +385,7 @@ func Test_CatalogRestHandler_UpdateRejectsEnabledChange(t *testing.T) {
 	t.Run("rejects enabled change through update API", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().Update(gomock.Any(), gomock.Any(), false).
-			Return(rest.NewHTTPError(context.Background(), http.StatusConflict,
+			Return(httperrors.NewHTTPError(context.Background(), http.StatusConflict,
 				verrors.VegaBackend_Catalog_EnabledFieldNotAllowed).
 				WithErrorDetails("use POST /catalogs/{id}/enable or /disable to change enabled state"))
 
@@ -523,7 +523,7 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 	t.Run("rejects missing catalog", func(t *testing.T) {
 		engine, cs, _, _ := setupCatalogHandlerWithResourceTest(t)
 		cs.EXPECT().DeleteByID(gomock.Any(), "missing").Return(
-			rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
+			httperrors.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
 
 		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/catalogs/missing", nil)
 		w := httptest.NewRecorder()
@@ -537,7 +537,7 @@ func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
 	t.Run("returns catalog service deletion guard", func(t *testing.T) {
 		engine, cs, _, _ := setupCatalogHandlerWithResourceTest(t)
 		cs.EXPECT().DeleteByID(gomock.Any(), "catalog-1").Return(
-			rest.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
+			httperrors.NewHTTPError(context.Background(), http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
 				WithErrorDetails("catalog has active dependencies"),
 		)
 

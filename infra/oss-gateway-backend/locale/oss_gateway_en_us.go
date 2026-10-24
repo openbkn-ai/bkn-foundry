@@ -1,0 +1,61 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package locale
+
+import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
+var ossGatewayEnUS = i18n.I18nMessages{
+	Locale: i18n.AmericanEnglish,
+	Messages: map[string]string{
+		"OssGateway.BadRequest.Message":               "Bad request",
+		"OssGateway.BadRequest.Description":           "The request parameters are invalid.",
+		"OssGateway.BadRequest.Solution":              "Check the request parameters.",
+		"OssGateway.InvalidParameter.Message":         "Invalid parameter",
+		"OssGateway.InvalidParameter.Description":     "The parameter is invalid: {{.Parameter}}.",
+		"OssGateway.InvalidParameter.Solution":        "Check the parameter format.",
+		"OssGateway.TooManyKeys.Message":              "Too many keys",
+		"OssGateway.TooManyKeys.Description":          "A request can contain at most {{.MaxKeys}} keys.",
+		"OssGateway.TooManyKeys.Solution":             "Reduce the number of keys in the request.",
+		"OssGateway.NotFound.Message":                 "Resource not found",
+		"OssGateway.NotFound.Description":             "The requested resource was not found.",
+		"OssGateway.NotFound.Solution":                "Check the resource identifier.",
+		"OssGateway.StorageNotFound.Message":          "Storage not found",
+		"OssGateway.StorageNotFound.Description":      "The specified storage configuration does not exist.",
+		"OssGateway.StorageNotFound.Solution":         "Check the storage configuration ID.",
+		"OssGateway.InternalError.Message":            "Internal server error",
+		"OssGateway.InternalError.Description":        "OSS Gateway encountered an internal error while processing the request.",
+		"OssGateway.InternalError.Solution":           "Try again later; contact an administrator if the problem persists.",
+		"OssGateway.ConnectionFailed.Message":         "Connection failed",
+		"OssGateway.ConnectionFailed.Description":     "OSS Gateway could not connect to the specified storage service.",
+		"OssGateway.ConnectionFailed.Solution":        "Check the storage configuration and network connection.",
+		"OssGateway.ServiceNotReady.Message":          "Service not ready",
+		"OssGateway.ServiceNotReady.Description":      "One or more OSS Gateway dependencies are not ready.",
+		"OssGateway.ServiceNotReady.Solution":         "Try again later.",
+		"OssGateway.StorageNameExists.Message":        "Storage name already exists",
+		"OssGateway.StorageNameExists.Description":    "The storage name {{.StorageName}} is already in use.",
+		"OssGateway.StorageNameExists.Solution":       "Use a different storage name.",
+		"OssGateway.StorageExists.Message":            "Storage configuration already exists",
+		"OssGateway.StorageExists.Description":        "A storage configuration for bucket {{.Bucket}} and location {{.Location}} already exists.",
+		"OssGateway.StorageExists.Solution":           "Use a different bucket or location.",
+		"OssGateway.StorageDisabled.Message":          "Storage is disabled",
+		"OssGateway.StorageDisabled.Description":      "The specified storage configuration is disabled.",
+		"OssGateway.StorageDisabled.Solution":         "Enable the storage configuration or select another one.",
+		"OssGateway.InvalidVendorType.Message":        "Invalid storage vendor type",
+		"OssGateway.InvalidVendorType.Description":    "The storage vendor type {{.VendorType}} is not supported.",
+		"OssGateway.InvalidVendorType.Solution":       "Use OSS, OBS, ECEPH, or TOS.",
+		"OssGateway.InvalidEndpoint.Message":          "Invalid storage endpoint",
+		"OssGateway.InvalidEndpoint.Description":      "The storage endpoint must start with http:// or https://.",
+		"OssGateway.InvalidEndpoint.Solution":         "Check the storage endpoint.",
+		"OssGateway.DefaultStorageExists.Message":     "Default storage already exists",
+		"OssGateway.DefaultStorageExists.Description": "Storage {{.StorageName}} is already configured as the default.",
+		"OssGateway.DefaultStorageExists.Solution":    "Unset the existing default storage first.",
+		"OssGateway.Unauthorized.Message":             "Unauthorized",
+		"OssGateway.Unauthorized.Description":         "The request could not be authenticated.",
+		"OssGateway.Unauthorized.Solution":            "Provide valid authentication credentials.",
+		"OssGateway.Forbidden.Message":                "Forbidden",
+		"OssGateway.Forbidden.Description":            "You are not permitted to perform this operation.",
+		"OssGateway.Forbidden.Solution":               "Contact an administrator to obtain the required permission.",
+	},
+}

@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -479,7 +479,7 @@ func (kns *knowledgeNetworkService) preflightProxyDelta(ctx context.Context, pro
 				fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s", missing[j].ResourceType,
 					missing[j].ResourceID, missing[j].Operation, missing[j].BindingType, missing[j].BindingID)
 		})
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 			berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing).
 			WithErrorDetails(missingProxyPermissionDetails{MissingPermissions: missing})
 	}

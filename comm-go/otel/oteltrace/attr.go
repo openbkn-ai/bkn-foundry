@@ -11,10 +11,11 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 const (
@@ -109,13 +110,13 @@ func AddHttpAttrs4Error(span trace.Span, status int, errorCode string, statusDes
 	span.SetStatus(codes.Error, statusDescription)
 }
 
-// AddHttpAttrs4HttpError records a *rest.HTTPError on a span.
-func AddHttpAttrs4HttpError(span trace.Span, err *rest.HTTPError) {
+// AddHttpAttrs4HttpError records a *httperrors.HTTPError on a span.
+func AddHttpAttrs4HttpError(span trace.Span, err *httperrors.HTTPError) {
 	span.SetAttributes(
 		attr.Key(KEY_HTTP_STATUS).Int(err.HTTPCode),
-		attr.Key(KEY_HTTP_ERROR_CODE).String(err.BaseError.ErrorCode),
+		attr.Key(KEY_HTTP_ERROR_CODE).String(err.ErrorCode),
 	)
-	span.SetStatus(codes.Error, fmt.Sprintf("%v", err.BaseError.ErrorDetails))
+	span.SetStatus(codes.Error, fmt.Sprintf("%v", err.ErrorDetails))
 }
 
 // AddHttpAttrs4Ok records a successful span status.

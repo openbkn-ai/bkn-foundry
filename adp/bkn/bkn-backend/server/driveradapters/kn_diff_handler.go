@@ -10,8 +10,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -42,7 +44,7 @@ type KNDiffRequestBody struct {
 
 // DiffKNsByEx compares two knowledge network branches (external endpoint).
 func (r *restHandler) DiffKNsByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -64,7 +66,7 @@ func (r *restHandler) diffKNs(c *gin.Context, vis hydra.Visitor) {
 
 	var body KNDiffRequestBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -100,14 +102,22 @@ func (r *restHandler) diffKNs(c *gin.Context, vis hydra.Visitor) {
 //
 // Comparing a network with itself is allowed: it is the honest way to ask "did anything change",
 // and the answer — everything unchanged — is a real answer rather than a mistake to reject.
-func validateKNDiffBody(ctx context.Context, body *KNDiffRequestBody) *rest.HTTPError {
+func validateKNDiffBody(ctx context.Context, body *KNDiffRequestBody) *httperrors.HTTPError {
 	if body.Base.KNID == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
-			WithErrorDetails(knDiffValidationDetail(ctx, "BaseKNIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+"BaseKNIDRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 	if body.Target.KNID == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
-			WithErrorDetails(knDiffValidationDetail(ctx, "TargetKNIDRequired"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+"TargetKNIDRequired", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
+			WithErrorDetails(localizedText)
 	}
 	if body.Base.Branch == "" {
 		body.Base.Branch = interfaces.MAIN_BRANCH
@@ -116,15 +126,6 @@ func validateKNDiffBody(ctx context.Context, body *KNDiffRequestBody) *rest.HTTP
 		body.Target.Branch = interfaces.MAIN_BRANCH
 	}
 	return nil
-}
-
-// knDiffValidationDetail renders one detail message of the comparison error code.
-func knDiffValidationDetail(ctx context.Context, name string) string {
-	return i18n.Translate(
-		rest.GetLanguageByCtx(ctx),
-		berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+name,
-		nil,
-	)
 }
 
 // ObjectDataStatsRequestBody is the request body of the object data statistics endpoint.
@@ -142,7 +143,7 @@ type ObjectDataStatsSideRequest struct {
 
 // ObjectDataStatsByEx counts the data behind one object type on each side of a comparison.
 func (r *restHandler) ObjectDataStatsByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -164,7 +165,7 @@ func (r *restHandler) objectDataStats(c *gin.Context, vis hydra.Visitor) {
 
 	var body ObjectDataStatsRequestBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -194,7 +195,7 @@ func (r *restHandler) objectDataStats(c *gin.Context, vis hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-func validateObjectDataStatsBody(ctx context.Context, body *ObjectDataStatsRequestBody) *rest.HTTPError {
+func validateObjectDataStatsBody(ctx context.Context, body *ObjectDataStatsRequestBody) *httperrors.HTTPError {
 	sides := []struct {
 		side  *ObjectDataStatsSideRequest
 		knKey string
@@ -205,12 +206,20 @@ func validateObjectDataStatsBody(ctx context.Context, body *ObjectDataStatsReque
 	}
 	for _, entry := range sides {
 		if entry.side.KNID == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
-				WithErrorDetails(knDiffValidationDetail(ctx, entry.knKey))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+entry.knKey, nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 		if entry.side.OTID == "" {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
-				WithErrorDetails(knDiffValidationDetail(ctx, entry.otKey))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), berrors.BknBackend_KNDiff_InvalidParameter+".Detail."+entry.otKey, nil)
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KNDiff_InvalidParameter).
+				WithErrorDetails(localizedText)
 		}
 		if entry.side.Branch == "" {
 			entry.side.Branch = interfaces.MAIN_BRANCH

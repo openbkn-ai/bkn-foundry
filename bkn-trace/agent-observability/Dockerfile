@@ -25,7 +25,6 @@ WORKDIR /app
 COPY --from=builder /out/agent-observability /app/agent-observability
 COPY --from=builder /out/historical-data-validate /app/historical-data-validate
 COPY --from=builder /workspace/docs/swagger /app/docs/swagger
-COPY --from=builder /workspace/locale /app/locale
 
 EXPOSE 8080
 

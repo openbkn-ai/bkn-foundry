@@ -22,9 +22,9 @@ import (
 	"github.com/gin-gonic/gin"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -129,6 +129,7 @@ func (app *App) start() error {
 // connectors, but does not finalize the factory, start workers, or listen for
 // HTTP requests.
 func Boot(_ Options) (*App, error) {
+
 	logger.Info("Server Initializing")
 
 	// Initialize the service configuration
@@ -136,7 +137,7 @@ func Boot(_ Options) (*App, error) {
 	logger.Info("Server Init Setting Success")
 
 	// Set the error code language
-	rest.SetLang(appSetting.ServerSetting.Language)
+	i18n.SetLang(appSetting.ServerSetting.Language)
 	logger.Info("Server Set Language Success")
 
 	// Set the running mode of gin

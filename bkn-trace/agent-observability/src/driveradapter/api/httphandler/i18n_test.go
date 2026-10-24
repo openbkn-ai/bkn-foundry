@@ -16,7 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	observabilitylocale "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/locale"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/locale"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
@@ -24,7 +26,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type failingTechnicalTraceSummarySource struct{}
@@ -50,7 +51,7 @@ func TestLocalizedParameterMissingErrorsPreserveMachineContract(t *testing.T) {
 func TestLocalizedAuthenticationRejectionPreservesMachineContractAndPropagatesLocale(t *testing.T) {
 	var downstreamLanguage string
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		downstreamLanguage = r.Header.Get(sharedrest.AcceptLanguageHeader)
+		downstreamLanguage = r.Header.Get(i18n.AcceptLanguageHeader)
 		_, _ = io.WriteString(w, `{"active":false}`)
 	}))
 	defer hydra.Close()
@@ -66,7 +67,7 @@ func TestLocalizedAuthenticationRejectionPreservesMachineContractAndPropagatesLo
 		nil,
 	)
 	request.Header.Set("Authorization", "Bearer inactive-token")
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-GB,en;q=0.9,zh-CN;q=0.8")
+	request.Header.Set(i18n.AcceptLanguageHeader, "en-GB,en;q=0.9,zh-CN;q=0.8")
 	response := httptest.NewRecorder()
 
 	serve.ServeHTTP(response, request)
@@ -77,9 +78,9 @@ func TestLocalizedAuthenticationRejectionPreservesMachineContractAndPropagatesLo
 		body.Message != "active OAuth bearer token is required" {
 		t.Fatalf("unexpected auth rejection: status=%d body=%+v", response.Code, body)
 	}
-	assertLocalizedHeaders(t, response, sharedrest.AmericanEnglish)
-	if downstreamLanguage != sharedrest.AmericanEnglish {
-		t.Fatalf("downstream Accept-Language = %q, want %q", downstreamLanguage, sharedrest.AmericanEnglish)
+	assertLocalizedHeaders(t, response, string(i18n.AmericanEnglish))
+	if downstreamLanguage != string(i18n.AmericanEnglish) {
+		t.Fatalf("downstream Accept-Language = %q, want %q", downstreamLanguage, string(i18n.AmericanEnglish))
 	}
 }
 
@@ -125,8 +126,8 @@ func TestLocalizedConversationRequiredPreservesLifecycleGuidance(t *testing.T) {
 		language string
 		message  string
 	}{
-		{language: sharedrest.AmericanEnglish, message: "conversation_id is required"},
-		{language: sharedrest.SimplifiedChinese, message: "缺少 conversation_id 参数"},
+		{language: string(i18n.AmericanEnglish), message: "conversation_id is required"},
+		{language: string(i18n.SimplifiedChinese), message: "缺少 conversation_id 参数"},
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost,
@@ -134,7 +135,7 @@ func TestLocalizedConversationRequiredPreservesLifecycleGuidance(t *testing.T) {
 				bytes.NewBufferString(`{}`),
 			)
 			setI18nTrustedOwnerHeaders(request)
-			request.Header.Set(sharedrest.AcceptLanguageHeader, test.language)
+			request.Header.Set(i18n.AcceptLanguageHeader, test.language)
 			response := httptest.NewRecorder()
 
 			serve.ServeHTTP(response, request)
@@ -179,12 +180,12 @@ func TestLocalizedObservabilityErrorPreservesMachineContract(t *testing.T) {
 		language string
 		message  string
 	}{
-		{language: sharedrest.AmericanEnglish, message: "log was not found in the authorized scope"},
-		{language: sharedrest.SimplifiedChinese, message: "授权范围内不存在该日志"},
+		{language: string(i18n.AmericanEnglish), message: "log was not found in the authorized scope"},
+		{language: string(i18n.SimplifiedChinese), message: "授权范围内不存在该日志"},
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/api/observability/v1/logs/log-1", nil)
-			request.Header.Set(sharedrest.AcceptLanguageHeader, test.language)
+			request.Header.Set(i18n.AcceptLanguageHeader, test.language)
 			response := httptest.NewRecorder()
 
 			serve.ServeHTTP(response, request)
@@ -234,11 +235,11 @@ func TestLocalizedArtifactRoleMismatchPreservesDynamicValidationDetails(t *testi
 		message  string
 	}{
 		{
-			language: sharedrest.AmericanEnglish,
+			language: string(i18n.AmericanEnglish),
 			message:  "artifact_type does not match event link role agent.interaction.started.question_artifact_ref",
 		},
 		{
-			language: sharedrest.SimplifiedChinese,
+			language: string(i18n.SimplifiedChinese),
 			message:  "artifact_type 与事件关联角色 agent.interaction.started.question_artifact_ref 不匹配",
 		},
 	} {
@@ -248,7 +249,7 @@ func TestLocalizedArtifactRoleMismatchPreservesDynamicValidationDetails(t *testi
 				"/api/agent-observability/v1/evidence/artifacts",
 				strings.NewReader(body),
 			)
-			request.Header.Set(sharedrest.AcceptLanguageHeader, test.language)
+			request.Header.Set(i18n.AcceptLanguageHeader, test.language)
 			response := httptest.NewRecorder()
 
 			serve.ServeHTTP(response, request)
@@ -272,12 +273,12 @@ func TestSuccessfulMachineResponseDoesNotDeclareContentLanguage(t *testing.T) {
 		writeJSON(w, r, http.StatusOK, map[string]string{"status": "completed"})
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/success", nil)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.SimplifiedChinese)
+	request.Header.Set(i18n.AcceptLanguageHeader, string(i18n.SimplifiedChinese))
 	response := httptest.NewRecorder()
 
 	serve.ServeHTTP(response, request)
 
-	if got := response.Header().Get(sharedrest.ContentLanguageHeader); got != "" {
+	if got := response.Header().Get(i18n.ContentLanguageHeader); got != "" {
 		t.Fatalf("successful machine response Content-Language = %q, want empty", got)
 	}
 	if got := response.Header().Get("Cache-Control"); got != "private, no-cache" {
@@ -286,8 +287,8 @@ func TestSuccessfulMachineResponseDoesNotDeclareContentLanguage(t *testing.T) {
 }
 
 func localizedTestHandler(handler http.Handler) http.Handler {
-	return observabilitylocale.PrivateNoCacheForPrefixes(
-		observabilitylocale.LanguageMiddleware(handler),
+	return locale.PrivateNoCacheForPrefixes(
+		locale.LanguageMiddleware(handler),
 		"/api/agent-observability/v1",
 		"/api/observability/v1",
 	)
@@ -322,15 +323,15 @@ func assertFlatLocalizedError(
 		language string
 		message  string
 	}{
-		{language: sharedrest.AmericanEnglish, message: englishMessage},
-		{language: sharedrest.SimplifiedChinese, message: chineseMessage},
+		{language: string(i18n.AmericanEnglish), message: englishMessage},
+		{language: string(i18n.SimplifiedChinese), message: chineseMessage},
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			request := httptest.NewRequest(method, path, nil)
 			if decorateContext != nil {
 				request = request.WithContext(decorateContext(request.Context()))
 			}
-			request.Header.Set(sharedrest.AcceptLanguageHeader, test.language)
+			request.Header.Set(i18n.AcceptLanguageHeader, test.language)
 			response := httptest.NewRecorder()
 
 			handler.ServeHTTP(response, request)
@@ -361,13 +362,13 @@ func decodeLocalizedResponse(t *testing.T, response *httptest.ResponseRecorder, 
 
 func assertLocalizedHeaders(t *testing.T, response *httptest.ResponseRecorder, language string) {
 	t.Helper()
-	if got := response.Header().Get(sharedrest.ContentLanguageHeader); got != language {
+	if got := response.Header().Get(i18n.ContentLanguageHeader); got != language {
 		t.Fatalf("Content-Language = %q, want %q", got, language)
 	}
 	if got := response.Header().Get("Cache-Control"); got != "private, no-cache" {
 		t.Fatalf("Cache-Control = %q, want private, no-cache", got)
 	}
-	if got := response.Header().Get("Vary"); got != sharedrest.AcceptLanguageHeader {
-		t.Fatalf("Vary = %q, want %q", got, sharedrest.AcceptLanguageHeader)
+	if got := response.Header().Get("Vary"); got != i18n.AcceptLanguageHeader {
+		t.Fatalf("Vary = %q, want %q", got, i18n.AcceptLanguageHeader)
 	}
 }

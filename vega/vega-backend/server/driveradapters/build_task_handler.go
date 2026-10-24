@@ -15,7 +15,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -31,7 +33,7 @@ import (
 
 // CreateBuildTaskByEx handles POST /api/vega-backend/v1/build-tasks (External).
 func (r *restHandler) CreateBuildTaskByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -57,7 +59,7 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 
 	var req interfaces.CreateBuildTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -89,7 +91,7 @@ func (r *restHandler) createBuildTask(c *gin.Context, visitor hydra.Visitor) {
 // =========================== GET /build-tasks/:id ===========================
 
 func (r *restHandler) GetBuildTaskByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -157,14 +159,14 @@ func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.B
 	// Filter :mode
 	mode := c.Query("mode")
 	if mode != "" && !isValidBuildTaskMode(mode) {
-		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Mode).
+		return params, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Mode).
 			WithErrorDetails(fmt.Sprintf("invalid mode: %s", mode))
 	}
 	params.Mode = mode
 
 	executeType := c.Query("execute_type")
 	if executeType != "" && !isValidBuildTaskExecuteType(executeType) {
-		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
+		return params, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
 			WithErrorDetails(fmt.Sprintf("invalid execute_type: %s", executeType))
 	}
 	params.ExecuteType = executeType
@@ -175,7 +177,7 @@ func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.B
 }
 
 func (r *restHandler) ListBuildTasksByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -201,8 +203,8 @@ func (r *restHandler) listBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 	params, err := parseBuildTaskListParams(ctx, c)
 	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -228,7 +230,7 @@ func (r *restHandler) listBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 // `ids` is a comma-separated list.
 // Optional query: ?ignore_missing=true
 func (r *restHandler) DeleteBuildTasksByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -253,7 +255,7 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 
 	ids := parseRawIDs(c.Param("ids"))
 	if len(ids) == 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails("ids path parameter is required")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -290,7 +292,7 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 // =========================== POST /build-tasks/:id/start ===========================
 
 func (r *restHandler) StartBuildTaskByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -316,7 +318,7 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 	taskID := c.Param("id")
 	var req interfaces.StartBuildTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -341,7 +343,7 @@ func (r *restHandler) startBuildTask(c *gin.Context, visitor hydra.Visitor) {
 // =========================== POST /build-tasks/:id/stop ===========================
 
 func (r *restHandler) StopBuildTaskByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}

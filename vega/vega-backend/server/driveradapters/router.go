@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/middleware"
@@ -365,7 +366,7 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		//Intercept the request and determine whether the ContentType is XXX
 		if c.ContentType() != interfaces.CONTENT_TYPE_JSON {
-			httpErr := rest.NewHTTPError(c, http.StatusNotAcceptable, verrors.VegaBackend_InvalidRequestHeader_ContentType).
+			httpErr := httperrors.NewHTTPError(c, http.StatusNotAcceptable, verrors.VegaBackend_InvalidRequestHeader_ContentType).
 				WithErrorDetails(fmt.Sprintf("Content-Type header [%s] is not supported, expected is [application/json].", c.ContentType()))
 			rest.ReplyError(c, httpErr)
 
@@ -415,7 +416,7 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Visitor, error) {
 	visitor, err := r.as.VerifyToken(ctx, c)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusUnauthorized, rest.PublicError_Unauthorized).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusUnauthorized, httperrors.PublicError_Unauthorized).
 			WithErrorDetails(err.Error())
 		rest.ReplyError(c, httpErr)
 		return visitor, err
@@ -426,12 +427,12 @@ func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Vi
 }
 
 // HTTPErrorOrInternal 保留 Service 返回的 HTTP 错误；其他错误转换为调用方指定的内部错误码。
-func httpErrorOrInternal(ctx context.Context, err error, internalErrorCode string) *rest.HTTPError {
-	var httpErr *rest.HTTPError
-	if errors.As(err, &httpErr) {
+func httpErrorOrInternal(ctx context.Context, err error, internalErrorCode string) *httperrors.HTTPError {
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) && httpErr != nil {
 		return httpErr
 	}
 
-	return rest.NewHTTPError(ctx, http.StatusInternalServerError, internalErrorCode).
-		WithErrorDetails(err.Error())
+	logger.Errorf("request failed with internal diagnostic: %v", err)
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, internalErrorCode)
 }

@@ -63,6 +63,8 @@ type GraphCollect struct {
 func (c GraphCollect) graphPosition() Position { return c.Pos }
 
 // graphContainsCollect reports whether a graph value aggregates.
+//
+//nolint:unused // Intentionally retained.
 func graphContainsCollect(value GraphExpression) bool {
 	switch node := value.(type) {
 	case GraphCollect:

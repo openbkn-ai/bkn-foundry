@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -254,10 +254,10 @@ func CloseCursorSession(ctx context.Context, accountID, cursor string) error {
 	case errors.Is(err, errCursorSessionNotFound):
 		return cursorNotFoundError(ctx)
 	case errors.Is(err, errCursorSessionForbidden):
-		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails("cursor does not belong to the current account")
 	case errors.Is(err, errCursorSessionBusy):
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorInUse).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_CursorInUse).
 			WithErrorDetails("cursor is in use, please retry later")
 	default:
 		return err

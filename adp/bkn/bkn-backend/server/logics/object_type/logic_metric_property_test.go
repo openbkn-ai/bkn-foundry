@@ -14,7 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -90,19 +92,19 @@ func TestObjectMetricV1PropertyUniquenessUsesRequestedLanguage(t *testing.T) {
 	}}
 	for _, test := range []struct {
 		name     string
-		language rest.Language
+		language i18n.Language
 		fragment string
 	}{
-		{name: "English", language: rest.AmericanEnglish, fragment: "already bound to logical property"},
-		{name: "Chinese", language: rest.SimplifiedChinese, fragment: "已绑定逻辑属性"},
+		{name: "English", language: i18n.AmericanEnglish, fragment: "already bound to logical property"},
+		{name: "Chinese", language: i18n.SimplifiedChinese, fragment: "已绑定逻辑属性"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateObjectMetricV1PropertyUniqueness(rest.WithLanguage(context.Background(), test.language), objectType)
-			var httpErr *rest.HTTPError
+			err := validateObjectMetricV1PropertyUniqueness(i18n.WithLanguage(context.Background(), test.language), objectType)
+			var httpErr *httperrors.HTTPError
 			if !errors.As(err, &httpErr) {
 				t.Fatalf("error = %v, want an HTTP error", err)
 			}
-			details, ok := httpErr.BaseError.ErrorDetails.(string)
+			details, ok := httpErr.ErrorDetails.(string)
 			if !ok || !strings.Contains(details, test.fragment) {
 				t.Fatalf("error details = %v, want %q", err, test.fragment)
 			}
@@ -122,15 +124,19 @@ func TestObjectMetricV1PropertyUniquenessAppliesWithoutStrictMode(t *testing.T) 
 	}
 	assertConflict := func(t *testing.T, err error) {
 		t.Helper()
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusConflict {
 			t.Fatalf("error = %v, want 409 for duplicate metric binding", err)
 		}
-		want := invalidParameterDetail(context.Background(), "ObjectMetricPropertyAlreadyBound", map[string]any{
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(context.Background()), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricPropertyAlreadyBound", map[string]any{
 			"objectType": "Orders", "metric": "metric1", "property": "first",
 		})
-		if httpErr.BaseError.ErrorDetails != want {
-			t.Fatalf("error details = %#v, want %q", httpErr.BaseError.ErrorDetails, want)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		want := localizedText
+		if httpErr.ErrorDetails != want {
+			t.Fatalf("error details = %#v, want %q", httpErr.ErrorDetails, want)
 		}
 	}
 
@@ -254,17 +260,21 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 		Convey("rejects a legacy metric reference", func() {
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("legacy_metric_id"))
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricNotFound", map[string]any{
+			So(err.(*httperrors.HTTPError).HTTPCode, ShouldEqual, http.StatusBadRequest)
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.MetricNotFound", map[string]any{
 				"objectType": "Order", "property": "duration", "metric": "legacy_metric_id",
-			}))
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("rejects a V1 reference when the object-metric extension is unavailable", func() {
 			logics.OMA = nil
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).HTTPCode, ShouldEqual, http.StatusBadRequest)
+			So(err.(*httperrors.HTTPError).HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("reports an immutable-version lookup failure separately", func() {
@@ -272,9 +282,13 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			logics.OMA = access
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricLookupFailed", map[string]any{
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.MetricLookupFailed", map[string]any{
 				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2",
-			}))
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 			So(access.lookups, ShouldResemble, []objectMetricLookup{{
 				knID: "kn1", branch: interfaces.MAIN_BRANCH, metricID: "metric1", version: 2,
 			}})
@@ -284,18 +298,26 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			logics.OMA = &objectMetricAccessStub{}
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "MetricNotFound", map[string]any{
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.MetricNotFound", map[string]any{
 				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2",
-			}))
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("rejects another owner object", func() {
 			logics.OMA = &objectMetricAccessStub{record: publishedInstanceMetric("ot2")}
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "ObjectMetricOwnerMismatch", map[string]any{
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricOwnerMismatch", map[string]any{
 				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2", "ownerObjectTypeID": "ot2", "objectTypeID": "ot1",
-			}))
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("rejects a draft version", func() {
@@ -304,9 +326,13 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			logics.OMA = &objectMetricAccessStub{record: record}
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "ObjectMetricLifecycleInvalid", map[string]any{
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricLifecycleInvalid", map[string]any{
 				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2", "status": "draft",
-			}))
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("rejects an object-set metric", func() {
@@ -315,9 +341,13 @@ func TestValidateLogicMetricPropertyUsesOnlyPublishedV1References(t *testing.T) 
 			logics.OMA = &objectMetricAccessStub{record: record}
 			err := service.validateLogicMetricProperty(ctx, objectType, objectMetricProperty("object_metric_v1:metric1@2"))
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorDetails, ShouldEqual, invalidParameterDetail(ctx, "ObjectMetricCalculationScopeInvalid", map[string]any{
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectMetricCalculationScopeInvalid", map[string]any{
 				"objectType": "Order", "property": "duration", "metric": "object_metric_v1:metric1@2", "scope": interfaces.ObjectMetricScopeSet,
-			}))
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			So(err.(*httperrors.HTTPError).ErrorDetails, ShouldEqual, localizedText)
 		})
 
 		Convey("accepts a deprecated pinned object-instance version", func() {

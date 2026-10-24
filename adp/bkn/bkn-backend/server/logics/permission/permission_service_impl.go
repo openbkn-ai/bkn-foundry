@@ -14,12 +14,12 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -33,10 +33,6 @@ const maxPropertyLevelsPerRequest = 200
 const maxRowFilterObjectTypesPerRequest = 100
 
 const safeMutationBatchSize = 200
-
-func localizedPermissionDetail(ctx context.Context, key string) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail."+key, nil)
-}
 
 type PermissionServiceImpl struct {
 	appSetting *common.AppSetting
@@ -79,8 +75,12 @@ func (ps *PermissionServiceImpl) RequirePermissions(ctx context.Context,
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.AccountInfoMissing", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+			WithErrorDetails(localizedText)
 		otellog.LogError(ctx, "CheckPermission missing account ID or type", httpErr)
 		return httpErr
 	}
@@ -94,14 +94,18 @@ func (ps *PermissionServiceImpl) RequirePermissions(ctx context.Context,
 		Checks:     requirements,
 	})
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_InternalError_CheckPermissionFailed).WithErrorDetails(err)
 		otellog.LogError(ctx, "CheckPermission failed", httpErr)
 		return httpErr
 	}
 	if !response.Allowed {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(localizedPermissionDetail(ctx, "PermissionDenied"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.PermissionDenied", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+			WithErrorDetails(localizedText)
 		otellog.LogError(ctx, "CheckPermission denied", httpErr)
 		return httpErr
 	}
@@ -123,8 +127,12 @@ func (ps *PermissionServiceImpl) RequireFullPropertyAccess(ctx context.Context,
 		return err
 	}
 	if len(full) != len(properties) {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(localizedPermissionDetail(ctx, "PermissionDenied"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.PermissionDenied", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+			WithErrorDetails(localizedText)
 	}
 	return nil
 }
@@ -180,13 +188,21 @@ func (ps *PermissionServiceImpl) ResolveRowFilters(ctx context.Context,
 	objectTypeRefs []string) ([]interfaces.RowFilterDecisionEntry, error) {
 	account, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	if !ok || account.ID == "" || !rowFilterDirectoryUser(account.Type) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(localizedPermissionDetail(ctx, "PermissionDenied"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.PermissionDenied", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+			WithErrorDetails(localizedText)
 	}
 	refs, err := normalizeRowFilterObjectTypeRefs(objectTypeRefs)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(localizedPermissionDetail(ctx, "PermissionDenied"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.PermissionDenied", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+			WithErrorDetails(localizedText)
 	}
 	response, err := ps.pa.ResolveRowFilters(ctx, interfaces.RowFiltersRequest{
 		AccessorID:     account.ID,
@@ -319,8 +335,12 @@ func (ps *PermissionServiceImpl) filterPropertyAccess(ctx context.Context, objec
 	}
 	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	if !ok || accountInfo.ID == "" || accountInfo.Type == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.AccountInfoMissing", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+			WithErrorDetails(localizedText)
 	}
 	full := make([]string, 0, len(properties))
 	for start := 0; start < len(properties); start += maxPropertyLevelsPerRequest {
@@ -346,7 +366,7 @@ func (ps *PermissionServiceImpl) filterPropertyAccess(ctx context.Context, objec
 }
 
 func (ps *PermissionServiceImpl) propertyAccessInternalError(ctx context.Context, err error) error {
-	httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+	httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 		berrors.BknBackend_InternalError_CheckPermissionFailed).WithErrorDetails(err)
 	otellog.LogError(ctx, "RequireFullPropertyAccess failed", httpErr)
 	return httpErr
@@ -427,8 +447,12 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.AccountInfoMissing", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+			WithErrorDetails(localizedText)
 		otellog.LogError(ctx, "CreateResources missing account ID or type", httpErr)
 		return httpErr
 	}
@@ -459,7 +483,7 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 		end := min(start+safeMutationBatchSize, len(policies))
 		TrackCreatedPolicies(ctx, resources[start:end])
 		if err := ps.pa.CreateResources(ctx, policies[start:end]); err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err.Error())
 			otellog.LogError(ctx, "CreateResources failed", httpErr)
 			return httpErr
@@ -491,7 +515,7 @@ func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceTy
 	for start := 0; start < len(resources); start += safeMutationBatchSize {
 		end := min(start+safeMutationBatchSize, len(resources))
 		if err := ps.pa.DeleteResources(ctx, resources[start:end]); err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
 			otellog.LogError(ctx, "DeleteResources failed", httpErr)
 			return httpErr
@@ -518,7 +542,7 @@ func (ps *PermissionServiceImpl) UpsertResourceParents(ctx context.Context, reso
 		// ambiguous after Safe has accepted part of the request.
 		TrackResourceParents(ctx, resourceType, parentType, batch)
 		if err := ps.pa.UpsertResourceParents(ctx, resourceType, parentType, batch); err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err)
 			otellog.LogError(ctx, "UpsertResourceParents failed", httpErr)
 			return httpErr
@@ -541,7 +565,7 @@ func (ps *PermissionServiceImpl) DeleteResourceParents(ctx context.Context, reso
 	for start := 0; start < len(resourceIDs); start += safeMutationBatchSize {
 		end := min(start+safeMutationBatchSize, len(resourceIDs))
 		if err := ps.pa.DeleteResourceParents(ctx, resourceType, resourceIDs[start:end]); err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
 			otellog.LogError(ctx, "DeleteResourceParents failed", httpErr)
 			return httpErr
@@ -570,14 +594,18 @@ func (ps *PermissionServiceImpl) ListAccessibleResources(ctx context.Context, re
 	operation string) (interfaces.PermissionResourceScope, error) {
 	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	if !ok || accountInfo.ID == "" || accountInfo.Type == "" {
-		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusForbidden,
-			rest.PublicError_Forbidden).WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.AccountInfoMissing", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.PermissionResourceScope{}, httperrors.NewHTTPError(ctx, http.StatusForbidden,
+			httperrors.PublicError_Forbidden).WithErrorDetails(localizedText)
 	}
 	scope, err := ps.pa.ListAccessibleResources(ctx, interfaces.PermissionAccessor{
 		ID: accountInfo.ID, Type: accountInfo.Type,
 	}, resourceType, operation)
 	if err != nil {
-		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return interfaces.PermissionResourceScope{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
 	}
 	return scope, nil
@@ -587,14 +615,18 @@ func (ps *PermissionServiceImpl) ListAccessibleResourcesWithAnyOperation(ctx con
 	resourceType string) (interfaces.PermissionResourceScope, error) {
 	accountInfo, ok := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	if !ok || accountInfo.ID == "" || accountInfo.Type == "" {
-		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusForbidden,
-			rest.PublicError_Forbidden).WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.AccountInfoMissing", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return interfaces.PermissionResourceScope{}, httperrors.NewHTTPError(ctx, http.StatusForbidden,
+			httperrors.PublicError_Forbidden).WithErrorDetails(localizedText)
 	}
 	scope, err := ps.pa.ListAccessibleResourcesWithAnyOperation(ctx, interfaces.PermissionAccessor{
 		ID: accountInfo.ID, Type: accountInfo.Type,
 	}, resourceType)
 	if err != nil {
-		return interfaces.PermissionResourceScope{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return interfaces.PermissionResourceScope{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
 	}
 	return scope, nil
@@ -610,8 +642,12 @@ func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceTy
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-			WithErrorDetails(localizedPermissionDetail(ctx, "AccountInfoMissing"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.AccountInfoMissing", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
+			WithErrorDetails(localizedText)
 		otellog.LogError(ctx, "FilterResources missing account ID or type", httpErr)
 		return nil, httpErr
 	}
@@ -634,7 +670,7 @@ func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceTy
 		IncludeOperations: includeOperations,
 	})
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
 		otellog.LogError(ctx, "FilterResources failed", httpErr)
 		return nil, httpErr
@@ -648,7 +684,7 @@ func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceTy
 	idMap := make(map[string]interfaces.PermissionResourceOps, len(matchResouces))
 	for key, resourceOps := range matchResouces {
 		if _, ok := requestedIDs[key]; !ok || resourceOps.ResourceID != key {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_InternalError_FilterResourcesFailed).
 				WithErrorDetails("invalid resource-filter response")
 			otellog.LogError(ctx, "FilterResources returned an invalid resource", httpErr)
@@ -668,7 +704,7 @@ func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource in
 
 	bytes, err := sonic.Marshal(resource)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_InternalError_MarshalDataFailed).WithErrorDetails(err)
 		otellog.LogError(ctx, "UpdateResource marshal failed", httpErr)
 		return httpErr
@@ -676,7 +712,7 @@ func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource in
 
 	err = ps.mqClient.Pub(interfaces.AUTHORIZATION_RESOURCE_NAME_MODIFY, bytes)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_InternalError_UpdateResourceFailed).WithErrorDetails(err)
 		otellog.LogError(ctx, "UpdateResource publish failed", httpErr)
 		return httpErr

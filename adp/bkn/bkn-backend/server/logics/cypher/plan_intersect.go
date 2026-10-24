@@ -56,7 +56,7 @@ func compileIntersection(node *Intersection, schema *Schema, options CompileOpti
 			// Without DISTINCT the two directions count differently, since
 			// each counts the repeats of its own list; one statement
 			// counts one of them.
-			if counted >= 0 && counted != item.List && !(node.Distinct[0] && node.Distinct[1]) {
+			if counted >= 0 && counted != item.List && (!node.Distinct[0] || !node.Distinct[1]) {
 				return nil, planErrorf(item.Pos, "counting what the lists share both ways round; "+
 					"count it one way, or collect both with DISTINCT")
 			}

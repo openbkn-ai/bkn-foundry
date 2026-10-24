@@ -15,8 +15,8 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -106,7 +106,7 @@ func Test_RestHandler_GetActionsInActionTypeByIn(t *testing.T) {
 		})
 
 		Convey("失败 - Service返回错误", func() {
-			ats.EXPECT().GetActionsByActionTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Actions{}, rest.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_ActionType_InternalError))
+			ats.EXPECT().GetActionsByActionTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Actions{}, httperrors.NewHTTPError(context.TODO(), http.StatusInternalServerError, oerrors.OntologyQuery_ActionType_InternalError))
 
 			reqParamByte, _ := sonic.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
@@ -178,7 +178,7 @@ func Test_RestHandler_GetActionsInActionTypeByEx(t *testing.T) {
 		})
 
 		Convey("失败 - Token验证失败", func() {
-			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, rest.NewHTTPError(context.TODO(), http.StatusUnauthorized, rest.PublicError_Unauthorized))
+			as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{}, httperrors.NewHTTPError(context.TODO(), http.StatusUnauthorized, httperrors.PublicError_Unauthorized))
 
 			reqParamByte, _ := sonic.Marshal(actionQuery)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))

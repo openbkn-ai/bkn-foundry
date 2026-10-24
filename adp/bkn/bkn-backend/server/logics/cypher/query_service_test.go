@@ -17,10 +17,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -28,7 +27,6 @@ import (
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/locale"
 )
 
 // spanRecorder keeps the attributes set on any span started while it is the
@@ -44,7 +42,7 @@ type recordingSpan struct {
 
 func (s recordingSpan) SetAttributes(attributes ...attribute.KeyValue) {
 	for _, kv := range attributes {
-		s.recorder.attrs[string(kv.Key)] = kv.Value.Emit()
+		s.recorder.attrs[string(kv.Key)] = kv.Value.String()
 	}
 }
 
@@ -73,15 +71,6 @@ func recordSpans(t *testing.T) *spanRecorder {
 	otel.SetTracerProvider(recordingTracerProvider{recorder: recorder})
 	t.Cleanup(func() { otel.SetTracerProvider(noop.NewTracerProvider()) })
 	return recorder
-}
-
-var registerLocaleOnce sync.Once
-
-// withLocale loads the message catalog, so a refusal's details read as they
-// would in production rather than as a bare message id.
-func withLocale(t *testing.T) {
-	t.Helper()
-	registerLocaleOnce.Do(locale.Register)
 }
 
 // recordingVega records which of the two ways a statement was sent to the raw
@@ -271,9 +260,9 @@ func testService(t *testing.T, vega *recordingVega, permission *stubPermission) 
 
 func statusOf(t *testing.T, err error) int {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
-		t.Fatalf("error = %T (%v), want *rest.HTTPError", err, err)
+		t.Fatalf("error = %T (%v), want *httperrors.HTTPError", err, err)
 	}
 	return httpErr.HTTPCode
 }
@@ -567,20 +556,20 @@ func TestQueryHidesDependencyErrorDetail(t *testing.T) {
 
 func errorCodeOf(t *testing.T, err error) string {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
-		t.Fatalf("error = %T (%v), want *rest.HTTPError", err, err)
+		t.Fatalf("error = %T (%v), want *httperrors.HTTPError", err, err)
 	}
-	return httpErr.BaseError.ErrorCode
+	return httpErr.ErrorCode
 }
 
 func errorDetailsOf(t *testing.T, err error) string {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
-		t.Fatalf("error = %T (%v), want *rest.HTTPError", err, err)
+		t.Fatalf("error = %T (%v), want *httperrors.HTTPError", err, err)
 	}
-	details, _ := httpErr.BaseError.ErrorDetails.(string)
+	details, _ := httpErr.ErrorDetails.(string)
 	return details
 }
 
@@ -645,7 +634,6 @@ var queriesNamingAmount = []struct {
 // schema -- is refused wherever the query names it, by its logical name, and
 // nothing reaches vega-backend.
 func TestQueryRefusesPropertyWithoutFullAccess(t *testing.T) {
-	withLocale(t)
 	for _, level := range []string{interfaces.PROPERTY_ACCESS_MASKED, interfaces.PROPERTY_ACCESS_SCHEMA} {
 		for _, tc := range queriesNamingAmount {
 			t.Run(level+" "+tc.name, func(t *testing.T) {
@@ -667,11 +655,11 @@ func TestQueryRefusesPropertyWithoutFullAccess(t *testing.T) {
 				if strings.Contains(err.Error(), "f_total") || strings.Contains(err.Error(), "orders") {
 					t.Fatalf("error leaked a physical name: %v", err)
 				}
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				if !errors.As(err, &httpErr) {
-					t.Fatalf("error = %T, want *rest.HTTPError", err)
+					t.Fatalf("error = %T, want *httperrors.HTTPError", err)
 				}
-				encoded, marshalErr := json.Marshal(httpErr.BaseError.Metadata["permission_impacts"])
+				encoded, marshalErr := json.Marshal(httpErr.Metadata["permission_impacts"])
 				if marshalErr != nil {
 					t.Fatalf("marshal permission impacts: %v", marshalErr)
 				}
@@ -691,7 +679,6 @@ func TestQueryRefusesPropertyWithoutFullAccess(t *testing.T) {
 }
 
 func TestPropertyRefusalIncludesTheRowFilterThatWouldAlsoShapeTheQuery(t *testing.T) {
-	withLocale(t)
 	permission := amountAt(interfaces.PROPERTY_ACCESS_MASKED)
 	permission.rowFilters = map[string]interfaces.RowFilterPredicate{
 		"kn_1/ot_order": {Kind: "false"},
@@ -700,11 +687,11 @@ func TestPropertyRefusalIncludesTheRowFilterThatWouldAlsoShapeTheQuery(t *testin
 	_, err := service.Query(callerContext(), interfaces.CypherQuery{
 		KNID: "kn_1", Branch: interfaces.MAIN_BRANCH, Query: "MATCH (o:Order) RETURN o.amount",
 	})
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
-		t.Fatalf("error = %T, want *rest.HTTPError", err)
+		t.Fatalf("error = %T, want *httperrors.HTTPError", err)
 	}
-	encoded, marshalErr := json.Marshal(httpErr.BaseError.Metadata["permission_impacts"])
+	encoded, marshalErr := json.Marshal(httpErr.Metadata["permission_impacts"])
 	if marshalErr != nil {
 		t.Fatal(marshalErr)
 	}
@@ -858,7 +845,7 @@ func TestQueryReadsFullProperty(t *testing.T) {
 // A property-level decision that cannot be made fails the query closed.
 func TestQueryFailsClosedWhenPropertyAccessIsUnavailable(t *testing.T) {
 	vega := &recordingVega{}
-	permission := &stubPermission{propertyErr: rest.NewHTTPError(context.Background(),
+	permission := &stubPermission{propertyErr: httperrors.NewHTTPError(context.Background(),
 		http.StatusInternalServerError, berrors.BknBackend_InternalError_CheckPermissionFailed)}
 	service := testService(t, vega, permission)
 
@@ -1018,15 +1005,15 @@ func TestQueryReportsRefusalWhenProxyUnavailable(t *testing.T) {
 	}{
 		{name: "no resolver", branch: interfaces.MAIN_BRANCH, reason: "no_resolver"},
 		{name: "mapping missing", branch: interfaces.MAIN_BRANCH, reason: "proxy_unavailable", proxies: &stubProxies{
-			err: rest.NewHTTPError(context.Background(), http.StatusNotFound,
+			err: httperrors.NewHTTPError(context.Background(), http.StatusNotFound,
 				berrors.BknBackend_KnowledgeNetwork_ProxyMappingNotFound),
 		}},
 		{name: "not synchronized", branch: interfaces.MAIN_BRANCH, reason: "proxy_unavailable", proxies: &stubProxies{
-			err: rest.NewHTTPError(context.Background(), http.StatusServiceUnavailable,
+			err: httperrors.NewHTTPError(context.Background(), http.StatusServiceUnavailable,
 				berrors.BknBackend_KnowledgeNetwork_ProxySyncPending),
 		}},
 		{name: "disabled", branch: interfaces.MAIN_BRANCH, reason: "proxy_unavailable", proxies: &stubProxies{
-			err: rest.NewHTTPError(context.Background(), http.StatusServiceUnavailable,
+			err: httperrors.NewHTTPError(context.Background(), http.StatusServiceUnavailable,
 				berrors.BknBackend_KnowledgeNetwork_ProxyDisabled),
 		}},
 		{name: "mapping returned out of sync", branch: interfaces.MAIN_BRANCH, reason: "proxy_unavailable",

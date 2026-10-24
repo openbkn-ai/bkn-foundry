@@ -18,11 +18,11 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
@@ -57,10 +57,6 @@ type actionTypeService struct {
 	vbs        interfaces.VegaBackendService
 }
 
-func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail."+name, templateData)
-}
-
 func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeService {
 	atServiceOnce.Do(func() {
 		atService = &actionTypeService{
@@ -86,7 +82,7 @@ func (ats *actionTypeService) CheckActionTypeExistByID(ctx context.Context, knID
 	atName, exist, err := ats.ata.CheckActionTypeExistByID(ctx, knID, branch, atID)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("按ID[%v]获取行动类失败", atID), err)
-		return "", exist, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", exist, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed).WithErrorDetails(err.Error())
 	}
 
@@ -101,7 +97,7 @@ func (ats *actionTypeService) CheckActionTypeExistByName(ctx context.Context, kn
 	actionTypeID, exist, err := ats.ata.CheckActionTypeExistByName(ctx, knID, branch, atName)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("按名称[%s]获取行动类失败", atName), err)
-		return actionTypeID, exist, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return actionTypeID, exist, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed).WithErrorDetails(err.Error())
 	}
 
@@ -142,12 +138,15 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 		if err := ats.aoa.GetToolByID(ctx, src.BoxID, src.ToolID); err != nil {
 			logger.Errorf("validate action type tool binding failed: action_type=%s box_id=%s tool_id=%s err=%v",
 				at.ATName, src.BoxID, src.ToolID, err)
-			invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(invalidParameterDetail(ctx, "ToolBindingInvalid", map[string]any{
-					"actionType": at.ATName,
-					"boxID":      src.BoxID,
-					"toolID":     src.ToolID,
-				}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.ToolBindingInvalid", map[string]any{
+				"actionType": at.ATName,
+				"boxID":      src.BoxID,
+				"toolID":     src.ToolID,
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			invalidErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 			// The execution-factory internal metadata endpoint does not perform
 			// caller resource authorization. A 403 therefore indicates an
 			// internal identity/configuration failure, not a user-scoped denial.
@@ -161,12 +160,15 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 		if err := ats.aoa.GetMcpToolByName(ctx, src.McpID, src.ToolName); err != nil {
 			logger.Errorf("validate action type MCP tool binding failed: action_type=%s mcp_id=%s tool_name=%s err=%v",
 				at.ATName, src.McpID, src.ToolName, err)
-			invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).
-				WithErrorDetails(invalidParameterDetail(ctx, "MCPBindingInvalid", map[string]any{
-					"actionType": at.ATName,
-					"mcpID":      src.McpID,
-					"toolName":   src.ToolName,
-				}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ActionType.InvalidParameter.Detail.MCPBindingInvalid", map[string]any{
+				"actionType": at.ATName,
+				"mcpID":      src.McpID,
+				"toolName":   src.ToolName,
+			})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			invalidErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ActionType_InvalidParameter).WithErrorDetails(localizedText)
 			// The execution-factory internal metadata endpoint does not perform
 			// caller resource authorization. A 403 therefore indicates an
 			// internal identity/configuration failure, not a user-scoped denial.
@@ -198,7 +200,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		tx, err = ats.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -318,7 +320,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		if err != nil {
 			logger.Errorf("CreateActionType error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建行动类失败")
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
 				WithErrorDetails(err.Error())
 		}
 	} else if len(createActionTypes) > 1 {
@@ -328,15 +330,15 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 			span.SetStatus(codes.Error, "Batch create action types failed")
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
 				if strings.Contains(constraint, "name") {
-					return []string{}, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return []string{}, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ActionType_ActionTypeNameExisted).
 						WithErrorDetails("One or more action type names already exist")
 				}
-				return []string{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return []string{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ActionType_ActionTypeIDExisted).
 					WithErrorDetails("One or more action type IDs already exist")
 			}
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -360,7 +362,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		if err != nil {
 			logger.Errorf("UpdateActionTypes error: %s", err.Error())
 			span.SetStatus(codes.Error, "Batch update action types failed")
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -372,7 +374,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 	if err != nil {
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
 		span.SetStatus(codes.Error, "行动类索引写入失败")
-		return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -390,7 +392,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		if err = ats.ps.CreateResources(ctx, resources, []string{interfaces.OPERATION_TYPE_EXECUTE}); err != nil {
 			logger.Errorf("Create action type policies error: %s", err.Error())
 			span.SetStatus(codes.Error, "failed to create action type permissions")
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -487,7 +489,7 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 	if err != nil {
 		logger.Errorf("ListActionTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "List action types error")
-		return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.ActionType{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
 	if interfaces.IsAuthorizationResourceCatalog(ctx) {
@@ -548,7 +550,7 @@ func (ats *actionTypeService) ListActionTypes(ctx context.Context, query interfa
 		err = ats.ums.GetAccountNames(ctx, accountInfos)
 		if err != nil {
 			span.SetStatus(codes.Error, "GetAccountNames error")
-			return []*interfaces.ActionType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.ActionType{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
@@ -576,7 +578,7 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 	if err != nil {
 		logger.Errorf("GetActionTypesByATIDs error: %s", err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("Get action type[%v] error: %v", atIDs, err))
-		return []*interfaces.ActionType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.ActionType{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError_GetActionTypesByIDsFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -585,7 +587,7 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 		errStr := fmt.Sprintf("Exists any action types not found, expect action types nums is [%d], actual action types num is [%d]", len(atIDs), len(actionTypes))
 		logger.Errorf(errStr)
 		span.SetStatus(codes.Error, errStr)
-		return []*interfaces.ActionType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
+		return []*interfaces.ActionType{}, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ActionType_ActionTypeNotFound).WithErrorDetails(errStr)
 	}
 	if len(atIDs) == 1 {
@@ -658,7 +660,7 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 		return err
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
 	}
 	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_ACTION_TYPE,
 		actionType.KNID, actionType.ATID)
@@ -719,7 +721,7 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 		tx, err = ats.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
 		// 0.1 On failure.
@@ -747,7 +749,7 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		logger.Errorf("UpdateActionType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改行动类失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -756,7 +758,7 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
 		span.SetStatus(codes.Error, "行动类索引写入失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -789,7 +791,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 			return err
 		}
 		if !exists {
-			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
 		}
 		resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs[0])
 		if err := ats.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
@@ -798,11 +800,11 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 	} else {
 		actionTypes, err := ats.ata.GetActionTypesByIDs(ctx, knID, branch, atIDs)
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError_GetActionTypesByIDsFailed).WithErrorDetails(err.Error())
 		}
 		if len(actionTypes) != len(atIDs) {
-			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, ats.ps,
 			interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs, interfaces.OPERATION_TYPE_DELETE); err != nil {
@@ -814,7 +816,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		tx, err = ats.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -843,7 +845,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 	if err != nil {
 		logger.Errorf("DeleteActionTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除行动类失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -875,13 +877,13 @@ func (ats *actionTypeService) DeleteActionTypesByKnID(ctx context.Context, tx *s
 
 	if tx == nil {
 		otellog.LogError(ctx, "missing transaction", nil)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError_MissingTransaction).
 			WithErrorDetails("missing transaction")
 	}
 	atIDs, err := ats.ata.GetActionTypeIDsByKnID(ctx, knID, branch)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -890,7 +892,7 @@ func (ats *actionTypeService) DeleteActionTypesByKnID(ctx context.Context, tx *s
 	if err != nil {
 		logger.Errorf("DeleteActionTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除行动类失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -919,7 +921,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 		names := make([]string, 0, len(actionTypes))
 		for _, actionType := range actionTypes {
 			if actionType.KNID != knID || actionType.Branch != branch {
-				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ActionType_InvalidParameter)
 			}
 			ids = append(ids, actionType.ATID)
@@ -928,7 +930,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 		existing, err := ats.ata.GetActionTypeIdentitiesByIDsOrNames(ctx, knID, branch, ids, names)
 		if err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Batch query action type IDs in knowledge network [%s] failed", knID), err)
-			return creates, updates, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return creates, updates, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError_CheckActionTypeIfExistFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -967,7 +969,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 					errDetails := fmt.Sprintf("The action type with id [%s] already exists!", actionType.ATID)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return creates, updates, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					return creates, updates, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_ActionType_ActionTypeIDExisted).
 						WithErrorDetails(errDetails)
 				}
@@ -976,9 +978,9 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 					errDetails := fmt.Sprintf("action type name '%s' already exists", actionType.ATName)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return creates, updates, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ActionType_ActionTypeNameExisted).
-						WithDescription(map[string]any{"name": actionType.ATName}).
+						WithMetadata(map[string]any{"name": actionType.ATName}).
 						WithErrorDetails(errDetails)
 				}
 
@@ -994,7 +996,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 							actionType.ATID, actionType.ATName, existID)
 						logger.Error(errDetails)
 						span.SetStatus(codes.Error, errDetails)
-						return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
+						return creates, updates, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 							berrors.BknBackend_ActionType_ActionTypeNameExisted).
 							WithErrorDetails(errDetails)
 					} else {
@@ -1018,7 +1020,7 @@ func (ats *actionTypeService) handleActionTypeImportMode(ctx context.Context, mo
 						actionType.ATID, actionType.ATName)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return creates, updates, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ActionType_ActionTypeNameExisted).
 						WithErrorDetails(errDetails)
 				}
@@ -1144,7 +1146,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				if !ats.appSetting.ServerSetting.DefaultSmallModelEnabled {
 					err = errors.New(cond.DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR)
 					span.SetStatus(codes.Error, err.Error())
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ActionType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -1152,7 +1154,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ActionType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -1160,7 +1162,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				if err != nil {
 					logger.Errorf("GetVector error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取业务知识网络向量失败")
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ActionType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -1168,9 +1170,13 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			})
 		if err != nil {
 			logger.Errorf("convert action type condition to filter condition failed: %v", err)
-			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
+			return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ActionType_InvalidParameter_ConceptCondition).
-				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
+				WithErrorDetails(localizedText)
 		}
 	}
 	filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
@@ -1189,7 +1195,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			logger.Errorf("GetConceptGroupsTotal in knowledge network[%s] error: %s", query.KNID, err.Error())
 			span.SetStatus(codes.Error, fmt.Sprintf("GetConceptGroupsTotal in knowledge network[%s], error: %v", query.KNID, err))
 
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
 		}
 		if cgCnt == 0 {
@@ -1198,7 +1204,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			logger.Errorf(errStr)
 
 			// Return 404 when all requested concept groups are missing.
-			return response, rest.NewHTTPError(ctx, http.StatusNotFound,
+			return response, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 				WithErrorDetails(errStr)
 		}
@@ -1217,7 +1223,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			span.SetStatus(codes.Error, errStr)
 			span.End()
 
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).WithErrorDetails(errStr)
 		}
 
@@ -1250,7 +1256,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			if err != nil {
 				logger.Errorf("QueryResourceData error: %s", err.Error())
 				span.SetStatus(codes.Error, "业务知识网络行动类检索查询总数失败")
-				return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ActionType_InternalError).
 					WithErrorDetails(err.Error())
 			}
@@ -1295,7 +1301,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "业务知识网络行动类检索查询失败")
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ActionType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -1313,7 +1319,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 					var condCfg interfaces.ActionCondCfg
 					if err := sonic.Unmarshal([]byte(condStrStr), &condCfg); err != nil {
 						logger.Errorf("Failed to unmarshal action_type condition: %s", err.Error())
-						return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+						return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 							berrors.BknBackend_InternalError_UnMarshalDataFailed).
 							WithErrorDetails(fmt.Sprintf("failed to Unmarshal condition, %s", err.Error()))
 					}
@@ -1329,7 +1335,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 					var params []interfaces.Parameter
 					if err := sonic.Unmarshal([]byte(paramsStrStr), &params); err != nil {
 						logger.Errorf("Failed to unmarshal action_type parameters: %s", err.Error())
-						return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+						return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 							berrors.BknBackend_InternalError_UnMarshalDataFailed).
 							WithErrorDetails(fmt.Sprintf("failed to Unmarshal parameters, %s", err.Error()))
 					}
@@ -1340,14 +1346,14 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			// Convert to an action type struct.
 			jsonByte, err := json.Marshal(entry)
 			if err != nil {
-				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_InternalError_MarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Marshal dataset entry, %s", err.Error()))
 			}
 			var actionType interfaces.ActionType
 			err = json.Unmarshal(jsonByte, &actionType)
 			if err != nil {
-				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_InternalError_UnMarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal dataset entry to Action Type, %s", err.Error()))
 			}
@@ -1428,7 +1434,7 @@ func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[
 	datasetResp, err := ats.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total documents count failed")
-		return total, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
+		return total, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 
@@ -1450,7 +1456,7 @@ func (ats *actionTypeService) GetActionTypeIDsByKnID(ctx context.Context, knID s
 	if err != nil {
 		logger.Errorf("GetActionTypeIDsByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("Get action type[%v] error: %v", atIDs, err))
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ActionType_InternalError_GetActionTypesByIDsFailed).
 			WithErrorDetails(err.Error())
 	}

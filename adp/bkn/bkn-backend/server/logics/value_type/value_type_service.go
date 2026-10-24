@@ -16,10 +16,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
@@ -59,12 +60,8 @@ func NewValueTypeService(appSetting *common.AppSetting) interfaces.ValueTypeServ
 	return vts
 }
 
-func detail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail."+name, templateData)
-}
-
 func internalError(ctx context.Context, err error) error {
-	return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ValueType_InternalError).
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ValueType_InternalError).
 		WithErrorDetails(err.Error())
 }
 
@@ -82,12 +79,12 @@ func prepare(ctx context.Context, vt *interfaces.ValueType) error {
 	// What is checked is what is stored: a null enum item would be skipped by the check and kept
 	// in the stored definition.
 	if slices.Contains(vt.Enum, nil) {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("value type %q: an enum item is null", vt.VTID))
 	}
 	bkn := logics.ToBKNValueType(vt)
 	if err := bknsdk.ValidateValueType(bkn); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
 	vt.BKNRawContent = bknsdk.SerializeValueType(bkn)
@@ -140,7 +137,7 @@ func (s *valueTypeService) CreateValueTypes(ctx context.Context, tx *sql.Tx, val
 	account := accountInfo(ctx)
 	for _, vt := range valueTypes {
 		if vt.KNID != knID || vt.Branch != branch {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
 		}
 		var err error
 		if vt.VTID, err = permission.PrepareKNChildResourceID(ctx, vt.VTID); err != nil {
@@ -166,7 +163,7 @@ func (s *valueTypeService) CreateValueTypes(ctx context.Context, tx *sql.Tx, val
 					if strings.Contains(constraint, "name") {
 						code = berrors.BknBackend_ValueType_ValueTypeNameExisted
 					}
-					return rest.NewHTTPError(ctx, http.StatusBadRequest, code).WithErrorDetails(err.Error())
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, code).WithErrorDetails(err.Error())
 				}
 				return internalError(ctx, err)
 			}
@@ -195,8 +192,12 @@ func (s *valueTypeService) CreateValueTypes(ctx context.Context, tx *sql.Tx, val
 func (s *valueTypeService) splitByImportMode(ctx context.Context, mode string,
 	valueTypes []*interfaces.ValueType) (creates, updates []*interfaces.ValueType, err error) {
 	if mode != interfaces.ImportMode_Normal && mode != interfaces.ImportMode_Ignore && mode != interfaces.ImportMode_Overwrite {
-		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ImportMode).
-			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ImportMode", nil)
+		if renderErr != nil {
+			logger.Errorf("localized service message failed: %v", renderErr)
+		}
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_ImportMode).
+			WithErrorDetails(localizedText)
 	}
 	ids := make([]string, 0, len(valueTypes))
 	names := make([]string, 0, len(valueTypes))
@@ -225,12 +226,19 @@ func (s *valueTypeService) splitByImportMode(ctx context.Context, mode string,
 		case mode == interfaces.ImportMode_Overwrite && !nameTaken:
 			updates = append(updates, vt)
 		case idExists && mode == interfaces.ImportMode_Normal:
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeIDExisted).
-				WithErrorDetails(detail(ctx, "ValueTypeIDAlreadyExists", map[string]any{"valueTypeID": vt.VTID}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.ValueTypeIDAlreadyExists", map[string]any{"valueTypeID": vt.VTID})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeIDExisted).
+				WithErrorDetails(localizedText)
 		default:
-			return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeNameExisted).
-				WithDescription(map[string]any{"name": vt.VTName}).
-				WithErrorDetails(detail(ctx, "ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeNameExisted).
+				WithErrorDetails(localizedText)
 		}
 	}
 	return creates, updates, nil
@@ -282,7 +290,7 @@ func (s *valueTypeService) get(ctx context.Context, tx *sql.Tx, knID, branch, vt
 		return nil, internalError(ctx, err)
 	}
 	if len(list) != 1 {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ValueType_ValueTypeNotFound).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ValueType_ValueTypeNotFound).
 			WithErrorDetails(fmt.Sprintf("value type %q not found", vtID))
 	}
 	return list[0], nil
@@ -321,9 +329,12 @@ func (s *valueTypeService) UpdateValueType(ctx context.Context, tx *sql.Tx, vt *
 		}
 		for _, other := range existing {
 			if other.VTID != vt.VTID {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeNameExisted).
-					WithDescription(map[string]any{"name": vt.VTName}).
-					WithErrorDetails(detail(ctx, "ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ValueType.InvalidParameter.Detail.ValueTypeNameAlreadyExists", map[string]any{"valueTypeName": vt.VTName})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_ValueTypeNameExisted).
+					WithErrorDetails(localizedText)
 			}
 		}
 		return s.update(ctx, tx, vt)
@@ -406,7 +417,7 @@ func (s *valueTypeService) references(ctx context.Context, knID, branch, vtID st
 }
 
 func referenced(ctx context.Context, reason string, refs []interfaces.ValueTypeReference) error {
-	return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ValueType_Referenced).
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ValueType_Referenced).
 		WithErrorDetails(map[string]any{"reason": reason, "references": refs})
 }
 

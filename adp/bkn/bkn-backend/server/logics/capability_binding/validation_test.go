@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -20,16 +20,16 @@ import (
 
 func httpCodeOf(t *testing.T, err error) int {
 	t.Helper()
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	So(ok, ShouldBeTrue)
 	return httpErr.HTTPCode
 }
 
 func errorCodeOf(t *testing.T, err error) string {
 	t.Helper()
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	So(ok, ShouldBeTrue)
-	return httpErr.BaseError.ErrorCode
+	return httpErr.ErrorCode
 }
 
 // TestAttachValidatesTargets covers #1258: a binding names something in the execution factory, and

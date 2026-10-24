@@ -1,0 +1,55 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package locale
+
+import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
+var TextMessagesEnUS = i18n.I18nMessages{Locale: i18n.AmericanEnglish, Messages: map[string]string{
+	"AgentOperatorIntegration.category.other_category":               "Uncategorized",
+	"AgentOperatorIntegration.category.data_process":                 "Data Processing",
+	"AgentOperatorIntegration.category.data_transform":               "Data Transformation",
+	"AgentOperatorIntegration.category.data_store":                   "Data Storage",
+	"AgentOperatorIntegration.category.data_analysis":                "Data Analysis",
+	"AgentOperatorIntegration.category.data_query":                   "Data Query",
+	"AgentOperatorIntegration.category.data_extract":                 "Data Extraction",
+	"AgentOperatorIntegration.category.data_split":                   "Data Splitting",
+	"AgentOperatorIntegration.category.model_train":                  "Model Training",
+	"AgentOperatorIntegration.category.system":                       "System",
+	"AgentOperatorIntegration.capabilities_lab.invalid_request":      "Invalid request parameters.",
+	"AgentOperatorIntegration.capabilities_lab.not_found":            "Resource not found.",
+	"AgentOperatorIntegration.capabilities_lab.file_required":        "A required file is missing.",
+	"AgentOperatorIntegration.capabilities_lab.feature_disabled":     "This feature is disabled.",
+	"AgentOperatorIntegration.prompt.python_function_description":    "Prompt template for Python function generation",
+	"AgentOperatorIntegration.prompt.python_function_user_template":  "Function description: %s; inputs: %v; outputs: %v;",
+	"AgentOperatorIntegration.prompt.metadata_parameter_description": "Prompt template for metadata parameter generation",
+	"AgentOperatorIntegration.prompt.default_function_request":       "Generate standards-compliant Python function code from the input and output parameters",
+	"AgentOperatorIntegration.audit_log.operator_create":             "Create operator '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.operator_edit":               "Edit operator '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.operator_delete":             "Deleting the operator '{{.Name}}' succeeded",
+	"AgentOperatorIntegration.audit_log.operator_publish":            "Publishing operator '{{.Name}}' is successful",
+	"AgentOperatorIntegration.audit_log.operator_unpublish":          "Unpublishing the operator '{{.Name}}' succeeded",
+	"AgentOperatorIntegration.audit_log.operator_execute":            "Execute operator '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.tool_create":                 "Create toolbox '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.tool_edit":                   "Edit toolbox '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.tool_delete":                 "Removing the Toolbox '{{.Name}}' succeeds",
+	"AgentOperatorIntegration.audit_log.tool_publish":                "Publish Toolbox '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.tool_unpublish":              "Unpublish Toolbox '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.tool_execute":                "Execution tool '{{.Name}}' succeeds",
+	"AgentOperatorIntegration.audit_log.mcp_create":                  "Create MCP '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.mcp_edit":                    "Edit MCP '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.mcp_delete":                  "Removing the MCP '{{.Name}}' succeeds",
+	"AgentOperatorIntegration.audit_log.mcp_publish":                 "Publish MCP '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.mcp_unpublish":               "Unpublish MCP '{{.Name}}' successfully",
+	"AgentOperatorIntegration.audit_log.mcp_execute":                 "Execution MCP '{{.Name}}' succeeds",
+	"AgentOperatorIntegration.audit_log.add_tool":                    "Adding tool '{{.Name}}' to the toolbox succeeds",
+	"AgentOperatorIntegration.audit_log.remove_tool":                 "Removing the tool '{{.Name}}' from the toolbox is successful",
+	"AgentOperatorIntegration.audit_log.import_tool_from_operator":   "Successful import of tool '{{.Name}}' from operator",
+	"AgentOperatorIntegration.audit_log.edit_tool":                   "The editing tool '{{.Name}}' succeeded",
+	"AgentOperatorIntegration.audit_log.update_tool_status":          "Update tool status '{{.Name}}' successful",
+	"AgentOperatorIntegration.audit_log.debug_tool":                  "Debugging tool '{{.Name}}' succeeded",
+	"AgentOperatorIntegration.audit_log.execute_tool":                "Execution tool '{{.Name}}' succeeds",
+	"AgentOperatorIntegration.audit_log.unknown_operation":           "Unknown operation '{{.Name}}'",
+	"AgentOperatorIntegration.template.python":                       "from sandbox_sdk import tool\nfrom bkn_osdk import kn\n\n\n@tool\ndef kn_object_types(kn_id: str) -> dict:\n    \"\"\"\n    List the object types of a knowledge network (example: how to call BKN).\n\n    The parameter type annotations and defaults are inferred into the input\n    schema; the docstring becomes the tool description. There is no separate\n    input/output metadata to fill in. A parameter with a default is optional.\n\n    The platform address, credentials and session context are injected by the\n    platform via environment variables; the function never sees or passes them,\n    and must not call bkn_osdk.configure().\n\n    Parameters:\n    kn_id (str): the knowledge-network id.\n\n    Returns:\n    dict: the object-type names.\n    \"\"\"\n    detail = kn.get_kn_detail(kn_id, detail_level=\"summary\")\n    return {\"object_types\": [ot[\"name\"] for ot in detail.get(\"object_types\", [])]}\n\n\n# Common BKN capabilities (each reads as the invoking caller; configuration via env):\n#   kn.get_kn_detail(kn_id)                          knowledge-network schema\n#   kn.search_schema(kn_id, query)                   find object types semantically\n#   kn.query_object_instance(kn_id, ot_id, limit=10) instances\n#   kn.list_resources(kn_id)                         resources\n#   kn.run_sql(kn_id, sql)                           read-only aggregation; table names\n#     use a resource_id placeholder (from search_schema's data_source.id) - see the\n#     generation prompt / docs for the exact syntax\n#\n# A misconfigured address or a failed call raises bkn_osdk.BknError. Let it propagate\n# rather than returning an empty result, which would disguise a configuration problem\n# as \"no data found\".\n#\n# When no knowledge network is needed, drop the bkn_osdk import and call and return any\n# JSON-serialisable object. The legacy handler(event) form still works, but @tool\n# is recommended: the signature is the schema.\n",
+}}

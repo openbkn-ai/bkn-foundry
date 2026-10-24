@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/opensearch-project/opensearch-go/v2"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	testCtx = rest.WithLanguage(context.Background(), rest.DefaultLanguage)
+	testCtx = i18n.WithLanguage(context.Background(), i18n.DefaultLanguage)
 )
 
 // mockTransport simulates OpenSearch HTTP responses.

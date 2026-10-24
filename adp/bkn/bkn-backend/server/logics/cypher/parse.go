@@ -96,7 +96,7 @@ func startsWithWord(text, word string) bool {
 		return true
 	}
 	next := text[len(word)]
-	return !(next == '_' || next >= '0' && next <= '9' || next >= 'a' && next <= 'z' || next >= 'A' && next <= 'Z')
+	return next != '_' && (next < '0' || next > '9') && (next < 'a' || next > 'z') && (next < 'A' || next > 'Z')
 }
 
 // Parse turns query text into a parse tree. A non-nil error is always of type
@@ -174,7 +174,7 @@ func notEqualAsStandard(query string) string {
 			for i += 2; i < len(out) && out[i] != '\n'; i++ {
 			}
 		case c == '/' && i+1 < len(out) && out[i+1] == '*':
-			for i += 2; i+1 < len(out) && !(out[i] == '*' && out[i+1] == '/'); i++ {
+			for i += 2; i+1 < len(out) && (out[i] != '*' || out[i+1] != '/'); i++ {
 			}
 			i++
 		case c == '!' && i+1 < len(out) && out[i+1] == '=':

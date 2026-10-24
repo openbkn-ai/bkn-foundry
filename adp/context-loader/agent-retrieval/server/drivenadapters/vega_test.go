@@ -41,14 +41,14 @@ const vegaViewDetailDenied = `{"error_code":"Public.Forbidden","description":"�
 // Vega's body. See #1543.
 func TestVegaRawQuery_ResourceDenialExplainsDirectPermission(t *testing.T) {
 	for _, tc := range []struct {
-		locale string
+		locale common.Language
 		want   []string
 	}{
-		{"en-US", []string{"view_detail", "knowledge-network authorization", "object types",
+		{common.AmericanEnglish, []string{"view_detail", "knowledge-network authorization", "object types",
 			"query_object_instance", "run_cypher"}},
-		{"zh-CN", []string{"view_detail", "知识网络授权", "对象类", "query_object_instance", "run_cypher"}},
+		{common.SimplifiedChinese, []string{"view_detail", "知识网络授权", "对象类", "query_object_instance", "run_cypher"}},
 	} {
-		t.Run(tc.locale, func(t *testing.T) {
+		t.Run(string(tc.locale), func(t *testing.T) {
 			ctx := common.SetLanguageToCtx(context.Background(), tc.locale)
 			client := vegaRawQueryAnswering(http.StatusForbidden, vegaViewDetailDenied)
 
@@ -57,8 +57,8 @@ func TestVegaRawQuery_ResourceDenialExplainsDirectPermission(t *testing.T) {
 			})
 
 			he := asHTTPError(t, err)
-			if he.HTTPCode != http.StatusForbidden || he.Code != "Public.Forbidden" {
-				t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.Code)
+			if he.HTTPCode != http.StatusForbidden || he.ErrorCode != "Public.Forbidden" {
+				t.Fatalf("error = %d %s, want 403 Public.Forbidden", he.HTTPCode, he.ErrorCode)
 			}
 			details, _ := he.ErrorDetails.(string)
 			for _, want := range tc.want {
@@ -68,7 +68,7 @@ func TestVegaRawQuery_ResourceDenialExplainsDirectPermission(t *testing.T) {
 			}
 			for _, leak := range []string{"vega raw query failed", "Access denied", "error_code", "没有执行此操作的权限",
 				"SELECT", "d9m3f2k2u8d3u773mgo0", "vega-backend"} {
-				if strings.Contains(he.Error(), leak) {
+				if strings.Contains(details, leak) {
 					t.Errorf("error echoes downstream or request internals %q: %s", leak, he.Error())
 				}
 			}

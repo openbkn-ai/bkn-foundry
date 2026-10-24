@@ -15,9 +15,9 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -66,7 +66,7 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 
 	indexID, err := uuid.NewV7()
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("generate dataset index UUIDv7 failed")
 	}
 	indexName := fmt.Sprintf("%s-%s", interfaces.DatasetIndexPrefix, indexID)
@@ -74,7 +74,7 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 	err = ds.lim.CreateIndex(ctx, indexName, res.SchemaDefinition, map[string]string{"resource_id": res.ID})
 	if err != nil {
 		otellog.LogError(ctx, "Create dataset index failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails(err.Error())
 	}
 	res.LocalIndexName = indexName
@@ -91,7 +91,7 @@ func (ds *datasetService) Update(ctx context.Context, res *interfaces.Resource) 
 
 	if err := ds.lim.UpdateIndex(ctx, res.LocalIndexName, res.SchemaDefinition); err != nil {
 		span.SetStatus(codes.Error, "Update dataset failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -108,14 +108,14 @@ func (ds *datasetService) Delete(ctx context.Context, res *interfaces.Resource) 
 	exist, err := ds.lim.CheckIndexExist(ctx, res.LocalIndexName)
 	if err != nil {
 		span.SetStatus(codes.Error, "Check dataset exist failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(err.Error())
 	}
 	if exist {
 		// Delete from storage
 		if err := ds.lim.DeleteIndex(ctx, res.LocalIndexName); err != nil {
 			span.SetStatus(codes.Error, "Delete dataset failed")
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 				WithErrorDetails(err.Error())
 		}
 	}
@@ -137,10 +137,10 @@ func (ds *datasetService) ListDocuments(ctx context.Context, res *interfaces.Res
 			return nil, 0, httpErr
 		}
 		if reason, ok := interfaces.RequestSideQueryError(err); ok {
-			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			return nil, 0, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(reason)
 		}
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(err.Error())
 	}
 
@@ -180,16 +180,16 @@ func (ds *datasetService) getDocuments(ctx context.Context, res *interfaces.Reso
 	documents := make([]map[string]any, len(docIDs))
 	loadedDocuments, err := ds.lim.GetDocuments(ctx, res.LocalIndexName, docIDs)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(err.Error())
 	}
 	if len(loadedDocuments) != len(docIDs) {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails("local index returned a document count different from the requested IDs")
 	}
 	for i, document := range loadedDocuments {
 		if document == nil && !ignoreMissing {
-			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound).
 				WithErrorDetails(fmt.Sprintf("document %s not found", docIDs[i]))
 		}
 		documents[i] = document
@@ -219,12 +219,12 @@ func (ds *datasetService) CreateDocument(ctx context.Context, res *interfaces.Re
 	docIDs, err := ds.lim.CreateDocuments(ctx, res.LocalIndexName, []map[string]any{materialized})
 	if err != nil {
 		span.SetStatus(codes.Error, "Create dataset document failed")
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
+		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails(err.Error())
 	}
 	if len(docIDs) != 1 {
 		span.SetStatus(codes.Error, "Create dataset document returned no id")
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
+		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
 			WithErrorDetails("local index did not return a document ID")
 	}
 	span.SetStatus(codes.Ok, "")
@@ -247,7 +247,7 @@ func (ds *datasetService) ReplaceDocument(ctx context.Context, res *interfaces.R
 	}
 	if _, err := ds.lim.IndexDocuments(ctx, res.LocalIndexName, map[string]map[string]any{docID: materialized}); err != nil {
 		span.SetStatus(codes.Error, "Replace dataset document failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
 	span.SetStatus(codes.Ok, "")
@@ -270,7 +270,7 @@ func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.R
 	}
 	if len(documents) != len(docIDs) {
 		span.SetStatus(codes.Error, "Get dataset documents returned inconsistent count")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails("dataset document count does not match requested IDs")
 	}
 	idsToDelete := make([]string, 0, len(docIDs))
@@ -286,7 +286,7 @@ func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.R
 	// Call the local index store to batch delete documents
 	if err := ds.lim.DeleteDocuments(ctx, res.LocalIndexName, idsToDelete); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -305,7 +305,7 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	}
 	if params == nil || params.FilterCondCfg == nil {
 		span.SetStatus(codes.Error, "Delete dataset documents rejected without filter")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("delete-by-query requires a filter condition")
 	}
 	if err := filter_condition.NormalizeValueFrom(params.FilterCondCfg); err != nil {
@@ -317,7 +317,7 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 		case errors.Is(err, filter_condition.ErrUnsupportedOperation):
 			errorCode = verrors.VegaBackend_UnsupportFilterConditionOperation
 		}
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
 			WithErrorDetails(err.Error())
 	}
 	querySchema := local_index.SchemaForQuery(res.SchemaDefinition)
@@ -334,21 +334,21 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	if err != nil {
 		var zoneErr *interfaces.ServerTimeZoneError
 		if errors.As(err, &zoneErr) {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).WithErrorDetails(zoneErr.Error())
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).WithErrorDetails(zoneErr.Error())
 		}
 
 		span.SetStatus(codes.Error, "Build dataset delete condition failed")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
 	if actualFilterCond == nil {
 		span.SetStatus(codes.Error, "Delete dataset documents rejected with empty filter")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("delete-by-query requires a non-empty filter condition")
 	}
 	if !hasEffectiveDeleteFilter(actualFilterCond) {
 		span.SetStatus(codes.Error, "Delete dataset documents rejected with ineffective filter")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("delete-by-query requires a non-empty filter condition")
 	}
 	params.ActualFilterCond = actualFilterCond
@@ -356,10 +356,10 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	if err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
 		if reason, ok := interfaces.RequestSideQueryError(err); ok {
-			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(reason)
 		}
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
 	}
 

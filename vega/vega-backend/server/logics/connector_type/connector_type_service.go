@@ -12,9 +12,9 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
@@ -76,21 +76,21 @@ func (cts *connectorTypeService) Register(ctx context.Context, req *interfaces.C
 	err = cts.cf.ValidateConnectorTypeRegistration(ct)
 	if err != nil {
 		otellog.LogError(ctx, "Validate connector type registration failed", err)
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_BadRequest).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_BadRequest).
 			WithErrorDetails(err.Error())
 	}
 
 	err = cts.cta.Create(ctx, ct)
 	if err != nil {
 		otellog.LogError(ctx, "Register connector type failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_RegisterFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_RegisterFailed).
 			WithErrorDetails(err.Error())
 	}
 
 	err = cts.cf.RegisterConnector(ctx, ct.Type, ct)
 	if err != nil {
 		otellog.LogError(ctx, "Register connector type failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_RegisterFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_RegisterFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -106,12 +106,12 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 	ct, err := cts.cta.GetByType(ctx, tp)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get connector type failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 	if ct == nil {
 		span.SetStatus(codes.Error, "Connector type not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_ConnectorType_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_ConnectorType_NotFound)
 	}
 
 	ct.Operations = []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}
@@ -125,7 +125,7 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 	ct.FieldConfig, err = cts.cf.GetConnectorFieldConfig(ctx, ct)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get connector field config failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable).
 			WithErrorDetails(err.Error())
 	}
 
@@ -141,7 +141,7 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 	connectorTypesArr, _, err := cts.cta.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List connector types failed")
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
+		return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -188,7 +188,7 @@ func (cts *connectorTypeService) ListAuthResourceEntries(ctx context.Context, pa
 	entries, total, err := cts.cta.ListAuthResourceEntries(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "ListAuthResourceEntries failed")
-		return []*interfaces.AuthResourceEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.AuthResourceEntry{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_ConnectorType_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if len(entries) == 0 {
@@ -206,7 +206,7 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 
 	if ct == nil {
 		span.SetStatus(codes.Error, "Connector type not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_ConnectorType_NotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_ConnectorType_NotFound)
 	}
 	nameModified := req.Name != ct.Name
 
@@ -222,15 +222,15 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 	// Validate immutable fields before resolving the mutable definition.
 	if req.Type != ct.Type {
 		span.SetStatus(codes.Error, "can not change connector type")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Type)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Type)
 	}
 	if req.Mode != ct.Mode {
 		span.SetStatus(codes.Error, "can not change connector mode")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Mode)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Mode)
 	}
 	if req.Category != ct.Category {
 		span.SetStatus(codes.Error, "can not change connector category")
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Category)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Category)
 	}
 
 	updated := &interfaces.ConnectorType{
@@ -247,19 +247,19 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 	err = cts.cf.ValidateConnectorTypeRegistration(updated)
 	if err != nil {
 		otellog.LogError(ctx, "Validate connector type update failed", err)
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_BadRequest).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_BadRequest).
 			WithErrorDetails(err.Error())
 	}
 
 	if err := cts.cta.Update(ctx, updated); err != nil {
 		span.SetStatus(codes.Error, "Update connector type failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_UpdateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
 
 	if err := cts.cf.RegisterConnector(ctx, updated.Type, updated); err != nil {
 		otellog.LogError(ctx, "Register connector type failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_RegisterFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_RegisterFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -295,7 +295,7 @@ func (cts *connectorTypeService) DeleteByType(ctx context.Context, tp string) er
 
 	if err := cts.cta.DeleteByType(ctx, tp); err != nil {
 		span.SetStatus(codes.Error, "Delete connector type failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_DeleteFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -328,7 +328,7 @@ func (cts *connectorTypeService) SetEnabled(ctx context.Context, tp string, enab
 
 	if err := cts.cta.SetEnabled(ctx, tp, enabled); err != nil {
 		span.SetStatus(codes.Error, "Set enabled connector type failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_UpdateFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
 	cts.cf.SetConnectorEnabled(tp, enabled)
@@ -345,7 +345,7 @@ func (cts *connectorTypeService) CheckExistByType(ctx context.Context, tp string
 	ct, err := cts.cta.GetByType(ctx, tp)
 	if err != nil {
 		span.SetStatus(codes.Error, "GetByType failed")
-		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
+		return false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 
@@ -361,7 +361,7 @@ func (cts *connectorTypeService) CheckExistByName(ctx context.Context, name stri
 	ct, err := cts.cta.GetByName(ctx, name)
 	if err != nil {
 		span.SetStatus(codes.Error, "GetByName failed")
-		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
+		return false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 

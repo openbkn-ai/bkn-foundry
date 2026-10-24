@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -158,8 +158,8 @@ func TestResolveMapsStableBKNProxyErrors(t *testing.T) {
 				Code:       test.code,
 			}})
 			_, err := resolver.Resolve(callerContext(), validBinding())
-			httpErr, ok := err.(*rest.HTTPError)
-			if !ok || httpErr.BaseError.ErrorCode != test.want {
+			httpErr, ok := err.(*httperrors.HTTPError)
+			if !ok || httpErr.ErrorCode != test.want {
 				t.Fatalf("Resolve() error = %#v, want code %q", err, test.want)
 			}
 		})
@@ -192,7 +192,7 @@ func assertServiceUnavailable(t *testing.T, _ *interfaces.TrustedProxyContext, e
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok || httpErr.HTTPCode != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 HTTPError, got %T %#v", err, err)
 	}
@@ -200,8 +200,8 @@ func assertServiceUnavailable(t *testing.T, _ *interfaces.TrustedProxyContext, e
 
 func assertProxyError(t *testing.T, _ *interfaces.TrustedProxyContext, err error, status int, code string) {
 	t.Helper()
-	httpErr, ok := err.(*rest.HTTPError)
-	if !ok || httpErr.HTTPCode != status || httpErr.BaseError.ErrorCode != code {
+	httpErr, ok := err.(*httperrors.HTTPError)
+	if !ok || httpErr.HTTPCode != status || httpErr.ErrorCode != code {
 		t.Fatalf("expected status %d code %q, got %T %#v", status, code, err, err)
 	}
 }

@@ -13,7 +13,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -42,7 +44,7 @@ type CypherQueryRequest struct {
 }
 
 func (r *restHandler) RunCypherQueryByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -72,7 +74,7 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	decoder := json.NewDecoder(c.Request.Body)
 	decoder.UseNumber()
 	if err := decoder.Decode(&body); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -84,7 +86,7 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -122,13 +124,13 @@ func (r *restHandler) RunCypherQuery(c *gin.Context, vis hydra.Visitor, includeT
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// replyHandlerError keeps an error that is not an *rest.HTTPError from
+// replyHandlerError keeps an error that is not an *httperrors.HTTPError from
 // becoming a panic in the handler, which is what a bare type assertion would
 // do the first time a dependency returns a plain error.
 func replyHandlerError(c *gin.Context, span trace.Span, ctx context.Context, err error) {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
-		httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
+		httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
 	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 	rest.ReplyError(c, httpErr)

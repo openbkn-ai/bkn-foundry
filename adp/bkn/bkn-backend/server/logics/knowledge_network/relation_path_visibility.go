@@ -9,7 +9,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -67,7 +67,7 @@ func (kns *knowledgeNetworkService) resolveRelationPathScope(ctx context.Context
 		Branch:                    branch,
 	})
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
 	readable, err := relation_type.ReadableRelationTypes(ctx, kns.ps, query.KNID, relationTypes)
@@ -153,6 +153,6 @@ func inScope(set map[string]struct{}, ids ...string) bool {
 
 // isForbidden reports whether err refuses the caller, as opposed to failing to decide.
 func isForbidden(err error) bool {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	return errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusForbidden
 }

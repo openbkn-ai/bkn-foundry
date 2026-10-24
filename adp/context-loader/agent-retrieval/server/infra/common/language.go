@@ -10,34 +10,34 @@ import (
 	"context"
 
 	"github.com/gin-gonic/gin"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
-type Language = sharedrest.Language
+type Language = i18n.Language
 
 const (
-	SimplifiedChinese = sharedrest.SimplifiedChinese
-	AmericanEnglish   = sharedrest.AmericanEnglish
+	SimplifiedChinese = i18n.SimplifiedChinese
+	AmericanEnglish   = i18n.AmericanEnglish
 )
 
 var (
-	Languages       = sharedrest.Languages
-	DefaultLanguage = sharedrest.DefaultLanguage
+	Languages       = i18n.Languages
+	DefaultLanguage = i18n.DefaultLanguage
 )
 
 func SetLang(langStr string) {
-	sharedrest.SetLang(langStr)
-	DefaultLanguage = sharedrest.DefaultLanguage
+	i18n.SetLang(langStr)
+	DefaultLanguage = i18n.DefaultLanguage
 }
 
 func GetLanguageInfo(c *gin.Context) Language {
-	return sharedrest.ResolveLanguage(c.GetHeader(sharedrest.AcceptLanguageHeader))
+	return i18n.ResolveLanguage(c.GetHeader(i18n.AcceptLanguageHeader))
 }
 
 func GetLanguageByCtx(ctx context.Context) Language {
-	return sharedrest.GetLanguageByCtx(ctx)
+	return i18n.GetLanguageByCtx(ctx)
 }
 
 func SetLanguageByCtx(ctx context.Context, lang Language) context.Context {
-	return sharedrest.WithLanguage(ctx, lang)
+	return i18n.WithLanguage(ctx, lang)
 }

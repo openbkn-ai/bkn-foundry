@@ -116,7 +116,7 @@ async def get_effective_prompt(
         return EffectivePromptOut(source="override", content=override)
     if not agent.prompt_id:
         raise not_found("agent_default_prompt", agent_id)
-    prompt = await dao.get_prompt(session, agent.prompt_id)
+    prompt = await dao.get_prompt(session, agent.prompt_id, localized=True)
     if not prompt:
         raise not_found("prompt", agent.prompt_id)
     return EffectivePromptOut(

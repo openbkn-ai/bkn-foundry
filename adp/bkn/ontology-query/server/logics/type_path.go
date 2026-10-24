@@ -8,11 +8,12 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/locale"
 )
 
 // ResolveTypeEdgeDirection returns the direction in which edge, the index-th
@@ -29,11 +30,13 @@ func ResolveTypeEdgeDirection(ctx context.Context, index int, edge interfaces.Ty
 	}
 	if edge.Direction != "" && edge.Direction != interfaces.DIRECTION_FORWARD &&
 		edge.Direction != interfaces.DIRECTION_BACKWARD {
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-			WithErrorDetails(locale.ValidationDetail(ctx, "EdgeDirectionInvalid", map[string]any{
-				"index": index + 1, "value": edge.Direction,
-			}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail.EdgeDirectionInvalid", map[string]any{
+			"index": index + 1, "value": edge.Direction,
+		})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).WithErrorDetails(localizedText)
 	}
 
 	params := map[string]any{
@@ -56,7 +59,11 @@ func ResolveTypeEdgeDirection(ctx context.Context, index int, edge interfaces.Ty
 			params["expectedFrom"], params["expectedTo"] = relationType.TargetObjectTypeID, relationType.SourceObjectTypeID
 		}
 	}
-	return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "OntologyQuery.Validation.Detail."+detailKey, params)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
+	return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 		oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath).
-		WithErrorDetails(locale.ValidationDetail(ctx, detailKey, params))
+		WithErrorDetails(localizedText)
 }

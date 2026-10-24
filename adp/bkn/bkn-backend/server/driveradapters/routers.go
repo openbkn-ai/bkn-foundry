@@ -17,7 +17,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/middleware"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -339,8 +341,12 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Reject requests whose Content-Type is not application/json.
 		if c.ContentType() != interfaces.CONTENT_TYPE_JSON {
-			httpErr := rest.NewHTTPError(c, http.StatusNotAcceptable, berrors.BknBackend_InvalidRequestHeader_ContentType).
-				WithErrorDetails(commonValidationDetail(c.Request.Context(), "ContentTypeUnsupported", map[string]any{"contentType": c.ContentType()}))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(c.Request.Context()), "BknBackend.Validation.Detail.ContentTypeUnsupported", map[string]any{"contentType": c.ContentType()})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			httpErr := httperrors.NewHTTPError(c, http.StatusNotAcceptable, berrors.BknBackend_InvalidRequestHeader_ContentType).
+				WithErrorDetails(localizedText)
 			rest.ReplyError(c, httpErr)
 
 			c.Abort()
@@ -380,8 +386,12 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Visitor, error) {
 	visitor, err := r.as.VerifyToken(ctx, c)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusUnauthorized, rest.PublicError_Unauthorized).
-			WithErrorDetails(commonValidationDetail(ctx, "AuthenticationFailed", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.AuthenticationFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusUnauthorized, httperrors.PublicError_Unauthorized).
+			WithErrorDetails(localizedText)
 		rest.ReplyError(c, httpErr)
 		return visitor, err
 	}

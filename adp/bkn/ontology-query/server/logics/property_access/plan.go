@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/maskrule"
@@ -192,6 +192,6 @@ func uniqueNonempty(values []string) []string {
 }
 
 func decisionUnavailable(ctx context.Context, err error) error {
-	return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+	return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 		oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails(err.Error())
 }

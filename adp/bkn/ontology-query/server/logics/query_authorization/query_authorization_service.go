@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -92,7 +92,7 @@ func (s *queryAuthorizationService) AuthorizeActionTypeQuery(ctx context.Context
 		return dependencyResolutionFailed(ctx, err)
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionType_ActionTypeNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionType_ActionTypeNotFound)
 	}
 
 	if strings.TrimSpace(actionType.ObjectTypeID) == "" {
@@ -613,7 +613,7 @@ func (s *queryAuthorizationService) loadObjectType(ctx context.Context, knID, ob
 		return empty, dependencyResolutionFailed(ctx, err)
 	}
 	if !exists {
-		return empty, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+		return empty, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 	}
 	if objectType.KNID != "" && objectType.KNID != knID {
 		return empty, invalidQuery(ctx, "object type belongs to another knowledge network")
@@ -638,7 +638,7 @@ func (s *queryAuthorizationService) loadRelationType(ctx context.Context,
 		return empty, dependencyResolutionFailed(ctx, err)
 	}
 	if !exists {
-		return empty, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_KnowledgeNetwork_RelationTypeNotFound)
+		return empty, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_KnowledgeNetwork_RelationTypeNotFound)
 	}
 	return relationType, nil
 }
@@ -835,20 +835,20 @@ func uniqueStrings(values []string) []string {
 }
 
 func invalidQuery(ctx context.Context, detail string) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 		oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).WithErrorDetails(detail)
 }
 
 func dependencyResolutionFailed(ctx context.Context, err error) error {
-	var downstream *rest.HTTPError
+	var downstream *httperrors.HTTPError
 	if errors.As(err, &downstream) &&
 		(downstream.HTTPCode == http.StatusUnauthorized || downstream.HTTPCode == http.StatusForbidden) {
 		return downstream
 	}
-	return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+	return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 		oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails(err.Error())
 }
 
 func queryPermissionDenied(ctx context.Context, detail string) error {
-	return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).WithErrorDetails(detail)
+	return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails(detail)
 }

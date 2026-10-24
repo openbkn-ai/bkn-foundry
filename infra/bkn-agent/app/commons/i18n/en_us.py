@@ -6,6 +6,12 @@
 # match zh_cn.py exactly; tools/check_i18n_catalogs.py enforces that in CI.
 
 error_messages = {
+    "BknAgent.Agent.BindingChanged": {
+        "code": "BknAgent.ParamError.Conflict",
+        "description": 'The Agent prompt binding changed concurrently.',
+        "detail": 'The Agent prompt binding changed concurrently.',
+        "solution": 'Reload the Agent configuration and retry the update.',
+    },
     "BknAgent.Execution.ToolScopeMismatch": {
         "code": "BknAgent.Execution.ToolScopeMismatch",
         "description": "The tool requested a different knowledge network; the call was rejected.",

@@ -6,6 +6,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commons.i18n import localized_message
+from app.commons.locale import get_effective_locale
 from app.models import (
     AgentOut,
     AgentRow,
@@ -135,7 +136,7 @@ _SNAPSHOT_FIELDS = ("model", "tools", "limits", "prompt_version")
 
 
 async def _snapshot(session: AsyncSession, row: AgentRow) -> dict:
-    head = await session.get(PromptRow, row.f_prompt_id) if row.f_prompt_id else None
+    head = await session.get(PromptRow, row.f_prompt_id, populate_existing=True, with_for_update=True) if row.f_prompt_id else None
     return {
         "model": row.f_model or "",
         "tools": row.f_tools or [],
@@ -153,27 +154,41 @@ def _version_snapshot(version: AgentVersionRow) -> dict:
     }
 
 
-async def current_version(session: AsyncSession, agent_id: str) -> Optional[AgentVersionRow]:
+async def current_version(session: AsyncSession, agent_id: str, *, lock: bool = False) -> Optional[AgentVersionRow]:
     # Writers serialize on the Agent row and clear every other current flag, so
     # there is one; reading the newest still keeps execution working if a stray
     # duplicate ever exists.
-    return (
-        await session.execute(
-            select(AgentVersionRow)
-            .where(AgentVersionRow.f_agent_id == agent_id, AgentVersionRow.f_current.is_(True))
-            .order_by(AgentVersionRow.f_version.desc())
-            .limit(1)
-        )
-    ).scalars().first()
+    query = (select(AgentVersionRow)
+             .where(AgentVersionRow.f_agent_id == agent_id, AgentVersionRow.f_current.is_(True))
+             .order_by(AgentVersionRow.f_version.desc()).limit(1))
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    return (await session.execute(query)).scalars().first()
 
 
 async def _lock_agent(session: AsyncSession, agent_id: str) -> Optional[AgentRow]:
     """Serialize version writers for one Agent on its row."""
     return (
         await session.execute(
-            select(AgentRow).where(AgentRow.f_agent_id == agent_id).with_for_update()
+            select(AgentRow).where(AgentRow.f_agent_id == agent_id).with_for_update().execution_options(populate_existing=True)
         )
     ).scalar_one_or_none()
+
+
+async def lock_prompt_agents(session: AsyncSession, prompt_id: str) -> list[str]:
+    """Lock the current binding range, not a repeatable-read snapshot of IDs.
+
+    Force the binding index on MySQL/MariaDB: a primary-key scan for
+    ORDER BY would otherwise lock unrelated Agents. The dialect-specific hint
+    is omitted on SQLite. Range locks also serialize new bindings until commit.
+    """
+    rows = (await session.execute(
+        select(AgentRow).where(AgentRow.f_prompt_id == prompt_id)
+        .with_hint(AgentRow, "FORCE INDEX (ix_agent_prompt_id_agent_id)", dialect_name="mysql")
+        .order_by(AgentRow.f_agent_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalars().all()
+    return [row.f_agent_id for row in rows]
 
 
 async def _make_current(session: AsyncSession, agent_id: str, version: int) -> None:
@@ -231,7 +246,7 @@ async def record_version(
     if not row:
         return None
     snapshot = await _snapshot(session, row)
-    current = await current_version(session, agent_id)
+    current = await current_version(session, agent_id, lock=True)
     changes = None
     if current is not None:
         before = _version_snapshot(current)
@@ -244,11 +259,11 @@ async def record_version(
     # Deleted versions keep their numbers, so the maximum covers them too.
     latest = (
         await session.execute(
-            select(func.max(AgentVersionRow.f_version)).where(
+            select(AgentVersionRow.f_version).where(
                 AgentVersionRow.f_agent_id == agent_id
-            )
+            ).order_by(AgentVersionRow.f_version.desc()).limit(1).with_for_update()
         )
-    ).scalar_one()
+    ).scalar_one_or_none()
     version = AgentVersionRow(
         f_agent_id=agent_id,
         f_version=(latest or 0) + 1,
@@ -273,31 +288,38 @@ async def record_version(
 
 
 async def _record_for_prompt(
-    session: AsyncSession, prompt_id: str, account_id: str, commit: bool
+    session: AsyncSession, prompt_id: str, account_id: str, commit: bool,
+    *, agent_ids: Optional[list[str]] = None,
 ) -> None:
-    agent_ids = (
-        await session.execute(select(AgentRow.f_agent_id).where(AgentRow.f_prompt_id == prompt_id))
-    ).scalars()
-    for agent_id in list(agent_ids):
+    # A transactional publisher passes its current-read locked set. Repeating
+    # a plain SELECT here could miss a binding newer than this session's RR snapshot.
+    if agent_ids is None:
+        agent_ids = list((await session.execute(
+            select(AgentRow.f_agent_id).where(AgentRow.f_prompt_id == prompt_id)
+            .order_by(AgentRow.f_agent_id)
+        )).scalars())
+    for agent_id in agent_ids:
         await record_version(session, agent_id, account_id, commit=commit)
 
 
 async def activate_version(
-    session: AsyncSession, agent_id: str, version: int, account_id: str
+    session: AsyncSession, agent_id: str, version: int, account_id: str, *, commit: bool = True
 ) -> Optional[AgentVersionRow]:
     """Make a version current again: its runtime goes back onto the Agent and
     the shared Prompt points at its version. No new version is written."""
     row = await _lock_agent(session, agent_id)
-    target = await session.get(AgentVersionRow, (agent_id, version))
+    target = await session.get(AgentVersionRow, (agent_id, version), populate_existing=True, with_for_update=True)
     if not target or target.f_deleted or not row:
-        await session.commit()
+        if commit:
+            await session.commit()
         return None
     if target.f_prompt_version is not None and row.f_prompt_id:
-        head = await session.get(PromptRow, row.f_prompt_id)
+        head = await session.get(PromptRow, row.f_prompt_id, populate_existing=True, with_for_update=True)
         if not head or not await session.get(
             PromptVersionRow, (row.f_prompt_id, target.f_prompt_version)
         ):
-            await session.commit()
+            if commit:
+                await session.commit()
             return None
         head.f_current_version = target.f_prompt_version
         head.f_update_user = account_id
@@ -308,14 +330,19 @@ async def activate_version(
     row.f_update_user = account_id
     row.f_update_time = _now_ms()
     await _make_current(session, agent_id, version)
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     return target
 
 
-async def delete_version(session: AsyncSession, agent_id: str, version: int) -> str:
+async def delete_version(session: AsyncSession, agent_id: str, version: int, *, commit: bool = True) -> str:
     """Flag a version deleted. Returns "deleted", "missing", "current" or
     "initial"; the current and the initial version stay."""
-    target = await session.get(AgentVersionRow, (agent_id, version))
+    if not await _lock_agent(session, agent_id):
+        return "missing"
+    target = await session.get(AgentVersionRow, (agent_id, version), populate_existing=True, with_for_update=True)
     if not target or target.f_deleted:
         return "missing"
     if target.f_current:
@@ -323,16 +350,19 @@ async def delete_version(session: AsyncSession, agent_id: str, version: int) -> 
     if target.f_initial:
         return "initial"
     target.f_deleted = True
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     return "deleted"
 
 
 async def update_shared_agent(
-    session: AsyncSession, agent_id: str, changes: dict, account_id: str
+    session: AsyncSession, agent_id: str, changes: dict, account_id: str, *, commit: bool = True
 ) -> Optional[AgentOut]:
     """Change only the shared runtime fields (model, limits, status); tools,
     skills and the Prompt binding stay as defined."""
-    row = await session.get(AgentRow, agent_id)
+    row = await _lock_agent(session, agent_id)
     if not row:
         return None
     if "model" in changes:
@@ -345,8 +375,10 @@ async def update_shared_agent(
         row.f_tools = changes["tools"]
     row.f_update_user = account_id
     row.f_update_time = _now_ms()
-    await session.commit()
-    await record_version(session, agent_id, account_id)
+    await session.flush()
+    await record_version(session, agent_id, account_id, commit=False)
+    if commit:
+        await session.commit()
     return _to_out(row)
 
 
@@ -491,7 +523,18 @@ async def get_default_prompt(
     version = await session.get(PromptVersionRow, (prompt_id, head.f_current_version))
     if not version:
         return None
-    return version.f_content, version.f_vars_schema, version.f_version
+    return _localized_prompt_content(version), version.f_vars_schema, version.f_version
+
+
+def _localized_prompt_content(version: PromptVersionRow) -> str:
+    """Select a stored translation, never translate user-supplied content.
+
+    Canonical management/export/history reads deliberately do not call this.
+    New manually published versions have no inherited translations.
+    """
+    variants = version.f_localized_content or {}
+    translated = variants.get(get_effective_locale()) if isinstance(variants, dict) else None
+    return translated if isinstance(translated, str) and translated else version.f_content
 
 
 async def get_prompt_override(session: AsyncSession, agent_id: str, account_id: str) -> Optional[str]:
@@ -605,7 +648,7 @@ async def delete_user_setting(session: AsyncSession, agent_id: str, account_id: 
 # ---- Prompt management surface: versioned, append-only ----
 
 
-async def _prompt_out(session: AsyncSession, head: PromptRow):
+async def _prompt_out(session: AsyncSession, head: PromptRow, *, localized: bool = False):
     from app.models import PromptOut
 
     version = await session.get(PromptVersionRow, (head.f_prompt_id, head.f_current_version))
@@ -613,7 +656,7 @@ async def _prompt_out(session: AsyncSession, head: PromptRow):
         prompt_id=head.f_prompt_id,
         name=head.f_name,
         current_version=head.f_current_version,
-        content=version.f_content if version else "",
+        content=(_localized_prompt_content(version) if localized else version.f_content) if version else "",
         vars_schema=version.f_vars_schema if version else None,
         update_user=head.f_update_user,
         update_time=head.f_update_time,
@@ -650,9 +693,9 @@ async def create_prompt(
     return await _prompt_out(session, head)
 
 
-async def get_prompt(session: AsyncSession, prompt_id: str):
+async def get_prompt(session: AsyncSession, prompt_id: str, *, localized: bool = False):
     head = await session.get(PromptRow, prompt_id)
-    return await _prompt_out(session, head) if head else None
+    return await _prompt_out(session, head, localized=localized) if head else None
 
 
 async def list_prompts(session: AsyncSession, page: int, size: int):
@@ -671,17 +714,21 @@ async def publish_prompt_version(
     session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str,
     commit: bool = True,
 ):
-    head = await session.get(PromptRow, prompt_id)
+    locked_agent_ids = None
+    if not commit:
+        # Imports reach this function without already owning an Agent lock.
+        locked_agent_ids = await lock_prompt_agents(session, prompt_id)
+    head = await session.get(
+        PromptRow, prompt_id, **({"populate_existing": True, "with_for_update": True} if not commit else {})
+    )
     if not head:
         return None
-    latest = (
-        await session.execute(
-            select(PromptVersionRow.f_version)
-            .where(PromptVersionRow.f_prompt_id == prompt_id)
-            .order_by(PromptVersionRow.f_version.desc())
-            .limit(1)
-        )
-    ).scalar_one()
+    latest_query = (select(PromptVersionRow.f_version)
+                    .where(PromptVersionRow.f_prompt_id == prompt_id)
+                    .order_by(PromptVersionRow.f_version.desc()).limit(1))
+    if not commit:
+        latest_query = latest_query.with_for_update()
+    latest = (await session.execute(latest_query)).scalar_one()
     now = _now_ms()
     session.add(
         PromptVersionRow(
@@ -700,7 +747,7 @@ async def publish_prompt_version(
         await session.commit()
     else:
         await session.flush()
-    await _record_for_prompt(session, prompt_id, account_id, commit)
+    await _record_for_prompt(session, prompt_id, account_id, commit, agent_ids=locked_agent_ids)
     return await _prompt_out(session, head)
 
 

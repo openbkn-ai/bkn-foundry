@@ -86,11 +86,29 @@ func TestGetLanguageCtx(t *testing.T) {
 }
 
 func TestWithLanguage(t *testing.T) {
-	for _, input := range []Language{AmericanEnglish, "en-us"} {
+	for _, input := range []Language{AmericanEnglish, SimplifiedChinese} {
 		t.Run(string(input), func(t *testing.T) {
 			ctx := WithLanguage(context.Background(), input)
-			if got := GetLanguageByCtx(ctx); got != AmericanEnglish {
-				t.Fatalf("GetLanguageByCtx() = %q, want %q", got, AmericanEnglish)
+			if got := GetLanguageByCtx(ctx); got != input {
+				t.Fatalf("GetLanguageByCtx() = %q, want %q", got, input)
+			}
+		})
+	}
+}
+
+func TestWithLanguagePreservesUnresolvedValuesAndReaderFallsBack(t *testing.T) {
+	originalDefault := DefaultLanguage
+	DefaultLanguage = SimplifiedChinese
+	t.Cleanup(func() { DefaultLanguage = originalDefault })
+
+	for _, input := range []Language{"en-us", "en", "zh_CN", "fr-FR"} {
+		t.Run(string(input), func(t *testing.T) {
+			ctx := WithLanguage(context.Background(), input)
+			if got := ctx.Value(LanguageKey); got != input {
+				t.Fatalf("stored language = %q, want %q", got, input)
+			}
+			if got := GetLanguageByCtx(ctx); got != DefaultLanguage {
+				t.Fatalf("GetLanguageByCtx() = %q, want default %q", got, DefaultLanguage)
 			}
 		})
 	}

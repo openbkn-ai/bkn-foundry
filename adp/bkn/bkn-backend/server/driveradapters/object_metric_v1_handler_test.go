@@ -16,8 +16,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -385,7 +385,7 @@ func TestBindObjectMetricLogicPropertyStopsWhenObjectTypeLookupFails(t *testing.
 	defer restoreGin()
 	ctrl := gomock.NewController(t)
 	objectTypes := bmock.NewMockObjectTypeService(ctrl)
-	notFound := rest.NewHTTPError(context.Background(), http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+	notFound := httperrors.NewHTTPError(context.Background(), http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 	objectTypes.EXPECT().GetObjectTypeByID(gomock.Any(), nil, "kn-a", "main", "missing").Return(nil, notFound)
 	metrics := &objectMetricBindServiceStub{}
 	handler := &restHandler{ots: objectTypes, oms: metrics}

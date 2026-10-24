@@ -190,6 +190,7 @@ func safeSubgraphByObjectsQueryShape(query *interfaces.SubGraphQueryBaseOnObject
 	}
 }
 
+//nolint:unused // Intentionally retained.
 func safeMetricQueryShape(knID, branch, metricID string, query any) map[string]any {
 	return map[string]any{
 		"kn_id":      knID,

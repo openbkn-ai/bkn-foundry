@@ -21,10 +21,10 @@ import (
 
 	"github.com/google/uuid"
 	kwcrypto "github.com/openbkn-ai/bkn-foundry/comm-go/crypto"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -53,12 +53,12 @@ const (
 
 func connectorInitializationError(ctx context.Context, err error) error {
 	if errors.Is(err, factory.ErrConnectorEntitlementDenied) {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, verrors.VegaBackend_Connector_EntitlementDenied).WithErrorDetails(err.Error())
 	}
 	if errors.Is(err, factory.ErrConnectorDisabled) {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled).WithErrorDetails(err.Error())
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Connector_Disabled).WithErrorDetails(err.Error())
 	}
-	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 		verrors.VegaBackend_Catalog_InternalError_CreateFailed).WithErrorDetails(connectorInitializationFailedResult)
 }
 
@@ -157,12 +157,12 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 
 	if req.Builtin && req.ConnectorType != "" {
 		span.SetStatus(codes.Error, "Physical catalog cannot be built-in")
-		return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter).
 			WithErrorDetails("built-in catalogs must be logical")
 	}
 	if req.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return "", rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return "", httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 
@@ -188,7 +188,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	if req.ConnectorType == "" {
 		catalogType = interfaces.CatalogTypeLogical
 		if req.HealthCheckSchedule != nil {
-			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				verrors.VegaBackend_Catalog_InvalidParameter).
 				WithErrorDetails("health check schedules are only supported for physical catalogs")
 		}
@@ -200,7 +200,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
-			return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 		}
 
@@ -216,7 +216,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			if !allowUnhealthy {
-				return "", rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
 					WithErrorDetails(connectionTestFailedResult)
 			}
@@ -235,7 +235,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		return "", err
 	}
 	if exists {
-		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_NameExists)
+		return "", httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_NameExists)
 	}
 	if req.ID != "" {
 		exists, err = cs.CheckExistByID(ctx, req.ID)
@@ -243,7 +243,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			return "", err
 		}
 		if exists {
-			return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IDExists).
+			return "", httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_IDExists).
 				WithErrorDetails(fmt.Sprintf("id %s already exists", req.ID))
 		}
 	}
@@ -281,7 +281,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
 		otellog.LogError(ctx, "Create catalog transaction failed", err)
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_CreateFailed).
 			WithErrorDetails("failed to create catalog")
 	}
@@ -296,11 +296,11 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	}
 	if err != nil {
 		otellog.LogError(ctx, "Create catalog transaction failed", err)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if errors.As(err, &httpErr) {
 			return "", httpErr
 		}
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_CreateFailed).
 			WithErrorDetails("failed to create catalog")
 	}
@@ -320,7 +320,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	if err != nil {
 		logger.Errorf("CreateResources error: %s", err.Error())
 		span.SetStatus(codes.Error, "failed to create catalog resource")
-		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_CreateResourcesFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -360,7 +360,7 @@ func (cs *catalogService) listPermittedCatalogIDs(ctx context.Context, visibilit
 	params.IncludeBuiltin = interfaces.IsBuiltinAdmin(ctx)
 	refs, err := cs.ca.ListPermissionRefs(ctx, params)
 	if err != nil {
-		return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if len(refs) == 0 {
@@ -392,7 +392,7 @@ func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID 
 	defer span.End()
 
 	if catalogID == "" {
-		return false, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+		return false, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
 			WithErrorDetails("catalog_id is required")
 	}
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -408,7 +408,7 @@ func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID 
 			return false, nil, catalogErr
 		}
 		if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-			return false, nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
+			return false, nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 		}
 		return true, catalog, nil
 	}
@@ -425,17 +425,17 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	catalog, err := cs.ca.GetByID(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if catalog == nil {
 		span.SetStatus(codes.Error, "Catalog not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
 	// Apply the fixed internal guard before bkn-safe's normal catalog check.
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 
@@ -449,7 +449,7 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	if resrc, exist := matchResoucesMap[catalog.ID]; exist {
 		catalog.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 	} else {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 	}
 
@@ -469,7 +469,7 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 		decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 		}
 		catalog.ConnectorCfg = decryptedConfig
@@ -486,12 +486,12 @@ func (cs *catalogService) InternalGetByID(ctx context.Context, id string, withSe
 	catalog, err := cs.ca.GetByID(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if catalog == nil {
 		span.SetStatus(codes.Error, "Catalog not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
 	if !withSensitiveFields {
@@ -504,7 +504,7 @@ func (cs *catalogService) InternalGetByID(ctx context.Context, id string, withSe
 	decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to validate sensitive fields", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 	}
 	catalog.ConnectorCfg = decryptedConfig
@@ -544,7 +544,7 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	catalogsByID, err := cs.ca.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	catalogs := make([]*interfaces.Catalog, 0, len(catalogsByID))
@@ -563,7 +563,7 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	if !interfaces.IsBuiltinAdmin(ctx) {
 		for _, catalog := range catalogs {
 			if catalog.Builtin {
-				return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+				return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 					WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 			}
 		}
@@ -580,7 +580,7 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		if resrc, exist := matchResoucesMap[c.ID]; exist {
 			c.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		} else {
-			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 		}
 		accountInfos = append(accountInfos, &c.Creator, &c.Updater)
@@ -655,7 +655,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		catalogsByID, err := cs.ca.GetSummariesByIDs(ctx, batchIDs)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get catalogs by IDs failed")
-			return []*interfaces.CatalogSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.CatalogSummary{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 		}
 
@@ -751,24 +751,24 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 	catalog, err := cs.ca.GetByID(ctx, req.ID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if catalog == nil {
 		span.SetStatus(codes.Error, "Catalog not found")
-		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 
 	if req.ConnectorType != catalog.ConnectorType {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorType).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter_ConnectorType).
 			WithErrorDetails("connector_type cannot be modified")
 	}
 	if req.Enabled != catalog.Enabled {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_EnabledFieldNotAllowed).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_EnabledFieldNotAllowed).
 			WithErrorDetails("use POST /catalogs/{id}/enable or /disable to change enabled state")
 	}
 
@@ -779,7 +779,7 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 			return err
 		}
 		if exists {
-			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_NameExists)
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_NameExists)
 		}
 	}
 
@@ -800,7 +800,7 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
 		if err != nil {
 			otellog.LogError(ctx, "Failed to validate sensitive fields", err)
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 		}
 
@@ -816,7 +816,7 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 		if err := cs.testConnectorConnection(ctx, connector); err != nil {
 			otellog.LogError(ctx, "Failed to test connection to data source", err)
 			if !allowUnhealthy {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					verrors.VegaBackend_Catalog_InternalError_TestConnectionFailed).
 					WithErrorDetails(connectionTestFailedResult)
 			}
@@ -851,7 +851,7 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 	if err != nil {
 		span.SetStatus(codes.Error, "Update catalog transaction failed")
 		otellog.LogError(ctx, "Update catalog transaction failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update catalog")
 	}
@@ -862,19 +862,19 @@ func (cs *catalogService) Update(ctx context.Context, req *interfaces.CatalogReq
 	if err != nil {
 		span.SetStatus(codes.Error, "Update catalog failed")
 		otellog.LogError(ctx, "Update catalog failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update catalog")
 	}
 	if rowsAffected == 0 {
 		span.SetStatus(codes.Error, "Catalog update conflict")
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_UpdateConflict)
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_UpdateConflict)
 	}
 
 	if err := tx.Commit(); err != nil {
 		span.SetStatus(codes.Error, "Commit catalog update transaction failed")
 		otellog.LogError(ctx, "Commit catalog update transaction failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update catalog")
 	}
@@ -909,15 +909,15 @@ func (cs *catalogService) SetEnabled(ctx context.Context, id string, enabled boo
 	catalog, err := cs.ca.GetByID(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if catalog == nil {
 		span.SetStatus(codes.Error, "Catalog not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 	if catalog.Enabled == enabled {
@@ -944,7 +944,7 @@ func (cs *catalogService) SetEnabled(ctx context.Context, id string, enabled boo
 
 	if err := cs.ca.UpdateEnabled(ctx, catalog.ID, enabled, status, now, accountInfo); err != nil {
 		span.SetStatus(codes.Error, "Set catalog enabled failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
 
@@ -957,25 +957,25 @@ func (cs *catalogService) GetDeletionImpact(ctx context.Context, id string) (*in
 	allowed, catalog, err := cs.CheckCatalogPermission(ctx, id,
 		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
 	if err != nil {
-		var httpErr *rest.HTTPError
-		if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_InternalError_GetFailed {
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		var httpErr *httperrors.HTTPError
+		if errors.As(err, &httpErr) && httpErr.ErrorCode == verrors.VegaBackend_Catalog_InternalError_GetFailed {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 				WithErrorDetails("failed to inspect catalog dependencies")
 		}
 		return nil, err
 	}
 	if !allowed {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	}
 
 	impact, err := cs.getDeletionImpact(ctx, catalog)
 	if err != nil {
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if errors.As(err, &httpErr) {
 			return nil, httpErr
 		}
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 			WithErrorDetails("failed to inspect catalog dependencies")
 	}
@@ -1115,9 +1115,9 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 		[]string{interfaces.OPERATION_TYPE_DELETE}, true)
 	if err != nil {
 		span.SetStatus(codes.Error, "Authorize catalog deletion failed")
-		var httpErr *rest.HTTPError
-		if errors.As(err, &httpErr) && httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_InternalError_GetFailed {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		var httpErr *httperrors.HTTPError
+		if errors.As(err, &httpErr) && httpErr.ErrorCode == verrors.VegaBackend_Catalog_InternalError_GetFailed {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 				WithErrorDetails("failed to inspect catalog dependencies")
 		}
@@ -1125,22 +1125,22 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	}
 	if !allowed {
 		span.SetStatus(codes.Error, "Authorize catalog deletion failed")
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	}
 
 	impact, err := cs.getDeletionImpact(ctx, catalog)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get catalog deletion impact failed")
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if errors.As(err, &httpErr) {
 			return httpErr
 		}
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 			WithErrorDetails("failed to inspect catalog dependencies")
 	}
 	if !impact.CanDelete {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_InvalidParameter).
 			WithErrorDetails(impact)
 	}
 
@@ -1148,7 +1148,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete catalog transaction failed")
 		otellog.LogError(ctx, "Delete catalog transaction failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 			WithErrorDetails("failed to delete catalog")
 	}
@@ -1179,7 +1179,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	if err != nil {
 		span.SetStatus(codes.Error, "Delete catalog transaction failed")
 		otellog.LogError(ctx, "Delete catalog transaction failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_DeleteFailed).
 			WithErrorDetails("failed to delete catalog")
 	}
@@ -1223,7 +1223,7 @@ func (cs *catalogService) CheckExistByID(ctx context.Context, id string) (bool, 
 	catalog, err := cs.ca.GetByID(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "GetByID failed")
-		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1239,7 +1239,7 @@ func (cs *catalogService) checkExistByName(ctx context.Context, name string) (bo
 	catalog, err := cs.ca.GetByName(ctx, name)
 	if err != nil {
 		span.SetStatus(codes.Error, "GetByName failed")
-		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1263,15 +1263,15 @@ func (cs *catalogService) TestConnection(ctx context.Context, catalogID string) 
 	catalog, err := cs.ca.GetByID(ctx, catalogID)
 	if err != nil {
 		otellog.LogError(ctx, "Get catalog for connection test failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).
 			WithErrorDetails("failed to get catalog for connection test")
 	}
 	if catalog == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 	if catalog.Builtin && !interfaces.IsBuiltinAdmin(ctx) {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("built-in catalogs are restricted to the built-in administrator")
 	}
 
@@ -1310,7 +1310,7 @@ func (cs *catalogService) testCatalogConnection(
 	ctx context.Context, catalog *interfaces.Catalog,
 ) (*interfaces.CatalogHealthCheckStatus, error) {
 	if catalog == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
 	if catalog.ConnectorType == "" {
@@ -1325,7 +1325,7 @@ func (cs *catalogService) testCatalogConnection(
 	sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
 	config, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 	}
 	result, err := cs.probeConnection(ctx, catalog.ConnectorType, interfaces.ConnectorConfig(config), sensitiveFields)
@@ -1334,7 +1334,7 @@ func (cs *catalogService) testCatalogConnection(
 	}
 	if err := cs.ca.UpdateHealthCheckStatus(ctx, catalog.ID, *result); err != nil {
 		otellog.LogError(ctx, "Update catalog health check status failed", err)
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update catalog health check status")
 	}
@@ -1345,7 +1345,7 @@ func (cs *catalogService) testCatalogConnection(
 func (cs *catalogService) TestConnectionConfig(ctx context.Context,
 	req *interfaces.CatalogConnectionTestRequest) (*interfaces.CatalogHealthCheckStatus, error) {
 	if req == nil || req.ConnectorType == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter)
 	}
 
 	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -1357,7 +1357,7 @@ func (cs *catalogService) TestConnectionConfig(ctx context.Context,
 	sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
 	decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 	}
 	return cs.probeConnection(ctx, req.ConnectorType, interfaces.ConnectorConfig(decryptedConfig), sensitiveFields)
@@ -1519,7 +1519,7 @@ func (cs *catalogService) UpdateMetadata(ctx context.Context, id string, metadat
 	err := cs.ca.UpdateMetadata(ctx, id, metadata)
 	if err != nil {
 		otellog.LogError(ctx, "Update metadata failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).WithErrorDetails(err.Error())
 	}
 
@@ -1536,7 +1536,7 @@ func (cs *catalogService) ListAuthResourceEntries(ctx context.Context,
 	entries, total, err := cs.ca.ListAuthResourceEntries(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "ListAuthResourceEntries failed")
-		return []*interfaces.AuthResourceEntry{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.AuthResourceEntry{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 	if len(entries) == 0 {

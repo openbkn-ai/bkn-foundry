@@ -1,0 +1,61 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package locale
+
+import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+
+var ossGatewayZhCN = i18n.I18nMessages{
+	Locale: i18n.SimplifiedChinese,
+	Messages: map[string]string{
+		"OssGateway.BadRequest.Message":               "请求错误",
+		"OssGateway.BadRequest.Description":           "请求参数无效。",
+		"OssGateway.BadRequest.Solution":              "请检查请求参数。",
+		"OssGateway.InvalidParameter.Message":         "参数无效",
+		"OssGateway.InvalidParameter.Description":     "参数无效：{{.Parameter}}。",
+		"OssGateway.InvalidParameter.Solution":        "请检查参数格式。",
+		"OssGateway.TooManyKeys.Message":              "键数量过多",
+		"OssGateway.TooManyKeys.Description":          "一次请求最多允许 {{.MaxKeys}} 个键。",
+		"OssGateway.TooManyKeys.Solution":             "请减少请求中的键数量。",
+		"OssGateway.NotFound.Message":                 "资源不存在",
+		"OssGateway.NotFound.Description":             "请求的资源不存在。",
+		"OssGateway.NotFound.Solution":                "请检查资源标识。",
+		"OssGateway.StorageNotFound.Message":          "存储配置不存在",
+		"OssGateway.StorageNotFound.Description":      "指定的存储配置不存在。",
+		"OssGateway.StorageNotFound.Solution":         "请检查存储配置 ID。",
+		"OssGateway.InternalError.Message":            "服务内部错误",
+		"OssGateway.InternalError.Description":        "OSS Gateway 处理请求时发生内部错误。",
+		"OssGateway.InternalError.Solution":           "请稍后重试；如问题持续，请联系管理员。",
+		"OssGateway.ConnectionFailed.Message":         "连接失败",
+		"OssGateway.ConnectionFailed.Description":     "无法连接到指定的存储服务。",
+		"OssGateway.ConnectionFailed.Solution":        "请检查存储配置和网络连接。",
+		"OssGateway.ServiceNotReady.Message":          "服务尚未就绪",
+		"OssGateway.ServiceNotReady.Description":      "OSS Gateway 的一个或多个依赖尚未就绪。",
+		"OssGateway.ServiceNotReady.Solution":         "请稍后重试。",
+		"OssGateway.StorageNameExists.Message":        "存储名称已存在",
+		"OssGateway.StorageNameExists.Description":    "存储名称 {{.StorageName}} 已被使用。",
+		"OssGateway.StorageNameExists.Solution":       "请使用其他存储名称。",
+		"OssGateway.StorageExists.Message":            "存储配置已存在",
+		"OssGateway.StorageExists.Description":        "Bucket {{.Bucket}} 与位置 {{.Location}} 的存储配置已存在。",
+		"OssGateway.StorageExists.Solution":           "请使用其他 bucket 或位置。",
+		"OssGateway.StorageDisabled.Message":          "存储配置已禁用",
+		"OssGateway.StorageDisabled.Description":      "指定的存储配置已禁用。",
+		"OssGateway.StorageDisabled.Solution":         "请启用该存储配置或选择其他存储配置。",
+		"OssGateway.InvalidVendorType.Message":        "存储厂商类型无效",
+		"OssGateway.InvalidVendorType.Description":    "不支持存储厂商类型 {{.VendorType}}。",
+		"OssGateway.InvalidVendorType.Solution":       "请使用 OSS、OBS、ECEPH 或 TOS。",
+		"OssGateway.InvalidEndpoint.Message":          "存储端点无效",
+		"OssGateway.InvalidEndpoint.Description":      "存储端点必须以 http:// 或 https:// 开头。",
+		"OssGateway.InvalidEndpoint.Solution":         "请检查存储端点。",
+		"OssGateway.DefaultStorageExists.Message":     "默认存储已存在",
+		"OssGateway.DefaultStorageExists.Description": "存储 {{.StorageName}} 已被设为默认存储。",
+		"OssGateway.DefaultStorageExists.Solution":    "请先取消现有默认存储。",
+		"OssGateway.Unauthorized.Message":             "未认证",
+		"OssGateway.Unauthorized.Description":         "请求未通过认证。",
+		"OssGateway.Unauthorized.Solution":            "请提供有效的认证凭据。",
+		"OssGateway.Forbidden.Message":                "禁止访问",
+		"OssGateway.Forbidden.Description":            "没有执行此操作的权限。",
+		"OssGateway.Forbidden.Solution":               "请联系管理员获取所需权限。",
+	},
+}

@@ -9,6 +9,8 @@ import (
 	"net/http"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -59,8 +61,11 @@ func (o *operatorIntegrationClient) SearchCapabilities(ctx context.Context,
 	}
 	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#SearchCapabilities] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "CapabilitySearchResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.CapabilitySearchResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	if raw.Entries == nil {
 		return []interfaces.CapabilityHit{}, nil

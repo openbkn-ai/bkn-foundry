@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 type contextKey string
@@ -41,7 +41,7 @@ func WithForwardedAuth(ctx context.Context, authorization string, cookie string)
 }
 
 func applyLanguageHeader(ctx context.Context, header http.Header) {
-	header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
+	header.Set(i18n.AcceptLanguageHeader, string(i18n.GetLanguageByCtx(ctx)))
 }
 
 func NewOperatorIntegrationClient(baseURL string) *OperatorIntegrationClient {
@@ -204,7 +204,7 @@ func (f createToolFailure) Message() string {
 
 	var detail struct {
 		Description string `json:"description"`
-		Details     string `json:"details"`
+		Details     string `json:"error_details"`
 		Message     string `json:"message"`
 		Error       string `json:"error"`
 	}

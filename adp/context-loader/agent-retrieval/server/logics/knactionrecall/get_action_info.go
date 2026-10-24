@@ -11,6 +11,9 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -62,8 +65,11 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 	// 4. Validate action_source.type.
 	if actionsResp.ActionSource.Type != interfaces.ActionSourceTypeTool && actionsResp.ActionSource.Type != interfaces.ActionSourceTypeMCP {
 		s.logger.WithContext(ctx).Warnf("[KnActionRecall#GetActionInfo] Unsupported action_source type: %s", actionsResp.ActionSource.Type)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			infraErr.LocalizedDetail(ctx, "ActionSourceTypeUnsupported"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ActionSourceTypeUnsupported", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, localizedText)
 	}
 
 	// 5. Process actions[0] only.
@@ -101,8 +107,11 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		parameters, err := s.convertToolSchemaToActionDriver(ctx, toolDetail.Metadata.APISpec)
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionInfo] ConvertToolSchemaToActionDriver failed, err: %v", err)
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-				infraErr.LocalizedDetail(ctx, "ToolSchemaConversionFailed"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolSchemaConversionFailed", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 		}
 
 		// 10a. Build KnDynamicTool. The output schema is best-effort: a tool that
@@ -137,8 +146,11 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		parameters, err := s.convertMCPSchemaToActionDriver(ctx, toolDetail.InputSchema)
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionInfo] ConvertMCPSchemaToActionDriver failed, err: %v", err)
-			return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-				infraErr.LocalizedDetail(ctx, "MCPSchemaConversionFailed"))
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.MCPSchemaConversionFailed", map[string]any{})
+			if renderErr != nil {
+				logger.Errorf("localized message rendering failed: %v", renderErr)
+			}
+			return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 		}
 
 		// 10b. Build KnDynamicTool. No output schema for MCP sources: an MCP tool's

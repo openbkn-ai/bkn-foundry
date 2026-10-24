@@ -11,7 +11,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 )
@@ -21,10 +22,10 @@ func Test_downstreamErrorCode(t *testing.T) {
 	// having no permission, and mapping 429 to "parameter error" makes callers change the query instead of retrying.
 	cases := map[int]string{
 		http.StatusBadRequest:   oerrors.OntologyQuery_ObjectType_InvalidParameter,
-		http.StatusUnauthorized: rest.PublicError_Unauthorized,
-		http.StatusForbidden:    rest.PublicError_Forbidden,
-		http.StatusNotFound:     rest.PublicError_NotFound,
-		http.StatusConflict:     rest.PublicError_Conflict,
+		http.StatusUnauthorized: httperrors.PublicError_Unauthorized,
+		http.StatusForbidden:    httperrors.PublicError_Forbidden,
+		http.StatusNotFound:     httperrors.PublicError_NotFound,
+		http.StatusConflict:     httperrors.PublicError_Conflict,
 		// When there is no semantically corresponding public code, fall back to this service's parameter error code instead of Public.BadRequest.
 		// The latter's en-US message is "Internal Server Error".
 		// 429 is capacity exhaustion: callers must retry, not change the query (#1937).
@@ -38,7 +39,7 @@ func Test_downstreamErrorCode(t *testing.T) {
 	}
 }
 
-// rest.NewHTTPError calls logger.Fatalf for unregistered error codes; tests that only compare the mapping table cannot catch
+// httperrors.NewHTTPError calls logger.Fatalf for unregistered error codes; tests that only compare the mapping table cannot catch
 // a code added to the switch but not to allErrs. That kind of error appears only when it is first hit online,
 // and it terminates the process. Construct each code here and check that messages in both languages are non-empty.
 func Test_downstreamErrorCodeIsRegisteredInEveryLanguage(t *testing.T) {
@@ -56,14 +57,19 @@ func Test_downstreamErrorCodeIsRegisteredInEveryLanguage(t *testing.T) {
 		http.StatusUnprocessableEntity,
 		http.StatusTooManyRequests,
 	}
-	for lang := range rest.Languages {
+	for lang := range i18n.Languages {
 		for _, status := range statuses {
-			ctx := context.WithValue(context.Background(), rest.LanguageKey, lang)
-			httpErr := rest.NewHTTPError(ctx, status, downstreamErrorCode(status))
+			ctx := context.WithValue(context.Background(), i18n.LanguageKey, lang)
+			httpErr := httperrors.NewHTTPError(ctx, status, downstreamErrorCode(status))
 			if httpErr == nil {
 				t.Fatalf("status %d lang %v: error code is not registered", status, lang)
 			}
-			if httpErr.BaseError.Description == "" {
+			renderErr := httpErr.Render()
+			rendered := httpErr.BaseError
+			if renderErr != nil {
+				t.Fatal(renderErr)
+			}
+			if rendered.Description == "" {
 				t.Fatalf("status %d lang %v: description is empty", status, lang)
 			}
 			if httpErr.HTTPCode != status {

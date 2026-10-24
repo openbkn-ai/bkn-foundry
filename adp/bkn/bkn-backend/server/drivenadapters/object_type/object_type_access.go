@@ -18,11 +18,11 @@ import (
 	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -963,10 +963,14 @@ func (ota *objectTypeAccess) GetObjectTypeByID(ctx context.Context, tx *sql.Tx, 
 	)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Error, "Object type not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound).
-			WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx),
-				"BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound",
-				map[string]any{"objectTypeID": otID}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx),
+			"BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound",
+			map[string]any{"objectTypeID": otID})
+		if renderErr != nil {
+			logger.Errorf("localized service message failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound).
+			WithErrorDetails(localizedText)
 	} else if err != nil {
 		common.LogSafeError(ctx, "Row scan error", err)
 		return nil, err

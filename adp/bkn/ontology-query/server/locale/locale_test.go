@@ -12,8 +12,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
-func TestLocaleCatalogsAreComplete(t *testing.T) {
-	if err := i18n.ValidateLocaleDir(".", "zh-CN", "zh-CN", "en-US"); err != nil {
-		t.Fatalf("locale catalog validation failed: %v", err)
+func TestLocaleMessagesAreComplete(t *testing.T) {
+	Register()
+	Register()
+	if err := i18n.ValidateMessageBundles(); err != nil {
+		t.Fatalf("locale message bundle validation failed: %v", err)
 	}
 }

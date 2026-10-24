@@ -10,8 +10,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -79,7 +78,7 @@ func TestResourceDataServiceQueryWithPagingWithoutLogicalViewService(t *testing.
 		SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}}}
 
 	_, err := service.QueryWithPaging(context.Background(), view, &interfaces.ResourceDataQueryParams{})
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusNotImplemented, httpErr.HTTPCode)
 }

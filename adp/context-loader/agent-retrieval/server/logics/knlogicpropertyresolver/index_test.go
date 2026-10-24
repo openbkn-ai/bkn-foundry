@@ -12,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
@@ -24,23 +24,23 @@ import (
 func TestLogicPropertyErrorsLocalizeOwnedMessages(t *testing.T) {
 	service := &knLogicPropertyResolverService{}
 	for _, tt := range []struct {
-		locale      string
+		locale      common.Language
 		missingWant string
 		failedWant  string
 	}{
-		{locale: "zh-CN", missingWant: "生成的动态参数缺少必需输入项。", failedWant: "生成动态参数失败。"},
-		{locale: "en-US", missingWant: "Generated dynamic parameters are missing required input values.", failedWant: "Unable to generate dynamic parameters."},
+		{locale: common.SimplifiedChinese, missingWant: "生成的动态参数缺少必需输入项。", failedWant: "生成动态参数失败。"},
+		{locale: common.AmericanEnglish, missingWant: "Generated dynamic parameters are missing required input values.", failedWant: "Unable to generate dynamic parameters."},
 	} {
-		t.Run(tt.locale, func(t *testing.T) {
+		t.Run(string(tt.locale), func(t *testing.T) {
 			ctx := common.SetLanguageToCtx(context.Background(), tt.locale)
 			missing := service.buildMissingParamsError(ctx, []interfaces.MissingPropertyParams{{Property: "region"}}, nil)
-			missingHTTPError := missing.(*infraerrors.HTTPError)
+			missingHTTPError := missing.(*httperrors.HTTPError)
 			if got := missingHTTPError.ErrorDetails.(string); !strings.Contains(got, tt.missingWant) {
 				t.Fatalf("missing error details = %q, want localized text %q", got, tt.missingWant)
 			}
 
 			failed := service.buildGenerationFailedError(ctx, []interfaces.MissingPropertyParams{{Property: "region", ErrorMsg: "provider timeout"}})
-			failedHTTPError := failed.(*infraerrors.HTTPError)
+			failedHTTPError := failed.(*httperrors.HTTPError)
 			if got := failedHTTPError.ErrorDetails.(string); !strings.Contains(got, tt.failedWant) {
 				t.Fatalf("generation error details = %q, want localized text %q", got, tt.failedWant)
 			}

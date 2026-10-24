@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -43,9 +43,9 @@ func declaredObjectType() *interfaces.ObjectType {
 
 func errorCode(t *testing.T, err error) string {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.True(t, errors.As(err, &httpErr), "%v", err)
-	return httpErr.BaseError.ErrorCode
+	return httpErr.ErrorCode
 }
 
 func decodeProperty(t *testing.T, text string) *interfaces.DataProperty {
@@ -64,7 +64,7 @@ func TestValidateDeclarations(t *testing.T) {
 	ot.DataProperties[1].Semantic = "end_time"
 	err := validateDeclarations(ctx, ot)
 	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, "Semantic end_time needs an event_time property")
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, "Semantic end_time needs an event_time property")
 
 	ot = declaredObjectType()
 	ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
@@ -73,12 +73,12 @@ func TestValidateDeclarations(t *testing.T) {
 	ot = declaredObjectType()
 	ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny", Unit: "元"}
 	err = validateDeclarations(ctx, ot)
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, "write range, length, pattern and unit in the value type")
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, "write range, length, pattern and unit in the value type")
 
 	ot = declaredObjectType()
 	ot.DataProperties[0] = decodeProperty(t, `{"name":"id","type":"string","required":false}`)
 	err = validateDeclarations(ctx, ot)
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `data property "id": a primary key is required by definition`)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `data property "id": a primary key is required by definition`)
 
 	ot = declaredObjectType()
 	ot.DataProperties[2] = decodeProperty(t, `{"name":"amount","type":"decimal","constraints":{}}`)
@@ -115,10 +115,10 @@ func TestCheckOverwriteKeepsDeclarations(t *testing.T) {
 		Return([]*interfaces.ObjectType{declaredObjectType()}, nil)
 	err := service.checkOverwriteKeepsDeclarations(ctx, nil, []*interfaces.ObjectType{file}, false)
 	require.Error(t, err)
-	httpErr := err.(*rest.HTTPError)
+	httpErr := err.(*httperrors.HTTPError)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-	assert.Equal(t, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared, httpErr.BaseError.ErrorCode)
-	details := httpErr.BaseError.ErrorDetails.(map[string]any)
+	assert.Equal(t, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared, httpErr.ErrorCode)
+	details := httpErr.ErrorDetails.(map[string]any)
 	assert.Len(t, details["cleared"], 2)
 	assert.Equal(t, "confirm_clear_declarations=true", details["confirm_with"])
 
@@ -151,10 +151,10 @@ func TestCheckOverwriteKeepsDeclarationsChecksPermission(t *testing.T) {
 	ps.EXPECT().RequirePermissions(gomock.Any(), []interfaces.PermissionRequirement{{
 		Resource:  interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: interfaces.KNChildResourceID("kn1", "order")},
 		Operation: interfaces.OPERATION_TYPE_MODIFY,
-	}}).Return(rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ObjectType_InvalidParameter))
+	}}).Return(httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ObjectType_InvalidParameter))
 	err := service.checkOverwriteKeepsDeclarations(ctx, nil, []*interfaces.ObjectType{file}, true)
 	require.Error(t, err)
-	assert.Equal(t, http.StatusForbidden, err.(*rest.HTTPError).HTTPCode, "403, not the list")
+	assert.Equal(t, http.StatusForbidden, err.(*httperrors.HTTPError).HTTPCode, "403, not the list")
 
 	// Nothing stored to clear: no permission call at all.
 	ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"order"}).
@@ -222,14 +222,14 @@ func TestOverwritePrecheckRunsAfterThePermissionCheck(t *testing.T) {
 	ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "order").Return("订单", true, nil)
 	ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "订单").Return("order", true, nil)
 	ps.EXPECT().RequirePermissions(gomock.Any(), gomock.Any()).
-		Return(rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ObjectType_InvalidParameter))
+		Return(httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_ObjectType_InvalidParameter))
 	// No GetObjectTypesByIDs: the stored definition is never read.
 
 	file := declaredObjectType()
 	file.DataProperties = []*interfaces.DataProperty{{Name: "id", Type: "string"}}
 	_, err = service.CreateObjectTypes(ctx, nil, []*interfaces.ObjectType{file}, interfaces.ImportMode_Overwrite, false, false)
 	require.Error(t, err)
-	assert.Equal(t, http.StatusForbidden, err.(*rest.HTTPError).HTTPCode)
+	assert.Equal(t, http.StatusForbidden, err.(*httperrors.HTTPError).HTTPCode)
 }
 
 // A property may name only a value type of its network, and the value type's base_type must be
@@ -257,17 +257,17 @@ func TestCheckNetworkDeclarations(t *testing.T) {
 		Return([]*interfaces.ValueType{}, nil)
 	err := ots.checkNetworkDeclarations(ctx, referencing())
 	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `value type "amount_cny" is not defined in this network`)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `value type "amount_cny" is not defined in this network`)
 
 	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
 		Return([]*interfaces.ValueType{{VTID: "amount_cny", VTName: "人民币金额", BaseType: "integer"}}, nil)
 	err = ots.checkNetworkDeclarations(ctx, referencing())
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `value type "amount_cny" has base_type integer`)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `value type "amount_cny" has base_type integer`)
 
 	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
 		Return(nil, errors.New("db down"))
 	err = ots.checkNetworkDeclarations(ctx, referencing())
-	assert.Equal(t, http.StatusInternalServerError, err.(*rest.HTTPError).HTTPCode)
+	assert.Equal(t, http.StatusInternalServerError, err.(*httperrors.HTTPError).HTTPCode)
 }
 
 // decodeObjectType reads an update request the way the handler does, so the object type knows
@@ -362,7 +362,7 @@ func TestCheckAliasNames(t *testing.T) {
 			Return([]*interfaces.ObjectType{named("customer", "客户")}, nil)
 		err := ots.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{named("order", "订单", "订货单", "客户")})
 		assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-		assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `object type "order" alias "客户" is the name of object type "customer"`)
+		assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `object type "order" alias "客户" is the name of object type "customer"`)
 	})
 
 	t.Run("a new object type named like a stored alias", func(t *testing.T) {
@@ -371,7 +371,7 @@ func TestCheckAliasNames(t *testing.T) {
 		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
 			Return([]*interfaces.ObjectType{named("order", "订单", "客户")}, nil)
 		err := ots.checkAliasNames(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{named("customer", "客户")})
-		assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
+		assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
 	})
 
 	t.Run("without aliases only the aliased object types are read", func(t *testing.T) {
@@ -384,7 +384,7 @@ func TestCheckAliasNames(t *testing.T) {
 	ot := declaredObjectType()
 	ot.Aliases = []string{"订单"}
 	err := validateDeclarations(ctx, ot)
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, "订单", "an alias is not the object type's own name")
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, "订单", "an alias is not the object type's own name")
 }
 
 // The vector text has the aliases right after the name; without aliases it is as before.
@@ -430,5 +430,5 @@ func TestValidateObjectTypesIgnoreKeepsStoredAliasesInTheCheck(t *testing.T) {
 
 	err := ots.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, []*interfaces.ObjectType{order, customer}, false, nil, interfaces.ImportMode_Ignore)
 	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
-	assert.Contains(t, err.(*rest.HTTPError).BaseError.ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
 }

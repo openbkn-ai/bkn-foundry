@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -268,9 +268,9 @@ func TestRunExportLoadersDoesNotStartWithCanceledContext(t *testing.T) {
 		started.Store(true)
 		return nil
 	})
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok {
-		t.Fatalf("runExportLoaders() error type = %T, want *rest.HTTPError", err)
+		t.Fatalf("runExportLoaders() error type = %T, want *httperrors.HTTPError", err)
 	}
 	if httpErr.HTTPCode != http.StatusRequestTimeout {
 		t.Fatalf("runExportLoaders() HTTP status = %d, want %d", httpErr.HTTPCode, http.StatusRequestTimeout)
@@ -285,9 +285,9 @@ func TestRunExportLoadersWrapsCancellationReturnedByLoader(t *testing.T) {
 		return context.Canceled
 	})
 
-	httpErr, ok := err.(*rest.HTTPError)
+	httpErr, ok := err.(*httperrors.HTTPError)
 	if !ok {
-		t.Fatalf("runExportLoaders() error type = %T, want *rest.HTTPError", err)
+		t.Fatalf("runExportLoaders() error type = %T, want *httperrors.HTTPError", err)
 	}
 	if httpErr.HTTPCode != http.StatusRequestTimeout {
 		t.Fatalf("runExportLoaders() HTTP status = %d, want %d", httpErr.HTTPCode, http.StatusRequestTimeout)
@@ -421,14 +421,14 @@ func Test_knowledgeNetworkService_CheckKNExistByID(t *testing.T) {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 
-			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			name, exist, err := service.CheckKNExistByID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed)
 		})
 	})
 }
@@ -476,14 +476,14 @@ func Test_knowledgeNetworkService_CheckKNExistByName(t *testing.T) {
 			knName := "knowledge_network1"
 			branch := interfaces.MAIN_BRANCH
 
-			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			id, exist, err := service.CheckKNExistByName(ctx, knName, branch)
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 			So(id, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed)
 		})
 	})
 }
@@ -518,12 +518,12 @@ func Test_knowledgeNetworkService_UpdateKNDetail(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			detail := "updated detail"
 
-			kna.EXPECT().UpdateKNDetail(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().UpdateKNDetail(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := service.UpdateKNDetail(ctx, knID, branch, detail)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError)
 		})
 	})
 }
@@ -597,13 +597,13 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetObjectTypesTotalFailed)
 		})
 
 		Convey("Failed when getting relation types total returns error\n", func() {
@@ -613,13 +613,13 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			}
 
 			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(10, nil)
-			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
 		})
 
 		Convey("Failed when getting action types total returns error\n", func() {
@@ -630,13 +630,13 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 
 			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(10, nil)
 			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(5, nil)
-			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
 		})
 
 		Convey("Failed when getting concept groups total returns error\n", func() {
@@ -648,13 +648,13 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).Return(10, nil)
 			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(5, nil)
 			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRelationTypesTotalFailed)
 		})
 
 		Convey("Failed when getting risk types total returns error\n", func() {
@@ -667,13 +667,13 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).Return(5, nil)
 			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
-			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetRiskTypesTotalFailed)
 		})
 
 		Convey("Failed when getting metrics total returns error\n", func() {
@@ -687,14 +687,14 @@ func Test_knowledgeNetworkService_GetStatByKN(t *testing.T) {
 			ata.EXPECT().GetActionTypesTotal(gomock.Any(), gomock.Any()).Return(3, nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(2, nil)
 			rtA.EXPECT().GetRiskTypesTotal(gomock.Any(), gomock.Any()).Return(4, nil)
-			access.err = rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
+			access.err = httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
 			defer func() { access.err = nil }()
 
 			stats, err := service.GetStatByKN(ctx, kn)
 			So(err, ShouldNotBeNil)
 			So(stats, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed)
 		})
 	})
 }
@@ -772,7 +772,7 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 				},
 			}
 
-			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			kns, total, err := service.ListKNs(ctx, parameter)
 			So(err, ShouldNotBeNil)
@@ -797,7 +797,7 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 			kna.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return(knArr, nil).AnyTimes()
 			ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(),
 				gomock.Any()).
-				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+				Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			kns, total, err := service.ListKNs(ctx, parameter)
 			So(err, ShouldNotBeNil)
@@ -826,7 +826,7 @@ func Test_knowledgeNetworkService_ListKNs(t *testing.T) {
 						Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
 					},
 				}, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			kns, total, err := service.ListKNs(ctx, parameter)
 			So(err, ShouldNotBeNil)
@@ -1014,8 +1014,8 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			result, err := service.GetKNByID(ctx, knID, branch, mode)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NotFound)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		})
 
 		Convey("Failed when GetKNByID returns error\n", func() {
@@ -1023,13 +1023,13 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			mode := ""
 
-			kna.EXPECT().GetKNByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().GetKNByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			result, err := service.GetKNByID(ctx, knID, branch, mode)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed)
 		})
 
 		Convey("Failed when FilterResources returns error\n", func() {
@@ -1044,7 +1044,7 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			kna.EXPECT().GetKNByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(kn, nil)
 			ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(),
 				gomock.Any()).
-				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+				Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			result, err := service.GetKNByID(ctx, knID, branch, mode)
 			So(err, ShouldNotBeNil)
@@ -1067,8 +1067,8 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 			result, err := service.GetKNByID(ctx, knID, branch, mode)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, rest.PublicError_Forbidden)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
 		})
 
 		Convey("Failed when GetAccountNames returns error\n", func() {
@@ -1087,7 +1087,7 @@ func Test_knowledgeNetworkService_GetKNByID(t *testing.T) {
 						Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
 					},
 				}, nil)
-			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			result, err := service.GetKNByID(ctx, knID, branch, mode)
 			So(err, ShouldNotBeNil)
@@ -1296,7 +1296,7 @@ func Test_knowledgeNetworkService_ChildPermissionNavigation(t *testing.T) {
 		result, err = service.GetKNByID(ctx, "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export)
 		So(result, ShouldBeNil)
 		So(err, ShouldNotBeNil)
-		So(err.(*rest.HTTPError).BaseError.ErrorCode, ShouldEqual, rest.PublicError_Forbidden)
+		So(err.(*httperrors.HTTPError).ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
 	})
 
 	Convey("Restricted statistics count only visible child resources", t, func() {
@@ -1426,11 +1426,11 @@ func Test_knowledgeNetworkService_ResolveKNReadAccess(t *testing.T) {
 
 			So(mode, ShouldBeEmpty)
 			So(err, ShouldNotBeNil)
-			So(err.(*rest.HTTPError).HTTPCode, ShouldEqual, http.StatusForbidden)
+			So(err.(*httperrors.HTTPError).HTTPCode, ShouldEqual, http.StatusForbidden)
 		})
 
 		Convey("A permission dependency failure is not downgraded", func() {
-			dependencyErr := rest.NewHTTPError(ctx, http.StatusServiceUnavailable, rest.PublicError_ServiceUnavailable)
+			dependencyErr := httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, httperrors.PublicError_ServiceUnavailable)
 			ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{knID},
 				[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
 				Return(nil, dependencyErr)
@@ -1509,7 +1509,7 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := service.InsertDatasetData(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -1573,7 +1573,7 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -1599,7 +1599,7 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 			}
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -1655,7 +1655,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := service.UpdateKN(ctx, nil, kn, false)
 			So(err, ShouldNotBeNil)
@@ -1670,7 +1670,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateKN(ctx, nil, kn, false)
@@ -1687,7 +1687,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateKN(ctx, nil, kn, false)
@@ -1743,7 +1743,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			ps2.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
-			ps2.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ps2.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectCommit()
 
 			err := service.UpdateKN(ctx, nil, kn, false)
@@ -1823,7 +1823,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := service.DeleteKN(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -1838,7 +1838,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1855,7 +1855,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1873,7 +1873,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1892,7 +1892,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1914,7 +1914,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1941,7 +1941,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			// be supplied by the caller, so leftover rows would be inherited by a network
 			// recreated under the same ID.
 			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1969,7 +1969,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			// recreated under the same ID.
 			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1998,7 +1998,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectCommit()
 
 			err := service.DeleteKN(ctx, kn)
@@ -2018,7 +2018,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -2040,7 +2040,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
-				Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ValueType_InternalError))
+				Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ValueType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -2117,7 +2117,7 @@ func Test_knowledgeNetworkService_ListKnSrcs(t *testing.T) {
 				},
 			}
 
-			kna.EXPECT().ListKnSrcs(gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().ListKnSrcs(gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			resources, total, err := service.ListKnSrcs(ctx, parameter)
 			So(err, ShouldNotBeNil)
@@ -2142,7 +2142,7 @@ func Test_knowledgeNetworkService_ListKnSrcs(t *testing.T) {
 			kna.EXPECT().ListKnSrcs(gomock.Any(), gomock.Any()).Return(knList, nil)
 			ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(),
 				gomock.Any(), gomock.Any()).
-				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+				Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			resources, total, err := service.ListKnSrcs(ctx, parameter)
 			So(err, ShouldNotBeNil)
@@ -2334,7 +2334,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 
 			allowKNView()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+				Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			paths, err := service.GetRelationTypePaths(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -2352,14 +2352,14 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 
 			allowKNView()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH, "missing").
-				Return(nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound))
+				Return(nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound))
 
 			paths, err := service.GetRelationTypePaths(ctx, query)
 			So(paths, ShouldBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Failed when GetNeighborPathsBatch returns error\n", func() {
@@ -2379,7 +2379,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 
 			allowKNView()
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&objectType, nil).AnyTimes()
-			kna.EXPECT().GetNeighborPathsBatch(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().GetNeighborPathsBatch(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			paths, err := service.GetRelationTypePaths(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -2425,7 +2425,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 				Type: interfaces.RESOURCE_TYPE_KN,
 				ID:   "kn1",
 			}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
-				Return(rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden))
+				Return(httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden))
 			// The network has no relation type, and the caller holds no view_detail on the source
 			// object type (#1553).
 			rta.EXPECT().ListRelationTypes(gomock.Any(), gomock.Any()).Return([]*interfaces.RelationType{}, nil)
@@ -2436,7 +2436,7 @@ func Test_knowledgeNetworkService_GetRelationTypePaths(t *testing.T) {
 			paths, err := service.GetRelationTypePaths(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(paths, ShouldBeNil)
-			So(err.(*rest.HTTPError).BaseError.ErrorCode, ShouldEqual, rest.PublicError_Forbidden)
+			So(err.(*httperrors.HTTPError).ErrorCode, ShouldEqual, httperrors.PublicError_Forbidden)
 		})
 	})
 }
@@ -2522,7 +2522,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			}
 			mode := interfaces.ImportMode_Normal
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldNotBeNil)
@@ -2546,8 +2546,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			knID, err := service.CreateKN(ctx, kn, mode, true)
 			So(err, ShouldNotBeNil)
 			So(knID, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_KNIDExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_KNIDExisted)
 		})
 
 		Convey("Success with empty KNID generates new ID\n", func() {
@@ -2617,7 +2617,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			knID, err := service.CreateKN(ctx, kn, interfaces.ImportMode_Ignore, true)
 			So(err, ShouldNotBeNil)
 			So(knID, ShouldBeEmpty)
-			So(err.(*rest.HTTPError).BaseError.ErrorCode,
+			So(err.(*httperrors.HTTPError).ErrorCode,
 				ShouldEqual, berrors.BknBackend_KnowledgeNetwork_KNNameExisted)
 			So(kn.KNID, ShouldEqual, "new-kn-id")
 		})
@@ -2782,7 +2782,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
-			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
@@ -2823,7 +2823,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				DoAndReturn(func(childCtx context.Context, _ *sql.Tx, _ []*interfaces.ConceptGroup,
 					_ string, _ bool) ([]string, error) {
 					So(permission.KNImportPermissionPrechecked(childCtx), ShouldBeTrue)
-					return nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
+					return nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
 				})
 			smock.ExpectRollback()
 
@@ -2866,7 +2866,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			childErr := rootlogics.MapDependencyError(ctx,
 				interfaces.NewDependencyError("vega", "get_resource_schema", interfaces.DependencyTimeout, 0),
 				false,
-				rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
+				httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter),
 				berrors.BknBackend_ObjectType_InternalError)
 			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, childErr)
 			smock.ExpectRollback()
@@ -2875,8 +2875,8 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(knID, ShouldEqual, "")
 			So(err, ShouldEqual, childErr)
-			httpErr := err.(*rest.HTTPError)
-			details := httpErr.BaseError.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
+			httpErr := err.(*httperrors.HTTPError)
+			details := httpErr.ErrorDetails.(rootlogics.DependencyPublicErrorDetails)
 			So(details.Kind, ShouldEqual, interfaces.DependencyTimeout)
 		})
 
@@ -2911,7 +2911,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().CreateRelationTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			rts.EXPECT().CreateRelationTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			knID, err := service5.CreateKN(ctx, kn, mode, true)
@@ -2950,7 +2950,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			knID, err := service6.CreateKN(ctx, kn, mode, true)
@@ -2998,7 +2998,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				DoAndReturn(func(_ context.Context, _ *sql.Tx, _ []*interfaces.RiskType,
 					_ string) ([]string, error) {
 					cancelRequest()
-					return nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RiskType_InternalError)
+					return nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_RiskType_InternalError)
 				})
 			smock.ExpectRollback()
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID,
@@ -3026,7 +3026,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID,
 				interfaces.GenerateConceptDocuemtnID("kn1", interfaces.MODULE_TYPE_KN, "kn1", interfaces.MAIN_BRANCH)).Return(nil)
@@ -3050,7 +3050,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil)
-			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn1"}).Return(nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID,
@@ -3123,10 +3123,10 @@ func Test_knowledgeNetworkService_ValidateKN_preflightBatch(t *testing.T) {
 		cgs.EXPECT().ValidateConceptGroups(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any(), true, gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, knID, br string, groups []*interfaces.ConceptGroup, sm bool, b *interfaces.BatchIDIndex, mode string) error {
 				if b == nil || b.ObjectTypes["ot_inner"] == nil {
-					return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
+					return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
 				}
 				if len(groups) != 1 || len(groups[0].ObjectTypes) != 0 {
-					return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
+					return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
 				}
 				return nil
 			})
@@ -3134,7 +3134,7 @@ func Test_knowledgeNetworkService_ValidateKN_preflightBatch(t *testing.T) {
 			DoAndReturn(func(ctx context.Context, _, _ string, objects []*interfaces.ObjectType, _ bool,
 				_ *interfaces.BatchIDIndex, _ string) error {
 				if len(objects) != 1 || objects[0].OTID != "ot_inner" {
-					return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
+					return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError)
 				}
 				return nil
 			})

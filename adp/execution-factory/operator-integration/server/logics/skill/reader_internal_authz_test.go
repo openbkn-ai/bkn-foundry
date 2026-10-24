@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
@@ -119,7 +119,7 @@ func TestSkillInternalReadAuthzModes(t *testing.T) {
 
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*errors.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})

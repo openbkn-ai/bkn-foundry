@@ -12,8 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 )
 
 const (
@@ -54,13 +53,13 @@ func writeAuthLocaleCookie(c *gin.Context, language string) {
 
 func setAuthLocaleContext(c *gin.Context, requestURL string) string {
 	language := resolveAuthLocale(c, requestURL)
-	c.Request = c.Request.WithContext(sharedrest.WithLanguage(c.Request.Context(), language))
+	c.Request = c.Request.WithContext(i18n.WithLanguage(c.Request.Context(), i18n.Language(language)))
 	return language
 }
 
 func setAuthContinuationLocaleContext(c *gin.Context, requestURL string) string {
 	language := resolveAuthContinuationLocale(c, requestURL)
-	c.Request = c.Request.WithContext(sharedrest.WithLanguage(c.Request.Context(), language))
+	c.Request = c.Request.WithContext(i18n.WithLanguage(c.Request.Context(), i18n.Language(language)))
 	return language
 }
 
@@ -80,7 +79,7 @@ func resolveAuthLocale(c *gin.Context, requestURL string) string {
 			return language
 		}
 	}
-	return sharedrest.GetLanguageByCtx(c.Request.Context())
+	return string(i18n.GetLanguageByCtx(c.Request.Context()))
 }
 
 func resolveAuthContinuationLocale(c *gin.Context, requestURL string) string {
@@ -99,7 +98,7 @@ func resolveAuthContinuationLocale(c *gin.Context, requestURL string) string {
 	if language, ok := authLocaleFromRequestURL(requestURL); ok {
 		return language
 	}
-	return sharedrest.GetLanguageByCtx(c.Request.Context())
+	return string(i18n.GetLanguageByCtx(c.Request.Context()))
 }
 
 func normalizeAuthLocale(value string) (string, bool) {
@@ -107,9 +106,9 @@ func normalizeAuthLocale(value string) (string, bool) {
 	switch {
 	case normalized == "zh", normalized == "zh-cn", normalized == "zh-hans",
 		strings.HasPrefix(normalized, "zh-cn-"), strings.HasPrefix(normalized, "zh-hans-"):
-		return sharedrest.SimplifiedChinese, true
+		return string(i18n.SimplifiedChinese), true
 	case normalized == "en", strings.HasPrefix(normalized, "en-"):
-		return sharedrest.AmericanEnglish, true
+		return string(i18n.AmericanEnglish), true
 	default:
 		return "", false
 	}
@@ -133,8 +132,8 @@ func requestIsHTTPS(request *http.Request) bool {
 }
 
 func setAuthLocaleLinks(data *authPageData, path string, values url.Values) {
-	data.ChineseURL = authLocaleURL(path, sharedrest.SimplifiedChinese, values)
-	data.EnglishURL = authLocaleURL(path, sharedrest.AmericanEnglish, values)
+	data.ChineseURL = authLocaleURL(path, string(i18n.SimplifiedChinese), values)
+	data.EnglishURL = authLocaleURL(path, string(i18n.AmericanEnglish), values)
 }
 
 func localizedAuthPageDataFor(c *gin.Context, path string, values url.Values) authPageData {

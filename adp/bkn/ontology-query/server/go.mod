@@ -10,7 +10,7 @@ require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261016053435-798abfaea9a7
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.9-0.20261023161855-b058d07fefc2
 	github.com/opensearch-project/opensearch-go/v2 v2.3.0
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
@@ -25,7 +25,6 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	gitee.com/chunanyong/dm v1.8.23 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/IBM/sarama v1.61.1 // indirect
 	github.com/PaesslerAG/gval v1.0.0 // indirect
 	github.com/avast/retry-go v3.0.0+incompatible // indirect

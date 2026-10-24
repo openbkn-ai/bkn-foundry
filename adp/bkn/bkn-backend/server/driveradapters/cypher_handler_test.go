@@ -16,8 +16,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -205,7 +205,7 @@ func TestRunCypherQueryKeepsTheServiceStatus(t *testing.T) {
 	knowledgeNetworks.EXPECT().CheckKNExistByID(gomock.Any(), cypherKNID, gomock.Any()).
 		Return(cypherKNID, true, nil)
 	cypherQueries.EXPECT().Query(gomock.Any(), gomock.Any()).
-		Return(nil, rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+		Return(nil, httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 
 	recorder := postCypher(engine, cypherURL("in/", cypherKNID),
 		`{"query":"MATCH (o:Order) RETURN o.id"}`, nil)

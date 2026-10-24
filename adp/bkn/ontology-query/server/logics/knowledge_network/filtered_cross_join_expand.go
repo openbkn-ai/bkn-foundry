@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	cond "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common/condition"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -62,7 +62,7 @@ func (kns *knowledgeNetworkService) expandFilteredCrossJoin(ctx context.Context,
 		}
 		ok, err := logics.EvaluateInstanceAgainstCondition(ctx, lo.ObjectData, filterCurrent, lo.ObjectType)
 		if err != nil {
-			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ObjectType_InvalidParameter).
 				WithErrorDetails(fmt.Sprintf("filtered_cross_join evaluate current instance: %s", err.Error()))
 		}
 		if ok {

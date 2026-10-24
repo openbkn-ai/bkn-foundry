@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -134,7 +136,7 @@ func parseOverviewGraphLimit(ctx context.Context, value string, defaultValue, ma
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed <= 0 || parsed > maxValue {
-		return 0, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return 0, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("limit must be between 1 and %d", maxValue))
 	}
@@ -143,7 +145,7 @@ func parseOverviewGraphLimit(ctx context.Context, value string, defaultValue, ma
 
 // ListOverviewGraphByEx returns the bounded ontology graph for an OAuth caller.
 func (r *restHandler) ListOverviewGraphByEx(c *gin.Context) {
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -166,20 +168,20 @@ func (r *restHandler) ListOverviewGraph(c *gin.Context, caller hydra.Visitor) {
 	nodeLimit, err := parseOverviewGraphLimit(ctx, c.Query("node_limit"),
 		defaultOverviewGraphNodeLimit, maxOverviewGraphNodeLimit)
 	if err != nil {
-		rest.ReplyError(c, err.(*rest.HTTPError))
+		rest.ReplyError(c, err.(*httperrors.HTTPError))
 		return
 	}
 	edgeLimit, err := parseOverviewGraphLimit(ctx, c.Query("edge_limit"),
 		defaultOverviewGraphEdgeLimit, maxOverviewGraphEdgeLimit)
 	if err != nil {
-		rest.ReplyError(c, err.(*rest.HTTPError))
+		rest.ReplyError(c, err.(*httperrors.HTTPError))
 		return
 	}
 	depth := 1
 	if rawDepth := c.Query("expand_depth"); rawDepth != "" {
 		depth, err = strconv.Atoi(rawDepth)
 		if err != nil || depth < 1 || depth > 2 {
-			rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails("expand_depth must be 1 or 2"))
 			return
@@ -188,13 +190,13 @@ func (r *restHandler) ListOverviewGraph(c *gin.Context, caller hydra.Visitor) {
 	focusID := c.Query("focus_object_type_id")
 	conceptGroupID := c.Query("concept_group_id")
 	if focusID != "" && conceptGroupID != "" {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("focus_object_type_id and concept_group_id are mutually exclusive"))
 		return
 	}
 	if c.Query("cursor") != "" && (focusID != "" || conceptGroupID != "") {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("cursor cannot be combined with focus_object_type_id or concept_group_id"))
 		return
@@ -209,9 +211,9 @@ func (r *restHandler) ListOverviewGraph(c *gin.Context, caller hydra.Visitor) {
 		ConceptGroupID:    conceptGroupID,
 	})
 	if err != nil {
-		httpErr, ok := err.(*rest.HTTPError)
+		httpErr, ok := err.(*httperrors.HTTPError)
 		if !ok {
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 		}
 		rest.ReplyError(c, httpErr)
@@ -263,7 +265,7 @@ func (r *restHandler) CreateKNByIn(c *gin.Context) {
 func (r *restHandler) CreateKNByEx(c *gin.Context) {
 	logger.Debug("Handler CreateKNByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -273,7 +275,7 @@ func (r *restHandler) CreateKNByEx(c *gin.Context) {
 // parseKnowledgeNetworkImportOptions parses the import behavior shared by JSON and archive imports.
 // strict_mode takes precedence over the deprecated validate_dependency parameter.
 func parseKnowledgeNetworkImportOptions(ctx context.Context, c *gin.Context,
-	defaultMode string, defaultStrictMode bool) (string, bool, *rest.HTTPError) {
+	defaultMode string, defaultStrictMode bool) (string, bool, *httperrors.HTTPError) {
 	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, defaultMode)
 	if httpErr := validateImportMode(ctx, mode); httpErr != nil {
 		return "", false, httpErr
@@ -288,9 +290,13 @@ func parseKnowledgeNetworkImportOptions(ctx context.Context, c *gin.Context,
 	}
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
-		return "", false, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.StrictModeInvalid", map[string]any{"value": strictModeStr})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return "", false, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
+			WithErrorDetails(localizedText)
 	}
 
 	return mode, strictMode, nil
@@ -321,8 +327,12 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	}
 	bindingPolicy := strings.TrimSpace(c.DefaultQuery("binding_policy", bknBindingPolicyPreserve))
 	if bindingPolicy != bknBindingPolicyPreserve && bindingPolicy != bknBindingPolicyDetach {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "BindingPolicyInvalid", map[string]any{"value": bindingPolicy}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.BindingPolicyInvalid", map[string]any{"value": bindingPolicy})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -336,11 +346,15 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	parseSpan.SetAttributes(attr.Int64("json_parse_duration_ms", time.Since(parseStartedAt).Milliseconds()))
 	parseSpan.End()
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -377,8 +391,12 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Validate that the imported model is a knowledge network.
 	if kn.ModuleType != "" && kn.ModuleType != interfaces.MODULE_TYPE_KN {
-		httpErr := rest.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
-			WithErrorDetails(commonValidationDetail(ctx, "KnowledgeNetworkModuleTypeInvalid", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.KnowledgeNetworkModuleTypeInvalid", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_InvalidParameter_ModuleType).
+			WithErrorDetails(localizedText)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -388,11 +406,11 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	// Validate required knowledge network creation fields, lengths, and enum values.
 	err = ValidateKN(ctx, &kn)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate knowledge network[%s] failed: %s. %v", kn.KNName,
-			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.ErrorCode, httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("kn_name").String(kn.KNName))
@@ -405,7 +423,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	if len(kn.ObjectTypes) > 0 {
 		err = ValidateObjectTypes(ctx, kn.KNID, kn.ObjectTypes, strictMode)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -414,7 +432,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	if len(kn.RelationTypes) > 0 {
 		err = ValidateRelationTypes(ctx, kn.KNID, kn.RelationTypes, strictMode)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -423,7 +441,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	if len(kn.ActionTypes) > 0 {
 		err = ValidateActionTypes(ctx, kn.KNID, kn.ActionTypes, strictMode)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -433,7 +451,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		for _, conceptGroup := range kn.ConceptGroups {
 			err = ValidateConceptGroup(ctx, conceptGroup)
 			if err != nil {
-				httpErr := err.(*rest.HTTPError)
+				httpErr := err.(*httperrors.HTTPError)
 				oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 				rest.ReplyError(c, httpErr)
 				return
@@ -451,7 +469,7 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	// Create the knowledge network.
 	knID, err := r.kns.CreateKN(ctx, &kn, mode, persistenceStrictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -478,7 +496,7 @@ func (r *restHandler) ValidateKNByIn(c *gin.Context) {
 // ValidateKNByEx validates knowledge network dependencies without persistence (external).
 func (r *restHandler) ValidateKNByEx(c *gin.Context) {
 	logger.Debug("Handler ValidateKNByEx Start")
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -498,8 +516,12 @@ func (r *restHandler) ValidateKN(c *gin.Context, visitor hydra.Visitor) {
 	strictModeStr := c.DefaultQuery(interfaces.QueryParam_StrictMode, "true")
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.StrictModeInvalid", map[string]any{"value": strictModeStr})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -517,13 +539,13 @@ func (r *restHandler) ValidateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -531,8 +553,12 @@ func (r *restHandler) ValidateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	kn := interfaces.KN{}
 	if err = c.ShouldBindJSON(&kn); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -599,7 +625,7 @@ func (r *restHandler) UpdateKNByIn(c *gin.Context) {
 func (r *restHandler) UpdateKNByEx(c *gin.Context) {
 	logger.Debug("Handler UpdateKNByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -634,8 +660,12 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 	strictModeStr := c.DefaultQuery(interfaces.QueryParam_StrictMode, "true")
 	strictMode, err := strconv.ParseBool(strictModeStr)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "StrictModeInvalid", map[string]any{"value": strictModeStr}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.StrictModeInvalid", map[string]any{"value": strictModeStr})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -645,11 +675,15 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 	kn := interfaces.KN{}
 	err = c.ShouldBindJSON(&kn)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode, httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -666,7 +700,7 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 	// Load the existing resource by ID.
 	oldKNName, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -675,7 +709,7 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	if !exist {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -686,11 +720,11 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 	// Validate required knowledge network fields, lengths, and enum values.
 	err = ValidateKN(ctx, &kn)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
 		otellog.LogError(ctx, fmt.Sprintf("Validate knowledge network[%s] failed: %s. %v", kn.KNName,
-			httpErr.BaseError.Description, httpErr.BaseError.ErrorDetails), nil)
+			httpErr.ErrorCode, httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		span.SetAttributes(attr.Key("kn_name").String(kn.KNName))
@@ -705,7 +739,7 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 		ifNameModify = true
 		_, exist, err = r.kns.CheckKNExistByName(ctx, kn.KNName, branch)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 
 			// Set trace attributes for the error.
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -713,7 +747,7 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 			return
 		}
 		if exist {
-			httpErr := rest.NewHTTPError(ctx, http.StatusForbidden,
+			httpErr := httperrors.NewHTTPError(ctx, http.StatusForbidden,
 				berrors.BknBackend_KnowledgeNetwork_KNNameExisted)
 
 			// Set trace attributes for the error.
@@ -727,7 +761,7 @@ func (r *restHandler) UpdateKN(c *gin.Context, visitor hydra.Visitor) {
 	// Update the resource by ID.
 	err = r.kns.UpdateKN(ctx, nil, &kn, strictMode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -774,7 +808,7 @@ func (r *restHandler) DeleteKN(c *gin.Context) {
 
 	kn, err := r.kns.GetKNByID(ctx, knID, branch, "")
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -782,7 +816,7 @@ func (r *restHandler) DeleteKN(c *gin.Context) {
 		return
 	}
 	if kn == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -793,7 +827,7 @@ func (r *restHandler) DeleteKN(c *gin.Context) {
 	// Delete knowledge networks in batch.
 	err = r.kns.DeleteKN(ctx, kn)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -829,7 +863,7 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 	direction := c.DefaultQuery("direction", interfaces.ASC_DIRECTION)
 	page, err := validatePaginationQueryParameters(ctx, offset, limit, sort, direction, interfaces.AUTHORIZATION_RESOURCE_SORT)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -843,7 +877,7 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 			Branch:                    interfaces.MAIN_BRANCH,
 		})
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -856,7 +890,7 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 	parentType := strings.TrimSpace(c.Query("parent_type"))
 	parentID := strings.TrimSpace(c.Query("parent_id"))
 	if parentType != "knowledge_network" || parentID == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("parent_type=knowledge_network and parent_id are required for child authorization resources")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -899,7 +933,7 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 				Offset: page.Offset, Limit: page.Limit,
 			})
 			total = count
-			var hidden *rest.HTTPError
+			var hidden *httperrors.HTTPError
 			if !errors.As(listErr, &hidden) || hidden.HTTPCode != http.StatusNotFound {
 				err = listErr
 			}
@@ -910,13 +944,13 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 			}
 		}
 	default:
-		err = rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+		err = httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 			WithErrorDetails("resource_type is invalid")
 	}
 	if err != nil {
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if !errors.As(err, &httpErr) {
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_GetMetricsTotalFailed).WithErrorDetails(err.Error())
 		}
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -932,7 +966,7 @@ func (r *restHandler) ListAuthorizationResources(c *gin.Context) {
 func (r *restHandler) ListKNsByEx(c *gin.Context) {
 	logger.Debug("Handler ListKNsByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -973,11 +1007,11 @@ func (r *restHandler) ListKNs(c *gin.Context, visitor hydra.Visitor) {
 	pageParam, err := validatePaginationQueryParameters(ctx,
 		offset, limit, sort, direction, interfaces.KN_SORT)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1000,11 +1034,11 @@ func (r *restHandler) ListKNs(c *gin.Context, visitor hydra.Visitor) {
 	knList, total, err := r.kns.ListKNs(ctx, parameter)
 	result := map[string]any{"entries": knList, "total_count": total}
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1030,7 +1064,7 @@ func (r *restHandler) GetKNByIn(c *gin.Context) {
 func (r *restHandler) GetKNByEx(c *gin.Context) {
 	logger.Debug("Handler GetKNByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -1063,8 +1097,12 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 
 	mode := c.DefaultQuery(interfaces.QueryParam_Mode, "")
 	if mode != "" && mode != interfaces.Mode_Export {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Mode).
-			WithErrorDetails(commonValidationDetail(ctx, "ModeInvalid", map[string]any{"value": mode}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ModeInvalid", map[string]any{"value": mode})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_Mode).
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -1075,13 +1113,17 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 	includeStatistics := c.DefaultQuery("include_statistics", interfaces.DEFAULT_INCLUDE_STATISTICS)
 	includeStat, err := strconv.ParseBool(includeStatistics)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.IncludeStatisticsInvalid", map[string]any{"value": includeStatistics})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter_IncludeStatistics).
-			WithErrorDetails(commonValidationDetail(ctx, "IncludeStatisticsInvalid", map[string]any{"value": includeStatistics}))
+			WithErrorDetails(localizedText)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1092,7 +1134,7 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 	// Get knowledge network details.
 	kn, err := r.kns.GetKNByID(ctx, knID, branch, mode)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1104,7 +1146,7 @@ func (r *restHandler) GetKN(c *gin.Context, visitor hydra.Visitor) {
 	if includeStat {
 		statistics, err := r.kns.GetStatByKN(ctx, kn)
 		if err != nil {
-			httpErr := err.(*rest.HTTPError)
+			httpErr := err.(*httperrors.HTTPError)
 
 			// Set trace attributes for the error.
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1140,7 +1182,7 @@ func (r *restHandler) GetRelationTypePathsByIn(c *gin.Context) {
 func (r *restHandler) GetRelationTypePathsByEx(c *gin.Context) {
 	logger.Debug("Handler GetRelationTypePathsByEx Start")
 	// Verify the access token.
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -1175,12 +1217,16 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 	query := interfaces.RelationTypePathsBaseOnSource{}
 	err := c.ShouldBindJSON(&query)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 
 		rest.ReplyError(c, httpErr)
 		return
@@ -1192,7 +1238,7 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 	// Validate x-http-method-override.
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -1201,7 +1247,7 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 	// The path length defaults to one hop and supports up to three hops.
 	err = ValidateRelationTypePathsQuery(ctx, &query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1212,14 +1258,18 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 	// Verify that the knowledge network exists.
 	kn, err := r.kns.GetKNByID(ctx, knID, branch, "")
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if kn == nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound).
-			WithErrorDetails(commonValidationDetail(ctx, "KnowledgeNetworkNotFound", map[string]any{"knowledgeNetworkID": knID}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.KnowledgeNetworkNotFound", map[string]any{"knowledgeNetworkID": knID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound).
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -1228,7 +1278,7 @@ func (r *restHandler) GetRelationTypePaths(c *gin.Context, visitor hydra.Visitor
 	// Get knowledge network details.
 	result, err := r.kns.GetRelationTypePaths(ctx, query)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1257,15 +1307,23 @@ func (r *restHandler) QueryKNNamesByIDs(c *gin.Context) {
 
 	req := interfaces.KNBatchNamesReq{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if len(req.IDs) > interfaces.KN_BATCH_NAMES_MAX_IDS {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "IDsCountExceeded", map[string]any{"limit": interfaces.KN_BATCH_NAMES_MAX_IDS}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.IDsCountExceeded", map[string]any{"limit": interfaces.KN_BATCH_NAMES_MAX_IDS})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -1273,7 +1331,7 @@ func (r *restHandler) QueryKNNamesByIDs(c *gin.Context) {
 
 	resp, err := r.kns.GetKNNamesByIDs(ctx, req.IDs)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -1318,11 +1376,11 @@ func (r *restHandler) ListKnSrcs(c *gin.Context) {
 	pageParam, err := validatePaginationQueryParameters(ctx,
 		offset, limit, sort, direction, interfaces.KN_SORT)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -1342,11 +1400,11 @@ func (r *restHandler) ListKnSrcs(c *gin.Context) {
 	// Get knowledge network summaries.
 	resources, total, err := r.kns.ListKnSrcs(ctx, parameter)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 
 		// Record the error log.
-		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
-			httpErr.BaseError.ErrorDetails), nil)
+		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.ErrorCode,
+			httpErr.ErrorDetails), nil)
 
 		// Set trace attributes for the error.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
