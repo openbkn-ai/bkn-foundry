@@ -389,15 +389,17 @@ func (h *HydraAdmin) ListConnectedClients(ctx context.Context, subject string) (
 }
 
 // RevokeConnectedClient withdraws a user's grant to one client; Hydra
-// invalidates the access and refresh tokens issued under it.
-func (h *HydraAdmin) RevokeConnectedClient(ctx context.Context, subject, clientID string) error {
-	if _, err := h.dynamicClient(ctx, clientID); err != nil {
-		return err
+// invalidates the access and refresh tokens issued under it. It returns the
+// client's display name for the audit record.
+func (h *HydraAdmin) RevokeConnectedClient(ctx context.Context, subject, clientID string) (string, error) {
+	cl, err := h.dynamicClient(ctx, clientID)
+	if err != nil {
+		return "", err
 	}
 	if _, err := h.api.OAuth2API.RevokeOAuth2ConsentSessions(ctx).Subject(subject).Client(clientID).Execute(); err != nil {
-		return fmt.Errorf("revoke consent sessions: %w", err)
+		return "", fmt.Errorf("revoke consent sessions: %w", err)
 	}
-	return nil
+	return cl.GetClientName(), nil
 }
 
 // ListDynamicClients returns every self-registered client, newest first.
@@ -427,15 +429,17 @@ func (h *HydraAdmin) ListDynamicClients(ctx context.Context) ([]ConnectedClient,
 }
 
 // DeleteDynamicClient removes a self-registered client; every grant to it and
-// every token issued to it stop working.
-func (h *HydraAdmin) DeleteDynamicClient(ctx context.Context, clientID string) error {
-	if _, err := h.dynamicClient(ctx, clientID); err != nil {
-		return err
+// every token issued to it stop working. It returns the client's display name
+// for the audit record.
+func (h *HydraAdmin) DeleteDynamicClient(ctx context.Context, clientID string) (string, error) {
+	cl, err := h.dynamicClient(ctx, clientID)
+	if err != nil {
+		return "", err
 	}
 	if _, err := h.api.OAuth2API.DeleteOAuth2Client(ctx, clientID).Execute(); err != nil {
-		return fmt.Errorf("delete oauth2 client %q: %w", clientID, err)
+		return "", fmt.Errorf("delete oauth2 client %q: %w", clientID, err)
 	}
-	return nil
+	return cl.GetClientName(), nil
 }
 
 func (h *HydraAdmin) dynamicClient(ctx context.Context, clientID string) (hydra.OAuth2Client, error) {

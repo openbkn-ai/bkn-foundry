@@ -124,17 +124,17 @@ func TestListDynamicClientsLeavesFirstPartyOut(t *testing.T) {
 func TestRevokeAndDeleteOnlyTouchSelfRegisteredClients(t *testing.T) {
 	h, calls := fakeHydraAdmin(t)
 	ctx := context.Background()
-	if err := h.RevokeConnectedClient(ctx, "u-1", "wb-1"); err != nil {
-		t.Fatal(err)
+	if name, err := h.RevokeConnectedClient(ctx, "u-1", "wb-1"); err != nil || name != "WorkBuddy Connector" {
+		t.Fatalf("revoke: name=%q err=%v", name, err)
 	}
-	if err := h.DeleteDynamicClient(ctx, "cur-1"); err != nil {
-		t.Fatal(err)
+	if name, err := h.DeleteDynamicClient(ctx, "cur-1"); err != nil || name != "Cursor" {
+		t.Fatalf("delete: name=%q err=%v", name, err)
 	}
 	for _, id := range []string{"openbkn-studio", "missing"} {
-		if err := h.RevokeConnectedClient(ctx, "u-1", id); !errors.Is(err, ErrNotDynamicClient) {
+		if _, err := h.RevokeConnectedClient(ctx, "u-1", id); !errors.Is(err, ErrNotDynamicClient) {
 			t.Fatalf("revoke %s: %v", id, err)
 		}
-		if err := h.DeleteDynamicClient(ctx, id); !errors.Is(err, ErrNotDynamicClient) {
+		if _, err := h.DeleteDynamicClient(ctx, id); !errors.Is(err, ErrNotDynamicClient) {
 			t.Fatalf("delete %s: %v", id, err)
 		}
 	}

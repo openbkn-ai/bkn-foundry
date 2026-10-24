@@ -157,7 +157,7 @@ type registrationRequest struct {
 
 func (h *oauthRegistration) register(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
-	ip := c.ClientIP()
+	ip := registrationClientIP(c)
 	if !h.limiter.allow(ip, time.Now()) {
 		c.JSON(http.StatusTooManyRequests, oauthError("too_many_requests", "too many client registrations from this address; retry in a minute"))
 		return
@@ -305,6 +305,22 @@ func requestOrigin(c *gin.Context) string {
 		host = strings.TrimSpace(strings.Split(fwd, ",")[0])
 	}
 	return scheme + "://" + host
+}
+
+// registrationClientIP is the address the rate limit and the registration
+// record are keyed on. gin's ClientIP trusts every proxy and returns the
+// leftmost X-Forwarded-For entry, which an unauthenticated caller writes
+// itself — a new value per request would walk past the limit. The rightmost
+// entry is the one the gateway in front of bkn-safe appended (or wrote, when it
+// replaces the header), so the caller cannot choose it.
+func registrationClientIP(c *gin.Context) string {
+	if fwd := c.GetHeader("X-Forwarded-For"); fwd != "" {
+		parts := strings.Split(fwd, ",")
+		if last := strings.TrimSpace(parts[len(parts)-1]); last != "" {
+			return last
+		}
+	}
+	return c.RemoteIP()
 }
 
 // hydraMetadata reads Hydra's OIDC discovery document, cached for a few minutes.

@@ -16,6 +16,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
@@ -36,36 +37,43 @@ func (f *fakeConnectedClients) ListConnectedClients(_ context.Context, subject s
 	return f.grants[subject], nil
 }
 
-func (f *fakeConnectedClients) RevokeConnectedClient(_ context.Context, subject, clientID string) error {
-	if !f.known(clientID) {
-		return auth.ErrNotDynamicClient
+func (f *fakeConnectedClients) RevokeConnectedClient(_ context.Context, subject, clientID string) (string, error) {
+	name, ok := f.name(clientID)
+	if !ok {
+		return "", auth.ErrNotDynamicClient
 	}
 	f.revoked = append(f.revoked, [2]string{subject, clientID})
-	return nil
+	return name, nil
 }
 
 func (f *fakeConnectedClients) ListDynamicClients(context.Context) ([]auth.ConnectedClient, error) {
 	return f.clients, nil
 }
 
-func (f *fakeConnectedClients) DeleteDynamicClient(_ context.Context, clientID string) error {
-	if !f.known(clientID) {
-		return auth.ErrNotDynamicClient
+func (f *fakeConnectedClients) DeleteDynamicClient(_ context.Context, clientID string) (string, error) {
+	name, ok := f.name(clientID)
+	if !ok {
+		return "", auth.ErrNotDynamicClient
 	}
 	f.deleted = append(f.deleted, clientID)
-	return nil
+	return name, nil
 }
 
-func (f *fakeConnectedClients) known(clientID string) bool {
+func (f *fakeConnectedClients) name(clientID string) (string, bool) {
 	for _, c := range f.clients {
 		if c.ClientID == clientID {
-			return true
+			return c.ClientName, true
 		}
 	}
-	return false
+	return "", false
 }
 
 func newConnectedClientsServer(t *testing.T) (*gin.Engine, *fakeConnectedClients) {
+	r, fake, _ := newConnectedClientsServerWithDB(t)
+	return r, fake
+}
+
+func newConnectedClientsServerWithDB(t *testing.T) (*gin.Engine, *fakeConnectedClients, *gorm.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -106,8 +114,9 @@ func newConnectedClientsServer(t *testing.T) (*gin.Engine, *fakeConnectedClients
 		TokenVerifier:    stubVerifier{},
 		ClientAdmin:      newFakeClientManager(),
 		ConnectedClients: fake,
+		Audit:            audit.New(db),
 	})
-	return router, fake
+	return router, fake, db
 }
 
 func TestUserListsOwnConnectedClients(t *testing.T) {
@@ -201,4 +210,31 @@ func jsonContains(t *testing.T, raw []byte, want string) bool {
 	}
 	compact, _ := json.Marshal(v)
 	return strings.Contains(string(compact), want)
+}
+
+// Regression: the audit middleware drops a record with no target name, so a
+// disconnect or removal used to answer 204 and leave nothing in the audit log.
+func TestDisconnectAndRemovalAreAuditedWithTheClientName(t *testing.T) {
+	r, _, db := newConnectedClientsServerWithDB(t)
+	if w := tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/oauth/clients/wb-1", nil, plainUserSub); w.Code != http.StatusNoContent {
+		t.Fatalf("disconnect: %d %s", w.Code, w.Body)
+	}
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/oauth/clients/wb-1", nil); w.Code != http.StatusNoContent {
+		t.Fatalf("remove: %d %s", w.Code, w.Body)
+	}
+	for _, action := range []string{"disconnect_client", "remove_client"} {
+		var entry model.AuditLog
+		if err := db.Where("resource = ? AND action = ?", "oauth", action).First(&entry).Error; err != nil {
+			t.Fatalf("%s: no audit row: %v", action, err)
+		}
+		if entry.TargetID != "wb-1" || entry.TargetName != "OAuth client WorkBuddy Connector" {
+			t.Fatalf("%s audit target = id=%q name=%q", action, entry.TargetID, entry.TargetName)
+		}
+	}
+}
+
+func TestAuditNameFallsBackToClientID(t *testing.T) {
+	if got := auditClientName("c-9", ""); got != "OAuth client c-9" {
+		t.Fatalf("auditClientName = %q", got)
+	}
 }

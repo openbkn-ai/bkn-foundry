@@ -13,6 +13,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -25,9 +26,11 @@ import (
 // ConnectedClientManager reads and revokes self-registered clients in Hydra.
 type ConnectedClientManager interface {
 	ListConnectedClients(ctx context.Context, subject string) ([]auth.ConnectedClient, error)
-	RevokeConnectedClient(ctx context.Context, subject, clientID string) error
+	// RevokeConnectedClient and DeleteDynamicClient return the client's display
+	// name: the audit record needs one, and the client may be gone afterwards.
+	RevokeConnectedClient(ctx context.Context, subject, clientID string) (string, error)
 	ListDynamicClients(ctx context.Context) ([]auth.ConnectedClient, error)
-	DeleteDynamicClient(ctx context.Context, clientID string) error
+	DeleteDynamicClient(ctx context.Context, clientID string) (string, error)
 }
 
 type connectedClientView struct {
@@ -71,8 +74,7 @@ func registerMeConnectedClients(g *gin.RouterGroup, m ConnectedClientManager) {
 	// working; it has to send the user through sign-in again.
 	g.DELETE("/oauth/clients/:client_id", func(c *gin.Context) {
 		clientID := c.Param("client_id")
-		setAuditOperation(c, "disconnect_client", clientID, "")
-		err := m.RevokeConnectedClient(c.Request.Context(), c.GetString(ctxAccessorID), clientID)
+		name, err := m.RevokeConnectedClient(c.Request.Context(), c.GetString(ctxAccessorID), clientID)
 		if errors.Is(err, auth.ErrNotDynamicClient) {
 			replyPublicError(c, http.StatusNotFound)
 			return
@@ -81,6 +83,7 @@ func registerMeConnectedClients(g *gin.RouterGroup, m ConnectedClientManager) {
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "disconnect_client", clientID, auditClientName(clientID, name))
 		c.Status(http.StatusNoContent)
 	})
 }
@@ -109,8 +112,7 @@ func registerAdminConnectedClients(g *gin.RouterGroup, m ConnectedClientManager,
 
 	g.DELETE("/oauth/clients/:client_id", RequirePermission(e, "admin-client", "manage"), func(c *gin.Context) {
 		clientID := c.Param("client_id")
-		setAuditOperation(c, "remove_client", clientID, "")
-		err := m.DeleteDynamicClient(c.Request.Context(), clientID)
+		name, err := m.DeleteDynamicClient(c.Request.Context(), clientID)
 		if errors.Is(err, auth.ErrNotDynamicClient) {
 			replyPublicError(c, http.StatusNotFound)
 			return
@@ -119,8 +121,18 @@ func registerAdminConnectedClients(g *gin.RouterGroup, m ConnectedClientManager,
 			serverError(c, err)
 			return
 		}
+		setAuditOperation(c, "remove_client", clientID, auditClientName(clientID, name))
 		c.Status(http.StatusNoContent)
 	})
+}
+
+// auditClientName is the audit target name: the audit middleware drops a
+// record without one, and a client may have registered without a name.
+func auditClientName(clientID, name string) string {
+	if name == "" {
+		name = clientID
+	}
+	return fmt.Sprintf("OAuth client %s", name)
 }
 
 func timePtr(t time.Time) *time.Time {

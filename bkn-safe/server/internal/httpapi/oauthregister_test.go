@@ -240,6 +240,26 @@ func TestRegistrationIsRateLimitedPerAddress(t *testing.T) {
 	}
 }
 
+// The leftmost X-Forwarded-For entry is the caller's to write; varying it must
+// not reset the per-address limit.
+func TestRegistrationLimitIgnoresSpoofedForwardedFor(t *testing.T) {
+	r, reg := registrationEngine(t, OAuthDynamicRegistration{RatePerMinute: 2})
+	for i, spoofed := range []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"} {
+		w := serve(r, http.MethodPost, oauthRegisterPath, workBuddyRegistration,
+			map[string]string{"X-Forwarded-For": spoofed + ", 10.211.55.2"})
+		want := http.StatusCreated
+		if i == 2 {
+			want = http.StatusTooManyRequests
+		}
+		if w.Code != want {
+			t.Fatalf("registration %d: status %d, want %d", i, w.Code, want)
+		}
+	}
+	if got := reg.got[0].Metadata["registered_from"]; got != "10.211.55.2" {
+		t.Fatalf("registered_from = %v, want the gateway-appended address", got)
+	}
+}
+
 func TestRegistrationReportsAHydraFailure(t *testing.T) {
 	reg := &fakeRegistrar{err: errors.New("hydra down")}
 	r, _ := registrationEngine(t, OAuthDynamicRegistration{Registrar: reg})
