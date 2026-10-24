@@ -6,6 +6,7 @@
 package evidencesvc
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,9 +17,14 @@ import (
 )
 
 // This is an internal storage encoding, not a published API/schema. Metadata
-// includes capture gaps and observed states. Bodies are base64 JSON byte strings
-// so JSON serialization cannot normalize ledger or CallFact source bytes.
+// includes capture gaps and observed states. Legacy bodies are base64 JSON byte
+// strings; the compressed version uses bounded gzip members inside those strings.
+// Neither representation normalizes ledger or CallFact source bytes.
 const capturePackageVersion = "internal-capture-v1"
+
+// ErrCapturePackageBudget distinguishes bounded-package rejection from missing
+// inputs, cancellation and malformed or untrusted package data.
+var ErrCapturePackageBudget = errors.New("capture package exceeds budget")
 
 type capturePackage struct {
 	Version  string          `json:"version"`
@@ -31,6 +37,20 @@ type capturePackage struct {
 // memory or the preceding snapshot read. The caller owns atomic storage and the
 // trusted association of interaction, package hash and deletion lifecycle.
 func EncodeCapture(m CaptureManifest, maxBytes int) ([]byte, string, error) {
+	return EncodeCaptureWithContext(context.Background(), m, maxBytes)
+}
+
+// EncodeCaptureWithContext permits bounded historical compression without
+// changing the fixed encoding used by revision inputs.
+func EncodeCaptureWithContext(ctx context.Context, m CaptureManifest, maxBytes int) ([]byte, string, error) {
+	return encodeCapture(ctx, m, maxBytes, true)
+}
+
+func encodeCapture(ctx context.Context, m CaptureManifest, maxBytes int, allowCompressed bool) ([]byte, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+
 	if maxBytes <= 0 {
 		return nil, "", errors.New("invalid capture package budget")
 	}
@@ -64,8 +84,20 @@ func EncodeCapture(m CaptureManifest, maxBytes int) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
 	if len(raw) > maxBytes {
-		return nil, "", errors.New("capture package exceeds budget")
+		if !allowCompressed {
+			return nil, "", ErrCapturePackageBudget
+		}
+		raw, err = compressCapturePackage(ctx, p, maxBytes)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
 	}
 	return raw, capturePackageHash(raw), nil
 }
@@ -75,8 +107,15 @@ func EncodeCapture(m CaptureManifest, maxBytes int) ([]byte, string, error) {
 // A checksum verifies byte integrity, not historical authenticity or adoption.
 // It does not fetch current records, parse raw ledger events or resolve artifacts.
 func DecodeCapture(raw []byte, expectedHash string, maxBytes int) (CaptureManifest, error) {
-	if maxBytes <= 0 || len(raw) > maxBytes {
+	return decodeCapture(raw, expectedHash, maxBytes, true)
+}
+
+func decodeCapture(raw []byte, expectedHash string, maxBytes int, allowCompressed bool) (CaptureManifest, error) {
+	if maxBytes <= 0 {
 		return CaptureManifest{}, errors.New("invalid capture package budget")
+	}
+	if len(raw) > maxBytes {
+		return CaptureManifest{}, ErrCapturePackageBudget
 	}
 	if expectedHash != capturePackageHash(raw) {
 		return CaptureManifest{}, errors.New("capture package hash mismatch")
@@ -85,7 +124,7 @@ func DecodeCapture(raw []byte, expectedHash string, maxBytes int) (CaptureManife
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return CaptureManifest{}, err
 	}
-	if p.Version != capturePackageVersion {
+	if p.Version != capturePackageVersion && (!allowCompressed || p.Version != captureCompressedVersion) {
 		return CaptureManifest{}, errors.New("unsupported capture package version")
 	}
 	if p.Manifest.Snapshot.Interaction.ID == "" {
@@ -94,6 +133,11 @@ func DecodeCapture(raw []byte, expectedHash string, maxBytes int) (CaptureManife
 	slots := captureBodySlots(&p.Manifest)
 	if len(slots) != len(p.Bodies) {
 		return CaptureManifest{}, errors.New("capture body count mismatch")
+	}
+	if p.Version == captureCompressedVersion {
+		if err := decompressCaptureBodies(&p, maxBytes); err != nil {
+			return CaptureManifest{}, err
+		}
 	}
 	for i, slot := range slots {
 		if len(*slot) != 0 && string(*slot) != "null" {

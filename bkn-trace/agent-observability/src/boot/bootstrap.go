@@ -553,7 +553,7 @@ func NewApp() (*App, error) {
 				if err != nil || !found {
 					return nil, "", found, err
 				}
-				raw, hash, err := evidencesvc.EncodeCapture(capture, 64<<20)
+				raw, hash, err := evidencesvc.EncodeCaptureWithContext(ctx, capture, 64<<20)
 				return raw, hash, true, err
 			}
 		}
