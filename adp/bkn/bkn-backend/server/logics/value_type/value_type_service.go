@@ -188,6 +188,9 @@ func (s *valueTypeService) CreateValueTypes(ctx context.Context, tx *sql.Tx, val
 
 func (s *valueTypeService) ValidateValueTypes(ctx context.Context, valueTypes []*interfaces.ValueType) error {
 	for _, vt := range valueTypes {
+		if vt == nil {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
+		}
 		if err := prepare(ctx, vt); err != nil {
 			return err
 		}

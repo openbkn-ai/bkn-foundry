@@ -220,35 +220,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 	importView := importPlan.knowledgeNetworkView(kn)
-	for _, conceptGroup := range importPlan.ConceptGroups {
-		conceptGroup.KNID = kn.KNID
-		conceptGroup.Branch = kn.Branch
-	}
-	for _, objectType := range importPlan.ObjectTypes {
-		objectType.KNID = kn.KNID
-		objectType.Branch = kn.Branch
-	}
-	for _, relationType := range importPlan.RelationTypes {
-		relationType.KNID = kn.KNID
-		relationType.Branch = kn.Branch
-	}
-	for _, actionType := range importPlan.ActionTypes {
-		actionType.KNID = kn.KNID
-		actionType.Branch = kn.Branch
-	}
-	for _, riskType := range importPlan.RiskTypes {
-		riskType.KNID = kn.KNID
-		riskType.Branch = kn.Branch
-	}
-	for _, valueType := range importPlan.ValueTypes {
-		valueType.KNID = kn.KNID
-		valueType.Branch = kn.Branch
-	}
-	for _, record := range importPlan.ObjectMetrics {
-		if record != nil {
-			record.KNID, record.Branch = kn.KNID, kn.Branch
-		}
-	}
+	importPlan.assignNetwork(kn.KNID, kn.Branch)
 	if err = validateObjectMetricArchive(importPlan); err != nil {
 		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails(err.Error())
