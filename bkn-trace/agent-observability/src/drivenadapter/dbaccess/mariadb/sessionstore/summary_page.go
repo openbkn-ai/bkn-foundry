@@ -17,6 +17,9 @@ import (
 )
 
 func (s *Store) ListTraceSummaryIdentities(ctx context.Context, query isessionstore.SummaryPageQuery) (isessionstore.SummaryIdentityPage, error) {
+	if query.Tool != "" {
+		return s.listToolTraceIdentityPage(ctx, query)
+	}
 	where, args := summaryOwnerWhere("r", query)
 	where = append(where, usableSummaryReceiptPredicates("r")...)
 	if !query.From.IsZero() {

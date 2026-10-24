@@ -15,6 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
 // ListTraceExecutions returns the Community technical Trace list. Business
@@ -133,6 +134,10 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 }
 
 func writeSummaryQueryError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, iprojectionsource.ErrSummaryScanBudgetExceeded) {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "SUMMARY_QUERY_BUDGET_EXCEEDED", Message: "trace query exceeds its resource budget; narrow the time range or filters, or use cursor pagination instead of a deep page"})
+		return
+	}
 	if errors.Is(err, evidencesvc.ErrSummaryCursorInvalid) {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "cursor is invalid"})
 		return

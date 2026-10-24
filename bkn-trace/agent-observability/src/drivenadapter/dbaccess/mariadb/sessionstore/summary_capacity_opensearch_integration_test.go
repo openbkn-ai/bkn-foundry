@@ -92,10 +92,32 @@ type capacityRealProjection struct {
 	calls  int
 }
 
+// Preserve the native optional capability; observers must not change read paths.
+func (p *capacityRealProjection) ScanTraceSummaryProjection(ctx context.Context, q iprojectionsource.Query, visit func(iprojectionsource.Result) error) error {
+	// Anonymous interface keeps the shared test observer buildable against the
+	// accepted pre-scanner baseline. Only the candidate service uses this method.
+	source, ok := p.source.(interface {
+		ScanTraceSummaryProjection(context.Context, iprojectionsource.Query, func(iprojectionsource.Result) error) error
+	})
+	if !ok {
+		return fmt.Errorf("native trace summary scanner required")
+	}
+	return source.ScanTraceSummaryProjection(ctx, q, visit)
+}
+
+// Preserve the native optional capability; observers must not change read paths.
+func (p *capacityRealProjection) LoadArtifactProjection(ctx context.Context, q iprojectionsource.Query) (iprojectionsource.ArtifactResult, error) {
+	source, ok := p.source.(iprojectionsource.ArtifactProjectionSourcePort)
+	if !ok {
+		return iprojectionsource.ArtifactResult{}, fmt.Errorf("native artifact capability required")
+	}
+	return source.LoadArtifactProjection(ctx, q)
+}
+
 func (p *capacityRealProjection) LoadExecutionProjection(ctx context.Context, q iprojectionsource.Query) (iprojectionsource.Result, error) {
 	started := time.Now()
 	result, err := p.source.LoadExecutionProjection(ctx, q)
-	if err == nil && len(result.Traces) != len(q.TraceIDs) {
+	if err == nil && len(q.TraceIDs) > 0 && len(result.Traces) != len(q.TraceIDs) {
 		return result, fmt.Errorf("real projection returned %d traces for %d selected identities", len(result.Traces), len(q.TraceIDs))
 	}
 	p.mu.Lock()

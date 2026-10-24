@@ -13,6 +13,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
+type CanonicalTraceRoot struct {
+	SourceModule string
+	ToolName     string
+	HasTool      bool
+}
+
 type Transaction interface {
 	Now() time.Time
 	FindCurrentConversation(owner sessionvo.Owner, externalKey string) (sessionvo.Conversation, bool)
@@ -44,6 +50,7 @@ type Transaction interface {
 	ListOperationCallSummaries(interactionID string) []sessionvo.OperationCallSummary
 	ListOperationCallFactsByTraceID(traceID string) []sessionvo.OperationCallFact
 	ListFirstOperationSourceModulesByTraceIDs(traceIDs []string) map[string]string
+	ListCanonicalTraceRootsByTraceIDs(traceIDs []string, scope evidencevo.QueryScope) map[string]CanonicalTraceRoot
 	SaveOperationCallFact(fact sessionvo.OperationCallFact)
 	PeekReceipt(receiptID string) (sessionvo.Receipt, bool)
 	FindReceipt(receiptID string) (sessionvo.Receipt, bool)
@@ -82,6 +89,7 @@ type Store interface {
 }
 
 type SummaryPageQuery struct {
+	Tool                   string
 	Service                string
 	IncludeRegisteredCalls bool
 	Scope                  evidencevo.QueryScope
