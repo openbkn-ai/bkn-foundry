@@ -10,11 +10,13 @@ package archivesvc
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,8 +24,10 @@ import (
 )
 
 var (
-	ErrNothingToArchive = errors.New("archive has no eligible records")
-	ErrCleanupRequired  = errors.New("archive cleanup must be completed before another archive of this kind")
+	ErrArchiveBusy          = errors.New("archive operation is already running")
+	ErrIncompleteCandidates = errors.New("archive candidates are incomplete or unverifiable")
+	ErrNothingToArchive     = errors.New("archive has no eligible records")
+	ErrCleanupRequired      = errors.New("archive cleanup must be completed before another archive of this kind")
 )
 
 type Candidate struct {
@@ -32,7 +36,37 @@ type Candidate struct {
 	Payload    []byte    `json:"payload"`
 }
 
+// BatchProgress records a completed or interrupted batch in one synchronous run.
+// RemainingAtSelection excludes this batch and is not a live collection count.
+// Cleaned counts include only batches whose frozen IDs were confirmed absent.
+type BatchProgress struct {
+	RunID                string `json:"run_id"`
+	BatchNumber          int    `json:"batch_number"`
+	EligibleAtSelection  int    `json:"eligible_at_selection"`
+	VerifiedCount        int    `json:"verified_count"`
+	CleanedCount         int    `json:"cleaned_count"`
+	CleanedInRun         int    `json:"cleaned_in_run"`
+	RemainingAtSelection int    `json:"remaining_at_selection"`
+	RunComplete          bool   `json:"run_complete"`
+}
+
+type Batch struct {
+	Candidates    []Candidate
+	EligibleCount int
+	Batched       bool
+}
+
+type BatchSource interface {
+	FreezeBatch(context.Context, observabilityvo.ArchiveKind, observabilityvo.ArchiveRange) (Batch, error)
+}
+
+type KindLockStore interface {
+	WithKindLock(context.Context, observabilityvo.ArchiveKind, func() error) error
+	HasIncompleteCleanup(context.Context, observabilityvo.ArchiveKind) (bool, error)
+}
+
 type Job struct {
+	BatchProgress  *BatchProgress                `json:"batch_progress,omitempty"`
 	ID             string                        `json:"archive_job_id"`
 	Kind           observabilityvo.ArchiveKind   `json:"archive_kind"`
 	Range          observabilityvo.ArchiveRange  `json:"range"`
@@ -52,7 +86,7 @@ type Source interface {
 }
 
 // CandidateCounter lets read-only overviews avoid materializing archive bundles.
-// Create still freezes the complete candidate set before writing or purging.
+// Create freezes each supported batch before writing or purging.
 type CandidateCounter interface {
 	Count(context.Context, observabilityvo.ArchiveKind, observabilityvo.ArchiveRange) (int, error)
 }
@@ -84,6 +118,7 @@ type Options struct {
 }
 
 type Service struct {
+	mu          sync.Mutex
 	store       Store
 	source      Source
 	objectStore ObjectStore
@@ -101,45 +136,126 @@ func New(store Store, source Source, objectStore ObjectStore, options Options) *
 	return &Service{store: store, source: source, objectStore: objectStore, now: options.Now, location: options.Location}
 }
 
-func (service *Service) Create(ctx context.Context, kind observabilityvo.ArchiveKind) (Job, error) {
+func (service *Service) Create(ctx context.Context, kind observabilityvo.ArchiveKind) (job Job, err error) {
 	if !kind.Valid() {
 		return Job{}, fmt.Errorf("invalid archive request")
 	}
-	if previous, ok := service.store.Latest(kind); ok && previous.Status == observabilityvo.ArchiveStatusCleanupIncomplete {
-		return Job{}, ErrCleanupRequired
+	err = service.withKindLock(ctx, kind, func() error {
+		if locks, ok := service.store.(KindLockStore); ok {
+			pending, e := locks.HasIncompleteCleanup(ctx, kind)
+			if e != nil {
+				return e
+			}
+			if pending {
+				return ErrCleanupRequired
+			}
+		} else if previous, ok := service.store.Latest(kind); ok && previous.Status == observabilityvo.ArchiveStatusCleanupIncomplete {
+			return ErrCleanupRequired
+		}
+		now := service.now().UTC()
+		var e error
+		job, e = service.createBatches(ctx, kind, observabilityvo.NewArchiveRange(kind, now, service.location), "", 0, 0)
+		return e
+	})
+	return job, err
+}
+
+func (service *Service) withKindLock(ctx context.Context, kind observabilityvo.ArchiveKind, fn func() error) error {
+	if locks, ok := service.store.(KindLockStore); ok {
+		return locks.WithKindLock(ctx, kind, fn)
 	}
-	now := service.now().UTC()
-	rangeToArchive := observabilityvo.NewArchiveRange(kind, now, service.location)
-	candidates, err := service.source.Freeze(ctx, kind, rangeToArchive)
-	if err != nil {
-		return Job{}, fmt.Errorf("freeze archive candidates: %w", err)
+	// Compatibility for custom stores; production stores lock across services.
+	if !service.mu.TryLock() {
+		return ErrArchiveBusy
 	}
-	if len(candidates) == 0 {
-		return Job{}, ErrNothingToArchive
+	defer service.mu.Unlock()
+	return fn()
+}
+
+func (service *Service) createBatches(ctx context.Context, kind observabilityvo.ArchiveKind, window observabilityvo.ArchiveRange, runID string, number, cleaned int) (last Job, err error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return last, err
+		}
+		var batch Batch
+		if source, ok := service.source.(BatchSource); ok {
+			batch, err = source.FreezeBatch(ctx, kind, window)
+		} else {
+			batch.Candidates, err = service.source.Freeze(ctx, kind, window)
+			batch.EligibleCount = len(batch.Candidates)
+		}
+		if err != nil {
+			return last, fmt.Errorf("freeze archive candidates: %w", err)
+		}
+		if batch.EligibleCount < len(batch.Candidates) || batch.EligibleCount > 0 && len(batch.Candidates) == 0 {
+			return last, ErrIncompleteCandidates
+		}
+		if len(batch.Candidates) == 0 {
+			if last.ID == "" {
+				return last, ErrNothingToArchive
+			}
+			last.BatchProgress.RunComplete = true
+			return last, service.store.Update(last)
+		}
+		now := service.now().UTC()
+		job := newJob(kind, window, batch.Candidates, now)
+		if batch.Batched {
+			if runID == "" {
+				runID = fmt.Sprintf("arc_%s_%d_%s", kind, now.UnixNano(), rand.Text())
+			}
+			number++
+			job.ID = fmt.Sprintf("%s_%06d", runID, number)
+			job.BatchProgress = &BatchProgress{RunID: runID, BatchNumber: number, EligibleAtSelection: batch.EligibleCount, CleanedInRun: cleaned, RemainingAtSelection: batch.EligibleCount - len(batch.Candidates)}
+		}
+		last, err = service.writeAndCleanBatch(ctx, job, batch.Candidates)
+		if err != nil || last.Status != observabilityvo.ArchiveStatusCompleted {
+			return last, err
+		}
+		if !batch.Batched || last.BatchProgress.RunComplete {
+			return last, nil
+		}
+		cleaned = last.BatchProgress.CleanedInRun
 	}
-	job := newJob(kind, rangeToArchive, candidates, now)
+}
+
+func (service *Service) writeAndCleanBatch(ctx context.Context, job Job, candidates []Candidate) (Job, error) {
 	if err := service.store.Create(job); err != nil {
 		return Job{}, err
 	}
 	manifestRef, err := service.objectStore.WriteAndVerify(ctx, job, candidates)
+	if err == nil && strings.TrimSpace(manifestRef) == "" {
+		err = errors.New("archive verification returned no manifest")
+	}
 	if err != nil {
 		job.Status, job.ErrorMessage, job.UpdatedAt = observabilityvo.ArchiveStatusFailed, err.Error(), service.now().UTC()
 		_ = service.store.Update(job)
 		return job, err
 	}
-	// Persist the verified manifest and frozen candidates before any hot data is
-	// deleted. A process interruption after this point is recoverable through
-	// RetryCleanup; an interruption before it leaves hot data intact.
+	// The verified manifest and frozen IDs must be durable before cleanup.
 	job.ManifestRef, job.Status, job.ErrorMessage, job.UpdatedAt = manifestRef, observabilityvo.ArchiveStatusCleanupIncomplete, "", service.now().UTC()
+	if job.BatchProgress != nil {
+		job.BatchProgress.VerifiedCount = job.CandidateCount
+	}
 	if err := service.store.Update(job); err != nil {
 		return Job{}, err
 	}
-	if err := service.source.Purge(ctx, kind, candidates); err != nil {
+	return service.cleanBatch(ctx, job)
+}
+
+func (service *Service) cleanBatch(ctx context.Context, job Job) (Job, error) {
+	if err := service.source.Purge(ctx, job.Kind, job.Candidates); err != nil {
 		job.Status, job.ErrorMessage, job.UpdatedAt = observabilityvo.ArchiveStatusCleanupIncomplete, err.Error(), service.now().UTC()
-		_ = service.store.Update(job)
+		if saveErr := service.store.Update(job); saveErr != nil {
+			return job, errors.Join(err, saveErr)
+		}
 		return job, nil
 	}
-	job.Status, job.UpdatedAt = observabilityvo.ArchiveStatusCompleted, service.now().UTC()
+	job.Status, job.ErrorMessage, job.UpdatedAt = observabilityvo.ArchiveStatusCompleted, "", service.now().UTC()
+	if job.BatchProgress != nil {
+		job.BatchProgress.CleanedCount = job.CandidateCount
+		job.BatchProgress.CleanedInRun += job.CandidateCount
+		job.BatchProgress.RunComplete = job.BatchProgress.RemainingAtSelection == 0
+	}
 	if err := service.store.Update(job); err != nil {
 		return Job{}, err
 	}
@@ -182,28 +298,44 @@ func (service *Service) Overview(ctx context.Context, kind observabilityvo.Archi
 	return Overview{Kind: kind, RetentionDays: kind.RetentionDays(), Range: archiveRange, CandidateCount: count, StorageReady: ready}, nil
 }
 
-func (service *Service) RetryCleanup(ctx context.Context, jobID string) (Job, error) {
-	job, ok := service.store.Get(jobID)
+func (service *Service) RetryCleanup(ctx context.Context, jobID string) (job Job, err error) {
+	original, ok := service.store.Get(jobID)
 	if !ok {
 		return Job{}, fmt.Errorf("archive job not found")
 	}
-	if job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
-		return Job{}, fmt.Errorf("archive cleanup cannot be retried")
-	}
-	candidates := append([]Candidate(nil), job.Candidates...)
-	if len(candidates) != len(job.CandidateIDs) {
-		return Job{}, fmt.Errorf("archive cleanup candidates are unavailable")
-	}
-	if err := service.source.Purge(ctx, job.Kind, candidates); err != nil {
-		job.ErrorMessage, job.UpdatedAt = err.Error(), service.now().UTC()
-		_ = service.store.Update(job)
-		return job, nil
-	}
-	job.Status, job.ErrorMessage, job.UpdatedAt = observabilityvo.ArchiveStatusCompleted, "", service.now().UTC()
-	if err := service.store.Update(job); err != nil {
-		return Job{}, err
-	}
-	return job, nil
+	err = service.withKindLock(ctx, original.Kind, func() error {
+		current, ok := service.store.Get(jobID)
+		if !ok || current.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
+			return fmt.Errorf("archive cleanup cannot be retried")
+		}
+		if len(current.Candidates) != len(current.CandidateIDs) {
+			return fmt.Errorf("archive cleanup candidates are unavailable")
+		}
+		var e error
+		job, e = service.cleanBatch(ctx, current)
+		if e != nil || job.Status != observabilityvo.ArchiveStatusCompleted || job.BatchProgress == nil || job.BatchProgress.RunComplete {
+			return e
+		}
+		if locks, ok := service.store.(KindLockStore); ok {
+			pending, e := locks.HasIncompleteCleanup(ctx, job.Kind)
+			if e != nil {
+				return e
+			}
+			if pending {
+				return nil
+			}
+		}
+		next, e := service.createBatches(ctx, job.Kind, job.Range, job.BatchProgress.RunID, job.BatchProgress.BatchNumber, job.BatchProgress.CleanedInRun)
+		if errors.Is(e, ErrNothingToArchive) {
+			job.BatchProgress.RunComplete = true
+			return service.store.Update(job)
+		}
+		if next.ID != "" {
+			job = next
+		}
+		return e
+	})
+	return job, err
 }
 
 func (service *Service) Get(jobID string) (Job, bool) {
@@ -258,11 +390,14 @@ func newJob(kind observabilityvo.ArchiveKind, archiveRange observabilityvo.Archi
 }
 
 type memoryStore struct {
-	mu   sync.Mutex
-	jobs map[string]Job
+	active map[observabilityvo.ArchiveKind]bool
+	mu     sync.Mutex
+	jobs   map[string]Job
 }
 
-func NewMemoryStore() Store { return &memoryStore{jobs: map[string]Job{}} }
+func NewMemoryStore() Store {
+	return &memoryStore{jobs: map[string]Job{}, active: map[observabilityvo.ArchiveKind]bool{}}
+}
 func (store *memoryStore) Create(job Job) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -283,6 +418,10 @@ func (store *memoryStore) Update(job Job) error {
 }
 
 func storedJob(job Job) Job {
+	if job.BatchProgress != nil {
+		copy := *job.BatchProgress
+		job.BatchProgress = &copy
+	}
 	if job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
 		job.Candidates = nil
 	}
@@ -294,17 +433,17 @@ func (store *memoryStore) Latest(kind observabilityvo.ArchiveKind) (Job, bool) {
 	var result Job
 	found := false
 	for _, job := range store.jobs {
-		if job.Kind == kind && (!found || job.CreatedAt.After(result.CreatedAt)) {
+		if job.Kind == kind && (!found || (job.CreatedAt.After(result.CreatedAt) || job.CreatedAt.Equal(result.CreatedAt) && job.ID > result.ID)) {
 			result, found = job, true
 		}
 	}
-	return result, found
+	return storedJob(result), found
 }
 func (store *memoryStore) Get(jobID string) (Job, bool) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	job, ok := store.jobs[jobID]
-	return job, ok
+	return storedJob(job), ok
 }
 func (store *memoryStore) List(kind observabilityvo.ArchiveKind, limit int) []Job {
 	store.mu.Lock()
@@ -312,12 +451,43 @@ func (store *memoryStore) List(kind observabilityvo.ArchiveKind, limit int) []Jo
 	jobs := make([]Job, 0, limit)
 	for _, job := range store.jobs {
 		if job.Kind == kind {
-			jobs = append(jobs, job)
+			jobs = append(jobs, storedJob(job))
 		}
 	}
-	sort.Slice(jobs, func(i, j int) bool { return jobs[i].CreatedAt.After(jobs[j].CreatedAt) })
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].CreatedAt.After(jobs[j].CreatedAt) || jobs[i].CreatedAt.Equal(jobs[j].CreatedAt) && jobs[i].ID > jobs[j].ID
+	})
 	if len(jobs) > limit {
 		jobs = jobs[:limit]
 	}
 	return jobs
+}
+
+func (store *memoryStore) WithKindLock(ctx context.Context, kind observabilityvo.ArchiveKind, fn func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	store.mu.Lock()
+	if store.active[kind] {
+		store.mu.Unlock()
+		return ErrArchiveBusy
+	}
+	store.active[kind] = true
+	store.mu.Unlock()
+	defer func() { store.mu.Lock(); delete(store.active, kind); store.mu.Unlock() }()
+	return fn()
+}
+
+func (store *memoryStore) HasIncompleteCleanup(ctx context.Context, kind observabilityvo.ArchiveKind) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	for _, job := range store.jobs {
+		if job.Kind == kind && job.Status == observabilityvo.ArchiveStatusCleanupIncomplete {
+			return true, nil
+		}
+	}
+	return false, nil
 }

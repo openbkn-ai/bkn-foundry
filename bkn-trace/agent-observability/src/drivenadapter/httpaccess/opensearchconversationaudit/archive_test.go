@@ -17,7 +17,8 @@ import (
 func TestArchiveSourceUsesOTelTimestampForFreeze(t *testing.T) {
 	occurredAt := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
 	payload, _ := json.Marshal(map[string]any{
-		"hits": map[string]any{"hits": []any{map[string]any{
+		"timed_out": false, "_shards": map[string]any{"failed": 0},
+		"hits": map[string]any{"total": map[string]any{"value": 1, "relation": "eq"}, "hits": []any{map[string]any{
 			"_id": "log-1", "_source": map[string]any{"@timestamp": occurredAt.Format(time.RFC3339Nano), "message": "event"},
 		}}},
 	})

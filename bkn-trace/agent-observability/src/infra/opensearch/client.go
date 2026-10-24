@@ -338,7 +338,7 @@ func (c *Client) Search(ctx context.Context, index string, query []byte) ([]byte
 // DeleteByQuery is used only after an archive bundle has been verified. The
 // caller provides a frozen identity filter; it must never be a moving cutoff.
 func (c *Client) DeleteByQuery(ctx context.Context, index string, query []byte) error {
-	requestURL := fmt.Sprintf("%s/%s/_delete_by_query?conflicts=proceed", c.baseURL, strings.TrimLeft(index, "/"))
+	requestURL := fmt.Sprintf("%s/%s/_delete_by_query?conflicts=proceed&refresh=true&wait_for_completion=true", c.baseURL, strings.TrimLeft(index, "/"))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(query))
 	if err != nil {
 		return fmt.Errorf("create opensearch delete-by-query request: %w", err)
@@ -358,6 +358,23 @@ func (c *Client) DeleteByQuery(ctx context.Context, index string, query []byte) 
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("opensearch delete-by-query failed with status %d: %s", response.StatusCode, string(body))
+	}
+	var result struct {
+		TimedOut  *bool              `json:"timed_out"`
+		Total     *int64             `json:"total"`
+		Deleted   *int64             `json:"deleted"`
+		Conflicts *int64             `json:"version_conflicts"`
+		Failed    *int64             `json:"failed"`
+		Failures  *[]json.RawMessage `json:"failures"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return fmt.Errorf("decode delete-by-query result: %w", err)
+	}
+	if result.TimedOut == nil || result.Total == nil || result.Deleted == nil || result.Conflicts == nil || result.Failures == nil {
+		return fmt.Errorf("delete-by-query result lacks completion metadata")
+	}
+	if *result.TimedOut || *result.Total < 0 || *result.Deleted < 0 || *result.Conflicts != 0 || len(*result.Failures) != 0 || result.Failed != nil && *result.Failed != 0 || *result.Total != *result.Deleted {
+		return fmt.Errorf("delete-by-query did not completely delete frozen candidates")
 	}
 	return nil
 }
