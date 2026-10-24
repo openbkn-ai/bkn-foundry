@@ -17,3 +17,12 @@ type QueryAuthorizationService interface {
 	AuthorizeSubgraphByTypePath(ctx context.Context, query *SubGraphQueryBaseOnTypePath) error
 	AuthorizeSubgraphByObjects(ctx context.Context, query *SubGraphQueryBaseOnObjects) error
 }
+
+// ObjectMetricExecutionAuthorizationService authorizes every resource and
+// property that an immutable published metric graph may read. It is kept as a
+// separate capability so existing query authorization consumers do not need to
+// implement metric-runtime-specific behavior.
+type ObjectMetricExecutionAuthorizationService interface {
+	AuthorizeObjectMetricExecution(ctx context.Context, knID, branch string,
+		executionContext *ObjectMetricExecutionContextV1, query *ObjectMetricQueryRequestV1) error
+}
