@@ -10,6 +10,23 @@ import (
 	"database/sql"
 )
 
+type pendingValueTypesKey struct{}
+
+// WithPendingValueTypes makes the value types an import is about to write resolvable before they
+// are committed: the object types of the same import name them.
+func WithPendingValueTypes(ctx context.Context, valueTypes []*ValueType) context.Context {
+	if len(valueTypes) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, pendingValueTypesKey{}, valueTypes)
+}
+
+// PendingValueTypes returns the value types WithPendingValueTypes put into ctx.
+func PendingValueTypes(ctx context.Context) []*ValueType {
+	valueTypes, _ := ctx.Value(pendingValueTypesKey{}).([]*ValueType)
+	return valueTypes
+}
+
 // ValueType is a BKN spec 3.0 value type (SPECIFICATION.md §16): a base type with a set of value
 // rules, named so that several data properties can share it through constraints.value_type. It
 // has no authorization of its own; whoever may view or modify the knowledge network may view or
@@ -84,6 +101,8 @@ type ValueTypeAccess interface {
 
 type ValueTypeService interface {
 	CreateValueTypes(ctx context.Context, tx *sql.Tx, valueTypes []*ValueType, mode string) ([]string, error)
+	// ValidateValueTypes runs the checks a save runs on each value type, writing nothing.
+	ValidateValueTypes(ctx context.Context, valueTypes []*ValueType) error
 	ListValueTypes(ctx context.Context, query ValueTypesQueryParams) ([]*ValueType, int, error)
 	GetValueTypeByID(ctx context.Context, knID string, branch string, vtID string) (*ValueType, error)
 	UpdateValueType(ctx context.Context, tx *sql.Tx, valueType *ValueType) error

@@ -310,3 +310,13 @@ func TestListValueTypes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, page)
 }
+
+func TestValidateValueTypes(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	require.NoError(t, f.svc.ValidateValueTypes(ctx, []*interfaces.ValueType{amountCNY(), lisStatus()}))
+	vt := lisStatus()
+	vt.Enum = []*interfaces.ValueTypeEnumItem{{Value: "A", Display: "甲"}, {Value: "A", Display: "乙"}}
+	err := f.svc.ValidateValueTypes(ctx, []*interfaces.ValueType{amountCNY(), vt})
+	assert.Equal(t, berrors.BknBackend_ValueType_InvalidParameter, httpError(t, err).ErrorCode)
+}

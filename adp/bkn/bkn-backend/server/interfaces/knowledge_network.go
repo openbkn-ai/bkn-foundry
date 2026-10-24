@@ -130,6 +130,9 @@ type KN struct {
 	RelationTypes []*RelationType     `json:"relation_types,omitempty" mapstructure:"relation_types"`
 	ActionTypes   []*ActionType       `json:"action_types,omitempty" mapstructure:"action_types"`
 	RiskTypes     []*RiskType         `json:"risk_types,omitempty" mapstructure:"risk_types"`
+	// ValueTypes are the BKN spec 3.0 value types of the network; an import writes them before the
+	// object types that name them.
+	ValueTypes []*ValueType `json:"value_types,omitempty" mapstructure:"value_types"`
 	// ObjectMetrics is an internal BKN archive projection, not a bulk-create API field.
 	ObjectMetrics []*ObjectMetricRecordV1 `json:"-" mapstructure:"-"`
 

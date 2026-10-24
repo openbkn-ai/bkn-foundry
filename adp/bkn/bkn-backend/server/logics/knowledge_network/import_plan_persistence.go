@@ -37,8 +37,19 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 		attr.Int("relation_type_count", len(plan.RelationTypes)),
 		attr.Int("action_type_count", len(plan.ActionTypes)),
 		attr.Int("risk_type_count", len(plan.RiskTypes)),
+		attr.Int("value_type_count", len(plan.ValueTypes)),
 		attr.Int("object_metric_version_count", len(plan.ObjectMetrics)),
 	)
+	// Value types first: the object types of the same import name them.
+	if len(plan.ValueTypes) > 0 {
+		written, err := kns.vts.CreateValueTypes(ctx, tx, plan.ValueTypes, mode)
+		if err != nil {
+			logger.Errorf("CreateValueTypes error: %s", err.Error())
+			return logics.PreserveHTTPError(ctx, err, berrors.BknBackend_ValueType_InternalError)
+		}
+		// What was written is not committed yet; what ignore skipped stays as stored.
+		ctx = interfaces.WithPendingValueTypes(ctx, writtenValueTypes(plan.ValueTypes, written))
+	}
 	if len(plan.ConceptGroups) > 0 {
 		if _, err := kns.cgs.CreateConceptGroups(ctx, tx, plan.ConceptGroups, mode, strictMode); err != nil {
 			logger.Errorf("CreateConceptGroups error: %s", err.Error())
@@ -496,4 +507,19 @@ func logInvalidImportMembers(plan *NormalizedImportPlan, groupID string, objectI
 	}
 	logger.Warnf("Skip invalid import concept-group members: kn_id=%s branch=%s cg_id=%s invalid_count=%d object_ids=%s",
 		plan.KNID, plan.Branch, groupID, len(objectIDs), summary)
+}
+
+// writtenValueTypes keeps the value types whose IDs the import wrote.
+func writtenValueTypes(valueTypes []*interfaces.ValueType, ids []string) []*interfaces.ValueType {
+	written := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		written[id] = true
+	}
+	var result []*interfaces.ValueType
+	for _, vt := range valueTypes {
+		if written[vt.VTID] {
+			result = append(result, vt)
+		}
+	}
+	return result
 }

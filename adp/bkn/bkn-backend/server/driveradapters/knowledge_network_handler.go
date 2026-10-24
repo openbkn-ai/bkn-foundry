@@ -458,6 +458,12 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 			}
 		}
 	}
+	if err = ValidateValueTypes(ctx, kn.ValueTypes); err != nil {
+		httpErr := err.(*httperrors.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 	if bindingPolicy == bknBindingPolicyDetach {
 		detachBKNExternalBindings(&kn)
 	}
@@ -600,6 +606,11 @@ func (r *restHandler) ValidateKN(c *gin.Context, visitor hydra.Visitor) {
 				return
 			}
 		}
+	}
+	if err = ValidateValueTypes(ctx, kn.ValueTypes); err != nil {
+		oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+		rest.ReplyOK(c, http.StatusOK, map[string]any{"valid": false, "detail": err.Error()})
+		return
 	}
 	if err = r.kns.ValidateKN(ctx, &kn, strictMode, mode); err != nil {
 		if replyDependencyValidationError(c, span, err) {

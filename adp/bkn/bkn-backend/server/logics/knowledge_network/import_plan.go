@@ -28,6 +28,7 @@ type NormalizedImportPlan struct {
 	RelationTypes []*interfaces.RelationType
 	ActionTypes   []*interfaces.ActionType
 	RiskTypes     []*interfaces.RiskType
+	ValueTypes    []*interfaces.ValueType
 	ObjectMetrics []*interfaces.ObjectMetricRecordV1
 
 	GroupMembers map[string][]string
@@ -45,6 +46,7 @@ func (plan *NormalizedImportPlan) knowledgeNetworkView(source *interfaces.KN) *i
 	view.RelationTypes = plan.RelationTypes
 	view.ActionTypes = plan.ActionTypes
 	view.RiskTypes = plan.RiskTypes
+	view.ValueTypes = plan.ValueTypes
 	view.ObjectMetrics = plan.ObjectMetrics
 	return &view
 }
@@ -85,6 +87,7 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 		KNID:          kn.KNID,
 		Branch:        kn.Branch,
 		RiskTypes:     kn.RiskTypes,
+		ValueTypes:    kn.ValueTypes,
 		ObjectMetrics: kn.ObjectMetrics,
 		GroupMembers:  make(map[string][]string),
 	}
@@ -136,7 +139,8 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 		fingerprint, err := importFingerprint(struct {
 			interfaces.ObjectTypeWithKeyField
 			interfaces.CommonInfo
-		}{objectType.ObjectTypeWithKeyField, objectType.CommonInfo})
+			Aliases []string
+		}{objectType.ObjectTypeWithKeyField, objectType.CommonInfo, objectType.Aliases})
 		if err != nil {
 			return err
 		}

@@ -28,7 +28,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
-	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/value_type"
 )
 
 var (
@@ -42,7 +41,6 @@ type bknService struct {
 	cbs        interfaces.CapabilityBindingService
 	archive    interfaces.ObjectMetricArchiveAccessV1
 	ps         interfaces.PermissionService
-	vts        interfaces.ValueTypeService
 }
 
 // NewBKNService creates the BKN service.
@@ -53,7 +51,6 @@ func NewBKNService(appSetting *common.AppSetting) interfaces.BKNService {
 			kns:        knowledge_network.NewKNService(appSetting),
 			cbs:        capability_binding.NewCapabilityBindingService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
-			vts:        value_type.NewValueTypeService(appSetting),
 		}
 	})
 	return bService
@@ -192,12 +189,7 @@ func (bs *bknService) buildNetwork(ctx context.Context, knID string, branch stri
 	for _, cg := range kn.ConceptGroups {
 		bknNetwork.ConceptGroups = append(bknNetwork.ConceptGroups, logics.ToBKNConceptGroup(cg))
 	}
-	// Value types belong to the network as a whole: reading the network is reading them.
-	valueTypes, err := bs.vts.GetAllValueTypesByKnID(ctx, knID, branch)
-	if err != nil {
-		return nil, err
-	}
-	for _, vt := range valueTypes {
+	for _, vt := range kn.ValueTypes {
 		bknNetwork.ValueTypes = append(bknNetwork.ValueTypes, logics.ToBKNValueType(vt))
 	}
 	archive := bs.archive

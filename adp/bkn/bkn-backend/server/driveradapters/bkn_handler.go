@@ -174,6 +174,9 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		risk := logics.ToADPRiskType(kn.KNID, kn.Branch, bknRisk)
 		kn.RiskTypes = append(kn.RiskTypes, risk)
 	}
+	for _, bknValueType := range bknNetwork.ValueTypes {
+		kn.ValueTypes = append(kn.ValueTypes, logics.ToADPValueType(kn.KNID, kn.Branch, bknValueType))
+	}
 	for _, bknCG := range bknNetwork.ConceptGroups {
 		cg := logics.ToADPConceptGroup(kn.KNID, kn.Branch, bknCG)
 		kn.ConceptGroups = append(kn.ConceptGroups, cg)
@@ -258,6 +261,12 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 			rest.ReplyError(c, httpErr)
 			return
 		}
+	}
+	if err = ValidateValueTypes(ctx, kn.ValueTypes); err != nil {
+		httpErr := err.(*httperrors.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
 	}
 	if bindingPolicy == bknBindingPolicyDetach {
 		detachBKNExternalBindings(kn)
@@ -544,36 +553,22 @@ func hasArchiveSuffix(filename string) bool {
 }
 
 // unstoredDeclaration names the first 3.0 declaration in a package that the backend does not store
-// yet: a value type, an alias, a lifecycle or a relation declaration. The specification library
-// reads them, but the backend stores value types and aliases only from #2281, and relation
-// declarations and lifecycles only from #2284, so importing would drop them; the upload refuses the
-// package instead. Property declarations (Semantic, Required, ### Property Constraints) are stored.
-// It returns "" when there is none, which is always the case for a 2.x package.
+// yet: a lifecycle or a relation declaration. The specification library reads them, but the backend
+// stores them only from #2284, so importing would drop them; the upload refuses the package instead.
+// Property declarations, value types and the aliases of object types, action types and data
+// properties are stored. It returns "" when there is none, which is always the case for a 2.x
+// package.
 func unstoredDeclaration(net *bknsdk.BknNetwork) string {
 	if net.BknSpec != bknsdk.BknSpecV3 {
 		return ""
 	}
 	const unsupportedYet = "is not supported by this version yet"
-	if len(net.ValueTypes) > 0 {
-		return fmt.Sprintf("value type %q: value types are not supported by this version yet", net.ValueTypes[0].ID)
-	}
 	for _, ot := range net.ObjectTypes {
-		if len(ot.Aliases) > 0 {
-			return fmt.Sprintf("object type %q: aliases %s", ot.ID, unsupportedYet)
-		}
 		if ot.Lifecycle != nil {
 			return fmt.Sprintf("object type %q: lifecycle %s", ot.ID, unsupportedYet)
 		}
-		for _, p := range ot.DataProperties {
-			if len(p.Aliases) > 0 {
-				return fmt.Sprintf("object type %q data property %q: Aliases %s", ot.ID, p.Name, unsupportedYet)
-			}
-		}
 	}
 	for _, at := range net.ActionTypes {
-		if len(at.Aliases) > 0 {
-			return fmt.Sprintf("action type %q: aliases %s", at.ID, unsupportedYet)
-		}
 		if at.Lifecycle != nil {
 			return fmt.Sprintf("action type %q: lifecycle %s", at.ID, unsupportedYet)
 		}

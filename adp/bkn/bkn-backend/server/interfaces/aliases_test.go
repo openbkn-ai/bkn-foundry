@@ -47,14 +47,15 @@ func TestDeclaresAliases(t *testing.T) {
 	}
 }
 
-// A definition without aliases marshals as before: no aliases key appears.
+// A definition without aliases, or a network without value types, marshals as before: no new key
+// appears.
 func TestDefinitionsWithoutAliasesMarshalAsBefore(t *testing.T) {
-	for _, v := range []any{ObjectType{}, ActionType{}, DataProperty{Name: "id"}} {
+	for _, v := range []any{ObjectType{}, ActionType{}, DataProperty{Name: "id"}, KN{}} {
 		data, err := json.Marshal(v)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(data), "aliases") {
+		if strings.Contains(string(data), "aliases") || strings.Contains(string(data), "value_types") {
 			t.Fatalf("%T marshals an aliases key: %s", v, data)
 		}
 	}

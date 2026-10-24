@@ -240,6 +240,10 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		riskType.KNID = kn.KNID
 		riskType.Branch = kn.Branch
 	}
+	for _, valueType := range importPlan.ValueTypes {
+		valueType.KNID = kn.KNID
+		valueType.Branch = kn.Branch
+	}
 	for _, record := range importPlan.ObjectMetrics {
 		if record != nil {
 			record.KNID, record.Branch = kn.KNID, kn.Branch
@@ -443,6 +447,15 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 			WithErrorDetails(err.Error())
 	}
 	view := plan.knowledgeNetworkView(kn)
+	for _, valueType := range plan.ValueTypes {
+		valueType.KNID, valueType.Branch = knID, branch
+	}
+	if len(plan.ValueTypes) > 0 {
+		if err := kns.vts.ValidateValueTypes(ctx, plan.ValueTypes); err != nil {
+			return err
+		}
+		ctx = interfaces.WithPendingValueTypes(ctx, plan.ValueTypes)
+	}
 
 	batch, err := batchindex.CollectKNFromPayload(view)
 	if err != nil {
@@ -875,6 +888,7 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 	var relationTypes []*interfaces.RelationType
 	var actionTypes []*interfaces.ActionType
 	var riskTypes []*interfaces.RiskType
+	var valueTypes []*interfaces.ValueType
 
 	loaders := []exportLoader{
 		func(ctx context.Context) error {
@@ -929,6 +943,14 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 			return err
 		})
 	}
+	// Value types belong to the network as a whole: reading the network is reading them.
+	if kns.vts != nil {
+		loaders = append(loaders, func(ctx context.Context) error {
+			var err error
+			valueTypes, err = kns.vts.GetAllValueTypesByKnID(ctx, kn.KNID, kn.Branch)
+			return err
+		})
+	}
 	if err := runExportLoaders(ctx, exportLoaderConcurrency, loaders...); err != nil {
 		return err
 	}
@@ -938,6 +960,7 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 	kn.RelationTypes = relationTypes
 	kn.ActionTypes = actionTypes
 	kn.RiskTypes = riskTypes
+	kn.ValueTypes = valueTypes
 	if err := kns.finalizeExportConceptGroups(ctx, kn); err != nil {
 		return err
 	}
