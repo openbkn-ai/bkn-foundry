@@ -525,6 +525,33 @@ func TestBKNCreationPoliciesUseTrustedLifecycleSources(t *testing.T) {
 		t.Fatalf("catalog creator create = %v, %v; want denied", allowed, checkErr)
 	}
 
+	kbBody := map[string]any{
+		"accessor_id": "kb-creator",
+		"resource":    map[string]string{"type": "knowledge_base", "id": "7"},
+		"operations":  []string{authz.ActFullBusinessAccess, "authorize"},
+	}
+	if w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", kbBody); w.Code != http.StatusNoContent {
+		t.Fatalf("create knowledge-base policies: want 204, got %d: %s", w.Code, w.Body.String())
+	}
+	kbRecords, err := e.PolicyRecords(authz.PolicyFilter{AccessorID: "kb-creator", Object: "knowledge_base:7"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kbRecords) != 2 {
+		t.Fatalf("knowledge-base records = %#v, want bundle and authorize", kbRecords)
+	}
+	for _, operation := range []string{"view_detail", "modify", "delete", "query_data", "document_manage", "task_manage", "authorize"} {
+		if allowed, checkErr := e.Check("kb-creator", "knowledge_base", "7", operation); checkErr != nil || !allowed {
+			t.Fatalf("knowledge-base creator %s = %v, %v; want allowed", operation, allowed, checkErr)
+		}
+	}
+	if allowed, checkErr := e.Check("kb-creator", "knowledge_base", "7", "create"); checkErr != nil || allowed {
+		t.Fatalf("knowledge-base creator create = %v, %v; want denied", allowed, checkErr)
+	}
+	if allowed, checkErr := e.Check("kb-creator", "knowledge_base", "8", "view_detail"); checkErr != nil || allowed {
+		t.Fatalf("knowledge-base creator on another knowledge base = %v, %v; want denied", allowed, checkErr)
+	}
+
 	actionBody := map[string]any{
 		"accessor_id": "creator-1",
 		"resource":    map[string]string{"type": "action_type", "id": "kn-1/action-1"},

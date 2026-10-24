@@ -936,6 +936,7 @@ func TestNetworkBuilderPermissionMatrixMatchesBusinessBuilderRole(t *testing.T) 
 	want := map[string][]string{
 		"catalog:*":           {"create"},
 		"knowledge_network:*": {"create"},
+		"knowledge_base:*":    {"create"},
 		"large_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"small_model:*":       {"create", "display", "modify", "delete", "execute"},
 		"tool_box:*":          {"create"},

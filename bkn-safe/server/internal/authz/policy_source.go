@@ -598,7 +598,7 @@ func (en *Enforcer) GrantCommunityBundle(accessorID, resourceType, resourceID st
 // carry a type-wide create capability, but it must never be the source of the
 // creator's rights over every existing resource of that type.
 func (en *Enforcer) GrantRootCreatorPermissions(ctx context.Context, accessorID, resourceType, resourceID string) error {
-	if resourceType != "knowledge_network" && resourceType != "catalog" {
+	if !HasRootCreatorContract(resourceType) {
 		return fmt.Errorf("resource type %q has no root creator permission contract", resourceType)
 	}
 	if err := validateCommunityBundleTarget(resourceType, resourceID); err != nil {
@@ -612,6 +612,17 @@ func (en *Enforcer) GrantRootCreatorPermissions(ctx context.Context, accessorID,
 		return tx.enforcer.addPolicy(accessorID, obj(resourceType, resourceID), "authorize",
 			EffectAllow, PolicySourceSystemDerived, AuthoritySourceSystem)
 	})
+}
+
+// HasRootCreatorContract reports whether resourceType is a Community
+// authorization root whose creator receives the lifecycle bundle
+// (full_business_access plus a system-derived authorize).
+func HasRootCreatorContract(resourceType string) bool {
+	switch resourceType {
+	case "knowledge_network", "catalog", "knowledge_base":
+		return true
+	}
+	return false
 }
 
 // GrantKnowledgeNetworkCreatorPermissions is the knowledge-network lifecycle
