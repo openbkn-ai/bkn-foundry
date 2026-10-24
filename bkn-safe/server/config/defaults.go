@@ -29,6 +29,9 @@ func defaultConfig() *Config {
 		},
 		OAuth: OAuthConfig{
 			ReconcileInterval: 5 * time.Minute,
+			DynamicRegistration: DynamicRegistrationConfig{
+				RatePerMinute: 10,
+			},
 		},
 		LDAP: LDAPConfig{
 			UserFilter: "(uid=%s)",
