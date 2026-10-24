@@ -12,6 +12,8 @@
 
 - Core Trace 列表新增可选的有界 PIT 扫描，覆盖 Status／ErrorKeyword、它们与 Service／Tool 的组合，以及不含其他不支持内容条件的共享业务网络列表。完整 Interaction 授权及先限定授权元组的窄 SQL 保护根服务和错误元数据；关键字仅匹配最终512码点摘要。资源拒绝返回 HTTP 422 `SUMMARY_QUERY_BUDGET_EXCEEDED`，查询超时返回 HTTP 503 `SUMMARY_QUERY_TIMEOUT`；因既有统计端口无授权范围，非全局权限的新扫描列表不提供 span 计数。不新增迁移或物化读取模型，普通列表／详情快速路径保持原实现。资源上限、PIT 权限和快照范围见 README；不支持的筛选组合仍保留可能 partial 的兼容行为。（#2144）
 
+- 单次日志归档请求连续处理每批最多10,000条记录，逐批保存任务、manifest及持久化进度；仅清理冻结ID并确认清空后再继续。清理重试不重写已校验对象，同类操作串行执行。不可信候选仍返回409，候选总量超限不再阻塞归档。迁移038增加可空批次进度字段，回滚仍需兼容迁移清单。本轮为按条数分批，不代表完整流式/OOM治理。（#1724）
+
 - 按 service 筛选的 Trace 列表使用单条 SQL 计算总数与非空页，减少重复 canonical service 查询，并保持游标总数及空页行为；补充隔离 MariaDB/OpenSearch 容量验收。（#2150）
 
 - Interaction 操作读取支持不含 payload 的 `view=summary`，默认 full 响应保持兼容；仅按 service 筛选的 Trace 列表改用 canonical MariaDB identity 计数与分页，避免固定候选投影扫描。（#2005、#2143、#2145）

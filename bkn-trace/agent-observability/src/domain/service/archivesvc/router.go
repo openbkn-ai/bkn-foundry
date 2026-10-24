@@ -94,3 +94,15 @@ func (router Router) Purge(ctx context.Context, kind observabilityvo.ArchiveKind
 	}
 	return source.Purge(ctx, kind, candidates)
 }
+
+func (router Router) FreezeBatch(ctx context.Context, kind observabilityvo.ArchiveKind, window observabilityvo.ArchiveRange) (Batch, error) {
+	source, err := router.source(kind)
+	if err != nil {
+		return Batch{}, err
+	}
+	if batchSource, ok := source.(BatchSource); ok {
+		return batchSource.FreezeBatch(ctx, kind, window)
+	}
+	candidates, err := source.Freeze(ctx, kind, window)
+	return Batch{Candidates: candidates, EligibleCount: len(candidates)}, err
+}

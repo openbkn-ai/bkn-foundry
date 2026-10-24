@@ -149,6 +149,55 @@ test uses `indices:data/read/point_in_time/readall` only to check its own PIT
 cleanup through the read-only inventory. See the
 [OpenSearch 2.19 PIT security model](https://docs.opensearch.org/2.19/search-plugins/searching-data/point-in-time/#security-model).
 
+## Automatic log archive batches
+
+One authorized `POST /api/observability/v1/log-archive-jobs` automatically processes
+successive batches of up to 10,000 records using the cutoff fixed at request
+start. The existing frontend can keep its single create request and refresh the
+job history afterward. No frontend request loop or new scheduler is required.
+
+Each batch has its own job, frozen candidate IDs, verified archive object and
+manifest. The order is: select a complete batch, write and verify its object,
+persist the manifest and cleanup candidates, delete only those IDs, refresh and
+confirm their absence, then mark that batch completed and select the next one.
+Partial searches or unreliable totals still return HTTP 409
+`archive_incomplete_candidates`; exceeding 10,000 eligible records alone does
+not. Same-kind Create and cleanup retry share a database lock; a concurrent
+operation returns `409 archive_busy`. Any unresolved cleanup blocks a new run.
+
+The create response is the final batch job; `candidate_count`, its manifest and
+download refer to that batch. Jobs in the same run share `batch_progress.run_id`.
+The nullable `batch_progress` object is persisted and returned by job queries:
+`batch_number`, `eligible_at_selection`, `verified_count`, `cleaned_count`,
+`cleaned_in_run`, `remaining_at_selection`, and `run_complete`. Cleaned counts
+include only batches whose frozen IDs were confirmed absent; a partially failed
+cleanup remains unconfirmed until retry. Remaining means records outside that
+batch at its selection time, not a live global count or an immutable snapshot
+across batches. Each batch job's range is the common eligibility window, not a
+claim that the whole window is contained in that individual object.
+
+A verification failure leaves that batch's hot data intact. A cleanup failure
+stops the run in `cleanup_incomplete`; retry uses the same frozen IDs without
+rewriting the verified object, then continues the remaining batches under the
+same run ID and cutoff. An interrupted synchronous request retains completed
+batches and any persisted cleanup state. A later create request can process
+remaining records as a new run after pending cleanup is resolved. A failed
+later batch never rolls back earlier completed batches. Existing job-history
+limits remain unchanged; no real-time progress UI is added here.
+
+Migration 038 adds a nullable `batch_progress` column, preserving old records.
+Apply it before using the new image. The migration ledger rejects pre-038
+manifests afterward: rollback requires a compatible image retaining the same
+038 manifest or a separately reviewed database rollback. Database locking uses
+one connection per active kind; a finite pool smaller than three is rejected
+rather than risking exhaustion (the Core default is 16).
+
+Batching limits candidate count, not bytes. Full payloads and the existing object
+writer can still consume substantial memory; this is not full streaming or a
+solution for a single oversized record. Trace archive freezing is unchanged,
+and the broader #1724 streaming/OOM work remains open. Ordinary list/detail read
+paths are unchanged.
+
 ## Verification
 
 Run the BKN Trace license-header check from the Foundry repository root:

@@ -11,6 +11,10 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var agentObservabilityZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"AgentObservability.Message.archive operation is already running": "同类归档正在处理，请等待当前操作结束",
+
+		archiveIncompleteCandidatesMessageID: "本批归档候选结果不完整或无法验证，本批尚未开始；此前批次的进度已保留",
+
 		"AgentObservability.Message.event payload conflicts with durable ledger":      "事件内容与已持久化账本冲突",
 		"AgentObservability.Message.producer sequence conflicts with durable ledger":  "生产者序列与已持久化账本冲突",
 		"AgentObservability.Message.event causality conflicts with durable ledger":    "事件因果关系与已持久化账本冲突",
