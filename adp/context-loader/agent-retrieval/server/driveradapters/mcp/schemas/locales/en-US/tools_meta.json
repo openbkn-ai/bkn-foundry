@@ -72,7 +72,7 @@
   "drill_through_metric": {
     "title": "Metric Participants",
     "group_title": "Instance Queries",
-    "description": "Page through authorized participants of a query_metric result bucket when available_actions contains participants. Pass the same published version, complete query and server-issued bucket_key. This reads current data, not a historical snapshot."
+    "description": "Page through authorized participants of a query_metric result bucket only when available_actions contains participants. drill only means that more analysis dimensions are available; it does not allow participant lookup. Buckets with status=no_data do not advertise participants. Pass the same published version, complete query and server-issued bucket_key. This reads current data, not a historical snapshot."
   },
   "get_action_info": {
     "title": "Action Info",

@@ -34,6 +34,7 @@ func ontologyQueryServer(t *testing.T, status int, body string) (*ontologyQueryC
 	logger.EXPECT().WithContext(gomock.Any()).Return(logger).AnyTimes()
 	logger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
 	logger.EXPECT().Errorf(gomock.Any(), gomock.Any()).AnyTimes()
+	logger.EXPECT().Warnf(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	return &ontologyQueryClient{
 		logger:     logger,
 		baseURL:    srv.URL + "/api/ontology-query",

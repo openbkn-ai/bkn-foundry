@@ -21,6 +21,7 @@ var errCodeMap = map[int]string{
 	405: "MethodNotAllowed",
 	409: "Conflict",
 	413: "RequestEntityTooLarge",
+	422: "BadRequest",
 	500: "InternalServerError",
 	501: "NotImplemented",
 	502: "BadGateway",
