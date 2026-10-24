@@ -7,6 +7,7 @@ package drivenadapters
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -86,6 +87,25 @@ func TestDrillThroughMetricData_ForwardsPinnedBucketAndCursor(t *testing.T) {
 		&interfaces.MetricDrillThroughReq{BucketKey: "opaque", PageSize: 25, Cursor: "page-2"})
 	if err != nil || len(result.Participants) != 1 || result.Participants[0].InstanceIdentity["id"] != "row-1" {
 		t.Fatalf("drill-through response = %#v, %v", result, err)
+	}
+}
+
+func TestDrillThroughMetricData_PreservesUnavailableParticipantsAsUnprocessable(t *testing.T) {
+	client, _ := ontologyQueryServer(t, http.StatusUnprocessableEntity,
+		`{"error_code":"OntologyQuery.Metric.InvalidParameter",`+
+			`"description":"请求参数不合法",`+
+			`"error_details":"participant lookup is unavailable for this result"}`)
+
+	_, err := client.DrillThroughMetricData(context.Background(), "kn-1", "metric-1", 1,
+		&interfaces.MetricDrillThroughReq{BucketKey: "no-data-bucket"})
+
+	he := asHTTPError(t, err)
+	if he.HTTPCode != http.StatusUnprocessableEntity || he.ErrorCode != "Public.BadRequest" {
+		t.Fatalf("error = %d %s, want 422 Public.BadRequest", he.HTTPCode, he.ErrorCode)
+	}
+	want := "OntologyQuery.Metric.InvalidParameter: participant lookup is unavailable for this result"
+	if he.ErrorDetails != want {
+		t.Fatalf("details = %#v, want %q", he.ErrorDetails, want)
 	}
 }
 

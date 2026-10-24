@@ -137,7 +137,7 @@
     "group": "query",
     "group_title": "实例查询",
     "order": 251,
-    "description": "对 query_metric 返回且 available_actions 包含 participants 的桶，分页查看当前数据中参与计算的对象实例。传入该次查询的完整 query、bucket_key 与固定指标版本；服务端重新执行并校验桶及读权限。明细不是历史快照，翻页时数据可能变化。"
+    "description": "对 query_metric 返回且 available_actions 包含 participants 的桶，分页查看当前数据中参与计算的对象实例。drill 仅表示可继续按分析维度下钻，不代表可查看参与实例；status=no_data 的桶不提供 participants。传入该次查询的完整 query、bucket_key 与固定指标版本；服务端重新执行并校验桶及读权限。明细不是历史快照，翻页时数据可能变化。"
   },
   "get_action_info": {
     "name": "get_action_info",
