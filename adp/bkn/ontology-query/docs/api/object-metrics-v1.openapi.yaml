@@ -103,7 +103,7 @@ paths:
         "400": { description: "Invalid bucket, query, or cursor." }
         "403": { description: The caller cannot query the metric or source data. }
         "409": { description: The selected bucket is no longer available. }
-        "422": { description: The selected result does not advertise participants, or participant lookup is unavailable for this metric. }
+        "422": { description: "The selected result does not advertise participants, or participant lookup is unavailable for this metric." }
   /v1/knowledge-networks/{kn_id}/object-metrics/trial/drill-through:
     post:
       operationId: trialObjectMetricDrillThrough
@@ -127,7 +127,7 @@ paths:
         "400": { description: "Invalid bucket, query, or cursor." }
         "403": { description: The caller cannot query the trial or source data. }
         "409": { description: The selected bucket is no longer available. }
-        "422": { description: The selected result does not advertise participants, or participant lookup is unavailable for this metric. }
+        "422": { description: "The selected result does not advertise participants, or participant lookup is unavailable for this metric." }
 components:
   securitySchemes:
     bearerAuth:
