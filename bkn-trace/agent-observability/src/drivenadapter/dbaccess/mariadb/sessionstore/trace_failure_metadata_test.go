@@ -36,7 +36,12 @@ func TestTraceFailureMetadataReadsOnlySelectedFirstFailurePayloads(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	})
 	mock.ExpectBegin()
 	dbtx, err := db.Begin()
 	if err != nil {
@@ -72,7 +77,12 @@ func TestTraceFailureMetadataDoesNotHideStorageOrDecodeFailure(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer db.Close()
+			t.Cleanup(func() {
+				mock.ExpectClose()
+				if err := db.Close(); err != nil {
+					t.Errorf("close mock database: %v", err)
+				}
+			})
 			mock.ExpectBegin()
 			dbtx, err := db.Begin()
 			if err != nil {
@@ -128,7 +138,12 @@ func TestTraceSourceMetadataKeepsScopeTuplesWithoutPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	t.Cleanup(func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	})
 	mock.ExpectBegin()
 	dbtx, err := db.Begin()
 	if err != nil {
@@ -161,7 +176,12 @@ func TestTraceSourceMetadataPropagatesRowFailures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer db.Close()
+			t.Cleanup(func() {
+				mock.ExpectClose()
+				if err := db.Close(); err != nil {
+					t.Errorf("close mock database: %v", err)
+				}
+			})
 			mock.ExpectBegin()
 			dbtx, err := db.Begin()
 			if err != nil {

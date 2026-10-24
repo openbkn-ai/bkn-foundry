@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -47,7 +48,9 @@ func (s *Source) ScanTraceSummaryProjection(ctx context.Context, query iprojecti
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if closeErr := s.client.ClosePointInTime(cleanup, pit); closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("close summary scan PIT: %w", closeErr))
+			// Cleanup cannot invalidate a complete page or reclassify a scan
+			// failure as a timeout. The PIT expires after one minute.
+			slog.WarnContext(cleanup, "failed to close summary scan PIT; snapshot will expire", "error", closeErr)
 		}
 	}()
 	seen := make(map[string]bool)

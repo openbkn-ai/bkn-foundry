@@ -27,8 +27,9 @@ func (tx memoryTransaction) ListFirstTraceFailureMetadata(scopes []isessionstore
 		}
 		key := identity{fact.InteractionID, fact.TraceID, fact.ConversationID}
 		old, found := first[key]
-		if found && !(fact.StartedAt.Before(old.StartedAt) || fact.StartedAt.Equal(old.StartedAt) &&
-			(fact.OperationID < old.OperationID || fact.OperationID == old.OperationID && fact.Attempt < old.Attempt)) {
+		earlier := fact.StartedAt.Before(old.StartedAt) || fact.StartedAt.Equal(old.StartedAt) &&
+			(fact.OperationID < old.OperationID || fact.OperationID == old.OperationID && fact.Attempt < old.Attempt)
+		if found && !earlier {
 			continue
 		}
 		metadata := sessionvo.OperationCallFact{
@@ -73,8 +74,9 @@ func (tx memoryTransaction) ListFirstTraceSourceMetadata(scopes []isessionstore.
 		}
 		key := identity{fact.TraceID, fact.ConversationID, fact.InteractionID}
 		old, found := first[key]
-		if found && !(fact.StartedAt.Before(old.StartedAt) || fact.StartedAt.Equal(old.StartedAt) &&
-			(fact.OperationID < old.OperationID || fact.OperationID == old.OperationID && fact.Attempt < old.Attempt)) {
+		earlier := fact.StartedAt.Before(old.StartedAt) || fact.StartedAt.Equal(old.StartedAt) &&
+			(fact.OperationID < old.OperationID || fact.OperationID == old.OperationID && fact.Attempt < old.Attempt)
+		if found && !earlier {
 			continue
 		}
 		first[key] = sessionvo.OperationCallFact{TraceID: fact.TraceID, ConversationID: fact.ConversationID, InteractionID: fact.InteractionID,

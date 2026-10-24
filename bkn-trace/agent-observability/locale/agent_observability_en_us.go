@@ -8,6 +8,8 @@ package locale
 
 import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
+const queryTimeoutMessageID = "AgentObservability.Message.trace query exceeded its time budget; narrow the time range or filters before retrying"
+
 const queryBudgetMessageID = "AgentObservability.Message.trace query exceeds its resource budget; narrow the time range or filters, or use cursor pagination instead of a deep page"
 
 var agentObservabilityEnUS = i18n.I18nMessages{
@@ -125,7 +127,8 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.failed to query evidence node":                                               "failed to query evidence node",
 		"AgentObservability.Message.failed to query execution summaries":                                         "failed to query execution summaries",
 		"AgentObservability.Message.execution summary projection is catching up; retry the same page":            "execution summary projection is catching up; retry the same page",
-		queryBudgetMessageID: "trace query exceeds its resource budget; narrow the time range or filters, or use cursor pagination instead of a deep page",
+		queryTimeoutMessageID: "trace query exceeded its time budget; narrow the time range or filters before retrying",
+		queryBudgetMessageID:  "trace query exceeds its resource budget; narrow the time range or filters, or use cursor pagination instead of a deep page",
 		"AgentObservability.Message.failed to query operation facts":                                                   "failed to query operation facts",
 		"AgentObservability.Message.failed to query snapshot preview":                                                  "failed to query snapshot preview",
 		"AgentObservability.Message.failed to query trace spans":                                                       "failed to query trace spans",

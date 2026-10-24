@@ -116,8 +116,9 @@ materialized read model. Ordinary list fast paths and detail reads are unchanged
 The scanner rejects requests exceeding 65,536 distinct candidate Trace IDs,
 10,000 receipts in an expansion/batch, a 32 MiB receipt-PIT response, or its
 30-second query deadline. Deep page retention is limited to 10,000 rows,
-including the extra cursor-boundary row. A budget refusal returns HTTP 503
-`SUMMARY_QUERY_BUDGET_EXCEEDED`, rather than a successful partial total. Narrow
+including the extra cursor-boundary row. A deterministic size/count or page-retention refusal returns HTTP 422
+`SUMMARY_QUERY_BUDGET_EXCEEDED`; a query deadline returns HTTP 503
+`SUMMARY_QUERY_TIMEOUT`, rather than a successful partial total. Narrow
 the time window or filters to reduce a scan; use the returned cursor instead of
 a deep page offset to avoid the retention limit. Cursor pagination still scans
 for the exact total and does not bypass the other budgets.
@@ -130,6 +131,12 @@ changed. Unsupported `agent_or_app`, general `keyword`, `knowledge_network`,
 record-integrity, evidence-completeness, and agent-exclusion combinations still
 use the compatibility path and may be partial. Exact Trace/conversation/
 Interaction selectors are also outside this scanner's list contract.
+
+Scanner Tool matching always uses roots from the complete authorized receipt PIT,
+including after archive purge removes SQL receipts. Missing required PIT roots or
+authorization scopes still fail closed. Successful scans retain their complete
+result if PIT cleanup fails: an operational warning is emitted, and the PIT
+expires after its one-minute keep-alive. Scan errors remain errors.
 
 The PIT freezes receipt searches within one request only. It is not a MariaDB
 or artifact snapshot, and successive page requests create separate PITs; there

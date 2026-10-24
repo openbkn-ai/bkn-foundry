@@ -200,7 +200,7 @@ func TestScanFailuresAlwaysClosePIT(t *testing.T) {
 		closeStatus int
 		visitor     bool
 	}{
-		{"missing", `{}`, 0, false}, {"missing-source", `{"timed_out":false,"_shards":{"failed":0},"hits":{"hits":[{"sort":[1,"r"]}]}}`, 0, false}, {"timeout", `{"timed_out":true,"_shards":{"failed":0},"hits":{"hits":[]}}`, 0, false}, {"shard", `{"timed_out":false,"_shards":{"failed":1},"hits":{"hits":[]}}`, 0, false}, {"visitor", "", 0, true}, {"close", "", 500, false},
+		{"missing", `{}`, 0, false}, {"missing-source", `{"timed_out":false,"_shards":{"failed":0},"hits":{"hits":[{"sort":[1,"r"]}]}}`, 0, false}, {"timeout", `{"timed_out":true,"_shards":{"failed":0},"hits":{"hits":[]}}`, 0, false}, {"shard", `{"timed_out":false,"_shards":{"failed":1},"hits":{"hits":[]}}`, 0, false}, {"visitor", "", 0, true}, {"visitor-and-close", "", 500, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := scanReceipt("r", "t", "", "owner", "x", "2026-10-23T00:00:00Z")
@@ -414,6 +414,50 @@ func TestScanMalformedFullReceiptFailsClosed(t *testing.T) {
 			err := s.ScanTraceSummaryProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}}, func(iprojectionsource.Result) error { calls++; return nil })
 			if err == nil || calls != 0 || f.closed != 1 {
 				t.Fatalf("err=%v calls=%d close=%d", err, calls, f.closed)
+			}
+		})
+	}
+}
+
+func TestScanSuccessfulPageSurvivesPITCleanupFailure(t *testing.T) {
+	r := scanReceipt("r", "t", "", "owner", "x", "2026-10-23T00:00:00Z")
+	f := &scanFixture{seeds: []receiptDocument{r}, receipts: []receiptDocument{r}, closeStatus: http.StatusInternalServerError}
+	s := scanSource(t, f)
+	visits := 0
+	err := s.ScanTraceSummaryProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}}, func(result iprojectionsource.Result) error {
+		visits++
+		if len(result.Traces) != 1 || result.Truncated {
+			t.Fatalf("incomplete page: %+v", result)
+		}
+		return nil
+	})
+	if err != nil || visits != 1 || f.closed != 1 {
+		t.Fatalf("err=%v visits=%d closed=%d", err, visits, f.closed)
+	}
+}
+
+type pitCleanupTimeoutTransport struct{ base http.RoundTripper }
+
+func (p pitCleanupTimeoutTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.Method == http.MethodDelete {
+		return nil, context.DeadlineExceeded
+	}
+	return p.base.RoundTrip(r)
+}
+
+func TestScanCleanupTimeoutPreservesPrimaryFailure(t *testing.T) {
+	for _, primary := range []error{iprojectionsource.ErrSummaryScanBudgetExceeded, errors.New("metadata unavailable")} {
+		t.Run(primary.Error(), func(t *testing.T) {
+			r := scanReceipt("r", "t", "", "owner", "x", "2026-10-23T00:00:00Z")
+			f := &scanFixture{t: t, seeds: []receiptDocument{r}, receipts: []receiptDocument{r}}
+			server := httptest.NewServer(http.HandlerFunc(f.serve))
+			t.Cleanup(server.Close)
+			client := server.Client()
+			client.Transport = pitCleanupTimeoutTransport{base: client.Transport}
+			s := New(opensearch.NewWithHTTPClient(server.URL, opensearch.AuthConfig{}, client), "receipts", nil)
+			err := s.ScanTraceSummaryProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}}, func(iprojectionsource.Result) error { return primary })
+			if err != primary || errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("cleanup reclassified primary failure: %v", err)
 			}
 		})
 	}

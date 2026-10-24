@@ -85,23 +85,18 @@ func (s *Service) listScannedTraceSummaryPage(ctx context.Context, o evidencevo.
 				}
 			}
 		}
-		exactOwner := canUseSummaryIdentityPage(evidencevo.SummaryQueryOptions{Scope: o.Scope})
-		if err := s.applyTraceMetadata(ctx, traces, o.Scope, o.Tool != "" && exactOwner, result.CanonicalScopes); err != nil {
+		// Scanner membership and roots share one complete authorized receipt PIT.
+		// Archive purge can remove SQL receipts without removing this projection;
+		// SQL identity-page race guards therefore do not apply to this path.
+		if err := s.applyTraceMetadata(ctx, traces, o.Scope, false, result.CanonicalScopes); err != nil {
 			return err
 		}
 		for _, trace := range traces {
-			if o.Tool != "" && exactOwner && trace.RootOperation != o.Tool {
+			root, found := result.CanonicalRoots[trace.TraceID]
+			if !found {
 				return ErrSummaryProjectionLag
 			}
-			// Shared-network roots come only from the scanner's complete,
-			// authorized receipt set, never owner-only SQL or another interaction.
-			if !exactOwner || o.Tool == "" {
-				if root, found := result.CanonicalRoots[trace.TraceID]; found {
-					trace.RootOperation = root
-				} else if o.Tool != "" {
-					return ErrSummaryProjectionLag
-				}
-			}
+			trace.RootOperation = root
 			if !matchesTraceFilters(trace, o) {
 				continue
 			}
@@ -120,11 +115,14 @@ func (s *Service) listScannedTraceSummaryPage(ctx context.Context, o evidencevo.
 	})
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			err = iprojectionsource.ErrSummaryScanBudgetExceeded
+			err = errors.Join(iprojectionsource.ErrSummaryScanBudgetExceeded, err)
 		}
 		return empty, true, err
 	}
 	if err := ctx.Err(); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = errors.Join(iprojectionsource.ErrSummaryScanBudgetExceeded, err)
+		}
 		return empty, true, err
 	}
 	entries := []evidencevo.TraceSummary(*selected)

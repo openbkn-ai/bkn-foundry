@@ -94,7 +94,8 @@ Core 是技术事实服务：不从最终回答推导业务语义，也不建立
 
 资源上限为65,536个不同候选 Trace ID、一次展开／批次10,000条回执、单个回执 PIT
 响应32 MiB，以及30秒查询期限。深页最多保留10,000行，包含判断下一游标所需的
-额外一行。超过限制返回 HTTP 503 `SUMMARY_QUERY_BUDGET_EXCEEDED`，不会把不完整
+额外一行。确定性的数量、大小或深页限制返回 HTTP 422 `SUMMARY_QUERY_BUDGET_EXCEEDED`；
+查询期限耗尽返回 HTTP 503 `SUMMARY_QUERY_TIMEOUT`，不会把不完整
 总数伪装成成功。请缩小时间范围或调整筛选条件减少扫描；使用返回的 cursor 代替
 深页码可避免保留行数上限，但 cursor 仍需扫描精确总数，不能绕过其他资源限制。
 
@@ -104,6 +105,10 @@ Core 是技术事实服务：不从最终回答推导业务语义，也不建立
 `agent_or_app`、通用 `keyword`、`knowledge_network`、记录完整性、证据完整性及
 排除 Agent 等不支持的组合仍走兼容路径，可能返回 partial。显式 Trace／conversation／
 Interaction 标识查询也不属于本扫描器的列表契约。
+
+扫描路径的 Tool 匹配始终使用完整授权回执 PIT 中的根，包括归档清除 SQL 回执之后。
+缺少必要的 PIT 根或授权范围仍拒绝查询。成功扫描后如 PIT 清理失败，保留完整结果、
+记录运行告警，并由一分钟 keep-alive 到期清理；扫描自身的错误不会被忽略。
 
 PIT 只固定单次请求内的回执搜索，不覆盖 MariaDB 或 artifact，也不跨分页请求；
 不同页各自创建 PIT，不能声称整个读取具备跨存储或跨请求的事务快照。启用
