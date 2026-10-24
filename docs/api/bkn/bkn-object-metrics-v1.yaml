@@ -18,6 +18,8 @@ paths:
     $ref: ../../../adp/bkn/bkn-backend/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1preview
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}:
     $ref: ../../../adp/bkn/bkn-backend/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/deletion-check:
+    $ref: ../../../adp/bkn/bkn-backend/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}~1deletion-check
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/versions:
     $ref: ../../../adp/bkn/bkn-backend/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}~1versions
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/publish:

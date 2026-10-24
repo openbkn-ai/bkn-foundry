@@ -15,7 +15,7 @@ type QueryMetricReq struct {
 
 type ObjectMetricQuery struct {
 	InstanceIdentities []map[string]any             `json:"instance_identities,omitempty"`
-	Filter             map[string]any               `json:"filter,omitempty"`
+	Filter             *ObjectMetricCondition       `json:"filter,omitempty"`
 	GroupBy            []ObjectMetricPropertyRef    `json:"group_by,omitempty"`
 	Having             *ObjectMetricHaving          `json:"having,omitempty"`
 	OrderBy            []ObjectMetricOrderBy        `json:"order_by,omitempty"`
@@ -23,6 +23,27 @@ type ObjectMetricQuery struct {
 	Cursor             string                       `json:"cursor,omitempty"`
 	Time               *ObjectMetricTimeRange       `json:"time,omitempty"`
 	BucketSelection    *ObjectMetricBucketSelection `json:"bucket_selection,omitempty"`
+}
+
+// ObjectMetricOperand is one side of a runtime filter predicate. Property
+// operands must reference a dimension declared by the published metric;
+// literal operands carry their physical value type explicitly.
+type ObjectMetricOperand struct {
+	Source      string                   `json:"source"`
+	PropertyRef *ObjectMetricPropertyRef `json:"property_ref,omitempty"`
+	ValueType   string                   `json:"value_type,omitempty"`
+	Value       any                      `json:"value,omitempty"`
+}
+
+// ObjectMetricCondition mirrors ontology-query's recursive Object Metric V1
+// condition contract. A condition is either a predicate or a boolean group.
+type ObjectMetricCondition struct {
+	NodeType           string                  `json:"node_type"`
+	BooleanOperator    string                  `json:"boolean_operator,omitempty"`
+	Children           []ObjectMetricCondition `json:"children,omitempty"`
+	Left               *ObjectMetricOperand    `json:"left,omitempty"`
+	ComparisonOperator string                  `json:"comparison_operator,omitempty"`
+	Right              []ObjectMetricOperand   `json:"right,omitempty"`
 }
 
 type ObjectMetricHaving struct {
@@ -66,7 +87,7 @@ type QueryMetricResp struct {
 	NextCursor      string                  `json:"next_cursor,omitempty"`
 	Warnings        []string                `json:"warnings,omitempty"`
 	OverallMs       int64                   `json:"overall_ms"`
-	EvaluatedAt     int64                   `json:"evaluated_at,omitempty"`
+	EvaluatedAt     int64                   `json:"evaluated_at"`
 	EffectiveWindow *ObjectMetricTimeRange  `json:"effective_window,omitempty"`
 }
 
@@ -97,7 +118,7 @@ type MetricQueryDownstreamResp struct {
 	NextCursor      string                  `json:"next_cursor,omitempty"`
 	Warnings        []string                `json:"warnings,omitempty"`
 	OverallMs       int64                   `json:"overall_ms"`
-	EvaluatedAt     int64                   `json:"evaluated_at,omitempty"`
+	EvaluatedAt     int64                   `json:"evaluated_at"`
 	EffectiveWindow *ObjectMetricTimeRange  `json:"effective_window,omitempty"`
 }
 

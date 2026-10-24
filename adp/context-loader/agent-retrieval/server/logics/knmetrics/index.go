@@ -221,6 +221,9 @@ func validateMetricRuntimeQuery(query interfaces.ObjectMetricQuery, depth int) e
 	if query.Cursor != "" && query.PageSize == 0 {
 		return errors.New("query.page_size is required with cursor")
 	}
+	if query.Filter != nil && strings.TrimSpace(query.Filter.NodeType) == "" {
+		return errors.New("query.filter.node_type is required")
+	}
 	if query.BucketSelection != nil {
 		if depth >= 8 {
 			return fmt.Errorf("metric drill depth exceeds 8")

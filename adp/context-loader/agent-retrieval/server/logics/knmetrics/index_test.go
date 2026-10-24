@@ -159,8 +159,12 @@ func TestMetricRuntimeQueryRejectsInvalidPagingAndDrillDepthBeforeDownstream(t *
 		{name: "negative page size", query: interfaces.ObjectMetricQuery{PageSize: -1}},
 		{name: "page size above limit", query: interfaces.ObjectMetricQuery{PageSize: 1001}},
 		{name: "cursor without page size", query: interfaces.ObjectMetricQuery{Cursor: "next"}},
+		{name: "empty filter", query: interfaces.ObjectMetricQuery{Filter: &interfaces.ObjectMetricCondition{}}},
 		{name: "parent cursor without page size", query: interfaces.ObjectMetricQuery{BucketSelection: &interfaces.ObjectMetricBucketSelection{
 			ParentQuery: interfaces.ObjectMetricQuery{Cursor: "parent-next"},
+		}}},
+		{name: "empty parent filter", query: interfaces.ObjectMetricQuery{BucketSelection: &interfaces.ObjectMetricBucketSelection{
+			ParentQuery: interfaces.ObjectMetricQuery{Filter: &interfaces.ObjectMetricCondition{}},
 		}}},
 		{name: "drill depth above limit", query: tooDeep},
 	} {

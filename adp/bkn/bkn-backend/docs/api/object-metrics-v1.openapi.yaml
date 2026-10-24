@@ -315,13 +315,9 @@ components:
       additionalProperties: false
       properties:
         filters:
-          type: object
-          description: Typed condition AST applied to the current object instance.
-          additionalProperties: true
+          $ref: "#/components/schemas/ObjectMetricCondition"
         relation_path:
-          type: object
-          description: Optional relationship path and related-instance qualifier.
-          additionalProperties: true
+          $ref: "#/components/schemas/ObjectMetricRelationPath"
         event_time: { $ref: "#/components/schemas/PropertyRef" }
         time_window: { $ref: "#/components/schemas/ObjectMetricTimeWindow" }
     ObjectMetricTimeWindow:
@@ -367,12 +363,16 @@ components:
         expression: { $ref: "#/components/schemas/Expression" }
         alignment: { type: object, additionalProperties: true }
         null_policy: { type: string, enum: [propagate, coalesce_zero] }
-        zero_division_policy: { type: string, enum: [unavailable, null, zero] }
+        zero_division_policy: { type: string, enum: [unavailable, "null", zero] }
     Expression:
       type: object
       description: Typed expression AST. node_type selects property, dependency, literal, call, unary or binary payload.
       required: [node_type]
       additionalProperties: true
+      properties:
+        node_type:
+          type: string
+          enum: [property, dependency, literal, call, unary, binary]
     MetricRef:
       type: object
       required: [metric_id, version]
@@ -381,11 +381,132 @@ components:
         version: { type: integer, minimum: 1 }
     PropertyRef:
       type: object
+      additionalProperties: false
       required: [object_type_id, property_name]
       properties:
-        object_type_id: { type: string }
-        property_name: { type: string }
-        relation_path_alias: { type: string }
+        object_type_id: { type: string, minLength: 1 }
+        property_name: { type: string, minLength: 1 }
+        relation_path_alias: { type: string, minLength: 1 }
+    ObjectMetricPropertyOperand:
+      type: object
+      additionalProperties: false
+      required: [source, property_ref]
+      properties:
+        source: { const: property }
+        property_ref: { $ref: "#/components/schemas/PropertyRef" }
+    ObjectMetricLiteralOperand:
+      type: object
+      additionalProperties: false
+      required: [source, value_type, value]
+      properties:
+        source: { const: literal }
+        value_type:
+          type: string
+          enum: [int64, decimal, boolean, string, date, datetime, duration]
+          description: date uses YYYY-MM-DD, datetime uses RFC 3339, and duration is numeric.
+        value: { description: Must match value_type; int64 values must be integers. }
+    ObjectMetricOperand:
+      oneOf:
+        - { $ref: "#/components/schemas/ObjectMetricPropertyOperand" }
+        - { $ref: "#/components/schemas/ObjectMetricLiteralOperand" }
+    ObjectMetricScalarPredicate:
+      type: object
+      additionalProperties: false
+      required: [node_type, left, comparison_operator, right]
+      properties:
+        node_type: { const: predicate }
+        left: { $ref: "#/components/schemas/ObjectMetricOperand" }
+        comparison_operator:
+          type: string
+          enum: [eq, neq, gt, gte, lt, lte, contains, not_contains, starts_with, ends_with, before, before_or_equal, after, after_or_equal]
+        right: { type: array, minItems: 1, maxItems: 1, items: { $ref: "#/components/schemas/ObjectMetricOperand" } }
+    ObjectMetricMembershipPredicate:
+      type: object
+      additionalProperties: false
+      required: [node_type, left, comparison_operator, right]
+      properties:
+        node_type: { const: predicate }
+        left: { $ref: "#/components/schemas/ObjectMetricOperand" }
+        comparison_operator: { type: string, enum: [in, not_in] }
+        right: { type: array, minItems: 1, items: { $ref: "#/components/schemas/ObjectMetricOperand" } }
+    ObjectMetricRangePredicate:
+      type: object
+      additionalProperties: false
+      required: [node_type, left, comparison_operator, right]
+      properties:
+        node_type: { const: predicate }
+        left: { $ref: "#/components/schemas/ObjectMetricOperand" }
+        comparison_operator: { type: string, enum: [between, not_between] }
+        right:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: Inclusive lower and upper bounds, in that order.
+          items: { $ref: "#/components/schemas/ObjectMetricOperand" }
+    ObjectMetricUnaryPredicate:
+      type: object
+      additionalProperties: false
+      required: [node_type, left, comparison_operator]
+      properties:
+        node_type: { const: predicate }
+        left: { $ref: "#/components/schemas/ObjectMetricOperand" }
+        comparison_operator: { type: string, enum: [is_empty, is_not_empty, is_null, is_not_null, is_true, is_false] }
+        right: { type: array, maxItems: 0, description: Must be omitted or empty for a unary comparison. }
+    ObjectMetricPredicate:
+      oneOf:
+        - { $ref: "#/components/schemas/ObjectMetricScalarPredicate" }
+        - { $ref: "#/components/schemas/ObjectMetricMembershipPredicate" }
+        - { $ref: "#/components/schemas/ObjectMetricRangePredicate" }
+        - { $ref: "#/components/schemas/ObjectMetricUnaryPredicate" }
+    ObjectMetricBooleanGroup:
+      type: object
+      additionalProperties: false
+      required: [node_type, boolean_operator, children]
+      properties:
+        node_type: { const: group }
+        boolean_operator: { type: string, enum: [and, or] }
+        children: { type: array, minItems: 2, items: { $ref: "#/components/schemas/ObjectMetricCondition" } }
+    ObjectMetricNotGroup:
+      type: object
+      additionalProperties: false
+      required: [node_type, boolean_operator, children]
+      properties:
+        node_type: { const: group }
+        boolean_operator: { const: not }
+        children: { type: array, minItems: 1, maxItems: 1, items: { $ref: "#/components/schemas/ObjectMetricCondition" } }
+    ObjectMetricCondition:
+      description: >-
+        Recursive Object Metric V1 condition AST. Property and literal operand types must be
+        compatible. Text operators require string properties, is_true/is_false require boolean
+        properties, and before/after operators require date or datetime properties.
+      oneOf:
+        - { $ref: "#/components/schemas/ObjectMetricPredicate" }
+        - { $ref: "#/components/schemas/ObjectMetricBooleanGroup" }
+        - { $ref: "#/components/schemas/ObjectMetricNotGroup" }
+    ObjectMetricRelationStep:
+      type: object
+      additionalProperties: false
+      required: [relation_type_id, direction, target_object_type_id]
+      properties:
+        relation_type_id: { type: string, minLength: 1 }
+        direction: { type: string, enum: [outgoing, incoming] }
+        target_object_type_id: { type: string, minLength: 1 }
+    ObjectMetricRelationPath:
+      type: object
+      additionalProperties: false
+      required: [alias, steps, purpose, quantifier, cardinality_policy]
+      properties:
+        alias: { type: string, minLength: 1 }
+        steps:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ObjectMetricRelationStep" }
+        purpose: { const: qualify_root }
+        quantifier: { type: string, enum: [exists, not_exists, all, all_nonempty, count_compare] }
+        related_filters: { $ref: "#/components/schemas/ObjectMetricCondition" }
+        cardinality_policy: { type: string, enum: [preserve_root, distinct_root, allow_multiplication] }
+        count_comparison: { type: string, enum: [eq, neq, gt, gte, lt, lte] }
+        count_threshold: { type: integer, minimum: 0 }
     ObjectMetricDependency:
       type: object
       required: [alias, metric_ref, object_alignment, evaluation_context]

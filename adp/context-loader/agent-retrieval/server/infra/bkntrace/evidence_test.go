@@ -138,8 +138,13 @@ func TestArtifactContentHashUsesCoreCanonicalJSON(t *testing.T) {
 }
 
 func TestBuildQueryMetricEventsRecordsDimensionsValuesConditionsAndCompleteness(t *testing.T) {
-	selection := &interfaces.ObjectMetricBucketSelection{BucketKey: "selected-bucket", ParentQuery: interfaces.ObjectMetricQuery{Filter: map[string]any{"field": "region", "value": "east"}}}
-	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Query: interfaces.ObjectMetricQuery{GroupBy: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "warehouse", PropertyName: "name"}}, Filter: map[string]any{"field": "material_id", "operation": "eq", "value": "M-1001"}, BucketSelection: selection}}
+	regionFilter := &interfaces.ObjectMetricCondition{NodeType: "predicate", Left: &interfaces.ObjectMetricOperand{
+		Source: "property", PropertyRef: &interfaces.ObjectMetricPropertyRef{ObjectTypeID: "warehouse", PropertyName: "region"},
+	}, ComparisonOperator: "eq", Right: []interfaces.ObjectMetricOperand{{Source: "literal", ValueType: "string", Value: "east"}}}
+	selection := &interfaces.ObjectMetricBucketSelection{BucketKey: "selected-bucket", ParentQuery: interfaces.ObjectMetricQuery{Filter: regionFilter}}
+	req := &interfaces.QueryMetricReq{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Query: interfaces.ObjectMetricQuery{GroupBy: []interfaces.ObjectMetricPropertyRef{{ObjectTypeID: "warehouse", PropertyName: "name"}}, Filter: &interfaces.ObjectMetricCondition{NodeType: "predicate", Left: &interfaces.ObjectMetricOperand{
+		Source: "property", PropertyRef: &interfaces.ObjectMetricPropertyRef{ObjectTypeID: "material", PropertyName: "material_id"},
+	}, ComparisonOperator: "eq", Right: []interfaces.ObjectMetricOperand{{Source: "literal", ValueType: "string", Value: "M-1001"}}}, BucketSelection: selection}}
 	resp := &interfaces.QueryMetricResp{KnID: "kn-supply", MetricID: "available_inventory", Version: 2, Status: "ok", Entries: []interfaces.ObjectMetricDataEntry{{Status: "ok", Dimensions: map[string]any{"warehouse": "WH-01"}, Value: 677}}}
 	events := BuildQueryMetricEvents(testTraceContext(), req, resp)
 	if len(events) != 1 {

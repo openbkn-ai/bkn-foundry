@@ -1,5 +1,5 @@
 ---
-openapi: 3.0.3
+openapi: 3.1.0
 info:
   title: 上下文加载 · 逻辑属性求值 API
   description: |
@@ -160,6 +160,32 @@ paths:
                     time:
                       start: 1735660800000
                       end: 1743436800000
+              属性过滤:
+                value:
+                  kn_id: kn_supplychain
+                  metric_id: metric_paid_amount
+                  version: 1
+                  query:
+                    filter:
+                      node_type: group
+                      boolean_operator: and
+                      children:
+                        - node_type: predicate
+                          left:
+                            source: property
+                            property_ref: { object_type_id: order, property_name: status }
+                          comparison_operator: in
+                          right:
+                            - { source: literal, value_type: string, value: paid }
+                            - { source: literal, value_type: string, value: shipped }
+                        - node_type: group
+                          boolean_operator: not
+                          children:
+                            - node_type: predicate
+                              left:
+                                source: property
+                                property_ref: { object_type_id: order, property_name: cancelled_at }
+                              comparison_operator: is_null
       responses:
         '200':
           description: 对象指标 V1 查询结果
@@ -228,6 +254,7 @@ components:
   schemas:
     QueryMetricRequest:
       type: object
+      additionalProperties: false
       required:
         - kn_id
         - metric_id
@@ -255,15 +282,14 @@ components:
                 type: object
                 additionalProperties: true
             filter:
-              type: object
-              additionalProperties: true
-              description: 对象指标 V1 条件 AST。
+              $ref: '../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/components/schemas/ObjectMetricCondition'
             group_by:
               type: array
               items:
                 $ref: '#/components/schemas/ObjectMetricPropertyRef'
             having:
               type: object
+              additionalProperties: false
               required: [operator]
               properties:
                 operator:
@@ -276,6 +302,7 @@ components:
               type: array
               items:
                 type: object
+                additionalProperties: false
                 required: [field, direction]
                 properties:
                   field:
@@ -294,6 +321,7 @@ components:
               type: string
             time:
               type: object
+              additionalProperties: false
               required:
                 - start
                 - end
@@ -306,9 +334,22 @@ components:
                   type: integer
                   format: int64
                   description: Unix 毫秒。
+            bucket_selection:
+              type: object
+              additionalProperties: false
+              required: [parent_query, bucket_key]
+              description: 使用上一层完整 query 和服务端返回的 bucket_key 继续下钻。
+              properties:
+                parent_query:
+                  $ref: '#/components/schemas/QueryMetricRequest/properties/query'
+                bucket_key:
+                  type: string
+          dependentRequired:
+            cursor: [page_size]
 
     ObjectMetricPropertyRef:
       type: object
+      additionalProperties: false
       required:
         - object_type_id
         - property_name
@@ -331,6 +372,7 @@ components:
         - status
         - total_count
         - overall_ms
+        - evaluated_at
       properties:
         kn_id:
           type: string
@@ -363,6 +405,20 @@ components:
           type: integer
           format: int64
           description: 耗时（毫秒）。
+        evaluated_at:
+          type: integer
+          format: int64
+          description: 本次计算时间，Unix 毫秒。
+        effective_window:
+          $ref: '#/components/schemas/ObjectMetricTimeRange'
+
+    ObjectMetricTimeRange:
+      type: object
+      additionalProperties: false
+      required: [start, end]
+      properties:
+        start: { type: integer, format: int64, description: Unix 毫秒。 }
+        end: { type: integer, format: int64, description: Unix 毫秒。 }
 
     ObjectMetricDataEntry:
       type: object
@@ -375,14 +431,34 @@ components:
         dimensions:
           type: object
           additionalProperties: true
+        dimension_cells:
+          type: array
+          description: 完整维度引用；相同属性名通过 relation_path_alias 区分。
+          items:
+            type: object
+            additionalProperties: false
+            required: [ref, value]
+            properties:
+              ref: { $ref: '#/components/schemas/ObjectMetricPropertyRef' }
+              value: {}
         time:
           type: integer
           format: int64
           description: Unix 毫秒。
+        time_bucket:
+          $ref: '#/components/schemas/ObjectMetricTimeRange'
         value: {}
         status:
           type: string
           enum: [ok, no_data, unavailable]
+        bucket_key:
+          type: string
+          description: 服务端生成的不透明结果定位键，不授予数据权限。
+        available_actions:
+          type: array
+          items:
+            type: string
+            enum: [filter, drill, participants, context]
 
     ResolveLogicPropertiesRequest:
       type: object
