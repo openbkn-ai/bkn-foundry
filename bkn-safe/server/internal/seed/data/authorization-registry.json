@@ -249,6 +249,22 @@
       ]
     },
     {
+      "id": "knowledge_base",
+      "name": "知识库",
+      "_source": "kb-api (openbkn-ee)",
+      "_note": "专业版知识库的授权根，只做到知识库级，不做文档级。除 create 外的所有操作都要求本知识库 view_detail。连接归创建者使用，不单独授权。",
+      "operations": [
+        {"id": "view_detail", "name": "查看", "description": "查看知识库的配置、来源、文档、分片与解析结果。"},
+        {"id": "create", "name": "新建", "description": "新建知识库，并管理知识库分组。"},
+        {"id": "modify", "name": "修改", "description": "修改知识库配置，添加、修改和移除来源；需要同时具有查看知识库权限。", "requires": ["view_detail"]},
+        {"id": "delete", "name": "删除", "description": "删除知识库及其文档；需要同时具有查看知识库权限。", "requires": ["view_detail"]},
+        {"id": "authorize", "name": "授权", "description": "配置知识库的访问权限；需要同时具有查看知识库权限。", "requires": ["view_detail"]},
+        {"id": "document_manage", "name": "文档管理", "description": "上传、删除、启用或停用知识库中的文档，修改文档的解析设置；需要同时具有查看知识库权限。", "requires": ["view_detail"]},
+        {"id": "task_manage", "name": "任务管理", "description": "触发解析、立即同步来源、重新清洗分片；需要同时具有查看知识库权限。", "requires": ["view_detail"]},
+        {"id": "query_data", "name": "查询", "description": "读取知识库的原始文件，以及经只读接口读取分片与原文；需要同时具有查看知识库权限。", "requires": ["view_detail"]}
+      ]
+    },
+    {
       "id": "knowledge_network",
       "name": "知识网络",
       "_source": "bkn",

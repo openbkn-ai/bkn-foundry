@@ -16,6 +16,7 @@ import "fmt"
 var communityBundleOperations = map[string][]string{
 	"catalog":           {"view_detail", "modify", "delete", "query_data", "data_write", "resource_manage", "task_manage"},
 	"knowledge_network": {"view_detail", "modify", "delete", "query_data", "execute"},
+	"knowledge_base":    {"view_detail", "modify", "delete", "query_data", "document_manage", "task_manage"},
 	"connector_type":    {"view_detail", "modify", "delete"},
 	"tool_box":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
 	"function":          {"view", "modify", "delete", "publish", "unpublish", "execute"},
