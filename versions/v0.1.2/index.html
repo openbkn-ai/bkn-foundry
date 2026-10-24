@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BKN Foundry API 文档中心</title>
+<link rel="icon" type="image/png" href="./favicon.png">
+<style>
+  :root{--bg:#fff;--fg:#12212b;--muted:#5b6b78;--card:#fff;--line:#e4eaf0;--acc:#0e7c86;--acc-bg:#e1f3f4;--shadow:0 1px 2px rgba(16,32,44,.04),0 3px 12px rgba(16,32,44,.06)}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:56px 24px 96px}
+  header{padding:0 0 28px;border-bottom:1px solid var(--line);margin:0 0 8px}
+  header .logo{height:72px;width:auto;display:block;margin:0 0 28px}
+  header h1{font-size:34px;letter-spacing:-.02em;margin:0 0 10px}
+  header p{color:var(--muted);font-size:16px;margin:0 0 24px}
+  .auth{margin:18px 0 0}
+  .auth a{display:inline-block;font-size:14px;color:var(--acc);text-decoration:none;border:1px solid var(--line);border-radius:8px;padding:8px 14px}
+  .auth a:hover{border-color:var(--acc)}
+  .mod{margin:34px 0 0}
+  .mod-h{display:flex;align-items:baseline;gap:12px;margin:0 0 4px}
+  .mod-h h2{font-size:20px;margin:0}
+  .mod-h .count{font:600 12px system-ui;color:var(--acc);background:var(--acc-bg);padding:2px 9px;border-radius:20px}
+  .mod-desc{color:var(--muted);font-size:14px;margin:0 0 16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+  .card{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);text-decoration:none;color:inherit;transition:transform .12s,border-color .12s}
+  .card:hover{transform:translateY(-2px);border-color:var(--acc)}
+  .card .name{font-weight:600;font-size:15px}
+  .card .arrow{color:var(--acc);margin-left:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <img class="logo" src="./openbkn-logo.png" alt="OpenBKN">
+  <h1>BKN Foundry API 文档中心</h1>
+  <p>各服务的 OpenAPI 交互式文档 —— 点开任意资源查看端点、参数与示例（新标签页打开）。</p>
+  <div class="auth"><a href="./auth.html" target="_blank" rel="noopener">🔑 认证说明 · 如何获取并携带 Token &rarr;</a></div>
+</header>
+<main id="list">
+<section class="mod">
+<div class="mod-h"><h2>bkn-agent</h2><span class="count">1</span></div>
+<div class="grid">
+<a class="card" data-name="bkn-agent bkn-agent" href="./bkn-agent/bkn-agent.html" target="_blank" rel="noopener"><span class="name">bkn-agent</span><span class="arrow">&rarr;</span></a>
+</div>
+</section>
+<section class="mod">
+<div class="mod-h"><h2>BKN</h2><span class="count">9</span></div>
+<p class="mod-desc">业务知识网络：对象类 / 关系类 / 行动类 / 概念组 / 指标 / 导入导出</p>
+<div class="grid">
+<a class="card" data-name="action-schedules 行动调度" href="./bkn/action-schedules.html" target="_blank" rel="noopener"><span class="name">行动调度</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="action-type 行动类" href="./bkn/action-type.html" target="_blank" rel="noopener"><span class="name">行动类</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="bkn-metrics 指标" href="./bkn/bkn-metrics.html" target="_blank" rel="noopener"><span class="name">指标</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="bkn 导入导出" href="./bkn/bkn.html" target="_blank" rel="noopener"><span class="name">导入导出</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="business-knowledge-network 知识网络" href="./bkn/business-knowledge-network.html" target="_blank" rel="noopener"><span class="name">知识网络</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="concept-group 概念组" href="./bkn/concept-group.html" target="_blank" rel="noopener"><span class="name">概念组</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="object-type 对象类" href="./bkn/object-type.html" target="_blank" rel="noopener"><span class="name">对象类</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="relation-type 关系类" href="./bkn/relation-type.html" target="_blank" rel="noopener"><span class="name">关系类</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="risk-types 风险类" href="./bkn/risk-types.html" target="_blank" rel="noopener"><span class="name">风险类</span><span class="arrow">&rarr;</span></a>
+</div>
+</section>
+<section class="mod">
+<div class="mod-h"><h2>mf-model-manager</h2><span class="count">1</span></div>
+<div class="grid">
+<a class="card" data-name="large-model large-model" href="./mf-model-manager/large-model.html" target="_blank" rel="noopener"><span class="name">large-model</span><span class="arrow">&rarr;</span></a>
+</div>
+</section>
+<section class="mod">
+<div class="mod-h"><h2>Ontology 查询</h2><span class="count">1</span></div>
+<p class="mod-desc">本体查询与语义检索</p>
+<div class="grid">
+<a class="card" data-name="ontology-query 本体查询" href="./ontology-query/ontology-query.html" target="_blank" rel="noopener"><span class="name">本体查询</span><span class="arrow">&rarr;</span></a>
+</div>
+</section>
+<section class="mod">
+<div class="mod-h"><h2>VEGA 引擎</h2><span class="count">10</span></div>
+<p class="mod-desc">数据可观测：目录 / 资源 / 连接器 / 构建任务 / 发现任务 / 原生查询</p>
+<div class="grid">
+<a class="card" data-name="auth-resource 资源授权" href="./vega/auth-resource.html" target="_blank" rel="noopener"><span class="name">资源授权</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="build-task 构建任务" href="./vega/build-task.html" target="_blank" rel="noopener"><span class="name">构建任务</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="catalog 目录" href="./vega/catalog.html" target="_blank" rel="noopener"><span class="name">目录</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="connector-type 连接器类型" href="./vega/connector-type.html" target="_blank" rel="noopener"><span class="name">连接器类型</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="discover-schedule 发现调度" href="./vega/discover-schedule.html" target="_blank" rel="noopener"><span class="name">发现调度</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="discover-task 发现任务" href="./vega/discover-task.html" target="_blank" rel="noopener"><span class="name">发现任务</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="raw-query 原生查询" href="./vega/raw-query.html" target="_blank" rel="noopener"><span class="name">原生查询</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="resource-data 资源数据" href="./vega/resource-data.html" target="_blank" rel="noopener"><span class="name">资源数据</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="resource 资源" href="./vega/resource.html" target="_blank" rel="noopener"><span class="name">资源</span><span class="arrow">&rarr;</span></a>
+<a class="card" data-name="semantic-understanding-task semantic-understanding-task" href="./vega/semantic-understanding-task.html" target="_blank" rel="noopener"><span class="name">semantic-understanding-task</span><span class="arrow">&rarr;</span></a>
+</div>
+</section>
+</main>
+</div>
+</body>
+</html>
