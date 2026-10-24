@@ -107,7 +107,7 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 			oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails("object metric query capability is not assembled")
 	}
-	result, err := service.QueryObjectMetricDataV1(ctx, knID, branch, metricID, version, query)
+	result, err := queryObjectMetricWithRequestMemo(ctx, service, knID, branch, metricID, version, query)
 	if err != nil {
 		return interfaces.MetricData{}, err
 	}

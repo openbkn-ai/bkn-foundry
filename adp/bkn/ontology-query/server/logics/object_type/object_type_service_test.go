@@ -11,7 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -29,6 +32,38 @@ import (
 type objectTypeProxyResolverStub struct {
 	bindings []interfaces.TrustedProxyBinding
 	err      error
+}
+
+func TestSelectedObjectLogicPropertiesPreservesAccessAndOrder(t *testing.T) {
+	logic := []*interfaces.LogicProperty{
+		{Name: "hidden", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+			DataSource: &interfaces.ResourceInfo{ID: "hidden-metric"}},
+		{Name: "first", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+			DataSource: &interfaces.ResourceInfo{ID: "first-metric"}},
+		{Name: "second", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+			DataSource: &interfaces.ResourceInfo{ID: "second-metric"}},
+	}
+	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		LogicProperties: logic,
+	}}
+	plan := &propertyAccessPlan{returnLogic: map[string]struct{}{"first": {}, "second": {}}}
+	selected := selectedObjectLogicProperties(objectType, plan)
+	if len(selected) != 2 || selected[0] != logic[1] || selected[1] != logic[2] {
+		t.Fatalf("selected logical properties = %#v", selected)
+	}
+	row := map[string]any{}
+	service := &objectTypeService{}
+	if err := service.addLogicProperties(context.Background(), row, selected); err != nil {
+		t.Fatalf("addLogicProperties() error = %v", err)
+	}
+	if _, exists := row["hidden"]; exists {
+		t.Fatal("unapproved logical property was constructed")
+	}
+	for _, name := range []string{"first", "second"} {
+		if _, exists := row[name].(interfaces.MetricProperty); !exists {
+			t.Fatalf("approved logical property %q is missing: %#v", name, row)
+		}
+	}
 }
 
 type fullPropertyAccessStub struct{}
@@ -1821,6 +1856,152 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 			So(len(result.Datas), ShouldEqual, 0)
 		})
 	})
+}
+
+func TestGetObjectPropertyValueBoundsConcurrentMetricProperties(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	vega := omock.NewMockVegaBackendAccess(ctrl)
+	metrics := omock.NewMockObjectMetricQueryServiceV1(ctrl)
+	logics.SetObjectMetricQueryService(metrics)
+	t.Cleanup(func() { logics.SetObjectMetricQueryService(nil) })
+	service := &objectTypeService{
+		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
+		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{},
+	}
+	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "shipment", PrimaryKeys: []string{"id"},
+		DataProperties: []cond.DataProperty{{Name: "id", Type: "string", MappedField: cond.Field{Name: "id"}}},
+		LogicProperties: []*interfaces.LogicProperty{{
+			Name: "metric", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+			Parameters: []interfaces.Parameter{{Name: "id", ValueFrom: interfaces.LOGIC_PARAMS_VALUE_FROM_PROP, Value: "id"}},
+			DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric-1@1"},
+		}},
+		DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+	}}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "shipment").Return(objectType, true, nil).AnyTimes()
+	// Object-set metrics are intentionally excluded from instance batching.
+	models.EXPECT().GetObjectMetricExecutionContext(gomock.Any(), "kn", "main", "metric-1", 1).
+		Return(&interfaces.ObjectMetricExecutionContextV1{Root: &interfaces.ObjectMetricRecordV1{
+			Definition: interfaces.ObjectMetricDefinitionV1{ID: "metric-1", Version: 1,
+				CalculationScope: "object_set", MetricType: "atomic", OwnerObjectTypeID: "shipment"},
+		}}, nil)
+	entries := make([]map[string]any, 32)
+	identities := make([]map[string]any, len(entries))
+	for i := range entries {
+		id := fmt.Sprintf("shipment-%02d", i)
+		entries[i] = map[string]any{"id": id}
+		identities[i] = map[string]any{"id": id}
+	}
+	vega.EXPECT().QueryResourceData(gomock.Any(), "resource-1", gomock.Any()).Return(
+		&interfaces.DatasetQueryResponse{Entries: entries, TotalCount: int64(len(entries))}, nil)
+	var active, peak atomic.Int32
+	started := make(chan struct{}, len(entries))
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	defer unblock()
+	metrics.EXPECT().QueryObjectMetricDataV1(gomock.Any(), "kn", "main", "metric-1", 1, gomock.Any()).
+		Times(len(entries)).DoAndReturn(func(_ context.Context, _, _, _ string, _ int,
+		_ *interfaces.ObjectMetricQueryRequestV1) (interfaces.ObjectMetricDataV1, error) {
+		current := active.Add(1)
+		for {
+			previous := peak.Load()
+			if current <= previous || peak.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		started <- struct{}{}
+		<-release
+		active.Add(-1)
+		return interfaces.ObjectMetricDataV1{}, nil
+	})
+	type outcome struct {
+		objects interfaces.Objects
+		err     error
+	}
+	finished := make(chan outcome, 1)
+	go func() {
+		objects, err := service.GetObjectPropertyValue(context.Background(), &interfaces.ObjectPropertyValueQuery{
+			KNID: "kn", Branch: "main", ObjectTypeID: "shipment", Properties: []string{"metric"},
+			InstanceIdentities: identities,
+		})
+		finished <- outcome{objects: objects, err: err}
+	}()
+	for i := 0; i < maxConcurrentLogicProperties; i++ {
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("metric evaluations did not reach the configured concurrency")
+		}
+	}
+	unblock()
+	select {
+	case result := <-finished:
+		if result.err != nil || len(result.objects.Datas) != len(entries) {
+			t.Fatalf("objects=%d err=%v", len(result.objects.Datas), result.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("metric evaluations did not finish")
+	}
+	if got := peak.Load(); got > maxConcurrentLogicProperties {
+		t.Fatalf("peak concurrent metric evaluations = %d, want at most %d", got, maxConcurrentLogicProperties)
+	}
+}
+
+func TestGetObjectPropertyValueReusesObjectSetMetricWithinRequest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	vega := omock.NewMockVegaBackendAccess(ctrl)
+	metrics := omock.NewMockObjectMetricQueryServiceV1(ctrl)
+	logics.SetObjectMetricQueryService(metrics)
+	t.Cleanup(func() { logics.SetObjectMetricQueryService(nil) })
+	service := &objectTypeService{
+		omAccess: models, vba: vega, proxy: &objectTypeProxyResolverStub{},
+		propertyAccess: fullPropertyAccessStub{}, rowFilters: trueRowFilterStub{},
+	}
+	objectType := interfaces.ObjectType{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+		OTID: "shipment", PrimaryKeys: []string{"id"},
+		DataProperties: []cond.DataProperty{{Name: "id", Type: "string", MappedField: cond.Field{Name: "id"}}},
+		LogicProperties: []*interfaces.LogicProperty{{
+			Name: "metric", Type: interfaces.LOGIC_PROPERTY_TYPE_METRIC,
+			DataSource: &interfaces.ResourceInfo{ID: "object_metric_v1:metric-1@1"},
+		}},
+		DataSource: &interfaces.ResourceInfo{Type: interfaces.DATA_SOURCE_TYPE_RESOURCE, ID: "resource-1"},
+	}}
+	models.EXPECT().GetObjectType(gomock.Any(), "kn", "main", "shipment").Return(objectType, true, nil).AnyTimes()
+	entries := make([]map[string]any, 32)
+	identities := make([]map[string]any, len(entries))
+	for i := range entries {
+		id := fmt.Sprintf("shipment-%02d", i)
+		entries[i] = map[string]any{"id": id}
+		identities[i] = map[string]any{"id": id}
+	}
+	vega.EXPECT().QueryResourceData(gomock.Any(), "resource-1", gomock.Any()).Return(
+		&interfaces.DatasetQueryResponse{Entries: entries, TotalCount: int64(len(entries))}, nil).Times(2)
+	metrics.EXPECT().QueryObjectMetricDataV1(gomock.Any(), "kn", "main", "metric-1", 1, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _, _, _ string, _ int,
+			query *interfaces.ObjectMetricQueryRequestV1) (interfaces.ObjectMetricDataV1, error) {
+			if len(query.InstanceIdentities) != 0 {
+				t.Fatalf("object-set query unexpectedly has identities: %#v", query.InstanceIdentities)
+			}
+			return interfaces.ObjectMetricDataV1{Entries: []interfaces.ObjectMetricDataEntryV1{{Value: 42}}}, nil
+		}).Times(2)
+	for request := 0; request < 2; request++ {
+		objects, err := service.GetObjectPropertyValue(context.Background(), &interfaces.ObjectPropertyValueQuery{
+			KNID: "kn", Branch: "main", ObjectTypeID: "shipment", Properties: []string{"metric"},
+			InstanceIdentities: identities,
+		})
+		if err != nil || len(objects.Datas) != len(entries) {
+			t.Fatalf("request %d: objects=%d err=%v", request, len(objects.Datas), err)
+		}
+		for _, object := range objects.Datas {
+			value, ok := object["metric"].(interfaces.MetricData)
+			if !ok || len(value.Datas) != 1 || len(value.Datas[0].Values) != 1 || value.Datas[0].Values[0] != 42 {
+				t.Fatalf("request %d: unexpected metric value %#v", request, object["metric"])
+			}
+		}
+	}
 }
 
 func Test_getNestedValue(t *testing.T) {
