@@ -42,6 +42,7 @@ func TestArchiveCreateErrorMapping(t *testing.T) {
 		authorized bool
 	}{
 		{"incomplete", fmt.Errorf("internal detail: %w", archivesvc.ErrIncompleteCandidates), 409, "archive_incomplete_candidates", true},
+		{"busy", archivesvc.ErrArchiveBusy, 409, "archive_busy", true},
 		{"unknown", fmt.Errorf("internal detail"), 500, "archive_failed", true},
 		{"unauthorized", archivesvc.ErrIncompleteCandidates, 403, "archive_access_denied", false},
 	} {
@@ -71,7 +72,7 @@ func TestArchiveCreateErrorMapping(t *testing.T) {
 			if strings.Contains(rec.Body.String(), "internal detail") {
 				t.Fatal("internal error leaked")
 			}
-			if tc.name == "incomplete" && !strings.Contains(rec.Body.String(), "no archive job was created and no hot data was deleted") {
+			if tc.name == "incomplete" && !strings.Contains(rec.Body.String(), "this batch was not started; earlier batches remain recorded") {
 				t.Fatal("missing safe failure explanation")
 			}
 			if source.purges != 0 {

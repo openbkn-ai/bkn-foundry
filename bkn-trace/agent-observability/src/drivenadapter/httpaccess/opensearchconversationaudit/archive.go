@@ -32,8 +32,19 @@ func NewArchiveSource(backend archiveClient, index string) *ArchiveSource {
 }
 
 func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) ([]archivesvc.Candidate, error) {
+	batch, err := source.FreezeBatch(ctx, kind, archiveRange)
+	if err != nil {
+		return nil, err
+	}
+	if batch.EligibleCount != len(batch.Candidates) {
+		return nil, fmt.Errorf("%w: log archive search incomplete (batch limit 10000)", archivesvc.ErrIncompleteCandidates)
+	}
+	return batch.Candidates, nil
+}
+
+func (source *ArchiveSource) FreezeBatch(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) (archivesvc.Batch, error) {
 	if kind != observabilityvo.ArchiveKindLog {
-		return nil, nil
+		return archivesvc.Batch{}, nil
 	}
 	body, _ := json.Marshal(map[string]any{
 		"size":             10000,
@@ -57,7 +68,7 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 	})
 	payload, err := source.backend.Search(ctx, source.index, body)
 	if err != nil {
-		return nil, err
+		return archivesvc.Batch{}, err
 	}
 	var response struct {
 		TimedOut *bool `json:"timed_out"`
@@ -76,40 +87,45 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 		} `json:"hits"`
 	}
 	if err := json.Unmarshal(payload, &response); err != nil {
-		return nil, err
+		return archivesvc.Batch{}, err
 	}
 	// A partial search must never become a successful archive of the entire
 	// requested range. Reject it before creating a job or deleting hot data.
 	if response.TimedOut == nil || response.Shards == nil || response.Shards.Failed == nil || *response.Shards.Failed < 0 {
-		return nil, fmt.Errorf("%w: log archive search lacks valid completeness metadata", archivesvc.ErrIncompleteCandidates)
+		return archivesvc.Batch{}, fmt.Errorf("%w: log archive search lacks valid completeness metadata", archivesvc.ErrIncompleteCandidates)
 	}
 	if *response.TimedOut {
-		return nil, fmt.Errorf("%w: log archive search timed out; refusing incomplete candidates", archivesvc.ErrIncompleteCandidates)
+		return archivesvc.Batch{}, fmt.Errorf("%w: log archive search timed out; refusing incomplete candidates", archivesvc.ErrIncompleteCandidates)
 	}
 	if *response.Shards.Failed > 0 {
-		return nil, fmt.Errorf("%w: log archive search has %d failed shards; refusing incomplete candidates", archivesvc.ErrIncompleteCandidates, *response.Shards.Failed)
+		return archivesvc.Batch{}, fmt.Errorf("%w: log archive search has %d failed shards; refusing incomplete candidates", archivesvc.ErrIncompleteCandidates, *response.Shards.Failed)
 	}
 	total := response.Hits.Total
 	if total == nil || total.Value == nil || *total.Value < 0 || total.Relation != "eq" {
-		return nil, fmt.Errorf("%w: log archive search did not return an exact candidate total", archivesvc.ErrIncompleteCandidates)
+		return archivesvc.Batch{}, fmt.Errorf("%w: log archive search did not return an exact candidate total", archivesvc.ErrIncompleteCandidates)
 	}
-	if *total.Value > len(response.Hits.Hits) {
-		return nil, fmt.Errorf("%w: log archive search incomplete: returned %d of %d eligible records (batch limit 10000)", archivesvc.ErrIncompleteCandidates, len(response.Hits.Hits), *total.Value)
+	if len(response.Hits.Hits) != min(*total.Value, 10000) {
+		return archivesvc.Batch{}, fmt.Errorf("%w: log archive batch has inconsistent candidate count", archivesvc.ErrIncompleteCandidates)
 	}
-	if *total.Value < len(response.Hits.Hits) {
-		return nil, fmt.Errorf("%w: log archive search total is inconsistent with returned candidates: total %d, returned %d", archivesvc.ErrIncompleteCandidates, *total.Value, len(response.Hits.Hits))
-	}
+	seen := make(map[string]bool, len(response.Hits.Hits))
 	candidates := make([]archivesvc.Candidate, 0, len(response.Hits.Hits))
 	for _, hit := range response.Hits.Hits {
+		if hit.ID == "" || seen[hit.ID] {
+			return archivesvc.Batch{}, fmt.Errorf("%w: missing or duplicate log identity", archivesvc.ErrIncompleteCandidates)
+		}
+		seen[hit.ID] = true
 		var value struct {
 			CreatedAt time.Time `json:"@timestamp"`
 		}
 		if err := json.Unmarshal(hit.Source, &value); err != nil {
-			return nil, err
+			return archivesvc.Batch{}, err
+		}
+		if value.CreatedAt.IsZero() || !value.CreatedAt.Before(archiveRange.To) {
+			return archivesvc.Batch{}, fmt.Errorf("%w: candidate timestamp outside frozen cutoff", archivesvc.ErrIncompleteCandidates)
 		}
 		candidates = append(candidates, archivesvc.Candidate{ID: hit.ID, OccurredAt: value.CreatedAt, Payload: hit.Source})
 	}
-	return candidates, nil
+	return archivesvc.Batch{Candidates: candidates, EligibleCount: *total.Value, Batched: true}, nil
 }
 
 // Count returns the exact eligible document count without materializing log
@@ -158,5 +174,34 @@ func (source *ArchiveSource) Purge(ctx context.Context, kind observabilityvo.Arc
 	if err != nil {
 		return fmt.Errorf("encode frozen archive document ids: %w", err)
 	}
-	return source.backend.DeleteByQuery(ctx, source.index, body)
+	if err := source.backend.DeleteByQuery(ctx, source.index, body); err != nil {
+		return err
+	}
+	check, err := json.Marshal(map[string]any{"size": 0, "track_total_hits": true, "query": map[string]any{"ids": map[string]any{"values": ids}}})
+	if err != nil {
+		return err
+	}
+	raw, err := source.backend.Search(ctx, source.index, check)
+	if err != nil {
+		return err
+	}
+	var result struct {
+		TimedOut *bool `json:"timed_out"`
+		Shards   *struct {
+			Failed *int `json:"failed"`
+		} `json:"_shards"`
+		Hits struct {
+			Total *struct {
+				Value    *int   `json:"value"`
+				Relation string `json:"relation"`
+			} `json:"total"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return fmt.Errorf("decode archive cleanup verification: %w", err)
+	}
+	if result.TimedOut == nil || *result.TimedOut || result.Shards == nil || result.Shards.Failed == nil || *result.Shards.Failed != 0 || result.Hits.Total == nil || result.Hits.Total.Value == nil || result.Hits.Total.Relation != "eq" || *result.Hits.Total.Value != 0 {
+		return fmt.Errorf("archive cleanup could not verify all frozen IDs absent")
+	}
+	return nil
 }

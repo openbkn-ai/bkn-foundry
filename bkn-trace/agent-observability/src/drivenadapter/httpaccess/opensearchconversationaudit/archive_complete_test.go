@@ -19,13 +19,20 @@ import (
 )
 
 type archiveSafetyClient struct {
-	response   []byte
-	body       []byte
-	purgeCalls int
+	response        []byte
+	body            []byte
+	purgeCalls      int
+	cleanupResponse []byte
 }
 
 func (c *archiveSafetyClient) Search(_ context.Context, _ string, body []byte) ([]byte, error) {
 	c.body = body
+	if c.purgeCalls > 0 {
+		if c.cleanupResponse != nil {
+			return c.cleanupResponse, nil
+		}
+		return []byte(`{"timed_out":false,"_shards":{"failed":0},"hits":{"total":{"value":0,"relation":"eq"}}}`), nil
+	}
 	return c.response, nil
 }
 func (c *archiveSafetyClient) DeleteByQuery(context.Context, string, []byte) error {
@@ -71,7 +78,12 @@ func TestArchiveCreateRejectsIncompleteOrUntrustedSearchWithoutWritesOrPurge(t *
 			store := &archiveSafetyStore{}
 			jobs := archivesvc.NewMemoryStore()
 			service := archivesvc.New(jobs, NewArchiveSource(client, "logs"), store, archivesvc.Options{Now: func() time.Time { return time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC) }, Location: time.UTC})
-			_, err := service.Create(context.Background(), observabilityvo.ArchiveKindLog)
+			var err error
+			if tc.name == "over_limit" {
+				_, err = NewArchiveSource(client, "logs").Freeze(context.Background(), observabilityvo.ArchiveKindLog, observabilityvo.ArchiveRange{To: time.Date(2026, 10, 23, 0, 0, 0, 0, time.UTC)})
+			} else {
+				_, err = service.Create(context.Background(), observabilityvo.ArchiveKindLog)
+			}
 			if !errors.Is(err, archivesvc.ErrIncompleteCandidates) || !strings.Contains(err.Error(), tc.reason) {
 				t.Fatalf("want diagnostic %q, got %v", tc.reason, err)
 			}

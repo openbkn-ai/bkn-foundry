@@ -18,10 +18,11 @@ type ArchiveOverviewResponse struct {
 }
 
 type ArchiveJobResponse struct {
-	ArchiveJobID string `json:"archive_job_id"`
-	ArchiveKind  string `json:"archive_kind"`
-	Status       string `json:"status"`
-	Range        struct {
+	BatchProgress *archivesvc.BatchProgress `json:"batch_progress,omitempty"`
+	ArchiveJobID  string                    `json:"archive_job_id"`
+	ArchiveKind   string                    `json:"archive_kind"`
+	Status        string                    `json:"status"`
+	Range         struct {
 		From *string `json:"from"`
 		To   string  `json:"to"`
 	} `json:"range"`
@@ -31,7 +32,7 @@ type ArchiveJobResponse struct {
 }
 
 func NewArchiveJob(job archivesvc.Job) ArchiveJobResponse {
-	response := ArchiveJobResponse{ArchiveJobID: job.ID, ArchiveKind: string(job.Kind), Status: string(job.Status), CandidateCount: job.CandidateCount, ManifestRef: job.ManifestRef, ErrorMessage: job.ErrorMessage}
+	response := ArchiveJobResponse{BatchProgress: job.BatchProgress, ArchiveJobID: job.ID, ArchiveKind: string(job.Kind), Status: string(job.Status), CandidateCount: job.CandidateCount, ManifestRef: job.ManifestRef, ErrorMessage: job.ErrorMessage}
 	response.Range.To = job.Range.To.Format("2006-01-02T15:04:05Z07:00")
 	if !job.Range.From.IsZero() {
 		value := job.Range.From.Format("2006-01-02T15:04:05Z07:00")

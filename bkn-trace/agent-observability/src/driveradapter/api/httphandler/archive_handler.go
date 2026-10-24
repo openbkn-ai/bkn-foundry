@@ -62,8 +62,10 @@ func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.Han
 		job, err := handler.service.Create(r.Context(), kind)
 		if err != nil {
 			switch {
+			case errors.Is(err, archivesvc.ErrArchiveBusy):
+				writeObservabilityError(w, r, http.StatusConflict, "archive_busy", "archive operation is already running")
 			case errors.Is(err, archivesvc.ErrIncompleteCandidates):
-				writeObservabilityError(w, r, http.StatusConflict, "archive_incomplete_candidates", "archive candidates are incomplete, unverifiable, or exceed the batch limit; no archive job was created and no hot data was deleted")
+				writeObservabilityError(w, r, http.StatusConflict, "archive_incomplete_candidates", "archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded")
 			case errors.Is(err, archivesvc.ErrNothingToArchive):
 				writeObservabilityError(w, r, http.StatusConflict, "archive_nothing_to_do", "no eligible records are available")
 			case errors.Is(err, archivesvc.ErrCleanupRequired):
