@@ -61,6 +61,12 @@ type Deps struct {
 	ClientAdmin ClientManager
 	// OAuthAccessOrigins persists and reconciles BKN Studio browser origins.
 	OAuthAccessOrigins *oauthorigin.Service
+	// ConnectedClients lists and revokes self-registered OAuth clients. Defaults
+	// to Hydra when nil (production); tests inject a stub.
+	ConnectedClients ConnectedClientManager
+	// OAuthDynamicRegistration, when set, lets MCP clients discover the sign-in
+	// flow and register themselves (see oauthregister.go). Nil leaves it off.
+	OAuthDynamicRegistration *OAuthDynamicRegistration
 	// License is the cluster license hub. When nil, the license admin and
 	// internal distribution endpoints are not mounted.
 	License *license.Service
@@ -130,6 +136,11 @@ func New(deps Deps) *gin.Engine {
 	// hydra login/consent/device provider pages.
 	if deps.Provider != nil && deps.Hydra != nil {
 		registerAuth(r, deps.Provider, deps.Hydra, deps.AccessLog, deps.HydraBrowserPublicURL)
+	}
+	// MCP sign-in: discovery documents and self-registration, unauthenticated
+	// by design — a client registers before anyone has signed in.
+	if reg := deps.OAuthDynamicRegistration; reg != nil && reg.Registrar != nil {
+		registerOAuthDynamicRegistration(r, *reg)
 	}
 
 	// Internal user-directory reads (name resolution, batch lookups) — ClusterIP.
@@ -283,6 +294,9 @@ func New(deps Deps) *gin.Engine {
 		if deps.OAuthAccessOrigins != nil {
 			registerOAuthAccessOriginAdmin(admin, deps.OAuthAccessOrigins, deps.Enforcer)
 		}
+		if connected := connectedClientManager(deps); connected != nil {
+			registerAdminConnectedClients(admin, connected, deps.Enforcer)
+		}
 		// Cluster license hub management (import/activate/remove + detail).
 		if deps.License != nil {
 			registerLicenseAdmin(admin, deps.License, deps.Enforcer)
@@ -349,6 +363,10 @@ func New(deps Deps) *gin.Engine {
 		// belongs on the raw-verifier group with the rest of the mutating /me
 		// surface — and it must be audited like any other authorization change.
 		registerMeObjectGrants(meWrites, deps.Enforcer, deps.DB, deps.Directory, deps.AuthorizationResources, permissionRequests)
+		// Clients the caller connected by signing in from an MCP agent.
+		if connected := connectedClientManager(deps); connected != nil {
+			registerMeConnectedClients(meWrites, connected)
+		}
 		// Self-service AppKey management (issue/list/revoke own keys).
 		if apiKeys != nil {
 			registerMeAPIKeys(meWrites, apiKeys)
@@ -360,4 +378,14 @@ func New(deps Deps) *gin.Engine {
 	}
 
 	return r
+}
+
+func connectedClientManager(deps Deps) ConnectedClientManager {
+	if deps.ConnectedClients != nil {
+		return deps.ConnectedClients
+	}
+	if deps.Hydra != nil {
+		return deps.Hydra
+	}
+	return nil
 }

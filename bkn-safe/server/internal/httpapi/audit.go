@@ -742,6 +742,10 @@ func auditAction(method, fullPath string) string {
 		return "reconcile_access_origins"
 	case "/api/safe/v1/admin/oauth/access-origins/:id":
 		return "remove_access_origin"
+	case "/api/safe/v1/admin/oauth/clients/:client_id":
+		return "remove_client"
+	case "/api/safe/v1/me/oauth/clients/:client_id":
+		return "disconnect_client"
 	case "/api/safe/v1/me/permission-requests/:id/cancel":
 		return "cancel"
 	case "/api/safe/v1/me/permission-requests/:id/decision":

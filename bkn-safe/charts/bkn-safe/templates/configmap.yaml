@@ -52,6 +52,11 @@ data:
   SAFE_HYDRA_PUBLIC_URL: {{ .Values.config.hydra.publicURL | quote }}
   SAFE_HYDRA_BROWSER_PUBLIC_URL: {{ include "bkn-safe.hydraBrowserPublicURL" . | quote }}
   SAFE_OAUTH_STUDIO_BASELINE_REDIRECT_URIS: {{ include "bkn-safe.studioRedirectURIs" . | quote }}
+  {{- $dcr := (.Values.config.oauth | default dict).dynamicRegistration | default dict }}
+  SAFE_OAUTH_DYNAMIC_REGISTRATION_ENABLED: {{ $dcr.enabled | default false | quote }}
+  SAFE_OAUTH_DYNAMIC_REGISTRATION_REDIRECT_ORIGINS: {{ $dcr.allowedRedirectOrigins | default list | toJson | quote }}
+  {{- /* 0 means "no cap", so a plain `default` (which treats 0 as unset) would not do. */}}
+  SAFE_OAUTH_DYNAMIC_REGISTRATION_RATE_PER_MINUTE: {{ ternary $dcr.ratePerMinute 10 (hasKey $dcr "ratePerMinute") | quote }}
   SAFE_LDAP_URL: {{ .Values.config.ldap.url | quote }}
   SAFE_LDAP_BIND_DN: {{ .Values.config.ldap.bindDN | quote }}
   {{- /* SAFE_LDAP_BIND_PASSWORD and BKN_SAFE_INITIAL_PASSWORD are NOT here —

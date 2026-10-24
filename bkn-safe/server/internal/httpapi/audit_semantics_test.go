@@ -252,6 +252,8 @@ func TestAuditActionUsesStableBusinessSemantics(t *testing.T) {
 		{http.MethodPost, "/api/safe/v1/admin/oauth/access-origins", "add_access_origin"},
 		{http.MethodPost, "/api/safe/v1/admin/oauth/access-origins/reconcile", "reconcile_access_origins"},
 		{http.MethodDelete, "/api/safe/v1/admin/oauth/access-origins/:id", "remove_access_origin"},
+		{http.MethodDelete, "/api/safe/v1/admin/oauth/clients/:client_id", "remove_client"},
+		{http.MethodDelete, "/api/safe/v1/me/oauth/clients/:client_id", "disconnect_client"},
 		{http.MethodPost, "/api/safe/v1/me/permission-requests/:id/cancel", "cancel"},
 		{http.MethodPost, "/api/safe/v1/me/permission-requests/:id/decision", "decide"},
 		{http.MethodPut, "/api/safe/v1/me", "update_profile"},

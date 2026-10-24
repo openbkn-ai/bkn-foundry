@@ -81,6 +81,14 @@ ingress:
     # each gated call site. Without this path the frontend gets the gateway's
     # own 404 and has to guess what the deployment can do.
     - /api/safe/v1/capabilities
+    # MCP client sign-in (config.oauth.dynamicRegistration). An MCP client such
+    # as WorkBuddy reads the two discovery documents, registers itself and then
+    # opens the browser on hydra's /oauth2/auth. Registration is unauthenticated
+    # by design and bkn-safe admits only public, sign-in-required clients with
+    # loopback callbacks. With the feature off, these answer 404 from bkn-safe.
+    - /api/safe/v1/oauth/register
+    - /.well-known/oauth-authorization-server
+    - /.well-known/oauth-protected-resource
   # hydra public OAuth2/OIDC endpoints exposed at the gateway, routed to the
   # paired hydra public service (port 4444): token, device authorization,
   # discovery, jwks, userinfo. Replaces the retired ISF ingress's /oauth2/* rules.
@@ -170,6 +178,21 @@ config:
     # Canonical browser-facing issuer origin. Normally derived from
     # accessAddress; set this only for an external Hydra deployment without it.
     browserPublicURL: ""
+  oauth:
+    # MCP clients (WorkBuddy, Claude Code, Cursor, ...) connect to the Context
+    # Loader MCP endpoint with only its URL: they register themselves and the
+    # user signs in once in the browser; the client then renews its own token.
+    # Hydra's built-in dynamic registration stays off — bkn-safe takes the
+    # registrations and creates only public clients that must sign a user in
+    # (authorization_code + PKCE, refresh allowed; no client_credentials).
+    dynamicRegistration:
+      enabled: true
+      # Callback origins admitted beyond loopback (http://127.0.0.1:*,
+      # http://localhost:*, http://[::1]:*), e.g. a web-hosted agent's
+      # callback origin. Desktop agents need nothing here.
+      allowedRedirectOrigins: []
+      # Registrations per client IP per minute; 0 disables the cap.
+      ratePerMinute: 10
   ldap:
     url: ""                 # empty = LDAP federation disabled
     bindDN: ""
