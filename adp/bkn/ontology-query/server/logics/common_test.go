@@ -1144,14 +1144,14 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "membership_date",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "2026-10-19"},
+						Name:      "membership_date",
+						Operation: cond.OperationEq,
+						Value:     "2026-10-19",
 					},
 					{
-						Name:        "business_key",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "ORDER-001"},
+						Name:      "business_key",
+						Operation: cond.OperationEq,
+						Value:     "ORDER-001",
 					},
 				},
 			}
@@ -1179,14 +1179,14 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "employee_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "U001"},
+						Name:      "employee_code",
+						Operation: cond.OperationEq,
+						Value:     "U001",
 					},
 					{
-						Name:        "employee_org_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+						Name:      "employee_org_code",
+						Operation: cond.OperationEq,
+						Value:     "A",
 					},
 				},
 			}
@@ -1207,14 +1207,14 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "employee_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "U001"},
+						Name:      "employee_code",
+						Operation: cond.OperationEq,
+						Value:     "U001",
 					},
 					{
-						Name:        "employee_org_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+						Name:      "employee_org_code",
+						Operation: cond.OperationEq,
+						Value:     "A",
 					},
 				},
 			}
@@ -1236,14 +1236,14 @@ func Test_CheckViewDataMatchesCondition(t *testing.T) {
 				Operation: cond.OperationAnd,
 				SubConds: []*cond.CondCfg{
 					{
-						Name:        "project_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "PR001"},
+						Name:      "project_code",
+						Operation: cond.OperationEq,
+						Value:     "PR001",
 					},
 					{
-						Name:        "project_org_code",
-						Operation:   cond.OperationEq,
-						ValueOptCfg: cond.ValueOptCfg{Value: "A"},
+						Name:      "project_org_code",
+						Operation: cond.OperationEq,
+						Value:     "A",
 					},
 				},
 			}

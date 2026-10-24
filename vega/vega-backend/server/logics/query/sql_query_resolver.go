@@ -14,7 +14,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -103,7 +103,7 @@ func (r *sqlQueryResolver) ResolveSQLQueryResource(ctx context.Context, id strin
 		return nil, "", err
 	}
 	if resource == nil {
-		return nil, "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound)
+		return nil, "", httperrors.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Query_ResourceNotFound)
 	}
 	if resource.ID != id || resource.CatalogID == "" || resource.UpdateTime <= 0 {
 		return nil, "", queryResolverError(qm.ErrorConfiguration, qm.Origin{ResourceID: id}, "资源元数据或版本无效")
@@ -248,5 +248,5 @@ func queryResolverError(kind qm.ErrorKind, origin qm.Origin, message string) err
 	return &qm.CompileError{Kind: kind, Origin: origin, Message: message}
 }
 func queryResolverForbidden(ctx context.Context) error {
-	return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+	return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 }
