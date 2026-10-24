@@ -12,6 +12,10 @@ paths:
     $ref: ../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1trial
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data:
     $ref: ../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}~1data
+  /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data/drill-through:
+    $ref: ../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1{metric_id}~1data~1drill-through
+  /v1/knowledge-networks/{kn_id}/object-metrics/trial/drill-through:
+    $ref: ../../../adp/bkn/ontology-query/docs/api/object-metrics-v1.openapi.yaml#/paths/~1v1~1knowledge-networks~1{kn_id}~1object-metrics~1trial~1drill-through
 components:
   securitySchemes:
     bearerAuth:

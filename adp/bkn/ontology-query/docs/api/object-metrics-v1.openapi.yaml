@@ -70,8 +70,8 @@ paths:
         "400": { description: "Invalid runtime filter, dimension, time range, or version. An object-data source property error during execution includes metadata.reason=property_unavailable and does not distinguish inaccessible from unknown properties." }
         "403": { description: "The caller cannot query this metric, or no source property can be returned. The latter includes metadata.reason=property_unavailable." }
         "404": { description: Metric or referenced ontology element not found. }
-        "409": { description: The requested version is not published, or the result changed between pages. }
-        "422": { description: The immutable definition cannot be executed against current data, or HAVING was requested on an incomplete result. }
+        "409": { description: "The requested version is not published, or the result changed between pages." }
+        "422": { description: "The immutable definition cannot be executed against current data, or HAVING was requested on an incomplete result." }
   /v1/knowledge-networks/{kn_id}/object-metrics/{metric_id}/data/drill-through:
     post:
       operationId: drillThroughObjectMetricData
@@ -89,6 +89,9 @@ paths:
           in: query
           required: true
           schema: { type: integer, minimum: 1 }
+        - name: branch
+          in: query
+          schema: { type: string, default: main }
       requestBody:
         required: true
         content:
@@ -112,6 +115,9 @@ paths:
           in: path
           required: true
           schema: { type: string }
+        - name: branch
+          in: query
+          schema: { type: string, default: main }
       requestBody:
         required: true
         content:
@@ -134,11 +140,149 @@ components:
   schemas:
     PropertyRef:
       type: object
+      additionalProperties: false
       required: [object_type_id, property_name]
       properties:
-        object_type_id: { type: string }
-        property_name: { type: string }
-        relation_path_alias: { type: string }
+        object_type_id: { type: string, minLength: 1 }
+        property_name: { type: string, minLength: 1 }
+        relation_path_alias: { type: string, minLength: 1 }
+    ObjectMetricPropertyOperand:
+      type: object
+      additionalProperties: false
+      required: [source, property_ref]
+      properties:
+        source: { const: property }
+        property_ref: { $ref: "#/components/schemas/PropertyRef" }
+    ObjectMetricLiteralOperand:
+      type: object
+      additionalProperties: false
+      required: [source, value_type, value]
+      properties:
+        source: { const: literal }
+        value_type:
+          type: string
+          enum: [int64, decimal, boolean, string, date, datetime, duration]
+          description: date uses YYYY-MM-DD, datetime uses RFC 3339, and duration is numeric.
+        value:
+          description: Must match value_type; int64 values must be integers.
+    ObjectMetricOperand:
+      oneOf:
+        - { $ref: "#/components/schemas/ObjectMetricPropertyOperand" }
+        - { $ref: "#/components/schemas/ObjectMetricLiteralOperand" }
+    ObjectMetricScalarPredicate:
+      type: object
+      additionalProperties: false
+      required: [node_type, left, comparison_operator, right]
+      properties:
+        node_type: { const: predicate }
+        left: { $ref: "#/components/schemas/ObjectMetricOperand" }
+        comparison_operator:
+          type: string
+          enum: [eq, neq, gt, gte, lt, lte, contains, not_contains, starts_with, ends_with, before, before_or_equal, after, after_or_equal]
+        right:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { $ref: "#/components/schemas/ObjectMetricOperand" }
+    ObjectMetricMembershipPredicate:
+      type: object
+      additionalProperties: false
+      required: [node_type, left, comparison_operator, right]
+      properties:
+        node_type: { const: predicate }
+        left: { $ref: "#/components/schemas/ObjectMetricOperand" }
+        comparison_operator: { type: string, enum: [in, not_in] }
+        right:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ObjectMetricOperand" }
+    ObjectMetricRangePredicate:
+      type: object
+      additionalProperties: false
+      required: [node_type, left, comparison_operator, right]
+      properties:
+        node_type: { const: predicate }
+        left: { $ref: "#/components/schemas/ObjectMetricOperand" }
+        comparison_operator: { type: string, enum: [between, not_between] }
+        right:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: Inclusive lower and upper bounds, in that order.
+          items: { $ref: "#/components/schemas/ObjectMetricOperand" }
+    ObjectMetricUnaryPredicate:
+      type: object
+      additionalProperties: false
+      required: [node_type, left, comparison_operator]
+      properties:
+        node_type: { const: predicate }
+        left: { $ref: "#/components/schemas/ObjectMetricOperand" }
+        comparison_operator: { type: string, enum: [is_empty, is_not_empty, is_null, is_not_null, is_true, is_false] }
+        right: { type: array, maxItems: 0, description: Must be omitted or empty for a unary comparison. }
+    ObjectMetricPredicate:
+      oneOf:
+        - { $ref: "#/components/schemas/ObjectMetricScalarPredicate" }
+        - { $ref: "#/components/schemas/ObjectMetricMembershipPredicate" }
+        - { $ref: "#/components/schemas/ObjectMetricRangePredicate" }
+        - { $ref: "#/components/schemas/ObjectMetricUnaryPredicate" }
+    ObjectMetricBooleanGroup:
+      type: object
+      additionalProperties: false
+      required: [node_type, boolean_operator, children]
+      properties:
+        node_type: { const: group }
+        boolean_operator: { type: string, enum: [and, or] }
+        children:
+          type: array
+          minItems: 2
+          items: { $ref: "#/components/schemas/ObjectMetricCondition" }
+    ObjectMetricNotGroup:
+      type: object
+      additionalProperties: false
+      required: [node_type, boolean_operator, children]
+      properties:
+        node_type: { const: group }
+        boolean_operator: { const: not }
+        children:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items: { $ref: "#/components/schemas/ObjectMetricCondition" }
+    ObjectMetricCondition:
+      description: >-
+        Recursive Object Metric V1 condition AST. Runtime property operands must exactly match a
+        PropertyRef declared by the published metric in query_capabilities.analysis_dimensions or
+        query_capabilities.time_dimensions. Literal and property operand types must be compatible.
+        Text operators require string properties, is_true/is_false require boolean properties, and
+        before/after operators require date or datetime properties.
+      oneOf:
+        - { $ref: "#/components/schemas/ObjectMetricPredicate" }
+        - { $ref: "#/components/schemas/ObjectMetricBooleanGroup" }
+        - { $ref: "#/components/schemas/ObjectMetricNotGroup" }
+      examples:
+        - node_type: predicate
+          left: { source: property, property_ref: { object_type_id: order_item, property_name: sku_id } }
+          comparison_operator: eq
+          right: [{ source: literal, value_type: int64, value: 1 }]
+        - node_type: predicate
+          left: { source: property, property_ref: { object_type_id: order, property_name: status } }
+          comparison_operator: in
+          right:
+            - { source: literal, value_type: string, value: paid }
+            - { source: literal, value_type: string, value: shipped }
+        - node_type: group
+          boolean_operator: and
+          children:
+            - node_type: predicate
+              left: { source: property, property_ref: { object_type_id: order, property_name: amount } }
+              comparison_operator: gte
+              right: [{ source: literal, value_type: decimal, value: 100 }]
+            - node_type: group
+              boolean_operator: not
+              children:
+                - node_type: predicate
+                  left: { source: property, property_ref: { object_type_id: order, property_name: cancelled_at } }
+                  comparison_operator: is_null
     ObjectMetricQuery:
       type: object
       additionalProperties: false
@@ -147,9 +291,7 @@ components:
           type: array
           items: { type: object, additionalProperties: true }
         filter:
-          type: object
-          description: Typed condition AST restricted to the published query capabilities.
-          additionalProperties: true
+          $ref: "#/components/schemas/ObjectMetricCondition"
         group_by:
           type: array
           description: Runtime dimensions selected from the metric definition's query_capabilities.analysis_dimensions. Fixed grain is always applied and cannot be removed.
@@ -162,7 +304,7 @@ components:
           properties:
             operator: { type: string, enum: [eq, ne, gt, gte, lt, lte, is_null, is_not_null] }
             value: { description: Required except for is_null and is_not_null; must match the result physical type. }
-            unit_code: { type: string, description: When provided, must equal the result unit code. }
+            unit_code: { type: string, description: "When provided, must equal the result unit code." }
         order_by:
           type: array
           description: Sorts final rows. Ties are broken by the stable result identity; nulls sort last.
@@ -190,6 +332,8 @@ components:
           properties:
             parent_query: { $ref: "#/components/schemas/ObjectMetricQuery" }
             bucket_key: { type: string }
+      dependentRequired:
+        cursor: [page_size]
     ObjectMetricTrial:
       type: object
       additionalProperties: false
@@ -202,7 +346,7 @@ components:
         query: { $ref: "#/components/schemas/ObjectMetricQuery" }
     ObjectMetricData:
       type: object
-      required: [model, entries, status, total_count, overall_ms]
+      required: [model, entries, status, total_count, overall_ms, evaluated_at]
       properties:
         model:
           type: object
@@ -240,7 +384,7 @@ components:
         status: { type: string, enum: [ok, no_data, unavailable, partial] }
         empty_reason: { type: string, enum: [filtered_out], description: Present when HAVING excluded every computed row. }
         total_count: { type: integer, description: Number of final rows after HAVING and before pagination. }
-        next_cursor: { type: string, description: Opaque cursor for the next page, if any. }
+        next_cursor: { type: string, description: "Opaque cursor for the next page, if any." }
         warnings:
           type: array
           items: { type: string }
