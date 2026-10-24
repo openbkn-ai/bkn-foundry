@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Trace scanner Tool matching uses the authorized receipt snapshot after archive purge removes SQL receipts. PIT cleanup failures no longer discard complete successful results; deterministic scan-limit errors return 422 while deadlines return 503. (#2144)
+
+- Tool-only and Service+Tool Trace filtering use scoped canonical identity pagination instead of the global 2,000-candidate scan. Root tool metadata remains consistent across filter toggles and bounded projections, sharing the existing root-service metadata roundtrip. Migration 037 adds a nonunique receipt lookup index; its rollback still requires a compatible migration manifest. (#2144)
+
+- Core Trace lists add an optional bounded PIT scanner for Status/ErrorKeyword, their Service/Tool combinations, and shared business-network scopes without unsupported content filters. Complete Interaction authorization and authorized-tuple SQL reads protect root-service/error metadata; keywords match the final 512-code-point summary. Deterministic resource refusals return HTTP 422 `SUMMARY_QUERY_BUDGET_EXCEEDED`; query deadlines return HTTP 503 `SUMMARY_QUERY_TIMEOUT`; non-global scanned lists keep span statistics unavailable because the old statistics port is unscoped. No additional migration or materialized read model is introduced; ordinary list/detail fast paths remain unchanged. See the README for budgets, PIT permissions and snapshot limits; unsupported filter combinations retain their potentially partial compatibility behavior. (#2144)
+
 - Service-filtered Trace lists compute the total and nonempty page in one SQL statement, reducing repeated canonical service lookups while preserving cursor totals and empty-page behavior. Added isolated MariaDB/OpenSearch capacity coverage. (#2150)
 
 - Interaction operation reads support a payload-free `view=summary` while retaining the default full response. Service-only Trace filtering now uses canonical MariaDB identity count/page queries instead of a fixed projection candidate scan. (#2005, #2143, #2145)

@@ -3710,8 +3710,16 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
       summary: List technical trace executions

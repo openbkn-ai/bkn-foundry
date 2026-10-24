@@ -2758,7 +2758,7 @@ func TestCanonicalTraceIdentityPrefersUsefulMessageBeforeFiltering(t *testing.T)
 	}
 	service := &Service{sessionStore: sessions}
 	traces := []evidencevo.TraceSummary{{TraceID: "trace", ConversationID: "conv", InteractionID: "int", Status: "error"}}
-	if err := service.applyCanonicalTraceIdentity(context.Background(), traces); err != nil {
+	if err := service.applyCanonicalTraceIdentity(context.Background(), traces, summaryScope("acct_demo")); err != nil {
 		t.Fatal(err)
 	}
 	if traces[0].ErrorSummary != "对象不存在：物料 U00-000160" {
@@ -2788,7 +2788,7 @@ func TestCanonicalTraceFailureSummaryUsesUsefulMessageAndExactAttempt(t *testing
 		{TraceID: "trace", ConversationID: "conv", InteractionID: "int", Status: "completed"},
 		{TraceID: "trace", ConversationID: "conv", InteractionID: "int", Status: "error", ErrorSummary: "existing safe summary"},
 	}
-	if err := service.applyCanonicalTraceIdentity(context.Background(), traces); err != nil {
+	if err := service.applyCanonicalTraceIdentity(context.Background(), traces, summaryScope("acct_demo")); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"字段不存在：available_qty", "TOOL_FAILED", "", "", "existing safe summary"}

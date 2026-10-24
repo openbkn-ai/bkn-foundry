@@ -6,6 +6,7 @@
 package httphandler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
 // ListTraceExecutions returns the Community technical Trace list. Business
@@ -40,6 +42,8 @@ import (
 // @Success 200 {object} evidencevo.TraceSummaryPage
 // @Failure 400 {object} rdto.ErrorResponse
 // @Failure 401 {object} rdto.ErrorResponse
+// @Failure 422 {object} rdto.ErrorResponse
+// @Failure 503 {object} rdto.ErrorResponse
 // @Failure 500 {object} rdto.ErrorResponse
 // @Router /traces [get]
 func (h *EvidenceHandler) ListTraceExecutions(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +137,14 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 }
 
 func writeSummaryQueryError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "SUMMARY_QUERY_TIMEOUT", Message: "trace query exceeded its time budget; narrow the time range or filters before retrying"})
+		return
+	}
+	if errors.Is(err, iprojectionsource.ErrSummaryScanBudgetExceeded) {
+		writeJSON(w, r, http.StatusUnprocessableEntity, rdto.ErrorResponse{Code: "SUMMARY_QUERY_BUDGET_EXCEEDED", Message: "trace query exceeds its resource budget; narrow the time range or filters, or use cursor pagination instead of a deep page"})
+		return
+	}
 	if errors.Is(err, evidencesvc.ErrSummaryCursorInvalid) {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "cursor is invalid"})
 		return
