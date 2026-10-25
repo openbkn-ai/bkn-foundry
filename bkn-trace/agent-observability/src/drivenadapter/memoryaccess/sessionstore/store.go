@@ -19,18 +19,19 @@ import (
 )
 
 type Store struct {
-	evidenceReader func([]string) ([]ledgervo.Event, error)
-	mu             sync.Mutex
-	now            func() time.Time
-	conversations  map[string]sessionvo.Conversation
-	interactions   map[string]sessionvo.Interaction
-	operations     map[string]sessionvo.Operation
-	operationCalls map[string]sessionvo.OperationCallFact
-	receipts       map[string]sessionvo.Receipt
-	idempotencies  map[string]sessionvo.IdempotencyRecord
-	projections    map[uint64]sessionvo.ProjectionMutation
-	nextProjection uint64
-	revisions      map[string]sessionvo.AssemblyRevision
+	integrityRetries map[integrityRetryKey]isessionstore.RecordIntegrityRetry
+	evidenceReader   func([]string) ([]ledgervo.Event, error)
+	mu               sync.Mutex
+	now              func() time.Time
+	conversations    map[string]sessionvo.Conversation
+	interactions     map[string]sessionvo.Interaction
+	operations       map[string]sessionvo.Operation
+	operationCalls   map[string]sessionvo.OperationCallFact
+	receipts         map[string]sessionvo.Receipt
+	idempotencies    map[string]sessionvo.IdempotencyRecord
+	projections      map[uint64]sessionvo.ProjectionMutation
+	nextProjection   uint64
+	revisions        map[string]sessionvo.AssemblyRevision
 }
 
 func New() *Store {

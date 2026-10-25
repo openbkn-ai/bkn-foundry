@@ -8,8 +8,6 @@ package evidencesvc
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sync"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
@@ -17,58 +15,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
-const (
-	recordIntegrityRetryInitial = 30 * time.Second
-	recordIntegrityRetryMax     = 5 * time.Minute
-	recordIntegrityRetryLimit   = 1000
+// These categories intentionally omit dependency errors and record identifiers.
+// Supervisors can distinguish failure phases through wrapping or errors.Join.
+var (
+	ErrRecordIntegrityCandidateQueryFailed    = errors.New("record integrity candidate query failed")
+	ErrRecordIntegrityClaimFailed             = errors.New("record integrity claim failed")
+	ErrRecordIntegrityResultPersistenceFailed = errors.New("record integrity result persistence failed")
+	ErrRecordIntegrityInspectionDeferred      = errors.New("record integrity inspection deferred or exhausted")
 )
-
-// Retry state is process-local: restart or eviction permits another attempt.
-// It never changes the stored verdict or the underlying evidence.
-type recordIntegrityRetryState struct {
-	mu      sync.Mutex
-	entries map[string]recordIntegrityRetry
-}
-
-type recordIntegrityRetry struct {
-	version uint64
-	delay   time.Duration
-	after   time.Time
-}
-
-func (s *Service) recordIntegrityRetryDeferred(id string, version uint64, now time.Time) bool {
-	s.integrityRetries.mu.Lock()
-	defer s.integrityRetries.mu.Unlock()
-	retry, exists := s.integrityRetries.entries[id]
-	return exists && retry.version == version && now.Before(retry.after)
-}
-
-func (s *Service) deferRecordIntegrityRetry(id string, version uint64, now time.Time) {
-	s.integrityRetries.mu.Lock()
-	defer s.integrityRetries.mu.Unlock()
-	entries := s.integrityRetries.entries
-	if entries == nil {
-		entries = make(map[string]recordIntegrityRetry)
-		s.integrityRetries.entries = entries
-	}
-	previous, exists := entries[id]
-	delay := recordIntegrityRetryInitial
-	if exists && previous.version == version {
-		delay = min(previous.delay*2, recordIntegrityRetryMax)
-	}
-	if !exists && len(entries) >= recordIntegrityRetryLimit {
-		// Prefer evicting the candidate whose next attempt is due earliest.
-		var oldestID string
-		var earliest time.Time
-		for key, retry := range entries {
-			if earliest.IsZero() || retry.after.Before(earliest) {
-				oldestID, earliest = key, retry.after
-			}
-		}
-		delete(entries, oldestID)
-	}
-	entries[id] = recordIntegrityRetry{version: version, delay: delay, after: now.Add(delay)}
-}
 
 func storedRecordIntegrity(interaction sessionvo.Interaction) (*evidencevo.RecordIntegrity, bool, error) {
 	if interaction.ExecutionStatus == sessionvo.InteractionActive {
@@ -95,30 +49,27 @@ func storedRecordIntegrity(interaction sessionvo.Interaction) (*evidencevo.Recor
 	return sessionvo.CopyStoredRecordIntegrity(stored).Report, true, nil
 }
 
-// PersistRecordIntegrityBatch is a bounded background pass, independent of
-// business requests and page reads. A failed candidate remains uncomputed and
-// is retried after capped backoff; it does not prevent later candidates.
+// PersistRecordIntegrityBatch is a bounded background pass. Retry history and
+// claim ownership live in the store, independently of service/process lifetime.
+// No external inspection runs under a database transaction or on a page read.
 func (s *Service) PersistRecordIntegrityBatch(ctx context.Context, afterID string, limit int) (string, error) {
-	return s.persistRecordIntegrityBatch(ctx, afterID, limit, time.Now)
-}
-
-func (s *Service) persistRecordIntegrityBatch(ctx context.Context, afterID string, limit int, now func() time.Time) (string, error) {
 	if !s.currentRecordIntegrity {
 		return "", nil
 	}
-	store, ok := s.sessionStore.(isessionstore.RecordIntegrityStore)
+	candidatesStore, ok := s.sessionStore.(isessionstore.RecordIntegrityStore)
 	if !ok {
 		return "", errors.New("record integrity persistence source unavailable")
+	}
+	retries, ok := s.sessionStore.(isessionstore.RecordIntegrityRetryStore)
+	if !ok {
+		return "", errors.New("record integrity durable retry source unavailable")
 	}
 	if limit <= 0 {
 		return "", errors.New("record integrity batch limit must be positive")
 	}
-	if limit > 100 {
-		limit = 100
-	}
-	candidates, err := store.ListRecordIntegrityCandidates(ctx, afterID, limit)
+	candidates, err := candidatesStore.ListRecordIntegrityCandidates(ctx, afterID, min(limit, 100))
 	if err != nil {
-		return "", err
+		return "", errors.Join(ctx.Err(), ErrRecordIntegrityCandidateQueryFailed)
 	}
 	var nextID string
 	var failures []error
@@ -127,56 +78,116 @@ func (s *Service) persistRecordIntegrityBatch(ctx context.Context, afterID strin
 			return nextID, errors.Join(append(failures, err)...)
 		}
 		nextID = candidate.ID
-		if s.recordIntegrityRetryDeferred(candidate.ID, candidate.IntegritySourceVersion, now()) {
+		claim, acquired, err := retries.ClaimRecordIntegrityRetry(ctx, candidate.ID, candidate.IntegritySourceVersion)
+		if err != nil {
+			failures = append(failures, ErrRecordIntegrityClaimFailed)
 			continue
 		}
-		var interaction sessionvo.Interaction
-		var owner sessionvo.Owner
-		found := false
-		err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
-			var exists bool
-			interaction, exists = tx.PeekInteraction(candidate.ID)
-			if !exists || interaction.ExecutionStatus == sessionvo.InteractionActive {
-				return nil
-			}
-			conversation, exists := tx.PeekConversation(interaction.ConversationID)
-			if !exists {
-				return errors.New("record integrity candidate conversation unavailable")
-			}
-			owner, found = conversation.Owner, true
-			return nil
-		})
-		if err == nil && found {
-			// Materialization is an internal read, but artifact access must still use
-			// the canonical owner boundary. Artifact stores identify service-owned
-			// records as app records, so AccountType cannot represent this owner.
-			profile := &evidencevo.AccessProfile{
-				ActorID: owner.EffectiveSubjectID, EffectiveSubjectID: owner.EffectiveSubjectID,
-				ApplicationPrincipalID: owner.ApplicationPrincipalID, DelegationID: owner.DelegationID,
-				AccountActive: true,
-			}
-			scope := evidencevo.QueryScope{AccessProfile: profile}
-			// Every interaction retains the existing strict 128-read/32MiB bounds.
-			// A large failed interaction cannot consume another candidate's budget.
-			checkContext := context.WithValue(ctx, recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{})
-			report, applicable, version, checkErr := s.inspectAuthorizedLiveRecordIntegrity(checkContext, interaction.ID, interaction.ConversationID, owner, scope)
-			err = checkErr
-			if err == nil && (!applicable || report != nil) {
-				_, err = store.SaveStoredRecordIntegrity(ctx, interaction.ID, sessionvo.StoredRecordIntegrity{
-					SourceVersion: version, Applicable: applicable, Report: report,
-				})
-			}
+		if !acquired {
+			continue
 		}
-		if err != nil {
-			if !errors.Is(err, context.Canceled) {
-				s.deferRecordIntegrityRetry(candidate.ID, candidate.IntegritySourceVersion, now())
-			}
-			failures = append(failures, fmt.Errorf("materialize record integrity %s: %w", candidate.ID, err))
-		} else {
-			s.integrityRetries.mu.Lock()
-			delete(s.integrityRetries.entries, candidate.ID)
-			s.integrityRetries.mu.Unlock()
+		attempt, cancel := context.WithTimeout(ctx, 25*time.Second)
+		stored, reason := s.materializeClaimedRecordIntegrity(attempt, candidate)
+		if errors.Is(attempt.Err(), context.Canceled) {
+			stored, reason = nil, "attempt_canceled"
+		}
+		if errors.Is(attempt.Err(), context.DeadlineExceeded) {
+			stored, reason = nil, "attempt_timeout"
+		}
+		cancel()
+		// Cancellation must not erase a counted attempt. A short cleanup context
+		// records the outcome; a database failure leaves the lease recoverable.
+		finishContext, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		_, finishErr := retries.FinishRecordIntegrityRetry(finishContext, claim, stored, reason)
+		if finishErr != nil && stored != nil {
+			// A failed/ambiguous commit is never certified by the worker. If the
+			// first commit succeeded, its cleared token rejects this failure write.
+			_, _ = retries.FinishRecordIntegrityRetry(finishContext, claim, nil, "persistence_failed")
+		}
+		finishCancel()
+		if finishErr != nil {
+			failures = append(failures, ErrRecordIntegrityResultPersistenceFailed)
+		}
+		if reason != "" && reason != "source_changed" {
+			failures = append(failures, ErrRecordIntegrityInspectionDeferred)
 		}
 	}
-	return nextID, errors.Join(failures...)
+	return nextID, errors.Join(append(failures, ctx.Err())...)
+}
+
+func (s *Service) materializeClaimedRecordIntegrity(ctx context.Context, candidate sessionvo.Interaction) (*sessionvo.StoredRecordIntegrity, string) {
+	var interaction sessionvo.Interaction
+	var owner sessionvo.Owner
+	found := false
+	err := s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		var exists bool
+		interaction, exists = tx.PeekInteraction(candidate.ID)
+		if !exists || interaction.ExecutionStatus == sessionvo.InteractionActive {
+			return nil
+		}
+		conversation, exists := tx.PeekConversation(interaction.ConversationID)
+		if !exists {
+			return errors.New("record integrity candidate conversation unavailable")
+		}
+		owner, found = conversation.Owner, true
+		return nil
+	})
+	if err != nil || !found {
+		return nil, "snapshot_unavailable"
+	}
+	if interaction.IntegritySourceVersion != candidate.IntegritySourceVersion {
+		return nil, "source_changed"
+	}
+	// Artifact access retains the canonical owner boundary. AccountType cannot
+	// stand in for this service-owned application's identity.
+	profile := &evidencevo.AccessProfile{
+		ActorID: owner.EffectiveSubjectID, EffectiveSubjectID: owner.EffectiveSubjectID,
+		ApplicationPrincipalID: owner.ApplicationPrincipalID, DelegationID: owner.DelegationID,
+		AccountActive: true,
+	}
+	scope := evidencevo.QueryScope{AccessProfile: profile}
+	// Each interaction retains the strict 128-read/32MiB inspection limits.
+	checkContext := context.WithValue(ctx, recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{})
+	report, applicable, version, err := s.inspectAuthorizedLiveRecordIntegrity(checkContext, interaction.ID, interaction.ConversationID, owner, scope)
+	if err != nil || (applicable && report == nil) {
+		return nil, "inspection_failed"
+	}
+	if version != candidate.IntegritySourceVersion {
+		return nil, "source_changed"
+	}
+	return &sessionvo.StoredRecordIntegrity{SourceVersion: version, Applicable: applicable, Report: report}, ""
+}
+
+// GetRecordIntegrityRetryStatus is a diagnostic read of the current generation.
+// It does not inspect evidence or add work to the ordinary list/detail queries.
+// The authorization decision is identical to the persisted verdict read path.
+func (s *Service) GetRecordIntegrityRetryStatus(ctx context.Context, id string, scope evidencevo.QueryScope) (isessionstore.RecordIntegrityRetry, bool, error) {
+	interaction, _, authorized, err := s.authorizeRecordIntegrityInteraction(ctx, id, scope)
+	if err != nil || !authorized {
+		return isessionstore.RecordIntegrityRetry{}, false, err
+	}
+	store, ok := s.sessionStore.(isessionstore.RecordIntegrityRetryStore)
+	if !ok {
+		return isessionstore.RecordIntegrityRetry{}, false, errors.New("record integrity durable retry source unavailable")
+	}
+	state, exists, err := store.GetRecordIntegrityRetry(ctx, id, interaction.IntegritySourceVersion)
+	if err != nil {
+		return isessionstore.RecordIntegrityRetry{}, false, errors.New("record integrity retry status unavailable")
+	}
+	if !exists {
+		state = isessionstore.RecordIntegrityRetry{InteractionID: id, SourceVersion: interaction.IntegritySourceVersion, Status: "pending"}
+		if interaction.ExecutionStatus == sessionvo.InteractionActive {
+			state.Status = "active"
+		} else if interaction.StoredRecordIntegrity != nil {
+			// Validate historical values without re-reading live evidence.
+			if _, _, err := storedRecordIntegrity(interaction); err != nil {
+				return state, false, err
+			}
+			if interaction.StoredRecordIntegrity.SourceVersion == interaction.IntegritySourceVersion {
+				state.Status = isessionstore.RecordIntegritySucceeded
+			}
+		}
+	}
+	state.Token = ""
+	return state, true, nil
 }

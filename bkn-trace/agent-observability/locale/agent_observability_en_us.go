@@ -297,5 +297,7 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.workload requests are accepted only through the internal OpenBKN gateway":          "workload requests are accepted only through the internal OpenBKN gateway",
 		"AgentObservability.Message.workload_identity and a valid endpoint_kind are required":                          "workload_identity and a valid endpoint_kind are required",
 		"AgentObservability.Message.view must be full or summary":                                                      "view must be full or summary",
+		"AgentObservability.Message.failed to read record integrity retry status":                                      "failed to read record integrity retry status",
+		"AgentObservability.Message.record integrity status does not accept query parameters":                          "record integrity status does not accept query parameters",
 	},
 }

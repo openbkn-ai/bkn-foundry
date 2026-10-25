@@ -235,6 +235,7 @@ type integritySnapshotStore struct {
 	readErr   error
 	snapshots map[string]sessionvo.EvidenceSnapshot
 	reads     int
+	clock     func() time.Time
 }
 
 func (s *integritySnapshotStore) ReadEvidenceSnapshot(_ context.Context, id string) (sessionvo.EvidenceSnapshot, bool, error) {
@@ -737,7 +738,8 @@ func integrityArtifactWithContent(t *testing.T, id string, content any) (evidenc
 func integrityServiceForSnapshot(t *testing.T, snapshot sessionvo.EvidenceSnapshot) *Service {
 	t.Helper()
 	_, owner, now := integrityFixture()
-	store := &integritySnapshotStore{Store: memorystore.New(), snapshot: snapshot}
+	store := &integritySnapshotStore{snapshot: snapshot, clock: time.Now}
+	store.Store = memorystore.NewWithClock(func() time.Time { return store.clock() })
 	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 		tx.SaveConversation(sessionvo.Conversation{ID: "conv", Owner: owner})
 		tx.SaveInteraction(sessionvo.Interaction{ID: "int", ConversationID: "conv", ExecutionStatus: sessionvo.InteractionCompleted, CreatedAt: now})

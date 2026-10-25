@@ -162,6 +162,9 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 			`DELETE FROM bkn_trace_receipts WHERE interaction_id=?`,
 			`DELETE FROM bkn_trace_operations WHERE interaction_id=?`,
 			`DELETE FROM bkn_trace_assembly_revisions WHERE interaction_id=?`,
+			// Claim and Finish lock this same interaction first, so no retry
+			// can be inserted after this history deletion and before commit.
+			`DELETE FROM bkn_trace_record_integrity_retries WHERE interaction_id=?`,
 			`DELETE FROM bkn_trace_interactions WHERE interaction_id=?`,
 		} {
 			if _, err := tx.ExecContext(ctx, statement, id); err != nil {

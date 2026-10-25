@@ -7,8 +7,12 @@ package boot
 
 import (
 	"context"
+	"errors"
 	"log"
+	"strings"
 	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 )
 
 type recordIntegrityBatcher interface {
@@ -19,6 +23,7 @@ type recordIntegrityBatcher interface {
 // transactions. The batcher defers failed candidates across cursor passes.
 func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBatcher, interval time.Duration) {
 	cursor := ""
+	var errorLog recordIntegrityErrorLogThrottle
 	for {
 		if ctx.Err() != nil {
 			return
@@ -30,8 +35,8 @@ func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBa
 			return
 		}
 		cursor = next
-		if err != nil {
-			log.Printf("record integrity materialization batch incomplete; candidates remain pending: %v", err)
+		if errorLog.shouldLog(time.Now(), err) {
+			log.Printf("record integrity materialization batch incomplete; failure_phases=%s; infrastructure failures may not have persisted retry status", recordIntegrityFailurePhases(err))
 		}
 		timer := time.NewTimer(interval)
 		select {
@@ -41,4 +46,44 @@ func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBa
 		case <-timer.C:
 		}
 	}
+}
+
+// Only fixed phase names reach logs. Never include raw dependency errors or the
+// batch cursor: query, claim and save failures may have no durable status row.
+func recordIntegrityFailurePhases(err error) string {
+	if err == nil {
+		return ""
+	}
+	var phases []string
+	for _, phase := range []struct {
+		err  error
+		name string
+	}{
+		{evidencesvc.ErrRecordIntegrityCandidateQueryFailed, "query"},
+		{evidencesvc.ErrRecordIntegrityClaimFailed, "claim"},
+		{evidencesvc.ErrRecordIntegrityResultPersistenceFailed, "persist"},
+		{evidencesvc.ErrRecordIntegrityInspectionDeferred, "inspection"},
+	} {
+		if errors.Is(err, phase.err) {
+			phases = append(phases, phase.name)
+		}
+	}
+	if len(phases) == 0 {
+		return "unknown"
+	}
+	return strings.Join(phases, ",")
+}
+
+// Successful or skipped passes do not reset the error log window. Individual
+// failure details are available in persisted status only when its write succeeded.
+type recordIntegrityErrorLogThrottle struct {
+	nextLogAt time.Time
+}
+
+func (throttle *recordIntegrityErrorLogThrottle) shouldLog(now time.Time, err error) bool {
+	if err == nil || now.Before(throttle.nextLogAt) {
+		return false
+	}
+	throttle.nextLogAt = now.Add(5 * time.Minute)
+	return true
 }

@@ -64,7 +64,7 @@ func TestMigrationPlanUpgradesExistingCoreSchemaThroughTenantRemoval(t *testing.
 	if err != nil {
 		t.Fatalf("plan latest schema migration: %v", err)
 	}
-	if len(plan) != 17 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") ||
+	if len(plan) != 18 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") ||
 		plan[2].Version != "019" || !strings.Contains(plan[2].SQL, "bkn_trace_ee_historical_provenance_projections") ||
 		plan[3].Version != "020" || !strings.Contains(plan[3].SQL, "DROP COLUMN IF EXISTS business_domain_id") ||
 		plan[4].Version != "021" || !strings.Contains(plan[4].SQL, "bkn_trace_ee_historical_provenance_projections") ||
@@ -78,7 +78,7 @@ func TestMigrationPlanUpgradesExistingCoreSchemaThroughTenantRemoval(t *testing.
 		plan[12].Version != "034" || !strings.Contains(plan[12].SQL, "bkn_trace_evidence_migration_manifests") ||
 		plan[13].Version != "035" || !strings.Contains(plan[13].SQL, "record_integrity_version") ||
 		plan[14].Version != "036" || !strings.Contains(plan[14].SQL, "idx_bkn_trace_receipt_conversation_summary") ||
-		plan[15].Version != "037" || !strings.Contains(plan[15].SQL, "idx_bkn_trace_receipt_trace_root") || plan[16].Version != "038" || !strings.Contains(plan[16].SQL, "batch_progress LONGTEXT NULL") {
+		plan[15].Version != "037" || !strings.Contains(plan[15].SQL, "idx_bkn_trace_receipt_trace_root") || plan[16].Version != "038" || !strings.Contains(plan[16].SQL, "batch_progress LONGTEXT NULL") || plan[17].Version != "039" {
 		t.Fatalf("unexpected tenant-only schema plan: %#v", plan)
 	}
 }
@@ -136,7 +136,7 @@ func TestMigrationPlanAddsLocaleToExistingProvenanceHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan provenance locale migration: %v", err)
 	}
-	if len(plan) != 16 || plan[0].Version != "018" ||
+	if len(plan) != 17 || plan[0].Version != "018" ||
 		!strings.Contains(plan[0].SQL, "ADD COLUMN IF NOT EXISTS locale") ||
 		!strings.Contains(plan[0].SQL, "DEFAULT 'zh-CN'") ||
 		plan[1].Version != "019" || !strings.Contains(plan[1].SQL, "bkn_trace_ee_historical_provenance_tombstones") ||
@@ -150,7 +150,7 @@ func TestMigrationPlanAddsLocaleToExistingProvenanceHistory(t *testing.T) {
 		plan[10].Version != "033" || !strings.Contains(plan[10].SQL, "bkn_trace_capture_control_state") ||
 		plan[11].Version != "034" || !strings.Contains(plan[11].SQL, "bkn_trace_evidence_migration_manifests") ||
 		plan[12].Version != "035" || !strings.Contains(plan[12].SQL, "record_integrity_version") ||
-		plan[13].Version != "036" || !strings.Contains(plan[13].SQL, "idx_bkn_trace_call_fact_conversation_summary") || plan[14].Version != "037" || plan[15].Version != "038" {
+		plan[13].Version != "036" || !strings.Contains(plan[13].SQL, "idx_bkn_trace_call_fact_conversation_summary") || plan[14].Version != "037" || plan[15].Version != "038" || plan[16].Version != "039" {
 		t.Fatalf("unexpected provenance locale migration plan: %#v", plan)
 	}
 }
@@ -217,8 +217,8 @@ func TestMigrationPlanAppendsEvidenceMigrationAfterExistingLedger(t *testing.T) 
 	if err != nil {
 		t.Fatalf("plan evidence migration after v033: %v", err)
 	}
-	if len(plan) != 5 || plan[0].Version != "034" || plan[1].Version != "035" || plan[2].Version != "036" || plan[3].Version != "037" || plan[4].Version != "038" {
-		t.Fatalf("plan after v033 = %#v; want v034 through v038", plan)
+	if len(plan) != 6 || plan[0].Version != "034" || plan[1].Version != "035" || plan[2].Version != "036" || plan[3].Version != "037" || plan[4].Version != "038" || plan[5].Version != "039" {
+		t.Fatalf("plan after v033 = %#v; want v034 through v039", plan)
 	}
 }
 

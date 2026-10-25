@@ -291,5 +291,7 @@ var agentObservabilityZhCN = i18n.I18nMessages{
 		"AgentObservability.Message.workload requests are accepted only through the internal OpenBKN gateway":          "仅接受通过 OpenBKN 内部网关发出的工作负载请求",
 		"AgentObservability.Message.workload_identity and a valid endpoint_kind are required":                          "必须提供 workload_identity 和有效的 endpoint_kind",
 		"AgentObservability.Message.view must be full or summary":                                                      "view 必须是 full 或 summary",
+		"AgentObservability.Message.failed to read record integrity retry status":                                      "读取记录完整性重试状态失败",
+		"AgentObservability.Message.record integrity status does not accept query parameters":                          "记录完整性状态接口不接受查询参数",
 	},
 }

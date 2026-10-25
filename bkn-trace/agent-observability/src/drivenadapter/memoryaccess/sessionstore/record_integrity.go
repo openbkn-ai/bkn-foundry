@@ -53,7 +53,7 @@ func (s *Store) ListRecordIntegrityCandidates(ctx context.Context, afterID strin
 	}
 	result := []sessionvo.Interaction{}
 	for _, value := range s.interactions {
-		if value.ID > afterID && value.IsTerminal() && value.StoredRecordIntegrity == nil {
+		if value.ID > afterID && value.IsTerminal() && value.StoredRecordIntegrity == nil && s.integrityRetryCandidate(value.ID, value.IntegritySourceVersion) {
 			result = append(result, sessionvo.Interaction{ID: value.ID, IntegritySourceVersion: value.IntegritySourceVersion})
 		}
 	}
