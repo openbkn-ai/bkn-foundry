@@ -9,7 +9,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
@@ -27,7 +28,7 @@ func GetLogicalViewService() interfaces.LogicalViewService {
 }
 
 func logicalViewServiceUnavailable(ctx context.Context) error {
-	return rest.NewHTTPError(ctx, http.StatusNotImplemented, rest.PublicError_NotImplemented).
+	return httperrors.NewHTTPError(ctx, http.StatusNotImplemented, httperrors.PublicError_NotImplemented).
 		WithErrorDetails("logical view service is unavailable")
 }
 
@@ -50,7 +51,7 @@ func PrepareLogicalView(ctx context.Context, req *interfaces.ResourceRequest) (s
 		if logicType == interfaces.LogicType_Derived {
 			sourceResource, ok := req.SourceMetadata["source_resource"].(map[string]any)
 			if !ok || len(sourceResource) == 0 {
-				return "", nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return "", nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					verrors.VegaBackend_Resource_InternalError).
 					WithErrorDetails("logical view service did not provide source_resource metadata")
 			}

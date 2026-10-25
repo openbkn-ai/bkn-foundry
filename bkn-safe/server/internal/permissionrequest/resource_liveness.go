@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 )
 
 // ResourceLivenessResolver resolves whether the authoritative service still
@@ -139,7 +140,15 @@ func (r *httpResourceLivenessResolver) Exists(ctx context.Context, resourceType,
 	}
 	endpoint, ok := r.endpoints[resourceType]
 	if !ok {
-		return false, ErrUnsupportedResourceType
+		// A type an edition build serves (extension/authzresource); unknown and
+		// unlicensed types stay unsupported.
+		provider, registered := authzresource.Lookup(resourceType)
+		if !registered {
+			return false, ErrUnsupportedResourceType
+		}
+		ctx, cancel := context.WithTimeout(ctx, authzresource.CallTimeout)
+		defer cancel()
+		return provider.Exists(ctx, resourceID)
 	}
 	request, err := livenessRequest(ctx, endpoint, resourceID)
 	if err != nil {

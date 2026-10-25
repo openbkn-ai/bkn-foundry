@@ -40,7 +40,7 @@ func NewKafkaRecorder(publisher KafkaPublisher, environment string, telemetry ..
 func (r *KafkaRecorder) Record(_ context.Context, entry Entry) error {
 	if r == nil || r.publisher == nil {
 		r.reportDrop("unavailable", "")
-		return errors.New("Kafka Audit publisher is not configured")
+		return errors.New("audit Kafka publisher is not configured")
 	}
 	value, err := BuildKafkaAuditRecord(entry, r.environment)
 	if err != nil {
@@ -54,7 +54,7 @@ func (r *KafkaRecorder) Record(_ context.Context, entry Entry) error {
 	}
 	if result := r.publisher.TryPublish(value); result != auditpublisher.Accepted {
 		r.reportDrop(strings.TrimPrefix(string(result), "dropped_"), "")
-		return fmt.Errorf("Kafka Audit publish disposition: %s", result)
+		return fmt.Errorf("audit Kafka publish disposition: %s", result)
 	}
 	r.telemetry.Observe("accepted", time.Now())
 	return nil

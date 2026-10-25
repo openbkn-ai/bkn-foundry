@@ -30,9 +30,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -54,6 +54,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/relation_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/risk_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/user_mgmt"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/value_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/vega_backend"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
@@ -270,6 +271,7 @@ func startEvidenceFlushLoop(ctx context.Context, publisher evidenceFlusher, inte
 // Boot initializes shared infrastructure without opening the HTTP listener.
 // Paid entry points may register extensions after Boot returns and before Run.
 func Boot(_ Options) *Application {
+
 	// Enable pprof.
 	// go func() {
 	// 	http.ListenAndServe("0.0.0.0:6060", nil)
@@ -282,7 +284,7 @@ func Boot(_ Options) *Application {
 	logger.Info("Server Init Setting Success")
 
 	// Configure error-code locales.
-	rest.SetLang(appSetting.ServerSetting.Language)
+	i18n.SetLang(appSetting.ServerSetting.Language)
 	logger.Info("Server Set Language Success")
 
 	// Configure Gin run mode.
@@ -362,6 +364,7 @@ func Boot(_ Options) *Application {
 	logics.SetObjectTypeAccess(object_type.NewObjectTypeAccess(appSetting))
 	logics.SetRelationTypeAccess(relation_type.NewRelationTypeAccess(appSetting))
 	logics.SetRiskTypeAccess(risk_type.NewRiskTypeAccess(appSetting))
+	logics.SetValueTypeAccess(value_type.NewValueTypeAccess(appSetting))
 	logics.SetVegaBackendAccess(vega_backend.NewVegaBackendAccess(appSetting))
 
 	// Create and start the service.

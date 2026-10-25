@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -113,6 +114,27 @@ func applyEnv(cfg *Config) error {
 			return fmt.Errorf("SAFE_OAUTH_STUDIO_BASELINE_REDIRECT_URIS: decode JSON array: %w", err)
 		}
 		cfg.OAuth.StudioBaselineRedirectURIs = uris
+	}
+	if v := os.Getenv("SAFE_OAUTH_DYNAMIC_REGISTRATION_ENABLED"); v != "" {
+		enabled, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("SAFE_OAUTH_DYNAMIC_REGISTRATION_ENABLED: %w", err)
+		}
+		cfg.OAuth.DynamicRegistration.Enabled = enabled
+	}
+	if v, ok := os.LookupEnv("SAFE_OAUTH_DYNAMIC_REGISTRATION_REDIRECT_ORIGINS"); ok && v != "" {
+		var origins []string
+		if err := json.Unmarshal([]byte(v), &origins); err != nil {
+			return fmt.Errorf("SAFE_OAUTH_DYNAMIC_REGISTRATION_REDIRECT_ORIGINS: decode JSON array: %w", err)
+		}
+		cfg.OAuth.DynamicRegistration.AllowedRedirectOrigins = origins
+	}
+	if v := os.Getenv("SAFE_OAUTH_DYNAMIC_REGISTRATION_RATE_PER_MINUTE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return fmt.Errorf("SAFE_OAUTH_DYNAMIC_REGISTRATION_RATE_PER_MINUTE: want a non-negative integer, got %q", v)
+		}
+		cfg.OAuth.DynamicRegistration.RatePerMinute = n
 	}
 	if v := os.Getenv("SAFE_OAUTH_RECONCILE_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)

@@ -1,6 +1,136 @@
 {
   "input_schema": {
     "type": "object",
+    "additionalProperties": false,
+    "definitions": {
+      "property_ref": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object_type_id", "property_name"],
+        "properties": {
+          "object_type_id": {"type": "string", "minLength": 1, "description": "对象类 ID。"},
+          "property_name": {"type": "string", "minLength": 1, "description": "对象类的数据属性名。"},
+          "relation_path_alias": {"type": "string", "minLength": 1, "description": "通过已发布关系路径访问属性时使用的路径别名。"}
+        }
+      },
+      "property_operand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "property_ref"],
+        "properties": {
+          "source": {"const": "property", "description": "属性操作数固定为 property。"},
+          "property_ref": {"$ref": "#/definitions/property_ref"}
+        }
+      },
+      "literal_operand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "value_type", "value"],
+        "properties": {
+          "source": {"const": "literal", "description": "字面量操作数固定为 literal。"},
+          "value_type": {
+            "type": "string",
+            "enum": ["int64", "decimal", "boolean", "string", "date", "datetime", "duration"],
+            "description": "字面量物理类型：date 使用 YYYY-MM-DD，datetime 使用 RFC 3339，duration 使用数值。"
+          },
+          "value": {"description": "值必须与 value_type 匹配；int64 必须是整数。"}
+        }
+      },
+      "operand": {
+        "oneOf": [
+          {"$ref": "#/definitions/property_operand"},
+          {"$ref": "#/definitions/literal_operand"}
+        ]
+      },
+      "scalar_predicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_type", "left", "comparison_operator", "right"],
+        "properties": {
+          "node_type": {"const": "predicate"},
+          "left": {"$ref": "#/definitions/operand"},
+          "comparison_operator": {
+            "type": "string",
+            "enum": ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "not_contains", "starts_with", "ends_with", "before", "before_or_equal", "after", "after_or_equal"],
+            "description": "单值比较操作符；right 必须且只能有一个操作数。"
+          },
+          "right": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/definitions/operand"}}
+        }
+      },
+      "membership_predicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_type", "left", "comparison_operator", "right"],
+        "properties": {
+          "node_type": {"const": "predicate"},
+          "left": {"$ref": "#/definitions/operand"},
+          "comparison_operator": {"type": "string", "enum": ["in", "not_in"], "description": "集合比较操作符；right 至少包含一个操作数。"},
+          "right": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/operand"}}
+        }
+      },
+      "range_predicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_type", "left", "comparison_operator", "right"],
+        "properties": {
+          "node_type": {"const": "predicate"},
+          "left": {"$ref": "#/definitions/operand"},
+          "comparison_operator": {"type": "string", "enum": ["between", "not_between"], "description": "闭区间比较操作符；right 按下界、上界顺序包含两个操作数。"},
+          "right": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/definitions/operand"}}
+        }
+      },
+      "unary_predicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_type", "left", "comparison_operator"],
+        "properties": {
+          "node_type": {"const": "predicate"},
+          "left": {"$ref": "#/definitions/operand"},
+          "comparison_operator": {
+            "type": "string",
+            "enum": ["is_empty", "is_not_empty", "is_null", "is_not_null", "is_true", "is_false"],
+            "description": "一元比较操作符；不得传 right。"
+          },
+          "right": {"type": "array", "maxItems": 0}
+        }
+      },
+      "predicate": {
+        "oneOf": [
+          {"$ref": "#/definitions/scalar_predicate"},
+          {"$ref": "#/definitions/membership_predicate"},
+          {"$ref": "#/definitions/range_predicate"},
+          {"$ref": "#/definitions/unary_predicate"}
+        ]
+      },
+      "boolean_group": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_type", "boolean_operator", "children"],
+        "properties": {
+          "node_type": {"const": "group"},
+          "boolean_operator": {"type": "string", "enum": ["and", "or"], "description": "and/or 组合至少两个子条件。"},
+          "children": {"type": "array", "minItems": 2, "items": {"$ref": "#/definitions/object_metric_condition"}}
+        }
+      },
+      "not_group": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_type", "boolean_operator", "children"],
+        "properties": {
+          "node_type": {"const": "group"},
+          "boolean_operator": {"const": "not", "description": "not 组合只能包含一个子条件。"},
+          "children": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "#/definitions/object_metric_condition"}}
+        }
+      },
+      "object_metric_condition": {
+        "description": "递归条件 AST。节点只能是 predicate 或 group；运行时属性必须精确来自已发布指标 query_capabilities 的 analysis_dimensions 或 time_dimensions。",
+        "oneOf": [
+          {"$ref": "#/definitions/predicate"},
+          {"$ref": "#/definitions/boolean_group"},
+          {"$ref": "#/definitions/not_group"}
+        ]
+      }
+    },
     "properties": {
       "response_format": {
         "type": "string",
@@ -32,9 +162,8 @@
             "description": "可选的对象实例身份列表。"
           },
           "filter": {
-            "type": "object",
-            "additionalProperties": true,
-            "description": "符合对象指标 V1 条件 AST 的运行时过滤条件。"
+            "$ref": "#/definitions/object_metric_condition",
+            "description": "运行时属性过滤条件。属性引用必须来自该版本开放的 analysis_dimensions 或 time_dimensions；属性与字面量类型必须兼容。"
           },
           "group_by": {
             "type": "array",
@@ -93,7 +222,7 @@
             "required": ["parent_query", "bucket_key"],
             "description": "继续下钻时传入上一层原样保留的 query 和该层结果返回的 bucket_key；不得自行构造桶键。",
             "properties": {
-              "parent_query": {"type": "object", "description": "上一步 query_metric 使用的完整 query。"},
+              "parent_query": {"$ref": "#/properties/query", "description": "上一步 query_metric 使用的完整 query。"},
               "bucket_key": {"type": "string", "description": "上一步结果条目返回的 bucket_key。"}
             }
           }
@@ -104,7 +233,7 @@
   },
   "output_schema": {
     "type": "object",
-    "required": ["kn_id", "metric_id", "version", "model", "entries", "status", "total_count", "overall_ms"],
+    "required": ["kn_id", "metric_id", "version", "model", "entries", "status", "total_count", "overall_ms", "evaluated_at"],
     "properties": {
       "kn_id": {"type": "string", "description": "知识网络 ID。"},
       "metric_id": {"type": "string", "description": "对象指标 ID。"},
@@ -119,13 +248,34 @@
           "properties": {
             "instance_identity": {"type": "object", "additionalProperties": true},
             "dimensions": {"type": "object", "additionalProperties": true},
-            "dimension_cells": {"type": "array", "items": {"type": "object"}},
+            "dimension_cells": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["ref", "value"],
+                "properties": {
+                  "ref": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["object_type_id", "property_name"],
+                    "properties": {
+                      "object_type_id": {"type": "string"},
+                      "property_name": {"type": "string"},
+                      "relation_path_alias": {"type": "string"}
+                    }
+                  },
+                  "value": {}
+                }
+              }
+            },
             "time": {"type": "integer"},
-            "time_bucket": {"type": "object", "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}}},
+            "time_bucket": {"type": "object", "additionalProperties": false, "required": ["start", "end"], "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}}},
             "value": {},
+            "display_value": {"type": "string", "description": "数值结果的精确十进制文本，仅用于展示；value 保持原始 JSON 数值。"},
             "status": {"type": "string", "enum": ["ok", "no_data", "unavailable"]},
             "bucket_key": {"type": "string"},
-            "available_actions": {"type": "array", "items": {"type": "string"}}
+            "available_actions": {"type": "array", "items": {"type": "string", "enum": ["filter", "drill", "participants", "context"]}}
           }
         }
       },
@@ -136,7 +286,7 @@
       "warnings": {"type": "array", "items": {"type": "string"}, "description": "部分成功或不可用时的警告。"},
       "overall_ms": {"type": "integer", "description": "查询耗时，单位毫秒。"},
       "evaluated_at": {"type": "integer", "description": "结果计算时间，Unix 毫秒。"},
-      "effective_window": {"type": "object", "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}}}
+      "effective_window": {"type": "object", "additionalProperties": false, "required": ["start", "end"], "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}}}
     }
   }
 }

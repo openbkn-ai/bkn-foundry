@@ -532,7 +532,7 @@ Incremental Key: updated_at
 
 ### 6.8 属性声明（3.0）
 
-> **状态：3.0。** `Semantic`、`Required`、`Aliases`、对象类的 `aliases` 与 `### Property Constraints` 的全部键（含 `value_type`，§16）已在规范库实现。bkn-backend 存储属性声明（`Semantic`、`Required`、`### Property Constraints` 中除 `value_type` 外的键），对象类接口读写它们，保存时按本节规则校验；存储值类型与别名为设计中（bkn-foundry#2281），在此之前上传含它们的 3.0 包时按「此版本尚不支持」拒绝并指出位置，接口写 `value_type` 时同样拒绝。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** `Semantic`、`Required`、`Aliases`、对象类的 `aliases` 与 `### Property Constraints` 的全部键（含 `value_type`，§16）已在规范库实现。bkn-backend 存储属性声明（`Aliases`、`Semantic`、`Required`、`### Property Constraints` 的全部键）与对象类、行动类的 `aliases`，对象类、行动类接口读写它们，保存时按本节规则校验：`value_type` 须是本网络已有的值类型（§16），别名不得是同类其他定义的名称。上传含值类型与别名的 3.0 包随 bkn-foundry#2281 实现中，在此之前按「此版本尚不支持」拒绝并指出位置。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 属性声明描述数据应当满足的要求，只用于理解与展示，**不校验源数据**；声明本身写错时在导入和保存时拒绝。
 
@@ -1305,7 +1305,7 @@ BKN 只保存本文定义的结构。业务规则按作用范围放在：
 
 ## 16. 值类型（value_types/*.bkn，3.0）
 
-> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储属性声明为设计中（bkn-foundry#2259），存储值类型与别名为设计中（bkn-foundry#2281）；在此之前上传含这些声明的 3.0 包时按「此版本尚不支持」拒绝并指出位置，不入库后丢失。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储值类型，提供值类型接口（`/knowledge-networks/{kn_id}/value-types`），按 3.0 导出时写出 `value_types/`；被数据属性引用的值类型不能删除，修改后的 `base_type` 须仍与引用方的 Type 相同。上传含 `value_types/` 的 3.0 包随 bkn-foundry#2281 实现中，在此之前按「此版本尚不支持」拒绝并指出位置，不入库后丢失。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 值类型是「基础类型 + 一组约束」的命名定义，供多个属性复用：`Type` 说明数据怎么存，值类型说明存的是什么、哪些值合法。
 作用范围是单个知识网络；平台不预置值类型。

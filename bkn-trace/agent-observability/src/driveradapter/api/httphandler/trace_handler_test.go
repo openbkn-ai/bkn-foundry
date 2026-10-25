@@ -90,6 +90,7 @@ func TestTraceHandlerReturnsTypedTraceDetailWithRawOperationFacts(t *testing.T) 
 	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/trace_handler_001", nil)
 	req = req.WithContext(context.WithValue(req.Context(), trustedQueryScopeContextKey{}, evidencevo.QueryScope{
 		AccountID: "user-1", AccountType: "user",
+		AccessProfile: &evidencevo.AccessProfile{ActorID: "user-1", EffectiveSubjectID: "user-1", AccountActive: true, Roles: []string{"admin"}},
 	}))
 	rec := httptest.NewRecorder()
 

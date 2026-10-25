@@ -6,6 +6,7 @@
 package cypher
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -68,5 +69,71 @@ func TestCountDistinctNodeWithoutAKeyIsRefused(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "count(DISTINCT c.property)") {
 		t.Fatalf("err = %v, want the refusal naming a property to count", err)
+	}
+}
+
+// The trace records every key property count(DISTINCT n) reads, the same
+// whether the count stands alone, sits in arithmetic or orders the rows.
+func TestCountDistinctNodeTraceNamesEveryKey(t *testing.T) {
+	want := []string{"property:kn_test:ot_customer:code", "property:kn_test:ot_customer:region"}
+	for _, tc := range []struct{ query, alias string }{
+		{"MATCH (c:Customer) RETURN count(DISTINCT c) AS n", "n"},
+		{"MATCH (c:Customer) RETURN count(DISTINCT c) * 1 AS n", "n"},
+		{"MATCH (c:Customer) RETURN c.region AS r, count(*) AS m ORDER BY count(DISTINCT c) DESC", ""},
+	} {
+		tree, err := Parse(tc.query)
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		analyzed, err := Analyze(tree)
+		if err != nil {
+			t.Fatalf("Analyze: %v", err)
+		}
+		plan, err := Compile(analyzed, bindJoinSchema(t), CompileOptions{})
+		if err != nil {
+			t.Fatalf("%s: Compile: %v", tc.query, err)
+		}
+		descriptor, err := BuildSemanticQueryDescriptor(plan, tc.query)
+		if err != nil {
+			t.Fatalf("%s: descriptor: %v", tc.query, err)
+		}
+		var got []string
+		if tc.alias != "" {
+			for _, projection := range descriptor.Projections {
+				if projection.OutputPointer == semanticOutputPointer(tc.alias) {
+					got = projection.PropertyRefs
+				}
+			}
+		} else if len(descriptor.Ordering) == 1 {
+			got = descriptor.Ordering[0].PropertyRefs
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: refs = %v, want %v", tc.query, got, want)
+		}
+	}
+}
+
+// Explain names the first key of a composite-key count(DISTINCT n) it sorts
+// by, as it did when the trace recorded only that key.
+func TestCountDistinctNodeOrderingExplainsItsFirstKey(t *testing.T) {
+	query := "MATCH (c:Customer) RETURN c.region AS r, count(*) AS m ORDER BY count(DISTINCT c) DESC"
+	tree, err := Parse(query)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	analyzed, err := Analyze(tree)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	plan, err := Compile(analyzed, bindJoinSchema(t), CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	descriptor, err := BuildSemanticQueryDescriptor(plan, query)
+	if err != nil {
+		t.Fatalf("descriptor: %v", err)
+	}
+	if got := orderingProperty(descriptor.Ordering[0]); got != "ot_customer.code" {
+		t.Errorf("ordering property = %q, want ot_customer.code", got)
 	}
 }

@@ -14,6 +14,8 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
@@ -34,11 +36,10 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 	if body != nil {
 		bodyStr, err = sonic.MarshalString(body)
 		if err != nil {
-			logger.Errorf("marshal body error: %v", err)
-			statusCode = http.StatusInternalServerError
-			ctx := GetLanguageCtx(c)
-			bodyStr = NewHTTPError(ctx, statusCode, PublicError_InternalServerError).WithErrorDetails(err).Error()
-			MarkLocalizedResponse(c)
+			logger.Error("response JSON encoding failed")
+			httpErr := httperrors.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
+			ReplyError(c, httpErr)
+			return
 		}
 	}
 
@@ -53,21 +54,36 @@ func ReplyOkWithHeaders(c *gin.Context, statusCode int, body interface{}, header
 
 // ReplyError writes an error response.
 func ReplyError(c *gin.Context, err error) {
-	var statusCode int
-	var body string
-	var httpErr *HTTPError
-	if errors.As(err, &httpErr) {
-		statusCode = httpErr.HTTPCode
-		body = httpErr.Error()
-	} else {
-		statusCode = http.StatusInternalServerError
-		ctx := GetLanguageCtx(c)
-		body = NewHTTPError(ctx, statusCode, PublicError_InternalServerError).WithErrorDetails(err.Error()).Error()
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr == nil {
+		// Preserve the original error text in the public internal-error response.
+		logger.Errorf("unhandled response error: %v", err)
+		httpErr = httperrors.NewHTTPError(i18n.GetLanguageCtx(c), http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
+		httpErr = httpErr.WithErrorDetails(err.Error())
 	}
-
-	MarkLocalizedResponse(c)
+	renderErr := httpErr.Render()
+	if renderErr != nil {
+		logger.Errorf("localized error rendering failed: %v", renderErr)
+	}
+	body, encodeErr := sonic.Marshal(httpErr.BaseError)
+	if encodeErr != nil {
+		logger.Errorf("error response JSON encoding failed: error_code=%s", httpErr.ErrorCode)
+		ctx := i18n.WithLanguage(c.Request.Context(), httpErr.Lang)
+		httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
+		renderErr = httpErr.Render()
+		if renderErr != nil {
+			logger.Errorf("localized error rendering failed: %v", renderErr)
+		}
+		// This fresh DTO contains only strings, so it cannot retain the failed data.
+		body, encodeErr = sonic.Marshal(httpErr.BaseError)
+		if encodeErr != nil {
+			logger.Error("public error JSON encoding failed")
+			body = []byte(`{"error_code":"Public.InternalServerError","description":"","error_details":""}`)
+		}
+	}
+	c.Writer.Header().Set(i18n.ContentLanguageHeader, string(httpErr.Lang))
 	c.Writer.Header().Set(ContentTypeKey, ContentTypeJson)
-	c.String(statusCode, body)
+	c.String(httpErr.HTTPCode, string(body))
 }
 
 func ReplyErrorWithHeaders(c *gin.Context, err error, headers map[string]string) {
@@ -87,14 +103,14 @@ func addHeaders(c *gin.Context, headers map[string]string) {
 // localized text. Callers opt in because a successful response can be purely
 // machine-readable even when the request has an effective locale.
 func MarkLocalizedResponse(c *gin.Context) {
-	c.Writer.Header().Set(ContentLanguageHeader, GetLanguageByCtx(c.Request.Context()))
+	c.Writer.Header().Set(i18n.ContentLanguageHeader, string(i18n.GetLanguageByCtx(c.Request.Context())))
 }
 
 // MarkLocalizedCacheableResponse additionally declares that a cacheable
 // representation varies by Accept-Language.
 func MarkLocalizedCacheableResponse(c *gin.Context) {
 	MarkLocalizedResponse(c)
-	addVaryHeader(c, AcceptLanguageHeader)
+	addVaryHeader(c, i18n.AcceptLanguageHeader)
 }
 
 // LanguageMiddleware resolves the request locale once. It intentionally does
@@ -102,7 +118,7 @@ func MarkLocalizedCacheableResponse(c *gin.Context) {
 // Content-Language value.
 func LanguageMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Request = c.Request.WithContext(GetLanguageCtx(c))
+		c.Request = c.Request.WithContext(i18n.GetLanguageCtx(c))
 		c.Next()
 	}
 }

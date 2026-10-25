@@ -259,9 +259,28 @@ async def _shared_editor(
     state is recorded as a version first, so the change is never the first
     thing history knows about."""
     await _require_shared_admin(account)
-    agent = await _builtin_agent(session, agent_id)
-    await dao.record_version(session, agent_id, account.account_id)
-    return agent
+    for _ in range(3):
+        agent = await _builtin_agent(session, agent_id)
+        if agent.prompt_id:
+            locked_ids = await dao.lock_prompt_agents(session, agent.prompt_id)
+            binding_stable = agent_id in locked_ids
+        else:
+            row = await dao._lock_agent(session, agent_id)
+            binding_stable = row is not None and not row.f_prompt_id
+        if binding_stable:
+            await dao.record_version(session, agent_id, account.account_id, commit=False)
+            # Keep a strong reference through conversion. A later plain get can
+            # fall back to the initial RR snapshot after weak ORM entries expire.
+            row = await dao._lock_agent(session, agent_id)
+            if row is None:
+                raise not_found("agent", agent_id)
+            return dao._to_out(row)
+        # A concurrent internal edit rebound the Agent after the initial read.
+        # Release the old range before retrying; never acquire a second Prompt's
+        # Agent set out of order. No business mutation has occurred yet.
+        await session.rollback()
+    raise err(409, "BknAgent.Agent.BindingChanged")
+
 
 
 class ToolSourceOut(BaseModel):
@@ -426,8 +445,9 @@ async def update_shared_agent(
             body.limits.model_dump(exclude_none=True) or None if body.limits else None
         )
     agent = await dao.update_shared_agent(
-        session, agent_id, changes, account.account_id
+        session, agent_id, changes, account.account_id, commit=False
     )
+    await session.commit()
     return await _shared_out(session, agent, True)
 
 
@@ -493,8 +513,9 @@ async def activate_agent_version(
     """Make a version current: its model, tools, limits and Prompt version go
     back onto the Agent. No new version is written."""
     await _shared_editor(session, account, agent_id)
-    if not await dao.activate_version(session, agent_id, version, account.account_id):
+    if not await dao.activate_version(session, agent_id, version, account.account_id, commit=False):
         raise not_found("agent_version", f"{agent_id}@{version}")
+    await session.commit()
     return await _shared_out(session, await _builtin_agent(session, agent_id), True)
 
 
@@ -508,13 +529,14 @@ async def delete_agent_version(
     """Remove a version from the history. The current and the initial version
     stay; a deleted number is never handed out again."""
     agent = await _shared_editor(session, account, agent_id)
-    result = await dao.delete_version(session, agent_id, version)
+    result = await dao.delete_version(session, agent_id, version, commit=False)
     if result == "current":
         raise bad_request("BknAgent.Agent.VersionInUse", version=version)
     if result == "initial":
         raise bad_request("BknAgent.Agent.InitialVersion", version=version)
     if result == "missing":
         raise not_found("agent_version", f"{agent_id}@{version}")
+    await session.commit()
     return await _versions_out(session, agent)
 
 
@@ -529,14 +551,15 @@ async def restore_shared_agent(
     await _shared_editor(session, account, agent_id)
     initial = await dao.initial_version(session, agent_id)
     if initial is None or not await dao.activate_version(
-        session, agent_id, initial.f_version, account.account_id
+        session, agent_id, initial.f_version, account.account_id, commit=False
     ):
         raise err(404, "BknAgent.Agent.NoInitialVersion", agent_id=agent_id)
     agent = await _builtin_agent(session, agent_id)
     if agent.status != "published":
         agent = await dao.update_shared_agent(
-            session, agent_id, {"status": "published"}, account.account_id
+            session, agent_id, {"status": "published"}, account.account_id, commit=False
         )
+    await session.commit()
     return await _shared_out(session, agent, True)
 
 
@@ -546,7 +569,7 @@ class SharedPromptOut(BaseModel):
 
 async def _shared_prompt(session: AsyncSession, agent: AgentOut) -> SharedPromptOut:
     if not agent.prompt_id or not (
-        prompt := await dao.get_prompt(session, agent.prompt_id)
+        prompt := await dao.get_prompt(session, agent.prompt_id, localized=True)
     ):
         raise not_found("prompt", agent.prompt_id or agent.agent_id)
     return SharedPromptOut(prompt=prompt)
@@ -572,6 +595,7 @@ async def publish_shared_prompt(
     """Publish new shared Prompt content; it becomes a new Agent version."""
     agent = await _shared_editor(session, account, agent_id)
     await dao.publish_prompt_version(
-        session, agent.prompt_id, body.content, body.vars_schema, account.account_id
+        session, agent.prompt_id, body.content, body.vars_schema, account.account_id, commit=False
     )
+    await session.commit()
     return await _shared_prompt(session, agent)

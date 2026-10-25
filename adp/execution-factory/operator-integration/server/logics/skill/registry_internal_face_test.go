@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -66,7 +67,7 @@ func TestGetSkillDetailInternalFace(t *testing.T) {
 				&interfaces.GetSkillDetailReq{SkillID: "skill-missing"})
 
 			So(resp, ShouldBeNil)
-			httpErr, ok := err.(*errors.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
@@ -106,7 +107,7 @@ func TestGetSkillDetailInternalFace(t *testing.T) {
 				&interfaces.GetSkillDetailReq{UserID: "user-2", SkillID: "skill-1"})
 
 			So(resp, ShouldBeNil)
-			httpErr, ok := err.(*errors.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 		})

@@ -410,15 +410,15 @@ console.log('build:', buildTask);
 
 ```bash
 # List knowledge networks
-curl -sk "https://<access-address>/api/ontology-manager/v1/knowledge-networks?name=order&sort=update_time&direction=desc&limit=50" \
+curl -sk "https://<access-address>/api/bkn-backend/v1/knowledge-networks?name=order&sort=update_time&direction=desc&limit=50" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # Get a single knowledge network
-curl -sk "https://<access-address>/api/ontology-manager/v1/knowledge-networks/kn-001" \
+curl -sk "https://<access-address>/api/bkn-backend/v1/knowledge-networks/kn-001" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # Create a knowledge network
-curl -sk -X POST "https://<access-address>/api/ontology-manager/v1/knowledge-networks" \
+curl -sk -X POST "https://<access-address>/api/bkn-backend/v1/knowledge-networks" \
   -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
@@ -429,11 +429,11 @@ curl -sk -X POST "https://<access-address>/api/ontology-manager/v1/knowledge-net
   }'
 
 # List object types
-curl -sk "https://<access-address>/api/ontology-manager/v1/knowledge-networks/kn-001/object-types" \
+curl -sk "https://<access-address>/api/bkn-backend/v1/knowledge-networks/kn-001/object-types" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # Create an object type
-curl -sk -X POST "https://<access-address>/api/ontology-manager/v1/knowledge-networks/kn-001/object-types" \
+curl -sk -X POST "https://<access-address>/api/bkn-backend/v1/knowledge-networks/kn-001/object-types" \
   -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
@@ -469,7 +469,7 @@ curl -sk -X POST "https://<access-address>/api/ontology-query/v1/knowledge-netwo
   -d '{"query": "overdue invoices in Q1", "limit": 10}'
 
 # List relation types
-curl -sk "https://<access-address>/api/ontology-manager/v1/knowledge-networks/kn-001/relation-types" \
+curl -sk "https://<access-address>/api/bkn-backend/v1/knowledge-networks/kn-001/relation-types" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # Execute an action type

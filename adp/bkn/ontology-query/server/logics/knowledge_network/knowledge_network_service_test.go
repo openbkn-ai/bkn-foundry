@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -101,7 +101,7 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetRelationTypePathsBaseOnSource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			omAccess.EXPECT().GetRelationTypePathsBaseOnSource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.SearchSubgraph(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -224,7 +224,7 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 			}
 
 			omAccess.EXPECT().GetRelationTypePathsBaseOnSource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(typePaths, nil)
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.SearchSubgraph(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -320,9 +320,9 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 					return startObjects, nil
 				case "ot2":
 					// Get next-layer objects in buildObjectSubgraph -> getNextObjectsBatchByRelation and return an error.
-					return interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError)
+					return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError)
 				}
-				return interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError)
+				return interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError)
 			}).AnyTimes()
 
 			result, err := service.SearchSubgraph(ctx, query)
@@ -429,7 +429,7 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 
 			result, err := service.SearchSubgraphByTypePath(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 			So(result.Entries, ShouldBeNil)
@@ -452,7 +452,7 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 				},
 			}
 
-			omAccess.EXPECT().GetRelationType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.RelationType{}, false, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			omAccess.EXPECT().GetRelationType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(interfaces.RelationType{}, false, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.SearchSubgraphByTypePath(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -490,7 +490,7 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 			}
 
 			omAccess.EXPECT().GetRelationType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(relationType, true, nil)
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.SearchSubgraphByTypePath(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -584,10 +584,10 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 
 			result, err := service.SearchSubgraphByTypePath(ctx, query)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
+			So(httpErr.ErrorCode, ShouldEqual, oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter_TypePath)
 			So(result.Entries, ShouldBeNil)
 		})
 	})
@@ -1051,7 +1051,7 @@ func Test_knowledgeNetworkService_buildObjectSubgraph(t *testing.T) {
 				},
 			}
 
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.buildObjectSubgraph(ctx, query, typePaths, startObjects)
 			So(err, ShouldNotBeNil)
@@ -1657,7 +1657,7 @@ func Test_knowledgeNetworkService_getNextObjectsBatchByRelation(t *testing.T) {
 				OTID: "ot2",
 			}
 
-			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
+			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError))
 
 			result, err := service.getNextObjectsBatchByRelation(ctx, query, batch, edge, objectType)
 			So(err, ShouldNotBeNil)
@@ -1984,7 +1984,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(conditions, ShouldBeNil)
@@ -2080,7 +2080,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 			}
 
 			service.vba = &vegaStubForKNQuery{
-				err: rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError),
+				err: httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError),
 			}
 
 			conditions, viewDataMap, err := service.buildIndirectBatchConditions(ctx, query, currentLevelObjects, edge, true)
@@ -2589,7 +2589,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 			}
 
 			service.vba = &vegaStubForKNQuery{
-				err: rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError),
+				err: httperrors.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError),
 			}
 
 			result, err := service.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, true)

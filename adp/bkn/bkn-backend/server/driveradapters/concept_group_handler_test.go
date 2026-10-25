@@ -17,8 +17,9 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -123,10 +124,10 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup(t *testing.T) {
 		})
 
 		Convey("CheckKNExistByID failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_ConceptGroup_InternalError,
 				},
 			}
@@ -447,10 +448,10 @@ func Test_ConceptGroupRestHandler_GetConceptGroup(t *testing.T) {
 		})
 
 		Convey("GetConceptGroupByID failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_ConceptGroup_InternalError,
 				},
 			}
@@ -465,10 +466,10 @@ func Test_ConceptGroupRestHandler_GetConceptGroup(t *testing.T) {
 		})
 
 		Convey("GetStatByConceptGroup failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_ConceptGroup_InternalError,
 				},
 			}
@@ -569,10 +570,10 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroup(t *testing.T) {
 		})
 
 		Convey("CheckConceptGroupExistByID failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_ConceptGroup_InternalError,
 				},
 			}
@@ -601,10 +602,10 @@ func Test_ConceptGroupRestHandler_AddObjectTypesToConceptGroup(t *testing.T) {
 		})
 
 		Convey("AddObjectTypesToConceptGroup failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_ConceptGroup_InternalError,
 				},
 			}
@@ -719,10 +720,10 @@ func Test_ConceptGroupRestHandler_DeleteObjectTypesFromGroup(t *testing.T) {
 		})
 
 		Convey("CheckConceptGroupExistByID failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_ConceptGroup_InternalError,
 				},
 			}
@@ -737,10 +738,10 @@ func Test_ConceptGroupRestHandler_DeleteObjectTypesFromGroup(t *testing.T) {
 		})
 
 		Convey("DeleteObjectTypesFromGroup failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_ConceptGroup_InternalError,
 				},
 			}
@@ -776,10 +777,10 @@ func Test_ConceptGroupRestHandler_DeleteObjectTypesFromGroup(t *testing.T) {
 		})
 
 		Convey("ListConceptGroupRelations failed\n", func() {
-			expectedErr := &rest.HTTPError{
+			expectedErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_ConceptGroup_InternalError,
 				},
 			}
@@ -1069,10 +1070,10 @@ func Test_ConceptGroupRestHandler_CreateConceptGroup_extraCases(t *testing.T) {
 		})
 
 		Convey("Failed when CreateConceptGroup service returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", httpErr)
@@ -1118,10 +1119,10 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 		}
 
 		Convey("Failed when CheckKNExistByID returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, httpErr)
 
@@ -1134,10 +1135,10 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 		})
 
 		Convey("Failed when CheckConceptGroupExistByID returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("", false, httpErr)
@@ -1163,10 +1164,10 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 		})
 
 		Convey("Failed when CheckConceptGroupExistByName returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("old_name", true, nil)
@@ -1194,10 +1195,10 @@ func Test_ConceptGroupRestHandler_UpdateConceptGroup_extraCases(t *testing.T) {
 		})
 
 		Convey("Failed when UpdateConceptGroup service returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("old_name", true, nil)
@@ -1240,10 +1241,10 @@ func Test_ConceptGroupRestHandler_DeleteConceptGroup_extraCases(t *testing.T) {
 		url := "/api/bkn-backend/v1/knowledge-networks/" + knID + "/concept-groups/" + cgID
 
 		Convey("Failed when CheckKNExistByID returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, httpErr)
 
@@ -1254,10 +1255,10 @@ func Test_ConceptGroupRestHandler_DeleteConceptGroup_extraCases(t *testing.T) {
 		})
 
 		Convey("Failed when CheckConceptGroupExistByID returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("", false, httpErr)
@@ -1269,10 +1270,10 @@ func Test_ConceptGroupRestHandler_DeleteConceptGroup_extraCases(t *testing.T) {
 		})
 
 		Convey("Failed when DeleteConceptGroupByID service returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().CheckConceptGroupExistByID(gomock.Any(), knID, gomock.Any(), cgID).Return("group1", true, nil)
@@ -1311,10 +1312,10 @@ func Test_ConceptGroupRestHandler_ListConceptGroups_extraCases(t *testing.T) {
 		url := "/api/bkn-backend/v1/knowledge-networks/" + knID + "/concept-groups"
 
 		Convey("Failed when CheckKNExistByID returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return("", false, httpErr)
 
@@ -1334,10 +1335,10 @@ func Test_ConceptGroupRestHandler_ListConceptGroups_extraCases(t *testing.T) {
 		})
 
 		Convey("Failed when ListConceptGroups service returns error\n", func() {
-			httpErr := &rest.HTTPError{
+			httpErr := &httperrors.HTTPError{
 				HTTPCode:  http.StatusInternalServerError,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_ConceptGroup_InternalError},
 			}
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, gomock.Any()).Return(knID, true, nil)
 			cgs.EXPECT().ListConceptGroupSummaries(gomock.Any(), gomock.Any()).Return(nil, 0, nil, httpErr)

@@ -63,7 +63,7 @@ func explain(compiled *compiledQuery) (*interfaces.CypherPlan, error) {
 	}
 	for _, order := range descriptor.Ordering {
 		out.Ordering = append(out.Ordering, interfaces.CypherPlanOrder{
-			Column: order.Alias, Property: propertyName(order.PropertyRef), Descending: order.Descending,
+			Column: order.Alias, Property: orderingProperty(order), Descending: order.Descending,
 		})
 	}
 	for _, impact := range compiled.permissionImpacts {
@@ -75,9 +75,20 @@ func explain(compiled *compiledQuery) (*interfaces.CypherPlan, error) {
 	return out, nil
 }
 
+// orderingProperty names the property a sort key reads. A composite-key
+// count(DISTINCT n) reads every key; the first one names it.
+func orderingProperty(order SemanticQueryOrdering) string {
+	if order.PropertyRef == "" && order.Expression == "" && len(order.PropertyRefs) > 0 {
+		return propertyName(order.PropertyRefs[0])
+	}
+	return propertyName(order.PropertyRef)
+}
+
 // planShape names the form of a query, most specific first.
 func planShape(plan *Plan) string {
 	switch {
+	case plan.Union != nil:
+		return "union"
 	case plan.Intersection != nil:
 		return "list_comparison"
 	case plan.Carried != nil:
@@ -131,15 +142,19 @@ func columnTypes(compiled *compiledQuery) map[string]*interfaces.CypherValueType
 		}
 		return types
 	}
+	if plan.Union != nil {
+		// Every part returns the same columns; the first names their types.
+		plan = plan.Union.Parts[0]
+	}
 	selected := graphValueTypes(plan, compiled.schema)
 	if len(plan.Totals) == 0 {
 		return selected
 	}
 	for _, total := range plan.Totals {
-		switch {
-		case total.Function == "COUNT":
+		switch total.Function {
+		case "COUNT":
 			types[total.Alias] = integer
-		case total.Function == "AVG":
+		case "AVG":
 			types[total.Alias] = &interfaces.CypherValueType{Kind: "float"}
 		default:
 			types[total.Alias] = selected[total.Of]
@@ -269,5 +284,6 @@ func conditionPlace(path string) string {
 
 // isStagePrefix reports a descriptor prefix naming an earlier stage.
 func isStagePrefix(segment string) bool {
-	return segment == "carried" || strings.HasPrefix(segment, "stage") || strings.HasPrefix(segment, "list")
+	return segment == "carried" || strings.HasPrefix(segment, "stage") || strings.HasPrefix(segment, "list") ||
+		strings.HasPrefix(segment, "union")
 }

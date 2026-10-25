@@ -16,6 +16,9 @@ import (
 	"sync"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -64,15 +67,21 @@ const (
 func managedProxyHeaders(ctx context.Context, proxy *interfaces.KNProxyExecution) (map[string]string, error) {
 	caller, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || caller == nil || proxy == nil || proxy.Mapping == nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	mapping, binding := proxy.Mapping, proxy.Binding
 	if caller.AccountID == "" || mapping.ProxyAccountID == "" || mapping.ProxyAccountType != "app" ||
 		mapping.Version <= 0 || mapping.KNID != binding.KNID || binding.ChildType != interfaces.KNProxyChildTypeCapability ||
 		binding.ChildID == "" || binding.TargetID == "" || binding.Operation != interfaces.KNProxyOperationExecute {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusServiceUnavailable, localizedText)
 	}
 	header := common.GetHeaderForChildOperation(ctx, "operator.capability.proxy.execute", 1)
 	header[string(interfaces.HeaderXAccountID)] = mapping.ProxyAccountID
@@ -138,8 +147,11 @@ func (o *operatorIntegrationClient) readToolDetail(ctx context.Context, operatio
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#%s] Unmarshal failed, body: %s, err: %v",
 			operation, string(resultByt), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "ToolDetailResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolDetailResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 
 	// Response logging is intentionally performed after a successful decode.
@@ -181,8 +193,11 @@ func (o *operatorIntegrationClient) readMCPToolDetail(ctx context.Context, opera
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#%s] Unmarshal failed, body: %s, err: %v",
 			operation, string(resultByt), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "MCPToolListResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.MCPToolListResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 
 	for _, tool := range listResp.Tools {
@@ -192,9 +207,12 @@ func (o *operatorIntegrationClient) readMCPToolDetail(ctx context.Context, opera
 			return &tool, nil
 		}
 	}
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.MCPToolNotFound", map[string]any{})
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+	}
 
-	return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound,
-		infraErr.LocalizedDetail(ctx, "MCPToolNotFound"))
+	return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound, localizedText)
 }
 
 // CallMCPTool calls an MCP tool.
@@ -223,16 +241,22 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, reqBody)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#CallMCPTool] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "MCPToolCallRequestFailed"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.MCPToolCallRequestFailed", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 
 	var result map[string]interface{}
 	err = unmarshalPrecise(respBody, &result)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#CallMCPTool] Unmarshal failed, body: %s, err: %v", string(respBody), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			infraErr.LocalizedDetail(ctx, "MCPToolCallResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.MCPToolCallResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, localizedText)
 	}
 
 	return result, nil
@@ -241,8 +265,11 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 func (o *operatorIntegrationClient) CallMCPToolAsProxy(ctx context.Context,
 	req *interfaces.CallMCPToolRequest, proxy *interfaces.KNProxyExecution) (map[string]interface{}, error) {
 	if req == nil || proxy == nil || proxy.Binding.TargetType != interfaces.KNProxyTargetTypeMCP || proxy.Binding.TargetID != req.McpID {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden,
-			infraErr.LocalizedDetail(ctx, "ToolAuthorizationUnavailable"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.ToolAuthorizationUnavailable", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusForbidden, localizedText)
 	}
 	header, err := managedProxyHeaders(ctx, proxy)
 	if err != nil {
@@ -257,8 +284,11 @@ func (o *operatorIntegrationClient) CallMCPToolAsProxy(ctx context.Context,
 	}
 	var result map[string]interface{}
 	if err := unmarshalPrecise(body, &result); err != nil {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "MCPToolCallResponseInvalid"))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "agentRetrieval.Detail.MCPToolCallResponseInvalid", map[string]any{})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, localizedText)
 	}
 	return result, nil
 }

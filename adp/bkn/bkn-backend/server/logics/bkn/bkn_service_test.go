@@ -15,7 +15,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -38,6 +39,17 @@ func (archiveAccessStub) ImportObjectMetricArchive(context.Context, *sql.Tx, str
 }
 func (archiveAccessStub) DeleteObjectMetricArchive(context.Context, *sql.Tx, string, string) error {
 	return nil
+}
+
+// valueTypesStub holds the value types of the network under test; nothing else of the value type
+// service is used by export.
+type valueTypesStub struct {
+	interfaces.ValueTypeService
+	list []*interfaces.ValueType
+}
+
+func (s valueTypesStub) GetAllValueTypesByKnID(context.Context, string, string) ([]*interfaces.ValueType, error) {
+	return s.list, nil
 }
 
 type archivePermissionStub struct {
@@ -82,6 +94,7 @@ func newTestBKNServiceWithCapabilities(t *testing.T) (*bknService, *gomock.Contr
 		kns:        kns,
 		cbs:        cbs,
 		ps:         archivePermissionStub{},
+		vts:        valueTypesStub{},
 	}
 	return svc, mockCtrl, kns, cbs
 }
@@ -130,10 +143,10 @@ func Test_bknService_ExportToTar(t *testing.T) {
 		})
 
 		Convey("Failed when GetKNByID returns error\n", func() {
-			getErr := &rest.HTTPError{
+			getErr := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError,
 				},
 			}
@@ -406,7 +419,7 @@ func Test_bknService_DiffNetworks(t *testing.T) {
 		})
 
 		Convey("A caller who cannot read the base network is refused before the target is touched\n", func() {
-			denied := rest.NewHTTPError(context.Background(), http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_InvalidParameter)
+			denied := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_InvalidParameter)
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", "main", interfaces.Mode_Export).Return(nil, denied)
 
 			result, err := svc.DiffNetworks(context.Background(), interfaces.KNDiffRequest{
@@ -480,11 +493,11 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(misplacedKN("kn1"), nil)
 			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
 			So(data, ShouldBeNil)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
-			found := httpErr.BaseError.ErrorDetails.(*interfaces.NetworkCheckResult)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
+			found := httpErr.ErrorDetails.(*interfaces.NetworkCheckResult)
 			So(found.MisplacedParameters, ShouldHaveLength, 1)
 			So(found.MisplacedParameters[0].ActionTypeID, ShouldEqual, "restart_pod")
 		})
@@ -494,10 +507,10 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			kn.ActionTypes[0].Parameters[0] = interfaces.Parameter{Name: "pod", Type: "string", Source: "Body"}
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn3", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
 			_, err := svc.ExportToTar(context.Background(), "kn3", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
-			found := httpErr.BaseError.ErrorDetails.(*interfaces.NetworkCheckResult)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNeedsNetworkCheck)
+			found := httpErr.ErrorDetails.(*interfaces.NetworkCheckResult)
 			So(found.MisplacedParameters, ShouldBeEmpty)
 			So(found.InvalidParameters, ShouldResemble, []interfaces.NetworkCheckInvalidParameter{{
 				ActionTypeID: "restart_pod", Parameter: "pod", Current: interfaces.NetworkCheckParameterValue{Source: "Body"},
@@ -514,10 +527,10 @@ func Test_bknService_ExportSpec(t *testing.T) {
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn4", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
 			data, err := svc.ExportToTar(context.Background(), "kn4", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_3)
 			So(data, ShouldBeNil)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			So(errors.As(err, &httpErr), ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3)
-			So(httpErr.BaseError.ErrorDetails, ShouldContainSubstring, "pod")
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_ExportNotReadableAsV3)
+			So(httpErr.ErrorDetails, ShouldContainSubstring, "pod")
 		})
 
 		Convey("3.0 is written as 3.0 when the check finds nothing\n", func() {
@@ -609,6 +622,65 @@ func Test_bknService_ExportDeclarations(t *testing.T) {
 			So(props[1].Semantic, ShouldEqual, "event_time")
 			So(props[1].Required, ShouldBeTrue)
 			So(props[2].Constraints, ShouldResemble, &bknsdk.PropertyConstraints{Range: &bknsdk.ValueRange{Min: int64(0)}, Unit: "元"})
+		})
+
+		Convey("A property naming a value type is written with the value type\n", func() {
+			kn := declaredKN("kn1", true)
+			kn.ObjectTypes[0].DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
+			svc.vts = valueTypesStub{list: []*interfaces.ValueType{{
+				VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal",
+				ValueTypeDefinition: interfaces.ValueTypeDefinition{Range: &interfaces.ValueRange{Min: float64(0)}, Unit: "元"},
+			}}}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
+			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+			So(err, ShouldBeNil)
+			So(network.BknSpec, ShouldEqual, bknsdk.BknSpecV3)
+			So(len(network.ValueTypes), ShouldEqual, 1)
+			So(network.ValueTypes[0].Range, ShouldResemble, &bknsdk.ValueRange{Min: int64(0)})
+			So(network.ObjectTypes[0].DataProperties[2].Constraints.ValueType, ShouldEqual, "amount_cny")
+		})
+
+		Convey("Aliases are written as 3.0 and read back; 2.0 leaves them out\n", func() {
+			aliased := func() *interfaces.KN {
+				kn := declaredKN("kn1", false)
+				kn.ObjectTypes[0].Aliases = []string{"订货单"}
+				kn.ObjectTypes[0].DataProperties[2].Aliases = []string{"价款"}
+				return kn
+			}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(aliased(), nil)
+			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+			So(err, ShouldBeNil)
+			So(network.BknSpec, ShouldEqual, bknsdk.BknSpecV3)
+			So(network.ObjectTypes[0].Aliases, ShouldResemble, []string{"订货单"})
+			So(network.ObjectTypes[0].DataProperties[2].Aliases, ShouldResemble, []string{"价款"})
+
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(aliased(), nil)
+			withAliases, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_2)
+			So(err, ShouldBeNil)
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
+			plain, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			So(exportedFiles(t, withAliases), ShouldResemble, exportedFiles(t, plain))
+		})
+
+		Convey("2.0 leaves value types out, byte for byte as a network that never had them\n", func() {
+			svc.vts = valueTypesStub{list: []*interfaces.ValueType{{VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal"}}}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
+			withValueTypes, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_2)
+			So(err, ShouldBeNil)
+			svc.vts = valueTypesStub{}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
+			plain, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+			So(err, ShouldBeNil)
+			So(exportedFiles(t, withValueTypes), ShouldResemble, exportedFiles(t, plain))
+			network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(withValueTypes))
+			So(err, ShouldBeNil)
+			So(network.ValueTypes, ShouldBeEmpty)
+			So(string(withValueTypes), ShouldNotContainSubstring, "value_type")
 		})
 
 		Convey("2.0 leaves the declarations out, byte for byte as a network that never had them\n", func() {

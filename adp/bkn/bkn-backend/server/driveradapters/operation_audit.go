@@ -79,6 +79,9 @@ var operationAuditRoutes = map[string]operationAuditRule{
 	"POST /knowledge-networks/:kn_id/risk-types":                                                          {Action: "create", TargetType: "risk_type"},
 	"PUT /knowledge-networks/:kn_id/risk-types/:rt_id":                                                    {Action: "update", TargetType: "risk_type"},
 	"DELETE /knowledge-networks/:kn_id/risk-types/:rt_ids":                                                {Action: "delete", TargetType: "risk_type"},
+	"POST /knowledge-networks/:kn_id/value-types":                                                         {Action: "create", TargetType: "value_type"},
+	"PUT /knowledge-networks/:kn_id/value-types/:vt_id":                                                   {Action: "update", TargetType: "value_type"},
+	"DELETE /knowledge-networks/:kn_id/value-types/:vt_id":                                                {Action: "delete", TargetType: "value_type"},
 	"POST /knowledge-networks/:kn_id/concept-groups":                                                      {Action: "create", TargetType: "concept_group"},
 	"PUT /knowledge-networks/:kn_id/concept-groups/:cg_id":                                                {Action: "update", TargetType: "concept_group"},
 	"DELETE /knowledge-networks/:kn_id/concept-groups/:cg_id":                                             {Action: "delete", TargetType: "concept_group"},
@@ -97,8 +100,7 @@ func registeredOperationAudit(method, fullPath, methodOverride string) (operatio
 	}
 	path := strings.TrimSpace(fullPath)
 	for _, prefix := range []string{
-		"/api/bkn-backend/v1", "/api/bkn-backend/v2", "/api/ontology-manager/v1",
-		"/api/bkn-backend/in/v1", "/api/ontology-manager/in/v1",
+		"/api/bkn-backend/v1", "/api/bkn-backend/v2", "/api/bkn-backend/in/v1",
 	} {
 		if strings.HasPrefix(path, prefix) {
 			path = strings.TrimPrefix(path, prefix)
@@ -278,8 +280,7 @@ func operationAuditVisitor(c *gin.Context) (hydra.Visitor, bool) {
 
 func operationAuditInternalRoute(fullPath string) bool {
 	path := strings.TrimSpace(fullPath)
-	return strings.HasPrefix(path, "/api/bkn-backend/in/v1/") ||
-		strings.HasPrefix(path, "/api/ontology-manager/in/v1/")
+	return strings.HasPrefix(path, "/api/bkn-backend/in/v1/")
 }
 
 type extractedOperationAuditFacts struct {
@@ -357,8 +358,8 @@ func operationAuditPathTarget(c *gin.Context, targetType string) string {
 	names := map[string][]string{
 		"knowledge_network": {"kn_id"}, "object_type": {"ot_id", "ot_ids"},
 		"relation_type": {"rt_id", "rt_ids"}, "action_type": {"at_id", "at_ids"},
-		"risk_type": {"rt_id", "rt_ids"},
-		"metric":    {"metric_id", "metric_ids"}, "concept_group": {"cg_id"}, "action_schedule": {"schedule_id", "schedule_ids"},
+		"risk_type": {"rt_id", "rt_ids"}, "value_type": {"vt_id"},
+		"metric": {"metric_id", "metric_ids"}, "concept_group": {"cg_id"}, "action_schedule": {"schedule_id", "schedule_ids"},
 		"kn_capability_binding": {"binding_ids"},
 	}
 	for _, name := range names[targetType] {
@@ -420,6 +421,7 @@ func changedFields(value map[string]any) map[string]any {
 		"result_semantics": {}, "specification": {}, "query_capabilities": {}, "logic_property": {}, "lifecycle": {},
 		"object_type_id": {}, "property_name": {}, "display_name": {}, "metric_ref": {}, "execution": {},
 		"no_data_policy": {}, "on_error": {},
+		"base_type": {}, "enum": {}, "range": {}, "length": {}, "pattern": {}, "unit": {},
 	}
 	fields := []string{}
 	for key := range value {

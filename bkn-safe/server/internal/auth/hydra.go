@@ -13,6 +13,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
+	"strings"
+	"time"
 
 	hydra "github.com/ory/hydra-client-go/v2"
 )
@@ -274,4 +277,221 @@ func (h *HydraAdmin) RejectConsent(ctx context.Context, challenge string) (strin
 		return "", fmt.Errorf("reject consent: %w", err)
 	}
 	return out.RedirectTo, nil
+}
+
+// DynamicClient is a public OAuth2 client an MCP agent registers for itself.
+type DynamicClient struct {
+	Name         string
+	RedirectURIs []string
+	GrantTypes   []string
+	Scope        string
+	// Metadata marks the client as self-registered, for later listing.
+	Metadata map[string]any
+}
+
+// RegisteredClient is what Hydra assigned to a newly created client.
+type RegisteredClient struct {
+	ClientID string
+	IssuedAt time.Time
+}
+
+// CreateDynamicClient creates a public client (no secret, PKCE) through the
+// admin API. Hydra's own dynamic registration stays disabled; bkn-safe decides
+// what a self-registered client may be before calling this.
+func (h *HydraAdmin) CreateDynamicClient(ctx context.Context, c DynamicClient) (RegisteredClient, error) {
+	body := hydra.NewOAuth2Client()
+	body.SetClientName(c.Name)
+	body.SetRedirectUris(c.RedirectURIs)
+	body.SetGrantTypes(c.GrantTypes)
+	body.SetResponseTypes([]string{"code"})
+	body.SetScope(c.Scope)
+	body.SetTokenEndpointAuthMethod("none")
+	if c.Metadata != nil {
+		body.SetMetadata(c.Metadata)
+	}
+	out, _, err := h.api.OAuth2API.CreateOAuth2Client(ctx).OAuth2Client(*body).Execute()
+	if err != nil {
+		return RegisteredClient{}, fmt.Errorf("create oauth2 client: %w", err)
+	}
+	issued := time.Now()
+	if out.CreatedAt != nil {
+		issued = *out.CreatedAt
+	}
+	return RegisteredClient{ClientID: out.GetClientId(), IssuedAt: issued}, nil
+}
+
+// DynamicClientKind marks clients bkn-safe created through self-registration.
+const DynamicClientKind = "dynamic"
+
+// ErrNotDynamicClient refuses to touch a client bkn-safe did not self-register,
+// such as openbkn-studio: deleting one of those would break every sign-in.
+var ErrNotDynamicClient = errors.New("oauth client is not self-registered")
+
+// ConnectedClient is a self-registered client and, for a user, their grant to it.
+type ConnectedClient struct {
+	ClientID     string
+	ClientName   string
+	RedirectURIs []string
+	// RegisteredAt is when the client registered itself.
+	RegisteredAt time.Time
+	// RegisteredFrom is the address the registration came from.
+	RegisteredFrom string
+	// GrantedAt and Scopes describe a user's latest grant; zero for admin listings.
+	GrantedAt time.Time
+	Scopes    []string
+}
+
+const hydraPageSize = 500
+
+// maxHydraPages bounds a listing; a subject or deployment past it is cut off
+// rather than holding the request open.
+const maxHydraPages = 20
+
+// ListConnectedClients returns the self-registered clients a user granted
+// access to, latest grant per client. First-party clients (Studio, CLI) are
+// left out: they are the user's own sign-ins, not connections.
+func (h *HydraAdmin) ListConnectedClients(ctx context.Context, subject string) ([]ConnectedClient, error) {
+	byClient := map[string]ConnectedClient{}
+	token := ""
+	for page := 0; page < maxHydraPages; page++ {
+		req := h.api.OAuth2API.ListOAuth2ConsentSessions(ctx).Subject(subject).PageSize(hydraPageSize)
+		if token != "" {
+			req = req.PageToken(token)
+		}
+		sessions, res, err := req.Execute()
+		if err != nil {
+			return nil, fmt.Errorf("list consent sessions: %w", err)
+		}
+		for _, s := range sessions {
+			cr := s.ConsentRequest
+			if cr == nil || cr.Client == nil || !isDynamicClient(*cr.Client) {
+				continue
+			}
+			client := connectedClient(*cr.Client)
+			if s.HandledAt != nil {
+				client.GrantedAt = *s.HandledAt
+			}
+			client.Scopes = append([]string(nil), s.GrantScope...)
+			if prev, ok := byClient[client.ClientID]; !ok || client.GrantedAt.After(prev.GrantedAt) {
+				byClient[client.ClientID] = client
+			}
+		}
+		if token = nextPageToken(res); token == "" {
+			break
+		}
+	}
+	out := make([]ConnectedClient, 0, len(byClient))
+	for _, c := range byClient {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].GrantedAt.After(out[j].GrantedAt) })
+	return out, nil
+}
+
+// RevokeConnectedClient withdraws a user's grant to one client; Hydra
+// invalidates the access and refresh tokens issued under it. It returns the
+// client's display name for the audit record.
+func (h *HydraAdmin) RevokeConnectedClient(ctx context.Context, subject, clientID string) (string, error) {
+	cl, err := h.dynamicClient(ctx, clientID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := h.api.OAuth2API.RevokeOAuth2ConsentSessions(ctx).Subject(subject).Client(clientID).Execute(); err != nil {
+		return "", fmt.Errorf("revoke consent sessions: %w", err)
+	}
+	return cl.GetClientName(), nil
+}
+
+// ListDynamicClients returns every self-registered client, newest first.
+func (h *HydraAdmin) ListDynamicClients(ctx context.Context) ([]ConnectedClient, error) {
+	var out []ConnectedClient
+	token := ""
+	for page := 0; page < maxHydraPages; page++ {
+		req := h.api.OAuth2API.ListOAuth2Clients(ctx).PageSize(hydraPageSize)
+		if token != "" {
+			req = req.PageToken(token)
+		}
+		clients, res, err := req.Execute()
+		if err != nil {
+			return nil, fmt.Errorf("list oauth2 clients: %w", err)
+		}
+		for _, cl := range clients {
+			if isDynamicClient(cl) {
+				out = append(out, connectedClient(cl))
+			}
+		}
+		if token = nextPageToken(res); token == "" {
+			break
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].RegisteredAt.After(out[j].RegisteredAt) })
+	return out, nil
+}
+
+// DeleteDynamicClient removes a self-registered client; every grant to it and
+// every token issued to it stop working. It returns the client's display name
+// for the audit record.
+func (h *HydraAdmin) DeleteDynamicClient(ctx context.Context, clientID string) (string, error) {
+	cl, err := h.dynamicClient(ctx, clientID)
+	if err != nil {
+		return "", err
+	}
+	if _, err := h.api.OAuth2API.DeleteOAuth2Client(ctx, clientID).Execute(); err != nil {
+		return "", fmt.Errorf("delete oauth2 client %q: %w", clientID, err)
+	}
+	return cl.GetClientName(), nil
+}
+
+func (h *HydraAdmin) dynamicClient(ctx context.Context, clientID string) (hydra.OAuth2Client, error) {
+	cl, res, err := h.api.OAuth2API.GetOAuth2Client(ctx, clientID).Execute()
+	if res != nil && res.StatusCode == http.StatusNotFound {
+		return hydra.OAuth2Client{}, ErrNotDynamicClient
+	}
+	if err != nil {
+		return hydra.OAuth2Client{}, fmt.Errorf("get oauth2 client %q: %w", clientID, err)
+	}
+	if !isDynamicClient(*cl) {
+		return hydra.OAuth2Client{}, ErrNotDynamicClient
+	}
+	return *cl, nil
+}
+
+func isDynamicClient(cl hydra.OAuth2Client) bool {
+	meta, _ := cl.Metadata.(map[string]any)
+	return meta["openbkn_kind"] == DynamicClientKind
+}
+
+func connectedClient(cl hydra.OAuth2Client) ConnectedClient {
+	meta, _ := cl.Metadata.(map[string]any)
+	from, _ := meta["registered_from"].(string)
+	c := ConnectedClient{
+		ClientID:       cl.GetClientId(),
+		ClientName:     cl.GetClientName(),
+		RedirectURIs:   append([]string(nil), cl.GetRedirectUris()...),
+		RegisteredFrom: from,
+	}
+	if cl.CreatedAt != nil {
+		c.RegisteredAt = *cl.CreatedAt
+	}
+	return c
+}
+
+// nextPageToken reads Hydra's RFC 8288 Link header for the next page.
+func nextPageToken(res *http.Response) string {
+	if res == nil {
+		return ""
+	}
+	for _, link := range strings.Split(res.Header.Get("Link"), ",") {
+		parts := strings.Split(link, ";")
+		if len(parts) < 2 || !strings.Contains(strings.Join(parts[1:], ";"), `rel="next"`) {
+			continue
+		}
+		raw := strings.Trim(strings.TrimSpace(parts[0]), "<>")
+		u, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		return u.Query().Get("page_token")
+	}
+	return ""
 }

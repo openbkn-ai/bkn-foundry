@@ -67,6 +67,7 @@ func publishEvidenceEvent(ctx context.Context, event Event) evidencepublisher.Pu
 	})
 }
 
+//nolint:unused // Intentionally retained.
 func publishCoreEvidenceEvent(ctx context.Context, coreEvent Event) evidencepublisher.PublishResult {
 	return publishEvidenceEvent(ctx, coreEvent)
 }

@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -180,7 +180,7 @@ func TestGetRelationTypesByIDs_RefusesARelationTypeWithAHiddenEndpoint(t *testin
 				}
 				return
 			}
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {
 				t.Fatalf("GetRelationTypesByIDs() error = %v, want 403", err)
 			}

@@ -1,0 +1,401 @@
+openapi: 3.0.3
+info:
+  title: 身份与授权 · MCP 客户端登录与已连接客户端 API
+  version: 0.1.0
+  description: |
+    Lets MCP clients such as WorkBuddy, Claude Code and Cursor sign a user in
+    with only the Context Loader MCP URL: the client reads the protected-resource
+    metadata (RFC 9728) and the authorization-server metadata (RFC 8414),
+    registers itself (RFC 7591) and opens Hydra's authorize endpoint in the
+    browser. Hydra's own dynamic registration stays disabled; bkn-safe admits
+    only public clients that must sign a user in (authorization_code + PKCE,
+    refresh allowed, no client_credentials) with loopback callbacks, and creates
+    them through Hydra's admin API.
+
+    Users list and disconnect the clients they connected; administrators list
+    and remove any self-registered client. First-party clients (Studio, CLI) are
+    never listed or touched.
+
+    The discovery and registration routes exist only when
+    `config.oauth.dynamicRegistration.enabled` is true.
+servers:
+  - url: /
+paths:
+  /.well-known/oauth-protected-resource:
+    get:
+      operationId: getProtectedResourceMetadata
+      summary: Protected-resource metadata for the MCP endpoint (root form)
+      security: []
+      responses:
+        '200':
+          description: RFC 9728 metadata naming the platform's single issuer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMetadata'
+        '502':
+          $ref: '#/components/responses/OAuthUpstreamError'
+  /.well-known/oauth-protected-resource/{resourcePath}:
+    get:
+      operationId: getProtectedResourceMetadataForPath
+      summary: Protected-resource metadata for one MCP endpoint path
+      description: |
+        Path-suffixed form (RFC 9728 §3.1). Only Context Loader MCP paths
+        (`api/agent-retrieval/v1/mcp…`) are answered; `resource` echoes the
+        origin the caller used.
+      security: []
+      parameters:
+        - name: resourcePath
+          in: path
+          required: true
+          schema:
+            type: string
+          example: api/agent-retrieval/v1/mcp/
+      responses:
+        '200':
+          description: RFC 9728 metadata for that endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMetadata'
+        '404':
+          description: Not a Context Loader MCP path.
+        '502':
+          $ref: '#/components/responses/OAuthUpstreamError'
+  /.well-known/oauth-authorization-server:
+    get:
+      operationId: getAuthorizationServerMetadata
+      summary: Authorization-server metadata with the registration endpoint
+      description: Hydra's OIDC discovery document plus `registration_endpoint`.
+      security: []
+      responses:
+        '200':
+          description: RFC 8414 metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [issuer, authorization_endpoint, token_endpoint, registration_endpoint]
+                additionalProperties: true
+                properties:
+                  issuer:
+                    type: string
+                    format: uri
+                  authorization_endpoint:
+                    type: string
+                    format: uri
+                  token_endpoint:
+                    type: string
+                    format: uri
+                  registration_endpoint:
+                    type: string
+                    format: uri
+                    example: https://10.211.55.4/api/safe/v1/oauth/register
+                  code_challenge_methods_supported:
+                    type: array
+                    items:
+                      type: string
+                      enum: [S256]
+        '502':
+          $ref: '#/components/responses/OAuthUpstreamError'
+  /api/safe/v1/oauth/register:
+    post:
+      operationId: registerOAuthClient
+      summary: Register an MCP client (RFC 7591)
+      description: |
+        Unauthenticated by design: a client registers before anyone has signed
+        in. Requests are rate-limited per client IP. Whatever grant types the
+        client asks for, the created client gets `authorization_code` and
+        `refresh_token` and the scope `openid offline offline_access`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [redirect_uris]
+              properties:
+                redirect_uris:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    format: uri
+                  description: |
+                    Loopback callbacks (`http://127.0.0.1:*`, `http://localhost:*`,
+                    `http://[::1]:*`) or an origin listed in
+                    `config.oauth.dynamicRegistration.allowedRedirectOrigins`.
+                  example: [http://127.0.0.1:61503/oauth/callback]
+                client_name:
+                  type: string
+                  maxLength: 64
+                  example: WorkBuddy Connector
+                grant_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [authorization_code, refresh_token]
+                response_types:
+                  type: array
+                  items:
+                    type: string
+                    enum: [code]
+                token_endpoint_auth_method:
+                  type: string
+                  enum: [none]
+      responses:
+        '201':
+          description: Client created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [client_id, client_id_issued_at, redirect_uris, grant_types, token_endpoint_auth_method]
+                properties:
+                  client_id:
+                    type: string
+                  client_id_issued_at:
+                    type: integer
+                    format: int64
+                  client_name:
+                    type: string
+                  redirect_uris:
+                    type: array
+                    items:
+                      type: string
+                  grant_types:
+                    type: array
+                    items:
+                      type: string
+                  response_types:
+                    type: array
+                    items:
+                      type: string
+                  token_endpoint_auth_method:
+                    type: string
+                    enum: [none]
+                  scope:
+                    type: string
+        '400':
+          description: Rejected client metadata (`invalid_client_metadata` or `invalid_redirect_uri`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        '429':
+          description: Too many registrations from this address.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        '500':
+          description: The client could not be created in Hydra.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+  /api/safe/v1/me/oauth/clients:
+    get:
+      operationId: listMyConnectedClients
+      summary: List the clients the caller connected by signing in
+      security:
+        - OAuth2: []
+      responses:
+        '200':
+          description: The caller's self-registered clients, latest grant first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, total]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConnectedClient'
+                  total:
+                    type: integer
+                    minimum: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/safe/v1/me/oauth/clients/{clientId}:
+    delete:
+      operationId: disconnectMyClient
+      summary: Disconnect a client
+      description: Revokes the caller's grant; the client's access and refresh tokens stop working.
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      responses:
+        '204':
+          description: Disconnected.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/safe/v1/admin/oauth/clients:
+    get:
+      operationId: listSelfRegisteredClients
+      summary: List every self-registered client
+      security:
+        - OAuth2: []
+      responses:
+        '200':
+          description: Self-registered clients, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, total]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SelfRegisteredClient'
+                  total:
+                    type: integer
+                    minimum: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/safe/v1/admin/oauth/clients/{clientId}:
+    delete:
+      operationId: removeSelfRegisteredClient
+      summary: Remove a self-registered client
+      description: Every grant to the client and every token issued to it stop working.
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      responses:
+        '204':
+          description: Removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  parameters:
+    ClientId:
+      name: clientId
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Forbidden:
+      description: Caller lacks the admin-client manage permission.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    NotFound:
+      description: No such self-registered client (first-party clients also answer 404).
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    InternalError:
+      description: Hydra or storage failure.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    OAuthUpstreamError:
+      description: Hydra's discovery document is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/OAuthError'
+  schemas:
+    OAuthError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        error_description:
+          type: string
+    ProtectedResourceMetadata:
+      type: object
+      required: [resource, authorization_servers]
+      properties:
+        resource:
+          type: string
+          format: uri
+          example: https://10.211.55.4/api/agent-retrieval/v1/mcp/
+        authorization_servers:
+          type: array
+          items:
+            type: string
+            format: uri
+        scopes_supported:
+          type: array
+          items:
+            type: string
+          example: [openid, offline]
+        bearer_methods_supported:
+          type: array
+          items:
+            type: string
+        resource_name:
+          type: string
+    ConnectedClient:
+      type: object
+      required: [client_id, client_name, redirect_uris]
+      properties:
+        client_id:
+          type: string
+        client_name:
+          type: string
+        redirect_uris:
+          type: array
+          items:
+            type: string
+        granted_at:
+          type: string
+          format: date-time
+        scopes:
+          type: array
+          items:
+            type: string
+    SelfRegisteredClient:
+      type: object
+      required: [client_id, client_name, redirect_uris]
+      properties:
+        client_id:
+          type: string
+        client_name:
+          type: string
+        redirect_uris:
+          type: array
+          items:
+            type: string
+        registered_at:
+          type: string
+          format: date-time
+        registered_from:
+          type: string
+          description: Client IP the registration came from.

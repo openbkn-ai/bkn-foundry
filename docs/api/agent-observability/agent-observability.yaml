@@ -625,6 +625,15 @@ definitions:
       uri:
         type: string
     type: object
+  evidencevo.TraceRootServiceOptions:
+    properties:
+      entries:
+        items:
+          type: string
+        type: array
+      has_more:
+        type: boolean
+    type: object
   evidencevo.TraceSummary:
     properties:
       agent_name:
@@ -953,6 +962,8 @@ definitions:
         - receipt_pending
         - terminal_conflict
         - closure_manifest_invalid
+        - answer_artifact_storage_limit
+        - answer_artifact_handoff_disabled
         - feature_not_installed
         - trace_core_unavailable
         - authorization_unavailable
@@ -985,6 +996,10 @@ definitions:
     type: object
   httphandler.managedFinishInteractionRequest:
     properties:
+      answer_artifact:
+        description: AnswerArtifact is an opt-in EvidenceArtifact result object, at
+          most 16 MiB, durably staged with the completed Interaction.
+        type: object
       answer_artifact_ref:
         type: string
       claims:
@@ -1226,6 +1241,37 @@ definitions:
       trace_id:
         type: string
     type: object
+  rdto.RecordIntegrityRetryStatusResponse:
+    properties:
+      attempts:
+        type: integer
+      first_attempt_at:
+        type: string
+      interaction_id:
+        type: string
+      last_attempt_at:
+        type: string
+      last_failure_reason:
+        type: string
+      lease_until:
+        type: string
+      next_attempt_at:
+        type: string
+      reason:
+        type: string
+      source_version:
+        type: integer
+      status:
+        enum:
+        - pending
+        - active
+        - running
+        - retry_wait
+        - exhausted
+        - succeeded
+        - superseded
+        type: string
+    type: object
   rdto.TraceEvidenceConfigurationResponse:
     properties:
       acknowledgements:
@@ -1244,6 +1290,19 @@ definitions:
         $ref: '#/definitions/capturepolicysvc.Operation'
       revision:
         type: integer
+    type: object
+  sessionvo.AnswerArtifactPersistence:
+    properties:
+      content_hash:
+        type: string
+      event_id:
+        type: string
+      state:
+        enum:
+        - pending
+        - settled
+        - dead
+        type: string
     type: object
   sessionvo.AssemblyRevision:
     properties:
@@ -1456,6 +1515,8 @@ definitions:
     type: object
   sessionvo.ClosureManifest:
     properties:
+      answer_artifact_persistence:
+        $ref: '#/definitions/sessionvo.AnswerArtifactPersistence'
       answer_artifact_ref:
         type: string
       assembler_deadline:
@@ -2044,6 +2105,50 @@ definitions:
     - SupportClaim
     - SupportArtifactFragment
     - SupportOperationOutput
+  tracesvc.SpanDisplayRange:
+    properties:
+      browse_allowed:
+        type: boolean
+      browse_reason:
+        type: string
+      display_limit:
+        type: integer
+      first_start_at:
+        type: string
+      last_start_at:
+        type: string
+      loaded_count:
+        type: integer
+      raw_record_count:
+        type: integer
+      raw_record_limit:
+        type: integer
+      sort:
+        type: string
+      total_accuracy:
+        type: string
+      total_count:
+        type: integer
+      truncated:
+        type: boolean
+    type: object
+  tracesvc.SpanPage:
+    properties:
+      consistency:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/oteltracevo.TraceGraphNode'
+        type: array
+      has_more:
+        type: boolean
+      next_cursor:
+        type: string
+      sort:
+        type: string
+      trace_id:
+        type: string
+    type: object
   tracesvc.TechnicalOperation:
     properties:
       fact:
@@ -2071,6 +2176,8 @@ definitions:
         items:
           type: string
         type: array
+      span_display:
+        $ref: '#/definitions/tracesvc.SpanDisplayRange'
       summary:
         $ref: '#/definitions/evidencevo.TraceSummary'
     type: object
@@ -2932,7 +3039,11 @@ paths:
       - application/json
       description: Derives the current lease and closure manifest from authoritative
         Operations and Receipts. Ordinary Agents do not submit concurrency or closure
-        internals.
+        internals. When durable answer handoff is enabled, optional answer_artifact
+        uses the EvidenceArtifact contract (result type, at most 16 MiB) and is staged
+        in the same SQL transaction as business completion. completed with evidence_status=assembling
+        means evidence delivery is pending, not complete. Existing answer_artifact_ref
+        requests remain supported.
       parameters:
       - description: Interaction ID
         in: path
@@ -3096,6 +3207,57 @@ paths:
       summary: List raw Operation call facts for one Interaction
       tags:
       - lifecycle
+  /interactions/{interaction_id}/record-integrity-status:
+    get:
+      description: Read-only status for the interaction's current integrity source
+        version. Uses the same canonical authorization as persisted integrity reads;
+        shared-network candidates do not widen that authorization; unauthorized and
+        missing interactions both return 404. Never performs live inspection, claims
+        work, or requeues a retry. No query parameters are accepted. At most 8 attempts
+        over 30 minutes with backoff from 30 seconds to 5 minutes; a new source version
+        schedules a new generation while retaining old retry history. A succeeded
+        job means a verdict was saved, not that records or business conclusions are
+        complete. Reason may describe exhaustion or source replacement; last_failure_reason
+        retains the last actual failure. Zero timestamps mean no attempt/lease has
+        been recorded.
+      parameters:
+      - description: Canonical interaction ID
+        in: path
+        name: interaction_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/rdto.RecordIntegrityRetryStatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get recorded integrity retry diagnostics for an authorized interaction
+      tags:
+      - evidence
   /operations/{operation_id}:
     get:
       parameters:
@@ -3638,6 +3800,81 @@ paths:
       summary: Reconcile a Trace/Evidence configuration operation
       tags:
       - trace-evidence
+  /trace-root-services:
+    get:
+      description: On-demand bounded discovery using the current Trace filters and
+        authorization. The service filter itself is excluded. No Span counts or question/result
+        bodies are loaded. Results contain at most 100 canonical names; has_more asks
+        the caller to narrow q. A failed or budget-limited scan never returns a partial
+        catalog.
+      parameters:
+      - description: Started at or after this RFC3339 timestamp
+        in: query
+        name: from
+        type: string
+      - description: Started at or before this RFC3339 timestamp
+        in: query
+        name: to
+        type: string
+      - description: Exact Trace ID
+        in: query
+        name: trace_id
+        type: string
+      - description: Execution status
+        in: query
+        name: status
+        type: string
+      - description: Exact root operation
+        in: query
+        name: tool
+        type: string
+      - description: Recorded error summary substring
+        in: query
+        name: error_keyword
+        type: string
+      - description: Case-insensitive service-name substring; at most 256 Unicode
+          characters
+        in: query
+        name: q
+        type: string
+      - description: Maximum options, 1..100; default 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.TraceRootServiceOptions'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Discover authorized technical Trace root service options
+      tags:
+      - traces
   /traces:
     get:
       description: Returns stable trace summaries with reverse request links, generated
@@ -3710,8 +3947,16 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
       summary: List technical trace executions
@@ -3752,6 +3997,67 @@ paths:
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
       summary: Get one typed technical trace
+      tags:
+      - traces
+  /traces/{trace_id}/spans:
+    get:
+      description: Requires current global trace access and canonical trace visibility
+        on every page. Signed cursors describe live Span-ID order; pages do not enlarge
+        the graph or claim an exact total.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Signed continuation cursor
+        in: query
+        name: cursor
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/tracesvc.SpanPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Browse one bounded page of technical trace spans
       tags:
       - traces
 securityDefinitions:

@@ -17,6 +17,12 @@ import (
 )
 
 type WorkerOptions struct {
+	// Production bounds SQL claims and answer work independently. Zero preserves
+	// existing embedded callers; non-answer handlers retain their original context.
+	LeaseIOTimeout              time.Duration
+	AnswerTaskIOTimeout         time.Duration
+	AnswerAckIOTimeout          time.Duration
+	AnswerArtifactHandler       AnswerArtifactHandler
 	RevisionInputHandler        RevisionInputHandler
 	Now                         func() time.Time
 	BatchSize                   int
@@ -36,6 +42,11 @@ const historicalProvenanceBuildRequested = "historical_provenance.build_requeste
 // both destinations.
 type HistoricalProvenanceHandler interface {
 	HandleHistoricalProvenance(context.Context, iprojectionoutbox.Item) error
+}
+
+type AnswerArtifactHandler interface {
+	HandleAnswerArtifact(context.Context, iprojectionoutbox.Item) error
+	MarkAnswerArtifactDead(context.Context, iprojectionoutbox.Item) error
 }
 
 type RevisionInputHandler interface {
@@ -82,7 +93,12 @@ func NewWorker(store iprojectionoutbox.Store, sink iprojectionoutbox.Sink, optio
 }
 
 func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
-	items, err := w.store.Lease(ctx, w.options.BatchSize, w.options.LockDuration)
+	if err := ctx.Err(); err != nil {
+		return RunResult{}, err
+	}
+	leaseCtx, cancelLease := ioContext(ctx, w.options.LeaseIOTimeout)
+	items, err := w.store.Lease(leaseCtx, w.options.BatchSize, w.options.LockDuration)
+	cancelLease()
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -92,45 +108,14 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 		if !item.CreatedAt.IsZero() && (oldest.IsZero() || item.CreatedAt.Before(oldest)) {
 			oldest = item.CreatedAt
 		}
-		projectionErr := w.project(ctx, item)
-		if projectionErr == nil {
-			if err := w.store.MarkDelivered(ctx, item); err != nil {
-				if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
-					continue
-				}
-				return result, err
-			}
-			result.Delivered++
-			continue
-		}
-		retryWindowExpired := !item.CreatedAt.IsZero() &&
-			!item.CreatedAt.Add(w.options.MaxRetryAge).After(w.options.Now().UTC())
-		permanent := iprojectionoutbox.IsPermanent(projectionErr)
-		attemptsExhausted := item.Attempts+1 >= w.options.MaxAttempts
-		if permanent || attemptsExhausted || retryWindowExpired {
-			failureClass := "retry_attempts_exhausted"
-			if permanent {
-				failureClass = "permanent_projection_error"
-			} else if retryWindowExpired {
-				failureClass = "retry_window_expired"
-			}
-			if err := w.store.MoveToDLQ(ctx, item, failureClass); err != nil {
-				if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
-					continue
-				}
-				return result, err
-			}
-			result.Dead++
-			continue
-		}
-		delay := w.options.FullJitter(retryDelay(item.Attempts + 1))
-		if err := w.store.MarkRetry(ctx, item, "projection_failed", w.options.Now().UTC().Add(delay)); err != nil {
-			if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
-				continue
-			}
+
+		itemResult, err := w.runItem(ctx, item)
+		result.Delivered += itemResult.Delivered
+		result.Retried += itemResult.Retried
+		result.Dead += itemResult.Dead
+		if err != nil {
 			return result, err
 		}
-		result.Retried++
 	}
 	if !oldest.IsZero() {
 		lag := w.options.Now().UTC().Sub(oldest).Seconds()
@@ -144,7 +129,113 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 	return result, nil
 }
 
+// runItem cancels the task deadline before creating an independent, short ACK
+// context from the still-live worker. An exhausted task may already have stored
+// its artifact or SQL state; unchanged lease fencing and idempotency handle that
+// uncertain outcome. Parent cancellation leaves the lease for recovery.
+func (w *Worker) runItem(ctx context.Context, item iprojectionoutbox.Item) (RunResult, error) {
+	result := RunResult{}
+	taskCtx, cancelTask := ctx, func() {}
+	if item.EventType == "artifact.persist_requested" {
+		taskCtx, cancelTask = ioContext(ctx, w.options.AnswerTaskIOTimeout)
+	}
+	var projectionErr error
+	if item.PayloadDeferred && !item.PayloadTooLarge {
+		if loader, ok := w.store.(iprojectionoutbox.PayloadLoader); ok {
+			item.Payload, projectionErr = loader.LoadPayload(taskCtx, item)
+		} else {
+			projectionErr = errors.New("deferred outbox payload loader is unavailable")
+		}
+	}
+	if projectionErr == nil {
+		projectionErr = taskCtx.Err()
+	}
+	if projectionErr == nil {
+		projectionErr = w.project(taskCtx, item)
+	}
+	if projectionErr == nil {
+		projectionErr = taskCtx.Err()
+	}
+	cancelTask()
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if errors.Is(projectionErr, iprojectionoutbox.ErrLeaseLost) {
+		return result, nil
+	}
+	ackCtx, cancelACK := ctx, func() {}
+	if item.EventType == "artifact.persist_requested" {
+		ackCtx, cancelACK = ioContext(ctx, w.options.AnswerAckIOTimeout)
+	}
+	defer cancelACK()
+	if projectionErr == nil {
+		if err := w.store.MarkDelivered(ackCtx, item); err != nil {
+			if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+				return result, nil
+			}
+			return result, err
+		}
+		result.Delivered++
+		return result, nil
+	}
+	retryWindowExpired := !item.CreatedAt.IsZero() &&
+		!item.CreatedAt.Add(w.options.MaxRetryAge).After(w.options.Now().UTC())
+	permanent := iprojectionoutbox.IsPermanent(projectionErr)
+	attemptsExhausted := item.Attempts+1 >= w.options.MaxAttempts
+	if permanent || attemptsExhausted || retryWindowExpired {
+		failureClass := "retry_attempts_exhausted"
+		if permanent {
+			failureClass = "permanent_projection_error"
+		} else if retryWindowExpired {
+			failureClass = "retry_window_expired"
+		}
+		if item.EventType == "artifact.persist_requested" && w.options.AnswerArtifactHandler != nil {
+			if err := w.options.AnswerArtifactHandler.MarkAnswerArtifactDead(ackCtx, item); err != nil {
+				if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+					return result, nil
+				}
+				if !iprojectionoutbox.IsPermanent(err) {
+					return result, err
+				}
+			}
+		}
+		if err := w.store.MoveToDLQ(ackCtx, item, failureClass); err != nil {
+			if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+				return result, nil
+			}
+			return result, err
+		}
+		result.Dead++
+		return result, nil
+	}
+	delay := w.options.FullJitter(retryDelay(item.Attempts + 1))
+	if err := w.store.MarkRetry(ackCtx, item, "projection_failed", w.options.Now().UTC().Add(delay)); err != nil {
+		if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+			return result, nil
+		}
+		return result, err
+	}
+	result.Retried++
+	return result, nil
+}
+
+func ioContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
 func (w *Worker) project(ctx context.Context, item iprojectionoutbox.Item) error {
+	if item.PayloadTooLarge {
+		return iprojectionoutbox.Permanent(errors.New("outbox item exceeds payload budget"))
+	}
+	if item.EventType == "artifact.persist_requested" {
+		if w.options.AnswerArtifactHandler == nil {
+			return errors.New("answer artifact handler is not assembled")
+		}
+		return w.options.AnswerArtifactHandler.HandleAnswerArtifact(ctx, item)
+	}
 	if item.EventType == "revision.input.sealed" {
 		if w.options.RevisionInputHandler == nil {
 			return errors.New("revision input handler is not assembled")

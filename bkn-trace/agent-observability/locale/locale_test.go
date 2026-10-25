@@ -22,30 +22,28 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/BurntSushi/toml"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
-func TestResourcesAreComplete(t *testing.T) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("resolve locale test path")
-	}
-	if err := i18n.ValidateLocaleDir(filepath.Dir(filename), "zh-CN", "zh-CN", "en-US"); err != nil {
+func TestMessagesAreComplete(t *testing.T) {
+	Register()
+	Register()
+	if err := i18n.ValidateMessageBundles(); err != nil {
 		t.Fatalf("validate locale resources: %v", err)
 	}
 }
 
-func TestEnglishCatalogCoversUserFacingErrorLiterals(t *testing.T) {
+func TestEnglishMessageBundleCoversUserFacingErrorLiterals(t *testing.T) {
 	moduleRoot := filepath.Dir(filepath.Dir(sourceFile(t)))
-	messages := loadEnglishMessages(t, filepath.Join(moduleRoot, "locale", "agent-observability.en-US.toml"))
+	messages := loadEnglishMessages()
 	directories := []string{
 		"src/driveradapter/api/httphandler",
 		"src/domain/service/evidencesvc",
 		"src/domain/service/ledgersvc",
 		"src/domain/service/sessionsvc",
 		"src/domain/valueobject/evidencevo",
+		"src/port/driven/ievidenceledger",
 	}
 
 	missing := make(map[string]struct{})
@@ -67,32 +65,47 @@ func TestEnglishCatalogCoversUserFacingErrorLiterals(t *testing.T) {
 	t.Fatalf("English locale is missing user-facing messages:\n- %s", strings.Join(values, "\n- "))
 }
 
-func TestTranslateUsesNegotiatedLanguage(t *testing.T) {
+func TestSharedRenderUsesNegotiatedLanguage(t *testing.T) {
 	Register()
-
-	english := Translate(WithLanguage(context.Background(), sharedrest.AmericanEnglish), "trace not found")
-	chinese := Translate(WithLanguage(context.Background(), sharedrest.SimplifiedChinese), "trace not found")
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.AmericanEnglish)), "AgentObservability.Message.trace not found", nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+		localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.AmericanEnglish)))), "AgentObservability.Message.request failed", nil)
+	}
+	english := localizedText
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.SimplifiedChinese)), "AgentObservability.Message.trace not found", nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+		localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.SimplifiedChinese)))), "AgentObservability.Message.request failed", nil)
+	}
+	chinese := localizedText
 
 	if english != "trace not found" || chinese != "Trace 不存在" {
 		t.Fatalf("unexpected translations: en=%q zh=%q", english, chinese)
 	}
 }
 
-func TestTranslateWithDataUsesNegotiatedLanguage(t *testing.T) {
+func TestSharedRenderWithDataUsesNegotiatedLanguage(t *testing.T) {
 	data := map[string]any{
 		"EventType": "agent.interaction.started",
 		"RoleField": "question_artifact_ref",
 	}
-	english := TranslateWithData(
-		WithLanguage(context.Background(), sharedrest.AmericanEnglish),
-		"artifact_type does not match event link role",
-		data,
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(
+		WithLanguage(context.Background(), i18n.AmericanEnglish)), "AgentObservability.Message.artifact_type does not match event link role", data,
 	)
-	chinese := TranslateWithData(
-		WithLanguage(context.Background(), sharedrest.SimplifiedChinese),
-		"artifact_type does not match event link role",
-		data,
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+		localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.AmericanEnglish)))), "AgentObservability.Message.request failed", nil)
+	}
+	english := localizedText
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(
+		WithLanguage(context.Background(), i18n.SimplifiedChinese)), "AgentObservability.Message.artifact_type does not match event link role", data,
 	)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+		localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.SimplifiedChinese)))), "AgentObservability.Message.request failed", nil)
+	}
+	chinese := localizedText
 
 	if english != "artifact_type does not match event link role agent.interaction.started.question_artifact_ref" ||
 		chinese != "artifact_type 与事件关联角色 agent.interaction.started.question_artifact_ref 不匹配" {
@@ -100,55 +113,71 @@ func TestTranslateWithDataUsesNegotiatedLanguage(t *testing.T) {
 	}
 }
 
-func TestMissingResourcesUseNonFatalFallback(t *testing.T) {
+func TestMissingMessagesFailStartupWithoutReplacingMessageBundle(t *testing.T) {
 	Register()
-	i18n.RegisterI18n(t.TempDir(), sharedrest.SimplifiedChinese)
-	t.Cleanup(register)
-
-	message := Translate(WithLanguage(context.Background(), sharedrest.AmericanEnglish), "trace not found")
-	if strings.TrimSpace(message) == "" {
-		t.Fatal("missing resources returned an empty fallback")
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.AmericanEnglish)), "AgentObservability.Message.trace not found", nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+		localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.AmericanEnglish)))), "AgentObservability.Message.request failed", nil)
+	}
+	before := localizedText
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Error("expected missing resources to fail startup")
+			}
+		}()
+		i18n.RegisterI18n(&i18n.I18nMessages{Locale: i18n.SimplifiedChinese, Messages: map[string]string{"Invalid": "{{"}})
+	}()
+	localizedText, renderErr = i18n.Render(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.AmericanEnglish)), "AgentObservability.Message.trace not found", nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+		localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(WithLanguage(context.Background(), i18n.AmericanEnglish)))), "AgentObservability.Message.request failed", nil)
+	}
+	after := localizedText
+	if before == "" || after != before {
+		t.Fatalf("message bundle changed after rejected loading: %q -> %q", before, after)
 	}
 }
 
 func TestLanguageMiddlewareNegotiatesOneEffectiveLocale(t *testing.T) {
 	handler := LanguageMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, sharedrest.GetLanguageByCtx(r.Context()))
+		_, _ = io.WriteString(w, string(i18n.GetLanguageByCtx(r.Context())))
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-GB,en;q=0.9,zh-CN;q=0.8")
+	request.Header.Set(i18n.AcceptLanguageHeader, "en-GB,en;q=0.9,zh-CN;q=0.8")
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
 
-	if response.Body.String() != sharedrest.AmericanEnglish {
-		t.Fatalf("effective locale = %q, want %q", response.Body.String(), sharedrest.AmericanEnglish)
+	if response.Body.String() != string(i18n.AmericanEnglish) {
+		t.Fatalf("effective locale = %q, want %q", response.Body.String(), i18n.AmericanEnglish)
 	}
 }
 
 func TestWrappedHTTPClientOverwritesRawLanguageRange(t *testing.T) {
 	var received string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		received = r.Header.Get(sharedrest.AcceptLanguageHeader)
+		received = r.Header.Get(i18n.AcceptLanguageHeader)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
 	client := WrapHTTPClient(server.Client())
-	ctx := WithLanguage(context.Background(), sharedrest.AmericanEnglish)
+	ctx := WithLanguage(context.Background(), i18n.AmericanEnglish)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
 	}
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN,en;q=0.8")
+	request.Header.Set(i18n.AcceptLanguageHeader, "zh-CN,en;q=0.8")
 	response, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("send request: %v", err)
 	}
 	_ = response.Body.Close()
 
-	if received != sharedrest.AmericanEnglish {
-		t.Fatalf("downstream Accept-Language = %q, want %q", received, sharedrest.AmericanEnglish)
+	if received != string(i18n.AmericanEnglish) {
+		t.Fatalf("downstream Accept-Language = %q, want %q", received, i18n.AmericanEnglish)
 	}
 }
 
@@ -156,28 +185,26 @@ func sourceFile(t *testing.T) string {
 	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
-		t.Fatal("resolve locale test path")
+		t.Fatal("cannot locate test source")
 	}
 	return filename
 }
 
-func loadEnglishMessages(t *testing.T, path string) map[string]string {
-	t.Helper()
-	var catalog struct {
-		AgentObservability struct {
-			Message map[string]string
+func loadEnglishMessages() map[string]string {
+	messages := make(map[string]string)
+	for key, value := range agentObservabilityEnUS.Messages {
+		if id, ok := strings.CutPrefix(key, messagePrefix); ok {
+			messages[id] = value
 		}
 	}
-	if _, err := toml.DecodeFile(path, &catalog); err != nil {
-		t.Fatalf("decode English locale: %v", err)
-	}
-	return catalog.AgentObservability.Message
+	return messages
 }
 
 func userFacingErrorLiterals(t *testing.T, directory string) []string {
 	t.Helper()
 	var messages []string
-	scanErrorsNew := strings.Contains(filepath.ToSlash(directory), "/httphandler")
+	scanErrorsNew := strings.Contains(filepath.ToSlash(directory), "/httphandler") ||
+		strings.Contains(filepath.ToSlash(directory), "/ievidenceledger")
 	err := filepath.WalkDir(directory, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -245,5 +272,45 @@ func calledFunctionName(expression ast.Expr) string {
 		return value.Sel.Name
 	default:
 		return ""
+	}
+}
+
+func TestUnknownMessagesReturnLocalizedFailure(t *testing.T) {
+	for _, test := range []struct {
+		language i18n.Language
+		want     string
+	}{
+		{i18n.AmericanEnglish, "Request failed."},
+		{i18n.SimplifiedChinese, "请求失败。"},
+	} {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(WithLanguage(context.Background(), test.language)), "AgentObservability.Message.unregistered-internal-diagnostic", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+			localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(WithLanguage(context.Background(), test.language)))), "AgentObservability.Message.request failed", nil)
+		}
+		got := localizedText
+		if got != test.want {
+			t.Fatalf("%s: got %q, want %q", test.language, got, test.want)
+		}
+	}
+}
+
+func TestLedgerScopeErrorIsLocalized(t *testing.T) {
+	for _, test := range []struct {
+		language i18n.Language
+		want     string
+	}{
+		{i18n.AmericanEnglish, "evidence interaction or operation does not exist"},
+		{i18n.SimplifiedChinese, "证据所属交互或操作不存在"},
+	} {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(WithLanguage(context.Background(), test.language)), "AgentObservability.Message.evidence interaction or operation does not exist", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+			localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(WithLanguage(context.Background(), test.language)))), "AgentObservability.Message.request failed", nil)
+		}
+		got := localizedText
+		if got != test.want {
+			t.Fatalf("%s: got %q, want %q", test.language, got, test.want)
+		}
 	}
 }

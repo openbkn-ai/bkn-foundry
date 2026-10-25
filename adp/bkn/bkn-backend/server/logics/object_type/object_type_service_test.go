@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,6 +52,7 @@ func Test_objectTypeService_CheckObjectTypeExistByID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -90,14 +91,14 @@ func Test_objectTypeService_CheckObjectTypeExistByID(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			otID := "ot1"
 
-			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			name, exist, err := service.CheckObjectTypeExistByID(ctx, knID, branch, otID)
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 			So(name, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
 		})
 	})
 }
@@ -110,6 +111,7 @@ func Test_objectTypeService_CheckObjectTypeExistByName(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -148,14 +150,14 @@ func Test_objectTypeService_CheckObjectTypeExistByName(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			otName := "object_type1"
 
-			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			id, exist, err := service.CheckObjectTypeExistByName(ctx, knID, branch, otName)
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 			So(id, ShouldEqual, "")
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
 		})
 	})
 }
@@ -168,6 +170,7 @@ func Test_objectTypeService_GetObjectTypeIDsByKnID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -201,13 +204,13 @@ func Test_objectTypeService_GetObjectTypeIDsByKnID(t *testing.T) {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 
-			ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.GetObjectTypeIDsByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed)
 		})
 	})
 }
@@ -269,6 +272,7 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
@@ -333,8 +337,8 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Failed when GetObjectTypesByIDs returns error\n", func() {
@@ -343,7 +347,7 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 			otIDs := []string{"ot1"}
 
 			smock.ExpectBegin()
-			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
@@ -366,7 +370,7 @@ func Test_objectTypeService_GetObjectTypesByIDs(t *testing.T) {
 
 			smock.ExpectBegin()
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(otArr, nil)
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.GetObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
@@ -490,6 +494,7 @@ func Test_objectTypeService_GetAllObjectTypesByKnID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -520,7 +525,7 @@ func Test_objectTypeService_GetAllObjectTypesByKnID(t *testing.T) {
 			knID := "kn1"
 			branch := interfaces.MAIN_BRANCH
 
-			ota.EXPECT().GetAllObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().GetAllObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.GetAllObjectTypesByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -537,6 +542,7 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &objectTypeService{
@@ -572,30 +578,30 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 			otID := "ot1"
 
 			smock.ExpectBegin()
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.GetObjectTypeByID(ctx, nil, knID, branch, otID)
 			So(err, ShouldNotBeNil)
 			So(result, ShouldBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
 		})
 
 		Convey("Keeps not found when access layer returns a structured 404\n", func() {
 			smock.ExpectBegin()
 			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound))
+				Return(nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound))
 			smock.ExpectRollback()
 
 			result, err := service.GetObjectTypeByID(ctx, nil, "kn1", interfaces.MAIN_BRANCH, "missing")
 			So(result, ShouldBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Returns not found when access layer returns no object type\n", func() {
@@ -605,10 +611,10 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 
 			result, err := service.GetObjectTypeByID(ctx, nil, "kn1", interfaces.MAIN_BRANCH, "missing")
 			So(result, ShouldBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		})
 
 		Convey("Wraps a plain database error as internal error\n", func() {
@@ -619,10 +625,10 @@ func Test_objectTypeService_GetObjectTypeByID(t *testing.T) {
 
 			result, err := service.GetObjectTypeByID(ctx, nil, "kn1", interfaces.MAIN_BRANCH, "ot1")
 			So(result, ShouldBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed)
 		})
 	})
 }
@@ -639,6 +645,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			},
 		}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -733,8 +740,8 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
 			So(result, ShouldBeEmpty)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 			assert.NotContains(t, err.Error(), "object_type1")
 		})
 
@@ -758,8 +765,8 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
 			So(err, ShouldNotBeNil)
 			So(len(result), ShouldEqual, 0)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeIDExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeIDExisted)
 		})
 
 		Convey("Success with ignore mode when object type exists\n", func() {
@@ -882,7 +889,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			smock.ExpectBegin()
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
-			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
@@ -906,7 +913,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().CreateObjectTypeStatus(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().CreateObjectTypeStatus(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
@@ -931,7 +938,7 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ota.EXPECT().CreateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().CreateObjectTypeStatus(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.CreateObjectTypes(ctx, nil, objectTypes, interfaces.ImportMode_Normal, false, true)
@@ -948,6 +955,7 @@ func Test_objectTypeService_GetObjectTypeSampleData(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
@@ -1049,6 +1057,7 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		aoa := bmock.NewMockAgentOperatorAccess(mockCtrl)
@@ -1248,9 +1257,9 @@ func Test_objectTypeService_ValidateObjectTypes(t *testing.T) {
 			expectImportModeOK()
 			err := service.ValidateObjectTypes(ctx, "kn1", interfaces.MAIN_BRANCH, objectTypes, true, nil, interfaces.ImportMode_Normal)
 			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*rest.HTTPError)
+			httpErr, ok := err.(*httperrors.HTTPError)
 			So(ok, ShouldBeTrue)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_InvalidParameter)
 		})
 
 		Convey("Success strict mode when tool binding resolves\n", func() {
@@ -1350,7 +1359,7 @@ func TestObjectTypeStrictResourceDependencyErrorMapping(t *testing.T) {
 	}{
 		{name: "missing binding", kind: interfaces.DependencyNotFound, status: http.StatusBadRequest, code: berrors.BknBackend_ObjectType_InvalidParameter},
 		{name: "invalid binding", kind: interfaces.DependencyInvalidBinding, status: http.StatusBadRequest, code: berrors.BknBackend_ObjectType_InvalidParameter},
-		{name: "current editor forbidden", kind: interfaces.DependencyForbidden, status: http.StatusForbidden, code: rest.PublicError_Forbidden},
+		{name: "current editor forbidden", kind: interfaces.DependencyForbidden, status: http.StatusForbidden, code: httperrors.PublicError_Forbidden},
 		{name: "resolved delegator forbidden", kind: interfaces.DependencyForbidden, controlled: true, status: http.StatusBadGateway, code: berrors.BknBackend_ObjectType_InternalError},
 		{name: "timeout", kind: interfaces.DependencyTimeout, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ObjectType_InternalError},
 		{name: "unavailable", kind: interfaces.DependencyUnavailable, status: http.StatusServiceUnavailable, code: berrors.BknBackend_ObjectType_InternalError},
@@ -1383,10 +1392,10 @@ func TestObjectTypeStrictResourceDependencyErrorMapping(t *testing.T) {
 				KNID: "kn-1",
 			})
 
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
-			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, tc.code, httpErr.ErrorCode)
 		})
 	}
 }
@@ -1460,10 +1469,10 @@ func TestObjectTypeStrictToolDependencyErrorMapping(t *testing.T) {
 				},
 			})
 
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, tc.status, httpErr.HTTPCode)
-			assert.Equal(t, tc.code, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, tc.code, httpErr.ErrorCode)
 		})
 	}
 }
@@ -1476,6 +1485,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
@@ -1553,7 +1563,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			}
 
 			smock.ExpectBegin()
-			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().ListObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			result, total, err := service.ListObjectTypes(ctx, nil, query)
@@ -1588,7 +1598,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 			ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(context.Context, []*interfaces.AccountInfo) error {
 					So(smock.ExpectationsWereMet(), ShouldBeNil)
-					return rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError)
+					return httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError)
 				})
 
 			result, total, err := service.ListObjectTypes(ctx, nil, query)
@@ -1654,6 +1664,7 @@ func Test_objectTypeService_ListObjectTypes(t *testing.T) {
 func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
 	vbs := bmock.NewMockVegaBackendService(ctrl)
@@ -1704,6 +1715,7 @@ func TestObjectTypeServiceListSummariesPushesAuthorizationIntoCountAndPage(t *te
 func TestObjectTypeServiceListSummariesFallsBackForWildcardScope(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	ps := bmock.NewMockPermissionService(ctrl)
 	ums := bmock.NewMockUserMgmtService(ctrl)
 	vbs := bmock.NewMockVegaBackendService(ctrl)
@@ -1759,6 +1771,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			},
 		}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -1814,7 +1827,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
 
 			err := service.UpdateObjectType(ctx, nil, objectType, true)
 			So(err, ShouldNotBeNil)
@@ -1833,7 +1846,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
-			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateObjectType(ctx, nil, objectType, true)
@@ -1854,7 +1867,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateObjectType(ctx, nil, objectType, true)
@@ -1876,7 +1889,7 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateObjectType(ctx, nil, objectType, true)
@@ -1897,6 +1910,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			},
 		}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		vbs := bmock.NewMockVegaBackendService(mockCtrl)
@@ -1982,7 +1996,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			}
 			dataProperties := []*interfaces.DataProperty{}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
 
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
 			So(err, ShouldNotBeNil)
@@ -2010,7 +2024,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectCommit()
 
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
@@ -2040,7 +2054,7 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().UpdateDataProperties(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectCommit()
 
 			err := service.UpdateDataProperties(ctx, objectType, dataProperties)
@@ -2087,6 +2101,7 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
@@ -2133,7 +2148,7 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 			branch := interfaces.MAIN_BRANCH
 			otIDs := []string{"ot1"}
 
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_InternalError_CheckPermissionFailed))
 
 			err := service.DeleteObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
 			So(err, ShouldNotBeNil)
@@ -2146,7 +2161,7 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
@@ -2161,7 +2176,7 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ota.EXPECT().DeleteObjectTypeStatusByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().DeleteObjectTypeStatusByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
@@ -2177,7 +2192,7 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ota.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			ota.EXPECT().DeleteObjectTypeStatusByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
@@ -2194,7 +2209,7 @@ func Test_objectTypeService_DeleteObjectTypesByIDs(t *testing.T) {
 			ota.EXPECT().DeleteObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			ota.EXPECT().DeleteObjectTypeStatusByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteObjectTypesByIDs(ctx, nil, knID, branch, otIDs)
@@ -2211,6 +2226,7 @@ func Test_objectTypeService_GetObjectTypesMapByIDs(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -2258,7 +2274,7 @@ func Test_objectTypeService_GetObjectTypesMapByIDs(t *testing.T) {
 			otIDs := []string{"ot1"}
 
 			ota.EXPECT().GetObjectTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+				Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.GetObjectTypesMapByIDs(ctx, knID, branch, otIDs, false)
 			So(err, ShouldNotBeNil)
@@ -2322,7 +2338,7 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := service.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -2396,7 +2412,7 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -2427,7 +2443,7 @@ func Test_objectTypeService_InsertDatasetData(t *testing.T) {
 			}
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
-			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := serviceWithVector.InsertDatasetData(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -2501,7 +2517,7 @@ func Test_objectTypeService_GetTotal(t *testing.T) {
 		Convey("Failed when QueryResourceData fails\n", func() {
 			filterCondition := map[string]any{}
 
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldNotBeNil)
@@ -2574,7 +2590,7 @@ func Test_objectTypeService_GetTotalWithLargeOTIDs(t *testing.T) {
 			}
 			otIDs := []string{"ot1"}
 
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			total, err := service.GetTotalWithLargeOTIDs(ctx, filterCondition, otIDs)
 			So(err, ShouldNotBeNil)
@@ -2623,7 +2639,7 @@ func Test_objectTypeService_GetTotalWithOTIDs(t *testing.T) {
 			}
 			otIDs := []string{"ot1"}
 
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			total, err := service.GetTotalWithOTIDs(ctx, filterCondition, otIDs)
 			So(err, ShouldNotBeNil)
@@ -2648,6 +2664,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil).AnyTimes()
 		ps.EXPECT().FilterVisibleResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllPermissionResources).AnyTimes()
@@ -2770,7 +2787,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				ConceptGroups: []string{"cg1"},
 			}
 
-			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(0, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -2786,7 +2803,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 			}
 
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
-			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -2924,7 +2941,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				NeedTotal: true,
 			}
 
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -2942,7 +2959,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil)
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -2992,7 +3009,7 @@ func Test_objectTypeService_SearchObjectTypes(t *testing.T) {
 				Limit:  10,
 			}
 
-			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			result, err := service.SearchObjectTypes(ctx, query)
 			So(err, ShouldNotBeNil)
@@ -3126,6 +3143,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 
 		appSetting := &common.AppSetting{}
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 		service := &objectTypeService{
 			appSetting: appSetting,
@@ -3172,8 +3190,8 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeIDExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeIDExisted)
 		})
 
 		Convey("Failed with Normal mode when name exists\n", func() {
@@ -3195,8 +3213,8 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 		})
 
 		Convey("Success with Ignore mode when object type exists\n", func() {
@@ -3260,8 +3278,8 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 		})
 
 		Convey("Success with Overwrite mode when only ID exists\n", func() {
@@ -3304,8 +3322,8 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(len(creates), ShouldEqual, 1)
 			So(len(updates), ShouldEqual, 0)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_ObjectTypeNameExisted)
 		})
 
 		Convey("Failed when CheckObjectTypeExistByID returns error\n", func() {
@@ -3320,7 +3338,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 				},
 			}
 
-			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			creates, updates, err := service.handleObjectTypeImportMode(ctx, interfaces.ImportMode_Normal, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -3341,7 +3359,7 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			}
 
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
-			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			creates, updates, err := service.handleObjectTypeImportMode(ctx, interfaces.ImportMode_Normal, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -3391,8 +3409,8 @@ func Test_objectTypeService_handleObjectTypeImportMode(t *testing.T) {
 			So(creates, ShouldHaveLength, 0)
 			So(updates, ShouldHaveLength, 0)
 			So(err, ShouldNotBeNil)
-			httpErr := err.(*rest.HTTPError)
-			So(httpErr.BaseError.ErrorCode, ShouldEqual,
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.ErrorCode, ShouldEqual,
 				berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed)
 		})
 	})
@@ -3700,7 +3718,7 @@ func Test_objectTypeService_handleGroupRelations(t *testing.T) {
 			smock.ExpectBegin()
 			tx, _ := db.Begin()
 
-			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := service.handleGroupRelations(ctx, tx, objectType, currentTime, true)
 			So(err, ShouldNotBeNil)
@@ -3728,7 +3746,7 @@ func Test_objectTypeService_handleGroupRelations(t *testing.T) {
 			}
 
 			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(conceptGroups, nil)
-			cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := service.handleGroupRelations(ctx, tx, objectType, currentTime, true)
 			So(err, ShouldNotBeNil)
@@ -3864,7 +3882,7 @@ func Test_objectTypeService_syncObjectGroups(t *testing.T) {
 			smock.ExpectBegin()
 			tx, _ := db.Begin()
 
-			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := service.syncObjectGroups(ctx, tx, objectType, currentTime, true)
 			So(err, ShouldNotBeNil)
@@ -3892,7 +3910,7 @@ func Test_objectTypeService_syncObjectGroups(t *testing.T) {
 			}
 
 			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(conceptGroups, nil)
-			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := service.syncObjectGroups(ctx, tx, objectType, currentTime, true)
 			So(err, ShouldNotBeNil)
@@ -3913,7 +3931,7 @@ func Test_objectTypeService_syncObjectGroups(t *testing.T) {
 
 			cga.EXPECT().GetConceptGroupsByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(conceptGroups, nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(existingRelation, nil)
-			cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := service.syncObjectGroups(ctx, tx, objectType, currentTime, true)
 			So(err, ShouldNotBeNil)
@@ -3940,7 +3958,7 @@ func Test_objectTypeService_syncObjectGroups(t *testing.T) {
 			}
 
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(existingRelation, nil)
-			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
+			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 
 			err := service.syncObjectGroups(ctx, tx, objectType2, currentTime, false)
 			So(err, ShouldNotBeNil)
@@ -3974,6 +3992,7 @@ func Test_objectTypeService_DeleteObjectTypesByKnID(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
+		ota.EXPECT().ListAliasedObjectTypes(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		ota.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -3990,7 +4009,7 @@ func Test_objectTypeService_DeleteObjectTypesByKnID(t *testing.T) {
 
 		Convey("Failed when DeleteObjectTypesByKnID access returns error\n", func() {
 			tx := new(sql.Tx)
-			ota.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), tx, knID, branch).Return(int64(0), rest.NewHTTPError(context.Background(), 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), tx, knID, branch).Return(int64(0), httperrors.NewHTTPError(context.Background(), 500, berrors.BknBackend_ObjectType_InternalError))
 			err := service.DeleteObjectTypesByKnID(context.Background(), tx, knID, branch)
 			So(err, ShouldNotBeNil)
 		})
@@ -3998,7 +4017,7 @@ func Test_objectTypeService_DeleteObjectTypesByKnID(t *testing.T) {
 		Convey("Failed when DeleteObjectTypeStatusByKnID access returns error\n", func() {
 			tx := new(sql.Tx)
 			ota.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), tx, knID, branch).Return(int64(1), nil)
-			ota.EXPECT().DeleteObjectTypeStatusByKnID(gomock.Any(), tx, knID, branch).Return(int64(0), rest.NewHTTPError(context.Background(), 500, berrors.BknBackend_ObjectType_InternalError))
+			ota.EXPECT().DeleteObjectTypeStatusByKnID(gomock.Any(), tx, knID, branch).Return(int64(0), httperrors.NewHTTPError(context.Background(), 500, berrors.BknBackend_ObjectType_InternalError))
 			err := service.DeleteObjectTypesByKnID(context.Background(), tx, knID, branch)
 			So(err, ShouldNotBeNil)
 		})

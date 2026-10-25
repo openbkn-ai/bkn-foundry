@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -27,7 +27,7 @@ func ValidateConnectorTypeReq(ctx context.Context, req *interfaces.ConnectorType
 
 	// Remote mode requires endpoint
 	if req.Mode == interfaces.ConnectorModeRemote && req.Endpoint == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Endpoint).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Endpoint).
 			WithErrorDetails("Remote connector requires endpoint URL")
 	}
 
@@ -46,7 +46,7 @@ func ValidateConnectorTypeListQueryParams(ctx context.Context, params interfaces
 
 func ValidateConnectorMode(ctx context.Context, mode string) error {
 	if mode == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Mode)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Mode)
 	}
 	return ValidateOptionalConnectorMode(ctx, mode)
 }
@@ -59,7 +59,7 @@ func ValidateOptionalConnectorMode(ctx context.Context, mode string) error {
 	case interfaces.ConnectorModeLocal:
 	case interfaces.ConnectorModeRemote:
 	default:
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Mode).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Mode).
 			WithErrorDetails(fmt.Sprintf("invalid mode: %s", mode))
 	}
 	return nil
@@ -67,7 +67,7 @@ func ValidateOptionalConnectorMode(ctx context.Context, mode string) error {
 
 func ValidateConnectorCategory(ctx context.Context, category string) error {
 	if category == "" {
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Category)
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Category)
 	}
 	return ValidateOptionalConnectorCategory(ctx, category)
 }
@@ -85,7 +85,7 @@ func ValidateOptionalConnectorCategory(ctx context.Context, category string) err
 	case interfaces.ConnectorCategoryMetric:
 	case interfaces.ConnectorCategoryAPI:
 	default:
-		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Category).
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_InvalidParameter_Category).
 			WithErrorDetails(fmt.Sprintf("invalid category: %s", category))
 	}
 	return nil

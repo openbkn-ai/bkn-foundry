@@ -7,11 +7,14 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 	"testing"
 
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 	"github.com/smartystreets/goconvey/convey"
 
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knmetrics"
 )
@@ -76,6 +79,7 @@ type stubMetricOntologyQuery struct {
 	interfaces.DrivenOntologyQuery
 	resp           *interfaces.MetricQueryDownstreamResp
 	drillResp      *interfaces.MetricDrillThroughResp
+	drillErr       error
 	gotMetric      string
 	gotDrillMetric string
 	gotDrillReq    *interfaces.MetricDrillThroughReq
@@ -91,7 +95,7 @@ func (s *stubMetricOntologyQuery) DrillThroughMetricData(_ context.Context, _, m
 	req *interfaces.MetricDrillThroughReq) (*interfaces.MetricDrillThroughResp, error) {
 	s.gotDrillMetric = metricID
 	s.gotDrillReq = req
-	return s.drillResp, nil
+	return s.drillResp, s.drillErr
 }
 
 func TestHandleGetObjectTypes_AdvertisesScopedMetrics(t *testing.T) {
@@ -190,6 +194,29 @@ func TestHandleDrillThroughMetric(t *testing.T) {
 	}))
 	if err != nil || !invalid.IsError {
 		t.Fatalf("invalid page size must fail: %v, %#v", err, invalid)
+	}
+}
+
+func TestHandleDrillThroughMetric_ReturnsControlledUnsupportedResultError(t *testing.T) {
+	ctx := context.Background()
+	oq := &stubMetricOntologyQuery{drillErr: infraErr.DefaultHTTPError(ctx,
+		http.StatusUnprocessableEntity,
+		"OntologyQuery.Metric.InvalidParameter: participant lookup is unavailable for this result")}
+	handler := handleDrillThroughMetric(knmetrics.NewKnMetricsServiceWith(nil, nil, oq))
+
+	result, err := handler(ctx, mcpReq(map[string]any{
+		"kn_id": "kn-001", "metric_id": "m-001", "version": 1,
+		"query": map[string]any{}, "bucket_key": "no-data-bucket",
+	}))
+
+	if err != nil || !result.IsError || len(result.Content) != 1 {
+		t.Fatalf("unsupported participant lookup must be a tool error: %v, %#v", err, result)
+	}
+	content, ok := result.Content[0].(mcpsdk.TextContent)
+	if !ok || !strings.Contains(content.Text, `"error_code":"Public.BadRequest"`) ||
+		!strings.Contains(content.Text, "participant lookup is unavailable for this result") ||
+		strings.Contains(content.Text, "Public.InternalServerError") {
+		t.Fatalf("unexpected tool error: %#v", result.Content)
 	}
 }
 

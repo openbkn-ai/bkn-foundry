@@ -45,3 +45,24 @@ func TestNotEqualCompilesAsStandard(t *testing.T) {
 		t.Errorf("!= gives %s, <> gives %s", bang, standard)
 	}
 }
+
+// A column without AS is named after the query as written, so a caller reads
+// it back under the != it wrote, not the <> it runs as.
+func TestNotEqualColumnKeepsItsSpelling(t *testing.T) {
+	query := "MATCH (o:Order) RETURN o.region != 'east', count(*) AS n"
+	tree, err := Parse(query)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	analyzed, err := Analyze(tree)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	plan, err := Compile(analyzed, bindJoinSchema(t), CompileOptions{})
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if got, want := plan.Select[0].Alias, "o.region != 'east'"; got != want {
+		t.Errorf("column = %q, want %q", got, want)
+	}
+}

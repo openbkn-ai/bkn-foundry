@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
@@ -241,7 +241,7 @@ func GetKNChildOperations(ctx context.Context, ps interfaces.PermissionService,
 	}
 	resourceOps, ok := matched[canonicalID]
 	if !ok {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden)
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden)
 	}
 	return resourceOps.Operations, nil
 }
@@ -328,8 +328,8 @@ func validateFilterResponse(ctx context.Context, requestedIDs []string,
 	}
 	for key, resourceOps := range matched {
 		if _, ok := requested[key]; !ok || resourceOps.ResourceID != key {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				rest.PublicError_InternalServerError).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				httperrors.PublicError_InternalServerError).
 				WithErrorDetails("invalid resource-filter response")
 		}
 	}

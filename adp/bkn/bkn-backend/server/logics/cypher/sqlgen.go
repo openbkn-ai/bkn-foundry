@@ -65,6 +65,9 @@ func Generate(plan *Plan, options GenerateOptions) (string, error) {
 	if plan.Intersection != nil {
 		return generateIntersection(plan.Intersection, dialect)
 	}
+	if plan.Union != nil {
+		return "", fmt.Errorf("a UNION runs part by part, each as its own statement")
+	}
 	if len(plan.Tables) == 0 || len(plan.Select) == 0 {
 		return "", fmt.Errorf("cannot generate SQL for an empty plan")
 	}

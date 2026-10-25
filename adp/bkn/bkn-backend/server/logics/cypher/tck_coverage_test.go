@@ -110,9 +110,12 @@ func readTCKScenarios(path string) ([]tckScenario, error) {
 			return nil, err
 		}
 		content, err := io.ReadAll(reader)
-		reader.Close()
+		closeErr := reader.Close()
 		if err != nil {
 			return nil, err
+		}
+		if closeErr != nil {
+			return nil, closeErr
 		}
 		scenarios = append(scenarios, tckFeatureScenarios(file.Name, string(content))...)
 	}

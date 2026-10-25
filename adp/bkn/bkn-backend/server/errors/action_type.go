@@ -12,6 +12,8 @@ const (
 	BknBackend_ActionType_Duplicated_IDInFile               = "BknBackend.ActionType.Duplicated.IDInFile"
 	BknBackend_ActionType_Duplicated_Name                   = "BknBackend.ActionType.Duplicated.Name"
 	BknBackend_ActionType_InvalidParameter                  = "BknBackend.ActionType.InvalidParameter"
+	BknBackend_ActionType_InvalidParameter_Declarations     = "BknBackend.ActionType.InvalidParameter.Declarations"
+	BknBackend_ActionType_DeclarationsWouldBeCleared        = "BknBackend.ActionType.DeclarationsWouldBeCleared"
 	BknBackend_ActionType_InvalidParameter_ConceptCondition = "BknBackend.ActionType.InvalidParameter.ConceptCondition"
 	BknBackend_ActionType_ActionTypeIDExisted               = "BknBackend.ActionType.ActionTypeIDExisted"
 	BknBackend_ActionType_ActionTypeNameExisted             = "BknBackend.ActionType.ActionTypeNameExisted"
@@ -34,6 +36,8 @@ var (
 		BknBackend_ActionType_Duplicated_IDInFile,
 		BknBackend_ActionType_Duplicated_Name,
 		BknBackend_ActionType_InvalidParameter,
+		BknBackend_ActionType_InvalidParameter_Declarations,
+		BknBackend_ActionType_DeclarationsWouldBeCleared,
 		BknBackend_ActionType_InvalidParameter_ConceptCondition,
 		BknBackend_ActionType_ActionTypeIDExisted,
 		BknBackend_ActionType_ActionTypeNameExisted,

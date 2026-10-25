@@ -23,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
 )
@@ -50,6 +51,7 @@ var defaultCapacityLimits = CapacityLimits{
 }
 
 type Options struct {
+	DurableAnswerEnabled bool
 	// RevisionSealer is an internal, opt-in transaction hook. Nil preserves existing behavior.
 	RevisionSealer             func(isessionstore.Transaction, sessionvo.Interaction, sessionvo.AssemblyRevision) error
 	Now                        func() time.Time
@@ -68,6 +70,7 @@ type Options struct {
 }
 
 type Service struct {
+	durableAnswerEnabled       bool
 	revisionSealer             func(isessionstore.Transaction, sessionvo.Interaction, sessionvo.AssemblyRevision) error
 	store                      isessionstore.Store
 	now                        func() time.Time
@@ -125,6 +128,7 @@ func New(store isessionstore.Store, options Options) *Service {
 		evidenceCollectionState:    evidenceCollectionState,
 		captureAdmission:           options.CaptureAdmission,
 		enableHistoricalProvenance: options.EnableHistoricalProvenance,
+		durableAnswerEnabled:       options.DurableAnswerEnabled,
 		projectionGrantIssuer:      strings.TrimSpace(options.ProjectionGrantIssuer),
 		projectionGrantKeyID:       strings.TrimSpace(options.ProjectionGrantKeyID),
 		projectionGrantAudience:    strings.TrimSpace(options.ProjectionGrantAudience),
@@ -196,6 +200,7 @@ type StartInteractionCommand struct {
 }
 
 type TerminateInteractionCommand struct {
+	AnswerArtifact         json.RawMessage
 	Owner                  sessionvo.Owner
 	InteractionID          string
 	Status                 sessionvo.InteractionStatus
@@ -852,26 +857,48 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 	if command.TerminalIdempotencyKey == "" {
 		return sessionvo.Interaction{}, domainError(CodeIdempotencyConflict, "terminal idempotency key is required")
 	}
-	policyClosure := s.CapturePolicyDisabled()
-	if !policyClosure && slices.Contains(command.Manifest.SystemPartialReasons, "not_collected_due_to_policy") {
-		return sessionvo.Interaction{}, domainError(CodeClosureManifestInvalid, "policy partial reason is server-owned")
+	// Keep validation, canonical hashing and full-body encoding outside the row
+	// lock. Cache errors until canonical ownership has been checked below.
+	var preparedAnswer *answerArtifactRequest
+	var answerPayload []byte
+	var prepareErr error
+	if len(command.AnswerArtifact) > 0 {
+		preparedAnswer, prepareErr = prepareAnswerArtifact(command)
+		if prepareErr == nil {
+			answerPayload, prepareErr = json.Marshal(preparedAnswer)
+			if prepareErr == nil && len(answerPayload) > iprojectionoutbox.MaxPayloadBytes {
+				prepareErr = answerArtifactStorageLimitError()
+			}
+		}
 	}
 	var result sessionvo.Interaction
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
-		interactionRef, found := tx.PeekInteraction(command.InteractionID)
+		request := command
+		var answer *answerArtifactRequest
+		interactionRef, found := tx.PeekInteraction(request.InteractionID)
 		if !found {
 			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
-		conversation, err := ownedConversation(tx, command.Owner, interactionRef.ConversationID)
+		conversation, err := ownedConversation(tx, request.Owner, interactionRef.ConversationID)
 		if err != nil {
 			return err
 		}
-		interaction, found := tx.FindInteraction(command.InteractionID)
+		interaction, found := tx.FindInteraction(request.InteractionID)
 		if !found || interaction.ConversationID != conversation.ID {
 			return resourceNotDisclosed(CauseInteractionNotInConversation)
 		}
-		if interaction.IsTerminal() && command.DeriveManifest {
-			if managedTerminalReplayMatches(interaction, command) {
+		if interaction.IsTerminal() && request.DeriveManifest {
+			// A server-owned disabled closure never collected the submitted body.
+			// Otherwise verify its immutable content independent of today's policy.
+			policyClosed := interaction.ClosureManifest != nil && interaction.ClosureManifest.AnswerArtifactPersistence == nil && slices.Contains(interaction.ClosureManifest.SystemPartialReasons, "not_collected_due_to_policy")
+			if len(request.AnswerArtifact) > 0 && !policyClosed {
+				if prepareErr != nil {
+					return prepareErr
+				}
+				answer = preparedAnswer
+				request.Manifest.AnswerArtifactRef = "artifact:" + answer.Artifact.ArtifactID
+			}
+			if managedTerminalReplayMatches(interaction, request) && (answer == nil || interaction.ClosureManifest.AnswerArtifactPersistence != nil && interaction.ClosureManifest.AnswerArtifactPersistence.ContentHash == answer.Artifact.ContentHash) {
 				result = interaction
 				return nil
 			}
@@ -880,29 +907,51 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				CurrentStatus: string(interaction.ExecutionStatus),
 			}
 		}
+		// A stale disabled snapshot is unknown, not fresh permission to close
+		// through the disabled-policy path for a newly submitted answer body.
+		if len(request.AnswerArtifact) > 0 && s.captureAdmission != nil && !s.captureAdmission.Known() {
+			return s.captureAdmissionError()
+		}
+		policyClosure := s.CapturePolicyDisabled()
+		if !policyClosure && len(request.AnswerArtifact) > 0 {
+			if err := s.captureAdmissionError(); err != nil {
+				return err
+			}
+			if !s.durableAnswerEnabled {
+				return domainError(CodeAnswerHandoffDisabled, answerArtifactHandoffDisabledMessage)
+			}
+			if prepareErr != nil {
+				return prepareErr
+			}
+			answer = preparedAnswer
+			request.Manifest.AnswerArtifactRef = "artifact:" + answer.Artifact.ArtifactID
+		}
+		if !policyClosure && slices.Contains(request.Manifest.SystemPartialReasons, "not_collected_due_to_policy") {
+			return domainError(CodeClosureManifestInvalid, "policy partial reason is server-owned")
+		}
 		// Only an active interaction may receive the server-owned policy reason.
 		// Terminal replay must compare the caller's immutable fields exactly as
 		// committed, regardless of the current capture policy.
 		if policyClosure {
-			command.Manifest.SystemPartialReasons = appendUnique(command.Manifest.SystemPartialReasons, "not_collected_due_to_policy")
+			request.Manifest.SystemPartialReasons = appendUnique(request.Manifest.SystemPartialReasons, "not_collected_due_to_policy")
 		} else if s.evidenceCollectionState() == "not_collected_due_to_license" {
-			command.Manifest.SystemPartialReasons = appendUnique(command.Manifest.SystemPartialReasons, "not_collected_due_to_license")
+			request.Manifest.SystemPartialReasons = appendUnique(request.Manifest.SystemPartialReasons, "not_collected_due_to_license")
 		}
-		if command.DeriveManifest {
-			command.LeaseToken = interaction.LeaseToken
-			command.LeaseEpoch = interaction.LeaseEpoch
-			command.Manifest = deriveClosureManifest(tx, interaction.ID, command.Manifest)
+		if request.DeriveManifest {
+			request.LeaseToken = interaction.LeaseToken
+			request.LeaseEpoch = interaction.LeaseEpoch
+			request.Manifest = deriveClosureManifest(tx, interaction.ID, request.Manifest)
 		}
-		if command.Manifest.AssemblerDeadline == nil && hasRequiredPendingReceipt(tx, command.Manifest) {
+		if request.Manifest.AssemblerDeadline == nil && hasRequiredPendingReceipt(tx, request.Manifest) {
 			deadline := tx.Now().Add(s.assemblyTimeout)
-			command.Manifest.AssemblerDeadline = &deadline
+			request.Manifest.AssemblerDeadline = &deadline
 		}
 		payloadHash := hashValue(struct {
 			Status   sessionvo.InteractionStatus
 			Manifest sessionvo.ClosureManifest
-		}{command.Status, command.Manifest})
+		}{request.Status, request.Manifest})
 		if interaction.IsTerminal() {
-			if interaction.TerminalIdempotencyKey == command.TerminalIdempotencyKey &&
+			if interaction.TerminalIdempotencyKey == request.TerminalIdempotencyKey &&
 				interaction.TerminalPayloadHash == payloadHash {
 				result = interaction
 				return nil
@@ -918,21 +967,30 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				CurrentStatus: string(interaction.ExecutionStatus),
 			}
 		}
-		if command.LeaseToken != interaction.LeaseToken || command.LeaseEpoch != interaction.LeaseEpoch {
+		if request.LeaseToken != interaction.LeaseToken || request.LeaseEpoch != interaction.LeaseEpoch {
 			return &DomainError{
 				Code: CodeTerminalConflict, Message: "stale interaction lease was fenced",
 				CurrentStatus: string(interaction.ExecutionStatus),
 			}
 		}
-		if err := s.validateClosureManifest(tx, interaction, command.Manifest); err != nil {
+		if err := s.validateClosureManifest(tx, interaction, request.Manifest); err != nil {
 			return err
 		}
 		now := tx.Now()
-		interaction.ExecutionStatus = command.Status
-		interaction.EvidenceStatus = evidenceStatusAtTermination(tx, command.Manifest)
-		interaction.TerminalIdempotencyKey = command.TerminalIdempotencyKey
+		if answer != nil {
+			taskID := answerArtifactEventID(interaction.ID, request.TerminalIdempotencyKey)
+			request.Manifest.AnswerArtifactPersistence = &sessionvo.AnswerArtifactPersistence{EventID: taskID, ContentHash: answer.Artifact.ContentHash, State: sessionvo.AnswerArtifactPending}
+			if request.Manifest.AssemblerDeadline == nil {
+				deadline := tx.Now().Add(s.assemblyTimeout)
+				request.Manifest.AssemblerDeadline = &deadline
+			}
+			tx.AppendProjection(sessionvo.ProjectionMutation{EventID: taskID, AggregateType: "interaction", AggregateID: interaction.ID, AggregateVersion: interaction.RowVersion + 1, EventType: AnswerArtifactRequested, Payload: answerPayload})
+		}
+		interaction.ExecutionStatus = request.Status
+		interaction.EvidenceStatus = evidenceStatusAtTermination(tx, request.Manifest)
+		interaction.TerminalIdempotencyKey = request.TerminalIdempotencyKey
 		interaction.TerminalPayloadHash = payloadHash
-		interaction.ClosureManifest = &command.Manifest
+		interaction.ClosureManifest = &request.Manifest
 		interaction.RowVersion++
 		interaction.LeaseVersion++
 		interaction.UpdatedAt = now
@@ -947,14 +1005,14 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			interaction.EvidenceStatus == sessionvo.EvidencePartial ||
 			interaction.EvidenceStatus == sessionvo.EvidenceFailed) {
 			trigger := "completion"
-			if command.Manifest.AssemblerDeadline != nil && !command.Manifest.AssemblerDeadline.After(tx.Now()) {
+			if request.Manifest.AssemblerDeadline != nil && !request.Manifest.AssemblerDeadline.After(tx.Now()) {
 				trigger = "deadline"
 			}
-			if err := s.freezeAssemblyRevision(tx, interaction, command.Manifest, trigger); err != nil {
+			if err := s.freezeAssemblyRevision(tx, interaction, request.Manifest, trigger); err != nil {
 				return err
 			}
 		}
-		if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction."+string(command.Status), interaction); err != nil {
+		if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction."+string(request.Status), interaction); err != nil {
 			return err
 		}
 		if conversation.OneShot {
@@ -970,6 +1028,11 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		result = interaction
 		return nil
 	})
+	if errors.Is(err, isessionstore.ErrAnswerArtifactTooLarge) {
+		result = sessionvo.Interaction{}
+		err = errors.Join(answerArtifactStorageLimitError(), err)
+	}
+
 	s.observeLifecycleError(err)
 	return result, err
 }
@@ -1848,6 +1911,13 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 	eventIDs := make([]string, 0)
 	artifactRefs := make([]string, 0)
 	partialReasons := cloneStrings(manifest.SystemPartialReasons)
+	if persistence := manifest.AnswerArtifactPersistence; persistence != nil && persistence.State != sessionvo.AnswerArtifactSettled {
+		reason := "answer_artifact_pending_deadline"
+		if persistence.State == sessionvo.AnswerArtifactDead {
+			reason = "answer_artifact_delivery_failed"
+		}
+		partialReasons = appendUnique(partialReasons, reason)
+	}
 	for _, expected := range manifest.ExpectedReceipts {
 		receiptIDs = append(receiptIDs, expected.ReceiptID)
 		receipt, found := tx.FindReceipt(expected.ReceiptID)
@@ -1998,10 +2068,21 @@ func validTerminalStatus(status sessionvo.InteractionStatus) bool {
 }
 
 func evidenceStatusAtTermination(tx isessionstore.Transaction, manifest sessionvo.ClosureManifest) sessionvo.EvidenceStatus {
+	if persistence := manifest.AnswerArtifactPersistence; persistence != nil {
+		if persistence.State == sessionvo.AnswerArtifactDead {
+			return sessionvo.EvidencePartial
+		}
+		if persistence.State != sessionvo.AnswerArtifactSettled {
+			if manifest.AssemblerDeadline != nil && !manifest.AssemblerDeadline.After(tx.Now()) {
+				return sessionvo.EvidencePartial
+			}
+			return sessionvo.EvidenceAssembling
+		}
+	}
 	if len(manifest.SystemPartialReasons) > 0 {
 		return sessionvo.EvidencePartial
 	}
-	if len(manifest.ExpectedReceipts) == 0 && len(manifest.Claims) == 0 {
+	if len(manifest.ExpectedReceipts) == 0 && len(manifest.Claims) == 0 && manifest.AnswerArtifactPersistence == nil {
 		return sessionvo.EvidenceNotApplicable
 	}
 	for _, expected := range manifest.ExpectedReceipts {

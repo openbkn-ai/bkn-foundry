@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -167,15 +167,15 @@ func validateProxyBinding(binding interfaces.TrustedProxyBinding, requireTargetT
 	return nil
 }
 
-func proxyUnavailable(ctx context.Context, detail string) *rest.HTTPError {
+func proxyUnavailable(ctx context.Context, detail string) *httperrors.HTTPError {
 	return proxyError(ctx, http.StatusServiceUnavailable, oerrors.OntologyQuery_Proxy_Unavailable, detail)
 }
 
-func proxyError(ctx context.Context, status int, code, detail string) *rest.HTTPError {
-	return rest.NewHTTPError(ctx, status, code).WithErrorDetails(detail)
+func proxyError(ctx context.Context, status int, code, detail string) *httperrors.HTTPError {
+	return httperrors.NewHTTPError(ctx, status, code).WithErrorDetails(detail)
 }
 
-func mapProxyResolutionError(ctx context.Context, err error) *rest.HTTPError {
+func mapProxyResolutionError(ctx context.Context, err error) *httperrors.HTTPError {
 	var resolutionErr *interfaces.KnowledgeNetworkProxyResolveError
 	if !errors.As(err, &resolutionErr) {
 		return proxyUnavailable(ctx, "knowledge network proxy mapping is unavailable")

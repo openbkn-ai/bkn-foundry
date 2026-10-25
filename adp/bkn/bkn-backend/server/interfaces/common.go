@@ -133,6 +133,7 @@ const (
 	MODULE_TYPE_CONCEPT_GROUP_RELATION = "concept_group_relation"
 	MODULE_TYPE_ACTION_SCHEDULE        = "action_schedule"
 	MODULE_TYPE_RISK_TYPE              = "risk_type"
+	MODULE_TYPE_VALUE_TYPE             = "value_type"
 	MODULE_TYPE_METRIC                 = "metric"
 )
 

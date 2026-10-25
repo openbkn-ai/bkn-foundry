@@ -17,6 +17,7 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 
 	schema := sessionstore.SchemaSQL()
 	required := []string{
+		"ADD COLUMN IF NOT EXISTS batch_progress LONGTEXT NULL",
 		"bkn_trace_conversations",
 		"idx_bkn_trace_receipt_conversation_summary",
 		"idx_bkn_trace_call_fact_conversation_summary",
@@ -76,6 +77,9 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 
 func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 	expectedChecksums := map[string]string{
+		"038": "f3ce92e0c685cd3a44b6c1fd215cf8f2d946f57f3ec3193030d354f38fcb99e1",
+		"039": "b47bf2a1600931898cccef96ba50915077a67c6f7738622d1a610231ab041873",
+		"037": "4f0239ed18ef4e3c80c28eed4965768a6a484b387604adc0552f3b633031435b",
 		"013": "b50a727e71cd7d6e61ad2795a965553359309d4cfbc58279ed08364eb2cf19c6",
 		"014": "12ada5e84e6c1154dcb7e522804480d6a2c5d4cb2313c2a0883179d076e765e6",
 		"015": "408e6cb3445f6116995da9852116f1795563f5ea17a65da667b6ec42a33dec2e",

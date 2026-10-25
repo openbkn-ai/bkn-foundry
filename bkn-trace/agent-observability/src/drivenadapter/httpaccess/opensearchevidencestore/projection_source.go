@@ -229,7 +229,7 @@ func (s *Store) listArtifactProjection(ctx context.Context, query iprojectionsou
 			artifacts = append(artifacts, hit.Source)
 		}
 	}
-	if query.SummaryOnly {
+	if query.SummaryOnly && !query.OmitSummaryTerminalContent {
 		if err := s.loadSummaryTerminalContent(ctx, artifacts, query); err != nil {
 			return nil, false, err
 		}
@@ -395,7 +395,7 @@ func (s *Store) listArtifactProjectionPage(ctx context.Context, query iprojectio
 			{"artifact_id": map[string]any{"order": "asc"}},
 		},
 	}
-	if query.SummaryOnly {
+	if query.SummaryOnly || query.OmitSummaryTerminalContent {
 		queryBody["_source"] = map[string]any{"excludes": []string{"content_json"}}
 	}
 	if len(searchAfter) > 0 {

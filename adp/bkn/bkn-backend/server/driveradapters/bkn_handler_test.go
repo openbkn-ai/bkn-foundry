@@ -23,8 +23,9 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
@@ -500,10 +501,10 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 		})
 
 		Convey("Failed when CreateKN returns error\n", func() {
-			err := &rest.HTTPError{
+			err := &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError,
 				},
 			}
@@ -604,10 +605,10 @@ func Test_BKNRestHandler_DownloadBKN(t *testing.T) {
 		})
 
 		Convey("Failed when ExportToTar returns error\n", func() {
-			bs.EXPECT().ExportToTar(gomock.Any(), "kn1", gomock.Any(), gomock.Any()).Return(nil, &rest.HTTPError{
+			bs.EXPECT().ExportToTar(gomock.Any(), "kn1", gomock.Any(), gomock.Any()).Return(nil, &httperrors.HTTPError{
 				HTTPCode: http.StatusInternalServerError,
-				Language: rest.DefaultLanguage,
-				BaseError: rest.BaseError{
+				Lang:     i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{
 					ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError,
 				},
 			})
@@ -677,10 +678,10 @@ func Test_BKNRestHandler_CheckBKN(t *testing.T) {
 		})
 
 		Convey("Passes a classified error through\n", func() {
-			bs.EXPECT().CheckNetwork(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, &rest.HTTPError{
+			bs.EXPECT().CheckNetwork(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, &httperrors.HTTPError{
 				HTTPCode:  http.StatusForbidden,
-				Language:  rest.DefaultLanguage,
-				BaseError: rest.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
+				Lang:      i18n.DefaultLanguage,
+				BaseError: httperrors.BaseError{ErrorCode: berrors.BknBackend_KnowledgeNetwork_InternalError},
 			})
 			req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/bkns/kn1/check", nil)
 			w := httptest.NewRecorder()

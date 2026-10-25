@@ -38,8 +38,12 @@ func (s *Store) ListRecordIntegrityCandidates(ctx context.Context, afterID strin
 	if limit > 100 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT interaction_id, record_integrity_version FROM bkn_trace_interactions
-		WHERE record_integrity_pending=1 AND interaction_id>? ORDER BY interaction_id ASC LIMIT ?`, afterID, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT i.interaction_id, i.record_integrity_version FROM bkn_trace_interactions i
+        LEFT JOIN bkn_trace_record_integrity_retries r ON r.interaction_id=i.interaction_id AND r.source_version=i.record_integrity_version
+        WHERE i.record_integrity_pending=1 AND i.interaction_id>? AND
+        (r.interaction_id IS NULL OR (r.retry_status='running' AND r.lease_until<=UTC_TIMESTAMP(6)) OR
+        (r.retry_status='retry_wait' AND (r.next_attempt_at<=UTC_TIMESTAMP(6) OR r.first_attempt_at<=DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 30 MINUTE))))
+        ORDER BY i.interaction_id ASC LIMIT ?`, afterID, limit)
 	if err != nil {
 		return nil, err
 	}

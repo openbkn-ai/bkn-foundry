@@ -125,11 +125,11 @@ type KN struct {
 
 	Branch string `json:"branch,omitempty" mapstructure:"branch"`
 
-	ConceptGroups []*ConceptGroup     `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
-	ObjectTypes   []*ObjectType       `json:"object_types,omitempty" mapstructure:"object_types"`
-	RelationTypes []*RelationType     `json:"relation_types,omitempty" mapstructure:"relation_types"`
-	ActionTypes   []*ActionType       `json:"action_types,omitempty" mapstructure:"action_types"`
-	RiskTypes     []*RiskType         `json:"risk_types,omitempty" mapstructure:"risk_types"`
+	ConceptGroups []*ConceptGroup `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
+	ObjectTypes   []*ObjectType   `json:"object_types,omitempty" mapstructure:"object_types"`
+	RelationTypes []*RelationType `json:"relation_types,omitempty" mapstructure:"relation_types"`
+	ActionTypes   []*ActionType   `json:"action_types,omitempty" mapstructure:"action_types"`
+	RiskTypes     []*RiskType     `json:"risk_types,omitempty" mapstructure:"risk_types"`
 	// ObjectMetrics is an internal BKN archive projection, not a bulk-create API field.
 	ObjectMetrics []*ObjectMetricRecordV1 `json:"-" mapstructure:"-"`
 
@@ -170,13 +170,19 @@ type OverviewGraphQuery struct {
 	ConceptGroupID    string
 }
 
+type OverviewGraphConceptGroup struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type OverviewGraphNode struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Icon        string                 `json:"icon,omitempty"`
-	Color       string                 `json:"color,omitempty"`
-	IndexStatus *ObjectTypeIndexStatus `json:"index_status,omitempty"`
-	Degree      int                    `json:"degree,omitempty"`
+	ID            string                      `json:"id"`
+	Name          string                      `json:"name"`
+	Icon          string                      `json:"icon,omitempty"`
+	Color         string                      `json:"color,omitempty"`
+	IndexStatus   *ObjectTypeIndexStatus      `json:"index_status,omitempty"`
+	Degree        int                         `json:"degree,omitempty"`
+	ConceptGroups []OverviewGraphConceptGroup `json:"concept_groups,omitempty"`
 }
 
 type OverviewGraphEdge struct {

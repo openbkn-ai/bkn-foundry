@@ -248,19 +248,19 @@ def test_cypher_scalars_come_back_as_a_table_and_plan_nothing():
     assert "planned_added" not in out and not run.state.get("actions")
 
 
-@pytest.mark.parametrize(
-    "query, message",
-    [
-        ("MATCH (t:teams)", "complete query"),
-        ("MATCH (t:teams) RETURN t", "LIMIT"),
-        ("MATCH (t:teams) RETURN t LIMIT 500", "at most"),
-    ],
-)
-def test_cypher_must_be_complete_and_bounded(query, message):
+def test_cypher_must_be_complete():
     _, tools, calls = _run()
-    with pytest.raises(Exception, match=message):
-        asyncio.run(tools["run_cypher"].coroutine(query=query))
+    with pytest.raises(Exception, match="complete query"):
+        asyncio.run(tools["run_cypher"].coroutine(query="MATCH (t:teams)"))
     assert not any(c[0] == "run_cypher" for c in calls)
+
+
+def test_cypher_without_limit_runs_and_says_when_the_platform_cut_it():
+    # The canvas limit, not a row limit, bounds what is planned.
+    _, tools, calls = _run(cypher={"entries": [], "execution": {"conclusions_limited": True}})
+    out = _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t.team_name AS name")
+    assert any(c[0] == "run_cypher" for c in calls)
+    assert "default limit" in out["limited"]
 
 
 def test_the_canvas_limit_cuts_and_warns():
@@ -482,3 +482,179 @@ def test_the_canvas_reads_aggregates_this_run_planned():
     aggregates = _invoke(tools["canvas_state"])["aggregates"]
     assert aggregates["total"] == 1
     assert aggregates["items"][0]["total"] == 50 and aggregates["items"][0]["planned"]
+
+
+# ---- canvas tools ----
+
+
+def _canvas_run(**context):
+    run, tools, _ = _run(
+        nodes=[
+            {"id": "teams-1", "object_type_id": "teams"},
+            {"id": "teams-9", "object_type_id": "teams"},
+            {"id": "matches-1", "object_type_id": "matches"},
+        ]
+    )
+    for key, value in context.items():
+        setattr(run.context, key, value)
+    return run, tools
+
+
+def _result(run):
+    return builtin_tools.get("graph_explorer").result(run)
+
+
+def test_remove_plans_removal_and_the_canvas_reads_without_them():
+    run, tools = _canvas_run()
+    removed = _invoke(tools["remove_instances"], ids=["teams-1", "teams-404"])
+    assert removed == {"planned_removed": 1, "not_on_canvas": ["teams-404"]}
+    state = _invoke(tools["canvas_state"])
+    assert sorted(n["id"] for n in state["nodes"]["items"]) == ["matches-1", "teams-9"]
+    assert _result(run)["actions"] == [{"action_id": "1", "type": "remove_nodes", "node_ids": ["teams-1"]}]
+
+
+def test_a_removed_node_shown_again_comes_back():
+    run, tools = _canvas_run()
+    _invoke(tools["remove_instances"], ids=["teams-9"])
+    _invoke(tools["show_instances"], ids=["teams-9"])
+    assert "teams-9" in {n["id"] for n in _invoke(tools["canvas_state"])["nodes"]["items"]}
+    result = _result(run)
+    assert [a["type"] for a in result["actions"]] == ["remove_nodes", "merge_subgraph"]
+    assert "teams-9" in {n["id"] for n in result["nodes"]}
+
+
+def test_view_tools_record_their_patches():
+    run, tools = _canvas_run(object_types=[graph.ObjectTypeRef(id="teams"), graph.ObjectTypeRef(id="matches")])
+    _invoke(tools["configure_display"], labels=[{"object_type": "teams", "label": "{team_name}"}], node_size_by="")
+    _invoke(tools["configure_analysis"], chart={"kind": "category", "propertyByOt": {"teams": "region"}})
+    _invoke(tools["arrange_canvas"], layout="radial")
+    with pytest.raises(ToolException, match="Unknown object types"):
+        asyncio.run(tools["configure_display"].coroutine(labels=[{"object_type": "nope", "label": None}]))
+    with pytest.raises(Exception):
+        asyncio.run(tools["arrange_canvas"].ainvoke({"layout": "spiral"}))
+    actions = _result(run)["actions"]
+    assert [a["type"] for a in actions] == ["set_display", "set_analysis", "set_layout"]
+    assert actions[0]["patch"] == {"labels": [{"object_type": "teams", "label": "{team_name}"}], "node_size_by": None}
+    assert actions[2]["layout"] == "radial"
+    assert len(_invoke(tools["view_state"])["planned_view_actions"]) == 3
+
+
+def test_canvas_control_checks_ids_and_tracks_the_selection():
+    run, tools = _canvas_run()
+    with pytest.raises(ToolException, match="Not on the canvas"):
+        asyncio.run(tools["canvas_control"].coroutine(action="select", ids=["teams-404"]))
+    _invoke(tools["canvas_control"], action="select", ids=["teams-1", "teams-9"])
+    _invoke(tools["canvas_control"], action="arrange_selection", layout="grid")
+    assert _invoke(tools["canvas_control"], action="remove_selected") == {"planned_removed": 2}
+    assert _invoke(tools["canvas_state"])["total_nodes"] == 1
+    with pytest.raises(ToolException, match="No nodes are selected"):
+        asyncio.run(tools["canvas_control"].coroutine(action="remove_selected"))
+    assert [a["type"] for a in _result(run)["actions"]] == ["select", "arrange_selection", "remove_nodes"]
+
+
+def test_undo_takes_back_only_this_runs_view_actions():
+    run, tools = _canvas_run()
+    with pytest.raises(ToolException, match="nothing to undo"):
+        asyncio.run(tools["canvas_control"].coroutine(action="undo"))
+    _invoke(tools["remove_instances"], ids=["teams-1"])
+    _invoke(tools["canvas_control"], action="undo")
+    assert _invoke(tools["canvas_state"])["total_nodes"] == 3
+    # The page may already show the removal, so the undo is an action too.
+    assert [(a["type"], a.get("undoes")) for a in _result(run)["actions"]] == [("remove_nodes", None), ("undo", "1")]
+    with pytest.raises(ToolException, match="nothing to undo"):
+        asyncio.run(tools["canvas_control"].coroutine(action="undo"))
+    run.state["actions"].append({"action_id": "9", "type": "merge_subgraph", "node_ids": [], "edge_ids": []})
+    with pytest.raises(ToolException, match="remove_instances"):
+        asyncio.run(tools["canvas_control"].coroutine(action="undo"))
+
+
+def test_clear_takes_everything_off_and_is_left_to_the_web():
+    run, tools = _canvas_run()
+    cleared = _invoke(tools["canvas_control"], action="clear")
+    assert cleared["planned"] == "clear"
+    assert _invoke(tools["canvas_state"])["total_nodes"] == 0
+    assert [a["type"] for a in _result(run)["actions"]] == ["clear"]
+
+
+def test_manual_groups_get_ids_the_run_can_use_again():
+    run, tools = _canvas_run(view={"canvas": {"manual_groups": [{"id": "g1", "name": "old"}]}})
+    created = _invoke(tools["manual_group"], action="create", name="南美", ids=["teams-1", "teams-9"], color="#3366ff")
+    group = created["planned"]["id"]
+    _invoke(tools["manual_group"], action="rename", id=group, name="南美球队")
+    _invoke(tools["manual_group"], action="collapse", id="g1")
+    with pytest.raises(ToolException, match="Unknown manual group"):
+        asyncio.run(tools["manual_group"].coroutine(action="dissolve", id="g404"))
+    with pytest.raises(ToolException, match="hex"):
+        asyncio.run(tools["manual_group"].coroutine(action="recolor", id="g1", color="blue"))
+    actions = _result(run)["actions"]
+    assert [a["action"] for a in actions] == ["create", "rename", "collapse"]
+    assert actions[0]["ids"] == ["teams-1", "teams-9"] and actions[1]["id"] == group
+
+
+def test_progress_sends_each_new_plan_once_with_its_data():
+    run, tools = _canvas_run()
+    provider = builtin_tools.get("graph_explorer")
+    assert provider.progress(run) is None
+    run.context.nodes = []
+    _invoke(tools["show_instances"], ids=["teams-9", "matches-1"])
+    _invoke(tools["arrange_canvas"], layout="grid")
+    first = provider.progress(run)
+    assert [a["type"] for a in first["actions"]] == ["merge_subgraph", "set_layout"]
+    assert {n["id"] for n in first["nodes"]} == {"teams-9", "matches-1"} and len(first["edges"]) == 1
+    assert provider.progress(run) is None
+    _invoke(tools["remove_instances"], ids=["teams-9"])
+    assert [a["type"] for a in provider.progress(run)["actions"]] == ["remove_nodes"]
+
+
+def test_removing_an_aggregate_keeps_the_result_valid():
+    # Regression: removal named the aggregate, and the result checked it as a node.
+    run, tools, _ = _expand_run({9: 50}, threshold=20)
+    _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")
+    assert _invoke(tools["remove_instances"], ids=["agg|teams-9|rel_home|in"])["planned_removed"] == 1
+    result = builtin_tools.get("graph_explorer").result(run)
+    assert result["actions"][-1] == {"action_id": "2", "type": "remove_nodes", "node_ids": ["agg|teams-9|rel_home|in"]}
+
+
+def test_scalar_rows_cut_at_the_default_limit_say_so():
+    # bkn-backend marks it at the top level; execution only comes with graph values.
+    _, tools, _ = _run(cypher={"entries": [{"name": "Messi"}], "limited": True})
+    out = _invoke(tools["run_cypher"], query="MATCH (p:players) RETURN p.name AS name")
+    assert "default limit" in out["limited"]
+
+
+def test_a_node_shown_again_takes_room_and_stays_off_when_there_is_none():
+    run, tools = _canvas_run()
+    run.context.limits.max_nodes = 3
+    _invoke(tools["remove_instances"], ids=["teams-9"])
+    # A full canvas again before teams-9 comes back: it stays off, and is not in the merge.
+    run.state["nodes"]["x-1"] = {"id": "x-1", "object_type_id": "x", "properties": {}, "identity": {}}
+    out = _invoke(tools["show_instances"], ids=["teams-9"])
+    assert out.get("left_out") == 1
+    merges = [a for a in builtin_tools.get("graph_explorer").result(run)["actions"] if a["type"] == "merge_subgraph"]
+    assert all("teams-9" not in a["node_ids"] for a in merges)
+
+
+def test_manual_group_ids_do_not_repeat_across_runs():
+    run, tools = _canvas_run(view={"canvas": {"manual_groups": [{"id": "g-ai-1", "name": "上一轮"}]}})
+    created = _invoke(tools["manual_group"], action="create", name="南美", ids=["teams-1"])
+    assert created["planned"]["id"] != "g-ai-1"
+
+
+def test_cypher_fills_in_only_nodes_the_canvas_has_room_for():
+    cypher = {"entries": [{"t": _obj("teams", i)} for i in (1, 9, 21, 22, 23)]}
+    run, tools, calls = _run(cypher=cypher)
+    run.context.limits.max_nodes = 2
+    out = _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t")
+    looked_up = [v for c in calls if c[0] == "query_object_instance" for v in c[1]["condition"]["value"]]
+    # Two fit; the other three are left out, so they are not looked up either.
+    assert looked_up == [1, 9] and out["left_out"] == 3
+
+
+def test_cypher_keeps_the_label_the_canvas_has_for_its_nodes():
+    # Key-only rows for nodes already on the canvas are not looked up again; their label stays.
+    run, tools, _ = _run(
+        nodes=[{"id": "teams-9", "object_type_id": "teams", "label": "Brazil"}],
+        cypher={"entries": [{"t": _obj("teams", 9)}]},
+    )
+    out = _invoke(tools["run_cypher"], query="MATCH (t:teams) RETURN t")
+    assert out["items"][0]["label"] == "Brazil"

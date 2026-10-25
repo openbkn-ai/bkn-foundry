@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
@@ -197,7 +197,7 @@ func (f pathFixture) asPartialCaller(grants map[string]map[string][]string, fail
 	f.ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN, ID: "kn1",
 	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).
-		Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+		Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 	calls := map[string]int{}
 	filter := func(_ context.Context, resourceType string, ids, visibility []string) (map[string]interfaces.PermissionResourceOps, error) {
 		calls[resourceType]++
@@ -284,10 +284,10 @@ func namedIDs(paths []interfaces.RelationTypePath) map[string]struct{} {
 
 func assertForbidden(t *testing.T, paths []interfaces.RelationTypePath, err error) {
 	t.Helper()
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden ||
-		httpErr.BaseError.ErrorCode != rest.PublicError_Forbidden {
-		t.Fatalf("GetRelationTypePaths() error = %v, want 403 %s", err, rest.PublicError_Forbidden)
+		httpErr.ErrorCode != httperrors.PublicError_Forbidden {
+		t.Fatalf("GetRelationTypePaths() error = %v, want 403 %s", err, httperrors.PublicError_Forbidden)
 	}
 	if paths != nil {
 		t.Fatalf("GetRelationTypePaths() = %v alongside a refusal", signatures(paths))
@@ -526,7 +526,7 @@ func TestRelationTypePaths_SourceNeedsViewDetail(t *testing.T) {
 func TestRelationTypePaths_NoVisibleChildIsRefused(t *testing.T) {
 	f := newPathFixture(t, fullPathModel())
 	f.ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+		Return(httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden))
 	f.expectRelationTypeList()
 	f.ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE, gomock.Any(),
 		gomock.Any()).
@@ -602,7 +602,7 @@ func TestRelationTypePaths_FullCallerIsUnchanged(t *testing.T) {
 func TestRelationTypePaths_AuthorizationFailureIsAnError(t *testing.T) {
 	t.Run("network check", func(t *testing.T) {
 		f := newPathFixture(t, fullPathModel())
-		outage := rest.NewHTTPError(context.Background(), http.StatusInternalServerError, rest.PublicError_InternalServerError)
+		outage := httperrors.NewHTTPError(context.Background(), http.StatusInternalServerError, httperrors.PublicError_InternalServerError)
 		f.ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(outage)
 
 		if _, err := f.service.GetRelationTypePaths(context.Background(),

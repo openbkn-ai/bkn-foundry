@@ -23,14 +23,15 @@ func TestDistinguishableErrorCodes(t *testing.T) {
 		http.StatusBadRequest,
 		http.StatusForbidden,
 		http.StatusNotFound,
+		http.StatusUnprocessableEntity,
 	}
 	for _, status := range statuses {
 		err := DefaultHTTPError(context.Background(), status, "detail")
 		if err.HTTPCode != status {
 			t.Fatalf("status %d: HTTPCode = %d", status, err.HTTPCode)
 		}
-		if err.Code == "" || err.Code == "agentRetrieval.InternalServerError" {
-			t.Fatalf("status %d: code = %q，落回了 InternalServerError，调用方无从区分", status, err.Code)
+		if err.ErrorCode == "" || err.ErrorCode == "Public.InternalServerError" {
+			t.Fatalf("status %d: code = %q，落回了 InternalServerError，调用方无从区分", status, err.ErrorCode)
 		}
 	}
 }

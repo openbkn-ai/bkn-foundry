@@ -19,11 +19,11 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
@@ -52,6 +52,7 @@ type objectTypeService struct {
 	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
 	ps         interfaces.PermissionService
+	vta        interfaces.ValueTypeAccess
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
 	// kpr overrides the registered knowledge-network proxy resolver; tests set it directly.
@@ -83,10 +84,6 @@ func (ots *objectTypeService) knProxyResolver() interfaces.KNProxyBindingResolve
 	return registeredKNProxyResolver.resolver
 }
 
-func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
-	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
-}
-
 func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeService {
 	otServiceOnce.Do(func() {
 		otService = &objectTypeService{
@@ -96,6 +93,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			cga:        logics.CGA,
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ota:        logics.OTA,
+			vta:        logics.VTA,
 			ps:         permission.NewPermissionService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
@@ -119,18 +117,22 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 				if kind, ok := logics.DependencyErrorKind(err); ok && kind == interfaces.DependencyNotFound {
 					detailKey = "ResourceNotFound"
 				}
-				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, detailKey, map[string]any{
-						"objectType": objectType.OTName, "resource": objectType.DataSource.ID,
-					}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+detailKey, map[string]any{
+					"objectType": objectType.OTName, "resource": objectType.DataSource.ID,
+				})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				invalidErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				return logics.MapDependencyError(ctx, err, !controlledLookup, invalidErr,
 					berrors.BknBackend_ObjectType_InternalError)
 			}
 			if res == nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest,
-					berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "ResourceNotFound", map[string]any{"objectType": objectType.OTName, "resource": objectType.DataSource.ID}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ResourceNotFound", map[string]any{"objectType": objectType.OTName, "resource": objectType.DataSource.ID})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 		default:
 			return logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, objectType.DataSource.Type)
@@ -145,12 +147,18 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 			}
 		case interfaces.LOGIC_PROPERTY_TYPE_TOOL:
 			if lp.DataSource == nil {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.LogicPropertyDataSourceRequired", map[string]any{"objectType": objectType.OTName, "property": lp.Name})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 			}
 			if err := ots.aoa.GetToolByID(ctx, lp.DataSource.BoxID, lp.DataSource.ToolID); err != nil {
-				invalidErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-					WithErrorDetails(invalidParameterDetail(ctx, "ToolLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "box": lp.DataSource.BoxID, "tool": lp.DataSource.ToolID}))
+				localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ToolLookupFailed", map[string]any{"objectType": objectType.OTName, "property": lp.Name, "box": lp.DataSource.BoxID, "tool": lp.DataSource.ToolID})
+				if renderErr != nil {
+					logger.Errorf("localized message rendering failed: %v", renderErr)
+				}
+				invalidErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				// The execution-factory internal metadata endpoint does not perform
 				// caller resource authorization. A 403 therefore indicates an
 				// internal identity/configuration failure, not a user-scoped denial.
@@ -171,7 +179,7 @@ func (ots *objectTypeService) CheckObjectTypeExistByID(ctx context.Context,
 	otName, exist, err := ots.ota.CheckObjectTypeExistByID(ctx, knID, branch, otID)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("在业务知识网络[%s]下按ID[%s]获取对象类失败", knID, otID), err)
-		return "", exist, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", exist, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -189,7 +197,7 @@ func (ots *objectTypeService) CheckObjectTypeExistByName(ctx context.Context,
 	otID, exist, err := ots.ota.CheckObjectTypeExistByName(ctx, knID, branch, otName)
 	if err != nil {
 		otellog.LogError(ctx, fmt.Sprintf("在业务知识网络[%s]下按名称[%s]获取对象类失败", knID, otName), err)
-		return "", exist, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return "", exist, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -236,6 +244,9 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		if err := validateDeclarations(ctx, objectType); err != nil {
 			return []string{}, err
 		}
+		if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
+			return []string{}, err
+		}
 		if strictMode {
 			if err := ots.validateObjectTypeStrictExternalDeps(ctx, objectType); err != nil {
 				return []string{}, err
@@ -251,7 +262,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		tx, err = ots.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -303,6 +314,11 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 	if err = ots.checkOverwriteKeepsDeclarations(ctx, tx, updateObjectTypes, false); err != nil {
 		return []string{}, err
 	}
+	// Only what this save writes counts: an object type ignore skips keeps its stored name and aliases.
+	if err = ots.checkAliasNames(ctx, objectTypes[0].KNID, objectTypes[0].Branch,
+		append(append([]*interfaces.ObjectType{}, createObjectTypes...), updateObjectTypes...)); err != nil {
+		return []string{}, err
+	}
 
 	// Create.
 	otIDs := make([]string, 0, len(createObjectTypes))
@@ -315,7 +331,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			logger.Errorf("CreateObjectType error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建对象类失败")
 
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -324,7 +340,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			logger.Errorf("CreateObjectTypeStatus error: %s", err.Error())
 			span.SetStatus(codes.Error, "创建对象类状态失败")
 
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -335,15 +351,15 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 			span.SetStatus(codes.Error, "Batch create object types failed")
 			if constraint, duplicate := common.DatabaseUniqueConstraint(err); duplicate {
 				if strings.Contains(constraint, "name") {
-					return []string{}, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return []string{}, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
 						WithErrorDetails("One or more object type names already exist")
 				}
-				return []string{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return []string{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_ObjectTypeIDExisted).
 					WithErrorDetails("One or more object type IDs already exist")
 			}
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -351,7 +367,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		if err != nil {
 			logger.Errorf("CreateObjectTypeStatuses error: %s", err.Error())
 			span.SetStatus(codes.Error, "Batch create object type statuses failed")
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -393,7 +409,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		if err != nil {
 			logger.Errorf("UpdateObjectTypes error: %s", err.Error())
 			span.SetStatus(codes.Error, "Batch update object types failed")
-			return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -416,7 +432,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
 		span.SetStatus(codes.Error, "对象类索引写入失败")
 
-		return []string{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []string{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -449,13 +465,18 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 	}
 	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
 
-	_, updates, err := ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
+	creates, updates, err := ots.handleObjectTypeImportMode(ctx, mode, objectTypes)
 	if err != nil {
 		return err
 	}
 	// Validation has checked modify on the network only; the object types being overwritten are
 	// checked before their declarations are listed.
 	if err = ots.checkOverwriteKeepsDeclarations(ctx, nil, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
+		return err
+	}
+	// Only what the import would write counts: an object type ignore skips keeps its stored name and
+	// aliases.
+	if err = ots.checkAliasNames(ctx, knID, branch, append(append([]*interfaces.ObjectType{}, creates...), updates...)); err != nil {
 		return err
 	}
 
@@ -466,6 +487,9 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 			return err
 		}
 		if err := validateDeclarations(ctx, objectType); err != nil {
+			return err
+		}
+		if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
 			return err
 		}
 		if strictMode {
@@ -494,7 +518,7 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 
 				tx, err := ots.db.Begin()
 				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 						WithErrorDetails(err.Error())
 				}
@@ -502,14 +526,16 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 
 				conceptGroups, err := ots.cga.GetConceptGroupsByIDs(ctx, tx, knID, branch, needDBLookup)
 				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(fmt.Sprintf("GetConceptGroupsByIDs failed: %s", err.Error()))
 				}
 				if len(conceptGroups) != len(needDBLookup) {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter).
-						WithErrorDetails(invalidParameterDetail(ctx, "ConceptGroupsNotFound", map[string]any{"expected": len(needDBLookup), "actual": len(conceptGroups)}))
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ConceptGroupsNotFound", map[string]any{"expected": len(needDBLookup), "actual": len(conceptGroups)})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).WithErrorDetails(localizedText)
 				}
 			}
 		}
@@ -532,7 +558,7 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		tx, err = ots.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.ObjectType{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -551,13 +577,13 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		logger.Errorf("ListObjectTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "List object types error")
 
-		return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.ObjectType{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 	if ownedTx {
 		if err := tx.Commit(); err != nil {
 			otellog.LogError(ctx, "ListObjectTypes Transaction Commit Failed", err)
-			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.ObjectType{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
 		otellog.LogDebug(ctx, "ListObjectTypes Transaction Commit Success")
@@ -592,7 +618,7 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 		if err != nil {
 			span.SetStatus(codes.Error, "GetAccountNames error")
 
-			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.ObjectType{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
@@ -614,7 +640,7 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	// if err != nil {
 	// 	span.SetStatus(codes.Error, "GetConceptGroupsByOTIDs error")
 
-	// 	return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+	// 	return []*interfaces.ObjectType{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 	// 		berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	// }
 
@@ -624,7 +650,7 @@ func (ots *objectTypeService) ListObjectTypes(ctx context.Context, tx *sql.Tx,
 	// 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 	// 		dataView, err := ots.dva.GetDataViewByID(ctx, objectType.DataSource.ID)
 	// 		if err != nil {
-	// 			return []*interfaces.ObjectType{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+	// 			return []*interfaces.ObjectType{}, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 	// 				berrors.BknBackend_ObjectType_InternalError_GetDataViewByIDFailed).
 	// 				WithErrorDetails(err.Error())
 	// 		}
@@ -675,7 +701,7 @@ func (ots *objectTypeService) ListObjectTypeSummaries(ctx context.Context, tx *s
 			candidateQuery.Limit = -1
 			candidates, err := ots.ota.ListObjectTypeSummaries(ctx, tx, candidateQuery)
 			if err != nil {
-				return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 			}
 			visible, err := ots.filterObjectTypeSummaryOperations(ctx, query.KNID, candidates)
@@ -724,12 +750,12 @@ func (ots *objectTypeService) ListObjectTypeSummaries(ctx context.Context, tx *s
 
 	total, err := ots.ota.GetObjectTypesTotal(ctx, pageQuery)
 	if err != nil {
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 	items, err := ots.ota.ListObjectTypeSummaries(ctx, tx, pageQuery)
 	if err != nil {
-		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, 0, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 	if interfaces.IsAuthorizationResourceCatalog(ctx) || len(items) == 0 {
@@ -782,7 +808,7 @@ func (ots *objectTypeService) loadObjectTypeSummaryAccounts(ctx context.Context,
 		return nil
 	}
 	if err := ots.ums.GetAccountNames(ctx, accountInfos); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 	return nil
@@ -805,7 +831,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 		tx, err = ots.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return []*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.ObjectType{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -838,7 +864,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 		logger.Errorf("GetObjectTypesByObjectTypeIDs error: %s", err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("Get object types[%s] error: %v", otIDs, err))
 
-		return []*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.ObjectType{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
 	}
 
@@ -847,7 +873,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 		logger.Errorf(errStr)
 		span.SetStatus(codes.Error, errStr)
 
-		return []*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
+		return []*interfaces.ObjectType{}, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(errStr)
 	}
 	if len(otIDs) == 1 {
@@ -871,7 +897,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	if err != nil {
 		span.SetStatus(codes.Error, "GetConceptGroupsByOTIDs error")
 
-		return []*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.ObjectType{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -894,7 +920,7 @@ func (ots *objectTypeService) GetObjectTypesByIDs(ctx context.Context, tx *sql.T
 	if err != nil {
 		span.SetStatus(codes.Error, "GetAccountNames error")
 
-		return []*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.ObjectType{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -1033,8 +1059,12 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 		return nil, err
 	}
 	if len(objectTypes) == 0 || objectTypes[0] == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
-			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(invalidParameterDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound", map[string]any{"objectTypeID": otID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound,
+			berrors.BknBackend_ObjectType_ObjectTypeNotFound).WithErrorDetails(localizedText)
 	}
 
 	objectType := objectTypes[0]
@@ -1100,7 +1130,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	if err != nil {
 		logger.Errorf("Query object type sample data error: %s", err.Error())
 		span.SetStatus(codes.Error, "query object type sample data failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 	if datasetResp == nil {
@@ -1143,7 +1173,7 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		return err
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 	}
 	resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 		objectType.KNID, objectType.OTID)
@@ -1154,7 +1184,7 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 	if keepStoredDeclarations {
 		stored, err := ots.ota.GetObjectTypeByID(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID)
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
 				WithErrorDetails(err.Error())
 		}
 		keepUndeclared(objectType, stored)
@@ -1164,6 +1194,12 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		return err
 	}
 	if err := validateDeclarations(ctx, objectType); err != nil {
+		return err
+	}
+	if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
+		return err
+	}
+	if err := ots.checkAliasNames(ctx, objectType.KNID, objectType.Branch, []*interfaces.ObjectType{objectType}); err != nil {
 		return err
 	}
 	if strictMode {
@@ -1190,7 +1226,7 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
 
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -1220,7 +1256,7 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		logger.Errorf("UpdateObjectType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改对象类失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -1241,7 +1277,7 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
 		span.SetStatus(codes.Error, "对象类索引写入失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1291,6 +1327,9 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	if err := validateDeclarations(ctx, objectType); err != nil {
 		return err
 	}
+	if err := ots.checkNetworkDeclarations(ctx, objectType); err != nil {
+		return err
+	}
 
 	bknObj := logics.ToBKNObjectType(objectType)
 	objectType.BKNRawContent = bknsdk.SerializeObjectType(bknObj)
@@ -1301,7 +1340,7 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	if err != nil {
 		otellog.LogError(ctx, "Begin transaction error", err)
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1330,7 +1369,7 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		logger.Errorf("UpdateObjectType error: %s", err.Error())
 		span.SetStatus(codes.Error, "修改对象类失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(err.Error())
 	}
@@ -1340,7 +1379,7 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		logger.Errorf("InsertDatasetData error: %s", err.Error())
 		span.SetStatus(codes.Error, "对象类索引写入失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_InsertOpenSearchDataFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1373,7 +1412,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 			return err
 		}
 		if !exists {
-			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		}
 		resource := interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs[0])
 		if err := ots.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_DELETE}); err != nil {
@@ -1382,11 +1421,11 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 	} else {
 		objectTypes, err := ots.ota.GetObjectTypesByIDs(ctx, tx, knID, branch, otIDs)
 		if err != nil {
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
 		}
 		if len(objectTypes) != len(otIDs) {
-			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
+			return httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound)
 		}
 		if err := permission.CheckKNChildBatchPermission(ctx, ots.ps,
 			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs, interfaces.OPERATION_TYPE_DELETE); err != nil {
@@ -1399,7 +1438,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
 
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -1428,7 +1467,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		logger.Errorf("DeleteObjectTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除对象类失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 	if err = deleteObjectTypeMetricReferences(ctx, tx, knID, branch, otIDs); err != nil {
@@ -1445,7 +1484,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		logger.Errorf("DeleteObjectTypeStatusByIDs error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除对象类状态失败")
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -1462,11 +1501,11 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 
 			// Vega returns ordinary errors. Normalize them to HTTPError before propagating.
 			// Otherwise handler type assertions panic before headers are written and the gateway reports 502.
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			if errors.As(err, &httpErr) {
 				return httpErr
 			}
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
 	}
@@ -1484,7 +1523,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 			knID, "branch", otIDs, err.Error())
 		logger.Errorf(errStr)
 
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(errStr)
 	}
@@ -1505,13 +1544,13 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 
 	if tx == nil {
 		otellog.LogError(ctx, "missing transaction", nil)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 			WithErrorDetails("missing transaction")
 	}
 	otIDs, err := ots.ota.GetObjectTypeIDsByKnID(ctx, knID, branch)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -1520,7 +1559,7 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 	if err != nil {
 		logger.Errorf("DeleteObjectTypes error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除对象类失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -1529,7 +1568,7 @@ func (ots *objectTypeService) DeleteObjectTypesByKnID(ctx context.Context, tx *s
 	if err != nil {
 		logger.Errorf("DeleteObjectTypeStatusByIDs error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除对象类状态失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -1559,7 +1598,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 		names := make([]string, 0, len(objectTypes))
 		for _, objectType := range objectTypes {
 			if objectType.KNID != knID || objectType.Branch != branch {
-				return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter)
 			}
 			ids = append(ids, objectType.OTID)
@@ -1568,7 +1607,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 		existing, err := ots.ota.GetObjectTypeIdentitiesByIDsOrNames(ctx, knID, branch, ids, names)
 		if err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Batch query object type IDs in knowledge network [%s] failed", knID), err)
-			return creates, updates, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return creates, updates, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -1607,7 +1646,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 					errDetails := fmt.Sprintf("The object type with id [%s] already exists!", objectType.OTID)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return creates, updates, rest.NewHTTPError(ctx, http.StatusBadRequest,
+					return creates, updates, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 						berrors.BknBackend_ObjectType_ObjectTypeIDExisted).
 						WithErrorDetails(errDetails)
 				}
@@ -1616,9 +1655,8 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 					errDetails := fmt.Sprintf("object type name '%s' already exists", objectType.OTName)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return creates, updates, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
-						WithDescription(map[string]any{"name": objectType.OTName}).
 						WithErrorDetails(errDetails)
 				}
 
@@ -1634,7 +1672,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 							objectType.OTID, objectType.OTName, existID)
 						logger.Error(errDetails)
 						span.SetStatus(codes.Error, errDetails)
-						return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
+						return creates, updates, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 							berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
 							WithErrorDetails(errDetails)
 					} else {
@@ -1658,7 +1696,7 @@ func (ots *objectTypeService) handleObjectTypeImportMode(ctx context.Context, mo
 						objectType.OTID, objectType.OTName)
 					logger.Error(errDetails)
 					span.SetStatus(codes.Error, errDetails)
-					return creates, updates, rest.NewHTTPError(ctx, http.StatusForbidden,
+					return creates, updates, httperrors.NewHTTPError(ctx, http.StatusForbidden,
 						berrors.BknBackend_ObjectType_ObjectTypeNameExisted).
 						WithErrorDetails(errDetails)
 				}
@@ -1690,7 +1728,7 @@ func (ots *objectTypeService) GetObjectTypesMapByIDs(ctx context.Context, knID s
 	if err != nil {
 		logger.Errorf("GetObjectTypesByObjectTypeIDs error: %s", err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("Get object type[%v] error: %v", otIDs, err))
-		return map[string]*interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return map[string]*interfaces.ObjectType{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).
 			WithErrorDetails(err.Error())
 	}
@@ -1723,6 +1761,8 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 		words := []string{}
 		for _, objectType := range objectTypes {
 			arr := []string{objectType.OTName}
+			// Aliases follow the name; without them the text is as before.
+			arr = append(arr, objectType.Aliases...)
 			arr = append(arr, objectType.Tags...)
 			arr = append(arr, objectType.Comment, objectType.BKNRawContent)
 			word := strings.Join(arr, "\n")
@@ -1827,7 +1867,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				if !ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
 					err = errors.New(cond.DEFAULT_SMALL_MODEL_ENABLED_FALSE_ERROR)
 					span.SetStatus(codes.Error, err.Error())
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -1835,7 +1875,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				if err != nil {
 					logger.Errorf("GetDefaultModel error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取默认模型失败")
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -1843,7 +1883,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				if err != nil {
 					logger.Errorf("GetVector error: %s", err.Error())
 					span.SetStatus(codes.Error, "获取业务知识网络向量失败")
-					return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+					return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 						berrors.BknBackend_ObjectType_InternalError).
 						WithErrorDetails(err.Error())
 				}
@@ -1851,9 +1891,13 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			})
 		if err != nil {
 			logger.Errorf("convert object type condition to filter condition failed: %v", err)
-			return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+			localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil)
+			if renderErr != nil {
+				logger.Errorf("localized service message failed: %v", renderErr)
+			}
+			return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter_ConceptCondition).
-				WithErrorDetails(i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.ConditionDecodeFailed", nil))
+				WithErrorDetails(localizedText)
 		}
 	}
 	filterCondition = permission.RestrictDatasetFilterToIDs(filterCondition, visibleIDs)
@@ -1872,7 +1916,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			logger.Errorf("GetConceptGroupsTotal in knowledge network[%s] error: %s", query.KNID, err.Error())
 			span.SetStatus(codes.Error, fmt.Sprintf("GetConceptGroupsTotal in knowledge network[%s], error: %v", query.KNID, err))
 
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
 		if cgCnt == 0 {
@@ -1881,7 +1925,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			logger.Errorf(errStr)
 
 			// Return 404 when all requested concept groups are missing.
-			return response, rest.NewHTTPError(ctx, http.StatusNotFound,
+			return response, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 				berrors.BknBackend_ConceptGroup_ConceptGroupNotFound).
 				WithErrorDetails(errStr)
 		}
@@ -1896,7 +1940,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			span.SetStatus(codes.Error, errStr)
 			span.End()
 
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 		}
 
@@ -1929,7 +1973,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			if err != nil {
 				logger.Errorf("QueryDatasetData error: %s", err.Error())
 				span.SetStatus(codes.Error, "业务知识网络对象类检索查询总数失败")
-				return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ObjectType_InternalError).
 					WithErrorDetails(err.Error())
 			}
@@ -1974,7 +2018,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "业务知识网络对象类检索查询失败")
-			return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(err.Error())
 		}
@@ -1987,7 +2031,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 		// 5. Process query results.
 		for _, entry := range datasetResp.Entries {
 			if err := interfaces.DecodeIndexedConstraints(entry); err != nil {
-				return response, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_InternalError_UnMarshalDataFailed).WithErrorDetails(err.Error())
 			}
 			// Deserialize logic_properties[].parameters from JSON string
@@ -2000,7 +2044,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 									var params []interfaces.Parameter
 									if err := sonic.Unmarshal([]byte(paramsStrStr), &params); err != nil {
 										logger.Errorf("Failed to unmarshal object_type logic_properties parameters: %s", err.Error())
-										return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+										return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 											berrors.BknBackend_InternalError_UnMarshalDataFailed).
 											WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic_properties parameters, %s", err.Error()))
 									}
@@ -2015,14 +2059,14 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			// Convert to an object type struct.
 			jsonByte, err := json.Marshal(entry)
 			if err != nil {
-				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_InternalError_MarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Marshal dataset entry, %s", err.Error()))
 			}
 			var objectType interfaces.ObjectType
 			err = json.Unmarshal(jsonByte, &objectType)
 			if err != nil {
-				return response, rest.NewHTTPError(ctx, http.StatusBadRequest,
+				return response, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_InternalError_UnMarshalDataFailed).
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal dataset entry to Object Type, %s", err.Error()))
 			}
@@ -2496,7 +2540,7 @@ func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[
 	datasetResp, err := ots.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total documents count failed")
-		return total, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+		return total, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
 			WithErrorDetails(err.Error())
 	}
 
@@ -2520,7 +2564,7 @@ func (ots *objectTypeService) GetObjectTypeIDsByKnID(ctx context.Context,
 		logger.Errorf("GetObjectTypeIDsByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("Get object type ids by kn_id[%s] error: %v", knID, err))
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
 	}
 
@@ -2540,7 +2584,7 @@ func (ots *objectTypeService) GetAllObjectTypesByKnID(ctx context.Context,
 		logger.Errorf("GetAllObjectTypesByKnID error: %s", err.Error())
 		span.SetStatus(codes.Error, fmt.Sprintf("Get all object type by kn_id[%s] error: %v", knID, err))
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_GetObjectTypesByIDsFailed).WithErrorDetails(err.Error())
 	}
 
@@ -2561,7 +2605,7 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 		tx, err = ots.db.Begin()
 		if err != nil {
 			otellog.LogError(ctx, "Begin transaction error", err)
-			return &interfaces.ObjectType{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return &interfaces.ObjectType{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_BeginTransactionFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -2591,18 +2635,22 @@ func (ots *objectTypeService) GetObjectTypeByID(ctx context.Context, tx *sql.Tx,
 		span.SetStatus(codes.Error, fmt.Sprintf("Get object type by id[%s] error: %v", otID, err))
 		// The access layer reports a missing row as a structured 404; keep it
 		// instead of reclassifying a caller mistake as an internal failure.
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusNotFound {
 			return nil, httpErr
 		}
 		logger.Errorf("GetObjectTypeByID error: %s", err.Error())
 
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).WithErrorDetails(err.Error())
 	}
 	if objectType == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound).
-			WithErrorDetails(invalidParameterDetail(ctx, "ObjectTypeNotFound", map[string]any{"objectTypeID": otID}))
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail.ObjectTypeNotFound", map[string]any{"objectTypeID": otID})
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ObjectType_ObjectTypeNotFound).
+			WithErrorDetails(localizedText)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -2700,7 +2748,7 @@ func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.
 				objectType.KNID, objectType.Branch, cgIDs, err.Error())
 			logger.Errorf(errStr)
 
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(errStr)
 		}
@@ -2709,7 +2757,7 @@ func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.
 				len(cgIDs), len(conceptGroups))
 			logger.Errorf(errStr)
 
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(errStr)
 		}
@@ -2736,7 +2784,7 @@ func (ots *objectTypeService) handleGroupRelations(ctx context.Context, tx *sql.
 				cg.CGID, objectType.KNID, objectType.Branch, objectType.OTID)
 			logger.Errorf(errStr)
 
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError_CreateConceptGroupRelationFailed).
 				WithErrorDetails(err.Error())
 		}
@@ -2763,7 +2811,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 				objectType.KNID, objectType.Branch, cgIDs, err.Error())
 			logger.Errorf(errStr)
 
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(errStr)
 		}
@@ -2772,7 +2820,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 				len(cgIDs), len(conceptGroups))
 			logger.Errorf(errStr)
 
-			return rest.NewHTTPError(ctx, http.StatusBadRequest,
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_ObjectType_InvalidParameter).
 				WithErrorDetails(errStr)
 		}
@@ -2786,7 +2834,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 	})
 	if err != nil {
 		logger.Errorf(err.Error())
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_ObjectType_InternalError).WithErrorDetails(err.Error())
 	}
 
@@ -2843,7 +2891,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 					cgID, objectType.KNID, objectType.Branch, objectType.OTID, err.Error())
 				logger.Errorf(errStr)
 
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 					berrors.BknBackend_ObjectType_InternalError_CreateConceptGroupRelationFailed).
 					WithErrorDetails(errStr)
 			}
@@ -2865,7 +2913,7 @@ func (ots *objectTypeService) syncObjectGroups(ctx context.Context, tx *sql.Tx,
 				groupsToRemove, objectType.KNID, objectType.Branch, objectType.OTID, err.Error())
 			logger.Errorf(errStr)
 
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 				berrors.BknBackend_ObjectType_InternalError).
 				WithErrorDetails(errStr)
 		}

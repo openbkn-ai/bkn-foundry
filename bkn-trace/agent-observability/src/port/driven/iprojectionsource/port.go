@@ -13,10 +13,12 @@ import (
 )
 
 type Query struct {
-	Scope           evidencevo.QueryScope
-	From            time.Time
-	To              time.Time
-	Status          string
+	Scope  evidencevo.QueryScope
+	From   time.Time
+	To     time.Time
+	Status string
+	// Tool is an exact canonical root constraint used by the optional scanner.
+	Tool            string
 	RequestID       string
 	TraceID         string
 	TraceIDs        []string
@@ -36,12 +38,27 @@ type Query struct {
 	// SummaryOnly retains artifact metadata and question/result content while
 	// omitting supporting result bodies. Full evidence reads leave this false.
 	SummaryOnly bool
+	// OmitSummaryTerminalContent is an internal metadata-only facet read.
+	// It excludes all artifact content, including terminal preview bodies.
+	OmitSummaryTerminalContent bool
 }
 
 type Result struct {
 	Traces    []evidencevo.NormalizedTrace
 	Artifacts []evidencevo.EvidenceArtifact
 	Truncated bool
+	// CanonicalRoots is supplied only by a complete, authorized Trace scan.
+	// Its values are derived across the visible trace's full receipt lifetime,
+	// independently of the time window used for displayed status and events.
+	CanonicalRoots map[string]string
+	// CanonicalScopes contains only complete, authorized lifetime receipt
+	// tuples. SQL metadata enrichment must not cross these interaction bounds.
+	CanonicalScopes map[string][]CanonicalTraceScope
+}
+
+type CanonicalTraceScope struct {
+	ConversationID string
+	InteractionID  string
 }
 
 // ArtifactResult is the bounded artifact-only portion of a projection read.

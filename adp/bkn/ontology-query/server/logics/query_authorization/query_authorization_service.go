@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/sonic"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
@@ -30,7 +30,8 @@ type queryAuthorizationService struct {
 }
 
 var (
-	_ interfaces.QueryAuthorizationService = (*queryAuthorizationService)(nil)
+	_ interfaces.QueryAuthorizationService                 = (*queryAuthorizationService)(nil)
+	_ interfaces.ObjectMetricExecutionAuthorizationService = (*queryAuthorizationService)(nil)
 )
 
 func NewQueryAuthorizationService(appSetting *common.AppSetting) interfaces.QueryAuthorizationService {
@@ -92,7 +93,7 @@ func (s *queryAuthorizationService) AuthorizeActionTypeQuery(ctx context.Context
 		return dependencyResolutionFailed(ctx, err)
 	}
 	if !exists {
-		return rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionType_ActionTypeNotFound)
+		return httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ActionType_ActionTypeNotFound)
 	}
 
 	if strings.TrimSpace(actionType.ObjectTypeID) == "" {
@@ -137,66 +138,140 @@ func (s *queryAuthorizationService) AuthorizeObjectMetricTrial(ctx context.Conte
 	if err := validateQueryIdentity(ctx, knID, branch, "object-metric-trial"); err != nil {
 		return err
 	}
-	if definition == nil || strings.TrimSpace(definition.OwnerObjectTypeID) == "" {
-		return invalidQuery(ctx, "object metric owner_object_type_id is required")
-	}
-	objectType, err := s.loadObjectType(ctx, knID, definition.OwnerObjectTypeID)
-	if err != nil {
-		return err
-	}
-	resources := []interfaces.PermissionResource{
+	return s.authorizeObjectMetricDefinitions(ctx, knID, []objectMetricAuthorizationInput{{
+		definition: definition,
+		query:      query,
+	}}, []interfaces.PermissionResource{
 		{Type: interfaces.PermissionResourceTypeKnowledgeNetwork, ID: knID},
+	})
+}
+
+// AuthorizeObjectMetricExecution validates the complete immutable metric graph
+// before the paid runtime reads any object or relationship data. A published
+// metric grant alone is insufficient because metric execution can transitively
+// read object types, relations, dependency metrics, and protected properties.
+func (s *queryAuthorizationService) AuthorizeObjectMetricExecution(ctx context.Context,
+	knID, branch string, executionContext *interfaces.ObjectMetricExecutionContextV1,
+	query *interfaces.ObjectMetricQueryRequestV1) error {
+	if executionContext == nil || executionContext.Root == nil {
+		return invalidQuery(ctx, "object metric execution context is required")
 	}
-	dependencies, err := objectTypeResources(ctx, knID, objectType)
-	if err != nil {
+	root := executionContext.Root
+	if err := validateQueryIdentity(ctx, knID, branch, root.Definition.ID); err != nil {
 		return err
 	}
-	resources = append(resources, dependencies...)
+	inputs := make([]objectMetricAuthorizationInput, 0, len(executionContext.Dependencies)+1)
+	resources := make([]interfaces.PermissionResource, 0, len(executionContext.Dependencies)+1)
+	appendRecord := func(record *interfaces.ObjectMetricRecordV1,
+		runtimeQuery *interfaces.ObjectMetricQueryRequestV1) error {
+		if record == nil || record.KNID != knID || record.Branch != branch {
+			return fmt.Errorf("object metric execution context contains a record outside the requested knowledge network or branch")
+		}
+		if err := validateResourceID(knID, record.Definition.ID); err != nil {
+			return err
+		}
+		if record.Definition.Version < 1 {
+			return fmt.Errorf("object metric execution context contains an invalid version")
+		}
+		inputs = append(inputs, objectMetricAuthorizationInput{definition: &record.Definition, query: runtimeQuery})
+		resources = append(resources, interfaces.KNChildPermissionResource(
+			interfaces.PermissionResourceTypeMetric, knID, record.Definition.ID))
+		return nil
+	}
+	if err := appendRecord(root, query); err != nil {
+		return dependencyResolutionFailed(ctx, err)
+	}
+	for _, dependency := range executionContext.Dependencies {
+		if err := appendRecord(dependency, nil); err != nil {
+			return dependencyResolutionFailed(ctx, err)
+		}
+	}
+	err := s.authorizeObjectMetricDefinitions(ctx, knID, inputs, resources)
+	var denied *httperrors.HTTPError
+	if errors.As(err, &denied) && denied.HTTPCode == http.StatusForbidden {
+		return queryPermissionDenied(ctx, "object metric execution permission was not granted")
+	}
+	return err
+}
 
-	specification := definition.Specification
-	if qualifiers := specification.BusinessQualifiers; qualifiers != nil && qualifiers.RelationPath != nil {
-		pathResources, err := s.objectMetricRelationPathResources(
-			ctx, knID, definition.OwnerObjectTypeID, qualifiers.RelationPath.Steps)
-		if err != nil {
-			return err
-		}
-		resources = append(resources, pathResources...)
-	}
-	if specification.BaseMetric != nil {
-		metricResource, err := objectMetricRefResource(ctx, knID, *specification.BaseMetric)
-		if err != nil {
-			return err
-		}
-		resources = append(resources, metricResource)
-	}
-	for _, dependency := range specification.Dependencies {
-		metricResource, err := objectMetricRefResource(ctx, knID, dependency.MetricRef)
-		if err != nil {
-			return err
-		}
-		resources = append(resources, metricResource)
-		pathResources, err := s.objectMetricRelationPathResources(
-			ctx, knID, definition.OwnerObjectTypeID, dependency.ObjectAlignment.RelationPath)
-		if err != nil {
-			return err
-		}
-		resources = append(resources, pathResources...)
-	}
+type objectMetricAuthorizationInput struct {
+	definition *interfaces.ObjectMetricDefinitionV1
+	query      *interfaces.ObjectMetricQueryRequestV1
+}
 
-	propertyRequirements, err := objectMetricPropertyRequirements(definition, query)
-	if err != nil {
-		return invalidQuery(ctx, err.Error())
-	}
-	referencedObjectTypeIDs := make(map[string]struct{}, len(propertyRequirements)+1)
-	if alignment := definition.Specification.Alignment; alignment != nil {
-		if resultOwnerID := strings.TrimSpace(alignment.ResultOwnerObjectTypeID); resultOwnerID != "" {
-			referencedObjectTypeIDs[resultOwnerID] = struct{}{}
+func (s *queryAuthorizationService) authorizeObjectMetricDefinitions(ctx context.Context, knID string,
+	inputs []objectMetricAuthorizationInput, resources []interfaces.PermissionResource) error {
+	propertyRequirements := make(map[string][]string)
+	objectTypes := make(map[string]interfaces.ObjectType)
+	referencedObjectTypeIDs := make(map[string]struct{})
+	for _, input := range inputs {
+		definition := input.definition
+		if definition == nil || strings.TrimSpace(definition.OwnerObjectTypeID) == "" {
+			return invalidQuery(ctx, "object metric owner_object_type_id is required")
+		}
+		objectType, loaded := objectTypes[definition.OwnerObjectTypeID]
+		if !loaded {
+			var err error
+			objectType, err = s.loadObjectType(ctx, knID, definition.OwnerObjectTypeID)
+			if err != nil {
+				return err
+			}
+			objectTypes[definition.OwnerObjectTypeID] = objectType
+		}
+		dependencies, err := objectTypeResources(ctx, knID, objectType)
+		if err != nil {
+			return err
+		}
+		resources = append(resources, dependencies...)
+
+		specification := definition.Specification
+		if qualifiers := specification.BusinessQualifiers; qualifiers != nil && qualifiers.RelationPath != nil {
+			pathResources, err := s.objectMetricRelationPathResources(
+				ctx, knID, definition.OwnerObjectTypeID, qualifiers.RelationPath.Steps)
+			if err != nil {
+				return err
+			}
+			resources = append(resources, pathResources...)
+		}
+		if specification.BaseMetric != nil {
+			metricResource, err := objectMetricRefResource(ctx, knID, *specification.BaseMetric)
+			if err != nil {
+				return err
+			}
+			resources = append(resources, metricResource)
+		}
+		for _, dependency := range specification.Dependencies {
+			metricResource, err := objectMetricRefResource(ctx, knID, dependency.MetricRef)
+			if err != nil {
+				return err
+			}
+			resources = append(resources, metricResource)
+			pathResources, err := s.objectMetricRelationPathResources(
+				ctx, knID, definition.OwnerObjectTypeID, dependency.ObjectAlignment.RelationPath)
+			if err != nil {
+				return err
+			}
+			resources = append(resources, pathResources...)
+		}
+
+		requirements, err := objectMetricPropertyRequirements(definition, input.query)
+		if err != nil {
+			return invalidQuery(ctx, err.Error())
+		}
+		for objectTypeID, properties := range requirements {
+			propertyRequirements[objectTypeID] = append(propertyRequirements[objectTypeID], properties...)
+			referencedObjectTypeIDs[objectTypeID] = struct{}{}
+		}
+		if alignment := definition.Specification.Alignment; alignment != nil {
+			if resultOwnerID := strings.TrimSpace(alignment.ResultOwnerObjectTypeID); resultOwnerID != "" {
+				referencedObjectTypeIDs[resultOwnerID] = struct{}{}
+			}
 		}
 	}
-	for objectTypeID := range propertyRequirements {
-		referencedObjectTypeIDs[objectTypeID] = struct{}{}
+	for objectTypeID, properties := range propertyRequirements {
+		propertyRequirements[objectTypeID] = uniqueStrings(properties)
+		sort.Strings(propertyRequirements[objectTypeID])
 	}
-	objectTypes := map[string]interfaces.ObjectType{definition.OwnerObjectTypeID: objectType}
 	orderedObjectTypeIDs := make([]string, 0, len(referencedObjectTypeIDs))
 	for objectTypeID := range referencedObjectTypeIDs {
 		orderedObjectTypeIDs = append(orderedObjectTypeIDs, objectTypeID)
@@ -613,7 +688,7 @@ func (s *queryAuthorizationService) loadObjectType(ctx context.Context, knID, ob
 		return empty, dependencyResolutionFailed(ctx, err)
 	}
 	if !exists {
-		return empty, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
+		return empty, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 	}
 	if objectType.KNID != "" && objectType.KNID != knID {
 		return empty, invalidQuery(ctx, "object type belongs to another knowledge network")
@@ -638,7 +713,7 @@ func (s *queryAuthorizationService) loadRelationType(ctx context.Context,
 		return empty, dependencyResolutionFailed(ctx, err)
 	}
 	if !exists {
-		return empty, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_KnowledgeNetwork_RelationTypeNotFound)
+		return empty, httperrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_KnowledgeNetwork_RelationTypeNotFound)
 	}
 	return relationType, nil
 }
@@ -835,20 +910,20 @@ func uniqueStrings(values []string) []string {
 }
 
 func invalidQuery(ctx context.Context, detail string) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest,
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 		oerrors.OntologyQuery_KnowledgeNetwork_InvalidParameter).WithErrorDetails(detail)
 }
 
 func dependencyResolutionFailed(ctx context.Context, err error) error {
-	var downstream *rest.HTTPError
+	var downstream *httperrors.HTTPError
 	if errors.As(err, &downstream) &&
 		(downstream.HTTPCode == http.StatusUnauthorized || downstream.HTTPCode == http.StatusForbidden) {
 		return downstream
 	}
-	return rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+	return httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 		oerrors.OntologyQuery_InternalError_CheckPermissionFailed).WithErrorDetails(err.Error())
 }
 
 func queryPermissionDenied(ctx context.Context, detail string) error {
-	return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).WithErrorDetails(detail)
+	return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).WithErrorDetails(detail)
 }

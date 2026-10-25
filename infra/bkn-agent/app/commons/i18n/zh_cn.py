@@ -14,6 +14,12 @@
 # stay literal.
 
 error_messages = {
+    "BknAgent.Agent.BindingChanged": {
+        "code": "BknAgent.ParamError.Conflict",
+        "description": 'Agent 的提示词绑定已被并发修改。',
+        "detail": 'Agent 的提示词绑定已被并发修改。',
+        "solution": '请重新加载 Agent 配置后重试更新。',
+    },
     "BknAgent.Execution.ToolScopeMismatch": {
         "code": "BknAgent.Execution.ToolScopeMismatch",
         "description": "工具请求了其他知识网络，调用已拒绝。",

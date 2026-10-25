@@ -10,8 +10,8 @@ info:
     properties, and a projection of properties and aggregates of them. Everything else is
     refused by name rather than approximated.
     Paging is written in the query itself with SKIP and LIMIT; there is no paging parameter.
-    Exposed under /api/bkn-backend/v1 (OAuth2) and /api/ontology-manager/v1 (alias), with the
-    branch query parameter defaulting to main.
+    Exposed under /api/bkn-backend/v1 (OAuth2), with the branch query parameter defaulting
+    to main.
 security:
   - OAuth2: []
 paths:
@@ -280,7 +280,8 @@ components:
             joined instead of as one SQL statement. There only the basic forms run: CASE,
             coalesce, totals over groups, comparing two lists, passing nodes on and collect are
             refused with 400, and a read too large or too slow is refused too. Nodes,
-            relationships and derived relationships are returned as on a SQL data source.
+            relationships and derived relationships are returned as on a SQL data source,
+            and UNION works, each part read on its own.
 
             In the semi-join form each row of the second stage is kept once if its value is
             among the first stage's, however often the first stage produced it; v may also be
@@ -395,7 +396,7 @@ components:
       properties:
         shape:
           type: string
-          enum: [match, aggregate, totals, semi_join, list_comparison, carried]
+          enum: [match, aggregate, totals, semi_join, list_comparison, carried, union]
           description: The query's form; see the WITH section above.
         graph:
           type: boolean

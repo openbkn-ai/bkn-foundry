@@ -18,7 +18,7 @@ INTEGRATION_PACKAGE := ./src/drivenadapter/dbaccess/mariadb/sessionstore
 OPENSEARCH_INTEGRATION_PACKAGE := ./src/drivenadapter/httpaccess/opensearchprojection
 
 
-.PHONY: lint license-check test test-cover test-race test-integration test-opensearch-integration test-performance ci build \
+.PHONY: lint license-check test test-cover test-race test-integration test-opensearch-integration test-performance test-summary-capacity test-summary-opensearch-capacity ci build \
 	docker-build helm-lint helm-package check-swag-version gen-swag check-swag view-swag clean-swag
 
 lint:
@@ -52,6 +52,16 @@ test-opensearch-integration:
 test-performance:
 	go test -tags=integration $(INTEGRATION_PACKAGE) -run '^$$' \
 		-bench 'BenchmarkMariaDB(EnsureCurrent|EvidenceIngest)' -benchtime=200x -count=1
+
+# Opt-in isolated synthetic workload; the test creates/drops only its own DB.
+# Requires dedicated local MariaDB and OpenSearch instances, never business data.
+test-summary-opensearch-capacity:
+	@test -n "$(BKN_TRACE_CAPACITY_OPENSEARCH_URL)" || (echo "BKN_TRACE_CAPACITY_OPENSEARCH_URL is required" >&2; exit 1)
+	$(MAKE) test-summary-capacity
+
+test-summary-capacity:
+	@test -n "$(BKN_TRACE_CAPACITY_ADMIN_DSN)" || (echo "Set BKN_TRACE_CAPACITY_ADMIN_DSN to an isolated MariaDB admin DSN" >&2; exit 1)
+	go test -tags=integration $(INTEGRATION_PACKAGE) -run '^TestSummaryCapacityMariaDB$$' -count=1 -v
 
 ci: lint license-check test-cover
 

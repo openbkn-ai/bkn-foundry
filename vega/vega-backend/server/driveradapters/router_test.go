@@ -7,15 +7,19 @@
 package driveradapters
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
+	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 )
 
@@ -183,4 +187,16 @@ func Test_RestHandler_TraceContextMiddleware(t *testing.T) {
 	engine.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+}
+
+func TestHTTPErrorOrInternal(t *testing.T) {
+	ctx := t.Context()
+	public := httperrors.NewHTTPError(ctx, http.StatusBadRequest, httperrors.PublicError_BadRequest).WithErrorDetails("approved validation detail")
+	if got := httpErrorOrInternal(ctx, fmt.Errorf("wrapped: %w", public), verrors.VegaBackend_Resource_InternalError); got != public {
+		t.Fatal("wrapped public error was replaced")
+	}
+	internal := httpErrorOrInternal(ctx, errors.New("private connection details"), verrors.VegaBackend_Resource_InternalError)
+	if internal.HTTPCode != 500 || internal.ErrorCode != verrors.VegaBackend_Resource_InternalError || internal.ErrorDetails != "" {
+		t.Fatalf("unsafe internal response: %#v", internal.BaseError)
+	}
 }

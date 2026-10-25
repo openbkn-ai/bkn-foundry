@@ -144,6 +144,14 @@
     {
       "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
       "role_name": "network_builder",
+      "resource_type": "knowledge_base",
+      "id_pattern": "*",
+      "_note": "Type-wide create is only an eligibility capability. Every operation on an existing knowledge base comes from a concrete creator or delegated object grant.",
+      "operations": ["create"]
+    },
+    {
+      "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
+      "role_name": "network_builder",
       "resource_type": "skill",
       "id_pattern": "*",
       "operations": ["create"]

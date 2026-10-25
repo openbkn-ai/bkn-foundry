@@ -1,11 +1,13 @@
 package audit
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // PublishTelemetry exposes only aggregate producer outcomes. It never retains
@@ -13,6 +15,7 @@ import (
 type PublishTelemetry struct {
 	mu     sync.Mutex
 	counts map[publishOutcomeKey]uint64
+	status PublishStatus
 }
 
 type publishOutcomeKey struct {
@@ -21,7 +24,7 @@ type publishOutcomeKey struct {
 }
 
 func NewPublishTelemetry() *PublishTelemetry {
-	return &PublishTelemetry{counts: make(map[publishOutcomeKey]uint64)}
+	return &PublishTelemetry{counts: make(map[publishOutcomeKey]uint64), status: PublishStatus{SchemaVersion: "1.0", InstanceID: rand.Text(), Status: "unknown", Reason: "delivery_not_observed"}}
 }
 
 func (t *PublishTelemetry) Observe(reason string) {
@@ -39,6 +42,7 @@ func (t *PublishTelemetry) ObserveForSource(sourceID, reason string) {
 	}
 	t.mu.Lock()
 	t.counts[publishOutcomeKey{sourceID: sourceID, reason: reason}]++
+	t.observeStatusLocked(sourceID, reason, time.Now().UTC())
 	t.mu.Unlock()
 }
 

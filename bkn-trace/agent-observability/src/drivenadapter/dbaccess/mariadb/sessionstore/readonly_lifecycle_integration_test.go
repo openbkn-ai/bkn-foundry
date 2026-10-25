@@ -5,41 +5,27 @@
 
 //go:build integration
 
-package sessionstore_test
+package sessionstore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
-	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
 // A lifecycle writer may already own the conversation row. Polling its receipt
 // or reading the interaction must not join that writer's exclusive lock queue.
 func TestLifecycleReadsDoNotWaitForConversationWriter(t *testing.T) {
-	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")
-	if dsn == "" {
-		t.Skip("BKN_TRACE_TEST_MARIADB_DSN is not set")
-	}
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := durableAnswerDatabase(t)
 	db.SetMaxOpenConns(5)
-	store := sessionstore.New(db)
-	if err := store.Migrate(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	store := New(db)
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	owner := sessionvo.Owner{ApplicationPrincipalID: "lock-regression-app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "lock-regression-user"}
 	conversation, err := service.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{Owner: owner, ExternalConversationKey: fmt.Sprintf("lock-regression-%d", time.Now().UnixNano()), IdempotencyKey: "ensure"})
@@ -52,7 +38,7 @@ func TestLifecycleReadsDoNotWaitForConversationWriter(t *testing.T) {
 	}
 	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID, OperationKey: "query", ToolName: "query_object_instance", Protocol: sessionvo.OperationProtocol("mcp"), SourceModule: "context-loader",
-		Input: mustInlinePayload(t, json.RawMessage(`{"query":"regression"}`)), Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		Input: readOnlyInlinePayload(t, json.RawMessage(`{"query":"regression"}`)), Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -113,20 +99,9 @@ func (tx pausedCallFactsTransaction) ListOperationCallFacts(id string) []session
 // Pause a read after its ownership check, as a slow detail query would. A new
 // business Operation must not spend its registration deadline behind that read.
 func TestSlowTraceReadDoesNotBlockOperationRegistration(t *testing.T) {
-	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")
-	if dsn == "" {
-		t.Skip("BKN_TRACE_TEST_MARIADB_DSN is not set")
-	}
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := durableAnswerDatabase(t)
 	db.SetMaxOpenConns(5)
-	store := sessionstore.New(db)
-	if err := store.Migrate(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	store := New(db)
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	owner := sessionvo.Owner{ApplicationPrincipalID: "read-block-app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "read-block-user"}
 	conversation, err := service.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{Owner: owner, ExternalConversationKey: fmt.Sprintf("read-block-%d", time.Now().UnixNano()), IdempotencyKey: "ensure"})
@@ -156,7 +131,7 @@ func TestSlowTraceReadDoesNotBlockOperationRegistration(t *testing.T) {
 	defer cancel()
 	_, _, err = service.EnsureOperation(ctx, sessionsvc.EnsureOperationCommand{
 		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID, OperationKey: "new-business-call", ToolName: "query_object_instance", Protocol: sessionvo.OperationProtocol("mcp"), SourceModule: "context-loader",
-		Input: mustInlinePayload(t, json.RawMessage(`{"query":"regression"}`)), Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		Input: readOnlyInlinePayload(t, json.RawMessage(`{"query":"regression"}`)), Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
 	})
 	release()
 	if readErr := <-done; readErr != nil {
@@ -165,4 +140,13 @@ func TestSlowTraceReadDoesNotBlockOperationRegistration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read-only provenance query blocked business registration: %v", err)
 	}
+}
+
+func readOnlyInlinePayload(t *testing.T, raw json.RawMessage) sessionvo.PayloadEnvelope {
+	t.Helper()
+	payload, err := sessionvo.InlineJSONPayload(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
 }

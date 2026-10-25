@@ -17,11 +17,44 @@ Core features are five tools and the Context Loader MCP server:
 5. **get_logic_properties_values**: Resolve logic properties and get property values
 6. **Context Loader MCP Server**: Exposes the five tools above to MCP clients (e.g. Cursor, Claude Desktop)
 
+## Durable answer handoff
+
+After every Core replica/worker has upgraded and Core's durable-answer option is
+enabled, set `observability.lifecycle.durable_answer_enabled=true` in this
+service's Helm values (or `BKN_TRACE_DURABLE_ANSWER_ENABLED=true`). It defaults to
+false. Completed MCP finish calls then send the governed answer artifact to
+Core's SQL transaction instead of waiting for an artifact upload. The existing
+one-second Trace post budget remains in force; the model's tool schema and
+business execution are unchanged.
+
+Use the returned execution and evidence statuses independently: `completed`
+with `assembling` means the business turn ended and its evidence is being
+delivered. A Core rejection or uncertain response is not a completion ACK and
+must not trigger re-execution of business tools. Disabling the option restores
+the legacy synchronous answer path. Question artifacts and other artifact
+writers retain their existing endpoint and credentials.
+
 ## Authorization Boundaries
 
 Object surfaces (`search_schema`, `get_kn_detail`, `get_object_types`, object instances, subgraphs, and logic properties) consume ontology-query's authorization-safe results. Properties at `none` are omitted, `schema` properties expose metadata only, and `masked` instance values use Column Masking: the configured rule is applied only to the returned property value and never modifies source data. Only `full` properties may be used for filters, sorting, identities, or logic-property dependencies. REST and MCP adapters share these services; schema, object-instance, and logic-property responses expose the effective-permission summary supplied by ontology-query.
 
 `list_resources`, `describe_resource`, and `run_sql` are a separate physical-resource surface. They use the caller's own Vega resource permissions, are not constrained by object-property levels, and can expose raw physical columns. Object-query implementations must never call this surface internally; use it only when the caller explicitly requests physical-resource analysis.
+
+## Object Metric MCP App
+
+The full `/mcp/` profile can attach an optional MCP Apps view to `query_metric`.
+Build `bkn-studio`'s `metric-analysis-mcp.html` single-file bundle. The chart
+defaults `mcpApps.metricAnalysisHtmlURL` to the same-namespace Studio service
+at `http://bkn-studio:80/studio/metric-analysis-mcp.html`; override it when the
+service address differs. Agent Retrieval serves
+the bundle through the `ui://openbkn/object-metric-analysis` MCP resource. It
+does not store metric results or user credentials; the host delivers the
+existing `query_metric` result to the view, and pagination/participants use
+the caller's existing MCP connection. Hosts without MCP Apps support continue
+to receive normal text and structured results; numeric entries also expose an
+exact `display_value` string for presentation while keeping the original
+`value`. The compact profile remains text-only. Set the URL to an empty string
+if Studio is not installed.
 
 ## Technical Architecture
 

@@ -542,7 +542,19 @@ func tracesFromReceipts(receipts []receiptDocument) []evidencevo.NormalizedTrace
 	}
 	result := make([]evidencevo.NormalizedTrace, 0, len(byTrace))
 	for _, trace := range byTrace {
-		sort.Slice(trace.Events, func(i, j int) bool { return trace.Events[i].ObservedAt < trace.Events[j].ObservedAt })
+		sort.Slice(trace.Events, func(i, j int) bool {
+			left, right := trace.Events[i], trace.Events[j]
+			a, aErr := time.Parse(time.RFC3339Nano, left.ObservedAt)
+			b, bErr := time.Parse(time.RFC3339Nano, right.ObservedAt)
+			if aErr == nil && bErr == nil {
+				if !a.Equal(b) {
+					return a.Before(b)
+				}
+			} else if left.ObservedAt != right.ObservedAt {
+				return left.ObservedAt < right.ObservedAt
+			}
+			return left.EventID < right.EventID
+		})
 		result = append(result, *trace)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].TraceID < result[j].TraceID })

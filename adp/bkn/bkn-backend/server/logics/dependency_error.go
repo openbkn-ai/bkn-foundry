@@ -9,7 +9,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
@@ -23,17 +23,17 @@ type DependencyPublicErrorDetails struct {
 // stable public contract. forbiddenIsUserScoped is false for controlled
 // lookups whose identity was resolved by proxy preflight.
 func MapDependencyError(ctx context.Context, err error, forbiddenIsUserScoped bool,
-	invalidError *rest.HTTPError, internalCode string) error {
+	invalidError *httperrors.HTTPError, internalCode string) error {
 	if err == nil {
 		return nil
 	}
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) {
 		return httpErr
 	}
 	var dependencyErr *interfaces.DependencyError
 	if !errors.As(err, &dependencyErr) {
-		return rest.NewHTTPError(ctx, http.StatusBadGateway, internalCode)
+		return httperrors.NewHTTPError(ctx, http.StatusBadGateway, internalCode)
 	}
 	switch dependencyErr.Kind {
 	case interfaces.DependencyInvalidBinding, interfaces.DependencyNotFound:
@@ -41,32 +41,32 @@ func MapDependencyError(ctx context.Context, err error, forbiddenIsUserScoped bo
 	case interfaces.DependencyForbidden:
 		if forbiddenIsUserScoped {
 			return markDependencyHTTPError(
-				rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden), dependencyErr.Kind)
+				httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden), dependencyErr.Kind)
 		}
 		return markDependencyHTTPError(
-			rest.NewHTTPError(ctx, http.StatusBadGateway, internalCode), dependencyErr.Kind)
+			httperrors.NewHTTPError(ctx, http.StatusBadGateway, internalCode), dependencyErr.Kind)
 	case interfaces.DependencyTimeout, interfaces.DependencyUnavailable:
 		return markDependencyHTTPError(
-			rest.NewHTTPError(ctx, http.StatusServiceUnavailable, internalCode), dependencyErr.Kind)
+			httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable, internalCode), dependencyErr.Kind)
 	default:
 		return markDependencyHTTPError(
-			rest.NewHTTPError(ctx, http.StatusBadGateway, internalCode), dependencyErr.Kind)
+			httperrors.NewHTTPError(ctx, http.StatusBadGateway, internalCode), dependencyErr.Kind)
 	}
 }
 
-func markDependencyHTTPError(httpErr *rest.HTTPError, kind interfaces.DependencyErrorKind) *rest.HTTPError {
-	httpErr.BaseError.ErrorDetails = DependencyPublicErrorDetails{
-		Kind: kind, Detail: httpErr.BaseError.ErrorDetails,
+func markDependencyHTTPError(httpErr *httperrors.HTTPError, kind interfaces.DependencyErrorKind) *httperrors.HTTPError {
+	httpErr.ErrorDetails = DependencyPublicErrorDetails{
+		Kind: kind, Detail: httpErr.ErrorDetails,
 	}
 	return httpErr
 }
 
 func IsDependencyHTTPError(err error) bool {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) {
 		return false
 	}
-	_, ok := httpErr.BaseError.ErrorDetails.(DependencyPublicErrorDetails)
+	_, ok := httpErr.ErrorDetails.(DependencyPublicErrorDetails)
 	return ok
 }
 
@@ -81,9 +81,9 @@ func DependencyErrorKind(err error) (interfaces.DependencyErrorKind, bool) {
 // PreserveHTTPError keeps a child resource's public contract at aggregate
 // entry points while converting unexpected generic errors to a safe fallback.
 func PreserveHTTPError(ctx context.Context, err error, fallbackCode string) error {
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) {
 		return httpErr
 	}
-	return rest.NewHTTPError(ctx, http.StatusInternalServerError, fallbackCode)
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, fallbackCode)
 }

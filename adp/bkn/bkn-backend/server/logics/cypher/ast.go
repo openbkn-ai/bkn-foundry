@@ -72,6 +72,9 @@ type Query struct {
 	// Carried, when set, is a first stage whose WITH passes nodes on to the
 	// MATCH that follows; see analyzeCarried.
 	Carried *CarriedStage
+	// Union, when set, is the whole query: queries of their own whose rows
+	// are put together. Every other field is then empty; see Analyze.
+	Union *Union
 }
 
 // CarriedStage is the stage before a WITH that passes nodes on, as in
@@ -543,3 +546,10 @@ type SemiJoin struct {
 }
 
 func (s SemiJoin) predicatePosition() Position { return s.Pos }
+
+// Union is UNION or UNION ALL over queries that each return the same columns.
+// All keeps every row; without it repeated rows are returned once.
+type Union struct {
+	Parts []*Query
+	All   bool
+}

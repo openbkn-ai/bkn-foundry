@@ -110,3 +110,27 @@ func TestBuildTechnicalTraceDetailReportsUnavailableSpanForSummaryOnlyTrace(t *t
 		t.Fatalf("summary without readable Span data must be explicit: %+v", detail)
 	}
 }
+
+func TestSpanDisplayCountsAreExplicitEstimates(t *testing.T) {
+	graph := oteltracevo.TraceGraphResponse{Page: oteltracevo.TraceGraphPage{RawRecordCount: 1001, Truncated: true}, Data: oteltracevo.TraceGraphData{Nodes: []oteltracevo.TraceGraphNode{{SpanID: "a", StartNano: 1}, {SpanID: "b", StartNano: 2}}}}
+	summary := evidencevo.TraceSummary{TraceID: "trace", SpanCount: 2463, SpanCountStatus: "available"}
+	d := BuildTechnicalTraceDetail(summary, &graph, nil).SpanDisplay
+	if d.TotalCount == nil || *d.TotalCount != 2463 || d.TotalAccuracy != "estimated" || d.LoadedCount != 2 || d.RawRecordCount != 1001 || !d.Truncated || d.FirstStartAt == nil || d.LastStartAt == nil {
+		t.Fatalf("wrong range: %+v", d)
+	}
+	for _, count := range []int{0, 1} {
+		summary.SpanCount = count
+		d = BuildTechnicalTraceDetail(summary, &graph, nil).SpanDisplay
+		if d.TotalCount != nil || d.TotalAccuracy != "unknown" {
+			t.Fatalf("stale or zero stats cannot claim precision: %+v", d)
+		}
+	}
+}
+
+func TestSpanDisplayRangeKeepsKnownTimesWithInvalidNodes(t *testing.T) {
+	graph := oteltracevo.TraceGraphResponse{Data: oteltracevo.TraceGraphData{Nodes: []oteltracevo.TraceGraphNode{{SpanID: "invalid", StartNano: 0}, {SpanID: "a", StartNano: 10}, {SpanID: "b", StartNano: 20}}}}
+	d := BuildTechnicalTraceDetail(evidencevo.TraceSummary{}, &graph, nil).SpanDisplay
+	if d.FirstStartAt == nil || d.LastStartAt == nil || d.FirstStartAt.UnixNano() != 10 || d.LastStartAt.UnixNano() != 20 {
+		t.Fatalf("invalid node hid known time range: %+v", d)
+	}
+}

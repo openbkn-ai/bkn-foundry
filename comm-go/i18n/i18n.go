@@ -8,366 +8,169 @@ package i18n
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
+	"maps"
 	"strings"
-	"sync"
 	gotemplate "text/template"
-	"text/template/parse"
-
-	"github.com/BurntSushi/toml"
-	"golang.org/x/text/language"
-
-	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
+
+// I18nMessages is one module's messages for one language. Startup copies and compiles
+// its data; subsequent changes to the input map cannot alter installed templates.
+type I18nMessages struct {
+	Locale   Language
+	Messages map[string]string
+}
+
+type compiledI18nMessages struct {
+	Locale   Language
+	Messages map[string]*gotemplate.Template
+}
+
+var compiledI18nMessagesBundle = make(map[Language]*compiledI18nMessages)
+
+func init() {
+	RegisterI18n(&publicErrorsZhCN)
+	RegisterI18n(&publicErrorsEnUS)
+}
+
+// RegisterI18n compiles and appends one module's messages for one language.
+// Call it serially during startup; existing keys cannot be overwritten.
+// Cross-language consistency is checked separately by ValidateMessageBundles.
+func RegisterI18n(definition *I18nMessages) {
+	compiled, err := compileMessages(definition)
+	if err != nil {
+		panic(fmt.Errorf("i18n definition validation: %w", err))
+	}
+	if err := appendMessages(compiled); err != nil {
+		panic(err)
+	}
+}
+
+// compileMessages converts one definition without registering or comparing languages.
+func compileMessages(definition *I18nMessages) (*compiledI18nMessages, error) {
+	messages := &compiledI18nMessages{
+		Locale:   definition.Locale,
+		Messages: make(map[string]*gotemplate.Template),
+	}
+	for id, value := range definition.Messages {
+		id = strings.TrimSpace(id)
+		value = strings.TrimSpace(value)
+		if id == "" {
+			return nil, fmt.Errorf("locale %s has an empty message ID", definition.Locale)
+		}
+		if value == "" {
+			return nil, fmt.Errorf("locale %s messageId %s is an empty string", definition.Locale, id)
+		}
+		if _, exists := messages.Messages[id]; exists {
+			return nil, fmt.Errorf("locale %s messageId %s already exists after trimming", definition.Locale, id)
+		}
+		parsed, err := gotemplate.New(id).Option("missingkey=default").Parse(value)
+		if err != nil {
+			return nil, fmt.Errorf("locale %s messageId %s has an invalid template: %w", definition.Locale, id, err)
+		}
+		messages.Messages[id] = parsed
+	}
+	return messages, nil
+}
+
+// appendMessages rejects all conflicting keys before appending any content.
+func appendMessages(messages *compiledI18nMessages) error {
+	current, exists := compiledI18nMessagesBundle[messages.Locale]
+	if !exists {
+		compiledI18nMessagesBundle[messages.Locale] = messages
+		return nil
+	}
+	for id := range messages.Messages {
+		if _, exists := current.Messages[id]; exists {
+			return fmt.Errorf("locale %s messageId %s already exists", messages.Locale, id)
+		}
+	}
+	maps.Copy(current.Messages, messages.Messages)
+	return nil
+}
+
+// ValidateMessageBundles checks required languages and message IDs,
+// returning the first inconsistency.
+// Call it after all startup registrations; it does not modify the global bundle.
+func ValidateMessageBundles() error {
+	for _, required := range Languages {
+		if _, exists := compiledI18nMessagesBundle[required]; !exists {
+			return fmt.Errorf("required locale %s is not present", required)
+		}
+	}
+	baselineLocale := DefaultLanguage
+	baseline, exists := compiledI18nMessagesBundle[baselineLocale]
+	if !exists {
+		return fmt.Errorf("default locale %s is not present", baselineLocale)
+	}
+	for lang, messages := range compiledI18nMessagesBundle {
+		if lang == baselineLocale {
+			continue
+		}
+		for id := range baseline.Messages {
+			if _, exists := messages.Messages[id]; !exists {
+				return fmt.Errorf("locale %s is missing messageId %s from %s", lang, id, baselineLocale)
+			}
+		}
+		if len(baseline.Messages) != len(messages.Messages) {
+			for id := range messages.Messages {
+				if _, exists := baseline.Messages[id]; !exists {
+					return fmt.Errorf("locale %s has unexpected messageId %s", lang, id)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// RenderFailure identifies a lookup or execution defect. Missing map keys are
+// deliberately permitted by Go's missingkey=default policy.
+type RenderFailure string
 
 const (
-	defaultLocale          = "zh-CN"
-	genericChineseMessage  = "请求失败。"
-	genericEnglishMessage  = "Request failed."
-	genericChineseSolution = "请查看请求详情或联系管理员。"
-	genericEnglishSolution = "See the request details or contact an administrator."
+	LocaleMissing     RenderFailure = "locale_missing"
+	MessageMissing    RenderFailure = "message_missing"
+	TemplateExecution RenderFailure = "template_execute"
 )
 
-type Message struct {
-	Data     string
-	template *gotemplate.Template
+// RenderError contains identifiers only, never template contents or parameter values.
+type RenderError struct {
+	Locale    Language
+	MessageID string
+	Kind      RenderFailure
 }
 
-type catalog struct {
-	defaultLocale string
-	messages      map[string]map[string]*Message
+func (e *RenderError) Error() string {
+	return fmt.Sprintf("i18n %s: locale=%s message_id=%s", e.Kind, e.Locale, e.MessageID)
 }
 
-var (
-	catalogMu      sync.RWMutex
-	activeCatalog  = &catalog{defaultLocale: defaultLocale, messages: map[string]map[string]*Message{}}
-	warnedFallback sync.Map
-)
-
-// RegisterI18n loads a locale directory. Resource validation failures are logged and
-// the valid portion remains available so an invalid translation cannot stop a service.
-// The optional default locale keeps the original API compatible with existing callers.
-func RegisterI18n(localeDir string, configuredDefaultLocale ...string) {
-	locale := defaultLocale
-	if len(configuredDefaultLocale) > 0 && configuredDefaultLocale[0] != "" {
-		locale = configuredDefaultLocale[0]
+// Render resolves a message in the requested language and executes its template.
+// Missing languages and messages return errors; no default-language fallback is applied.
+func Render(lang Language, messageID string, templateData map[string]any) (string, error) {
+	locale := lang
+	messages, exists := compiledI18nMessagesBundle[locale]
+	if !exists {
+		return "", &RenderError{Locale: locale, MessageID: messageID, Kind: LocaleMissing}
 	}
-
-	loaded, err := loadCatalog(localeDir, locale)
-	if err != nil {
-		logger.Warnf("i18n resource validation failed; using runtime fallback: %v", err)
+	message, exists := messages.Messages[messageID]
+	if !exists {
+		return "", &RenderError{Locale: locale, MessageID: messageID, Kind: MessageMissing}
 	}
-
-	catalogMu.Lock()
-	activeCatalog = loaded
-	catalogMu.Unlock()
-}
-
-// SetDefaultLocale updates the fallback locale after a service loads its startup
-// configuration. It only accepts a locale with a loaded catalog.
-func SetDefaultLocale(locale string) {
-	normalized := normalizeLocale(locale)
-	catalogMu.Lock()
-	defer catalogMu.Unlock()
-	if len(activeCatalog.messages) == 0 {
-		return
-	}
-	if normalized == "" || activeCatalog.messages[normalized] == nil {
-		warnFallback(normalized, "", "default_locale_missing")
-		return
-	}
-	activeCatalog = &catalog{defaultLocale: normalized, messages: activeCatalog.messages}
-}
-
-// ValidateLocaleDir performs deterministic, strict catalog validation for CI.
-// requiredLocales allows a service to declare the locale set it must ship.
-func ValidateLocaleDir(localeDir string, configuredDefaultLocale string, requiredLocales ...string) error {
-	loaded, err := loadCatalog(localeDir, configuredDefaultLocale)
-	var errs []error
-	if err != nil {
-		errs = append(errs, err)
-	}
-	for _, requiredLocale := range requiredLocales {
-		normalized := normalizeLocale(requiredLocale)
-		if normalized == "" || loaded.messages[normalized] == nil {
-			errs = append(errs, fmt.Errorf("required locale %s is not present", requiredLocale))
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func loadCatalog(localeDir string, configuredDefaultLocale string) (*catalog, error) {
-	locale := normalizeLocale(configuredDefaultLocale)
-	if locale == "" {
-		locale = defaultLocale
-	}
-	loaded := &catalog{defaultLocale: locale, messages: make(map[string]map[string]*Message)}
-
-	entries, err := os.ReadDir(localeDir)
-	if err != nil {
-		return loaded, fmt.Errorf("read locale directory %s: %w", localeDir, err)
-	}
-
-	var errs []error
-	for _, entry := range entries {
-		if entry.IsDir() || strings.HasSuffix(entry.Name(), ".go") {
-			continue
-		}
-
-		_, lang, ok := parseLocaleFilename(entry.Name())
-		if !ok {
-			errs = append(errs, fmt.Errorf("locale file %s has invalid filename; expected <module>.<language>.toml", entry.Name()))
-			continue
-		}
-		if loaded.messages[lang] == nil {
-			loaded.messages[lang] = make(map[string]*Message)
-		}
-
-		filename := filepath.Join(localeDir, entry.Name())
-		logger.Infof("load locale file: %s", filename)
-		//nolint:gosec // filename is joined from the configured locale directory and a validated entry name.
-		contents, readErr := os.ReadFile(filename)
-		if readErr != nil {
-			errs = append(errs, fmt.Errorf("read locale file %s: %w", filename, readErr))
-			continue
-		}
-
-		var raw interface{}
-		if unmarshalErr := toml.Unmarshal(contents, &raw); unmarshalErr != nil {
-			errs = append(errs, fmt.Errorf("parse locale file %s: %w", filename, unmarshalErr))
-			continue
-		}
-		if flattenErr := flattenMessages(loaded.messages[lang], "", raw); flattenErr != nil {
-			errs = append(errs, fmt.Errorf("validate locale file %s: %w", filename, flattenErr))
-		}
-	}
-
-	if validationErr := validateCatalog(loaded); validationErr != nil {
-		errs = append(errs, validationErr)
-	}
-	return loaded, errors.Join(errs...)
-}
-
-func parseLocaleFilename(filename string) (string, string, bool) {
-	parts := strings.Split(filename, ".")
-	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] != "toml" {
-		return "", "", false
-	}
-	lang := normalizeLocale(parts[1])
-	if lang == "" {
-		return "", "", false
-	}
-	return parts[0], lang, true
-}
-
-func normalizeLocale(raw string) string {
-	tag, err := language.Parse(raw)
-	if err != nil {
-		return ""
-	}
-	return tag.String()
-}
-
-func flattenMessages(messages map[string]*Message, messageID string, raw interface{}) error {
-	switch value := raw.(type) {
-	case string:
-		if value == "" && !strings.HasSuffix(messageID, ".ErrorLink") {
-			return fmt.Errorf("messageId %s is an empty string", messageID)
-		}
-		if _, ok := messages[messageID]; ok {
-			return fmt.Errorf("messageId %s already exists", messageID)
-		}
-
-		parsed, err := gotemplate.New(messageID).Option("missingkey=error").Parse(value)
-		if err != nil {
-			return fmt.Errorf("messageId %s has an invalid template: %w", messageID, err)
-		}
-		messages[messageID] = &Message{Data: value, template: parsed}
-		return nil
-	case map[string]interface{}:
-		keys := make([]string, 0, len(value))
-		for key := range value {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		var errs []error
-		for _, key := range keys {
-			nextID := key
-			if messageID != "" {
-				nextID = messageID + "." + key
-			}
-			if err := flattenMessages(messages, nextID, value[key]); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		return errors.Join(errs...)
-	default:
-		return fmt.Errorf("messageId %s uses unsupported data format %T", messageID, raw)
-	}
-}
-
-func validateCatalog(loaded *catalog) error {
-	baseline, ok := loaded.messages[loaded.defaultLocale]
-	if !ok {
-		return fmt.Errorf("default locale %s is not present", loaded.defaultLocale)
-	}
-
-	langs := make([]string, 0, len(loaded.messages))
-	for lang := range loaded.messages {
-		langs = append(langs, lang)
-	}
-	sort.Strings(langs)
-
-	var errs []error
-	for _, lang := range langs {
-		if lang == loaded.defaultLocale {
-			continue
-		}
-		messages := loaded.messages[lang]
-		for messageID, baseMessage := range baseline {
-			message, exists := messages[messageID]
-			if !exists {
-				errs = append(errs, fmt.Errorf("locale %s is missing messageId %s from %s", lang, messageID, loaded.defaultLocale))
-				continue
-			}
-			if err := validateTemplateFields(loaded.defaultLocale, lang, messageID, baseMessage, message); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		for messageID := range messages {
-			if _, exists := baseline[messageID]; !exists {
-				errs = append(errs, fmt.Errorf("locale %s has unexpected messageId %s", lang, messageID))
-			}
-		}
-	}
-	return errors.Join(errs...)
-}
-
-func validateTemplateFields(baseLocale, locale, messageID string, baseMessage, message *Message) error {
-	baseFields := templateFields(baseMessage.template.Root)
-	fields := templateFields(message.template.Root)
-	if len(baseFields) != len(fields) {
-		return fmt.Errorf("locale %s messageId %s template field count differs from %s", locale, messageID, baseLocale)
-	}
-	for field, count := range baseFields {
-		if fields[field] != count {
-			return fmt.Errorf("locale %s messageId %s template field %s differs from %s", locale, messageID, field, baseLocale)
-		}
-	}
-	return nil
-}
-
-func templateFields(node parse.Node) map[string]int {
-	fields := make(map[string]int)
-	var walk func(parse.Node)
-	walk = func(current parse.Node) {
-		if current == nil {
-			return
-		}
-		switch value := current.(type) {
-		case *parse.ListNode:
-			for _, child := range value.Nodes {
-				walk(child)
-			}
-		case *parse.ActionNode:
-			walk(value.Pipe)
-		case *parse.IfNode:
-			walk(value.Pipe)
-			walk(value.List)
-			walk(value.ElseList)
-		case *parse.RangeNode:
-			walk(value.Pipe)
-			walk(value.List)
-			walk(value.ElseList)
-		case *parse.WithNode:
-			walk(value.Pipe)
-			walk(value.List)
-			walk(value.ElseList)
-		case *parse.PipeNode:
-			for _, command := range value.Cmds {
-				walk(command)
-			}
-		case *parse.CommandNode:
-			for _, arg := range value.Args {
-				walk(arg)
-			}
-		case *parse.FieldNode:
-			fields[strings.Join(value.Ident, ".")]++
-		case *parse.ChainNode:
-			walk(value.Node)
-			if len(value.Field) > 0 {
-				fields[strings.Join(value.Field, ".")]++
-			}
-		}
-	}
-	walk(node)
-	return fields
-}
-
-// Translate returns a localized message. Missing or malformed resources use a stable
-// generic fallback and are logged once instead of terminating the process.
-func Translate(lang string, messageID string, templateData map[string]interface{}) string {
-	catalogMu.RLock()
-	loaded := activeCatalog
-	catalogMu.RUnlock()
-
-	locale := normalizeLocale(lang)
-	message := lookupMessage(loaded, locale, messageID)
-	if message == nil {
-		warnFallback(locale, messageID, "message_missing")
-		return fallbackMessage(locale, messageID)
-	}
-
 	var buf bytes.Buffer
-	if err := message.template.Execute(&buf, templateData); err != nil {
-		warnFallback(locale, messageID, "template_execute")
-		return fallbackMessage(locale, messageID)
+	if err := message.Execute(&buf, templateData); err != nil {
+		return "", &RenderError{Locale: locale, MessageID: messageID, Kind: TemplateExecution}
 	}
-	return buf.String()
+	return buf.String(), nil
 }
 
-func lookupMessage(loaded *catalog, locale, messageID string) *Message {
-	if messages := loaded.messages[locale]; messages != nil {
-		if message := messages[messageID]; message != nil {
-			return message
-		}
-	}
-	if locale != loaded.defaultLocale {
-		if messages := loaded.messages[loaded.defaultLocale]; messages != nil {
-			if message := messages[messageID]; message != nil {
-				warnFallback(locale, messageID, "locale_fallback")
-				return message
+// ValidateMessages checks each ID in all registered languages without executing templates.
+func ValidateMessages(messageIDs ...string) error {
+	for locale, messages := range compiledI18nMessagesBundle {
+		for _, id := range messageIDs {
+			if _, exists := messages.Messages[id]; !exists {
+				return &RenderError{Locale: locale, MessageID: id, Kind: MessageMissing}
 			}
 		}
 	}
 	return nil
-}
-
-func fallbackMessage(locale, messageID string) string {
-	english := strings.HasPrefix(normalizeLocale(locale), "en")
-	switch {
-	case strings.HasSuffix(messageID, ".ErrorLink"):
-		return ""
-	case strings.HasSuffix(messageID, ".Solution"):
-		if english {
-			return genericEnglishSolution
-		}
-		return genericChineseSolution
-	default:
-		if english {
-			return genericEnglishMessage
-		}
-		return genericChineseMessage
-	}
-}
-
-func warnFallback(locale, messageID, reason string) {
-	key := locale + "|" + messageID + "|" + reason
-	if _, loaded := warnedFallback.LoadOrStore(key, struct{}{}); !loaded {
-		logger.Warnf("i18n runtime fallback: locale=%s message_id=%s reason=%s", locale, messageID, reason)
-	}
 }

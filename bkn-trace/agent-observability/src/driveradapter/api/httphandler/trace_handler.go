@@ -11,6 +11,9 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
 	observabilitylocale "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/locale"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
@@ -31,24 +34,30 @@ type TraceHandler struct {
 	traceQueryService *tracesvc.TraceQueryService
 	traceSummaries    technicalTraceSummarySource
 	operations        technicalOperationSource
+	spanCursorKey     []byte
 }
 
 func NewTraceHandlerWithTechnicalSources(
 	traceQueryService *tracesvc.TraceQueryService,
 	traceSummaries technicalTraceSummarySource,
 	operations technicalOperationSource,
+	keys ...[]byte,
 ) *TraceHandler {
-	handler := NewTraceHandler(traceQueryService)
+	handler := NewTraceHandler(traceQueryService, keys...)
 	handler.traceSummaries = traceSummaries
 	handler.operations = operations
 	return handler
 }
 
-func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandler {
-	return &TraceHandler{traceQueryService: traceQueryService}
+func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService, keys ...[]byte) *TraceHandler {
+	return &TraceHandler{traceQueryService: traceQueryService, spanCursorKey: newTraceSpanCursorKey(keys...)}
 }
 
 func (h *TraceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Request) bool {
+	if traceIDFromSpanPath(r.URL.Path) != "" {
+		h.GetTraceSpanPage(w, r)
+		return true
+	}
 	if traceIDFromDetailPath(r.URL.Path) != "" {
 		h.GetTechnicalTraceDetail(w, r)
 		return true
@@ -102,27 +111,47 @@ func (h *TraceHandler) GetTechnicalTraceDetail(w http.ResponseWriter, r *http.Re
 		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace summary"})
 		return
 	}
-	if len(page.Entries) == 0 && len(executions) == 0 {
+	executions = matchingTraceOperations(executions, traceID)
+	summary, summaryFound := matchingTechnicalTraceSummary(page, traceID)
+	if !summaryFound && len(executions) == 0 {
 		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})
 		return
 	}
-	summary := evidencevo.TraceSummary{TraceID: traceID, Status: "unknown"}
-	if len(page.Entries) > 0 {
-		summary = page.Entries[0]
-	} else if len(executions) > 0 {
+	if !summaryFound {
+		summary = evidencevo.TraceSummary{TraceID: traceID, Status: "unknown"}
+	}
+	if !summaryFound && len(executions) > 0 {
 		summary.RootService = executions[0].Fact.SourceModule
 		summary.RootOperation = executions[0].Fact.ToolName
 	}
-	graph, found, err := h.traceQueryService.GetTraceGraphByTraceID(r.Context(), traceID)
-	if err != nil {
-		writeJSON(w, r, http.StatusGatewayTimeout, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace spans"})
-		return
+
+	global := scope.AccessProfile != nil && evidencevo.HasGlobalTraceAccess(*scope.AccessProfile)
+	if !global {
+		summary.SpanCount = 0
+		summary.SpanCountStatus = "unavailable"
 	}
 	var graphPointer *oteltracevo.TraceGraphResponse
-	if found {
-		graphPointer = &graph
+	if global && h.traceQueryService != nil {
+		graph, found, err := h.traceQueryService.GetTraceGraphByTraceID(r.Context(), traceID)
+		if err != nil {
+			writeJSON(w, r, http.StatusGatewayTimeout, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace spans"})
+			return
+		}
+		if found {
+			graphPointer = &graph
+		}
 	}
-	writeJSON(w, r, http.StatusOK, tracesvc.BuildTechnicalTraceDetail(summary, graphPointer, executions))
+	detail := tracesvc.BuildTechnicalTraceDetail(summary, graphPointer, executions)
+	if !global {
+		for i, reason := range detail.PartialReasons {
+			if reason == "span_unavailable" {
+				detail.PartialReasons[i] = "span_scope_unavailable"
+			}
+		}
+	}
+	// Raw span browsing requires global access until the port can constrain owners.
+	h.applySpanDisplay(&detail, global, graphPointer)
+	writeJSON(w, r, http.StatusOK, detail)
 }
 
 func traceIDFromDetailPath(path string) string {
@@ -167,10 +196,20 @@ func localizeErrorPayload(ctx context.Context, payload any) (any, bool) {
 		response.Details = localizeErrorDetails(ctx, response.Details)
 		return response, true
 	case lifecycleErrorEnvelope:
-		response.Error.Message = observabilitylocale.Translate(ctx, response.Error.Message)
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "AgentObservability.Message."+response.Error.Message, nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+			localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(ctx))), "AgentObservability.Message.request failed", nil)
+		}
+		response.Error.Message = localizedText
 		return response, true
 	case observabilityErrorEnvelope:
-		response.Error.Message = observabilitylocale.Translate(ctx, response.Error.Message)
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "AgentObservability.Message."+response.Error.Message, nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+			localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(ctx))), "AgentObservability.Message.request failed", nil)
+		}
+		response.Error.Message = localizedText
 		return response, true
 	default:
 		return payload, false
@@ -188,7 +227,12 @@ func localizeErrorMessage(ctx context.Context, message string, details any) stri
 			return localizeValidationError(ctx, validationErrors[0]).Message
 		}
 	}
-	return observabilitylocale.Translate(ctx, message)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "AgentObservability.Message."+message, nil)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+		localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(ctx))), "AgentObservability.Message.request failed", nil)
+	}
+	return localizedText
 }
 
 func localizeErrorDetails(ctx context.Context, details any) any {
@@ -214,6 +258,11 @@ func localizeErrorDetails(ctx context.Context, details any) any {
 
 func localizeValidationError(ctx context.Context, validationError evidencevo.ValidationError) evidencevo.ValidationError {
 	messageID, messageData := validationError.LocalizableMessage()
-	validationError.Message = observabilitylocale.TranslateWithData(ctx, messageID, messageData)
+	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "AgentObservability.Message."+messageID, messageData)
+	if renderErr != nil {
+		logger.Errorf("localized message rendering failed: %v", renderErr)
+		localizedText, _ = i18n.Render(i18n.ResolveLanguage(string(i18n.GetLanguageByCtx(ctx))), "AgentObservability.Message.request failed", nil)
+	}
+	validationError.Message = localizedText
 	return validationError
 }

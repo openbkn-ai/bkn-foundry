@@ -19,6 +19,7 @@ import asyncio
 import inspect
 import json
 import re
+import uuid
 from typing import Annotated, Any, Literal, Optional
 
 from typing_extensions import Required, TypedDict
@@ -47,7 +48,6 @@ ID_BATCH = 50
 PATH_BATCH = 5
 # ontology-query's largest limit (interfaces.MAX_LIMIT).
 PATH_LIMIT = 10000
-CYPHER_LIMIT = 200
 # get_object_types paging when get_kn_detail cannot list object types.
 OBJECT_TYPE_PAGE = 200
 MAX_OBJECT_TYPES = 2000
@@ -56,7 +56,12 @@ EXPAND_SEEDS = 50
 EXPAND_CONCURRENCY = 4
 EXPAND_THRESHOLD = 20
 # Properties listed per object type in the schema the prompt carries.
-SCHEMA_PROPERTIES = 12
+SCHEMA_PROPERTIES = 40
+
+# The Web's canvas choices, as explore-agent.ts offers them to the model.
+Layout = Literal["force", "chain", "dagre", "tree", "radial", "circular", "grid"]
+Grouping = Literal["none", "concept", "type", "manual", "relation"]
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 _Id = Field(min_length=1, max_length=512)
 
@@ -275,9 +280,52 @@ def _planned_aggregates(run: builtin_tools.Run) -> dict[str, dict]:
 
 def _room(run: builtin_tools.Run) -> int:
     canvas = _canvas(run)
-    used = len(canvas.nodes) + len(_planned_nodes(run)) + len(canvas.aggregates)
-    used += sum(1 for a in _planned_aggregates(run) if a not in {c.id for c in canvas.aggregates})
+    used = len(_present_nodes(run)) + len(_present_aggregates(run))
     return canvas.limits.max_nodes - used
+
+
+def _removed(run: builtin_tools.Run) -> set[str]:
+    """Nodes and aggregates this run has planned to take off the canvas."""
+    return run.state.setdefault("removed", set())
+
+
+def _selected(run: builtin_tools.Run) -> list[str]:
+    if "selected" not in run.state:
+        run.state["selected"] = list(_canvas(run).selected_ids)
+    return run.state["selected"]
+
+
+def _present_nodes(run: builtin_tools.Run) -> set[str]:
+    """Node ids on the canvas once this run's plan is applied."""
+    ids = {n.id for n in _canvas(run).nodes} | set(_planned_nodes(run))
+    return ids - _removed(run)
+
+
+def _present_aggregates(run: builtin_tools.Run) -> set[str]:
+    ids = {a.id for a in _canvas(run).aggregates} | set(_planned_aggregates(run))
+    return ids - _removed(run)
+
+
+def _record(run: builtin_tools.Run, action_type: str, **fields: Any) -> dict:
+    """Record a view action. What it changes in the working state can be undone
+    by canvas_control undo, so the removal set and selection before it are kept."""
+    action = {"action_id": f"{len(_actions(run)) + 1}", "type": action_type, **fields}
+    run.state.setdefault("undo", {})[action["action_id"]] = (set(_removed(run)), list(_selected(run)))
+    _actions(run).append(action)
+    return action
+
+
+def _check_nodes(run: builtin_tools.Run, ids: list[str]) -> list[str]:
+    ids = list(dict.fromkeys(ids))
+    missing = [i for i in ids if i not in _present_nodes(run)]
+    if missing:
+        raise ToolException(f"Not on the canvas: {', '.join(missing[:10])}. Use ids from canvas_state.")
+    return ids
+
+
+def _take_off(run: builtin_tools.Run, ids: list[str]) -> None:
+    _removed(run).update(ids)
+    run.state["selected"] = [i for i in _selected(run) if i not in ids]
 
 
 def _merge(
@@ -295,8 +343,21 @@ def _merge(
     canvas_edges = {e.id for e in canvas.edges}
     planned_nodes, planned_edges = _planned_nodes(run), _planned_edges(run)
     room = _room(run)
-    added_nodes, kept, cut = [], set(on_canvas) | set(planned_nodes), 0
+    removed = _removed(run)
+    added_nodes, kept, cut = [], (set(on_canvas) | set(planned_nodes)) - removed, 0
     for node in nodes:
+        if node["id"] in removed:
+            # Shown again after this run took it off: back on, with its data, taking room like a
+            # new node. The Web completes its relations to the canvas when it adds it.
+            if room <= 0:
+                cut += 1
+                continue
+            removed.discard(node["id"])
+            planned_nodes.setdefault(node["id"], node)
+            kept.add(node["id"])
+            added_nodes.append(node["id"])
+            room -= 1
+            continue
         if node["id"] in kept:
             existing = planned_nodes.get(node["id"])
             if existing is not None:
@@ -382,6 +443,26 @@ def _tool(fn) -> StructuredTool:
     return StructuredTool.from_function(
         coroutine=fn, name=fn.__name__, description=inspect.cleandoc(fn.__doc__ or "")
     )
+
+
+class LabelSetting(TypedDict):
+    object_type: Annotated[str, Field(min_length=1, description="Object type id.")]
+    label: Optional[str]
+
+
+class AnalysisConfig(TypedDict, total=False):
+    kind: Literal["types", "relations", "category", "numeric", "time", "degree", "scatter"]
+    otIds: Annotated[Optional[list[str]], Field(description="Types to analyse; null selects the default type. numeric takes one type.")]
+    propertyByOt: Annotated[dict[str, str], Field(description="Object type id -> grouping, date or numeric property.")]
+    degreeOt: Annotated[Optional[str], Field(description="Degree chart type filter; null for all types.")]
+    grain: Literal["auto", "day", "week", "month", "year"]
+    stacked: bool
+    brushing: bool
+    measure: Literal["count", "sum", "avg", "max", "min"]
+    measureByOt: Annotated[dict[str, str], Field(description="Object type id -> numeric property for a non-count measure.")]
+    withFolded: bool
+    xByOt: dict[str, str]
+    yByOt: dict[str, str]
 
 
 class Filter(TypedDict, total=False):
@@ -711,7 +792,6 @@ async def _expand(run: builtin_tools.Run, ids: list[str], direction: str) -> dic
 
 
 _RETURN = re.compile(r"\bRETURN\b", re.I)
-_LIMIT = re.compile(r"\bLIMIT\s+(\d+)\s*;?\s*$", re.I)
 
 
 def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
@@ -827,13 +907,15 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
     async def run_cypher(
         query: Annotated[
             str,
-            Field(min_length=1, description="A complete read-only query: MATCH … [WHERE …] RETURN … LIMIT n, n at most 200."),
+            Field(min_length=1, description="A complete read-only query: MATCH … [WHERE …] RETURN … [LIMIT n]."),
         ],
     ) -> str:
         """Run openCypher and plan the result for the canvas. Node labels are object
         type ids, every relation is directed and names exactly one relation type id,
-        no variable length. Write a complete query with RETURN and LIMIT (at most
-        200); it runs as written. Return node and relationship variables (RETURN p,
+        no variable length. Write a complete query with RETURN; it runs as written.
+        LIMIT is optional: without one the platform's default row limit applies, and
+        `limited` says when it cut the rows. Nodes beyond the canvas limit are not
+        planned. Return node and relationship variables (RETURN p,
         r, m), or a derived edge `RETURN a AS source, 'USES' AS relationType, b AS
         target, count(x) AS n`. Scalar columns returned beside one node variable are
         attached to that node as computed values (RETURN t, count(g) AS goals); with
@@ -841,12 +923,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         it to that variable. Columns no node claims, and results without nodes, come
         back as `table` rows."""
         if not _RETURN.search(query):
-            raise ToolException("Write a complete query with RETURN and LIMIT; fragments are not run.")
-        limit = _LIMIT.search(query.strip())
-        if not limit:
-            raise ToolException(f"End the query with LIMIT n, n at most {CYPHER_LIMIT}.")
-        if int(limit.group(1)) > CYPHER_LIMIT:
-            raise ToolException(f"LIMIT is at most {CYPHER_LIMIT}.")
+            raise ToolException("Write a complete query with RETURN; fragments are not run.")
         result = await _call(run, "run_cypher", query=query)
         entries = [e for e in result.get("entries") or [] if isinstance(e, dict)]
         ot_ids: list[str] = []
@@ -861,8 +938,22 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         network = await _network(run)
         names = {i: r["name"] for i, r in network["relation_types"].items()}
         graph = data.graph_from_cypher(result, metas, names)
-        await _enrich(run, graph.nodes, metas)
+        # Only new nodes the canvas has room for get filled in; _merge leaves the rest out.
+        known = _present_nodes(run) | set(_planned_nodes(run))
+        fresh = [n for n in graph.nodes if n["id"] not in known]
+        await _enrich(run, fresh[: max(0, _room(run))], metas)
+        # Nodes the canvas or this run already has keep the label it knows, not their key.
+        labels = {n.id: n.label for n in _canvas(run).nodes if n.label}
+        for node in graph.nodes:
+            if node["id"] in known:
+                label = (_planned_nodes(run).get(node["id"]) or {}).get("label") or labels.get(node["id"])
+                if label:
+                    node["label"] = label
         out: dict[str, Any] = {"rows": len(entries)}
+        execution = result.get("execution") if isinstance(result.get("execution"), dict) else {}
+        # Scalar rows cut at the default limit say so at the top; graph values in execution.
+        if result.get("limited") or execution.get("conclusions_limited"):
+            out["limited"] = "The rows stop at the platform's default limit; narrow the query or add LIMIT for a smaller, complete answer."
         if graph.holds_graph:
             out.update(_summary(graph.nodes, with_properties=False))
             out["edges"] = _edge_summary(graph.edges)
@@ -902,6 +993,8 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
              **({"computed": n["computed"]} if n.get("computed") else {})}
             for n in planned_nodes.values()
         ]
+        removed = _removed(run)
+        every = [n for n in every if n["id"] not in removed]
         wanted = set(object_types or ())
         nodes = [n for n in every if not wanted or n["object_type_id"] in wanted]
         offset = max(0, offset)
@@ -913,13 +1006,15 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
              "target": e["target"], "planned": True}
             for e in planned_edges.values()
         ]
+        edges = [e for e in edges if e["source"] not in removed and e["target"] not in removed]
         # Aggregates this run planned count too; a refreshed one carries its new total.
         planned_aggregates = _planned_aggregates(run)
         on_canvas = {a.id for a in canvas.aggregates}
         aggregates = [
             {**a.model_dump(), **({"total": planned_aggregates[a.id]["total"], "planned": True} if a.id in planned_aggregates else {})}
             for a in canvas.aggregates
-        ] + [{**a, "planned": True} for i, a in planned_aggregates.items() if i not in on_canvas]
+            if a.id not in removed
+        ] + [{**a, "planned": True} for i, a in planned_aggregates.items() if i not in on_canvas and i not in removed]
         return _dump(
             {
                 "canvas_id": canvas.canvas_id,
@@ -928,7 +1023,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
                 "nodes": {"count": len(nodes), "items": page, "next_offset": end if end < len(nodes) else None},
                 "edges": {"total": len(edges), "items": edges[:SAMPLE]},
                 "aggregates": {"total": len(aggregates), "items": aggregates[:SAMPLE]},
-                "selected_ids": canvas.selected_ids[:SAMPLE],
+                "selected_ids": _selected(run)[:SAMPLE],
             }
         )
 
@@ -938,13 +1033,252 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         tools may name. Read it before controlling the canvas. If a requested node,
         group, property or type is ambiguous, ask instead of guessing."""
         canvas = _canvas(run)
+        planned = [a for a in _actions(run) if a["type"] != "merge_subgraph"]
         return _dump(
             {
                 "view": canvas.view,
-                "selected_ids": canvas.selected_ids[:SAMPLE],
+                **({"planned_view_actions": planned} if planned else {}),
+                "selected_ids": _selected(run)[:SAMPLE],
                 "object_types": [t.model_dump(exclude_none=True) for t in canvas.object_types],
             }
         )
+
+
+    async def remove_instances(
+        ids: Annotated[list[str], Field(min_length=1, description="Exact node or aggregate ids from canvas_state.")],
+    ) -> str:
+        """Plan removing the given nodes or aggregates, and their edges, from the
+        canvas. A view edit the user can undo; it never deletes business data. Use
+        only when the user asks to remove, clean up or keep only part of the view,
+        with exact ids from canvas_state, never guessed ones."""
+        present = _present_nodes(run) | _present_aggregates(run)
+        wanted = list(dict.fromkeys(ids))
+        on_canvas = [i for i in wanted if i in present]
+        out: dict[str, Any] = {"planned_removed": len(on_canvas)}
+        if on_canvas:
+            _record(run, "remove_nodes", node_ids=on_canvas)
+            _take_off(run, on_canvas)
+        missing = [i for i in wanted if i not in present]
+        if missing:
+            out["not_on_canvas"] = missing
+        return _dump(out)
+
+    async def configure_display(
+        labels: Annotated[
+            Optional[list[LabelSetting]],
+            Field(description="Per object type: a property name or a template such as `{code} · {name}`; null restores the default."),
+        ] = None,
+        show_node_labels: Optional[bool] = None,
+        show_edge_labels: Optional[bool] = None,
+        node_size_by: Annotated[
+            Optional[str],
+            Field(description="One of view_state's display.size_choices; an empty string sizes by connections again."),
+        ] = None,
+    ) -> str:
+        """Plan which properties node labels show for each object type, whether node
+        or edge labels are shown, and which value sizes the nodes. Read view_state
+        first. A label is an exact property name or a template such as
+        `{code} · {name}`; `{$type}` inserts the type name; a computed Cypher column is
+        `computed:<column>` and a logic property `logic:<name>` (view_state lists
+        them per type). A label applies to current and future nodes of that type.
+        Does not alter business data. The Web checks property names when it applies
+        the plan and skips what it does not know."""
+        known = {t.id for t in _canvas(run).object_types}
+        patch: dict[str, Any] = {}
+        if labels:
+            unknown = [item["object_type"] for item in labels if known and item["object_type"] not in known]
+            if unknown:
+                raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use ids from view_state.")
+            patch["labels"] = [{"object_type": item["object_type"], "label": item.get("label")} for item in labels]
+        if show_node_labels is not None:
+            patch["show_node_labels"] = show_node_labels
+        if show_edge_labels is not None:
+            patch["show_edge_labels"] = show_edge_labels
+        if node_size_by is not None:
+            patch["node_size_by"] = node_size_by or None
+        if not patch:
+            raise ToolException("Nothing to change.")
+        _record(run, "set_display", patch=patch)
+        return _dump({"planned": patch})
+
+    async def configure_analysis(
+        open: Annotated[Optional[bool], Field(description="Defaults to true when configuring.")] = None,
+        collapsed: Annotated[Optional[bool], Field(description="Defaults to false when configuring.")] = None,
+        scope: Optional[Literal["all", "selected"]] = None,
+        # Not `config`: langchain hands a parameter of that name the RunnableConfig.
+        chart: Annotated[Optional[AnalysisConfig], Field(description="Chart settings; merged into the current ones.")] = None,
+    ) -> str:
+        """Plan opening, closing, collapsing or configuring the analysis panel; adds
+        no nodes. Use exact object type ids and property names from view_state.
+        scope selected uses only the visible selection and its internal edges.
+        Config fields merge into the current settings. kind: types / relations
+        counts; category groups by a property; numeric histogram; time timeline;
+        degree scoped degree distribution; scatter numeric/time x against numeric y.
+        Category and time support count/sum/avg/min/max measures. No pie charts or
+        other chart styles. The Web checks the settings when it applies the plan."""
+        patch = {
+            key: value
+            for key, value in {"open": open, "collapsed": collapsed, "scope": scope, "config": chart}.items()
+            if value is not None
+        }
+        if not patch:
+            raise ToolException("Nothing to change.")
+        known = {t.id for t in _canvas(run).object_types}
+        named = set((chart or {}).get("otIds") or ()) | set((chart or {}).get("propertyByOt") or {})
+        unknown = sorted(named - known) if known else []
+        if unknown:
+            raise ToolException(f"Unknown object types: {', '.join(unknown)}. Use ids from view_state.")
+        _record(run, "set_analysis", patch=patch)
+        return _dump({"planned": patch})
+
+    async def arrange_canvas(
+        layout: Annotated[Optional[Layout], Field(description="Target layout; omit to rearrange with the current one.")] = None,
+    ) -> str:
+        """Plan changing the layout of the whole canvas when the user asks for it:
+        force (force-directed), chain (path), dagre (hierarchical), tree, radial,
+        circular or grid. Omit layout to rearrange with the current layout. Moves
+        nodes; adds or removes none."""
+        _record(run, "set_layout", **({"layout": layout} if layout else {}))
+        return _dump({"planned": {"layout": layout or "current"}})
+
+    async def canvas_control(
+        action: Literal[
+            "group", "layout_params", "tree_root", "select", "degree_sizing", "distance_heatmap",
+            "fit", "path_start", "path_end", "find_path", "clear_path", "arrange_selection",
+            "undo", "remove_selected", "clear",
+        ],
+        enabled: Optional[bool] = None,
+        grouping: Optional[Grouping] = None,
+        params: Annotated[
+            Optional[dict[str, int]],
+            Field(description="Integer layout settings to change, named as in view_state's canvas.layout_params."),
+        ] = None,
+        id: Annotated[Optional[str], Field(description="A node id; null clears tree_root, distance_heatmap or a path end.")] = None,
+        ids: Optional[list[str]] = None,
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        layout: Optional[Layout] = None,
+    ) -> str:
+        """Plan a canvas toolbar operation. group chooses none/type/concept/manual/
+        relation; layout_params adjusts integer layout settings, such as
+        forceLinkStrength (link pull, 1-100) and forceRepulsion (0-400); tree_root
+        sets a node id, or null for automatic; select chooses exact node ids;
+        degree_sizing sets enabled true/false to size nodes by visible degree;
+        distance_heatmap colours by distance from a node id, or turns off with id
+        null; fit frames the canvas; path_start / path_end set path endpoints;
+        find_path searches the network for a path between start and end (or the
+        current endpoints) when the plan is applied; clear_path removes endpoints and
+        highlight; arrange_selection lays out the selected nodes; undo takes back the
+        last view action this run planned; remove_selected removes the selected
+        nodes; clear empties the canvas after the user confirms. Read canvas_state
+        and view_state to resolve ids. Never guess ids."""
+        if action == "undo":
+            # The page may already show the action, so undo is recorded too and
+            # the page undoes its own last edit.
+            undone = run.state.setdefault("undone", set())
+            open_actions = [a for a in _actions(run) if a["type"] != "undo" and a["action_id"] not in undone]
+            if not open_actions:
+                raise ToolException("This run has planned nothing to undo; it cannot undo the user's own edits.")
+            last = open_actions[-1]
+            if last["type"] == "merge_subgraph":
+                raise ToolException("Planned nodes cannot be undone; use remove_instances to take them off.")
+            removed, selected = run.state["undo"].pop(last["action_id"])
+            run.state["removed"], run.state["selected"] = removed, selected
+            undone.add(last["action_id"])
+            _actions(run).append({"action_id": f"{len(_actions(run)) + 1}", "type": "undo", "undoes": last["action_id"]})
+            return _dump({"undone": {k: v for k, v in last.items() if k != "action_id"}})
+        if action == "group":
+            if not grouping:
+                raise ToolException("group needs grouping.")
+            _record(run, "group", grouping=grouping)
+        elif action == "layout_params":
+            if not params:
+                raise ToolException("layout_params needs params.")
+            _record(run, "layout_params", params=params)
+        elif action in ("tree_root", "distance_heatmap", "path_start", "path_end"):
+            if id is not None:
+                _check_nodes(run, [id])
+            _record(run, action, id=id)
+        elif action == "select":
+            chosen = _check_nodes(run, ids or [])
+            _record(run, "select", ids=chosen)
+            run.state["selected"] = chosen
+        elif action == "degree_sizing":
+            if enabled is None:
+                raise ToolException("degree_sizing needs enabled true or false.")
+            _record(run, "degree_sizing", enabled=enabled)
+        elif action == "find_path":
+            ends = [i for i in (start, end) if i]
+            _check_nodes(run, ends)
+            _record(run, "find_path", **({"start": start} if start else {}), **({"end": end} if end else {}))
+            return _dump({"planned": "find_path", "note": "The Web searches the path when the plan is applied; its result is not known yet."})
+        elif action == "arrange_selection":
+            if len(_selected(run)) < 2:
+                raise ToolException("Select at least two nodes first.")
+            _record(run, "arrange_selection", **({"layout": layout} if layout else {}))
+        elif action == "remove_selected":
+            chosen = [i for i in _selected(run) if i in _present_nodes(run)]
+            if not chosen:
+                raise ToolException("No nodes are selected.")
+            _record(run, "remove_nodes", node_ids=chosen)
+            _take_off(run, chosen)
+            return _dump({"planned_removed": len(chosen)})
+        elif action == "clear":
+            everything = sorted(_present_nodes(run) | _present_aggregates(run))
+            _record(run, "clear")
+            _take_off(run, everything)
+            return _dump({"planned": "clear", "note": "The Web asks the user to confirm; if they decline, this and later actions are skipped."})
+        else:
+            _record(run, action)
+        return _dump({"planned": action})
+
+    async def manual_group(
+        action: Literal["create", "rename", "recolor", "collapse", "expand", "add", "exclude", "dissolve"],
+        id: Annotated[Optional[str], Field(description="Group id from view_state, or one create returned.")] = None,
+        name: Optional[str] = None,
+        color: Annotated[Optional[str], Field(description="Hex colour such as #3366ff.")] = None,
+        ids: Annotated[Optional[list[str]], Field(description="Exact node ids.")] = None,
+    ) -> str:
+        """Plan creating or editing a named manual canvas group. create needs a name
+        and exact node ids (or the current selection), optional hex colour, and
+        switches grouping to manual. Other actions use a group id from view_state or
+        the id create returned; add / exclude take exact node ids. collapse / expand
+        affect the group box; dissolve removes only the box, never business data."""
+        groups = {g.get("id") for g in ((_canvas(run).view.get("canvas") or {}).get("manual_groups") or []) if isinstance(g, dict)}
+        groups |= set(run.state.setdefault("groups", []))
+        members = _check_nodes(run, ids if ids is not None else (_selected(run) if action == "create" else []))
+        if color is not None and not _HEX_COLOR.match(color):
+            raise ToolException("Group colour must be a hex colour such as #3366ff.")
+        fields: dict[str, Any] = {"action": action}
+        if action == "create":
+            if not (name or "").strip() or not members:
+                raise ToolException("create needs a name and node ids, or a selection.")
+            # Unique across runs: an earlier run's g-ai group may already be on the canvas.
+            id = f"g-ai-{uuid.uuid4().hex[:8]}"
+            run.state["groups"].append(id)
+            fields.update(id=id, name=name.strip(), ids=members, **({"color": color} if color else {}))
+        elif action == "exclude":
+            if not members:
+                raise ToolException("exclude needs node ids.")
+            fields["ids"] = members
+        else:
+            if id not in groups:
+                raise ToolException(f"Unknown manual group {id!r}; read view_state for group ids.")
+            fields["id"] = id
+            if action == "rename":
+                if not (name or "").strip():
+                    raise ToolException("rename needs a name.")
+                fields["name"] = name.strip()
+            elif action == "recolor":
+                if not color:
+                    raise ToolException("recolor needs a colour.")
+                fields["color"] = color
+            elif action == "add":
+                if not members:
+                    raise ToolException("add needs node ids.")
+                fields["ids"] = members
+        _record(run, "manual_group", **fields)
+        return _dump({"planned": fields})
 
     return [
         _tool(fn)
@@ -954,13 +1288,42 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
             show_instances,
             expand_neighbours,
             run_cypher,
+            remove_instances,
             canvas_state,
             view_state,
+            configure_display,
+            configure_analysis,
+            arrange_canvas,
+            canvas_control,
+            manual_group,
         )
     ]
 
 
-ACTION_TYPES = frozenset({"merge_subgraph"})
+ACTION_TYPES = frozenset(
+    {
+        "merge_subgraph",
+        "remove_nodes",
+        "set_display",
+        "set_analysis",
+        "set_layout",
+        "group",
+        "layout_params",
+        "tree_root",
+        "select",
+        "degree_sizing",
+        "distance_heatmap",
+        "fit",
+        "path_start",
+        "path_end",
+        "find_path",
+        "clear_path",
+        "arrange_selection",
+        "clear",
+        "manual_group",
+        "undo",
+    }
+)
 
 
 async def _instructions(run: builtin_tools.Run) -> str:
@@ -991,6 +1354,27 @@ async def _instructions(run: builtin_tools.Run) -> str:
     )
 
 
+def _progress(run: builtin_tools.Run) -> dict | None:
+    """The actions planned since the last call, with the graph data they name."""
+    actions = _actions(run)
+    start = run.state.get("emitted", 0)
+    run.state["emitted"] = len(actions)
+    new = actions[start:]
+    if not new:
+        return None
+    merges = [a for a in new if a["type"] == "merge_subgraph"]
+
+    def named(store: dict, key: str) -> list:
+        return [store[i] for a in merges for i in dict.fromkeys(a.get(key, ())) if i in store]
+
+    return {
+        "nodes": named(_planned_nodes(run), "node_ids"),
+        "edges": named(_planned_edges(run), "edge_ids"),
+        "aggregates": named(_planned_aggregates(run), "aggregate_ids"),
+        "actions": new,
+    }
+
+
 def _result(run: builtin_tools.Run) -> dict:
     """canvas_result: graph data held once, actions referring to it by id."""
     canvas = _canvas(run)
@@ -999,12 +1383,19 @@ def _result(run: builtin_tools.Run) -> dict:
     aggregates: dict[str, dict] = run.state.get("aggregates", {})
     actions = _actions(run)
     known = {n.id for n in canvas.nodes} | set(nodes)
+    removable = known | {a.id for a in canvas.aggregates} | set(aggregates)
     for edge in edges.values():
         if edge["source"] not in known or edge["target"] not in known:
             raise ValueError(f"edge {edge['id']} has an endpoint outside the canvas")
     for action in actions:
         if action.get("type") not in ACTION_TYPES:
             raise ValueError(f"action type {action.get('type')!r} is not allowed")
+        # Removal names aggregates too, so it is checked against both.
+        if action["type"] == "remove_nodes":
+            for node_id in action["node_ids"]:
+                if node_id not in removable:
+                    raise ValueError(f"action {action['action_id']} removes unknown {node_id}")
+            continue
         for node_id in action.get("node_ids", ()):
             if node_id not in known:
                 raise ValueError(f"action {action.get('action_id')} names unknown node {node_id}")
@@ -1035,8 +1426,14 @@ TOOL_NAMES = frozenset(
         "show_instances",
         "expand_neighbours",
         "run_cypher",
+        "remove_instances",
         "canvas_state",
         "view_state",
+        "configure_display",
+        "configure_analysis",
+        "arrange_canvas",
+        "canvas_control",
+        "manual_group",
     }
 )
 
@@ -1050,5 +1447,6 @@ builtin_tools.register(
         result_key="canvas_result",
         result=_result,
         instructions=_instructions,
+        progress=_progress,
     )
 )

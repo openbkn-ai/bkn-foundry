@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 func TestLocalizedMCPHandlerFollowsRequestLocale(t *testing.T) {
@@ -26,7 +26,7 @@ func TestLocalizedMCPHandlerFollowsRequestLocale(t *testing.T) {
 	}
 
 	english := httptest.NewRequest(http.MethodPost, endpointPath, nil)
-	english.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	english.Header.Set(i18n.AcceptLanguageHeader, "en-US")
 	englishRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(englishRecorder, english)
 	if got := englishRecorder.Body.String(); got != "en-handler" {
@@ -36,7 +36,7 @@ func TestLocalizedMCPHandlerFollowsRequestLocale(t *testing.T) {
 	// The same session asking in another language gets that language. The
 	// handler holds no session state to contradict the header with.
 	chinese := httptest.NewRequest(http.MethodPost, endpointPath, nil)
-	chinese.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+	chinese.Header.Set(i18n.AcceptLanguageHeader, "zh-CN")
 	chinese.Header.Set(server.HeaderKeySessionID, "en-handler")
 	chineseRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(chineseRecorder, chinese)
@@ -57,7 +57,7 @@ func TestLocalizedMCPHandlerPutsRequestLocaleInContext(t *testing.T) {
 	}
 
 	request := httptest.NewRequest(http.MethodPost, endpointPath, nil)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	request.Header.Set(i18n.AcceptLanguageHeader, "en-US")
 	request.Header.Set(server.HeaderKeySessionID, "some-session")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -100,7 +100,7 @@ func TestMCPToolCatalogFollowsRequestLocale(t *testing.T) {
 		}
 	}`))
 	initialize.Header.Set("Content-Type", "application/json")
-	initialize.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	initialize.Header.Set(i18n.AcceptLanguageHeader, "en-US")
 	initializeRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(initializeRecorder, initialize)
 
@@ -145,7 +145,7 @@ func searchSchemaDescription(t *testing.T, handler http.Handler, sessionID, loca
 	}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set(server.HeaderKeySessionID, sessionID)
-	request.Header.Set(sharedrest.AcceptLanguageHeader, locale)
+	request.Header.Set(i18n.AcceptLanguageHeader, locale)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 

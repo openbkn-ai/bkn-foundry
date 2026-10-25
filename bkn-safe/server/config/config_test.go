@@ -36,6 +36,43 @@ func TestOAuthBaselineRedirectURIsRejectInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestDynamicRegistrationEnv(t *testing.T) {
+	cfg, err := config.LoadWithOptions(config.LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OAuth.DynamicRegistration.Enabled || cfg.OAuth.DynamicRegistration.RatePerMinute != 10 {
+		t.Fatalf("defaults = %+v, want disabled with 10/min", cfg.OAuth.DynamicRegistration)
+	}
+
+	t.Setenv("SAFE_OAUTH_DYNAMIC_REGISTRATION_ENABLED", "true")
+	t.Setenv("SAFE_OAUTH_DYNAMIC_REGISTRATION_REDIRECT_ORIGINS", `["https://agent.example"]`)
+	t.Setenv("SAFE_OAUTH_DYNAMIC_REGISTRATION_RATE_PER_MINUTE", "0")
+	cfg, err = config.LoadWithOptions(config.LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := cfg.OAuth.DynamicRegistration
+	if !reg.Enabled || reg.RatePerMinute != 0 || len(reg.AllowedRedirectOrigins) != 1 || reg.AllowedRedirectOrigins[0] != "https://agent.example" {
+		t.Fatalf("env not applied: %+v", reg)
+	}
+}
+
+func TestDynamicRegistrationRejectsBadEnv(t *testing.T) {
+	for name, env := range map[string][2]string{
+		"enabled": {"SAFE_OAUTH_DYNAMIC_REGISTRATION_ENABLED", "maybe"},
+		"origins": {"SAFE_OAUTH_DYNAMIC_REGISTRATION_REDIRECT_ORIGINS", "not-json"},
+		"rate":    {"SAFE_OAUTH_DYNAMIC_REGISTRATION_RATE_PER_MINUTE", "-1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(env[0], env[1])
+			if _, err := config.LoadWithOptions(config.LoadOptions{}); err == nil {
+				t.Fatalf("%s=%s accepted", env[0], env[1])
+			}
+		})
+	}
+}
+
 func TestLoadFromFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "safe.yaml")

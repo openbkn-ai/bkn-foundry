@@ -111,8 +111,12 @@ type ActionTypeWithKeyField struct {
 type ActionType struct {
 	ActionTypeWithKeyField `mapstructure:",squash"`
 	CommonInfo             `mapstructure:",squash"`
-	KNID                   string `json:"kn_id" mapstructure:"kn_id"`
-	Branch                 string `json:"branch" mapstructure:"branch"`
+	// Aliases are the other names of the action type (BKN spec 3.0). An interactive update that
+	// leaves them out keeps the stored ones.
+	Aliases         []string `json:"aliases,omitempty" mapstructure:"aliases"`
+	aliasesDeclared bool
+	KNID            string `json:"kn_id" mapstructure:"kn_id"`
+	Branch          string `json:"branch" mapstructure:"branch"`
 
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`

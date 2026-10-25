@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
@@ -32,25 +32,91 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 		if p == nil {
 			continue
 		}
-		// Value types are stored from #2281; a reference to one could not be resolved.
-		if p.Constraints != nil && p.Constraints.ValueType != "" {
-			return invalidDeclarations(ctx, fmt.Sprintf("data property %q: constraints value_type is not supported by this version yet", p.Name))
-		}
 		if p.Declares(interfaces.DECLARATION_REQUIRED) && !p.Required && slices.Contains(objectType.PrimaryKeys, p.Name) {
 			return invalidDeclarations(ctx, fmt.Sprintf("data property %q: a primary key is required by definition; leave required out instead of writing false", p.Name))
 		}
 		if p.Constraints.IsEmpty() {
 			p.Constraints = nil
 		}
+		p.Aliases = interfaces.NormalizeAliases(p.Aliases)
 	}
+	objectType.Aliases = interfaces.NormalizeAliases(objectType.Aliases)
 	if err := bknsdk.ValidateObjectTypeDeclarations(logics.ToBKNObjectType(objectType)); err != nil {
 		return invalidDeclarations(ctx, err.Error())
 	}
 	return nil
 }
 
+// checkNetworkDeclarations resolves the value types the data properties of an object type name:
+// each must be a value type of the network, with the property's Type as its base_type. An object
+// type without value types reads nothing more.
+func (ots *objectTypeService) checkNetworkDeclarations(ctx context.Context, objectType *interfaces.ObjectType) error {
+	var ids []string
+	for _, p := range objectType.DataProperties {
+		if p != nil && p.Constraints != nil && p.Constraints.ValueType != "" && !slices.Contains(ids, p.Constraints.ValueType) {
+			ids = append(ids, p.Constraints.ValueType)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	valueTypes, err := ots.vta.GetValueTypesByIDs(ctx, nil, objectType.KNID, objectType.Branch, ids)
+	if err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+			WithErrorDetails(err.Error())
+	}
+	doc := &bknsdk.BknNetwork{ObjectTypes: []*bknsdk.BknObjectType{logics.ToBKNObjectType(objectType)}}
+	for _, vt := range valueTypes {
+		doc.ValueTypes = append(doc.ValueTypes, logics.ToBKNValueType(vt))
+	}
+	if err = bknsdk.ValidateNetworkDeclarations(doc); err != nil {
+		return invalidDeclarations(ctx, err.Error())
+	}
+	return nil
+}
+
+// checkAliasNames checks the object types of one save against the network they are saved into: no
+// alias is the name of another object type, in either direction. It reads the stored object types
+// that have aliases, and the stored ones named like an alias of the save; the save's renames and
+// alias changes count as done. A network without aliases answers both reads with no rows.
+func (ots *objectTypeService) checkAliasNames(ctx context.Context, knID, branch string, objectTypes []*interfaces.ObjectType) error {
+	if len(objectTypes) == 0 {
+		return nil
+	}
+	incoming := make([]logics.NamedDefinition, 0, len(objectTypes))
+	var aliases []string
+	for _, ot := range objectTypes {
+		incoming = append(incoming, logics.NamedDefinition{ID: ot.OTID, Name: ot.OTName, Aliases: ot.Aliases})
+		aliases = append(aliases, ot.Aliases...)
+	}
+	storedAliased, err := ots.ota.ListAliasedObjectTypes(ctx, knID, branch)
+	if err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+			WithErrorDetails(err.Error())
+	}
+	var storedNamed []*interfaces.ObjectType
+	if len(aliases) > 0 {
+		if storedNamed, err = ots.ota.GetObjectTypeIdentitiesByIDsOrNames(ctx, knID, branch, nil, aliases); err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+				WithErrorDetails(err.Error())
+		}
+	}
+	if conflict := logics.AliasConflict("object type", incoming, namedObjectTypes(storedNamed), namedObjectTypes(storedAliased)); conflict != "" {
+		return invalidDeclarations(ctx, conflict)
+	}
+	return nil
+}
+
+func namedObjectTypes(objectTypes []*interfaces.ObjectType) []logics.NamedDefinition {
+	named := make([]logics.NamedDefinition, 0, len(objectTypes))
+	for _, ot := range objectTypes {
+		named = append(named, logics.NamedDefinition{ID: ot.OTID, Name: ot.OTName, Aliases: ot.Aliases})
+	}
+	return named
+}
+
 func invalidDeclarations(ctx context.Context, detail string) error {
-	return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_Declarations).
+	return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter_Declarations).
 		WithErrorDetails(detail)
 }
 
@@ -59,6 +125,9 @@ func invalidDeclarations(ctx context.Context, detail string) error {
 func keepUndeclared(update *interfaces.ObjectType, stored *interfaces.ObjectType) {
 	if stored == nil {
 		return
+	}
+	if !update.DeclaresAliases() {
+		update.Aliases = stored.Aliases
 	}
 	storedByName := make(map[string]*interfaces.DataProperty, len(stored.DataProperties))
 	for _, p := range stored.DataProperties {
@@ -83,12 +152,18 @@ func clearedDeclarations(stored, incoming *interfaces.ObjectType) []interfaces.C
 		}
 	}
 	var cleared []interfaces.ClearedDeclaration
+	if len(stored.Aliases) > 0 && len(incoming.Aliases) == 0 {
+		cleared = append(cleared, interfaces.ClearedDeclaration{ObjectTypeID: stored.OTID, Fields: []string{interfaces.DECLARATION_ALIASES}})
+	}
 	for _, s := range stored.DataProperties {
 		if !s.HasDeclarations(stored.PrimaryKeys) {
 			continue
 		}
 		in := incomingByName[s.Name]
 		var fields []string
+		if len(s.Aliases) > 0 && (in == nil || len(in.Aliases) == 0) {
+			fields = append(fields, interfaces.DECLARATION_ALIASES)
+		}
 		if s.Semantic != "" && (in == nil || in.Semantic == "") {
 			fields = append(fields, interfaces.DECLARATION_SEMANTIC)
 		}
@@ -127,7 +202,7 @@ func (ots *objectTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 	}
 	stored, err := ots.ota.GetObjectTypesByIDs(ctx, tx, updates[0].KNID, updates[0].Branch, ids)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
 			WithErrorDetails(err.Error())
 	}
 	var cleared []interfaces.ClearedDeclaration
@@ -151,7 +226,7 @@ func (ots *objectTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 			return err
 		}
 	}
-	return rest.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared).
+	return httperrors.NewHTTPError(ctx, http.StatusConflict, berrors.BknBackend_ObjectType_DeclarationsWouldBeCleared).
 		WithErrorDetails(map[string]any{
 			"cleared":      cleared,
 			"confirm_with": interfaces.QueryParam_ConfirmClearDeclarations + "=true",

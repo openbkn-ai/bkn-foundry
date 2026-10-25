@@ -394,15 +394,15 @@ console.log('build:', buildTask);
 
 ```bash
 # 列出知识网络
-curl -sk "https://<访问地址>/api/ontology-manager/v1/knowledge-networks?name=客户&sort=update_time&direction=desc&limit=50" \
+curl -sk "https://<访问地址>/api/bkn-backend/v1/knowledge-networks?name=客户&sort=update_time&direction=desc&limit=50" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # 获取知识网络详情
-curl -sk "https://<访问地址>/api/ontology-manager/v1/knowledge-networks/kn_abc123" \
+curl -sk "https://<访问地址>/api/bkn-backend/v1/knowledge-networks/kn_abc123" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # 列出对象类
-curl -sk "https://<访问地址>/api/ontology-manager/v1/knowledge-networks/kn_abc123/object-types" \
+curl -sk "https://<访问地址>/api/bkn-backend/v1/knowledge-networks/kn_abc123/object-types" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # 查询对象类实例
@@ -431,7 +431,7 @@ curl -sk -X POST "https://<访问地址>/api/ontology-query/v1/search" \
   }'
 
 # 创建对象类
-curl -sk -X POST "https://<访问地址>/api/ontology-manager/v1/knowledge-networks/kn_abc123/object-types" \
+curl -sk -X POST "https://<访问地址>/api/bkn-backend/v1/knowledge-networks/kn_abc123/object-types" \
   -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{

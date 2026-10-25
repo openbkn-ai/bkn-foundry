@@ -76,6 +76,47 @@ There is none. Published Agents used to be registered automatically in the Execu
 
 Built-in Agents use fixed IDs. Their configuration, shared Prompts, and Prompt history live in existing database tables. `core-data-migrator` installs all default data; there is no JSON config package, extra bootstrap table, or application startup Job, and the former `deploy/` directory has been removed. Administrators edit shared configuration through the existing management API. Initialization does not overwrite existing Agents.
 
+The claim-identification Agent ships a database-backed English system Prompt
+variant. Execution and the effective/shared Agent Prompt read endpoints select
+the same stored variant using the request's negotiated `Accept-Language`.
+Chinese remains the canonical fallback. Request and personal overrides retain
+their existing precedence; shared-only executions still ignore those overrides.
+Publishing a custom shared Prompt creates a new version without inherited
+translations, so that exact administrator content applies in every language.
+Raw Prompt management, export and version history continue to return canonical
+content. Re-activating an official version also restores its language variants.
+Saving the English effective/shared content as a new administrator version, even
+without editing it, publishes that English text as canonical for every language.
+
+The Agent component schema advances to `0.2.2` without changing the product
+release version. The normal migrator selects `0.2.2/01-claim-prompt-locales.sql`
+for already-installed `0.2.1` databases; earlier versions run their intervening
+deltas first. The current fresh-install snapshot is `0.2.3/init.sql`, which
+includes the complete locale snapshot and the binding index below. Do not modify migration
+progress records or rerun the previous version's initialization snapshot.
+
+Run the platform migration phase before starting the new Agent image: the ORM
+requires the nullable `f_localized_content` column. The backfill matches the
+official owner, exact Chinese content hash, absent variable schema (SQL NULL or
+JSON null), and absent translations. It never rewrites canonical bodies,
+current-version pointers, caller overrides, or existing translations. An older
+controlled preview migration is safe: the new delta is idempotent.
+
+After the migrator succeeds, the deployment can perform this read-only schema
+preflight with its approved connection options; stop rollout if it fails:
+
+```sh
+mysql --defaults-extra-file="$MYSQL_DEFAULTS_FILE" < infra/bkn-agent/scripts/check-prompt-locales.sql
+```
+
+The preflight returns no Prompt body. Normal migration backup/approval applies;
+DDL is not transactionally rolled back. Validate both languages in the target
+environment after rollout. Isolated migration tests do not replace deployment
+acceptance.
+Rolling back the application can retain the extra column; deleting it is
+unnecessary and would discard translations. No online translation, additional
+Prompt query, or Trace list/detail loading is involved.
+
 The 0.2.1 fresh-install and upgrade paths are:
 
 - Fresh installation runs `migrations/bkn-agent/mariadb/0.2.1/init.sql`, retaining the original ten tables and semantic-understanding definitions while adding the Agent settings/version tables, Studio Smart QA, Cypher generation, Object Metric Designer, and two business-provenance Agents.
@@ -110,6 +151,33 @@ It does not replace caller authentication, tool headers,
 or model-visible parameters. Older Context Loader responses without owner still
 load tools, but log a coverage warning and cannot establish corrected evidence
 attribution. Upgrade Context Loader together with Agent for this contract.
+
+## Agent configuration transaction locks
+
+Component schema `0.2.3` adds the nonunique BTREE index
+`ix_agent_prompt_id_agent_id (f_prompt_id, f_agent_id)` through the normal migrator.
+Its complete initialization snapshot includes all `0.2.2` defaults. Existing
+`0.2.2` installations select only `0.2.3/01-agent-prompt-index.sql`; older versions
+select the intervening deltas. Product `VERSION` does not change.
+
+Migrate before starting this image, then run `scripts/check-agent-prompt-index.sql`
+and verify the two index columns in that order. The MySQL/MariaDB locking query
+explicitly uses this index; it keeps current-read and range-lock semantics while
+avoiding a full Agent-table scan. Ordinary writes to existing Agents bound to
+other Prompts remain independent. New bindings and rebindings in the selected
+range wait until the transaction commits; normal InnoDB adjacent index-gap
+contention may still apply to insertions. The index migration changes no Agent,
+Prompt, version, locale, or override contents and can be rerun safely. Retain the
+index when rolling back the image; dropping it is unnecessary.
+
+Shared Prompt publication records history for the same current-read Agent set it
+locked, including bindings newer than an existing repeatable-read snapshot. If
+an internal edit rebinds the selected Agent after an administrator's initial
+read, the administrator transaction releases its old range and retries before
+making any changes. Three consecutive rebindings return HTTP 409 with the
+existing `BknAgent.ParamError.Conflict` envelope; reload and retry. These locks
+are confined to configuration writes and do not add work to Trace list/detail
+reads.
 
 ## Public user execution API (#2173)
 

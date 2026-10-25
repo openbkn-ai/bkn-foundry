@@ -73,6 +73,10 @@ spec:
               - name: EXECUTE_SKILL_ENABLED
                 value: {{ .Values.skill.executeEnabled | default false | quote }}
             {{- end}}
+            {{- with .Values.mcpApps.metricAnalysisHtmlURL }}
+              - name: MCP_METRIC_APP_HTML_URL
+                value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.depServices.rds.type}}
               - name: DB_TYPE
                 value: {{ .Values.depServices.rds.type | quote }}
@@ -85,6 +89,8 @@ spec:
                 value: {{ printf "http://%s.%s.svc.cluster.local:%v/api/agent-retrieval/v1/mcp/" .Release.Name .Values.namespace .Values.service.sandboxPort | quote }}
               - name: BKN_TRACE_CORE_URL
                 value: {{ required "observability.lifecycle.core_url is required" .Values.observability.lifecycle.core_url | quote }}
+              - name: BKN_TRACE_DURABLE_ANSWER_ENABLED
+                value: {{ .Values.observability.lifecycle.durable_answer_enabled | default false | quote }}
               - name: BKN_TRACE_ARTIFACT_ENDPOINT
                 value: {{ required "observability.evidence.artifact_endpoint is required" .Values.observability.evidence.artifact_endpoint | quote }}
             {{- if .Values.observability.evidence.artifact_secret_name }}

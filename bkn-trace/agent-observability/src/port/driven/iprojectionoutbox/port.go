@@ -41,7 +41,12 @@ func IsPermanent(err error) bool {
 	return errors.As(err, &classified) && classified.Permanent()
 }
 
+const MaxPayloadBytes = (16 << 20) + (64 << 10)
+const MaxLeaseBytes = 32 << 20
+
 type Item struct {
+	PayloadDeferred  bool      `json:"-"`
+	PayloadTooLarge  bool      `json:"-"`
 	ID               uint64    `json:"outbox_id"`
 	AggregateType    string    `json:"aggregate_type"`
 	AggregateID      string    `json:"aggregate_id"`
@@ -63,6 +68,12 @@ type Store interface {
 	MarkDelivered(ctx context.Context, item Item) error
 	MarkRetry(ctx context.Context, item Item, errorCode string, availableAt time.Time) error
 	MoveToDLQ(ctx context.Context, item Item, errorCode string) error
+}
+
+// PayloadLoader reads a deferred body only while the claimed lease is current.
+// Answer workers call it within the same task budget as artifact delivery.
+type PayloadLoader interface {
+	LoadPayload(ctx context.Context, item Item) ([]byte, error)
 }
 
 type ReplayRequest struct {

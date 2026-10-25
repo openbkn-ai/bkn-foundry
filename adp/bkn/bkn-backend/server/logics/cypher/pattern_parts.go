@@ -15,8 +15,7 @@ func patternComponents(plan *Plan) []int {
 	for i := range parent {
 		parent[i] = i
 	}
-	var find func(int) int
-	find = func(i int) int {
+	find := func(i int) int {
 		for parent[i] != i {
 			parent[i] = parent[parent[i]]
 			i = parent[i]
@@ -115,6 +114,13 @@ func crossProduct(plan *Plan) bool {
 	}
 	if plan.Intersection != nil && (crossProduct(plan.Intersection.Lists[0]) || crossProduct(plan.Intersection.Lists[1])) {
 		return true
+	}
+	if plan.Union != nil {
+		for _, part := range plan.Union.Parts {
+			if crossProduct(part) {
+				return true
+			}
+		}
 	}
 	found := false
 	var walk func(PlanPredicate)

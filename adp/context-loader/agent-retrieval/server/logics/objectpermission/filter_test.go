@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -123,15 +125,16 @@ func TestFilterObjectTypesSupportsLegacyBindingWithoutType(t *testing.T) {
 // recordingSchemaAccess answers every object type and reports how many reads
 // were ever in flight at once, which is what "no longer serial" means here.
 type recordingSchemaAccess struct {
-	mu        sync.Mutex
-	inFlight  int
-	peak      int
-	calls     int
-	seen      []string
-	block     chan struct{}
-	release   sync.Once
-	failOn    map[string]error
-	afterFail func()
+	mu            sync.Mutex
+	inFlight      int
+	peak          int
+	calls         int
+	seen          []string
+	block         chan struct{}
+	release       sync.Once
+	failOn        map[string]error
+	afterFail     func()
+	waitForCancel bool
 }
 
 func (r *recordingSchemaAccess) GetObjectTypeSchema(ctx context.Context, _, otID string) (*interfaces.ObjectTypeSchemaResp, error) {
@@ -167,6 +170,10 @@ func (r *recordingSchemaAccess) GetObjectTypeSchema(ctx context.Context, _, otID
 			r.afterFail()
 		}
 		return nil, err
+	}
+	if r.waitForCancel {
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 	return &interfaces.ObjectTypeSchemaResp{
 		EffectivePermissions: map[string]interfaces.PropertyAccessLevel{"id": interfaces.PropertyAccessFull},
@@ -258,14 +265,33 @@ func TestFilterObjectTypesReportsTheFirstFailureInCallerOrder(t *testing.T) {
 
 // A failure stops the fan-out instead of paying for the rest of the network.
 func TestFilterObjectTypesStopsReadingAfterAFailure(t *testing.T) {
-	access := &recordingSchemaAccess{failOn: map[string]error{"ot-000": errors.New("refused")}}
-	if _, err := FilterObjectTypes(context.Background(), access, "kn", boundObjectTypes(512)); err == nil {
-		t.Fatal("expected the refusal to fail the call")
+	refused := errors.New("refused")
+	// Other reads cannot finish before the refusal, so the test measures reads
+	// queued after cancellation rather than whether ot-000 was scheduled first.
+	access := &recordingSchemaAccess{
+		failOn:        map[string]error{"ot-000": refused},
+		waitForCancel: true,
+	}
+	if _, err := FilterObjectTypes(context.Background(), access, "kn", boundObjectTypes(512)); !errors.Is(err, refused) {
+		t.Fatalf("error = %v, want the original refusal", err)
 	}
 	access.mu.Lock()
 	defer access.mu.Unlock()
-	if access.calls >= 512 {
-		t.Fatalf("read %d schemas after a refusal, want the fan-out to stop early", access.calls)
+	if access.calls > schemaFanOut {
+		t.Fatalf("read %d schemas after a refusal, want at most %d in-flight reads", access.calls, schemaFanOut)
+	}
+}
+
+func TestFilterObjectTypesDoesNotReadWhenCallerAlreadyCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	access := &recordingSchemaAccess{}
+	_, err := FilterObjectTypes(ctx, access, "kn", boundObjectTypes(512))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want caller cancellation", err)
+	}
+	if access.calls != 0 {
+		t.Fatalf("read %d schemas for a canceled caller", access.calls)
 	}
 }
 
@@ -340,12 +366,12 @@ func TestFilterObjectTypesDegradingTreatsOnlyDependencyFaultsAsTransient(t *test
 		err      error
 		degraded bool
 	}{
-		{"5xx", &infraErr.HTTPError{HTTPCode: 503, DownstreamBody: []byte(`{}`)}, true},
-		{"5xx with an empty body", &infraErr.HTTPError{HTTPCode: 502, DownstreamBody: []byte{}}, true},
-		{"undecodable answer", &infraErr.HTTPError{HTTPCode: 500}, false},
+		{"5xx", &infraErr.DependencyError{Err: &httperrors.HTTPError{HTTPCode: 503}, Body: []byte(`{}`)}, true},
+		{"5xx with an empty body", &infraErr.DependencyError{Err: &httperrors.HTTPError{HTTPCode: 502}, Body: []byte{}}, true},
+		{"undecodable answer", &httperrors.HTTPError{HTTPCode: 500}, false},
 		{"no HTTP answer", errors.New("dial tcp: connection refused"), true},
-		{"403", &infraErr.HTTPError{HTTPCode: 403}, false},
-		{"404", &infraErr.HTTPError{HTTPCode: 404}, false},
+		{"403", &httperrors.HTTPError{HTTPCode: 403}, false},
+		{"404", &httperrors.HTTPError{HTTPCode: 404}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -364,7 +390,7 @@ func TestFilterObjectTypesDegradingTreatsOnlyDependencyFaultsAsTransient(t *test
 
 // Degrading is opt-in: the plain filter still fails on a dependency fault.
 func TestFilterObjectTypesStillFailsOnDependencyFault(t *testing.T) {
-	access := selectiveSchemaAccess{fail: map[string]error{"ot-001": &infraErr.HTTPError{HTTPCode: 503, DownstreamBody: []byte(`{}`)}}}
+	access := selectiveSchemaAccess{fail: map[string]error{"ot-001": &infraErr.DependencyError{Err: &httperrors.HTTPError{HTTPCode: 503}, Body: []byte(`{}`)}}}
 	if _, err := FilterObjectTypes(context.Background(), access, "kn", boundObjectTypes(4)); err == nil {
 		t.Fatal("expected the 503 to fail the call")
 	}

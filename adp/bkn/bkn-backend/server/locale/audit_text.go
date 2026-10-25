@@ -5,24 +5,39 @@
 package locale
 
 import (
-	"fmt"
 	"strings"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
-// Audit ledger snapshots use the stable business language, independent of the reader locale.
+// Audit ledger snapshots retain their stable business language independently of request language.
 func AuditSummary(action, target, name string) string {
-	actions := map[string]string{"create": "新建", "update": "修改", "delete": "删除", "import": "导入", "add_members": "添加成员", "remove_members": "移除成员", "enable": "启用", "disable": "停用", "start": "启动", "stop": "停止", "attach": "绑定", "detach": "解绑"}
-	targets := map[string]string{"knowledge_network": "领域知识网络", "object_type": "对象类", "relation_type": "关系类", "action_type": "行动类", "risk_type": "风险类", "metric": "指标", "concept_group": "概念分组", "action_schedule": "行动计划", "kn_capability_binding": "知识网络能力绑定", "catalog": "数据目录", "resource": "数据资源", "discovery_schedule": "发现计划", "build_task": "构建任务", "connector_type": "连接器", "discovery_task": "发现任务", "semantic_understanding_task": "语义理解任务"}
-	return actions[action] + targets[target] + "“" + name + "”"
+	actionText, actionErr := i18n.Render(i18n.SimplifiedChinese, "BknBackend.Audit.Action."+action, nil)
+	if actionErr != nil {
+		logger.Errorf("audit action rendering failed: %v", actionErr)
+	}
+	targetText, targetErr := i18n.Render(i18n.SimplifiedChinese, "BknBackend.Audit.Target."+target, nil)
+	if targetErr != nil {
+		logger.Errorf("audit target rendering failed: %v", targetErr)
+	}
+	text, err := i18n.Render(i18n.SimplifiedChinese, "BknBackend.Audit.Summary", map[string]any{"Action": actionText, "Target": targetText, "Name": name})
+	if err != nil {
+		logger.Errorf("audit summary rendering failed: %v", err)
+	}
+	return text
 }
-
 func AuditNames(names []string) string {
 	if len(names) == 1 {
 		return names[0]
 	}
+	separator, err := i18n.Render(i18n.SimplifiedChinese, "BknBackend.Audit.NameSeparator", nil)
+	if err != nil {
+		logger.Errorf("audit separator rendering failed: %v", err)
+	}
 	shown := make([]string, 0, 5)
 	for _, name := range names {
-		if len(shown) == 5 || len(strings.Join(shown, "、"))+len(name) > 400 {
+		if len(shown) == 5 || len(strings.Join(shown, separator))+len(name) > 400 {
 			break
 		}
 		shown = append(shown, name)
@@ -30,8 +45,13 @@ func AuditNames(names []string) string {
 	if len(shown) == 0 {
 		return ""
 	}
+	key := "BknBackend.Audit.Names"
 	if len(shown) < len(names) {
-		return fmt.Sprintf("%s等，共%d个（名称摘要已截断）", strings.Join(shown, "、"), len(names))
+		key = "BknBackend.Audit.NamesTruncated"
 	}
-	return fmt.Sprintf("%s，共%d个", strings.Join(shown, "、"), len(names))
+	text, err := i18n.Render(i18n.SimplifiedChinese, key, map[string]any{"Names": strings.Join(shown, separator), "Count": len(names)})
+	if err != nil {
+		logger.Errorf("audit names rendering failed: %v", err)
+	}
+	return text
 }

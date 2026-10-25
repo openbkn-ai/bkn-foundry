@@ -157,7 +157,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   /function/infer-schema:
     post:
@@ -263,7 +263,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   /function/dependency-versions/{package_name}:
     get:
@@ -327,7 +327,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
   /template/{template_type}:
     get:
@@ -399,7 +399,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -483,7 +483,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -498,7 +498,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '429':
           description: |
             大模型上游限流。响应体为 OpenAI 形态，`error.type` 为
@@ -522,7 +522,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '502':
           description: |
             连不上大模型服务，或模型厂商侧的认证/寻址失败。响应体为 OpenAI 形态，
@@ -583,7 +583,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -594,7 +594,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
 
 components:
   securitySchemes:
@@ -612,7 +612,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     Unauthorized:
       description: 凭据缺失或无效
       headers:
@@ -621,7 +621,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     InternalError:
       description: 服务内部错误，或沙箱不可用
       headers:
@@ -630,7 +630,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
     ExecuteForbidden:
       description: |
         当前账户没有算子类型的 execute 权限（`operator:*`）。授权服务已给出拒绝判定，
@@ -642,7 +642,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
           example:
             code: AgentOperatorIntegration.Forbidden.CommonUseForbidden
             description: 权限不足，您暂无使用该资源的权限，请联系管理员申请授权
@@ -663,7 +663,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: '../_shared/errors.yaml#/components/schemas/ErrorCompact'
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
           example:
             code: AgentOperatorIntegration.ServiceUnavailable.CommonAuthorizationUnavailable
             description: 权限校验服务暂时不可用，未能完成授权判定，请求未执行

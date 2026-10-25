@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/ontology-query/server/interfaces"
@@ -76,12 +76,12 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 
 	objectType, exists, err := ots.omAccess.GetObjectType(ctx, knID, branch, otID)
 	if err != nil {
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).
 			WithErrorDetails(err.Error())
 	}
 	if !exists {
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusNotFound,
+		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusNotFound,
 			oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 	}
 	if objectType.DataSource == nil || objectType.DataSource.ID == "" {
@@ -92,22 +92,22 @@ func (ots *objectTypeService) queryLogicMetricViaKN(
 	}
 	metricID, version, ok := parseObjectMetricV1Source(logicProp.DataSource.ID)
 	if !ok {
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails("logic property must reference a published object metric version")
 	}
 	query, err := buildObjectMetricQueryFromLogicProperty(objectType, filters, metricParams, start, end)
 	if err != nil {
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
+		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).WithErrorDetails(err.Error())
 	}
 	service := logics.ObjectMetricQueryService()
 	if service == nil {
-		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusServiceUnavailable,
+		return interfaces.MetricData{}, httperrors.NewHTTPError(ctx, http.StatusServiceUnavailable,
 			oerrors.OntologyQuery_Metric_InternalError_QueryFailed).
 			WithErrorDetails("object metric query capability is not assembled")
 	}
-	result, err := service.QueryObjectMetricDataV1(ctx, knID, branch, metricID, version, query)
+	result, err := queryObjectMetricWithRequestMemo(ctx, service, knID, branch, metricID, version, query)
 	if err != nil {
 		return interfaces.MetricData{}, err
 	}

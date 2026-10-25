@@ -73,10 +73,32 @@ func Analyze(tree parsing.IOC_CypherContext) (*Query, error) {
 	if regular == nil {
 		return nil, unsupported(statement.OC_Query(), "procedure calls")
 	}
-	if len(regular.AllOC_Union()) > 0 {
-		return nil, unsupported(regular, "UNION")
+	unions := regular.AllOC_Union()
+	if len(unions) == 0 {
+		return analyzeSingle(regular.OC_SingleQuery())
 	}
-	single := regular.OC_SingleQuery()
+	first, err := analyzeSingle(regular.OC_SingleQuery())
+	if err != nil {
+		return nil, err
+	}
+	union := &Union{Parts: []*Query{first}, All: unions[0].ALL() != nil}
+	for _, next := range unions {
+		// openCypher does not let the two be mixed: which rows repeat would
+		// depend on the order the parts are put together in.
+		if (next.ALL() != nil) != union.All {
+			return nil, unsupportedf(next, "mixing UNION and UNION ALL", "write UNION ALL between every part, or UNION between every part")
+		}
+		part, err := analyzeSingle(next.OC_SingleQuery())
+		if err != nil {
+			return nil, err
+		}
+		union.Parts = append(union.Parts, part)
+	}
+	return &Query{Union: union}, nil
+}
+
+// analyzeSingle reads one query: a part of a UNION, or the whole query.
+func analyzeSingle(single parsing.IOC_SingleQueryContext) (*Query, error) {
 	if multi := single.OC_MultiPartQuery(); multi != nil {
 		return analyzeMultiPart(multi)
 	}
@@ -1231,6 +1253,9 @@ func sourceText(ctx antlr.ParserRuleContext) string {
 	start, stop := ctx.GetStart(), ctx.GetStop()
 	if start == nil || stop == nil || start.GetInputStream() == nil {
 		return ctx.GetText()
+	}
+	if stream, ok := start.GetInputStream().(*writtenStream); ok {
+		return stream.writtenText(start.GetStart(), stop.GetStop())
 	}
 	return start.GetInputStream().GetTextFromInterval(antlr.NewInterval(start.GetStart(), stop.GetStop()))
 }

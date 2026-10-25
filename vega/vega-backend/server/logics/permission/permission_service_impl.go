@@ -12,9 +12,9 @@ import (
 	"net/http"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	mqclient "github.com/openbkn-ai/bkn-foundry/comm-go/mq"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
@@ -60,7 +60,7 @@ func (ps *PermissionServiceImpl) CheckPermissions(ctx context.Context,
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("Access denied: missing account ID or type")
 	}
 	if len(requirements) == 0 {
@@ -72,7 +72,7 @@ func (ps *PermissionServiceImpl) CheckPermissions(ctx context.Context,
 		Checks:     requirements,
 	})
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_CheckPermissionFailed).WithErrorDetails(err)
 	}
 	return response.Results, nil
@@ -88,7 +88,7 @@ func (ps *PermissionServiceImpl) RequirePermissions(ctx context.Context,
 		if result.Allowed {
 			continue
 		}
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for %s on %s:%s",
 				result.Operation, result.ResourceType, result.ResourceID))
 	}
@@ -101,7 +101,7 @@ func (ps *PermissionServiceImpl) UpsertResourceParents(ctx context.Context, reso
 		return nil
 	}
 	if err := ps.pa.UpsertResourceParents(ctx, resourceType, parentType, items); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err)
 	}
 	return nil
@@ -112,7 +112,7 @@ func (ps *PermissionServiceImpl) DeleteResourceParents(ctx context.Context, reso
 		return nil
 	}
 	if err := ps.pa.DeleteResourceParents(ctx, resourceType, resourceIDs); err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
 	}
 	return nil
@@ -125,7 +125,7 @@ func (ps *PermissionServiceImpl) GetResourceParents(ctx context.Context, resourc
 	}
 	items, err := ps.pa.GetResourceParents(ctx, resourceType, resourceIDs)
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
 	}
 	return items, nil
@@ -137,7 +137,7 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("Access denied: missing account ID or type")
 	}
 
@@ -165,7 +165,7 @@ func (ps *PermissionServiceImpl) CreateResources(ctx context.Context, resources 
 
 	err := ps.pa.CreateResources(ctx, policies)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_CreateResourcesFailed).WithErrorDetails(err.Error())
 	}
 	return nil
@@ -186,7 +186,7 @@ func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceTy
 
 	err := ps.pa.DeleteResources(ctx, resources)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_DeleteResourcesFailed).WithErrorDetails(err)
 	}
 	return nil
@@ -195,13 +195,13 @@ func (ps *PermissionServiceImpl) DeleteResources(ctx context.Context, resourceTy
 func (ps *PermissionServiceImpl) UpdateResource(ctx context.Context, resource interfaces.PermissionResource) error {
 	bytes, err := sonic.Marshal(resource)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_MarshalDataFailed).WithErrorDetails(err)
 	}
 
 	err = ps.mqClient.Pub(interfaces.AUTHORIZATION_RESOURCE_NAME_MODIFY, bytes)
 	if err != nil {
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_UpdateResourceFailed).WithErrorDetails(err)
 	}
 
@@ -226,7 +226,7 @@ func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceTy
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 	if accountInfo.ID == "" || accountInfo.Type == "" {
-		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, httperrors.PublicError_Forbidden).
 			WithErrorDetails("Access denied: missing account ID or type")
 	}
 
@@ -253,7 +253,7 @@ func (ps *PermissionServiceImpl) filterResources(ctx context.Context, resourceTy
 		IncludeOperations: includeOperations,
 	})
 	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed).WithErrorDetails(err)
 	}
 

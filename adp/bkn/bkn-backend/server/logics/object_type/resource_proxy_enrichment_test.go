@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
@@ -177,7 +177,7 @@ func TestEnrichmentReadsOnlyRequestedBindingsThroughProxy(t *testing.T) {
 
 func TestEnrichmentKeepsRefusalWhenProxyCannotHelp(t *testing.T) {
 	proxyError := func(status int, code string) error {
-		return rest.NewHTTPError(context.Background(), status, code)
+		return httperrors.NewHTTPError(context.Background(), status, code)
 	}
 	for _, tc := range []struct {
 		name   string

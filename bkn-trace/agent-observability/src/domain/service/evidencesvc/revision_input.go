@@ -6,6 +6,7 @@
 package evidencesvc
 
 import (
+	"context"
 	"errors"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"strings"
@@ -19,13 +20,13 @@ func EncodeRevisionInput(s sessionvo.EvidenceSnapshot, maxRecords, maxBytes int)
 	if err := validateRevisionInput(s, maxRecords); err != nil {
 		return nil, "", err
 	}
-	return EncodeCapture(CaptureManifest{Snapshot: s}, maxBytes)
+	return encodeCapture(context.Background(), CaptureManifest{Snapshot: s}, maxBytes, false)
 }
 
 // DecodeRevisionInput requires independently trusted identity and hash. Missing
 // declared members remain missing; this codec does not recompute completeness.
 func DecodeRevisionInput(raw []byte, hash, interactionID, revisionID string, maxRecords, maxBytes int) (sessionvo.EvidenceSnapshot, error) {
-	m, err := DecodeCapture(raw, hash, maxBytes)
+	m, err := decodeCapture(raw, hash, maxBytes, false)
 	if err != nil {
 		return sessionvo.EvidenceSnapshot{}, err
 	}

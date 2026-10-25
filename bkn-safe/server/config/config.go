@@ -114,6 +114,21 @@ type HydraConfig struct {
 type OAuthConfig struct {
 	StudioBaselineRedirectURIs []string      `yaml:"studio_baseline_redirect_uris"`
 	ReconcileInterval          time.Duration `yaml:"reconcile_interval"`
+	// DynamicRegistration lets MCP clients such as WorkBuddy register
+	// themselves before their first browser sign-in.
+	DynamicRegistration DynamicRegistrationConfig `yaml:"dynamic_registration"`
+}
+
+// DynamicRegistrationConfig controls bkn-safe's RFC 7591 registration endpoint.
+// Hydra's own dynamic registration stays off: bkn-safe accepts only public,
+// sign-in-required clients and creates them through the admin API.
+type DynamicRegistrationConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// AllowedRedirectOrigins admits callbacks beyond the loopback addresses a
+	// desktop client listens on, such as a web-hosted agent's callback origin.
+	AllowedRedirectOrigins []string `yaml:"allowed_redirect_origins"`
+	// RatePerMinute caps registrations per client IP; 0 disables the cap.
+	RatePerMinute int `yaml:"rate_per_minute"`
 }
 
 // LDAPConfig enables the light external-directory federation (Phase 5). When

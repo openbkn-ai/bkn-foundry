@@ -19,15 +19,15 @@ import (
 	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
-	mock_interfaces "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/locale"
+	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/querypolicy"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/sqlglot"
 )
@@ -68,17 +68,17 @@ func int64Pointer(value int64) *int64 {
 	return &value
 }
 
-func expectIndexConnectorClose(connector *mock_interfaces.MockIndexConnector) {
+func expectIndexConnectorClose(connector *vmock.MockIndexConnector) {
 	connector.EXPECT().Close(gomock.Any()).Return(nil).AnyTimes()
 }
 
-func expectRawQueryResource(mockRS *mock_interfaces.MockResourceService,
+func expectRawQueryResource(mockRS *vmock.MockResourceService,
 	resourceID string, resource *interfaces.Resource) {
 	mockRS.EXPECT().CheckResourcePermission(gomock.Any(), resourceID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
 	mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, resourceID).Return(resource, nil)
 }
 
-func expectRawQueryResources(mockRS *mock_interfaces.MockResourceService,
+func expectRawQueryResources(mockRS *vmock.MockResourceService,
 	resourceIDs []string, resources ...*interfaces.Resource) {
 	for _, resourceID := range resourceIDs {
 		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), resourceID, interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
@@ -139,8 +139,8 @@ func (p *deadlineInspectingPolicy) ValidateTableReferences(context.Context, stri
 func TestRawQueryServiceExecute(t *testing.T) {
 	t.Run("execute rejects disabled catalog for open search query", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		service := NewRawQueryServiceWithDeps(mockCS, mockRS)
 
 		expectRawQueryResource(mockRS, "resource-1", &interfaces.Resource{
@@ -183,7 +183,7 @@ func TestRawQueryServiceExecute(t *testing.T) {
 
 			ctrl := gomock.NewController(t)
 			var connectorCreations atomic.Int64
-			connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+			connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 			connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(func(context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
 					connectorCreations.Add(1)
@@ -194,8 +194,8 @@ func TestRawQueryServiceExecute(t *testing.T) {
 			rawQueryPolicy = querypolicy.NewSQLGlotAdapter()
 			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
 
-			catalogService := mock_interfaces.NewMockCatalogService(ctrl)
-			resourceService := mock_interfaces.NewMockResourceService(ctrl)
+			catalogService := vmock.NewMockCatalogService(ctrl)
+			resourceService := vmock.NewMockResourceService(ctrl)
 			svc := &rawQueryService{cs: catalogService, rs: resourceService, cf: connectorFactory}
 			if test.hasTableReference {
 				resource := &interfaces.Resource{
@@ -232,10 +232,10 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 	t.Helper()
 	require.Error(t, err)
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
+	assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.ErrorCode)
 }
 
 func TestRawQueryValidationError(t *testing.T) {
@@ -244,10 +244,10 @@ func TestRawQueryValidationError(t *testing.T) {
 			Reason: "READ_ONLY_SQL_REJECTED: invalid SQL SELECT * FROM accounts WHERE password = 'secret'",
 		})
 
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
 		assert.NotContains(t, httpErr.Error(), "secret")
 	})
 	t.Run("ignores unrelated errors", func(t *testing.T) {
@@ -369,8 +369,8 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 	t.Run("preserves ASCII TSQL without recompilation", func(t *testing.T) {
 		requireRawQuerySQLGlotRuntime(t)
 		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		resource := &interfaces.Resource{
 			ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
 			Schema: "dbo", SourceIdentifier: "[dbo].[orders]", Status: interfaces.ResourceStatusActive,
@@ -403,8 +403,8 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		t.Run("normalizes SQL Server Unicode literals from "+inputDialect, func(t *testing.T) {
 			requireRawQuerySQLGlotRuntime(t)
 			ctrl := gomock.NewController(t)
-			mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-			mockRS := mock_interfaces.NewMockResourceService(ctrl)
+			mockCS := vmock.NewMockCatalogService(ctrl)
+			mockRS := vmock.NewMockResourceService(ctrl)
 			resource := &interfaces.Resource{
 				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
 				Schema: "dbo", SourceIdentifier: "[dbo].[orders]", Status: interfaces.ResourceStatusActive,
@@ -441,8 +441,8 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
-			mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-			mockRS := mock_interfaces.NewMockResourceService(ctrl)
+			mockCS := vmock.NewMockCatalogService(ctrl)
+			mockRS := vmock.NewMockResourceService(ctrl)
 			resource := &interfaces.Resource{
 				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
 				Schema: "APP", SourceIdentifier: strings.TrimPrefix(tc.wantSQL, "SELECT id FROM "), Status: interfaces.ResourceStatusActive,
@@ -486,15 +486,15 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 				InputDialect: "postgres",
 			})
 			assertHTTPError(t, err, http.StatusBadRequest)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
-			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.BaseError.ErrorDetails)
+			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.ErrorDetails)
 		})
 	}
 	t.Run("revalidates transpiled SQL", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{cs: mockCS, rs: mockRS}
 		resource := &interfaces.Resource{
 			ID:               "resource-1",
@@ -584,8 +584,8 @@ func TestQueryExecutionContext(t *testing.T) {
 func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 	t.Run("propagates query timeout to validation", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{cs: mockCS, rs: mockRS}
 		resource := &interfaces.Resource{
 			ID:               "resource-1",
@@ -624,7 +624,7 @@ func TestValidateCursorResourceBinding(t *testing.T) {
 		rawSession, err := rawQueryCursorSessions.create("account-1", "catalog-1", nil, "SELECT 1", 1, 60, 60)
 		require.NoError(t, err)
 		err = validateCursorResourceBinding(context.Background(), rawSession, &interfaces.RawQueryRequest{ResourceDataResourceID: "logic-1"})
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		require.NoError(t, validateCursorResourceBinding(context.Background(), rawSession, &interfaces.RawQueryRequest{}))
@@ -662,8 +662,8 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 	t.Run("single page uses connector paging wrapper", func(t *testing.T) {
 		catalog := rawQuerySQLServerCatalog()
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -686,8 +686,8 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 	t.Run("does not expose MySQL driver details for an unknown column", func(t *testing.T) {
 		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "mariadb-catalog", ConnectorType: interfaces.ConnectorTypeMariaDB}
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -700,17 +700,17 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
 
 		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Equal(t, "query references an unknown column", httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+		assert.Equal(t, "query references an unknown column", httpErr.ErrorDetails)
 	})
 
 	t.Run("returns source read forbidden for connector privilege errors", func(t *testing.T) {
 		catalog := rawQuerySQLServerCatalog()
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -725,17 +725,17 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 
 		assert.Nil(t, result)
 		assertHTTPError(t, err, http.StatusForbidden)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.BaseError.ErrorCode)
-		assert.Empty(t, httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, verrors.VegaBackend_Resource_SourceReadForbidden, httpErr.ErrorCode)
+		assert.Empty(t, httpErr.ErrorDetails)
 	})
 
 	t.Run("connects before executing unpaged SQL", func(t *testing.T) {
 		catalog := rawQuerySQLServerCatalog()
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -751,8 +751,8 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 	t.Run("does not expose PostgreSQL driver details for an unknown column", func(t *testing.T) {
 		catalog := &interfaces.Catalog{ID: "catalog-1", Name: "postgresql-catalog", ConnectorType: interfaces.ConnectorTypePostgreSQL}
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -765,17 +765,17 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 			"SELECT no_such_column FROM brands", interfaces.PagingModeSingle, nil)
 
 		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Equal(t, "query references an unknown column", httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+		assert.Equal(t, "query references an unknown column", httpErr.ErrorDetails)
 	})
 
 	t.Run("uses generic detail for other source query parameter failures", func(t *testing.T) {
 		catalog := rawQuerySQLServerCatalog()
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -790,17 +790,17 @@ func TestRawQueryServiceExecuteSQL(t *testing.T) {
 
 		assert.Nil(t, result)
 		assertHTTPError(t, err, http.StatusBadRequest)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.BaseError.ErrorCode)
-		assert.Equal(t, "invalid source query parameter", httpErr.BaseError.ErrorDetails)
+		assert.Equal(t, verrors.VegaBackend_Query_InvalidParameter, httpErr.ErrorCode)
+		assert.Equal(t, "invalid source query parameter", httpErr.ErrorDetails)
 	})
 
 	t.Run("preserves internal errors for other database failures", func(t *testing.T) {
 		catalog := rawQuerySQLServerCatalog()
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -828,8 +828,8 @@ func TestRawQueryServiceExecuteSQLCursorPage(t *testing.T) {
 		session.PageOffset = 4
 
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -854,8 +854,8 @@ func TestRawQueryServiceExecuteSQLTotalCount(t *testing.T) {
 	t.Run("total count is not paged", func(t *testing.T) {
 		catalog := rawQuerySQLServerCatalog()
 		ctrl := gomock.NewController(t)
-		connector := mock_interfaces.NewMockTableConnector(ctrl)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connector := vmock.NewMockTableConnector(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), catalog.ConnectorType, catalog.ConnectorCfg).
 			Return(connector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -887,10 +887,10 @@ func rawQuerySQLServerCatalog() *interfaces.Catalog {
 func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 	t.Run("applies timeout totals and aggregation paging", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		indexConnector := vmock.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{cs: mockCS, rs: mockRS}
 
 		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).
@@ -918,7 +918,7 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 				}, nil
 			}).Times(4)
 
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil).Times(4)
 		svc.cf = connectorFactory
@@ -990,10 +990,10 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 
 	t.Run("fails before executing DSL when connector connection fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		indexConnector := vmock.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{cs: mockCS, rs: mockRS}
 		resource := &interfaces.Resource{
 			ID:               "resource-1",
@@ -1006,7 +1006,7 @@ func TestRawQueryServiceExecuteInitialDSLQuery(t *testing.T) {
 		catalog := &interfaces.Catalog{ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeOpenSearch}
 		expectRawQueryResource(mockRS, "resource-1", resource)
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(catalog, nil)
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil)
 		svc.cf = connectorFactory
@@ -1035,9 +1035,9 @@ func TestRawQueryServicePrepareOpenSearchCursorQuery(t *testing.T) {
 
 	t.Run("requires query data permission independently from view detail", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{rs: mockRS}
-		permissionErr := rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden)
+		permissionErr := httperrors.NewHTTPError(context.Background(), http.StatusForbidden, httperrors.PublicError_Forbidden)
 
 		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).
 			Return(permissionErr)
@@ -1055,8 +1055,8 @@ func TestRawQueryServicePrepareOpenSearchCursorQuery(t *testing.T) {
 
 	t.Run("drops client search after and freezes first page paging", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{cs: mockCS, rs: mockRS}
 		clientSearchAfter := []any{"client-cursor"}
 		requestQuery := map[string]any{
@@ -1107,10 +1107,10 @@ func TestRawQueryServicePrepareOpenSearchCursorQuery(t *testing.T) {
 func TestRawQueryServiceExecuteInitialOpenSearchCursor(t *testing.T) {
 	t.Run("closes cursor when initial page reaches total", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		indexConnector := vmock.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{cs: mockCS, rs: mockRS}
 
 		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), "resource-1", interfaces.OPERATION_TYPE_QUERY_DATA).Return(nil)
@@ -1137,7 +1137,7 @@ func TestRawQueryServiceExecuteInitialOpenSearchCursor(t *testing.T) {
 				}, nil
 			})
 
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil)
 		svc.cf = connectorFactory
@@ -1173,7 +1173,7 @@ func TestRawQueryServiceExecuteInitialOpenSearchCursor(t *testing.T) {
 func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 	t.Run("continues and closes", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		indexConnector := vmock.NewMockIndexConnector(ctrl)
 		indexConnector.EXPECT().Close(gomock.Any()).Return(nil).Times(2)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil).Times(2)
 		manager := newCursorSessionManager(10, 9)
@@ -1208,7 +1208,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 				return &interfaces.RawQueryResponse{Entries: []map[string]any{{"id": "3"}}, TotalCount: int64Pointer(99)}, nil
 			}).Times(2)
 
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil).Times(2)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -1234,7 +1234,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 
 	t.Run("does not create empty page for exact multiple", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		indexConnector := vmock.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
 		manager := newCursorSessionManager(10, 9)
@@ -1255,7 +1255,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 			TotalCount:  int64Pointer(2),
 		}, nil)
 
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -1271,7 +1271,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 
 	t.Run("failure does not refresh expiry", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		indexConnector := vmock.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
 		manager := newCursorSessionManager(10, 9)
@@ -1287,7 +1287,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		atomic.StoreInt64(&session.ExpiresAtSec, expiresAt)
 
 		indexConnector.EXPECT().ExecuteRawQuery(gomock.Any(), "events", gomock.Any()).Return(nil, errors.New("backend unavailable"))
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -1299,7 +1299,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 
 	t.Run("fails before executing when connector connection fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		indexConnector := vmock.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(errors.New("connection refused"))
 		manager := newCursorSessionManager(10, 9)
@@ -1311,7 +1311,7 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 		require.NoError(t, err)
 		session.OpenSearchIndex = "events"
 		session.OpenSearchQuery = map[string]any{"sort": []any{"timestamp"}, "size": 1}
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil)
 		svc := &rawQueryService{cf: connectorFactory}
@@ -1326,11 +1326,11 @@ func TestRawQueryServiceExecuteOpenSearchCursorPage(t *testing.T) {
 func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 	t.Run("rejects concurrent continuation", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		indexConnector := mock_interfaces.NewMockIndexConnector(ctrl)
+		indexConnector := vmock.NewMockIndexConnector(ctrl)
 		expectIndexConnectorClose(indexConnector)
 		indexConnector.EXPECT().Connect(gomock.Any()).Return(nil)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS := vmock.NewMockCatalogService(ctrl)
+		mockRS := vmock.NewMockResourceService(ctrl)
 		manager := newCursorSessionManager(10, 9)
 		previousManager := rawQueryCursorSessions
 		rawQueryCursorSessions = manager
@@ -1364,7 +1364,7 @@ func TestRawQueryServiceExecuteSQLCursorContinuation(t *testing.T) {
 				return &interfaces.RawQueryResponse{Entries: []map[string]any{}}, nil
 			})
 
-		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		connectorFactory := vmock.NewMockConnectorFactory(ctrl)
 		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeOpenSearch, gomock.Any()).
 			Return(indexConnector, nil)
 		svc := &rawQueryService{cs: mockCS, rs: mockRS, cf: connectorFactory}
@@ -1431,7 +1431,7 @@ func TestHasOpenSearchAggregation(t *testing.T) {
 func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 	t.Run("preserves Doris catalog reference", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		reference := "`hive`.`sales.eu`.`o``rders`"
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{Schema: "sales.eu", SourceIdentifier: reference}, nil)
 		got, err := (&rawQueryService{rs: rs}).replaceResourceIDWithSchemaTable(context.Background(), "SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{ConnectorType: interfaces.ConnectorTypeDoris}, "doris")
@@ -1441,7 +1441,7 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 
 	t.Run("preserves already quoted source reference", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		reference := `"public"."orders.part"`
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{Schema: "public", SourceIdentifier: reference}, nil)
 		got, err := (&rawQueryService{rs: rs}).replaceResourceIDWithSchemaTable(context.Background(), "SELECT * FROM {{r1}}", []string{"r1"}, &interfaces.Catalog{ConnectorType: interfaces.ConnectorTypePostgreSQL}, "postgres")
@@ -1451,7 +1451,7 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 
 	t.Run("raw query service replace resource idwith schema table", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{rs: rs}
 
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
@@ -1478,7 +1478,7 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 
 	t.Run("quotes tsql special identifiers", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{rs: rs}
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
 			ID:               "r1",
@@ -1499,7 +1499,7 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 
 	t.Run("quotes schema containing dots", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{rs: rs}
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{
 			ID:               "r1",
@@ -1518,8 +1518,8 @@ func TestRawQueryServiceReplaceResourceIDWithSchemaTable(t *testing.T) {
 func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 	t.Run("raw query service check same data source", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cs := mock_interfaces.NewMockCatalogService(ctrl)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{cs: cs, rs: rs}
 
 		resources := []*interfaces.Resource{
@@ -1553,7 +1553,7 @@ func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 
 	t.Run("rejects missing resource", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{rs: rs}
 		expectRawQueryResources(rs, []string{"r1", "missing"},
 			&interfaces.Resource{ID: "r1", CatalogID: "catalog-1", Enabled: true, Status: interfaces.ResourceStatusActive})
@@ -1566,9 +1566,8 @@ func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 	})
 
 	t.Run("rejects multi catalog resources", func(t *testing.T) {
-		locale.Register()
 		ctrl := gomock.NewController(t)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
 		svc := &rawQueryService{rs: rs}
 		for range 2 {
 			expectRawQueryResources(rs, []string{"r1", "r2"},
@@ -1578,22 +1577,22 @@ func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 
 		tests := []struct {
 			name     string
-			language rest.Language
+			language i18n.Language
 			detail   string
 		}{
-			{name: "English", language: rest.AmericanEnglish, detail: "Cross-catalog JOIN is not supported yet; Trino or DuckDB support is planned."},
-			{name: "Chinese", language: rest.SimplifiedChinese, detail: "暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。"},
+			{name: "English", language: i18n.AmericanEnglish, detail: "Cross-catalog JOIN is not supported yet; Trino or DuckDB support is planned."},
+			{name: "Chinese", language: i18n.SimplifiedChinese, detail: "暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。"},
 		}
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				ctx := rest.WithLanguage(context.Background(), test.language)
+				ctx := i18n.WithLanguage(context.Background(), test.language)
 				catalog, warnings, err := svc.checkSameDataSource(ctx, []string{"r1", "r2"})
 
 				assertHTTPError(t, err, http.StatusNotImplemented)
-				var httpErr *rest.HTTPError
+				var httpErr *httperrors.HTTPError
 				require.ErrorAs(t, err, &httpErr)
-				assert.Equal(t, verrors.VegaBackend_Query_MultiCatalogNotSupported, httpErr.BaseError.ErrorCode)
-				assert.Equal(t, test.detail, httpErr.BaseError.ErrorDetails)
+				assert.Equal(t, verrors.VegaBackend_Query_MultiCatalogNotSupported, httpErr.ErrorCode)
+				assert.Equal(t, test.detail, httpErr.ErrorDetails)
 				assert.Nil(t, catalog)
 				assert.Nil(t, warnings)
 			})
@@ -1609,9 +1608,9 @@ func TestEnsureCatalogEnabled(t *testing.T) {
 		err := ensureCatalogEnabled(context.Background(), &interfaces.Catalog{Enabled: false})
 
 		assertHTTPError(t, err, http.StatusConflict)
-		var httpErr *rest.HTTPError
+		var httpErr *httperrors.HTTPError
 		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.BaseError.ErrorCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_IsDisabled, httpErr.ErrorCode)
 	})
 }
 
@@ -1619,7 +1618,7 @@ func assertHTTPError(t *testing.T, err error, status int) {
 	t.Helper()
 	require.Error(t, err)
 
-	var httpErr *rest.HTTPError
+	var httpErr *httperrors.HTTPError
 	require.ErrorAs(t, err, &httpErr)
 	assert.Equal(t, status, httpErr.HTTPCode)
 }
@@ -1635,11 +1634,11 @@ func TestCursorSessionCreateError(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			err := cursorSessionCreateError(context.Background(), testCase.err)
-			var httpErr *rest.HTTPError
+			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, http.StatusTooManyRequests, httpErr.HTTPCode)
-			assert.Equal(t, verrors.VegaBackend_Query_CursorSessionLimitExceeded, httpErr.BaseError.ErrorCode)
-			assert.Equal(t, testCase.details, httpErr.BaseError.ErrorDetails)
+			assert.Equal(t, verrors.VegaBackend_Query_CursorSessionLimitExceeded, httpErr.ErrorCode)
+			assert.Equal(t, testCase.details, httpErr.ErrorDetails)
 		})
 	}
 }

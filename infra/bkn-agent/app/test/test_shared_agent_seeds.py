@@ -24,6 +24,8 @@ CYPHER = MIGRATIONS / "0.2.1/06-seed-cypher-generation.sql"
 METRIC_DESIGN = MIGRATIONS / "0.2.1/07-seed-object-metric-designer.sql"
 SEMANTIC_LANGUAGE = MIGRATIONS / "0.2.1/08-semantic-output-language.sql"
 GRAPH_EXPLORER = MIGRATIONS / "0.2.1/09-seed-graph-explorer.sql"
+CLAIM_LOCALES = MIGRATIONS / "0.2.2/01-claim-prompt-locales.sql"
+PROMPT_INDEX = MIGRATIONS / "0.2.3/01-agent-prompt-index.sql"
 
 
 def statements(path):
@@ -87,10 +89,14 @@ def apply(db, path, limit=None):
     inserts = [
         s
         for s in statements(path)
-        if s.lower().startswith(("insert into t_agent", "update t_agent"))
+        if s.lower().startswith(("insert into t_agent", "update t_agent", "alter table t_agent_prompt_version"))
     ]
     for statement in inserts if limit is None else inserts[:limit]:
-        db.execute(statement)
+        if statement.lower().startswith("alter table t_agent_prompt_version"):
+            if "f_localized_content" not in {row[1] for row in db.execute("PRAGMA table_info(t_agent_prompt_version)")}:
+                db.execute("ALTER TABLE t_agent_prompt_version ADD COLUMN f_localized_content TEXT")
+        else:
+            db.execute(statement)
 
 
 def item_from_db(db, agent_id):
@@ -203,7 +209,7 @@ def test_new_snapshot_only_adds_the_two_setting_tables():
 
 def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_history():
     with database() as fresh, database() as upgraded:
-        apply(fresh, MIGRATIONS / "0.2.1/init.sql")
+        apply(fresh, Path(selected_migrations("0.0.0")[0][0]))
         apply(upgraded, MIGRATIONS / "0.2.0/init.sql")
         original = snapshot(upgraded)
         apply(upgraded, STUDIO)
@@ -216,6 +222,7 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         assert history, "Historical Agent snapshots must exist before comparison"
         apply(upgraded, SEMANTIC_LANGUAGE)
         apply(upgraded, GRAPH_EXPLORER)
+        apply(upgraded, CLAIM_LOCALES)
         # Fresh installs initialize current defaults directly; upgrades retain
         # historical Prompt/Agent versions while resolving the same defaults.
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
@@ -231,7 +238,9 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
                 assert match[2] == 4
             else:
                 assert row == match
-        assert all(row in updated[2] for row in original[2])
+        # Adding the nullable locale column must retain every original value.
+        assert all(row == after[:len(row)] for row in original[2] for after in updated[2] if row[:2] == after[:2])
+        assert {row[:2] for row in original[2]} <= {row[:2] for row in updated[2]}
         # Only the upgraded Agent may change its historical initial/current markers.
         for row in history:
             match = next(after for after in updated[3] if after[:2] == row[:2])
@@ -376,7 +385,7 @@ print(json.dumps([selector.find_init_sql('bkn-agent'),selector.select_upgrade_sc
 
 def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
     fresh, upgrade = selected_migrations("0.2.0")
-    assert fresh == [str(MIGRATIONS / "0.2.1/init.sql"), "0.2.1"]
+    assert fresh == [str(MIGRATIONS / "0.2.3/init.sql"), "0.2.3"]
     assert upgrade == [
         [
             [
@@ -392,11 +401,46 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(SEMANTIC_LANGUAGE),
                     str(GRAPH_EXPLORER),
                 ],
-            ]
+            ],
+            ["0.2.2", [str(CLAIM_LOCALES)]],
+            ["0.2.3", [str(PROMPT_INDEX)]],
         ],
-        "0.2.1",
+        "0.2.3",
         True,
     ]
+
+
+def test_claim_prompt_translation_is_idempotent_and_preserves_custom_content():
+    with database() as db:
+        apply(db, PROVENANCE)
+        prompt_id = "business_provenance_claim_attribution_prompt"
+        original = db.execute("SELECT f_content FROM t_agent_prompt_version WHERE f_prompt_id=?", (prompt_id,)).fetchone()[0]
+        apply(db, CLAIM_LOCALES)
+        translated = db.execute("SELECT f_localized_content FROM t_agent_prompt_version WHERE f_prompt_id=?", (prompt_id,)).fetchone()[0]
+        assert json.loads(translated)["en-US"].startswith("You are the OpenBKN business-provenance")
+        # The same JSON keys and strict evidence contract appear in both languages.
+        for term in ("judgment_text", "display_text", "primary", "supporting", "disclosures", "question_quote", "answer_quote", "occurrence", "result_texts", "subject_text", "predicate_text", "evidence_fact_ids", "support_status"):
+            assert term in original and term in translated
+        before = snapshot(db)
+        apply(db, CLAIM_LOCALES)
+        assert snapshot(db) == before
+        assert db.execute("SELECT f_content FROM t_agent_prompt_version WHERE f_prompt_id=?", (prompt_id,)).fetchone()[0] == original
+
+    for field, value in (("f_content", "Administrator prompt"), ("f_create_user", "administrator"), ("f_vars_schema", '{"type":"object"}'), ("f_localized_content", '{"en-US":"Existing custom translation"}')):
+        with database() as db:
+            apply(db, PROVENANCE)
+            db.execute("ALTER TABLE t_agent_prompt_version ADD COLUMN f_localized_content TEXT")
+            db.execute(f"UPDATE t_agent_prompt_version SET {field}=? WHERE f_prompt_id=?", (value, prompt_id))
+            before = snapshot(db)
+            apply(db, CLAIM_LOCALES)
+            assert snapshot(db) == before
+
+
+def test_claim_prompt_fresh_snapshot_includes_the_same_locale_upgrade():
+    migration = CLAIM_LOCALES.read_text()
+    assert (MIGRATIONS / "0.2.2/init.sql").read_text() == (
+        (MIGRATIONS / "0.2.1/init.sql").read_text() + "\n" + migration
+    )
 
 
 @pytest.mark.parametrize("release", ["v0.1.4", "v0.1.5"])
@@ -627,7 +671,7 @@ def test_real_migrator_selected_cross_version_chain_preserves_semantic_agents(re
             )
         ]
         _, upgrade = selected_migrations(schema_version)
-        assert upgrade[1] == "0.2.1"
+        assert upgrade[1] == "0.2.3"
         for _, paths in upgrade[0]:
             for path in paths:
                 apply(db, Path(path))
@@ -673,7 +717,7 @@ def test_owner_credential_rollback_is_not_mistaken_for_an_untouched_default():
 
 def test_every_agent_starts_with_one_current_version():
     with database() as db:
-        apply(db, MIGRATIONS / "0.2.1/init.sql")
+        apply(db, Path(selected_migrations("0.0.0")[0][0]))
         rows = {
             row["f_agent_id"]: dict(row)
             for row in db.execute("SELECT * FROM t_agent_version WHERE f_current=1")
@@ -916,10 +960,14 @@ def test_semantic_language_upgrade_does_not_reverse_an_operator_rollback():
 
 
 def test_current_init_only_initializes_the_latest_semantic_defaults():
-    init = MIGRATIONS / "0.2.1/init.sql"
+    init = Path(selected_migrations("0.0.0")[0][0])
+    # The optional claim-locale column and guarded translation backfill do not
+    # update semantic-understanding versions or their current/initial markers.
+    claim_locale_statements = set(statements(CLAIM_LOCALES))
     assert not any(
         re.match(r"(?i)(update|delete|alter)\b", statement)
         for statement in statements(init)
+        if statement not in claim_locale_statements
     )
     with database() as db:
         apply(db, init)
@@ -1090,3 +1138,18 @@ def test_semantic_upgrade_versions_serialize_through_settings_api(monkeypatch):
         ]
         assert upgraded
         assert all(version.changes == ["prompt_version"] for version in upgraded)
+
+
+def test_installed_021_selects_locale_schema_upgrade():
+    _, upgrade = selected_migrations("0.2.1")
+    assert upgrade == [[["0.2.2", [str(CLAIM_LOCALES)]], ["0.2.3", [str(PROMPT_INDEX)]]], "0.2.3", True]
+    _, index_upgrade = selected_migrations("0.2.2")
+    assert index_upgrade == [[["0.2.3", [str(PROMPT_INDEX)]]], "0.2.3", True]
+    _, repeated = selected_migrations("0.2.3")
+    assert repeated == [[], "0.2.3", False]
+
+
+def test_index_snapshot_preserves_complete_locale_snapshot():
+    assert (MIGRATIONS / "0.2.3/init.sql").read_text() == (
+        (MIGRATIONS / "0.2.2/init.sql").read_text() + "\n" + PROMPT_INDEX.read_text()
+    )

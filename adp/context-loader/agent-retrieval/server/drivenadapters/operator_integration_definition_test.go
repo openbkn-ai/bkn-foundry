@@ -13,13 +13,13 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // executionFactoryServer answers every request with status and body and records the requests.
@@ -102,7 +102,7 @@ func TestToolDetailReadsKeepExecutionFactoryStatus(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			client, _ := newExecutionFactoryServer(t, test.status, test.body)
 			ctx := common.SetLanguageToCtx(
-				common.SetRawTokenToCtx(context.Background(), "caller-token"), sharedrest.AmericanEnglish)
+				common.SetRawTokenToCtx(context.Background(), "caller-token"), i18n.AmericanEnglish)
 			toolReq := &interfaces.GetToolDetailRequest{BoxID: "box-1", ToolID: "tool-1"}
 			mcpReq := &interfaces.GetMCPToolDetailRequest{McpID: "mcp-1", ToolName: "lookup"}
 

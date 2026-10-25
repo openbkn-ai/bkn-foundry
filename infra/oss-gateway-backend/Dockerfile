@@ -25,7 +25,6 @@ RUN apt-get update && apt-get install -y ca-certificates tzdata && rm -rf /var/l
 WORKDIR /root/
 
 COPY --from=builder /app/oss-gateway .
-COPY --from=builder /app/locale ./locale
 
 EXPOSE 8080
 

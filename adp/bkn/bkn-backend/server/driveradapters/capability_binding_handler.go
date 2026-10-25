@@ -13,7 +13,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -26,7 +28,7 @@ import (
 )
 
 func (r *restHandler) AttachCapabilitiesByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -38,7 +40,7 @@ func (r *restHandler) AttachCapabilitiesByIn(c *gin.Context) {
 }
 
 func (r *restHandler) DetachCapabilitiesByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -50,7 +52,7 @@ func (r *restHandler) DetachCapabilitiesByIn(c *gin.Context) {
 }
 
 func (r *restHandler) ListCapabilitiesByEx(c *gin.Context) {
-	vis, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	vis, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -76,12 +78,12 @@ func (r *restHandler) resolveCapabilityKN(c *gin.Context, ctx context.Context, s
 
 	knName, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		rest.ReplyError(c, httpErr)
 		return "", "", false
 	}
 	if !exist {
-		rest.ReplyError(c, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound))
+		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound))
 		return "", "", false
 	}
 	if r.auditRecorder != nil {
@@ -105,9 +107,13 @@ func (r *restHandler) AttachCapabilities(c *gin.Context, vis hydra.Visitor) {
 
 	req := &interfaces.AttachCapabilitiesReq{}
 	if err := c.ShouldBindJSON(req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.RequestBindingFailed", nil)
+		if renderErr != nil {
+			logger.Errorf("localized message rendering failed: %v", renderErr)
+		}
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidParameter).
-			WithErrorDetails(commonValidationDetail(ctx, "RequestBindingFailed", nil))
+			WithErrorDetails(localizedText)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -119,7 +125,7 @@ func (r *restHandler) AttachCapabilities(c *gin.Context, vis hydra.Visitor) {
 			return &interfaces.KNCapabilityMutationResult{Bindings: bindings}, mutationErr
 		})
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -170,7 +176,7 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 
 	bindingIDs := common.StringToStringSlice(c.Param("binding_ids"))
 	if len(bindingIDs) == 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_InvalidParameter).WithErrorDetails("binding_ids must not be empty")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -189,7 +195,7 @@ func (r *restHandler) DetachCapabilities(c *gin.Context, vis hydra.Visitor) {
 			return &interfaces.KNCapabilityMutationResult{RowsAffected: rows}, mutationErr
 		})
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -222,7 +228,7 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 	pageParam, err := validatePaginationQueryParameters(ctx, offset, limit, sort, direction,
 		interfaces.CapabilityBindingSort)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -230,7 +236,7 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 
 	readAccessMode, err := r.kns.ResolveKNReadAccess(ctx, knID, branch)
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -253,7 +259,7 @@ func (r *restHandler) ListCapabilities(c *gin.Context, vis hydra.Visitor) {
 		MetadataType: strings.TrimSpace(c.Query("metadata_type")),
 	})
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -278,7 +284,7 @@ func (r *restHandler) ResolveCapabilities(c *gin.Context, vis hydra.Visitor) {
 
 	list, err := r.cbs.ResolveCapabilities(ctx, knID, branch, c.Query("type"))
 	if err != nil {
-		httpErr := err.(*rest.HTTPError)
+		httpErr := err.(*httperrors.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

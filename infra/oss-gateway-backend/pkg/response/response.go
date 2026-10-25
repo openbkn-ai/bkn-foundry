@@ -4,11 +4,13 @@ import (
 	stderrors "errors"
 	"net/http"
 
-	"oss-gateway/locale"
-	"oss-gateway/pkg/errors"
-
 	"github.com/gin-gonic/gin"
-	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
+	_ "oss-gateway/locale" // Install immutable response messages before rendering.
+	"oss-gateway/pkg/errors"
 )
 
 // Response is the OSS Gateway response envelope.
@@ -47,7 +49,7 @@ func ErrorWithCode(c *gin.Context, code *errors.ErrorCode, templateData map[stri
 		code = &errors.InternalError
 	}
 	text := localize(c, code, templateData)
-	sharedrest.MarkLocalizedResponse(c)
+	rest.MarkLocalizedResponse(c)
 	c.JSON(code.HTTPStatus, Response{
 		Code:        code.Code,
 		Message:     text.Message,
@@ -126,7 +128,7 @@ func DefaultStorageExists(c *gin.Context, existingStorageName string) {
 func ServiceNotReady(c *gin.Context, checks map[string]string) {
 	code := &errors.ServiceNotReady
 	text := localize(c, code, nil)
-	sharedrest.MarkLocalizedResponse(c)
+	rest.MarkLocalizedResponse(c)
 	c.JSON(code.HTTPStatus, gin.H{
 		"code":        code.Code,
 		"message":     text.Message,
@@ -137,12 +139,20 @@ func ServiceNotReady(c *gin.Context, checks map[string]string) {
 }
 
 func localize(c *gin.Context, code *errors.ErrorCode, templateData map[string]interface{}) localizedError {
-	ctx := c.Request.Context()
-	return localizedError{
-		Message:     locale.Translate(ctx, code.MessageID+".Message", templateData),
-		Description: locale.Translate(ctx, code.MessageID+".Description", templateData),
-		Solution:    locale.Translate(ctx, code.MessageID+".Solution", templateData),
+	language := i18n.GetLanguageByCtx(c.Request.Context())
+	message, messageErr := i18n.Render(language, code.MessageID+".Message", templateData)
+	if messageErr != nil {
+		logger.Errorf("localized response message failed: %v", messageErr)
 	}
+	description, descriptionErr := i18n.Render(language, code.MessageID+".Description", templateData)
+	if descriptionErr != nil {
+		logger.Errorf("localized response description failed: %v", descriptionErr)
+	}
+	solution, solutionErr := i18n.Render(language, code.MessageID+".Solution", templateData)
+	if solutionErr != nil {
+		logger.Errorf("localized response solution failed: %v", solutionErr)
+	}
+	return localizedError{Message: message, Description: description, Solution: solution}
 }
 
 func recordDiagnostic(c *gin.Context, diagnostic string) {

@@ -407,7 +407,7 @@ type operationFailure struct {
 // said how often it happened, at which step, or with which code. The tool,
 // stage and code fields keep a fixed shape so a log query can group on them.
 func lifecycleUnavailable(ctx context.Context, toolName, stage string, err error) *mcpsdk.CallToolResult {
-	value := lifecycleAvailabilityError(err)
+	value := lifecycleStageAvailabilityError(stage, err)
 	logger.DefaultLogger().WithContext(ctx).Warnf(
 		"[BKN Trace] lifecycle unavailable: tool=%s stage=%s code=%s: %v",
 		toolName, stage, value.Code, err,
@@ -448,6 +448,26 @@ func lifecycleAPIResult(ctx context.Context, toolName, stage string, value bkntr
 		return lifecycleUnrecordedResult(ctx, toolName, stage, value.Code)
 	}
 	return lifecycleToolError(traceCoreError(value))
+}
+
+// Artifact transport failures do not imply that lifecycle SQL is unavailable.
+// Keep configuration and permission classifications from the shared mapper.
+func lifecycleStageAvailabilityError(stage string, err error) lifecycleError {
+	value := lifecycleAvailabilityError(err)
+	if (stage != "question_artifact" && stage != "answer_artifact") || value.Code != "trace_core_unavailable" {
+		return value
+	}
+	var coreErr *bkntrace.CoreHTTPError
+	if bkntrace.IsTraceInfrastructureFailure(nil, err) || errors.As(err, &coreErr) && coreErr.Retryable() {
+		value.Code = "evidence_store_unavailable"
+		value.Message = "BKN Trace evidence artifact capture is temporarily unavailable"
+	} else {
+		value.Code = "evidence_capture_failed"
+		value.Message = "BKN Trace evidence artifact could not be captured"
+		value.Retryable = false
+		value.RequiredAction = "contact_platform_operator"
+	}
+	return value
 }
 
 func lifecycleAvailabilityError(err error) lifecycleError {

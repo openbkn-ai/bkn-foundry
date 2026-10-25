@@ -722,7 +722,7 @@ components:
           type: array
           items:
             type: string
-          description: 可用的分析维度名，`query_metric` 的 `analysis_dimensions` 只能从这里取值。
+          description: 可用的分析维度名；传给 `query_metric` 时使用 `query.group_by` 属性引用。
         time_dimension:
           type: string
           description: |

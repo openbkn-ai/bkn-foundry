@@ -180,16 +180,21 @@ func (source *fakeSource) Purge(_ context.Context, _ observabilityvo.ArchiveKind
 }
 
 type fakeObjectStore struct {
+	objects   map[string][]byte
 	verified  bool
 	verifyErr error
 }
 
 type fakeDownloadObjectStore struct {
+	readErr error
 	fakeObjectStore
 	objects map[string][]byte
 }
 
 func (store *fakeDownloadObjectStore) Read(_ context.Context, key string) (io.ReadCloser, error) {
+	if store.readErr != nil {
+		return nil, store.readErr
+	}
 	content, ok := store.objects[key]
 	if !ok {
 		return nil, errors.New("archive object not found")
@@ -197,12 +202,19 @@ func (store *fakeDownloadObjectStore) Read(_ context.Context, key string) (io.Re
 	return io.NopCloser(bytes.NewReader(content)), nil
 }
 
-func (store *fakeObjectStore) WriteAndVerify(_ context.Context, _ Job, _ []Candidate) (string, error) {
+func (store *fakeObjectStore) WriteAndVerify(_ context.Context, job Job, candidates []Candidate) (string, error) {
 	store.verified = true
 	if store.verifyErr != nil {
 		return "", store.verifyErr
 	}
-	return "archive/job/manifest.json", nil
+	job.ManifestRef = "archive/job/manifest.json"
+	job.Candidates = candidates
+	store.objects = archiveFixtureObjects(job)
+	return job.ManifestRef, nil
+}
+
+func (store *fakeObjectStore) Read(ctx context.Context, key string) (io.ReadCloser, error) {
+	return (&fakeDownloadObjectStore{objects: store.objects}).Read(ctx, key)
 }
 
 type checkingSource struct {

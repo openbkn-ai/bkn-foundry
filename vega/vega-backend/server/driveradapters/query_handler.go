@@ -12,7 +12,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -27,7 +29,7 @@ import (
 // RawQueryByEx handles POST /api/vega-backend/v1/resources/query (External)
 func (r *restHandler) RawQueryByEx(c *gin.Context) {
 	// External network interface: Verify token
-	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -43,7 +45,7 @@ func (r *restHandler) RawQueryByIn(c *gin.Context) {
 
 // CloseCursorByEx releases a cursor created by either query API.
 func (r *restHandler) CloseCursorByEx(c *gin.Context) {
-	caller, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	caller, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err != nil {
 		return
 	}
@@ -89,7 +91,7 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 
 	var req interfaces.RawQueryRequest
 	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_InvalidParameter_RequestBody).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		otellog.LogError(ctx, "Bind raw query request failed", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -100,7 +102,7 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 	// query_timeout_sec takes effect only on the first request; When a new page is created using the cursor session
 	// The fixed value cannot be rewritten by the client.
 	if req.QueryTimeoutSec != 0 && (req.QueryTimeoutSec < 1 || req.QueryTimeoutSec > 3600) {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_Query_InvalidParameter_QueryTimeout).
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_Query_InvalidParameter_QueryTimeout).
 			WithErrorDetails(fmt.Sprintf("query_timeout_sec must be between 1 and 3600, got: %d", req.QueryTimeoutSec))
 		otellog.LogError(ctx, "Query timeout is invalid", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)

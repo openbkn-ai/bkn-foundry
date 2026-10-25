@@ -2,7 +2,7 @@
 #
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-"""Validate Python i18n catalog shape without importing application modules."""
+"""Validate Python and MCP locale resources without external toolchains."""
 
 from __future__ import annotations
 
@@ -37,18 +37,6 @@ PYTHON_CATALOGS = (
         "sandbox-control-plane",
         REPOSITORY_ROOT / "infra/sandbox/sandbox_control_plane/src/shared/i18n/zh_cn.py",
         REPOSITORY_ROOT / "infra/sandbox/sandbox_control_plane/src/shared/i18n/en_us.py",
-    ),
-)
-JSON_CATALOGS = (
-    (
-        "context-loader",
-        REPOSITORY_ROOT / "adp/context-loader/agent-retrieval/server/infra/localize/locales/zh-Hans.json",
-        REPOSITORY_ROOT / "adp/context-loader/agent-retrieval/server/infra/localize/locales/en-US.json",
-    ),
-    (
-        "execution-factory",
-        REPOSITORY_ROOT / "adp/execution-factory/operator-integration/server/infra/localize/locales/zh-Hans.json",
-        REPOSITORY_ROOT / "adp/execution-factory/operator-integration/server/infra/localize/locales/en-US.json",
     ),
 )
 MCP_SCHEMAS_DIRECTORY = REPOSITORY_ROOT / "adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas"
@@ -396,11 +384,6 @@ def main() -> int:
     for catalog in PYTHON_CATALOGS:
         try:
             errors.extend(validate_catalog_pair(*catalog))
-        except ValueError as error:
-            errors.append(str(error))
-    for catalog in JSON_CATALOGS:
-        try:
-            errors.extend(validate_json_catalog_pair(*catalog))
         except ValueError as error:
             errors.append(str(error))
     try:

@@ -206,6 +206,7 @@ func Boot(opts Options) (*App, error) {
 			AccessLog:                     accessLogRecorder,
 			Decisions:                     decisionRecorder,
 			OAuthAccessOrigins:            oauthAccessOrigins,
+			OAuthDynamicRegistration:      dynamicRegistration(cfg, hydraAdmin),
 			License:                       licSvc,
 			AuthorizationResources:        authorizationResources,
 			PermissionRequestResources:    permissionRequestResources,
@@ -254,4 +255,18 @@ func (a *App) ensureAuthorizationMigrationReady(ctx context.Context) error {
 		return err
 	}
 	return authzgate.VerifyCurrentMarker(ctx, a.db)
+}
+
+// dynamicRegistration is the MCP client sign-in surface, nil when disabled.
+func dynamicRegistration(cfg *config.Config, hydraAdmin *auth.HydraAdmin) *httpapi.OAuthDynamicRegistration {
+	reg := cfg.OAuth.DynamicRegistration
+	if !reg.Enabled {
+		return nil
+	}
+	return &httpapi.OAuthDynamicRegistration{
+		Registrar:              hydraAdmin,
+		HydraPublicURL:         cfg.Hydra.PublicURL,
+		AllowedRedirectOrigins: reg.AllowedRedirectOrigins,
+		RatePerMinute:          reg.RatePerMinute,
+	}
 }

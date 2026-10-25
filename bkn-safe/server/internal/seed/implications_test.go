@@ -133,6 +133,44 @@ func TestShippedCatalogBindsOperationsToViewDetail(t *testing.T) {
 	t.Fatal("catalog type missing from authorization-registry.json")
 }
 
+// TestShippedKnowledgeBaseBindsOperationsToViewDetail pins the knowledge base
+// contract: every instance operation requires opening that knowledge base, and
+// creation remains a type-level capability.
+func TestShippedKnowledgeBaseBindsOperationsToViewDetail(t *testing.T) {
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		t.Fatalf("parse authorization-registry.json: %v", err)
+	}
+	for _, rt := range c.ResourceTypes {
+		if rt.ID != "knowledge_base" {
+			continue
+		}
+		operations := map[string][]string{}
+		for _, op := range rt.Operations {
+			operations[op.ID] = op.Requires
+		}
+		for _, operation := range []string{"modify", "delete", "authorize", "document_manage", "task_manage", "query_data"} {
+			if got := operations[operation]; len(got) != 1 || got[0] != "view_detail" {
+				t.Errorf("knowledge_base/%s requires %v, want [view_detail]", operation, got)
+			}
+		}
+		for _, operation := range []string{"view_detail", "create"} {
+			got, ok := operations[operation]
+			if !ok {
+				t.Errorf("knowledge_base/%s is missing", operation)
+			}
+			if len(got) != 0 {
+				t.Errorf("knowledge_base/%s unexpectedly requires %v", operation, got)
+			}
+		}
+		if len(operations) != 8 {
+			t.Errorf("knowledge_base declares %d operations, want 8", len(operations))
+		}
+		return
+	}
+	t.Fatal("knowledge_base type missing from authorization-registry.json")
+}
+
 func TestShippedConnectorTypeDeclaresViewRequirements(t *testing.T) {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
