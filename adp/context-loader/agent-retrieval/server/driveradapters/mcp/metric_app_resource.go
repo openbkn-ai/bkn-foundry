@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -74,11 +75,13 @@ func registerMetricAppResource(srv *server.MCPServer) {
 			}
 			httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 			if err != nil {
-				return nil, err
+				log.Printf("WARN: cannot create metric app resource request: %v", err)
+				return nil, fmt.Errorf("metric app resource unavailable")
 			}
 			response, err := client.Do(httpRequest)
 			if err != nil {
-				return nil, fmt.Errorf("metric app resource unavailable: %w", err)
+				log.Printf("WARN: cannot fetch metric app resource: %v", err)
+				return nil, fmt.Errorf("metric app resource unavailable")
 			}
 			defer response.Body.Close()
 			if response.StatusCode != http.StatusOK {
@@ -86,9 +89,10 @@ func registerMetricAppResource(srv *server.MCPServer) {
 			}
 			body, err := io.ReadAll(io.LimitReader(response.Body, metricAppMaxBytes+1))
 			if err != nil {
-				return nil, fmt.Errorf("read metric app resource: %w", err)
+				log.Printf("WARN: cannot read metric app resource: %v", err)
+				return nil, fmt.Errorf("metric app resource unavailable")
 			}
-			if len(body) > metricAppMaxBytes || !strings.Contains(string(body[:min(len(body), 256)]), "<!doctype html>") {
+			if len(body) > metricAppMaxBytes || !strings.Contains(strings.ToLower(string(body[:min(len(body), 256)])), "<!doctype html>") {
 				return nil, fmt.Errorf("metric app resource is not a valid single-file HTML bundle")
 			}
 			return []mcp.ResourceContents{mcp.TextResourceContents{

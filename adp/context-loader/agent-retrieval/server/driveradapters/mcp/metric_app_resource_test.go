@@ -13,7 +13,7 @@ import (
 )
 
 func TestMetricAppResourceIsAdvertisedOnlyOnFullProfile(t *testing.T) {
-	html := "<!doctype html><html><body>metric app</body></html>"
+	html := "<!DOCTYPE html><html><body>metric app</body></html>"
 	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/studio/metric-analysis-mcp.html" {
 			http.NotFound(w, r)
@@ -124,7 +124,14 @@ func TestMetricAppResourceRejectsHTMLRedirectAndOversize(t *testing.T) {
 		{name: "oversize", status: http.StatusOK, body: "<!doctype html>" + strings.Repeat("x", metricAppMaxBytes)},
 	} {
 		t.Run(response.name, func(t *testing.T) {
-			host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/redirect-target" {
+					_, _ = fmt.Fprint(w, "<!doctype html><html></html>")
+					return
+				}
+				if response.status == http.StatusFound {
+					w.Header().Set("Location", "/redirect-target")
+				}
 				w.WriteHeader(response.status)
 				_, _ = fmt.Fprint(w, response.body)
 			}))
@@ -136,5 +143,17 @@ func TestMetricAppResourceRejectsHTMLRedirectAndOversize(t *testing.T) {
 				t.Fatalf("expected resource failure, got %#v", got)
 			}
 		})
+	}
+}
+
+func TestMetricAppResourceDoesNotExposeSourceAddressOnFetchError(t *testing.T) {
+	host := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	address := host.URL + "/metric-analysis-mcp.html"
+	host.Close()
+	t.Setenv(metricAppEnv, address)
+	srv, _ := newMCPServerForProfile(nil, "zh-CN", defaultPTCServicePort, fullProfile)
+	got := fmt.Sprint(rpc(t, srv, "resources/read", map[string]any{"uri": metricAppURI}))
+	if !strings.Contains(got, "metric app resource unavailable") || strings.Contains(got, host.URL) {
+		t.Fatalf("resource error leaked source address or lost public message: %s", got)
 	}
 }
