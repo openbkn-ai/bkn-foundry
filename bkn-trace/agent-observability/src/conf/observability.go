@@ -20,6 +20,7 @@ type ObservabilityConfig struct {
 	CursorSigningKey               []byte
 	SourceTimeout                  time.Duration
 	MaxConcurrentSources           int
+	AuditProducerStatusEndpoint    string
 	SourceCoverageMetricsEndpoint  string
 	SourceCoverageSourceID         string
 	SourceCoverageDeploymentID     string
@@ -85,6 +86,7 @@ func NewObservabilityConfig() ObservabilityConfig {
 		CursorSigningKey:               []byte(os.Getenv("BKN_OBSERVABILITY_CURSOR_SIGNING_KEY")),
 		SourceTimeout:                  sourceTimeout,
 		MaxConcurrentSources:           maxConcurrentSources,
+		AuditProducerStatusEndpoint:    strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_AUDIT_PRODUCER_STATUS_ENDPOINT")),
 		SourceCoverageMetricsEndpoint:  strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT")),
 		SourceCoverageSourceID:         strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_SOURCE_ID")),
 		SourceCoverageDeploymentID:     strings.TrimSpace(os.Getenv("BKN_OBSERVABILITY_SOURCE_COVERAGE_DEPLOYMENT_ID")),

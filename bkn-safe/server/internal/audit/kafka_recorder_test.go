@@ -107,3 +107,24 @@ func TestKafkaRecorderCountsAcceptedAndDroppedWithoutPayload(t *testing.T) {
 		t.Fatal("metrics exposed request or target identity")
 	}
 }
+
+func TestUnavailablePublisherCountsDroppedRecordsNotBatches(t *testing.T) {
+	telemetry := NewPublishTelemetry()
+	recorder := NewKafkaRecorder(nil, "test", telemetry)
+	_ = recorder.RecordBatch(context.Background(), nil)
+	if s := telemetry.Snapshot(); s.DroppedRecords != 0 || s.LastFailureAt != nil {
+		t.Fatalf("empty batch fabricated drop: %+v", s)
+	}
+	entries := []Entry{{RequestID: "first"}, {RequestID: "second"}, {RequestID: "third"}}
+	if err := recorder.RecordBatch(context.Background(), entries); err == nil {
+		t.Fatal("unavailable batch must fail")
+	}
+	if s := telemetry.Snapshot(); s.DroppedRecords != 3 {
+		t.Fatalf("dropped records=%d want 3", s.DroppedRecords)
+	}
+	response := httptest.NewRecorder()
+	telemetry.ServeHTTP(response, httptest.NewRequest("GET", "/metrics", nil))
+	if !strings.Contains(response.Body.String(), `audit_event_publish_total{source_id="bkn-safe-admin",result="dropped",reason="unavailable"} 3`) {
+		t.Fatalf("metrics=%s", response.Body.String())
+	}
+}

@@ -108,6 +108,8 @@ func New(deps Deps) *gin.Engine {
 	r.GET("/health/alive", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	if deps.AuditTelemetry != nil {
 		r.GET("/metrics", gin.WrapH(deps.AuditTelemetry))
+		// Aggregate instance health only; ClusterIP trust boundary, like /metrics.
+		r.GET("/internal/audit/publish-status", gin.WrapF(deps.AuditTelemetry.ServeStatusHTTP))
 	}
 
 	// Internal authz API (service-to-service, ClusterIP, unauthenticated). The

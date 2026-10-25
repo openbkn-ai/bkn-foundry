@@ -14,15 +14,30 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
 )
 
-type auditLedgerSource struct{ reader *auditstore.Reader }
+type AuditCollectionStatusProvider interface {
+	Status() observabilityvo.AuditCollectionStatus
+}
 
-func NewAuditLedgerSource(reader *auditstore.Reader) *auditLedgerSource {
-	return &auditLedgerSource{reader: reader}
+type auditLedgerSource struct {
+	reader           *auditstore.Reader
+	collectionStatus AuditCollectionStatusProvider
+}
+
+func NewAuditLedgerSource(reader *auditstore.Reader, providers ...AuditCollectionStatusProvider) *auditLedgerSource {
+	source := &auditLedgerSource{reader: reader}
+	if len(providers) > 0 {
+		source.collectionStatus = providers[0]
+	}
+	return source
 }
 func (s *auditLedgerSource) ID() string                   { return "audit-ledger" }
 func (s *auditLedgerSource) SupportsSourceIDFilter() bool { return true }
 func (s *auditLedgerSource) Metadata() observabilityvo.SourceStatus {
-	return observabilityvo.SourceStatus{SourceID: s.ID(), Status: observabilityvo.SourceCoverageHealthy, Reliability: "best_effort", CollectionMethod: "kafka_audit", CoveredModules: []string{"system_management"}, CountAccuracy: "partial", Categories: []string{"access.user", "audit.admin", "audit.security"}}
+	collection := observabilityvo.UnknownAuditCollectionStatus()
+	if s.collectionStatus != nil {
+		collection = s.collectionStatus.Status()
+	}
+	return observabilityvo.SourceStatus{StatusScope: "query", CollectionStatus: &collection, SourceID: s.ID(), Status: observabilityvo.SourceCoverageHealthy, Reliability: "best_effort", CollectionMethod: "kafka_audit", CoveredModules: []string{"system_management"}, CountAccuracy: "partial", Categories: []string{"access.user", "audit.admin", "audit.security"}}
 }
 func (s *auditLedgerSource) Search(ctx context.Context, q observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	if q.TimeFrom == nil || q.TimeTo == nil {
