@@ -282,8 +282,18 @@ func TestDurableAnswerTransactionRecoveryMariaDB(t *testing.T) {
 		if old.ID == 0 {
 			t.Fatal("durable job was not leased")
 		}
+		if !old.PayloadDeferred || len(old.Payload) != 0 {
+			t.Fatal("answer claim must commit before reading its body")
+		}
+		old.Payload, err = store.LoadPayload(ctx, old)
+		if err != nil || len(old.Payload) == 0 {
+			t.Fatalf("current lease must load its durable answer: %v", err)
+		}
 		if _, err = db.ExecContext(ctx, "UPDATE bkn_trace_projection_outbox SET locked_until=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE status='processing'"); err != nil {
 			t.Fatal(err)
+		}
+		if _, err = store.LoadPayload(ctx, old); !errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+			t.Fatalf("expired lease must not load the answer body: %v", err)
 		}
 		// New objects emulate process loss. Reclamation uses SQL time, not a sleep.
 		recoveredStore := New(db)
@@ -536,6 +546,27 @@ func TestDurableAnswerPacketBoundaryMariaDB(t *testing.T) {
 			if !over {
 				if err != nil {
 					t.Fatal(err)
+				}
+				claimCtx, cancelClaim := context.WithTimeout(ctx, 2*time.Second)
+				items, claimErr := New(db).Lease(claimCtx, 100, 30*time.Second)
+				cancelClaim()
+				if claimErr != nil {
+					t.Fatal(claimErr)
+				}
+				var answer iprojectionoutbox.Item
+				for _, item := range items {
+					if item.EventType == sessionsvc.AnswerArtifactRequested {
+						answer = item
+					}
+				}
+				if !answer.PayloadDeferred || len(answer.Payload) != 0 {
+					t.Fatal("large answer must not load in the claim transaction")
+				}
+				taskCtx, cancelTask := context.WithTimeout(ctx, 10*time.Second)
+				loaded, loadErr := New(db).LoadPayload(taskCtx, answer)
+				cancelTask()
+				if loadErr != nil || sha256.Sum256(loaded) != sha256.Sum256(task) {
+					t.Fatalf("large deferred body changed: bytes=%d err=%v", len(loaded), loadErr)
 				}
 				var payloadBytes int
 				if err = db.QueryRowContext(ctx, "SELECT OCTET_LENGTH(payload) FROM bkn_trace_projection_outbox WHERE event_type='artifact.persist_requested'").Scan(&payloadBytes); err != nil || payloadBytes != target {

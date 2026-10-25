@@ -30,11 +30,15 @@ after the configured interval only when empty or after a worker error. The
 default 1s interval is not a one-task-per-second throughput limit. A slow answer
 still delays later evidence tasks in that slot; a deferred retry does not keep
 the slot occupied. Other projection handlers retain their existing behavior.
+Answer claims commit metadata and the lease without reading the body. The body
+is then read under the same answer-task deadline as delivery, fenced by the
+current lease. A body-read timeout follows normal counted retries and backoff,
+allowing later ready tasks to proceed; exhausted attempts use the existing DLQ.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `core.projection.leaseIOTimeout` | `2s` | SQL task-claim I/O deadline |
-| `core.projection.answerTaskIOTimeout` | `10s` | One answer attempt, including sequential storage calls and SQL settlement |
+| `core.projection.leaseIOTimeout` | `2s` | SQL metadata/lease claim I/O deadline |
+| `core.projection.answerTaskIOTimeout` | `10s` | One answer attempt, including SQL body loading, sequential storage calls and SQL settlement |
 | `core.projection.answerAckIOTimeout` | `2s` | Independent result/retry/dead-letter recording deadline |
 | `core.projection.lockDuration` | `30s` | Outbox task lease; separate from the business Interaction lease |
 

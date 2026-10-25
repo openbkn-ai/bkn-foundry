@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Defer answer outbox body reads until after the metadata claim commits, sharing the answer task deadline and existing retry/lease fencing. (#1691)
+
 - Durable answer delivery claims work only when its single worker slot is ready and drains ready tasks continuously. Configurable claim/answer/ACK deadlines must fit inside the task lease. New capture checks known policy and the inserting SQL connection's packet budget; committed replay remains policy-independent. Product manuals document timing, size, backlog and recovery limits. Existing user-triggered archive behavior is unchanged. (#1691)
 
 - Opt-in managed finish durably stages answer artifacts in the existing SQL outbox in the same transaction as business completion. Evidence delivery remains separate, with bounded worker retries, idempotent recovery and archive cleanup protection. Upgrade all Core workers before enabling the new path; no `abandoned` fallback. (#1691)

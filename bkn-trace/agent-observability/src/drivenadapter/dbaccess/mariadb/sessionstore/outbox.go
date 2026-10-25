@@ -60,7 +60,11 @@ func (s *Store) Lease(ctx context.Context, limit int, lockDuration time.Duration
 				break
 			}
 			remainingBytes -= int(payloadBytes)
-			payloadIDs = append(payloadIDs, item.ID)
+			if item.EventType == "artifact.persist_requested" {
+				item.PayloadDeferred = true
+			} else {
+				payloadIDs = append(payloadIDs, item.ID)
+			}
 		}
 		result = append(result, item)
 	}
@@ -121,6 +125,28 @@ func (s *Store) Lease(ctx context.Context, limit int, lockDuration time.Duration
 		return nil, err
 	}
 	return result, nil
+}
+
+// LoadPayload keeps large answer reads outside the short claim transaction.
+// The SQL predicate fences stale workers without taking a row lock during I/O.
+func (s *Store) LoadPayload(ctx context.Context, item iprojectionoutbox.Item) ([]byte, error) {
+	var payload []byte
+	var size int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT CASE WHEN OCTET_LENGTH(payload)<=? THEN payload ELSE NULL END, OCTET_LENGTH(payload)
+		FROM bkn_trace_projection_outbox
+		WHERE outbox_id=? AND status='processing' AND lease_token=?
+		  AND locked_until>UTC_TIMESTAMP(6)`, iprojectionoutbox.MaxPayloadBytes, item.ID, item.LeaseToken).Scan(&payload, &size)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, iprojectionoutbox.ErrLeaseLost
+	}
+	if err != nil {
+		return nil, err
+	}
+	if size > iprojectionoutbox.MaxPayloadBytes {
+		return nil, iprojectionoutbox.Permanent(errors.New("outbox item exceeds payload budget"))
+	}
+	return payload, nil
 }
 
 func (s *Store) MarkDelivered(ctx context.Context, item iprojectionoutbox.Item) error {

@@ -26,11 +26,14 @@
 队列非空时连续消费，空队列或 worker 出错后才按配置间隔再检查；默认 1 秒轮询
 不等于每秒只能处理一条。慢答案仍会延迟该槽位后续的证据任务；进入退避的重试不占槽位。
 其它投影 handler 保留既有行为。
+答案认领只提交元数据和租约，不读取正文；正文随后在同一个答案任务期限内读取，
+并校验当前租约。正文读取超时沿用计数重试和退避，让后续就绪任务继续处理；
+尝试耗尽后进入既有死信流程。
 
 | 配置 | 默认值 | 含义 |
 | --- | --- | --- |
-| `core.projection.leaseIOTimeout` | `2s` | SQL 任务认领 I/O 期限 |
-| `core.projection.answerTaskIOTimeout` | `10s` | 一次答案处理，包括顺序存储请求和 SQL 结算 |
+| `core.projection.leaseIOTimeout` | `2s` | SQL 元数据／租约认领 I/O 期限 |
+| `core.projection.answerTaskIOTimeout` | `10s` | 一次答案处理，包括 SQL 正文读取、顺序存储请求和 SQL 结算 |
 | `core.projection.answerAckIOTimeout` | `2s` | 独立记录结果、重试或死信的期限 |
 | `core.projection.lockDuration` | `30s` | outbox 任务租约，与业务 Interaction 租约不同 |
 

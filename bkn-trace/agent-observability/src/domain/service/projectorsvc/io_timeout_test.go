@@ -154,3 +154,103 @@ func TestAnswerDeadCallbackAndDLQShareOneACKBudget(t *testing.T) {
 		t.Fatalf("exhausted ACK budget claimed DLQ: %+v %v", result, err)
 	}
 }
+
+// singleClaimOutbox models one ready slot and exposes body loading separately.
+type singleClaimOutbox struct {
+	deadlineOutbox
+	load func(context.Context) ([]byte, error)
+}
+
+func (s *singleClaimOutbox) Lease(ctx context.Context, _ int, _ time.Duration) ([]iprojectionoutbox.Item, error) {
+	require := s.lease
+	if require != nil {
+		if err := require(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if len(s.items) == 0 {
+		return nil, nil
+	}
+	item := s.items[0]
+	s.items = s.items[1:]
+	return []iprojectionoutbox.Item{item}, nil
+}
+func (s *singleClaimOutbox) LoadPayload(ctx context.Context, _ iprojectionoutbox.Item) ([]byte, error) {
+	return s.load(ctx)
+}
+
+func TestAnswerBodySharesTaskBudgetWithDelivery(t *testing.T) {
+	store := &singleClaimOutbox{deadlineOutbox: deadlineOutbox{fakeOutboxStore: fakeOutboxStore{items: []iprojectionoutbox.Item{{ID: 1, EventType: "artifact.persist_requested", PayloadDeferred: true}}}}}
+	var taskDeadline time.Time
+	store.lease = func(ctx context.Context) error { requireDeadline(t, ctx, 100*time.Millisecond); return nil }
+	store.load = func(ctx context.Context) ([]byte, error) {
+		requireDeadline(t, ctx, time.Second)
+		taskDeadline, _ = ctx.Deadline()
+		return []byte("answer"), nil
+	}
+	handler := payloadCheckingAnswerHandler{handle: func(ctx context.Context, item iprojectionoutbox.Item) error {
+		deadline, _ := ctx.Deadline()
+		if !deadline.Equal(taskDeadline) || string(item.Payload) != "answer" {
+			t.Fatal("body load and delivery must share the same task budget")
+		}
+		return nil
+	}}
+	worker := projectorsvc.NewWorker(store, &fakeProjectionSink{}, projectorsvc.WorkerOptions{LeaseIOTimeout: 100 * time.Millisecond, AnswerTaskIOTimeout: time.Second, AnswerAckIOTimeout: time.Second, AnswerArtifactHandler: handler})
+	result, err := worker.Drain(context.Background())
+	if err != nil || result.Delivered != 1 {
+		t.Fatalf("%+v %v", result, err)
+	}
+}
+
+type payloadCheckingAnswerHandler struct {
+	handle func(context.Context, iprojectionoutbox.Item) error
+}
+
+func (h payloadCheckingAnswerHandler) HandleAnswerArtifact(ctx context.Context, item iprojectionoutbox.Item) error {
+	return h.handle(ctx, item)
+}
+func (h payloadCheckingAnswerHandler) MarkAnswerArtifactDead(context.Context, iprojectionoutbox.Item) error {
+	return nil
+}
+
+func TestAnswerBodyReadFailureDoesNotBlockNextTask(t *testing.T) {
+	for _, mode := range []string{"timeout-retry", "timeout-dead", "lost-lease"} {
+		t.Run(mode, func(t *testing.T) {
+			item := iprojectionoutbox.Item{ID: 1, EventType: "artifact.persist_requested", PayloadDeferred: true}
+			if mode == "timeout-dead" {
+				item.Attempts = 9
+			}
+			store := &singleClaimOutbox{deadlineOutbox: deadlineOutbox{fakeOutboxStore: fakeOutboxStore{items: []iprojectionoutbox.Item{item, {ID: 2, EventType: "interaction.completed"}}}}}
+			store.load = func(ctx context.Context) ([]byte, error) {
+				requireDeadline(t, ctx, time.Second)
+				if mode == "lost-lease" {
+					return nil, iprojectionoutbox.ErrLeaseLost
+				}
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+
+			handler := deadlineAnswerHandler{handle: func(context.Context) error { t.Fatal("unloaded body reached artifact storage"); return nil }}
+			sink := &fakeProjectionSink{}
+			worker := projectorsvc.NewWorker(store, sink, projectorsvc.WorkerOptions{AnswerArtifactHandler: handler, AnswerTaskIOTimeout: 20 * time.Millisecond, AnswerAckIOTimeout: time.Second, FullJitter: func(time.Duration) time.Duration { return time.Minute }})
+			result, err := worker.Drain(context.Background())
+			if err != nil || result.Delivered != 1 || sink.calls != 1 {
+				t.Fatalf("later projection blocked: %+v %v", result, err)
+			}
+			switch mode {
+			case "timeout-retry":
+				if result.Retried != 1 || !store.retryAt.After(time.Now()) {
+					t.Fatalf("read timeout did not enter backoff: %+v", result)
+				}
+			case "timeout-dead":
+				if result.Dead != 1 {
+					t.Fatalf("read failure cannot exhaust retries: %+v", result)
+				}
+			case "lost-lease":
+				if result.Retried != 0 || result.Dead != 0 || len(store.delivered) != 1 || store.delivered[0] != 2 {
+					t.Fatalf("stale worker recorded an answer result: %+v", result)
+				}
+			}
+		})
+	}
+}

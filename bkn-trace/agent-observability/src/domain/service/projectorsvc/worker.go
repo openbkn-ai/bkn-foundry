@@ -139,13 +139,29 @@ func (w *Worker) runItem(ctx context.Context, item iprojectionoutbox.Item) (RunR
 	if item.EventType == "artifact.persist_requested" {
 		taskCtx, cancelTask = ioContext(ctx, w.options.AnswerTaskIOTimeout)
 	}
-	projectionErr := w.project(taskCtx, item)
+	var projectionErr error
+	if item.PayloadDeferred && !item.PayloadTooLarge {
+		if loader, ok := w.store.(iprojectionoutbox.PayloadLoader); ok {
+			item.Payload, projectionErr = loader.LoadPayload(taskCtx, item)
+		} else {
+			projectionErr = errors.New("deferred outbox payload loader is unavailable")
+		}
+	}
+	if projectionErr == nil {
+		projectionErr = taskCtx.Err()
+	}
+	if projectionErr == nil {
+		projectionErr = w.project(taskCtx, item)
+	}
 	if projectionErr == nil {
 		projectionErr = taskCtx.Err()
 	}
 	cancelTask()
 	if err := ctx.Err(); err != nil {
 		return result, err
+	}
+	if errors.Is(projectionErr, iprojectionoutbox.ErrLeaseLost) {
+		return result, nil
 	}
 	ackCtx, cancelACK := ctx, func() {}
 	if item.EventType == "artifact.persist_requested" {
