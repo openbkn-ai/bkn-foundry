@@ -19,6 +19,7 @@ type recordIntegrityBatcher interface {
 // transactions. The batcher defers failed candidates across cursor passes.
 func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBatcher, interval time.Duration) {
 	cursor := ""
+	var errorLog recordIntegrityErrorLogThrottle
 	for {
 		if ctx.Err() != nil {
 			return
@@ -30,8 +31,8 @@ func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBa
 			return
 		}
 		cursor = next
-		if err != nil {
-			log.Printf("record integrity materialization batch incomplete; candidates remain pending: %v", err)
+		if errorLog.shouldLog(time.Now(), err) {
+			log.Print("record integrity materialization batch incomplete; inspect persisted materialization status")
 		}
 		timer := time.NewTimer(interval)
 		select {
@@ -41,4 +42,18 @@ func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBa
 		case <-timer.C:
 		}
 	}
+}
+
+// Successful or skipped passes do not reset the error log window. Individual
+// failure details and exhausted attempts remain available in persisted status.
+type recordIntegrityErrorLogThrottle struct {
+	nextLogAt time.Time
+}
+
+func (throttle *recordIntegrityErrorLogThrottle) shouldLog(now time.Time, err error) bool {
+	if err == nil || now.Before(throttle.nextLogAt) {
+		return false
+	}
+	throttle.nextLogAt = now.Add(5 * time.Minute)
+	return true
 }

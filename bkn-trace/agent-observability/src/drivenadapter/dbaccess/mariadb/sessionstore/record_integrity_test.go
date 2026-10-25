@@ -52,7 +52,7 @@ func TestMariaDBRecordIntegrityCASOnlyFirstMatchingVersion(t *testing.T) {
 func TestMariaDBRecordIntegrityCandidatesReturnLightweightKeyset(t *testing.T) {
 	store, mock := newTransactionErrorStore(t)
 	port := integritySQLPort(t, store)
-	mock.ExpectQuery(`SELECT interaction_id, record_integrity_version FROM bkn_trace_interactions WHERE record_integrity_pending=1 AND interaction_id>\? ORDER BY interaction_id ASC LIMIT \?`).WithArgs("a", 2).WillReturnRows(sqlmock.NewRows([]string{"interaction_id", "record_integrity_version"}).AddRow("b", 3).AddRow("c", 0))
+	mock.ExpectQuery(`SELECT i.interaction_id, i.record_integrity_version FROM bkn_trace_interactions i LEFT JOIN bkn_trace_record_integrity_retries r .*ORDER BY i.interaction_id ASC LIMIT \?`).WithArgs("a", 2).WillReturnRows(sqlmock.NewRows([]string{"interaction_id", "record_integrity_version"}).AddRow("b", 3).AddRow("c", 0))
 	entries, err := port.ListRecordIntegrityCandidates(context.Background(), "a", 2)
 	if err != nil || len(entries) != 2 || entries[0].ID != "b" || entries[0].IntegritySourceVersion != 3 || entries[0].ConversationID != "" {
 		t.Fatalf("wrong candidate page: %#v %v", entries, err)

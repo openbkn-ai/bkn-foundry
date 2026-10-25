@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Record-integrity materialization now persists retry diagnostics per interaction/source generation, with at most 8 attempts in 30 minutes and 30-second to 5-minute backoff. Authorized readers can inspect the current generation through read-only `GET /api/agent-observability/v1/interactions/{interaction_id}/record-integrity-status`; reads neither inspect evidence live nor requeue work, and source changes schedule a new generation while preserving prior retry history. Migration 039 requires separate approval before deployment. Older images reject unknown migration ledger versions: safe rollback requires retaining a compatible migration manifest and separately reviewed worker shutdown, rather than directly rolling back the image. No manual requeue or UI is added. (#2149)
+
 - Historical capture can use bounded gzip-body JSON when base64 expansion exceeds the package budget, preserving raw bytes, identity, gaps, old v1 reads and small-package hashes. Encoded and aggregate decoded budgets remain enforced; Revision inputs stay v1. (#2148)
 
 - Trace scanner Tool matching uses the authorized receipt snapshot after archive purge removes SQL receipts. PIT cleanup failures no longer discard complete successful results; deterministic scan-limit errors return 422 while deadlines return 503. (#2144)
