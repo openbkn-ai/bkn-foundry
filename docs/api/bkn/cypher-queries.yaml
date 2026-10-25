@@ -10,8 +10,8 @@ info:
     properties, and a projection of properties and aggregates of them. Everything else is
     refused by name rather than approximated.
     Paging is written in the query itself with SKIP and LIMIT; there is no paging parameter.
-    Exposed under /api/bkn-backend/v1 (OAuth2) and /api/ontology-manager/v1 (alias), with the
-    branch query parameter defaulting to main.
+    Exposed under /api/bkn-backend/v1 (OAuth2), with the branch query parameter defaulting
+    to main.
 security:
   - OAuth2: []
 paths:

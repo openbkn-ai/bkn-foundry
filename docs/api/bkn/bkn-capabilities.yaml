@@ -161,8 +161,8 @@ info:
     network `execute` (execution scope resolution); public discovery and execution endpoints each
     enforce their own operation before calling it.
 
-    **Prefix aliases**: every path below is also served under `/api/ontology-manager/v1`, and
-    the internal face under `/api/bkn-backend/in/v1` and `/api/ontology-manager/in/v1`.
+    Public paths use `/api/bkn-backend/v1`; the internal face uses
+    `/api/bkn-backend/in/v1`.
 paths:
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/capabilities:
     get:

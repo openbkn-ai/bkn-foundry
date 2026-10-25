@@ -100,8 +100,7 @@ func registeredOperationAudit(method, fullPath, methodOverride string) (operatio
 	}
 	path := strings.TrimSpace(fullPath)
 	for _, prefix := range []string{
-		"/api/bkn-backend/v1", "/api/bkn-backend/v2", "/api/ontology-manager/v1",
-		"/api/bkn-backend/in/v1", "/api/ontology-manager/in/v1",
+		"/api/bkn-backend/v1", "/api/bkn-backend/v2", "/api/bkn-backend/in/v1",
 	} {
 		if strings.HasPrefix(path, prefix) {
 			path = strings.TrimPrefix(path, prefix)
@@ -281,8 +280,7 @@ func operationAuditVisitor(c *gin.Context) (hydra.Visitor, bool) {
 
 func operationAuditInternalRoute(fullPath string) bool {
 	path := strings.TrimSpace(fullPath)
-	return strings.HasPrefix(path, "/api/bkn-backend/in/v1/") ||
-		strings.HasPrefix(path, "/api/ontology-manager/in/v1/")
+	return strings.HasPrefix(path, "/api/bkn-backend/in/v1/")
 }
 
 type extractedOperationAuditFacts struct {
