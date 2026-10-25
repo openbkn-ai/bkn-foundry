@@ -398,7 +398,7 @@ func (s *Service) CreateNewGeneration(ctx context.Context, command EnsureConvers
 func (s *Service) GetConversation(ctx context.Context, owner sessionvo.Owner, conversationID string) (sessionvo.Conversation, error) {
 	var result sessionvo.Conversation
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
-		conversation, err := ownedConversation(tx, owner, conversationID)
+		conversation, err := readOwnedConversation(tx, owner, conversationID)
 		if err != nil {
 			return err
 		}
@@ -482,7 +482,7 @@ func (s *Service) GetInteraction(ctx context.Context, owner sessionvo.Owner, int
 		if !found {
 			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
-		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
+		if _, err := readOwnedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
 		}
 		result = interaction
@@ -498,7 +498,7 @@ func (s *Service) GetOperation(ctx context.Context, owner sessionvo.Owner, opera
 		if !found {
 			return resourceNotDisclosed(CauseOperationNotFound)
 		}
-		if _, err := ownedConversation(tx, owner, operation.ConversationID); err != nil {
+		if _, err := readOwnedConversation(tx, owner, operation.ConversationID); err != nil {
 			return err
 		}
 		result = operation
@@ -518,7 +518,7 @@ func (s *Service) ListOperationCallFacts(
 		if !found {
 			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
-		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
+		if _, err := readOwnedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
 		}
 		result = tx.ListOperationCallFacts(interactionID)
@@ -541,7 +541,7 @@ func (s *Service) ListOperationCallSummaries(
 		if !found {
 			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
-		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
+		if _, err := readOwnedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
 		}
 		result = tx.ListOperationCallSummaries(interactionID)
@@ -565,7 +565,7 @@ func (s *Service) GetOperationCallFact(
 		if !found {
 			return resourceNotDisclosed(CauseOperationNotFound)
 		}
-		if _, err := ownedConversation(tx, owner, operation.ConversationID); err != nil {
+		if _, err := readOwnedConversation(tx, owner, operation.ConversationID); err != nil {
 			return err
 		}
 		fact, found := tx.FindOperationCallFact(operationID, attempt)
@@ -706,7 +706,7 @@ func (s *Service) GetReceipt(ctx context.Context, owner sessionvo.Owner, receipt
 		if !found {
 			return resourceNotDisclosed(CauseReceiptNotFound)
 		}
-		if _, err := ownedConversation(tx, owner, receipt.ConversationID); err != nil {
+		if _, err := readOwnedConversation(tx, owner, receipt.ConversationID); err != nil {
 			return err
 		}
 		result = receipt
@@ -1853,7 +1853,7 @@ func (s *Service) ListAssemblyRevisions(ctx context.Context, owner sessionvo.Own
 		if !found {
 			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
-		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
+		if _, err := readOwnedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
 		}
 		result = tx.ListAssemblyRevisions(interactionID)
@@ -2009,6 +2009,19 @@ func evidenceReferenceCount(receipts []sessionvo.Receipt, replacingReceiptID str
 		}
 	}
 	return len(unique)
+}
+
+// readOwnedConversation checks the same complete owner as lifecycle mutations,
+// without serializing status reads behind the conversation write lock.
+func readOwnedConversation(tx isessionstore.Transaction, owner sessionvo.Owner, conversationID string) (sessionvo.Conversation, error) {
+	conversation, found := tx.PeekConversation(conversationID)
+	if !found {
+		return sessionvo.Conversation{}, resourceNotDisclosed(CauseConversationNotFound)
+	}
+	if !conversation.Owner.Equal(owner) {
+		return sessionvo.Conversation{}, resourceNotDisclosed(CauseConversationOwnerMismatch)
+	}
+	return conversation, nil
 }
 
 func ownedConversation(tx isessionstore.Transaction, owner sessionvo.Owner, conversationID string) (sessionvo.Conversation, error) {
