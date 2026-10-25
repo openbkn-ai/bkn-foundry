@@ -107,8 +107,14 @@ select source facts through authorized receipt tuples, so an earlier foreign
 fact with the same Trace ID cannot replace an owner's root service. Global
 reader semantics are preserved. No schema or new materialized model is added.
 
-Discovery has a 3-second query budget and returns no partial names on a failed,
-truncated or timed-out scan. The production artifact reader skips question/result
+Discovery has a 3-second query budget and returns no names on an actual failure,
+truncated input or timeout. Once an extra distinct authorized name proves
+`has_more`, the scanner stops loading remaining metadata batches while retaining
+PIT cleanup. The SQL discovery statement additionally uses MariaDB's per-statement
+`max_statement_time=3`; it does not change session/global limits. Server timeout
+1969 is mapped to the existing query-timeout response. MariaDB checks its timeout
+at execution checkpoints, so this is a server-side budget rather than an exact
+wall-clock bound. The production artifact reader skips question/result
 content and all Span statistics; error filtering still reads the necessary
 recorded failure metadata. Query cost can grow with the matching receipt set, so
 budget errors ask users to narrow the time range/filters. Existing list/detail

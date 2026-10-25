@@ -20,6 +20,9 @@ import (
 // MaxTraceRootServiceOptions bounds discovery result memory.
 const MaxTraceRootServiceOptions = 100
 
+// Only the exact visitor stop signal is successful; wrapped scan errors remain failures.
+var errTraceRootServicesLimitReached = errors.New("trace root service option limit established")
+
 var (
 	ErrTraceRootServicesUnsupported = errors.New("trace root service filters are unsupported")
 	ErrTraceRootServicesUnavailable = errors.New("trace root service discovery is unavailable")
@@ -82,13 +85,17 @@ func (s *Service) ListTraceRootServices(ctx context.Context, o evidencevo.Summar
 		}
 		if len(names) == limit {
 			hasMore = true
-			return nil
+			return errTraceRootServicesLimitReached
 		}
 		names[name] = struct{}{}
 		return nil
 	})
-	if err == nil {
-		err = ctx.Err()
+	if contextErr := ctx.Err(); contextErr != nil {
+		err = contextErr
+	} else if err == errTraceRootServicesLimitReached && hasMore {
+		// Each emitted batch has already passed canonical authorization and
+		// filtering. One extra distinct name proves this bounded response.
+		err = nil
 	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {

@@ -197,3 +197,68 @@ func TestTraceRootServicesSimpleMembershipUsesOptionalHotSQLStore(t *testing.T) 
 		t.Fatal("TraceID must retain scanner path")
 	}
 }
+
+type boundedRootServiceSource struct {
+	rootServiceScanSource
+	batches   []iprojectionsource.Result
+	visited   int
+	failAfter int
+	failure   error
+	cancel    context.CancelFunc
+	wrapStop  bool
+}
+
+func (s *boundedRootServiceSource) ScanTraceSummaryProjection(_ context.Context, _ iprojectionsource.Query, visit func(iprojectionsource.Result) error) error {
+	for _, batch := range s.batches {
+		s.visited++
+		err := visit(batch)
+		if s.cancel != nil && err != nil {
+			s.cancel()
+		}
+		if err != nil {
+			if s.wrapStop {
+				return errors.Join(err, s.failure)
+			}
+			return err
+		}
+		if s.failAfter == s.visited {
+			return s.failure
+		}
+	}
+	return nil
+}
+func TestTraceRootServicesStopsOnlyAfterAuthorizedExtraDistinctName(t *testing.T) {
+	source := &boundedRootServiceSource{batches: []iprojectionsource.Result{rootServiceResult("first", "first"), rootServiceResult("second"), rootServiceResult("must-not-load")}}
+	svc := New(evidencestore.New(), WithProjectionSource(source))
+	o := evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Status: "completed"}
+	result, err := svc.ListTraceRootServices(context.Background(), o, "", 1)
+	if err != nil || !result.HasMore || !reflect.DeepEqual(result.Entries, []string{"first"}) || source.visited != 2 {
+		t.Fatalf("bounded result=%+v visits=%d err=%v", result, source.visited, err)
+	}
+	for _, failure := range []error{iprojectionsource.ErrSummaryScanBudgetExceeded, ErrSummaryProjectionLag, errors.New("unrecognized source failure")} {
+		source.visited = 0
+		source.failAfter = 1
+		source.failure = failure
+		result, err = svc.ListTraceRootServices(context.Background(), o, "", 1)
+		if !errors.Is(err, failure) || len(result.Entries) != 0 || result.HasMore || source.visited != 1 {
+			t.Fatalf("failure discarded: %+v visits=%d err=%v", result, source.visited, err)
+		}
+	}
+	// A source must not turn a wrapped/combined error into successful truncation.
+	source.visited = 0
+	source.failAfter = 0
+	source.wrapStop = true
+	result, err = svc.ListTraceRootServices(context.Background(), o, "", 1)
+	if !errors.Is(err, source.failure) || len(result.Entries) != 0 || result.HasMore {
+		t.Fatalf("unknown wrapped failure swallowed: %+v %v", result, err)
+	}
+	// Cancellation wins even if a source returns the exact stop signal.
+	source.visited = 0
+	source.wrapStop = false
+	ctx, cancel := context.WithCancel(context.Background())
+	source.cancel = cancel
+	result, err = svc.ListTraceRootServices(ctx, o, "", 1)
+	if !errors.Is(err, context.Canceled) || len(result.Entries) != 0 || result.HasMore {
+		t.Fatalf("cancellation swallowed: %+v %v", result, err)
+	}
+}

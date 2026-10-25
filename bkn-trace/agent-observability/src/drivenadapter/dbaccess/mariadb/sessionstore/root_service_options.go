@@ -7,8 +7,10 @@ package sessionstore
 
 import (
 	"context"
+	"errors"
 	"strings"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
@@ -58,25 +60,39 @@ func (s *Store) ListTraceRootServiceOptions(ctx context.Context, q isessionstore
 	statement := "SELECT DISTINCT CAST(root_service AS BINARY) FROM (SELECT " + expr + " AS root_service FROM (SELECT DISTINCT r.trace_id FROM bkn_trace_receipts r WHERE " + strings.Join(where, " AND ") + ") selected) roots WHERE root_service IS NOT NULL AND root_service<>'' AND LOCATE(CAST(LOWER(?) AS BINARY),CAST(LOWER(root_service) AS BINARY))>0 ORDER BY CAST(root_service AS BINARY) LIMIT ?"
 	values := append(rootArgs, args...)
 	values = append(values, strings.TrimSpace(search), limit+1)
-	rows, err := s.db.QueryContext(ctx, statement, values...)
+	rows, err := s.db.QueryContext(ctx, rootServiceBudgetStatement(statement), values...)
 	if err != nil {
-		return nil, false, err
+		return nil, false, rootServiceQueryError(err)
 	}
 	defer func() { _ = rows.Close() }()
 	result := []string{}
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return nil, false, err
+			return nil, false, rootServiceQueryError(err)
 		}
 		result = append(result, name)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, false, err
+		return nil, false, rootServiceQueryError(err)
 	}
 	more := len(result) > limit
 	if more {
 		result = result[:limit]
 	}
 	return result, more, nil
+}
+
+// Scope the database execution limit to discovery only; canceling a driver
+// connection does not itself establish that server execution has stopped.
+func rootServiceBudgetStatement(statement string) string {
+	return "SET STATEMENT max_statement_time=3 FOR " + statement
+}
+
+func rootServiceQueryError(err error) error {
+	var dbErr *mysql.MySQLError
+	if errors.As(err, &dbErr) && dbErr.Number == 1969 {
+		return errors.Join(context.DeadlineExceeded, err)
+	}
+	return err
 }
