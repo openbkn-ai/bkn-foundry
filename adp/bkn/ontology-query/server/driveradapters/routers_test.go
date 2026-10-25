@@ -9,6 +9,7 @@ package driveradapters
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,6 +33,23 @@ func TestOperationSpanAttributesUseRouteTemplate(t *testing.T) {
 		attributes[1].Value.AsString() != "/api/ontology-query/v1/knowledge-networks/:kn_id/subgraph" ||
 		attributes[2].Value.AsInt64() != http.StatusAccepted {
 		t.Fatalf("unexpected span attributes: %#v", attributes)
+	}
+}
+
+func TestBindObjectMetricRequestPreservesLargeNumericLiterals(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
+		`{"instance_identities":[{"id":9007199254740993}],"having":{"operator":"eq","value":0.1234567890123456789012345}}`))
+	var body interfaces.ObjectMetricQueryRequestV1
+	if err := bindObjectMetricRequestV1(ctx, &body); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := body.InstanceIdentities[0]["id"].(json.Number); !ok || got.String() != "9007199254740993" {
+		t.Fatalf("identity = %#v, want precise json.Number", body.InstanceIdentities[0]["id"])
+	}
+	if got, ok := body.Having.Value.(json.Number); !ok || got.String() != "0.1234567890123456789012345" {
+		t.Fatalf("having = %#v, want precise json.Number", body.Having.Value)
 	}
 }
 

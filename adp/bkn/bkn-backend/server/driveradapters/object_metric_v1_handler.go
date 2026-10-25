@@ -7,12 +7,14 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -69,6 +71,15 @@ func RegisterObjectMetricRoutes(
 	internal.GET("/knowledge-networks/:kn_id/object-metrics", handler.ListObjectMetricsByIn)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/provenance", handler.GetObjectMetricProvenanceByIn)
 	internal.GET("/knowledge-networks/:kn_id/object-metrics/:metric_id/execution-context", handler.GetObjectMetricExecutionContextByIn)
+}
+
+func bindObjectMetricDefinitionV1(c *gin.Context, target any) error {
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	return binding.Validator.ValidateStruct(target)
 }
 
 func (r *restHandler) objectMetricExternal(c *gin.Context, next func(*gin.Context, hydra.Visitor)) {
@@ -167,7 +178,7 @@ func (r *restHandler) CreateObjectMetricDraftByEx(c *gin.Context) {
 
 func (r *restHandler) createObjectMetricDraft(c *gin.Context, vis hydra.Visitor) {
 	var definition interfaces.ObjectMetricDefinitionV1
-	if err := c.ShouldBindJSON(&definition); err != nil {
+	if err := bindObjectMetricDefinitionV1(c, &definition); err != nil {
 		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
@@ -185,7 +196,7 @@ func (r *restHandler) UpdateObjectMetricDraftByEx(c *gin.Context) {
 
 func (r *restHandler) updateObjectMetricDraft(c *gin.Context, vis hydra.Visitor) {
 	var definition interfaces.ObjectMetricDefinitionV1
-	if err := c.ShouldBindJSON(&definition); err != nil {
+	if err := bindObjectMetricDefinitionV1(c, &definition); err != nil {
 		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
@@ -408,7 +419,7 @@ func (r *restHandler) validateObjectMetricVersion(c *gin.Context, vis hydra.Visi
 
 func (r *restHandler) validateObjectMetric(c *gin.Context, vis hydra.Visitor) {
 	var definition interfaces.ObjectMetricDefinitionV1
-	if err := c.ShouldBindJSON(&definition); err != nil {
+	if err := bindObjectMetricDefinitionV1(c, &definition); err != nil {
 		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}
@@ -453,7 +464,7 @@ func (r *restHandler) GetObjectMetricExecutionContextByIn(c *gin.Context) {
 
 func (r *restHandler) previewObjectMetric(c *gin.Context, vis hydra.Visitor) {
 	var definition interfaces.ObjectMetricDefinitionV1
-	if err := c.ShouldBindJSON(&definition); err != nil {
+	if err := bindObjectMetricDefinitionV1(c, &definition); err != nil {
 		replyObjectMetricError(c, httperrors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, berrors.BknBackend_ObjectMetric_InvalidDefinition).WithErrorDetails(err.Error()))
 		return
 	}

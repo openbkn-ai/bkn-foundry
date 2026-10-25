@@ -73,7 +73,6 @@ var TypeMapping = map[string]string{
 	// Boolean types.
 	"boolean": interfaces.DataType_Boolean,
 	"bool":    interfaces.DataType_Boolean,
-	"bit":     interfaces.DataType_Boolean,
 
 	// Binary types.
 	"binary":     interfaces.DataType_Binary,
@@ -89,9 +88,15 @@ var TypeMapping = map[string]string{
 
 var columnTypeComments = regexp.MustCompile(`(?s)/\*.*?\*/`)
 
+// An unqualified BIT result has no width information, so only BIT(1) can be declared boolean.
+var singleBitType = regexp.MustCompile(`(?i)^\s*bit\s*\(\s*1\s*\)\s*$`)
+
 // MapType maps a source COLUMN_TYPE to a VEGA type, or Other when no mapping exists.
 // Parameters, comments, and trailing ZEROFILL are removed before looking up the type.
 func (c *MariaDBConnector) MapType(nativeType string) string {
+	if singleBitType.MatchString(nativeType) {
+		return interfaces.DataType_Boolean
+	}
 	normalizedType := strings.ToLower(nativeType)
 
 	// Remove parameters without losing suffixes: int(11) unsigned becomes int unsigned.

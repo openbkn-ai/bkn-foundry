@@ -32,6 +32,25 @@ func convertValue(v any, preserveBinary bool) any {
 	return v
 }
 
+// convertSingleBitValue decodes MariaDB BIT(1) without treating arbitrary bytes as truthy.
+func convertSingleBitValue(value any) (bool, error) {
+	if boolean, ok := value.(bool); ok {
+		return boolean, nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok || len(bytes) != 1 {
+		return false, fmt.Errorf("invalid BIT(1) value")
+	}
+	switch bytes[0] {
+	case 0:
+		return false, nil
+	case 1:
+		return true, nil
+	default:
+		return false, fmt.Errorf("invalid BIT(1) value")
+	}
+}
+
 // BuildPagedSQL wraps validated read-only SQL with LIMIT and OFFSET.
 // The inner query retains its own ordering and limits; the newline terminates trailing line comments.
 func (c *MariaDBConnector) BuildPagedSQL(sqlStr string, offset, limit int) string {
@@ -91,7 +110,13 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	defer func() { _ = rows.Close() }()
 
 	binaryContentColumns := table.QueryBinaryContentColumns(resource, params)
-	result, err := c.scanQueryRows(rows, binaryContentColumns)
+	bitOneColumns := make(map[string]bool)
+	for _, property := range resource.SchemaDefinition {
+		if property != nil && property.Type == interfaces.DataType_Boolean && singleBitType.MatchString(property.OriginalType) {
+			bitOneColumns[property.Name] = true
+		}
+	}
+	result, err := c.scanQueryRows(rows, binaryContentColumns, bitOneColumns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan query rows: %w", err)
 	}
@@ -145,7 +170,7 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*i
 		return nil, fmt.Errorf("failed to read result column types: %w", err)
 	}
 
-	result, err := c.scanQueryRows(rows, nil)
+	result, err := c.scanQueryRows(rows, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan raw query rows: %w", err)
 	}
@@ -346,10 +371,20 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 
 // scanQueryRows reads result rows and preserves binary content only for selected columns.
 // It leaves Total unchanged; callers determine totals according to the query contract.
-func (c *MariaDBConnector) scanQueryRows(rows *sql.Rows, binaryContentColumns map[string]bool) (*interfaces.QueryResult, error) {
+func (c *MariaDBConnector) scanQueryRows(rows *sql.Rows, binaryContentColumns, bitOneColumns map[string]bool) (*interfaces.QueryResult, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read result columns: %w", err)
+	}
+	var columnTypes []*sql.ColumnType
+	if len(bitOneColumns) > 0 {
+		columnTypes, err = rows.ColumnTypes()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read result column types: %w", err)
+		}
+		if len(columnTypes) != len(columns) {
+			return nil, fmt.Errorf("result column types do not match result columns")
+		}
 	}
 	result := &interfaces.QueryResult{
 		Columns: columns,
@@ -368,6 +403,18 @@ func (c *MariaDBConnector) scanQueryRows(rows *sql.Rows, binaryContentColumns ma
 
 		entry := make(map[string]any)
 		for i, column := range columns {
+			if bitOneColumns[column] && strings.EqualFold(columnTypes[i].DatabaseTypeName(), "BIT") {
+				if values[i] == nil {
+					entry[column] = nil
+					continue
+				}
+				converted, err := convertSingleBitValue(values[i])
+				if err != nil {
+					return nil, fmt.Errorf("invalid BIT(1) value for column %q: %w", column, err)
+				}
+				entry[column] = converted
+				continue
+			}
 			entry[column] = convertValue(values[i], binaryContentColumns[column])
 		}
 		result.Entries = append(result.Entries, entry)

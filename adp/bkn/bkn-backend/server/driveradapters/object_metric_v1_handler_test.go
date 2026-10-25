@@ -32,6 +32,21 @@ type objectMetricBindServiceStub struct {
 	upgradeCalls int
 }
 
+func TestBindObjectMetricDefinitionPreservesExactLiterals(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
+		`{"specification":{"measure":{"expression":{"node_type":"literal","value_type":"decimal","value":0.1234567890123456789012345}}}}`))
+	var definition interfaces.ObjectMetricDefinitionV1
+	if err := bindObjectMetricDefinitionV1(ctx, &definition); err != nil {
+		t.Fatal(err)
+	}
+	value := definition.Specification.Measure.Expression.Value
+	if got, ok := value.(json.Number); !ok || got.String() != "0.1234567890123456789012345" {
+		t.Fatalf("literal = %#v, want exact json.Number", value)
+	}
+}
+
 func (s *objectMetricBindServiceStub) Get(_ context.Context, _, _, _ string, version int) (*interfaces.ObjectMetricRecordV1, error) {
 	s.getCalls++
 	return &interfaces.ObjectMetricRecordV1{Definition: interfaces.ObjectMetricDefinitionV1{

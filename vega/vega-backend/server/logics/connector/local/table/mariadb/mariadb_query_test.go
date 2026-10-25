@@ -52,6 +52,21 @@ func TestMariaDBConnectorExecuteRawSQL(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	t.Run("raw BIT result with unknown width is not claimed as boolean", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+			sqlmock.NewColumn("metric_flag").OfType("BIT", []byte{}),
+		).AddRow([]byte{1}))
+		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT metric_flag FROM orders")
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.ColumnInfo{{Name: "metric_flag", Type: interfaces.DataType_Other}}, result.Columns)
+		assert.Equal(t, []map[string]any{{"metric_flag": "\x01"}}, result.Entries)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("raw scan errors retain their cause and classification", func(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -74,6 +89,42 @@ func TestMariaDBConnectorExecuteRawSQL(t *testing.T) {
 }
 
 func TestMariaDBConnectorExecuteQuery(t *testing.T) {
+	t.Run("single bit source values become JSON booleans", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{
+			{Name: "metric_flag", OriginalType: "bit(1)", Type: interfaces.DataType_Boolean},
+		}}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+			sqlmock.NewColumn("metric_flag").OfType("BIT", []byte{}),
+		).AddRow([]byte{1}).AddRow([]byte{0}).AddRow(nil))
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{
+			{"metric_flag": true}, {"metric_flag": false}, {"metric_flag": nil},
+		}, result.Entries)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("invalid single bit source value fails rather than changing truthiness", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{
+			{Name: "metric_flag", OriginalType: "bit(1)", Type: interfaces.DataType_Boolean},
+		}}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+			sqlmock.NewColumn("metric_flag").OfType("BIT", []byte{}),
+		).AddRow([]byte{2}))
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{})
+		assert.Nil(t, result)
+		assert.ErrorContains(t, err, "invalid BIT(1) value")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("aggregate alias conflicts reject duplicate result columns", func(t *testing.T) {
 		for _, kind := range []string{"explicit", "default", "implicit"} {
 			t.Run(kind, func(t *testing.T) {
