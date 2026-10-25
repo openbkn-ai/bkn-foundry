@@ -308,8 +308,14 @@ func (service *Service) RetryCleanup(ctx context.Context, jobID string) (job Job
 		if !ok || current.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
 			return fmt.Errorf("archive cleanup cannot be retried")
 		}
-		if len(current.Candidates) != len(current.CandidateIDs) {
-			return fmt.Errorf("archive cleanup candidates are unavailable")
+		reader, _ := service.objectStore.(ReadStore)
+		if err := verifyCleanupArchive(ctx, reader, current); err != nil {
+			verificationErr := fmt.Errorf("archive cleanup verification failed: %w", err)
+			// Read errors can contain signed object URLs; expose only a safe hint.
+			current.ErrorMessage = "archive cleanup verification failed; restore the matching archive objects before retrying"
+			current.UpdatedAt = service.now().UTC()
+			job = current
+			return errors.Join(verificationErr, service.store.Update(current))
 		}
 		var e error
 		job, e = service.cleanBatch(ctx, current)

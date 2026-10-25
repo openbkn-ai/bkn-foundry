@@ -80,11 +80,22 @@ job and frozen payload stay available for operator review. No fallback deletes
 by Trace ID. Packages with no technical Trace references retain their no-op
 technical cleanup behavior.
 
-Archive credentials must permit bulk document deletion and real-time document
-reads on the concrete indices. A denied/ambiguous response preserves the
+Before retrying cleanup, the service re-reads the existing manifest and JSONL
+object through the object-store read port. The manifest must match the durable
+job ID, kind and candidate count, reference its sibling `data.jsonl`, and carry
+the SHA256 of the frozen candidate payloads in their original order. A streamed
+read verifies the exact expected byte length and digest without loading another
+full bundle. Missing, unreadable or mismatched objects, or a custom object store
+without read support, refuse cleanup. The job remains `cleanup_incomplete` with
+its frozen candidates and progress intact; restore the matching object and retry.
+The existing manifest format is unchanged, and retry never rewrites the archive.
+This checks the objects read during retry; it does not lock object-store versions
+against later external changes.
+
+Archive credentials must permit archive object reads as well as bulk document
+deletion and real-time document reads on the concrete indices. A denied/ambiguous response preserves the
 incomplete-cleanup state. This patch does not change SQL cleanup concurrency,
-reverify object contents on retry, stream Trace candidates, or bound full-package
-memory; these remain follow-ups under #1724. List/detail query paths are unchanged.
+stream Trace candidates, or bound full-package memory; these remain follow-ups under #1724. List/detail query paths are unchanged.
 
 ## Root-service discovery (#2140)
 
