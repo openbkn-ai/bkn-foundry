@@ -408,10 +408,22 @@ type operationFailure struct {
 // stage and code fields keep a fixed shape so a log query can group on them.
 func lifecycleUnavailable(ctx context.Context, toolName, stage string, err error) *mcpsdk.CallToolResult {
 	value := lifecycleStageAvailabilityError(stage, err)
+	if errors.Is(err, errInteractionFinishACK) {
+		value.Code = "interaction_finish_ack_invalid"
+	}
 	logger.DefaultLogger().WithContext(ctx).Warnf(
 		"[BKN Trace] lifecycle unavailable: tool=%s stage=%s code=%s: %v",
 		toolName, stage, value.Code, err,
 	)
+	if toolName == toolKeyFinishInteraction {
+		if value.Code != "evidence_capture_failed" && value.Code != "evidence_capture_denied" && retryableInteractionFinish(nil, err) {
+			return interactionFinishUnconfirmed(ctx, stage, value)
+		}
+		if value.Code == "feature_not_installed" {
+			value.RequiredAction = "contact_platform_operator"
+		}
+		return lifecycleToolError(value)
+	}
 	if bkntrace.IsTraceInfrastructureFailure(nil, err) {
 		if toolName == toolKeyStartInteraction {
 			return lifecycleToolError(value)
@@ -432,6 +444,12 @@ func lifecycleUnrecordedResult(ctx context.Context, toolName, stage, code string
 
 func lifecycleAPIResult(ctx context.Context, toolName, stage string, value bkntrace.APIError) *mcpsdk.CallToolResult {
 	if bkntrace.IsCaptureDisabledError(&value) {
+		return lifecycleToolError(traceCoreError(value))
+	}
+	if toolName == toolKeyFinishInteraction {
+		if retryableInteractionFinish(&value, nil) {
+			return interactionFinishUnconfirmed(ctx, stage, traceCoreError(value))
+		}
 		return lifecycleToolError(traceCoreError(value))
 	}
 	if bkntrace.IsTraceInfrastructureFailure(&value, nil) {

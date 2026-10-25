@@ -6,6 +6,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ### Features & Improvements
 
+- Submit Interaction finish with a separate bounded POST/replay budget (default 5 seconds), preserving the exact request/key across finite retries. Unconfirmed submission now returns an MCP tool error with `retry_same_finish`; only a matching Core terminal acknowledgement is success. Tool execution is never repeated. (#2340)
+
 - Stop retrying artifact uploads when ingest authentication is explicitly unconfigured. Distinguish artifact-endpoint outages from lifecycle Core outages while preserving committed start IDs, capture authorization failures, and the existing Trace I/O budgets. (#1691)
 
 - Add opt-in durable answer handoff to Core managed finish, avoiding synchronous answer-artifact uploads while retaining the existing Trace time budget. Business completion and pending evidence are returned separately; the default legacy path is unchanged. Enable only after all Core workers have upgraded. (#1691)

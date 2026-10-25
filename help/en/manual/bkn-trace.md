@@ -34,6 +34,31 @@ retain `trace_core_unavailable`. Explicitly unconfigured ingest authentication
 is an operator defect and is not retried. No artifact reference is fabricated,
 and this question path has no durable background recovery guarantee.
 
+### Interaction finish acknowledgement
+
+Finish preparation retains the one-second observation budget. The authoritative
+Interaction terminal POST/replay uses a separate total budget: 5000 ms by default,
+configured by `observability.lifecycle.finish_timeout_ms` or
+`BKN_TRACE_INTERACTION_FINISH_TIMEOUT_MS` (1–30000 ms; invalid values use 5000).
+At most three identical POSTs, including backoff, share that budget. Authorized
+submission can finish within it after caller disconnect; tool-attempt receipt
+finalization and Core's Interaction lease rules do not change.
+
+A finish response confirms success only when Core returns the matching Interaction
+ID and requested terminal status. A timeout, exhausted transient failures or invalid
+ACK returns MCP `isError=true`, `interaction_finish_unconfirmed`,
+`required_action=retry_same_finish`, plus stage, cause and request correlation.
+HTTP 200 alone is not an acknowledgement. Retry the original finish with the same
+Interaction/outcome/answer; do not repeat business actions. Replaying the same POST
+lets Core validate the committed closure, rather than treating a status-only GET as
+proof that a different answer was accepted. Domain refusals, including an already
+abandoned Interaction, remain errors and are never overwritten.
+
+No durable client-side retry queue is added. Persistent Core failure or process exit
+can still leave an unaccepted finish active until lease expiry; the product does not
+claim eventual completion without Core acceptance or fabricate a terminal state.
+This change does not identify the historical 8081 timeout's storage/CPU root cause.
+
 ### Scheduling and time budgets
 
 Each Core instance uses one shared projection-worker slot. It claims one ready

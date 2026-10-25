@@ -208,8 +208,8 @@ func TestDurableAnswerRetryKeepsContentIdentityWithoutRetryingUploads(t *testing
 			return
 		}
 		if r.Method == http.MethodGet {
-			if len(bodies) >= 2 {
-				artifact := bodies[1]["answer_artifact"].(map[string]any)
+			if len(bodies) >= 4 {
+				artifact := bodies[3]["answer_artifact"].(map[string]any)
 				_ = json.NewEncoder(w).Encode(bkntrace.Interaction{InteractionID: "int-retry", ConversationID: "conv-committed", ExecutionStatus: "completed", EvidenceStatus: "complete", UpdatedAt: time.Now().UTC(), ClosureManifest: &bkntrace.ClosureManifest{AnswerArtifactRef: "artifact:" + artifact["artifact_id"].(string)}})
 				return
 			}
@@ -223,13 +223,13 @@ func TestDurableAnswerRetryKeepsContentIdentityWithoutRetryingUploads(t *testing
 			return
 		}
 		bodies = append(bodies, body)
-		if len(bodies) == 1 {
+		if len(bodies) <= 3 {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "trace_core_unavailable", "message": "retry", "retryable": true}})
 			return
 		}
 		evidence := "assembling"
-		if len(bodies) >= 3 {
+		if len(bodies) >= 5 {
 			evidence = "complete"
 		}
 		_ = json.NewEncoder(w).Encode(bkntrace.Interaction{InteractionID: "int-retry", ConversationID: "conv-committed", ExecutionStatus: "completed", EvidenceStatus: evidence})
@@ -244,6 +244,9 @@ func TestDurableAnswerRetryKeepsContentIdentityWithoutRetryingUploads(t *testing
 		if err != nil || result == nil {
 			t.Fatalf("retry=%d result=%+v err=%v", i, result, err)
 		}
+		if i == 0 && (!result.IsError || lifecycleErrorFromResult(t, result)["code"] != "interaction_finish_unconfirmed") {
+			t.Fatal("exhausted finish must remain unconfirmed")
+		}
 		expectedEvidence := "assembling"
 		if i == 2 {
 			expectedEvidence = "complete"
@@ -254,14 +257,14 @@ func TestDurableAnswerRetryKeepsContentIdentityWithoutRetryingUploads(t *testing
 	}
 	bodyMu.Lock()
 	defer bodyMu.Unlock()
-	if len(bodies) != 3 || artifactCalls.Load() != 0 {
+	if len(bodies) != 5 || artifactCalls.Load() != 0 {
 		t.Fatalf("unexpected calls: finish=%d artifact=%d", len(bodies), artifactCalls.Load())
 	}
-	if bodies[0]["idempotency_key"] != bodies[1]["idempotency_key"] || bodies[0]["idempotency_key"] != bodies[2]["idempotency_key"] {
+	if bodies[0]["idempotency_key"] != bodies[3]["idempotency_key"] || bodies[0]["idempotency_key"] != bodies[4]["idempotency_key"] {
 		t.Fatal("request context changed finish idempotency key")
 	}
 	first := bodies[0]["answer_artifact"].(map[string]any)
-	second := bodies[1]["answer_artifact"].(map[string]any)
+	second := bodies[3]["answer_artifact"].(map[string]any)
 	for _, key := range []string{"artifact_id", "content_hash", "content", "interaction_id", "application_principal_id", "effective_subject_id"} {
 		if first[key] != second[key] {
 			t.Fatalf("unstable content identity %s", key)
@@ -270,7 +273,7 @@ func TestDurableAnswerRetryKeepsContentIdentityWithoutRetryingUploads(t *testing
 	if first["bkn.request.id"] == second["bkn.request.id"] || first["trace_id"] == second["trace_id"] {
 		t.Fatal("retry fixture did not vary diagnostic context")
 	}
-	if bodies[2]["answer_artifact"] != nil || bodies[2]["answer_artifact_ref"] != "artifact:"+first["artifact_id"].(string) {
+	if bodies[4]["answer_artifact"] != nil || bodies[4]["answer_artifact_ref"] != "artifact:"+first["artifact_id"].(string) {
 		t.Fatal("committed retry reconstructed the artifact instead of reusing Core's reference")
 	}
 	if _, mutated := req.GetArguments()["answer_artifact"]; mutated {
@@ -349,8 +352,12 @@ func TestDurableAnswerCaptureDisabledKeepsLegacyFinishWithoutArtifacts(t *testin
 			posts := 0
 			disabled := false
 			client := bkntrace.NewLifecycleClient("http://core.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
-				if deadline, ok := r.Context().Deadline(); !ok || time.Until(deadline) > time.Second {
-					t.Error("finish I/O lost its existing one-second total budget")
+				budget := time.Second
+				if r.Method == http.MethodPost {
+					budget = 5 * time.Second
+				}
+				if deadline, ok := r.Context().Deadline(); !ok || time.Until(deadline) > budget {
+					t.Error("finish preparation/submission exceeded its phase budget")
 				}
 
 				if r.Method == http.MethodGet {

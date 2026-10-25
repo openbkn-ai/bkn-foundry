@@ -42,6 +42,9 @@ const (
 var (
 	ErrFeatureNotInstalled      = errors.New("BKN Trace Core URL is not configured")
 	ErrMissingFinishCorrelation = errors.New("current request and OTel trace context are required")
+	// ErrInvalidLifecycleResponse is restricted to a successful HTTP response
+	// that did not contain a valid lifecycle acknowledgement.
+	ErrInvalidLifecycleResponse = errors.New("invalid lifecycle success response")
 	// ErrEvidenceArtifactURLNotConfigured means BKN_TRACE_ARTIFACT_ENDPOINT is
 	// unset. The endpoint is configured on its own and is never derived from
 	// BKN_TRACE_EVIDENCE_INGEST_URL. Starting an interaction tolerates its
@@ -601,11 +604,18 @@ func (c *LifecycleClient) do(
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var envelope errorEnvelope
-		if err := sonic.ConfigDefault.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
+		if err := sonic.ConfigDefault.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil || envelope.Error.Code == "" {
 			if resp.StatusCode >= http.StatusInternalServerError {
 				return &APIError{HTTPStatus: resp.StatusCode, Code: "trace_core_unavailable", Message: "Trace Core returned an unavailable response", Retryable: true}, nil
 			}
-			return nil, fmt.Errorf("decode lifecycle error response: %w", err)
+			failure := &APIError{HTTPStatus: resp.StatusCode, Code: "lifecycle_request_rejected", Message: "Trace Core rejected the lifecycle request", RequiredAction: "contact_platform_operator"}
+			switch resp.StatusCode {
+			case http.StatusUnauthorized, http.StatusForbidden:
+				failure.Code, failure.RequiredAction = "permission_denied", "request_authorization"
+			case http.StatusTooManyRequests:
+				failure.Code, failure.RequiredAction, failure.Retryable = "rate_limited", "retry_later", true
+			}
+			return failure, nil
 		}
 		envelope.Error.HTTPStatus = resp.StatusCode
 		return &envelope.Error, nil
@@ -614,7 +624,7 @@ func (c *LifecycleClient) do(
 		return nil, nil
 	}
 	if err := common.DecodePreciseJSON(io.LimitReader(resp.Body, 1<<20), target); err != nil {
-		return nil, fmt.Errorf("decode lifecycle response: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidLifecycleResponse, err)
 	}
 	if interaction, ok := target.(*Interaction); ok {
 		c.rememberLease(ctx, *interaction)
