@@ -114,10 +114,34 @@ func TestDurableAnswerHTTPCommitsLargeAnswerAndReleasesConversation(t *testing.T
 			t.Fatal("durable outbox omitted or changed the governed answer body")
 		}
 	}
-	next := performLifecycleRequest(t, f.mux, http.MethodPost, "/api/agent-observability/v1/conversations/"+f.conversation.ID+"/interactions", `{"idempotency_key":"next-start"}`)
+	gateOff := http.NewServeMux()
+	httphandler.RegisterSessionRoutes(gateOff, "/api/agent-observability/v1", httphandler.NewSessionHandler(sessionsvc.New(f.store, sessionsvc.Options{})))
+	replay := performLifecycleRequest(t, gateOff, http.MethodPost, "/api/agent-observability/v1/interactions/"+f.interaction.ID+"/finish", string(body))
+	if replay.Code != http.StatusOK || durableAnswerTasks(t, f.store) != 1 {
+		t.Fatalf("large committed replay failed after gate disabled: %d %s", replay.Code, replay.Body.String())
+	}
+	next := performLifecycleRequest(t, gateOff, http.MethodPost, "/api/agent-observability/v1/conversations/"+f.conversation.ID+"/interactions", `{"idempotency_key":"next-start"}`)
 	if next.Code != http.StatusCreated {
 		t.Fatalf("next turn blocked=%d %s", next.Code, next.Body.String())
 	}
+	var active sessionvo.Interaction
+	decodeLifecycleResponse(t, next, &active)
+	rejected := performLifecycleRequest(t, gateOff, http.MethodPost, "/api/agent-observability/v1/interactions/"+active.ID+"/finish", string(durableAnswerHTTPBody(t, durableAnswerHTTPArtifact(t, active.ID, "new answer"))))
+	if rejected.Code != http.StatusUnprocessableEntity || durableAnswerTasks(t, f.store) != 1 {
+		t.Fatalf("gate-off new body was staged: %d %s", rejected.Code, rejected.Body.String())
+	}
+	var configurationError struct {
+		Error struct {
+			Code      string `json:"code"`
+			Action    string `json:"required_action"`
+			Retryable bool   `json:"retryable"`
+		} `json:"error"`
+	}
+	decodeLifecycleResponse(t, rejected, &configurationError)
+	if configurationError.Error.Code != string(sessionsvc.CodeAnswerHandoffDisabled) || configurationError.Error.Action != "request_durable_answer_configuration_review" || configurationError.Error.Retryable {
+		t.Fatalf("gate-off error misdirected caller: %+v", configurationError.Error)
+	}
+
 }
 func TestDurableAnswerHTTPPreservesLegacyReferenceFinish(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
@@ -163,5 +187,31 @@ func TestDurableAnswerHTTPRejectsUnauthorizedOrInvalidArtifactWithoutTask(t *tes
 				t.Fatalf("rejected finish mutated lifecycle: %+v", current)
 			}
 		})
+	}
+}
+
+func TestDurableAnswerHTTPSizeFailureRequiresOperatorReview(t *testing.T) {
+	f := newDurableAnswerHTTPFixture(t, true)
+	// The envelope is within its 17MiB parsing bound; the artifact itself exceeds
+	// its unchanged 16MiB contract and must not become a model retry loop.
+	body := `{"outcome":"completed","idempotency_key":"oversized","answer_artifact":{"padding":"` + strings.Repeat("a", 16<<20) + `"}}`
+	response := performLifecycleRequest(t, f.mux, http.MethodPost, "/api/agent-observability/v1/interactions/"+f.interaction.ID+"/finish", body)
+	var envelope struct {
+		Error struct {
+			Code      string `json:"code"`
+			Retryable bool   `json:"retryable"`
+			Action    string `json:"required_action"`
+			Message   string `json:"message"`
+		} `json:"error"`
+	}
+	decodeLifecycleResponse(t, response, &envelope)
+	if response.Code != http.StatusUnprocessableEntity || envelope.Error.Code != string(sessionsvc.CodeAnswerArtifactStorageLimit) || envelope.Error.Retryable || envelope.Error.Action != "request_storage_configuration_review" || !strings.Contains(envelope.Error.Message, "without truncating") || durableAnswerTasks(t, f.store) != 0 {
+		t.Fatalf("unsafe size contract: status=%d error=%+v", response.Code, envelope.Error)
+	}
+	read := performLifecycleRequest(t, f.mux, http.MethodGet, "/api/agent-observability/v1/interactions/"+f.interaction.ID, "")
+	var current sessionvo.Interaction
+	decodeLifecycleResponse(t, read, &current)
+	if current.ExecutionStatus != sessionvo.InteractionActive {
+		t.Fatal("size rejection claimed completed")
 	}
 }

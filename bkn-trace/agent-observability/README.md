@@ -520,6 +520,19 @@ If SQL/Core is unavailable, finish cannot acknowledge a durable completion;
 retry the original finish request idempotently without repeating business work.
 Ordinary list/detail reads do not upload artifacts or wait for this worker.
 
+The production worker claims one ready task at a time and continuously drains
+ready work; the polling interval applies only after an empty queue or error.
+Default I/O budgets are 2s to claim, 10s for an answer attempt and 2s for its
+independent ACK inside a 30s task lease. Startup requires positive budgets plus
+a 1s safety margin to fit strictly inside that lease. Other handlers retain their
+existing context and single-slot execution. The inserting SQL transaction checks
+the actual packet budget; durable handoff requires `interpolateParams` absent or
+false, preserving the prepared-statement size calculation.
+
+See [managed completion limits](../../help/en/manual/bkn-trace.md#managed-interaction-completion-limits)
+for product scheduling, size, policy, assembly and backlog limits. They do not
+certify a fixed QPS or an environment-specific storage allocation.
+
 ### Interaction 容量配额
 
 Core 在每个 Interaction 内强制限制 Operation、Claim 和已观察 evidence ref，默认分别为 `256`、`32` 和 `4096`。部署方可通过 Chart 的 `core.capacity` 修改它们；Chart 会分别注入 `BKN_TRACE_CORE_MAX_OPERATIONS_PER_INTERACTION`、`BKN_TRACE_CORE_MAX_CLAIMS_PER_INTERACTION` 和 `BKN_TRACE_CORE_MAX_EVIDENCE_REFS_PER_INTERACTION`。这些是仅服务端可控的启动配置，第三方 Agent 不能在请求中覆盖；变更后需要滚动 Core。

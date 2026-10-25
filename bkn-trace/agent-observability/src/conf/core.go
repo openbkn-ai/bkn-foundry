@@ -13,11 +13,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 const minimumProjectionGrantTTL = 24*time.Hour + 5*time.Minute
 
 type CoreConfig struct {
+	ProjectionLeaseIOTimeout      time.Duration
+	AnswerTaskIOTimeout           time.Duration
+	AnswerAckIOTimeout            time.Duration
+	ProjectionLockDuration        time.Duration
 	DurableAnswerEnabled          bool
 	Store                         string
 	MariaDBDSN                    string
@@ -76,6 +82,16 @@ func NewCoreConfig() (CoreConfig, error) {
 	if durableAnswerEnabled && (store != "mariadb" || !projectionEnabled || !strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_STORE")), "opensearch")) {
 		return CoreConfig{}, fmt.Errorf("BKN_TRACE_DURABLE_ANSWER_ENABLED requires MariaDB, OpenSearch evidence store and projection workers")
 	}
+	mariaDBDSN := strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN"))
+	if durableAnswerEnabled {
+		parsed, parseErr := mysql.ParseDSN(mariaDBDSN)
+		if parseErr != nil {
+			return CoreConfig{}, fmt.Errorf("durable answer MariaDB DSN is invalid")
+		}
+		if parsed.InterpolateParams {
+			return CoreConfig{}, fmt.Errorf("BKN_TRACE_DURABLE_ANSWER_ENABLED requires interpolateParams=false")
+		}
+	}
 	historicalProvenanceEnabled, err := optionalBoolEnv("BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED")
 	if err != nil {
 		return CoreConfig{}, err
@@ -88,6 +104,10 @@ func NewCoreConfig() (CoreConfig, error) {
 		if parsed, err := time.ParseDuration(configured); err == nil && parsed > 0 {
 			projectionInterval = parsed
 		}
+	}
+	workerBudgets, err := readProjectionIOBudgets()
+	if err != nil {
+		return CoreConfig{}, err
 	}
 	projectionIndex := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_INDEX"))
 	if projectionIndex == "" {
@@ -150,10 +170,14 @@ func NewCoreConfig() (CoreConfig, error) {
 		capturePolicySnapshotTTL = parsed
 	}
 	return CoreConfig{
-		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),
+		Store: store, MariaDBDSN: mariaDBDSN,
 		AutoMigrate: autoMigrate, AbandonInterval: interval, OneShotIdleTTL: oneShotIdleTTL,
 		DurableAnswerEnabled: durableAnswerEnabled, ProjectionEnabled: projectionEnabled, HistoricalProvenanceEnabled: historicalProvenanceEnabled, ProjectionIndex: projectionIndex,
 		ProjectionInterval:            projectionInterval,
+		ProjectionLeaseIOTimeout:      workerBudgets.lease,
+		AnswerTaskIOTimeout:           workerBudgets.task,
+		AnswerAckIOTimeout:            workerBudgets.ack,
+		ProjectionLockDuration:        workerBudgets.lock,
 		ProjectionBootstrapVersion:    projectionBootstrapVersion,
 		ProjectionRebuildVersion:      projectionRebuildVersion,
 		ProjectionGrantIssuer:         projectionGrantIssuer,

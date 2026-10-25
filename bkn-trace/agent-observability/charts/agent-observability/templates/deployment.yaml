@@ -98,6 +98,14 @@ spec:
               value: {{ .Values.core.projection.index | quote }}
             - name: BKN_TRACE_PROJECTION_INTERVAL
               value: {{ .Values.core.projection.interval | quote }}
+            - name: BKN_TRACE_PROJECTION_LOCK_DURATION
+              value: {{ .Values.core.projection.lockDuration | default "30s" | quote }}
+            - name: BKN_TRACE_PROJECTION_LEASE_IO_TIMEOUT
+              value: {{ .Values.core.projection.leaseIOTimeout | default "2s" | quote }}
+            - name: BKN_TRACE_ANSWER_TASK_IO_TIMEOUT
+              value: {{ .Values.core.projection.answerTaskIOTimeout | default "10s" | quote }}
+            - name: BKN_TRACE_ANSWER_ACK_IO_TIMEOUT
+              value: {{ .Values.core.projection.answerAckIOTimeout | default "2s" | quote }}
             {{- with .Values.core.projection.rebuildVersion }}
             - name: BKN_TRACE_PROJECTION_REBUILD_VERSION
               value: {{ . | quote }}

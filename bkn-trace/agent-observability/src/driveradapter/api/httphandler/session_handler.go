@@ -52,7 +52,7 @@ type lifecycleErrorEnvelope struct {
 }
 
 type lifecycleError struct {
-	Code                 string `json:"code" enums:"conversation_required,conversation_not_found,conversation_closed,conversation_expired,conversation_owner_mismatch,interaction_required,interaction_in_progress,interaction_terminal,agent_name_conflict,agent_name_invalid,operation_required,idempotency_conflict,event_payload_conflict,producer_sequence_conflict,invalid_evidence_event,receipt_pending,terminal_conflict,closure_manifest_invalid,feature_not_installed,trace_core_unavailable,authorization_unavailable,evidence_capture_denied,evidence_capture_failed,capability_not_licensed,permission_denied,resource_not_disclosed,internal_error"`
+	Code                 string `json:"code" enums:"conversation_required,conversation_not_found,conversation_closed,conversation_expired,conversation_owner_mismatch,interaction_required,interaction_in_progress,interaction_terminal,agent_name_conflict,agent_name_invalid,operation_required,idempotency_conflict,event_payload_conflict,producer_sequence_conflict,invalid_evidence_event,receipt_pending,terminal_conflict,closure_manifest_invalid,answer_artifact_storage_limit,answer_artifact_handoff_disabled,feature_not_installed,trace_core_unavailable,authorization_unavailable,evidence_capture_denied,evidence_capture_failed,capability_not_licensed,permission_denied,resource_not_disclosed,internal_error"`
 	Message              string `json:"message"`
 	CurrentStatus        string `json:"current_status,omitempty"`
 	CurrentInteractionID string `json:"current_interaction_id,omitempty"`
@@ -458,11 +458,9 @@ func (h *SessionHandler) handleManagedFinish(
 	interactionID string,
 ) {
 	var request managedFinishInteractionRequest
-	limit := int64(maxLifecycleBodyBytes)
-	if h.service.DurableAnswerEnabled() {
-		limit = 17 << 20
-	}
-	if err := decodeLifecycleBodyLimit(w, r, &request, limit); err != nil {
+	// Keep the new protocol readable for committed retries even after rollout
+	// is disabled. The gate controls new staging, not this bounded envelope.
+	if err := decodeLifecycleBodyLimit(w, r, &request, 17<<20); err != nil {
 		writeLifecycleError(w, r, http.StatusBadRequest, "interaction_required", err.Error())
 		return
 	}
@@ -823,6 +821,10 @@ func lifecycleErrorContract(code sessionsvc.ErrorCode) (int, string, bool) {
 		return http.StatusConflict, "retry_same_business_tool", true
 	case sessionsvc.CodeTerminalConflict:
 		return http.StatusConflict, "reuse_authoritative_interaction", false
+	case sessionsvc.CodeAnswerHandoffDisabled:
+		return http.StatusUnprocessableEntity, "request_durable_answer_configuration_review", false
+	case sessionsvc.CodeAnswerArtifactStorageLimit:
+		return http.StatusUnprocessableEntity, "request_storage_configuration_review", false
 	case sessionsvc.CodeClosureManifestInvalid:
 		return http.StatusUnprocessableEntity, "fix_closure_manifest", false
 	case sessionsvc.CodeResourceNotDisclosed:

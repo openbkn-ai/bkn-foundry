@@ -4266,6 +4266,8 @@ const docTemplate = `{
                         "receipt_pending",
                         "terminal_conflict",
                         "closure_manifest_invalid",
+                        "answer_artifact_storage_limit",
+                        "answer_artifact_handoff_disabled",
                         "feature_not_installed",
                         "trace_core_unavailable",
                         "authorization_unavailable",

@@ -857,44 +857,48 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 	if command.TerminalIdempotencyKey == "" {
 		return sessionvo.Interaction{}, domainError(CodeIdempotencyConflict, "terminal idempotency key is required")
 	}
-	policyClosure := s.CapturePolicyDisabled()
-	var answer *answerArtifactRequest
+	// Keep validation, canonical hashing and full-body encoding outside the row
+	// lock. Cache errors until canonical ownership has been checked below.
+	var preparedAnswer *answerArtifactRequest
 	var answerPayload []byte
-	if len(command.AnswerArtifact) > 0 && !policyClosure {
-		var err error
-		answer, err = s.prepareAnswerArtifact(command)
-		if err != nil {
-			return sessionvo.Interaction{}, err
+	var prepareErr error
+	if len(command.AnswerArtifact) > 0 {
+		preparedAnswer, prepareErr = prepareAnswerArtifact(command)
+		if prepareErr == nil {
+			answerPayload, prepareErr = json.Marshal(preparedAnswer)
+			if prepareErr == nil && len(answerPayload) > iprojectionoutbox.MaxPayloadBytes {
+				prepareErr = answerArtifactStorageLimitError()
+			}
 		}
-		command.Manifest.AnswerArtifactRef = "artifact:" + answer.Artifact.ArtifactID
-		answerPayload, err = json.Marshal(answer)
-		if err != nil {
-			return sessionvo.Interaction{}, err
-		}
-		if len(answerPayload) > iprojectionoutbox.MaxPayloadBytes {
-			return sessionvo.Interaction{}, domainError(CodeClosureManifestInvalid, "answer artifact task exceeds byte limit")
-		}
-
-	}
-	if !policyClosure && slices.Contains(command.Manifest.SystemPartialReasons, "not_collected_due_to_policy") {
-		return sessionvo.Interaction{}, domainError(CodeClosureManifestInvalid, "policy partial reason is server-owned")
 	}
 	var result sessionvo.Interaction
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
-		interactionRef, found := tx.PeekInteraction(command.InteractionID)
+		request := command
+		var answer *answerArtifactRequest
+		interactionRef, found := tx.PeekInteraction(request.InteractionID)
 		if !found {
 			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
-		conversation, err := ownedConversation(tx, command.Owner, interactionRef.ConversationID)
+		conversation, err := ownedConversation(tx, request.Owner, interactionRef.ConversationID)
 		if err != nil {
 			return err
 		}
-		interaction, found := tx.FindInteraction(command.InteractionID)
+		interaction, found := tx.FindInteraction(request.InteractionID)
 		if !found || interaction.ConversationID != conversation.ID {
 			return resourceNotDisclosed(CauseInteractionNotInConversation)
 		}
-		if interaction.IsTerminal() && command.DeriveManifest {
-			if managedTerminalReplayMatches(interaction, command) && (answer == nil || interaction.ClosureManifest.AnswerArtifactPersistence != nil && interaction.ClosureManifest.AnswerArtifactPersistence.ContentHash == answer.Artifact.ContentHash) {
+		if interaction.IsTerminal() && request.DeriveManifest {
+			// A server-owned disabled closure never collected the submitted body.
+			// Otherwise verify its immutable content independent of today's policy.
+			policyClosed := interaction.ClosureManifest != nil && interaction.ClosureManifest.AnswerArtifactPersistence == nil && slices.Contains(interaction.ClosureManifest.SystemPartialReasons, "not_collected_due_to_policy")
+			if len(request.AnswerArtifact) > 0 && !policyClosed {
+				if prepareErr != nil {
+					return prepareErr
+				}
+				answer = preparedAnswer
+				request.Manifest.AnswerArtifactRef = "artifact:" + answer.Artifact.ArtifactID
+			}
+			if managedTerminalReplayMatches(interaction, request) && (answer == nil || interaction.ClosureManifest.AnswerArtifactPersistence != nil && interaction.ClosureManifest.AnswerArtifactPersistence.ContentHash == answer.Artifact.ContentHash) {
 				result = interaction
 				return nil
 			}
@@ -903,29 +907,51 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				CurrentStatus: string(interaction.ExecutionStatus),
 			}
 		}
+		// A stale disabled snapshot is unknown, not fresh permission to close
+		// through the disabled-policy path for a newly submitted answer body.
+		if len(request.AnswerArtifact) > 0 && s.captureAdmission != nil && !s.captureAdmission.Known() {
+			return s.captureAdmissionError()
+		}
+		policyClosure := s.CapturePolicyDisabled()
+		if !policyClosure && len(request.AnswerArtifact) > 0 {
+			if err := s.captureAdmissionError(); err != nil {
+				return err
+			}
+			if !s.durableAnswerEnabled {
+				return domainError(CodeAnswerHandoffDisabled, answerArtifactHandoffDisabledMessage)
+			}
+			if prepareErr != nil {
+				return prepareErr
+			}
+			answer = preparedAnswer
+			request.Manifest.AnswerArtifactRef = "artifact:" + answer.Artifact.ArtifactID
+		}
+		if !policyClosure && slices.Contains(request.Manifest.SystemPartialReasons, "not_collected_due_to_policy") {
+			return domainError(CodeClosureManifestInvalid, "policy partial reason is server-owned")
+		}
 		// Only an active interaction may receive the server-owned policy reason.
 		// Terminal replay must compare the caller's immutable fields exactly as
 		// committed, regardless of the current capture policy.
 		if policyClosure {
-			command.Manifest.SystemPartialReasons = appendUnique(command.Manifest.SystemPartialReasons, "not_collected_due_to_policy")
+			request.Manifest.SystemPartialReasons = appendUnique(request.Manifest.SystemPartialReasons, "not_collected_due_to_policy")
 		} else if s.evidenceCollectionState() == "not_collected_due_to_license" {
-			command.Manifest.SystemPartialReasons = appendUnique(command.Manifest.SystemPartialReasons, "not_collected_due_to_license")
+			request.Manifest.SystemPartialReasons = appendUnique(request.Manifest.SystemPartialReasons, "not_collected_due_to_license")
 		}
-		if command.DeriveManifest {
-			command.LeaseToken = interaction.LeaseToken
-			command.LeaseEpoch = interaction.LeaseEpoch
-			command.Manifest = deriveClosureManifest(tx, interaction.ID, command.Manifest)
+		if request.DeriveManifest {
+			request.LeaseToken = interaction.LeaseToken
+			request.LeaseEpoch = interaction.LeaseEpoch
+			request.Manifest = deriveClosureManifest(tx, interaction.ID, request.Manifest)
 		}
-		if command.Manifest.AssemblerDeadline == nil && hasRequiredPendingReceipt(tx, command.Manifest) {
+		if request.Manifest.AssemblerDeadline == nil && hasRequiredPendingReceipt(tx, request.Manifest) {
 			deadline := tx.Now().Add(s.assemblyTimeout)
-			command.Manifest.AssemblerDeadline = &deadline
+			request.Manifest.AssemblerDeadline = &deadline
 		}
 		payloadHash := hashValue(struct {
 			Status   sessionvo.InteractionStatus
 			Manifest sessionvo.ClosureManifest
-		}{command.Status, command.Manifest})
+		}{request.Status, request.Manifest})
 		if interaction.IsTerminal() {
-			if interaction.TerminalIdempotencyKey == command.TerminalIdempotencyKey &&
+			if interaction.TerminalIdempotencyKey == request.TerminalIdempotencyKey &&
 				interaction.TerminalPayloadHash == payloadHash {
 				result = interaction
 				return nil
@@ -941,30 +967,30 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				CurrentStatus: string(interaction.ExecutionStatus),
 			}
 		}
-		if command.LeaseToken != interaction.LeaseToken || command.LeaseEpoch != interaction.LeaseEpoch {
+		if request.LeaseToken != interaction.LeaseToken || request.LeaseEpoch != interaction.LeaseEpoch {
 			return &DomainError{
 				Code: CodeTerminalConflict, Message: "stale interaction lease was fenced",
 				CurrentStatus: string(interaction.ExecutionStatus),
 			}
 		}
-		if err := s.validateClosureManifest(tx, interaction, command.Manifest); err != nil {
+		if err := s.validateClosureManifest(tx, interaction, request.Manifest); err != nil {
 			return err
 		}
 		now := tx.Now()
 		if answer != nil {
-			taskID := answerArtifactEventID(interaction.ID, command.TerminalIdempotencyKey)
-			command.Manifest.AnswerArtifactPersistence = &sessionvo.AnswerArtifactPersistence{EventID: taskID, ContentHash: answer.Artifact.ContentHash, State: sessionvo.AnswerArtifactPending}
-			if command.Manifest.AssemblerDeadline == nil {
+			taskID := answerArtifactEventID(interaction.ID, request.TerminalIdempotencyKey)
+			request.Manifest.AnswerArtifactPersistence = &sessionvo.AnswerArtifactPersistence{EventID: taskID, ContentHash: answer.Artifact.ContentHash, State: sessionvo.AnswerArtifactPending}
+			if request.Manifest.AssemblerDeadline == nil {
 				deadline := tx.Now().Add(s.assemblyTimeout)
-				command.Manifest.AssemblerDeadline = &deadline
+				request.Manifest.AssemblerDeadline = &deadline
 			}
 			tx.AppendProjection(sessionvo.ProjectionMutation{EventID: taskID, AggregateType: "interaction", AggregateID: interaction.ID, AggregateVersion: interaction.RowVersion + 1, EventType: AnswerArtifactRequested, Payload: answerPayload})
 		}
-		interaction.ExecutionStatus = command.Status
-		interaction.EvidenceStatus = evidenceStatusAtTermination(tx, command.Manifest)
-		interaction.TerminalIdempotencyKey = command.TerminalIdempotencyKey
+		interaction.ExecutionStatus = request.Status
+		interaction.EvidenceStatus = evidenceStatusAtTermination(tx, request.Manifest)
+		interaction.TerminalIdempotencyKey = request.TerminalIdempotencyKey
 		interaction.TerminalPayloadHash = payloadHash
-		interaction.ClosureManifest = &command.Manifest
+		interaction.ClosureManifest = &request.Manifest
 		interaction.RowVersion++
 		interaction.LeaseVersion++
 		interaction.UpdatedAt = now
@@ -979,14 +1005,14 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			interaction.EvidenceStatus == sessionvo.EvidencePartial ||
 			interaction.EvidenceStatus == sessionvo.EvidenceFailed) {
 			trigger := "completion"
-			if command.Manifest.AssemblerDeadline != nil && !command.Manifest.AssemblerDeadline.After(tx.Now()) {
+			if request.Manifest.AssemblerDeadline != nil && !request.Manifest.AssemblerDeadline.After(tx.Now()) {
 				trigger = "deadline"
 			}
-			if err := s.freezeAssemblyRevision(tx, interaction, command.Manifest, trigger); err != nil {
+			if err := s.freezeAssemblyRevision(tx, interaction, request.Manifest, trigger); err != nil {
 				return err
 			}
 		}
-		if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction."+string(command.Status), interaction); err != nil {
+		if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction."+string(request.Status), interaction); err != nil {
 			return err
 		}
 		if conversation.OneShot {
@@ -1002,6 +1028,11 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		result = interaction
 		return nil
 	})
+	if errors.Is(err, isessionstore.ErrAnswerArtifactTooLarge) {
+		result = sessionvo.Interaction{}
+		err = errors.Join(answerArtifactStorageLimitError(), err)
+	}
+
 	s.observeLifecycleError(err)
 	return result, err
 }

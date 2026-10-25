@@ -10,6 +10,7 @@ package sessionstore
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -29,6 +30,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
 // The durable-answer cases exercise real sessionsvc transactions and SQL jobs,
@@ -288,8 +290,8 @@ func TestDurableAnswerTransactionRecoveryMariaDB(t *testing.T) {
 		recoveredService := sessionsvc.New(recoveredStore, sessionsvc.Options{DurableAnswerEnabled: true})
 		artifacts := &durableAnswerArtifacts{fail: errors.New("injected artifact outage")}
 		handler := sessionsvc.NewAnswerArtifactHandler(recoveredService, artifacts)
-		worker := projectorsvc.NewWorker(recoveredStore, durableAnswerProjectionSink{}, projectorsvc.WorkerOptions{AnswerArtifactHandler: handler, BatchSize: 100})
-		result, err := worker.RunOnce(ctx)
+		worker := durableAnswerProductionWorker(recoveredStore, handler)
+		result, err := worker.Drain(ctx)
 		if err != nil || result.Retried != 1 {
 			t.Fatalf("artifact outage must retain a retryable SQL answer: result=%+v err=%v", result, err)
 		}
@@ -298,8 +300,8 @@ func TestDurableAnswerTransactionRecoveryMariaDB(t *testing.T) {
 		if _, err = db.ExecContext(ctx, "UPDATE bkn_trace_projection_outbox SET available_at=UTC_TIMESTAMP(6)-INTERVAL 1 SECOND WHERE event_type='artifact.persist_requested'"); err != nil {
 			t.Fatal(err)
 		}
-		worker = projectorsvc.NewWorker(New(db), durableAnswerProjectionSink{}, projectorsvc.WorkerOptions{AnswerArtifactHandler: handler, BatchSize: 100})
-		result, err = worker.RunOnce(ctx)
+		worker = durableAnswerProductionWorker(New(db), handler)
+		result, err = worker.Drain(ctx)
 		if err != nil || result.Delivered == 0 {
 			t.Fatalf("recovery worker: result=%+v err=%v", result, err)
 		}
@@ -348,8 +350,8 @@ func TestDurableAnswerTransactionRecoveryMariaDB(t *testing.T) {
 			t.Fatal(err)
 		}
 		artifacts := &durableAnswerArtifacts{fail: iartifactstore.ErrArtifactIDConflict}
-		worker := projectorsvc.NewWorker(New(db), durableAnswerProjectionSink{}, projectorsvc.WorkerOptions{AnswerArtifactHandler: sessionsvc.NewAnswerArtifactHandler(service, artifacts), BatchSize: 100})
-		result, err := worker.RunOnce(ctx)
+		worker := durableAnswerProductionWorker(New(db), sessionsvc.NewAnswerArtifactHandler(service, artifacts))
+		result, err := worker.Drain(ctx)
 		if err != nil || result.Dead != 1 {
 			t.Fatalf("dead worker result=%+v err=%v", result, err)
 		}
@@ -372,6 +374,17 @@ func TestDurableAnswerTransactionRecoveryMariaDB(t *testing.T) {
 		if err = db.QueryRowContext(ctx, "SELECT payload FROM bkn_trace_projection_outbox WHERE event_type='artifact.persist_requested'").Scan(&payload); err != nil || !strings.Contains(payload, "isolated durable answer") {
 			t.Fatal("dead answer payload was lost")
 		}
+	})
+}
+
+// Match the production single-slot claim and bounded answer I/O path. A fixed
+// future retry avoids racing a near-zero jitter against the remaining SQL work.
+func durableAnswerProductionWorker(store *Store, handler projectorsvc.AnswerArtifactHandler) *projectorsvc.Worker {
+	return projectorsvc.NewWorker(store, durableAnswerProjectionSink{}, projectorsvc.WorkerOptions{
+		AnswerArtifactHandler: handler, BatchSize: 1,
+		LeaseIOTimeout: 2 * time.Second, AnswerTaskIOTimeout: 10 * time.Second,
+		AnswerAckIOTimeout: 2 * time.Second, LockDuration: 30 * time.Second,
+		FullJitter: func(time.Duration) time.Duration { return time.Minute },
 	})
 }
 
@@ -447,4 +460,101 @@ func durableAnswerAssertArchiveBlocked(t *testing.T, ctx context.Context, db *sq
 		t.Fatal("blocked archive altered durable answer bytes")
 	}
 
+}
+
+// Exercise the real terminal transaction at the configured packet boundary.
+// No server settings are changed; each subtest owns a fresh disposable schema.
+func TestDurableAnswerPacketBoundaryMariaDB(t *testing.T) {
+	for _, over := range []bool{false, true} {
+		name := "exact_safe_packet"
+		if over {
+			name = "one_byte_over_safe_packet"
+		}
+		t.Run(name, func(t *testing.T) {
+			db := durableAnswerDatabase(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			defer cancel()
+			var capBytes int
+			if err := db.QueryRowContext(ctx, "SELECT @@max_allowed_packet").Scan(&capBytes); err != nil {
+				t.Fatal(err)
+			}
+			if capBytes != 16<<20 {
+				t.Skip("boundary fixture requires existing 16 MiB packet setting; never changes configuration")
+			}
+			svc, owner, interaction, cmd, artifact := durableAnswerSession(t, ctx, db)
+			artifact.Content = ""
+			artifact.ContentHash = ""
+
+			// Normalization adds a fixed-size content hash. Measure the normalized empty
+			// envelope rather than estimating the task's JSON escaping/metadata overhead.
+			artifact.Content = "x"
+			artifact.ContentHash = ""
+			normalized, validation := evidencevo.NormalizeArtifact(artifact)
+			if len(validation) != 0 {
+				t.Fatal(validation)
+			}
+			base, err := json.Marshal(struct {
+				Owner    sessionvo.Owner             `json:"owner"`
+				Artifact evidencevo.EvidenceArtifact `json:"artifact"`
+			}{owner, normalized})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := sha256.Sum256([]byte(interaction.ID + "|" + cmd.TerminalIdempotencyKey))
+			eventID := "answer_" + hex.EncodeToString(sum[:])
+			metadata := len("interaction") + len(interaction.ID) + len(sessionsvc.AnswerArtifactRequested) + len(eventID)
+			target := capBytes - answerPacketOverhead - metadata
+			if over {
+				target++
+			}
+			artifact.Content = strings.Repeat("x", target-len(base)+1)
+			artifact.ContentHash = ""
+			normalized, validation = evidencevo.NormalizeArtifact(artifact)
+			if len(validation) != 0 {
+				t.Fatal(validation)
+			}
+			task, err := json.Marshal(struct {
+				Owner    sessionvo.Owner             `json:"owner"`
+				Artifact evidencevo.EvidenceArtifact `json:"artifact"`
+			}{owner, normalized})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(task) != target {
+				t.Fatalf("task size=%d target=%d", len(task), target)
+			}
+			cmd.AnswerArtifact, err = json.Marshal(normalized)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(cmd.AnswerArtifact) > sessionsvc.MaxAnswerArtifactBytes {
+				t.Fatal("fixture exceeded public artifact limit")
+			}
+			beforeOutbox := durableAnswerCount(t, db, "SELECT COUNT(*) FROM bkn_trace_projection_outbox")
+			beforeRevisions := durableAnswerCount(t, db, "SELECT COUNT(*) FROM bkn_trace_assembly_revisions")
+			_, err = svc.TerminateInteraction(ctx, cmd)
+			if !over {
+				if err != nil {
+					t.Fatal(err)
+				}
+				var payloadBytes int
+				if err = db.QueryRowContext(ctx, "SELECT OCTET_LENGTH(payload) FROM bkn_trace_projection_outbox WHERE event_type='artifact.persist_requested'").Scan(&payloadBytes); err != nil || payloadBytes != target {
+					t.Fatalf("persisted bytes=%d err=%v", payloadBytes, err)
+				}
+			} else {
+				if !errors.Is(err, isessionstore.ErrAnswerArtifactTooLarge) {
+					t.Fatalf("expected storage budget rejection, got %v", err)
+				}
+				current, getErr := svc.GetInteraction(ctx, owner, interaction.ID)
+				if getErr != nil || current.ExecutionStatus != sessionvo.InteractionActive || current.RowVersion != interaction.RowVersion || current.LeaseVersion != interaction.LeaseVersion {
+					t.Fatalf("terminal state leaked across rollback: %v", getErr)
+				}
+				if durableAnswerCount(t, db, "SELECT COUNT(*) FROM bkn_trace_projection_outbox") != beforeOutbox || durableAnswerCount(t, db, "SELECT COUNT(*) FROM bkn_trace_assembly_revisions") != beforeRevisions {
+					t.Fatal("outbox/revision leaked across rollback")
+				}
+				t.Logf("rejected with %T; active interaction and outbox/revisions retained", err)
+			}
+			t.Logf("packet=%d encoded_task=%d required=%d", capBytes, len(task), len(task)+metadata+answerPacketOverhead)
+		})
+	}
 }

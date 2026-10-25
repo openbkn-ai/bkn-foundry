@@ -34,11 +34,23 @@ func answerArtifactEventID(interactionID, key string) string {
 	sum := sha256.Sum256([]byte(interactionID + "|" + key))
 	return "answer_" + hex.EncodeToString(sum[:])
 }
-func (s *Service) prepareAnswerArtifact(command TerminateInteractionCommand) (*answerArtifactRequest, error) {
+
+const answerArtifactHandoffDisabledMessage = "durable answer handoff is not enabled; request operator configuration review without changing the answer or automatically retrying"
+
+const answerArtifactStorageLimitMessage = "answer artifact exceeds its durable storage byte budget; request operator review without truncating the answer or automatically retrying"
+
+func answerArtifactStorageLimitError() error {
+	return domainError(CodeAnswerArtifactStorageLimit, answerArtifactStorageLimitMessage)
+}
+
+func prepareAnswerArtifact(command TerminateInteractionCommand) (*answerArtifactRequest, error) {
 	invalid := func() (*answerArtifactRequest, error) {
 		return nil, domainError(CodeClosureManifestInvalid, "invalid durable answer artifact or owner")
 	}
-	if !s.durableAnswerEnabled || !command.DeriveManifest || command.Status != sessionvo.InteractionCompleted || len(command.AnswerArtifact) > MaxAnswerArtifactBytes {
+	if len(command.AnswerArtifact) > MaxAnswerArtifactBytes {
+		return nil, answerArtifactStorageLimitError()
+	}
+	if !command.DeriveManifest || command.Status != sessionvo.InteractionCompleted {
 		return invalid()
 	}
 	decoder := json.NewDecoder(bytes.NewReader(command.AnswerArtifact))
@@ -69,8 +81,11 @@ func (s *Service) prepareAnswerArtifact(command TerminateInteractionCommand) (*a
 		return invalid()
 	}
 	raw, err := json.Marshal(normalized)
-	if err != nil || len(raw) > MaxAnswerArtifactBytes {
+	if err != nil {
 		return invalid()
+	}
+	if len(raw) > MaxAnswerArtifactBytes {
+		return nil, answerArtifactStorageLimitError()
 	}
 	return &answerArtifactRequest{Owner: command.Owner, Artifact: normalized}, nil
 }
