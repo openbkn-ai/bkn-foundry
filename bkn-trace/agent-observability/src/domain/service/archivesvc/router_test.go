@@ -82,7 +82,7 @@ func TestLegacyTraceCleanupRefusalPreservesFrozenJobAndDownloadAcrossRetry(t *te
 	}
 	core := &traceArchiveFlowCore{}
 	technical := &traceArchiveFlowTechnical{purgeErr: errors.New("frozen technical document metadata is unavailable")}
-	objects := &fakeDownloadObjectStore{objects: map[string][]byte{"legacy/manifest.json": []byte(`{"data_key":"legacy/data.jsonl"}`), "legacy/data.jsonl": append(append([]byte(nil), payload...), '\n')}}
+	objects := &fakeDownloadObjectStore{objects: archiveFixtureObjects(job)}
 	router := Router{Trace: TraceBundleSource{Core: core, Technical: technical}}
 	for attempt := 0; attempt < 2; attempt++ {
 		// A new Service exercises retry after process-local state has disappeared.

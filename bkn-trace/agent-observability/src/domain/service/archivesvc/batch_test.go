@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -89,6 +90,7 @@ func (s *batchSourceFixture) Purge(_ context.Context, _ observabilityvo.ArchiveK
 }
 
 type batchObjectFixture struct {
+	objects        map[string][]byte
 	s              *batchSourceFixture
 	writes, failAt int
 	emptyManifest  bool
@@ -104,8 +106,20 @@ func (o *batchObjectFixture) WriteAndVerify(_ context.Context, j Job, c []Candid
 	if o.emptyManifest {
 		return "", nil
 	}
-	return "objects/" + j.ID + "/manifest.json", nil
+	j.ManifestRef = "objects/" + j.ID + "/manifest.json"
+	j.Candidates = c
+	if o.objects == nil {
+		o.objects = map[string][]byte{}
+	}
+	for key, value := range archiveFixtureObjects(j) {
+		o.objects[key] = value
+	}
+	return j.ManifestRef, nil
 }
+func (o *batchObjectFixture) Read(ctx context.Context, key string) (io.ReadCloser, error) {
+	return (&fakeDownloadObjectStore{objects: o.objects}).Read(ctx, key)
+}
+
 func batchService(s *batchSourceFixture, o *batchObjectFixture) *Service {
 	return New(s.store, s, o, Options{Now: func() time.Time { return time.Date(2026, 10, 24, 0, 0, 0, 0, time.UTC) }, Location: time.UTC})
 }
