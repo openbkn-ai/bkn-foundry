@@ -220,31 +220,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 	importView := importPlan.knowledgeNetworkView(kn)
-	for _, conceptGroup := range importPlan.ConceptGroups {
-		conceptGroup.KNID = kn.KNID
-		conceptGroup.Branch = kn.Branch
-	}
-	for _, objectType := range importPlan.ObjectTypes {
-		objectType.KNID = kn.KNID
-		objectType.Branch = kn.Branch
-	}
-	for _, relationType := range importPlan.RelationTypes {
-		relationType.KNID = kn.KNID
-		relationType.Branch = kn.Branch
-	}
-	for _, actionType := range importPlan.ActionTypes {
-		actionType.KNID = kn.KNID
-		actionType.Branch = kn.Branch
-	}
-	for _, riskType := range importPlan.RiskTypes {
-		riskType.KNID = kn.KNID
-		riskType.Branch = kn.Branch
-	}
-	for _, record := range importPlan.ObjectMetrics {
-		if record != nil {
-			record.KNID, record.Branch = kn.KNID, kn.Branch
-		}
-	}
+	importPlan.assignNetwork(kn.KNID, kn.Branch)
 	if err = validateObjectMetricArchive(importPlan); err != nil {
 		return "", httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails(err.Error())
@@ -346,9 +322,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		if err != nil {
 			logger.Errorf("UpdateKN error: %s", err.Error())
 			span.SetStatus(codes.Error, "修改业务知识网络失败")
-			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed).
-				WithErrorDetails(err.Error())
+			return "", updateKNFailure(ctx, err)
 		}
 
 		if err = kns.persistNormalizedImportPlan(ctx, tx, importPlan, mode, strictMode); err != nil {
@@ -410,6 +384,19 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 	return kn.KNID, nil
 }
 
+// updateKNFailure is the answer of an import whose network update failed. A refusal of the request,
+// such as a definition or value type that does not validate, keeps its own status and code; only a
+// failure of the update itself is internal.
+func updateKNFailure(ctx context.Context, err error) error {
+	var refused *httperrors.HTTPError
+	if errors.As(err, &refused) && refused.HTTPCode < http.StatusInternalServerError {
+		return refused
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+		berrors.BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed).
+		WithErrorDetails(err.Error())
+}
+
 // ValidateKN checks whole-KN dependency existence only; does not write to the database.
 func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfaces.KN, strictMode bool, mode string) error {
 
@@ -443,6 +430,15 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 			WithErrorDetails(err.Error())
 	}
 	view := plan.knowledgeNetworkView(kn)
+	for _, valueType := range plan.ValueTypes {
+		valueType.KNID, valueType.Branch = knID, branch
+	}
+	if len(plan.ValueTypes) > 0 {
+		if err := kns.vts.ValidateValueTypes(ctx, plan.ValueTypes); err != nil {
+			return err
+		}
+		ctx = interfaces.WithPendingValueTypes(ctx, plan.ValueTypes)
+	}
 
 	batch, err := batchindex.CollectKNFromPayload(view)
 	if err != nil {
@@ -875,6 +871,7 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 	var relationTypes []*interfaces.RelationType
 	var actionTypes []*interfaces.ActionType
 	var riskTypes []*interfaces.RiskType
+	var valueTypes []*interfaces.ValueType
 
 	loaders := []exportLoader{
 		func(ctx context.Context) error {
@@ -929,6 +926,14 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 			return err
 		})
 	}
+	// Value types belong to the network as a whole: reading the network is reading them.
+	if kns.vts != nil {
+		loaders = append(loaders, func(ctx context.Context) error {
+			var err error
+			valueTypes, err = kns.vts.GetAllValueTypesByKnID(ctx, kn.KNID, kn.Branch)
+			return err
+		})
+	}
 	if err := runExportLoaders(ctx, exportLoaderConcurrency, loaders...); err != nil {
 		return err
 	}
@@ -938,6 +943,7 @@ func (kns *knowledgeNetworkService) loadExportResources(ctx context.Context, kn 
 	kn.RelationTypes = relationTypes
 	kn.ActionTypes = actionTypes
 	kn.RiskTypes = riskTypes
+	kn.ValueTypes = valueTypes
 	if err := kns.finalizeExportConceptGroups(ctx, kn); err != nil {
 		return err
 	}

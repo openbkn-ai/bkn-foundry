@@ -432,3 +432,28 @@ func TestValidateObjectTypesIgnoreKeepsStoredAliasesInTheCheck(t *testing.T) {
 	assert.Equal(t, berrors.BknBackend_ObjectType_InvalidParameter_Declarations, errorCode(t, err))
 	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `object type "customer" is named "客户", which is an alias of object type "order"`)
 }
+
+// During an import the value types it writes resolve before they are committed, and replace the
+// stored ones of the same ID; the others are read from storage.
+func TestCheckNetworkDeclarationsResolvesPendingValueTypes(t *testing.T) {
+	vta := bmock.NewMockValueTypeAccess(gomock.NewController(t))
+	ots := &objectTypeService{vta: vta}
+	ot := declaredObjectType()
+	ot.DataProperties[0].Constraints = &interfaces.PropertyConstraints{ValueType: "order_no"}
+	ot.DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
+
+	ctx := interfaces.WithPendingValueTypes(context.Background(), []*interfaces.ValueType{
+		{VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal"},
+	})
+	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"order_no"}).
+		Return([]*interfaces.ValueType{{VTID: "order_no", VTName: "订单号", BaseType: "string"}}, nil)
+	require.NoError(t, ots.checkNetworkDeclarations(ctx, ot))
+
+	ctx = interfaces.WithPendingValueTypes(context.Background(), []*interfaces.ValueType{
+		{VTID: "amount_cny", VTName: "人民币金额", BaseType: "integer"},
+		{VTID: "order_no", VTName: "订单号", BaseType: "string"},
+	})
+	err := ots.checkNetworkDeclarations(ctx, ot)
+	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `value type "amount_cny" has base_type integer`,
+		"the import's version is checked, nothing read")
+}

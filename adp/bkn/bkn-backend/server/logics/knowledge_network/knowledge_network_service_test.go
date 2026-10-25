@@ -3374,3 +3374,66 @@ func Test_knowledgeNetworkService_ValidateKN_strictMode_propagation(t *testing.T
 		So(err, ShouldBeNil)
 	})
 }
+
+// ValidateKN checks the value types of the payload and hands them to the object type checks, which
+// cannot read them from storage yet.
+func Test_knowledgeNetworkService_ValidateKN_valueTypes(t *testing.T) {
+	Convey("ValidateKN validates value types and makes them resolvable\n", t, func() {
+		ctx := context.Background()
+		mockCtrl := gomock.NewController(t)
+		defer mockCtrl.Finish()
+
+		kna := bmock.NewMockKNAccess(mockCtrl)
+		ots := bmock.NewMockObjectTypeService(mockCtrl)
+		vts := bmock.NewMockValueTypeService(mockCtrl)
+		kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil).AnyTimes()
+		kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil).AnyTimes()
+		service := &knowledgeNetworkService{appSetting: &common.AppSetting{}, kna: kna, ots: ots, vts: vts}
+
+		valueType := &interfaces.ValueType{VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal"}
+		kn := &interfaces.KN{
+			KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+			ValueTypes:  []*interfaces.ValueType{valueType},
+			ObjectTypes: []*interfaces.ObjectType{{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "order"}}},
+		}
+
+		Convey("valid value types reach the object type checks\n", func() {
+			vts.EXPECT().ValidateValueTypes(gomock.Any(), kn.ValueTypes).Return(nil)
+			ots.EXPECT().ValidateObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any(), true, gomock.Any(), gomock.Any()).
+				DoAndReturn(func(ctx context.Context, _, _ string, _ []*interfaces.ObjectType, _ bool, _ *interfaces.BatchIDIndex, _ string) error {
+					So(interfaces.PendingValueTypes(ctx), ShouldResemble, []*interfaces.ValueType{valueType})
+					return nil
+				})
+			So(service.ValidateKN(ctx, kn, true, interfaces.ImportMode_Normal), ShouldBeNil)
+			So(valueType.KNID, ShouldEqual, "kn1")
+		})
+
+		Convey("an invalid value type stops the validation\n", func() {
+			vts.EXPECT().ValidateValueTypes(gomock.Any(), kn.ValueTypes).
+				Return(httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter))
+			So(service.ValidateKN(ctx, kn, true, interfaces.ImportMode_Normal), ShouldNotBeNil)
+		})
+	})
+}
+
+// An overwrite import whose network update is refused for the request answers with the refusal,
+// such as 400 for a value type that does not validate; a failure of the update itself stays 500.
+func Test_updateKNFailure(t *testing.T) {
+	Convey("updateKNFailure keeps a refusal and wraps a failure\n", t, func() {
+		ctx := context.Background()
+		refused := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
+		So(updateKNFailure(ctx, refused), ShouldEqual, refused)
+
+		forbidden := httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_InternalError)
+		So(updateKNFailure(ctx, forbidden), ShouldEqual, forbidden)
+
+		for _, failure := range []error{
+			errors.New("connection reset"),
+			httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError),
+		} {
+			httpErr := updateKNFailure(ctx, failure).(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed)
+		}
+	})
+}

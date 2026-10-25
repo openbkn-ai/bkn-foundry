@@ -60,16 +60,34 @@ func (ots *objectTypeService) checkNetworkDeclarations(ctx context.Context, obje
 	if len(ids) == 0 {
 		return nil
 	}
-	valueTypes, err := ots.vta.GetValueTypesByIDs(ctx, nil, objectType.KNID, objectType.Branch, ids)
-	if err != nil {
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(err.Error())
+	// An import resolves the value types it writes itself before the stored ones: they are not
+	// committed yet, and they replace the stored ones of the same ID.
+	var valueTypes []*interfaces.ValueType
+	var stored []string
+	pending := map[string]*interfaces.ValueType{}
+	for _, vt := range interfaces.PendingValueTypes(ctx) {
+		pending[vt.VTID] = vt
+	}
+	for _, id := range ids {
+		if vt, ok := pending[id]; ok {
+			valueTypes = append(valueTypes, vt)
+		} else {
+			stored = append(stored, id)
+		}
+	}
+	if len(stored) > 0 {
+		found, err := ots.vta.GetValueTypesByIDs(ctx, nil, objectType.KNID, objectType.Branch, stored)
+		if err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).
+				WithErrorDetails(err.Error())
+		}
+		valueTypes = append(valueTypes, found...)
 	}
 	doc := &bknsdk.BknNetwork{ObjectTypes: []*bknsdk.BknObjectType{logics.ToBKNObjectType(objectType)}}
 	for _, vt := range valueTypes {
 		doc.ValueTypes = append(doc.ValueTypes, logics.ToBKNValueType(vt))
 	}
-	if err = bknsdk.ValidateNetworkDeclarations(doc); err != nil {
+	if err := bknsdk.ValidateNetworkDeclarations(doc); err != nil {
 		return invalidDeclarations(ctx, err.Error())
 	}
 	return nil

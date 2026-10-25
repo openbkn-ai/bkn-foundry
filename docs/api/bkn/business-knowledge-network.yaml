@@ -670,6 +670,8 @@ components:
           type: array
         concept_groups:
           type: array
+        value_types:
+          type: array
     BasicInfo:
       description: Basic resource information containing ID and name
       required:
@@ -2255,6 +2257,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
+        value_types:
+          description: |
+            BKN spec 3.0 value types of the network (value-types.yaml). Returned in export mode and accepted
+            by the import, which writes them before the object types that name them. Absent when the
+            network has none.
+          type: array
+          items:
+            $ref: "./value-types.yaml#/components/schemas/ValueType"
 
         module_type:
           description: Module type of the concept

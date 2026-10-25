@@ -271,3 +271,17 @@ func (mr *MockValueTypeServiceMockRecorder) UpdateValueType(ctx, tx, valueType a
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateValueType", reflect.TypeOf((*MockValueTypeService)(nil).UpdateValueType), ctx, tx, valueType)
 }
+
+// ValidateValueTypes mocks base method.
+func (m *MockValueTypeService) ValidateValueTypes(ctx context.Context, valueTypes []*interfaces.ValueType) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateValueTypes", ctx, valueTypes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateValueTypes indicates an expected call of ValidateValueTypes.
+func (mr *MockValueTypeServiceMockRecorder) ValidateValueTypes(ctx, valueTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateValueTypes", reflect.TypeOf((*MockValueTypeService)(nil).ValidateValueTypes), ctx, valueTypes)
+}

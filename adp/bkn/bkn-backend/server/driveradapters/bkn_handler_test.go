@@ -328,18 +328,41 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			So(w.Code, ShouldEqual, http.StatusOK)
 		})
 
-		Convey("Refuses 3.0 value types and aliases the backend does not store yet", func() {
-			for _, c := range []struct{ path, content, want string }{
-				{"value_types/phase.bkn", "---\ntype: value_type\nid: phase\nname: 阶段\ntags: []\n---\n\n## ValueType: 阶段\n\n### Definition\n\n```yaml\nbase_type: keyword\n```\n",
-					`value type \"phase\": value types are not supported by this version yet`},
-				{"action_types/restart.bkn", "---\ntype: action_type\nid: restart\nname: 重启\ntags: []\naliases: [重启容器组]\n---\n\n## ActionType: 重启\n",
-					`action type \"restart\": aliases is not supported by this version yet`},
-				{"object_types/node.bkn", "---\ntype: object_type\nid: node\nname: 节点\ntags: []\naliases: [主机]\n---\n\n## ObjectType: 节点\n",
-					`object type \"node\": aliases is not supported by this version yet`},
-				{"object_types/node.bkn", "---\ntype: object_type\nid: node\nname: 节点\ntags: []\n---\n\n## ObjectType: 节点\n\n" +
+		Convey("Imports the value types and aliases of a 3.0 package", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, false).
+				DoAndReturn(func(_ context.Context, kn *interfaces.KN, _ string, _ bool) (string, error) {
+					if len(kn.ValueTypes) != 1 || kn.ValueTypes[0].VTID != "phase" || kn.ValueTypes[0].BaseType != "keyword" {
+						t.Fatalf("the value type did not reach the import: %#v", kn.ValueTypes)
+					}
+					var node *interfaces.ObjectType
+					for _, ot := range kn.ObjectTypes {
+						if ot.OTID == "node" {
+							node = ot
+						}
+					}
+					if node == nil || len(node.Aliases) != 1 || node.Aliases[0] != "主机" ||
+						len(node.DataProperties) != 1 || len(node.DataProperties[0].Aliases) != 1 {
+						t.Fatalf("the object type aliases did not reach the import: %#v", node)
+					}
+					if len(kn.ActionTypes) != 1 || len(kn.ActionTypes[0].Aliases) != 1 || kn.ActionTypes[0].Aliases[0] != "重启容器组" {
+						t.Fatalf("the action type aliases did not reach the import: %#v", kn.ActionTypes)
+					}
+					return "kn1", nil
+				})
+			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "", map[string]string{
+				"value_types/phase.bkn": "---\ntype: value_type\nid: phase\nname: 阶段\ntags: []\n---\n\n## ValueType: 阶段\n\n### Definition\n\n```yaml\nbase_type: keyword\n```\n",
+				"object_types/node.bkn": "---\ntype: object_type\nid: node\nname: 节点\ntags: []\naliases: [主机]\n---\n\n## ObjectType: 节点\n\n" +
 					"### Data Properties\n\n| Name | Display Name | Type | Aliases | Mapped Field |\n|------|--------------|------|---------|--------------|\n" +
-					"| host | 主机名 | string | 主机 | host |\n",
-					`object type \"node\" data property \"host\": Aliases is not supported by this version yet`},
+					"| host | 主机名 | string | 主机地址 | host |\n\n### Keys\n\nPrimary Keys: host\nDisplay Key: host\n",
+				"action_types/restart.bkn": "---\ntype: action_type\nid: restart\nname: 重启\ntags: []\naction_intent: modify\naliases: [重启容器组]\n---\n\n## ActionType: 重启\n",
+			}))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusOK)
+		})
+
+		Convey("Refuses 3.0 lifecycles and relation declarations the backend does not store yet", func() {
+			for _, c := range []struct{ path, content, want string }{
 				{"object_types/node.bkn", "---\ntype: object_type\nid: node\nname: 节点\ntags: []\nlifecycle: {status: deprecated, reason: 改用主机}\n---\n\n## ObjectType: 节点\n",
 					`object type \"node\": lifecycle is not supported by this version yet`},
 				{"relation_types/pod_peer.bkn", "---\ntype: relation_type\nid: pod_peer\nname: 同组\ntags: []\nverification: confirmed\n---\n\n## RelationType: 同组\n\n" +

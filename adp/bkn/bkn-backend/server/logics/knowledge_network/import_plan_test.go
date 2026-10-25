@@ -228,3 +228,44 @@ func sameImportIDs(got, want []string) bool {
 	}
 	return true
 }
+
+// An exported file names the network it came from; every definition, value types included, lands
+// in the network being imported into.
+func TestAssignNetworkMovesEveryDefinition(t *testing.T) {
+	const knID, branch = "kn-source", "dev"
+	plan := &NormalizedImportPlan{
+		ConceptGroups: []*interfaces.ConceptGroup{{CGID: "cg", KNID: knID, Branch: branch}},
+		ObjectTypes:   []*interfaces.ObjectType{{KNID: knID, Branch: branch}},
+		RelationTypes: []*interfaces.RelationType{{KNID: knID, Branch: branch}},
+		ActionTypes:   []*interfaces.ActionType{{KNID: knID, Branch: branch}},
+		RiskTypes:     []*interfaces.RiskType{{KNID: knID, Branch: branch}},
+		ValueTypes:    []*interfaces.ValueType{{VTID: "amount_cny", KNID: knID, Branch: branch}},
+		ObjectMetrics: []*interfaces.ObjectMetricRecordV1{{KNID: knID, Branch: branch}, nil},
+	}
+	plan.assignNetwork("kn-target", interfaces.MAIN_BRANCH)
+
+	got := [][2]string{
+		{plan.ConceptGroups[0].KNID, plan.ConceptGroups[0].Branch},
+		{plan.ObjectTypes[0].KNID, plan.ObjectTypes[0].Branch},
+		{plan.RelationTypes[0].KNID, plan.RelationTypes[0].Branch},
+		{plan.ActionTypes[0].KNID, plan.ActionTypes[0].Branch},
+		{plan.RiskTypes[0].KNID, plan.RiskTypes[0].Branch},
+		{plan.ValueTypes[0].KNID, plan.ValueTypes[0].Branch},
+		{plan.ObjectMetrics[0].KNID, plan.ObjectMetrics[0].Branch},
+	}
+	for i, g := range got {
+		if g != [2]string{"kn-target", interfaces.MAIN_BRANCH} {
+			t.Fatalf("definition %d stays in %v", i, g)
+		}
+	}
+}
+
+// A null value type is refused before anything reads it, on every path that plans an import,
+// update included.
+func TestNormalizeImportPlanRefusesANullValueType(t *testing.T) {
+	_, err := normalizeImportPlan(context.Background(), &interfaces.KN{KNID: "kn-1",
+		ValueTypes: []*interfaces.ValueType{{VTID: "amount_cny"}, nil}})
+	if err == nil || err.Error() != "value_types[1] is null" {
+		t.Fatalf("err = %v", err)
+	}
+}

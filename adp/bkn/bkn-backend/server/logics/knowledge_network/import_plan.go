@@ -28,6 +28,7 @@ type NormalizedImportPlan struct {
 	RelationTypes []*interfaces.RelationType
 	ActionTypes   []*interfaces.ActionType
 	RiskTypes     []*interfaces.RiskType
+	ValueTypes    []*interfaces.ValueType
 	ObjectMetrics []*interfaces.ObjectMetricRecordV1
 
 	GroupMembers map[string][]string
@@ -38,6 +39,34 @@ type NormalizedImportPlan struct {
 	RestoredMemberCount int
 }
 
+// assignNetwork moves every definition of the plan into the network being imported into. An
+// exported file names the network it came from, and the definitions must not land there.
+func (plan *NormalizedImportPlan) assignNetwork(knID, branch string) {
+	for _, conceptGroup := range plan.ConceptGroups {
+		conceptGroup.KNID, conceptGroup.Branch = knID, branch
+	}
+	for _, objectType := range plan.ObjectTypes {
+		objectType.KNID, objectType.Branch = knID, branch
+	}
+	for _, relationType := range plan.RelationTypes {
+		relationType.KNID, relationType.Branch = knID, branch
+	}
+	for _, actionType := range plan.ActionTypes {
+		actionType.KNID, actionType.Branch = knID, branch
+	}
+	for _, riskType := range plan.RiskTypes {
+		riskType.KNID, riskType.Branch = knID, branch
+	}
+	for _, valueType := range plan.ValueTypes {
+		valueType.KNID, valueType.Branch = knID, branch
+	}
+	for _, record := range plan.ObjectMetrics {
+		if record != nil {
+			record.KNID, record.Branch = knID, branch
+		}
+	}
+}
+
 func (plan *NormalizedImportPlan) knowledgeNetworkView(source *interfaces.KN) *interfaces.KN {
 	view := *source
 	view.ConceptGroups = plan.ConceptGroups
@@ -45,6 +74,7 @@ func (plan *NormalizedImportPlan) knowledgeNetworkView(source *interfaces.KN) *i
 	view.RelationTypes = plan.RelationTypes
 	view.ActionTypes = plan.ActionTypes
 	view.RiskTypes = plan.RiskTypes
+	view.ValueTypes = plan.ValueTypes
 	view.ObjectMetrics = plan.ObjectMetrics
 	return &view
 }
@@ -85,8 +115,14 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 		KNID:          kn.KNID,
 		Branch:        kn.Branch,
 		RiskTypes:     kn.RiskTypes,
+		ValueTypes:    kn.ValueTypes,
 		ObjectMetrics: kn.ObjectMetrics,
 		GroupMembers:  make(map[string][]string),
+	}
+	for i, valueType := range kn.ValueTypes {
+		if valueType == nil {
+			return nil, fmt.Errorf("value_types[%d] is null", i)
+		}
 	}
 	groups := newNormalizedDefinitionSet[interfaces.ConceptGroup]()
 	objects := newNormalizedDefinitionSet[interfaces.ObjectType]()
@@ -136,7 +172,8 @@ func normalizeImportPlan(ctx context.Context, kn *interfaces.KN) (*NormalizedImp
 		fingerprint, err := importFingerprint(struct {
 			interfaces.ObjectTypeWithKeyField
 			interfaces.CommonInfo
-		}{objectType.ObjectTypeWithKeyField, objectType.CommonInfo})
+			Aliases []string
+		}{objectType.ObjectTypeWithKeyField, objectType.CommonInfo, objectType.Aliases})
 		if err != nil {
 			return err
 		}

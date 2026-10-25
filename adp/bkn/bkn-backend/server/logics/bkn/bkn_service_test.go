@@ -41,17 +41,6 @@ func (archiveAccessStub) DeleteObjectMetricArchive(context.Context, *sql.Tx, str
 	return nil
 }
 
-// valueTypesStub holds the value types of the network under test; nothing else of the value type
-// service is used by export.
-type valueTypesStub struct {
-	interfaces.ValueTypeService
-	list []*interfaces.ValueType
-}
-
-func (s valueTypesStub) GetAllValueTypesByKnID(context.Context, string, string) ([]*interfaces.ValueType, error) {
-	return s.list, nil
-}
-
 type archivePermissionStub struct {
 	interfaces.PermissionService
 	visible map[string]bool
@@ -94,7 +83,6 @@ func newTestBKNServiceWithCapabilities(t *testing.T) (*bknService, *gomock.Contr
 		kns:        kns,
 		cbs:        cbs,
 		ps:         archivePermissionStub{},
-		vts:        valueTypesStub{},
 	}
 	return svc, mockCtrl, kns, cbs
 }
@@ -627,10 +615,10 @@ func Test_bknService_ExportDeclarations(t *testing.T) {
 		Convey("A property naming a value type is written with the value type\n", func() {
 			kn := declaredKN("kn1", true)
 			kn.ObjectTypes[0].DataProperties[2].Constraints = &interfaces.PropertyConstraints{ValueType: "amount_cny"}
-			svc.vts = valueTypesStub{list: []*interfaces.ValueType{{
+			kn.ValueTypes = []*interfaces.ValueType{{
 				VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal",
 				ValueTypeDefinition: interfaces.ValueTypeDefinition{Range: &interfaces.ValueRange{Min: float64(0)}, Unit: "元"},
-			}}}
+			}}
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(kn, nil)
 			data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
 			So(err, ShouldBeNil)
@@ -668,11 +656,11 @@ func Test_bknService_ExportDeclarations(t *testing.T) {
 		})
 
 		Convey("2.0 leaves value types out, byte for byte as a network that never had them\n", func() {
-			svc.vts = valueTypesStub{list: []*interfaces.ValueType{{VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal"}}}
-			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
+			withVT := declaredKN("kn1", false)
+			withVT.ValueTypes = []*interfaces.ValueType{{VTID: "amount_cny", VTName: "人民币金额", BaseType: "decimal"}}
+			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(withVT, nil)
 			withValueTypes, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_2)
 			So(err, ShouldBeNil)
-			svc.vts = valueTypesStub{}
 			kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).Return(declaredKN("kn1", false), nil)
 			plain, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
 			So(err, ShouldBeNil)

@@ -186,6 +186,18 @@ func (s *valueTypeService) CreateValueTypes(ctx context.Context, tx *sql.Tx, val
 	return ids, nil
 }
 
+func (s *valueTypeService) ValidateValueTypes(ctx context.Context, valueTypes []*interfaces.ValueType) error {
+	for _, vt := range valueTypes {
+		if vt == nil {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
+		}
+		if err := prepare(ctx, vt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // splitByImportMode sorts value types into those to create and those to overwrite, the rule every
 // other kind of definition follows: normal refuses an existing ID or name, ignore skips them,
 // overwrite replaces a value type of the same ID and refuses a name another value type holds.
