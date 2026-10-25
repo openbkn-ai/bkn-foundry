@@ -57,6 +57,35 @@ an empty terminal page. No first-screen count request, migration or index mappin
 change is introduced. Studio adds the browser through its coordinated PR; older
 Studio versions ignore the additive metadata.
 
+## Technical Trace archive cleanup safety (#1724)
+
+Technical Trace enrichment requires a complete OpenSearch result: no timeout,
+failed/missing shard evidence, lower-bound total, truncated window, malformed
+source or missing document identity/version. The existing 10,000-document read
+window remains; an incomplete selection stops before object verification or
+cleanup.
+
+New packages retain the existing `technical_traces` sources and additionally
+freeze each record's concrete index, document ID, sequence number, primary term
+and optional routing in `technical_trace_records`. This metadata travels with
+the existing candidate payload and cleanup retry record; no migration is added.
+Only those document versions are conditionally deleted after object verification.
+Late records with the same Trace ID remain hot. Changed versions are retained and
+leave the job `cleanup_incomplete`; retries do not reselect or widen the range.
+Already-removed records are accepted only when their absence is confirmed.
+
+Legacy packages with technical Trace references but no frozen document metadata
+remain readable/downloadable, but automatic cleanup is refused. Their existing
+job and frozen payload stay available for operator review. No fallback deletes
+by Trace ID. Packages with no technical Trace references retain their no-op
+technical cleanup behavior.
+
+Archive credentials must permit bulk document deletion and real-time document
+reads on the concrete indices. A denied/ambiguous response preserves the
+incomplete-cleanup state. This patch does not change SQL cleanup concurrency,
+reverify object contents on retry, stream Trace candidates, or bound full-package
+memory; these remain follow-ups under #1724. List/detail query paths are unchanged.
+
 ## Development
 
 ### 系统审计配置

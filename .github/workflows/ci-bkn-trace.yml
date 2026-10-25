@@ -84,6 +84,10 @@ jobs:
         env:
           BKN_SPAN_PAGE_TEST_URL: http://127.0.0.1:9200
         run: go test -tags=integration ./src/domain/service/tracesvc -run '^TestSpanPageRealOpenSearch$' -count=1 -v
+      - name: Frozen technical Trace archive safety integration test
+        env:
+          BKN_FROZEN_ARCHIVE_TEST_URL: http://127.0.0.1:9200
+        run: go test -tags=integration ./src/drivenadapter/httpaccess/opensearchtraceaccess -run '^TestArchiveFrozenSafetyRealOpenSearch$' -count=1 -v
       - name: Build
         run: make build
       - uses: azure/setup-helm@v4
