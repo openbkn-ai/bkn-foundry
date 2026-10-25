@@ -3236,3 +3236,25 @@ func Test_knowledgeNetworkService_ValidateKN_valueTypes(t *testing.T) {
 		})
 	})
 }
+
+// An overwrite import whose network update is refused for the request answers with the refusal,
+// such as 400 for a value type that does not validate; a failure of the update itself stays 500.
+func Test_updateKNFailure(t *testing.T) {
+	Convey("updateKNFailure keeps a refusal and wraps a failure\n", t, func() {
+		ctx := context.Background()
+		refused := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ValueType_InvalidParameter)
+		So(updateKNFailure(ctx, refused), ShouldEqual, refused)
+
+		forbidden := httperrors.NewHTTPError(ctx, http.StatusForbidden, berrors.BknBackend_KnowledgeNetwork_InternalError)
+		So(updateKNFailure(ctx, forbidden), ShouldEqual, forbidden)
+
+		for _, failure := range []error{
+			errors.New("connection reset"),
+			httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_KnowledgeNetwork_InternalError),
+		} {
+			httpErr := updateKNFailure(ctx, failure).(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed)
+		}
+	})
+}

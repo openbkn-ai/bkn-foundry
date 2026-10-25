@@ -322,9 +322,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		if err != nil {
 			logger.Errorf("UpdateKN error: %s", err.Error())
 			span.SetStatus(codes.Error, "修改业务知识网络失败")
-			return "", httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed).
-				WithErrorDetails(err.Error())
+			return "", updateKNFailure(ctx, err)
 		}
 
 		if err = kns.persistNormalizedImportPlan(ctx, tx, importPlan, mode, strictMode); err != nil {
@@ -384,6 +382,19 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 
 	span.SetStatus(codes.Ok, "")
 	return kn.KNID, nil
+}
+
+// updateKNFailure is the answer of an import whose network update failed. A refusal of the request,
+// such as a definition or value type that does not validate, keeps its own status and code; only a
+// failure of the update itself is internal.
+func updateKNFailure(ctx context.Context, err error) error {
+	var refused *httperrors.HTTPError
+	if errors.As(err, &refused) && refused.HTTPCode < http.StatusInternalServerError {
+		return refused
+	}
+	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+		berrors.BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed).
+		WithErrorDetails(err.Error())
 }
 
 // ValidateKN checks whole-KN dependency existence only; does not write to the database.
