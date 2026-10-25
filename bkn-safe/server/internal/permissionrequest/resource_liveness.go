@@ -146,6 +146,8 @@ func (r *httpResourceLivenessResolver) Exists(ctx context.Context, resourceType,
 		if !registered {
 			return false, ErrUnsupportedResourceType
 		}
+		ctx, cancel := context.WithTimeout(ctx, authzresource.CallTimeout)
+		defer cancel()
 		return provider.Exists(ctx, resourceID)
 	}
 	request, err := livenessRequest(ctx, endpoint, resourceID)

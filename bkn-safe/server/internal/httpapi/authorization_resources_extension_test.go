@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
@@ -21,7 +22,11 @@ type extensionProvider struct {
 	queries []authzresource.Query
 }
 
-func (p *extensionProvider) List(_ context.Context, query authzresource.Query) (authzresource.Page, error) {
+func (p *extensionProvider) List(ctx context.Context, query authzresource.Query) (authzresource.Page, error) {
+	// Core bounds every extension call; the caller's context had no deadline.
+	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > authzresource.CallTimeout {
+		return authzresource.Page{}, errors.New("extension call is not bounded")
+	}
 	p.queries = append(p.queries, query)
 	return authzresource.Page{Entries: []authzresource.Resource{{ID: "7", Name: "合同库"}}, Total: 1}, nil
 }
@@ -64,7 +69,7 @@ func TestAuthorizationResourcesServeAnExtensionType(t *testing.T) {
 		t.Fatalf("parent filter status = %d", w.Code)
 	}
 
-	resource, err := (&authorizationResourceCatalog{}).Resolve(t.Context(), "knowledge_base", "7")
+	resource, err := (&authorizationResourceCatalog{}).Resolve(context.Background(), "knowledge_base", "7")
 	if err != nil || resource.Name != "合同库" {
 		t.Fatalf("Resolve() = (%+v, %v)", resource, err)
 	}

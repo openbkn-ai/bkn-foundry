@@ -226,6 +226,8 @@ func listExtensionResources(ctx context.Context, resourceType string, query Auth
 	if query.ParentType != "" || query.ParentID != "" {
 		return AuthorizationResourceList{}, errInvalidAuthorizationResourceParent
 	}
+	ctx, cancel := context.WithTimeout(ctx, authzresource.CallTimeout)
+	defer cancel()
 	page, err := provider.List(ctx, authzresource.Query{
 		Name:      query.Name,
 		Sort:      query.Sort,

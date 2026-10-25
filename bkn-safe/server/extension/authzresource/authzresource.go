@@ -27,6 +27,7 @@ package authzresource
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement/socket"
@@ -54,6 +55,12 @@ type Query struct {
 	Offset    int
 	Limit     int
 }
+
+// CallTimeout bounds every call core makes to a Provider, as core's own
+// upstream clients are bounded: permission-request listings check each pending
+// row in turn, so one stuck provider would otherwise hang the whole request.
+// Providers should still bound their own I/O.
+const CallTimeout = 5 * time.Second
 
 // Provider serves one resource type. Both calls must fail closed: an error is
 // reported as "unavailable", never as "missing".

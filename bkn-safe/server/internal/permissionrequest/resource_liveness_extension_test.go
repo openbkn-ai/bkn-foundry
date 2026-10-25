@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
@@ -56,5 +57,39 @@ func TestResourceLivenessAsksTheExtensionForTypesCoreDoesNotServe(t *testing.T) 
 	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionCommunity))
 	if _, err := resolver.Exists(t.Context(), "knowledge_base", "7"); !errors.Is(err, ErrUnsupportedResourceType) {
 		t.Fatalf("unlicensed type error = %v, want unsupported", err)
+	}
+}
+
+type deadlineProvider struct{ deadline *time.Duration }
+
+func (deadlineProvider) List(context.Context, authzresource.Query) (authzresource.Page, error) {
+	return authzresource.Page{}, nil
+}
+
+func (p deadlineProvider) Exists(ctx context.Context, _ string) (bool, error) {
+	if deadline, ok := ctx.Deadline(); ok {
+		*p.deadline = time.Until(deadline)
+	}
+	return true, nil
+}
+
+func TestResourceLivenessBoundsExtensionCalls(t *testing.T) {
+	entitlement.ResetForTest()
+	authzresource.ResetForTest()
+	t.Cleanup(func() {
+		authzresource.ResetForTest()
+		entitlement.ResetForTest()
+	})
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionProfessional))
+	var remaining time.Duration
+	authzresource.Register("knowledge_base", "knowledge_base", licverify.EditionProfessional, deadlineProvider{deadline: &remaining})
+
+	// The caller's context has no deadline; core must add one.
+	resolver := &httpResourceLivenessResolver{endpoints: map[string]string{}}
+	if _, err := resolver.Exists(context.Background(), "knowledge_base", "7"); err != nil {
+		t.Fatal(err)
+	}
+	if remaining <= 0 || remaining > authzresource.CallTimeout {
+		t.Fatalf("provider deadline = %v, want within %v", remaining, authzresource.CallTimeout)
 	}
 }
