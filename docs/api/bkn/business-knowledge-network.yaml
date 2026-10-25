@@ -401,8 +401,9 @@ paths:
         Counts are calculated after authorization. The initial page and cursor pages are bounded;
         focus_object_type_id expands one node by one or two hops. A cursor is rejected when the
         network snapshot has changed. When concept_group_id is provided, counts and truncation are
-        scoped to the visible object and relation types in that group. Returned edges never reference
-        a node omitted by authorization or by the bounded node selection.
+        scoped to the visible object and relation types in that group. Concept-group cursors advance
+        node and relation pages independently, so an edge may reference a node returned by a later
+        page; clients should merge pages by ID before drawing the edge.
       parameters:
         - name: kn_id
           in: path
@@ -417,23 +418,23 @@ paths:
             default: main
         - name: node_limit
           in: query
-          description: Maximum returned nodes. Defaults to 60; maximum 200.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 200
-            default: 60
-        - name: edge_limit
-          in: query
-          description: Maximum candidate relations read for this response. Defaults to 120; maximum 500.
+          description: Maximum returned nodes per page. Defaults to 60; maximum 500.
           schema:
             type: integer
             minimum: 1
             maximum: 500
+            default: 60
+        - name: edge_limit
+          in: query
+          description: Maximum candidate relations read per page. Defaults to 120; maximum 1000.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
             default: 120
         - name: cursor
           in: query
-          description: Opaque cursor from next_cursor. Cannot be combined with focus or concept-group expansion.
+          description: Opaque cursor from next_cursor. Supported for network and concept-group projections; cannot be combined with focus_object_type_id.
           schema:
             type: string
         - name: focus_object_type_id
@@ -594,7 +595,7 @@ components:
             differ from an unfiltered or focus projection of the same network version.
         next_cursor:
           type: string
-          description: Opaque cursor for the next bounded node page. Omitted when there is no next page.
+          description: Opaque cursor for the next bounded page. Concept-group cursors independently advance node and relation offsets. Omitted when both streams are complete.
     OverviewGraphNode:
       type: object
       required: [id, name]
@@ -612,6 +613,17 @@ components:
         degree:
           type: integer
           minimum: 0
+        concept_groups:
+          type: array
+          description: Concept groups visible to the caller, sorted by name and ID.
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
     OverviewGraphEdge:
       type: object
       required: [id, name, source_id, target_id, mapping_mode]
