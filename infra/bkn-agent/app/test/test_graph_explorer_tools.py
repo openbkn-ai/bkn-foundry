@@ -94,6 +94,39 @@ def test_cypher_derived_edges_count_their_evidence():
     assert "evidence|players-7|teams-9" in derived and "evidence|players-7|matches-2" in derived
 
 
+def test_cypher_derived_edge_may_end_at_a_value():
+    rows = [
+        {"source": _obj("teams", 1), "relationType": "主场结果", "target": "胜", "score": "3–3"},
+        {"source": _obj("teams", 2), "relationType": "主场结果", "target": "胜", "score": "2–0"},
+        {"source": _obj("teams", 3), "relationType": "主场结果", "target": "未胜"},
+        {"source": 2.0, "relationType": "进球数", "target": _obj("teams", 4)},
+        {"source": _obj("teams", 5), "relationType": "晋级", "target": True},
+        # Both ends values, an empty or overlong value, or a list: not a derived edge.
+        {"source": "胜", "relationType": "主场结果", "target": "未胜"},
+        {"source": _obj("teams", 6), "relationType": "主场结果", "target": ""},
+        {"source": _obj("teams", 7), "relationType": "主场结果", "target": "x" * 201},
+        {"source": _obj("teams", 8), "relationType": "主场结果", "target": ["胜"]},
+    ]
+    out = data.graph_from_cypher({"entries": rows}, {}, {})
+    values = {n["id"]: n for n in out.nodes if n.get("value")}
+    assert list(values) == ["value|主场结果|胜", "value|主场结果|未胜", "value|进球数|2", "value|晋级|true"]
+    assert values["value|主场结果|胜"] == {
+        "id": "value|主场结果|胜", "object_type_id": "@value:主场结果", "identity": {},
+        "properties": {}, "label": "胜", "value": True,
+    }
+    derived = {e["id"]: e for e in out.edges if e.get("virtual")}
+    assert set(derived) == {
+        "virtual|teams-1|主场结果|value|主场结果|胜",
+        "virtual|teams-2|主场结果|value|主场结果|胜",
+        "virtual|teams-3|主场结果|value|主场结果|未胜",
+        "virtual|value|进球数|2|进球数|teams-4",
+        "virtual|teams-5|晋级|value|晋级|true",
+    }
+    assert derived["virtual|teams-1|主场结果|value|主场结果|胜"]["computed"] == {"score": "3–3"}
+    # Rows that are not derived edges fall back to nodes and table rows.
+    assert {"teams-6", "teams-7", "teams-8"} <= {n["id"] for n in out.nodes}
+
+
 def test_scalar_only_cypher_holds_no_graph():
     out = data.graph_from_cypher({"entries": [{"n": 3}]}, {}, {})
     assert not out.holds_graph and out.nodes == [] and out.table == {"columns": ["n"], "rows": [{"n": 3}]}
