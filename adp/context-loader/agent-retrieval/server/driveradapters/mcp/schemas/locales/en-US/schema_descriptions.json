@@ -447,6 +447,7 @@
     "output_schema.properties.version.description": "Pinned published metric version",
     "output_schema.properties.model.description": "Published metric result model",
     "output_schema.properties.entries.description": "Metric results with explicit per-entry status",
+    "output_schema.properties.entries.items.properties.display_value.description": "Exact decimal text for numeric result values; use for display when present, while value remains the original JSON number.",
     "output_schema.properties.status.description": "Overall status: ok, no_data, unavailable, or partial",
     "output_schema.properties.empty_reason.description": "filtered_out when HAVING removed all computed result rows",
     "output_schema.properties.total_count.description": "Total final rows after HAVING and before pagination",

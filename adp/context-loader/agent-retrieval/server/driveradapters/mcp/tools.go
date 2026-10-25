@@ -960,7 +960,7 @@ func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Cont
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		bkntrace.EmitQueryMetricEvents(ctx, nil, args, resp)
-		result, err := BuildMCPToolResult(resp, format)
+		result, err := BuildMCPToolResult(metricResultWithExactValues(resp), format)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
