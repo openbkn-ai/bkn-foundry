@@ -118,13 +118,8 @@ func (s *Store) FinishRecordIntegrityRetry(ctx context.Context, claim isessionst
 	if !v.IsTerminal() || v.StoredRecordIntegrity != nil {
 		return false, nil
 	}
-	if !now.Before(r.FirstAttemptAt.Add(isessionstore.RecordIntegrityRetryDeadline)) {
-		r.Status = isessionstore.RecordIntegrityExhausted
-		r.Reason = "retry_deadline_exceeded"
-		r.Token = ""
-		s.integrityRetries[key] = r
-		return false, nil
-	}
+	// The retry deadline gates new claims, not a successful result from a
+	// still-valid lease. Failed attempts apply exhaustion below.
 	if stored != nil {
 		v.StoredRecordIntegrity = sessionvo.CopyStoredRecordIntegrity(stored)
 		s.interactions[v.ID] = v

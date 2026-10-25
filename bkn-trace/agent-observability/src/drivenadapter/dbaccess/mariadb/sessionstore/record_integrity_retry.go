@@ -161,15 +161,8 @@ func (s *Store) FinishRecordIntegrityRetry(ctx context.Context, claim isessionst
 		}
 		return false, tx.Commit()
 	}
-	if !now.Before(r.FirstAttemptAt.Add(isessionstore.RecordIntegrityRetryDeadline)) {
-		r.Status = isessionstore.RecordIntegrityExhausted
-		r.Reason = "retry_deadline_exceeded"
-		r.Token = ""
-		if e = saveIntegrityRetry(ctx, tx, r); e != nil {
-			return false, e
-		}
-		return false, tx.Commit()
-	}
+	// The retry deadline gates new claims, not a successful result from a
+	// still-valid lease. Failed attempts apply exhaustion below.
 	if stored != nil {
 		res, e := tx.ExecContext(ctx, `UPDATE bkn_trace_interactions SET record_integrity_json=? WHERE interaction_id=? AND record_integrity_version=? AND record_integrity_json IS NULL AND execution_status<>?`, string(raw), claim.InteractionID, claim.SourceVersion, sessionvo.InteractionActive)
 		if e != nil {

@@ -15,6 +15,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
+// These categories intentionally omit dependency errors and record identifiers.
+// Supervisors can distinguish failure phases through wrapping or errors.Join.
+var (
+	ErrRecordIntegrityCandidateQueryFailed    = errors.New("record integrity candidate query failed")
+	ErrRecordIntegrityClaimFailed             = errors.New("record integrity claim failed")
+	ErrRecordIntegrityResultPersistenceFailed = errors.New("record integrity result persistence failed")
+	ErrRecordIntegrityInspectionDeferred      = errors.New("record integrity inspection deferred or exhausted")
+)
+
 func storedRecordIntegrity(interaction sessionvo.Interaction) (*evidencevo.RecordIntegrity, bool, error) {
 	if interaction.ExecutionStatus == sessionvo.InteractionActive {
 		return nil, false, nil
@@ -60,7 +69,7 @@ func (s *Service) PersistRecordIntegrityBatch(ctx context.Context, afterID strin
 	}
 	candidates, err := candidatesStore.ListRecordIntegrityCandidates(ctx, afterID, min(limit, 100))
 	if err != nil {
-		return "", errors.Join(ctx.Err(), errors.New("record integrity candidate query failed"))
+		return "", errors.Join(ctx.Err(), ErrRecordIntegrityCandidateQueryFailed)
 	}
 	var nextID string
 	var failures []error
@@ -71,7 +80,7 @@ func (s *Service) PersistRecordIntegrityBatch(ctx context.Context, afterID strin
 		nextID = candidate.ID
 		claim, acquired, err := retries.ClaimRecordIntegrityRetry(ctx, candidate.ID, candidate.IntegritySourceVersion)
 		if err != nil {
-			failures = append(failures, errors.New("record integrity claim failed"))
+			failures = append(failures, ErrRecordIntegrityClaimFailed)
 			continue
 		}
 		if !acquired {
@@ -97,10 +106,10 @@ func (s *Service) PersistRecordIntegrityBatch(ctx context.Context, afterID strin
 		}
 		finishCancel()
 		if finishErr != nil {
-			failures = append(failures, errors.New("record integrity result persistence failed"))
+			failures = append(failures, ErrRecordIntegrityResultPersistenceFailed)
 		}
 		if reason != "" && reason != "source_changed" {
-			failures = append(failures, errors.New("record integrity inspection deferred or exhausted"))
+			failures = append(failures, ErrRecordIntegrityInspectionDeferred)
 		}
 	}
 	return nextID, errors.Join(append(failures, ctx.Err())...)

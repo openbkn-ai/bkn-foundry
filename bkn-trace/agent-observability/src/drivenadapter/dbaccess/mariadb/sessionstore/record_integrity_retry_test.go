@@ -101,3 +101,41 @@ func TestSQLRetryClaimExpiredLastAttemptPersistsExhaustion(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestSQLRetryFinishesLeasedAttemptAfterRetryDeadline(t *testing.T) {
+	for _, success := range []bool{true, false} {
+		t.Run(map[bool]string{true: "success", false: "failure"}[success], func(t *testing.T) {
+			db, m, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			s := New(db)
+			last := time.Date(2026, 10, 24, 0, 30, 0, 0, time.UTC)
+			first := last.Add(-isessionstore.RecordIntegrityRetryDeadline + 10*time.Second)
+			finished := last.Add(20 * time.Second)
+			claim := isessionstore.RecordIntegrityRetry{InteractionID: "i", SourceVersion: 1, Token: "lease"}
+			m.ExpectBegin()
+			m.ExpectQuery("SELECT record_integrity_version,execution_status,record_integrity_json.*FOR UPDATE").WithArgs("i").WillReturnRows(sqlmock.NewRows([]string{"version", "status", "verdict"}).AddRow(1, "completed", nil))
+			m.ExpectQuery("SELECT .* FROM bkn_trace_record_integrity_retries.*FOR UPDATE").WithArgs("i", uint64(1)).WillReturnRows(sqlmock.NewRows(strings.Split(integrityRetryColumns, ",")).AddRow("i", 1, "running", 2, first, last, last, last.Add(time.Minute), "lease", "inspection_failed", "inspection_failed"))
+			m.ExpectQuery("SELECT UTC_TIMESTAMP").WillReturnRows(sqlmock.NewRows([]string{"now"}).AddRow(finished))
+			var stored *sessionvo.StoredRecordIntegrity
+			reason := "attempt_timeout"
+			if success {
+				stored = &sessionvo.StoredRecordIntegrity{SourceVersion: 1, Applicable: false}
+				reason = ""
+				m.ExpectExec("UPDATE bkn_trace_interactions SET record_integrity_json").WithArgs(`{"source_version":1,"applicable":false}`, "i", uint64(1), sessionvo.InteractionActive).WillReturnResult(sqlmock.NewResult(0, 1))
+				m.ExpectExec("UPDATE bkn_trace_record_integrity_retries SET retry_status").WithArgs("succeeded", 2, first, last, last, last.Add(time.Minute), "", "", "inspection_failed", "i", uint64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+			} else {
+				m.ExpectExec("UPDATE bkn_trace_record_integrity_retries SET retry_status").WithArgs("exhausted", 2, first, last, finished.Add(time.Minute), last.Add(time.Minute), "", "retry_deadline_exceeded", "attempt_timeout", "i", uint64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+			}
+			m.ExpectCommit()
+			if ok, err := s.FinishRecordIntegrityRetry(context.Background(), claim, stored, reason); err != nil || !ok {
+				t.Fatalf("finish valid lease: %v %v", ok, err)
+			}
+			if err = m.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}

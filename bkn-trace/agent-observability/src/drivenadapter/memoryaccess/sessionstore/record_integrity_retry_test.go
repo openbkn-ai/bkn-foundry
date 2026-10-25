@@ -140,3 +140,45 @@ func TestDurableRetryDeadlineAndSupersede(t *testing.T) {
 	}
 	_ = now
 }
+
+func TestDurableRetryFinishesLeasedAttemptAfterRetryDeadline(t *testing.T) {
+	for _, success := range []bool{true, false} {
+		t.Run(map[bool]string{true: "success", false: "failure"}[success], func(t *testing.T) {
+			s, now := retryFixture()
+			ctx := context.Background()
+			first, ok, err := s.ClaimRecordIntegrityRetry(ctx, "i", 1)
+			if err != nil || !ok {
+				t.Fatalf("first claim: %v %v", ok, err)
+			}
+			if ok, err = s.FinishRecordIntegrityRetry(ctx, first, nil, "inspection_failed"); err != nil || !ok {
+				t.Fatalf("first failure: %v %v", ok, err)
+			}
+			*now = now.Add(isessionstore.RecordIntegrityRetryDeadline - 10*time.Second)
+			claim, ok, err := s.ClaimRecordIntegrityRetry(ctx, "i", 1)
+			if err != nil || !ok {
+				t.Fatalf("last permitted claim: %v %v", ok, err)
+			}
+			*now = now.Add(20 * time.Second) // Retry deadline passed; this lease is still valid.
+			var stored *sessionvo.StoredRecordIntegrity
+			reason := "attempt_timeout"
+			if success {
+				stored = retryVerdict()
+				reason = ""
+			}
+			if ok, err = s.FinishRecordIntegrityRetry(ctx, claim, stored, reason); err != nil || !ok {
+				t.Fatalf("finish valid lease: %v %v", ok, err)
+			}
+			state, _, err := s.GetRecordIntegrityRetry(ctx, "i", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if success {
+				if state.Status != isessionstore.RecordIntegritySucceeded || s.interactions["i"].StoredRecordIntegrity == nil {
+					t.Fatalf("successful verdict was discarded: %+v", state)
+				}
+			} else if state.Status != isessionstore.RecordIntegrityExhausted || state.Reason != "retry_deadline_exceeded" || state.LastFailureReason != "attempt_timeout" || s.interactions["i"].StoredRecordIntegrity != nil {
+				t.Fatalf("failed attempt lost terminal cause: %+v", state)
+			}
+		})
+	}
+}

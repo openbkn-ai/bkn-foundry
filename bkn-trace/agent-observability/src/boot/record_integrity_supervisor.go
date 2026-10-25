@@ -7,8 +7,12 @@ package boot
 
 import (
 	"context"
+	"errors"
 	"log"
+	"strings"
 	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 )
 
 type recordIntegrityBatcher interface {
@@ -32,7 +36,7 @@ func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBa
 		}
 		cursor = next
 		if errorLog.shouldLog(time.Now(), err) {
-			log.Print("record integrity materialization batch incomplete; inspect persisted materialization status")
+			log.Printf("record integrity materialization batch incomplete; failure_phases=%s; infrastructure failures may not have persisted retry status", recordIntegrityFailurePhases(err))
 		}
 		timer := time.NewTimer(interval)
 		select {
@@ -44,8 +48,34 @@ func runRecordIntegritySupervisor(ctx context.Context, batcher recordIntegrityBa
 	}
 }
 
+// Only fixed phase names reach logs. Never include raw dependency errors or the
+// batch cursor: query, claim and save failures may have no durable status row.
+func recordIntegrityFailurePhases(err error) string {
+	if err == nil {
+		return ""
+	}
+	var phases []string
+	for _, phase := range []struct {
+		err  error
+		name string
+	}{
+		{evidencesvc.ErrRecordIntegrityCandidateQueryFailed, "query"},
+		{evidencesvc.ErrRecordIntegrityClaimFailed, "claim"},
+		{evidencesvc.ErrRecordIntegrityResultPersistenceFailed, "persist"},
+		{evidencesvc.ErrRecordIntegrityInspectionDeferred, "inspection"},
+	} {
+		if errors.Is(err, phase.err) {
+			phases = append(phases, phase.name)
+		}
+	}
+	if len(phases) == 0 {
+		return "unknown"
+	}
+	return strings.Join(phases, ",")
+}
+
 // Successful or skipped passes do not reset the error log window. Individual
-// failure details and exhausted attempts remain available in persisted status.
+// failure details are available in persisted status only when its write succeeded.
 type recordIntegrityErrorLogThrottle struct {
 	nextLogAt time.Time
 }
