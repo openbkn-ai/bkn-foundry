@@ -16,6 +16,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 )
 
 const (
@@ -158,7 +159,7 @@ func NewAuthorizationResourceCatalog(bknBackend, bknAgent, executionFactory, veg
 func (c *authorizationResourceCatalog) List(ctx context.Context, resourceType string, query AuthorizationResourceQuery) (AuthorizationResourceList, error) {
 	provider, ok := c.providers[resourceType]
 	if !ok {
-		return AuthorizationResourceList{}, errUnsupportedResourceType
+		return listExtensionResources(ctx, resourceType, query)
 	}
 	if query.ParentType != "" {
 		expectedParentType := map[string]string{
@@ -213,6 +214,33 @@ func (c *authorizationResourceCatalog) Resolve(ctx context.Context, resourceType
 			return AuthorizationResource{}, errAuthorizationResourceNotFound
 		}
 	}
+}
+
+// listExtensionResources serves a type an edition build registered through
+// extension/authzresource. Those types are roots: they have no parent.
+func listExtensionResources(ctx context.Context, resourceType string, query AuthorizationResourceQuery) (AuthorizationResourceList, error) {
+	provider, ok := authzresource.Lookup(resourceType)
+	if !ok {
+		return AuthorizationResourceList{}, errUnsupportedResourceType
+	}
+	if query.ParentType != "" || query.ParentID != "" {
+		return AuthorizationResourceList{}, errInvalidAuthorizationResourceParent
+	}
+	page, err := provider.List(ctx, authzresource.Query{
+		Name:      query.Name,
+		Sort:      query.Sort,
+		Direction: query.Direction,
+		Offset:    query.Offset,
+		Limit:     query.Limit,
+	})
+	if err != nil {
+		return AuthorizationResourceList{}, err
+	}
+	entries := make([]AuthorizationResource, 0, len(page.Entries))
+	for _, item := range page.Entries {
+		entries = append(entries, AuthorizationResource{ID: item.ID, Name: item.Name})
+	}
+	return AuthorizationResourceList{Entries: entries, Total: page.Total}, nil
 }
 
 func isKnowledgeNetworkChildResource(resourceType string) bool {
