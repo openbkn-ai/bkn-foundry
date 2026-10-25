@@ -313,7 +313,8 @@ func postArtifactWithRetry(
 		cancel()
 		err = requestErr
 		var coreErr *CoreHTTPError
-		if errors.As(err, &coreErr) && !coreErr.Retryable() {
+		// A missing ingest credential cannot recover by retrying the same request.
+		if errors.As(err, &coreErr) && (!coreErr.Retryable() || coreErr.Code == "INGEST_AUTH_NOT_CONFIGURED") {
 			return err
 		}
 		if attempt < 2 {

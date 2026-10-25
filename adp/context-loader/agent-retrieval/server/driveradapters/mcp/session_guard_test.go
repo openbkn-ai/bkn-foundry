@@ -1429,3 +1429,21 @@ func TestLifecycleRequestDropsCallerSuppliedOwnerIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestArtifactOutageClassificationDoesNotChangeCoreOutage(t *testing.T) {
+	for _, failure := range []error{context.DeadlineExceeded, &bkntrace.CoreHTTPError{StatusCode: http.StatusServiceUnavailable, Code: "UNAVAILABLE"}} {
+		core := lifecycleUnavailable(context.Background(), toolKeyStartInteraction, "core_call", failure)
+		value := lifecycleErrorFromResult(t, core)
+		if value["code"] != "trace_core_unavailable" || value["retryable"] != true {
+			t.Fatalf("Core outage classification changed: %#v", value)
+		}
+		artifact := lifecycleUnavailable(context.Background(), toolKeyFinishInteraction, "answer_artifact", failure)
+		if artifact == nil || artifact.IsError {
+			t.Fatalf("existing unrecorded-finish behavior changed: %#v", artifact)
+		}
+		view := artifact.StructuredContent.(map[string]any)
+		if view["code"] != "evidence_store_unavailable" || view["trace_recorded"] != false {
+			t.Fatalf("artifact outage incorrectly attributed: %#v", view)
+		}
+	}
+}

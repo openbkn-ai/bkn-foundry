@@ -6,6 +6,8 @@
 
 ### 功能与改进
 
+- artifact 上传遇到明确的采集认证配置缺失时不再重复重试；区分 artifact 端点故障与生命周期 Core 故障，保留已提交的 start ID、采集权限拒绝和现有 Trace I/O 预算。 (#1691)
+
 - 可选地将答案可靠交给 Core managed finish，保留原 Trace 时间预算，避免同步等待答案 artifact 上传；业务完成与证据待补齐分别返回。默认旧路径不变，须在全部 Core worker 升级后启用。 (#1691)
 
 - `run_cypher`、`search_instance` 和 `get_logic_properties_values` 返回可操作的权限申请引导
