@@ -182,6 +182,14 @@ observability:
     ossGatewayURL: ""
     storageID: ""
     prefix: observability-archive
+  # Optional cluster-internal endpoint for one Safe publisher instance.
+  # Example: http://safe-instance:3000/internal/audit/publish-status
+  # New Safe version required; do not expose this endpoint through ingress.
+  # Background polling is fixed at 30s with a 3s request/deadline and 64KiB
+  # response bound. Status becomes unknown after 90s without fresh evidence.
+  # This diagnoses the observed instance, never all replicas/the whole pipeline.
+  # Empty keeps collection health unknown; it never certifies collection.
+  auditProducerStatusEndpoint: ""
   sourceCoverage:
     # Optional independent health probe. It is disabled unless the installation
     # uses the persistent MariaDB Core store and provides a cluster-internal

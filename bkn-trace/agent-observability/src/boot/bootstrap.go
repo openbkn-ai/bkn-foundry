@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/auditproducersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/captureadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturecontrollersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysnapshot"
@@ -41,6 +42,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
 	mariadbevidencemigration "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/evidencemigration"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/auditpublisherstatus"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchconversationaudit"
@@ -392,6 +394,23 @@ func NewApp() (*App, error) {
 		kafkaRuntimes = append(kafkaRuntimes, runtime)
 	}
 	coverageStore, coverageStoreSupported := sessionStore.(isourcecoveragestore.Store)
+	var auditProducerMonitor *auditproducersvc.Service
+	if kafkaConfig.Audit.Enabled && observabilityConfig.AuditProducerStatusEndpoint != "" {
+		if !coverageStoreSupported {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("audit producer monitoring requires durable source coverage storage")
+		}
+		statusReader, err := auditpublisherstatus.New(observabilityConfig.AuditProducerStatusEndpoint)
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("invalid audit producer status endpoint")
+		}
+		auditProducerMonitor = auditproducersvc.New(coverageStore, statusReader, auditproducersvc.Options{})
+	}
 	coverageMonitorEnabled := observabilityConfig.SourceCoverageMetricsEndpoint != ""
 	if coverageMonitorEnabled && (!coverageStoreSupported || observabilityConfig.SourceCoverageSourceID == "" || observabilityConfig.SourceCoverageDeploymentID == "") {
 		if closeDatabase != nil {
@@ -464,7 +483,11 @@ func NewApp() (*App, error) {
 			return nil, err
 		}
 		if kafkaConfig.Audit.Enabled {
-			auditSource = httphandler.NewAuditLedgerSource(reader)
+			if auditProducerMonitor != nil {
+				auditSource = httphandler.NewAuditLedgerSource(reader, auditProducerMonitor)
+			} else {
+				auditSource = httphandler.NewAuditLedgerSource(reader)
+			}
 		}
 	}
 	if kafkaConfig.Audit.Enabled && auditSource == nil {
@@ -598,6 +621,13 @@ func NewApp() (*App, error) {
 			sessionService,
 		)
 	}()
+	if auditProducerMonitor != nil {
+		app.workers.Add(1)
+		go func() {
+			defer app.workers.Done()
+			runAuditProducerMonitor(workerContext, auditProducerMonitor)
+		}()
+	}
 	if coverageMonitorEnabled {
 		coverageMonitor := sourcecoveragesvc.New(
 			coverageStore,

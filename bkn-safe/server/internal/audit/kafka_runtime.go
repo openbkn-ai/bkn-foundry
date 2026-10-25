@@ -37,6 +37,7 @@ func newKafkaRuntimeFromEnv(getenv func(string) string, newProducer func(kafkase
 	username := strings.TrimSpace(getenv("BKN_AUDIT_KAFKA_USERNAME"))
 	password := getenv("BKN_AUDIT_KAFKA_PASSWORD")
 	if len(brokers) == 0 || strings.TrimSpace(getenv("BKN_AUDIT_KAFKA_SASL_MECHANISM")) != "PLAIN" || username == "" || password == "" {
+		telemetry.MarkUnavailable("kafka_not_configured")
 		slog.Error("safe audit coverage gap", "reason", "kafka_not_configured")
 		return runtime
 	}
@@ -60,12 +61,14 @@ func newKafkaRuntimeFromEnv(getenv func(string) string, newProducer func(kafkase
 		}
 	}
 	if err != nil {
+		telemetry.MarkUnavailable("publisher_unavailable")
 		slog.Error("safe audit coverage gap", "reason", "kafka_init_failed", "attempts", attempts, "error", err)
 		return runtime
 	}
 	publisher, err := auditpublisher.New(kafkasender.NewAudit(producer), safeDeliveryObserver{telemetry: telemetry})
 	if err != nil {
 		_ = producer.Close()
+		telemetry.MarkUnavailable("publisher_unavailable")
 		slog.Error("safe audit coverage gap", "reason", "publisher_init_failed", "error", err)
 		return runtime
 	}

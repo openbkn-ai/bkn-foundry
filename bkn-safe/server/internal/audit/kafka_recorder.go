@@ -56,10 +56,10 @@ func (r *KafkaRecorder) Record(ctx context.Context, entry Entry) error {
 
 func (r *KafkaRecorder) RecordBatch(_ context.Context, entries []Entry) error {
 	if r == nil || r.publisher == nil {
-		if r != nil {
-			r.telemetry.Observe("dropped_unavailable")
-		}
 		for _, entry := range entries {
+			if r != nil {
+				r.telemetry.Observe("dropped_unavailable")
+			}
 			logKafkaCoverageGap(entry, "publish", "publisher_unavailable", errors.New("safe audit publisher is unavailable"))
 		}
 		return markCoverageGapLogged(errors.New("safe audit publisher is unavailable"))

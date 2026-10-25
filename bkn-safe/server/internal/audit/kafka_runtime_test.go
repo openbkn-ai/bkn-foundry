@@ -20,6 +20,9 @@ func TestKafkaRuntimeWithoutConfigKeepsBusinessFailOpen(t *testing.T) {
 	if runtime == nil || runtime.Recorder == nil {
 		t.Fatal("missing configuration must still provide a fail-open recorder")
 	}
+	if status := runtime.Telemetry.Snapshot(); status.Status != "degraded" || status.Reason != "kafka_not_configured" {
+		t.Fatalf("startup status=%+v", status)
+	}
 	if runtime.Publisher() != nil {
 		t.Fatal("unavailable publisher must be a nil interface for access and decision recorders")
 	}
@@ -76,6 +79,9 @@ func TestKafkaRuntimeReconnectsAfterInitialBrokerFailure(t *testing.T) {
 	if runtime.Publisher() == nil {
 		t.Fatal("configured runtime must publish after a transient startup failure")
 	}
+	if status := runtime.Telemetry.Snapshot(); status.Status != "unknown" {
+		t.Fatalf("initialized without delivery=%+v", status)
+	}
 	access := accesslog.NewKafkaRecorder(runtime.Publisher(), "test")
 	if err := access.Record(context.Background(), accesslog.Entry{
 		ActorID: "user-1", ActorNameSnapshot: "用户 A", Action: "login", Outcome: "success", RequestID: "req-reconnect",
@@ -118,5 +124,25 @@ func TestDeliveryObserverAttributesSharedPublisherAccessDelivery(t *testing.T) {
 	telemetry.ServeHTTP(recorder, httptest.NewRequest("GET", "/metrics", nil))
 	if !strings.Contains(recorder.Body.String(), `audit_event_publish_total{source_id="bkn-safe-access",result="delivered",reason="none"} 1`) {
 		t.Fatalf("shared delivery attribution = %q", recorder.Body.String())
+	}
+}
+
+func TestKafkaRuntimeInitFailurePublishStatus(t *testing.T) {
+	runtime := newKafkaRuntimeFromEnv(func(key string) string {
+		switch key {
+		case "BKN_AUDIT_KAFKA_BROKERS":
+			return "kafka:9092"
+		case "BKN_AUDIT_KAFKA_SASL_MECHANISM":
+			return "PLAIN"
+		case "BKN_AUDIT_KAFKA_USERNAME", "BKN_AUDIT_KAFKA_PASSWORD":
+			return "test"
+		}
+		return ""
+	}, func(kafkasender.Config) (sarama.SyncProducer, error) {
+		return nil, errors.New("injected startup failure")
+	}, time.Millisecond, 1)
+	defer runtime.Close()
+	if status := runtime.Telemetry.Snapshot(); status.Status != "degraded" || status.Reason != "publisher_unavailable" || status.DroppedRecords != 0 {
+		t.Fatalf("init failure=%+v", status)
 	}
 }

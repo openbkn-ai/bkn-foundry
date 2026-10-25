@@ -130,3 +130,14 @@ func TestAdmissionThresholdRejectsNonFiniteValues(t *testing.T) {
 		})
 	}
 }
+
+func TestObservabilityConfigAuditProducerStatusIsOptIn(t *testing.T) {
+	t.Setenv("BKN_OBSERVABILITY_AUDIT_PRODUCER_STATUS_ENDPOINT", "")
+	if got := NewObservabilityConfig().AuditProducerStatusEndpoint; got != "" {
+		t.Fatalf("unconfigured endpoint=%q", got)
+	}
+	t.Setenv("BKN_OBSERVABILITY_AUDIT_PRODUCER_STATUS_ENDPOINT", " http://safe-instance:9800/internal/audit/publish-status ")
+	if got := NewObservabilityConfig().AuditProducerStatusEndpoint; got != "http://safe-instance:9800/internal/audit/publish-status" {
+		t.Fatalf("configured endpoint=%q", got)
+	}
+}

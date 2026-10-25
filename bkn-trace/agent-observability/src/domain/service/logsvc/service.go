@@ -329,7 +329,7 @@ func (service *Service) listPage(
 		succeeded++
 		page := sourceResult.page
 		result.SourceStatus = append(result.SourceStatus, sourceResult.status)
-		coveragePartial = coveragePartial || sourceResult.status.Status == "degraded"
+		coveragePartial = coveragePartial || sourceHasCoverageGap(sourceResult.status)
 		countExact = countExact && normalizedAccuracy(page.CountAccuracy) == "exact"
 		if page.LastPosition != nil {
 			sourceLastRawPosition[source.ID()] = *page.LastPosition
@@ -1015,4 +1015,14 @@ func intersects(left, right []string) bool {
 		}
 	}
 	return false
+}
+
+// Query availability and publisher/history coverage are independent on both
+// cursor and numbered query paths.
+func sourceHasCoverageGap(status observabilityvo.SourceStatus) bool {
+	if status.Status == observabilityvo.SourceCoverageDegraded {
+		return true
+	}
+	collection := status.CollectionStatus
+	return collection != nil && (collection.Status == "degraded" || (collection.HistoricalGap != nil && *collection.HistoricalGap))
 }

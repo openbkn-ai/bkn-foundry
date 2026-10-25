@@ -306,6 +306,10 @@ spec:
             - name: BKN_OBSERVABILITY_ARCHIVE_PREFIX
               value: {{ $archive.prefix | quote }}
             {{- end }}
+            {{- with .Values.observability.auditProducerStatusEndpoint }}
+            - name: BKN_OBSERVABILITY_AUDIT_PRODUCER_STATUS_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
             {{- if .Values.observability.sourceCoverage.enabled }}
             - name: BKN_OBSERVABILITY_SOURCE_COVERAGE_METRICS_ENDPOINT
               value: {{ required "observability.sourceCoverage.metricsEndpoint is required when source coverage monitoring is enabled" .Values.observability.sourceCoverage.metricsEndpoint | quote }}
