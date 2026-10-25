@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,12 +31,13 @@ func TestStartInteractionPreservesCommittedResultAcrossQuestionArtifactFailures(
 		code            string
 		endpointMissing bool
 		wantAttempts    int
+		wantCode        string
 	}{
 		{name: "forbidden", status: http.StatusForbidden, code: "FORBIDDEN", wantAttempts: 1},
 		{name: "unauthorized", status: http.StatusUnauthorized, code: "UNAUTHORIZED", wantAttempts: 1},
 		{name: "invalid artifact", status: http.StatusBadRequest, code: "INVALID_PARAMETER", wantAttempts: 1},
-		{name: "ingest credential not configured", status: http.StatusServiceUnavailable, code: "INGEST_AUTH_NOT_CONFIGURED", wantAttempts: 3},
-		{name: "retryable outage", status: http.StatusServiceUnavailable, code: "UNAVAILABLE", wantAttempts: 3},
+		{name: "ingest credential not configured", status: http.StatusServiceUnavailable, code: "INGEST_AUTH_NOT_CONFIGURED", wantAttempts: 1},
+		{name: "retryable outage", status: http.StatusServiceUnavailable, code: "UNAVAILABLE", wantAttempts: 3, wantCode: "evidence_store_unavailable"},
 		{name: "artifact endpoint not configured", endpointMissing: true},
 	}
 	for _, test := range tests {
@@ -86,6 +88,12 @@ func TestStartInteractionPreservesCommittedResultAcrossQuestionArtifactFailures(
 				t.Fatal("capture failure omitted Trace metadata")
 			}
 			meta := result.Meta.AdditionalFields[traceAvailabilityMetaKey].(map[string]any)
+			if meta["required_action"] != "continue_business_without_trace_retry" {
+				t.Fatalf("committed start must not request another start: %#v", meta)
+			}
+			if test.wantCode != "" && meta["code"] != test.wantCode {
+				t.Fatalf("artifact outage incorrectly attributed to lifecycle Core: %#v", meta)
+			}
 			if meta["lifecycle_recorded"] != true || meta["recorded"] != false {
 				t.Fatalf("committed start and capture failure must be distinguished: %#v", meta)
 			}
@@ -208,4 +216,42 @@ func normalizeLifecycleOwnerTestJSON(t *testing.T, value any) map[string]any {
 		t.Fatal(err)
 	}
 	return result
+}
+
+func TestStartQuestionArtifactTimeoutPreservesCommittedLifecycle(t *testing.T) {
+	release := make(chan struct{})
+	var artifactCalls atomic.Int32
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/interactions") {
+			_ = json.NewEncoder(w).Encode(bkntrace.Interaction{ConversationID: "conv-committed", InteractionID: "int-committed", ExecutionStatus: "active", CreatedAt: time.Date(2026, 10, 25, 1, 0, 0, 0, time.UTC)})
+			return
+		}
+		artifactCalls.Add(1)
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	defer backend.Close()
+	defer close(release)
+	t.Setenv("BKN_TRACE_ARTIFACT_ENDPOINT", backend.URL+"/evidence/artifacts")
+	t.Setenv("BKN_TRACE_ARTIFACT_TOKEN", "artifact-token")
+	t.Setenv("BKN_TRACE_ARTIFACT_TIMEOUT_MS", "10000")
+	ctx, cancel := context.WithTimeout(startArtifactTestContext(), 500*time.Millisecond)
+	defer cancel()
+	result, err := handleLifecycleTool(bkntrace.NewLifecycleClient(backend.URL, backend.Client()), toolKeyStartInteraction)(ctx, startArtifactTestRequest())
+	if err != nil || result == nil || result.IsError {
+		t.Fatalf("committed start lost after artifact timeout: %#v %v", result, err)
+	}
+	if artifactCalls.Load() != 1 || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		t.Fatalf("timeout fixture did not reach artifact endpoint: calls=%d ctx=%v", artifactCalls.Load(), ctx.Err())
+	}
+	meta := result.Meta.AdditionalFields[traceAvailabilityMetaKey].(map[string]any)
+	if meta["code"] != "evidence_store_unavailable" || meta["lifecycle_recorded"] != true || meta["required_action"] != "continue_business_without_trace_retry" {
+		t.Fatalf("misleading artifact timeout: %#v", meta)
+	}
+	view := result.StructuredContent.(map[string]any)
+	if view["interaction_id"] != "int-committed" || view["execution_status"] != "active" {
+		t.Fatalf("committed identity lost: %#v", view)
+	}
 }

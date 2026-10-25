@@ -20,6 +20,15 @@
 `execution_status=completed` 允许会话开始下一轮；`evidence_status=assembling`
 表示证据仍待投递。响应丢失不代表已确认完成，应幂等重试原 finish，不能重新执行业务工具。
 
+MCP start 的问题 artifact 保留同步、尽力采集路径，其 I/O 与生命周期调用共享现有
+1 秒 Trace pre 预算；单次上传期限和重试不会各自重新获得一份 pre 预算。
+start 提交后若采集失败，响应保留权威 Interaction ID，并说明
+`lifecycle_recorded=true`、证据 `recorded=false`，指引为
+`continue_business_without_trace_retry`。artifact 端点故障使用
+`evidence_store_unavailable`，表示采集路径不可用，不断言底层存储的故障原因；
+生命周期 Core 故障仍用 `trace_core_unavailable`。明确的采集认证配置缺失属于运维问题，
+不重复重试。不伪造 artifact 引用，问题采集路径也不承诺可靠后台恢复。
+
 ### 调度与时间预算
 
 每个 Core 实例使用一个共享的投影 worker 执行槽，空闲时认领一条就绪任务。

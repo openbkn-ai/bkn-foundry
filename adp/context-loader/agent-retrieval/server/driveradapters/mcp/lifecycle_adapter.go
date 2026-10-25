@@ -402,7 +402,7 @@ func handleLifecycleTool(
 				// affect evidence capture, not the committed lifecycle state. Return
 				// Core's ids/status and log every fault, including deployment and
 				// authorization defects, without fabricating an artifact reference.
-				value := lifecycleAvailabilityError(err)
+				value := lifecycleStageAvailabilityError("question_artifact", err)
 				bkntrace.MarkTraceUnavailable(ctx, "question_artifact", "", value.Code)
 				logger.DefaultLogger().WithContext(ctx).Warnf(
 					"[BKN Trace] lifecycle degraded: tool=%s stage=question_artifact code=%s interaction_id=%s: %v",

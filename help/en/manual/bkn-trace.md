@@ -22,6 +22,18 @@ conversation for its next turn; `evidence_status=assembling` means evidence is
 still being delivered. A lost response is not a completion acknowledgement:
 retry the same finish idempotently, without repeating business tools.
 
+Question artifacts at MCP start retain their synchronous, best-effort path.
+Their I/O shares the existing one-second Trace pre budget with lifecycle calls;
+the per-upload timeout and retries do not each receive a fresh pre budget.
+If capture fails after start commits, the response preserves the authoritative
+Interaction ID and reports `lifecycle_recorded=true`, evidence `recorded=false`
+and `continue_business_without_trace_retry`. An artifact-endpoint outage is
+reported as `evidence_store_unavailable`; this identifies the failed capture
+path, not a diagnosis of the underlying storage service. Lifecycle Core outages
+retain `trace_core_unavailable`. Explicitly unconfigured ingest authentication
+is an operator defect and is not retried. No artifact reference is fabricated,
+and this question path has no durable background recovery guarantee.
+
 ### Scheduling and time budgets
 
 Each Core instance uses one shared projection-worker slot. It claims one ready

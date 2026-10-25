@@ -83,7 +83,7 @@ func registerMetricAppResource(srv *server.MCPServer) {
 				log.Printf("WARN: cannot fetch metric app resource: %v", err)
 				return nil, fmt.Errorf("metric app resource unavailable")
 			}
-			defer response.Body.Close()
+			defer func() { _ = response.Body.Close() }()
 			if response.StatusCode != http.StatusOK {
 				return nil, fmt.Errorf("metric app resource unavailable: HTTP %d", response.StatusCode)
 			}
