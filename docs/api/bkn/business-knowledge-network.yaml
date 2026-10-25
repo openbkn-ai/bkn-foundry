@@ -581,9 +581,17 @@ components:
           minimum: 0
         truncated:
           type: boolean
-          description: Whether the selected projection contains more nodes or edges than this response returned.
+          description: >
+            Whether the response is incomplete under the selected bounding mode. For a concept-group
+            projection, this compares the returned counts with the group-scoped totals. For other modes,
+            it also reflects pagination and edge-limit conditions; a focus projection can therefore be
+            marked truncated relative to the visible network-wide totals.
         snapshot:
           type: string
+          description: >
+            Opaque consistency token derived from the network version and the authorization-filtered
+            totals for this scope. A concept-group projection uses group-scoped totals, so its token can
+            differ from an unfiltered or focus projection of the same network version.
         next_cursor:
           type: string
           description: Opaque cursor for the next bounded node page. Omitted when there is no next page.
