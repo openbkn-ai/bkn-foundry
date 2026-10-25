@@ -109,6 +109,7 @@ func (s *TraceQueryService) GetTraceGraphByTraceID(ctx context.Context, traceID 
 					"unmapped_type": "date",
 				},
 			},
+			{"spanId.keyword": map[string]string{"order": "asc", "unmapped_type": "keyword"}},
 		},
 	})
 	if err != nil {
@@ -118,7 +119,7 @@ func (s *TraceQueryService) GetTraceGraphByTraceID(ctx context.Context, traceID 
 	if err != nil {
 		return oteltracevo.TraceGraphResponse{}, false, err
 	}
-	spans, err := spansFromSearchResult(result, traceID)
+	spans, metadata, err := parseSpanSearchResult(result, traceID)
 	if err != nil {
 		return oteltracevo.TraceGraphResponse{}, false, err
 	}
@@ -126,16 +127,28 @@ func (s *TraceQueryService) GetTraceGraphByTraceID(ctx context.Context, traceID 
 		return oteltracevo.TraceGraphResponse{}, false, nil
 	}
 	spans = deduplicateSpanRecords(spans)
-	truncated := false
+	// Deduplication must not disguise a raw-record window that may hide later Spans.
+	truncated := metadata.windowIncomplete
 	if len(spans) > DefaultTraceGraphSpanLimit {
 		truncated = true
 		spans = spans[:DefaultTraceGraphSpanLimit]
 	}
-	return buildTraceGraph(traceID, spans, truncated), true, nil
+	graph := buildTraceGraph(traceID, spans, truncated)
+	graph.Page.RawRecordCount = metadata.rawCount
+	graph.Page.LegacyEnvelope = metadata.legacyEnvelope
+	return graph, true, nil
 }
 
 type searchResponse struct {
+	TimedOut bool `json:"timed_out"`
+	Shards   struct {
+		Failed int `json:"failed"`
+	} `json:"_shards"`
 	Hits struct {
+		Total struct {
+			Value    int    `json:"value"`
+			Relation string `json:"relation"`
+		} `json:"total"`
 		Hits []struct {
 			Source json.RawMessage `json:"_source"`
 		} `json:"hits"`
@@ -159,15 +172,33 @@ type ss4oFlatSpan struct {
 	Status       oteltracevo.Status `json:"status"`
 }
 
+type spanSearchMetadata struct {
+	rawCount         int
+	legacyEnvelope   bool
+	windowIncomplete bool
+}
+
 func spansFromSearchResult(result opensearchvo.SearchResult, traceID string) ([]spanRecord, error) {
+	records, _, err := parseSpanSearchResult(result, traceID)
+	return records, err
+}
+
+func parseSpanSearchResult(result opensearchvo.SearchResult, traceID string) ([]spanRecord, spanSearchMetadata, error) {
 	var response searchResponse
 	if err := json.Unmarshal(result, &response); err != nil {
-		return nil, err
+		return nil, spanSearchMetadata{}, err
 	}
+	if response.TimedOut || response.Shards.Failed > 0 {
+		return nil, spanSearchMetadata{}, ErrSpanPageIncomplete
+	}
+	metadata := spanSearchMetadata{rawCount: len(response.Hits.Hits)}
+	exhausted := response.Hits.Total.Relation == "eq" && response.Hits.Total.Value <= metadata.rawCount
+	metadata.windowIncomplete = !exhausted && (metadata.rawCount >= DefaultTraceGraphSpanLimit+1 || response.Hits.Total.Value > metadata.rawCount)
 	var records []spanRecord
 	for _, hit := range response.Hits.Hits {
 		var traceData oteltracevo.TraceData
 		if err := json.Unmarshal(hit.Source, &traceData); err == nil && len(traceData.ResourceSpans) > 0 {
+			metadata.legacyEnvelope = true
 			records = append(records, spansFromTraceData(traceData, traceID)...)
 			continue
 		}
@@ -193,7 +224,7 @@ func spansFromSearchResult(result opensearchvo.SearchResult, traceID string) ([]
 			records = append(records, spanRecord{Span: span})
 		}
 	}
-	return records, nil
+	return records, metadata, nil
 }
 
 func isSS4OFlatSpan(span ss4oFlatSpan, traceID string) bool {
@@ -298,7 +329,11 @@ func buildTraceGraph(traceID string, records []spanRecord, truncated bool) otelt
 			if strings.EqualFold(node.Kind, "server") {
 				continue
 			}
-			partialReasons["orphan_span"] = struct{}{}
+			if truncated {
+				partialReasons["parent_outside_display"] = struct{}{}
+			} else {
+				partialReasons["orphan_span"] = struct{}{}
+			}
 			continue
 		}
 		response.Data.Edges = append(response.Data.Edges, oteltracevo.TraceGraphEdge{
