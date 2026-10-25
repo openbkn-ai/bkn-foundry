@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Pure lifecycle ownership reads retain full owner checks without taking the conversation writer lock, avoiding contention between status/detail reads and operation registration. (#2425)
+
 - Defer answer outbox body reads until after the metadata claim commits, sharing the answer task deadline and existing retry/lease fencing. (#1691)
 
 - Durable answer delivery claims work only when its single worker slot is ready and drains ready tasks continuously. Configurable claim/answer/ACK deadlines must fit inside the task lease. New capture checks known policy and the inserting SQL connection's packet budget; committed replay remains policy-independent. Product manuals document timing, size, backlog and recovery limits. Existing user-triggered archive behavior is unchanged. (#1691)
