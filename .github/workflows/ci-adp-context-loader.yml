@@ -21,6 +21,10 @@ on:
       # 契约的 PR 命中不了这条流水线——#587 就是这么把一处漂移合进 main 的，六小时后
       # 炸在一个无关的 PR 上。消费方 CI 盯着自己读的契约文件，是目前最短的兜底。
       - 'bkn-trace/agent-observability/docs/swagger/**'
+      # 沙箱镜像带的 BKN 能力面由本模块 cmd/ptc-stub 渲染并签入 infra/sandbox。
+      # 任一侧改动都要比对，漂移在 PR 里拦下，不留到沙箱发布时才发现。
+      - 'infra/sandbox/runtime/sandbox_sdk/_bkn_tools.py'
+      - 'infra/sandbox/Makefile'
 
 permissions:
   contents: read
@@ -46,3 +50,6 @@ jobs:
       - run: go test ./server/extension/... ./server/driveradapters/mcp/ ./server/infra/bkntrace/
       - run: go test -tags ee_dev ./server/extension/... ./server/driveradapters/mcp/ ./server/infra/bkntrace/
       - run: go test -race ./server/infra/bkntrace/
+      - name: Sandbox BKN tool surface is up to date
+        working-directory: .
+        run: make -C infra/sandbox bkn-tools-check
