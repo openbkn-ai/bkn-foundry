@@ -23,14 +23,19 @@ import (
 
 func TestArchivePurgeRetryHistoryMariaDB(t *testing.T) {
 	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")
+	var db *sql.DB
+	var err error
 	if dsn == "" {
-		t.Skip("isolated writable database required")
+		// Reuse the guarded, disposable archive fixture when the dedicated
+		// batch DSN is supplied by the focused SQL cleanup integration step.
+		db = archiveConcurrencyDatabase(t)
+	} else {
+		db, err = sql.Open("mysql", dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = db.Close() }()
 	}
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	store := New(db)
@@ -67,7 +72,12 @@ func TestArchivePurgeRetryHistoryMariaDB(t *testing.T) {
 				}
 				defer func() { _, _ = db.ExecContext(context.Background(), "DROP TRIGGER archive_retry_purge_failure") }()
 			}
-			err = NewTraceArchiveSource(store).Purge(ctx, observabilityvo.ArchiveKindTrace, []archivesvc.Candidate{{ID: id}})
+			source := NewTraceArchiveSource(store)
+			payload, _, freezeErr := source.packageInteraction(ctx, id)
+			if freezeErr != nil {
+				t.Fatal(freezeErr)
+			}
+			err = source.Purge(ctx, observabilityvo.ArchiveKindTrace, []archivesvc.Candidate{{ID: id, Payload: payload}})
 			if (err != nil) != fail {
 				t.Fatalf("Purge error=%v fail=%v", err, fail)
 			}

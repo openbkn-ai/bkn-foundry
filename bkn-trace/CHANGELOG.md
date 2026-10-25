@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Archive capture preserves the original bounded integrity JSON, including forward-compatible fields, in the same SQL snapshot. Technical enrichment retains its exact JSON numbers, preventing unchanged verdicts from being falsely rejected after capture. Existing stale-source refusal remains. (#1724)
+
+- Trace SQL cleanup now checks the frozen source version and complete stored integrity verdict under the Interaction row lock before deleting records. Late receipts and same-version materialization results cause the whole SQL batch to roll back; frozen jobs remain available for reconciliation. Legacy packages without explicit source metadata refuse automatic SQL cleanup. Existing revision checks and ordinary list/detail queries are unchanged; no migration. (#1724)
+
 - Trace archive creation now automatically processes bounded batches: at most 100 Interactions, 8 MiB per complete payload and 10 MiB of JSONL per batch (leaving room for base64-encoded recovery data under the default 16 MiB database packet limit). SQL preflight and technical response limits reject oversized packages before cleanup; each verified batch retains independent progress and retry protection. Existing manifest/schema and ordinary list/detail reads are unchanged. No migration or streaming redesign. (#1724)
 
 - Cleanup retry also accepts the v0.1.4 `<jobID>.jsonl` object layout without weakening frozen-payload verification. Safe task messages distinguish object read failures, content mismatch, and unavailable recovery records/read support. (#1724)

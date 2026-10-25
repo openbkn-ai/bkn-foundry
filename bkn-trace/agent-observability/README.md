@@ -90,8 +90,8 @@ writing/deleting that batch, returning HTTP 409 `archive_incomplete_candidates`
 with a payload-budget explanation where applicable. Earlier completed batches
 remain recorded. Oversized records require operator handling; retries do not
 truncate, skip or delete them. The existing manifest and database formats are
-unchanged; no migration or streaming object protocol is introduced. This patch
-does not change the separate Freeze-to-Purge SQL concurrency behavior.
+unchanged; no migration or streaming object protocol is introduced. SQL cleanup
+also verifies frozen source metadata under its parent row lock, as described below.
 
 ## Technical Trace archive cleanup safety (#1724)
 
@@ -132,9 +132,36 @@ This checks the objects read during retry; it does not lock object-store version
 against later external changes.
 
 Archive credentials must permit archive object reads as well as bulk document
-deletion and real-time document reads on the concrete indices. A denied/ambiguous response preserves the
-incomplete-cleanup state. SQL cleanup concurrency remains a separate follow-up under #1724; the bounded
-Trace batches described above limit package loading without a streaming redesign. List/detail query paths are unchanged.
+deletion and real-time document reads on the concrete indices. A denied/ambiguous
+response preserves the incomplete-cleanup state.
+
+Before hot SQL cleanup, the existing Interaction `FOR UPDATE` read retrieves its
+current `record_integrity_version` and bounded `record_integrity_json`. Both must
+match the frozen package: late receipt/fact/lifecycle writes change the source
+version, while a newly computed integrity verdict can arrive at the same version.
+The verdict comparison covers the full JSON object, ignores key order/whitespace
+and preserves exact numbers. New archive packages capture the original bounded
+integrity JSON from the same Interaction row/snapshot, including fields unknown
+to the current binary. Technical enrichment preserves that JSON and its numeric
+precision. Older packages that already lost extension fields cannot prove an
+identical complete verdict and still require operator reconciliation.
+Parent row locks remain held through deletion and
+commit, and one changed candidate rolls back the whole SQL batch, including
+previous candidates. Already removed rows remain idempotent; existing sealed
+revision-input checks remain in force.
+
+Frozen packages need an explicit `record_integrity_version` (zero is valid) and
+matching Interaction identity. Missing or unverifiable legacy metadata refuses
+SQL cleanup. The task stays `cleanup_incomplete` with its original frozen
+payloads, manifest and progress for operator review. A changed source is not
+silently refrozen or replaced during retry. That refusal blocks new same-kind
+archives; repeating the same retry cannot reconcile a genuine source change.
+This is a SQL transaction guarantee,
+not an atomic transaction across OpenSearch and MariaDB: conditional deletion of
+already archived frozen technical documents may have finished before SQL refuses
+cleanup, while late or changed technical versions retain their existing guards.
+The bounded Trace batches above limit package loading without a streaming
+redesign. List/detail query paths are unchanged.
 
 ## Root-service discovery (#2140)
 

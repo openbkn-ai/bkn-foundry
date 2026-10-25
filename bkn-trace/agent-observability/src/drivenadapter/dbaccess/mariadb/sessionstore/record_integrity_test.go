@@ -221,6 +221,12 @@ func TestMariaDBTraceArchivePreservesInternalIntegrityMetadata(t *testing.T) {
 	store, mock := newTransactionErrorStore(t)
 	stored := sqlIntegrityReport(7)
 	raw, _ := json.Marshal(stored)
+	var extended map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &extended); err != nil {
+		t.Fatal(err)
+	}
+	extended["future_integrity"] = json.RawMessage(`{"sequence":18446744073709551615,"status":"retained"}`)
+	raw, _ = json.Marshal(extended)
 	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM bkn_trace_interactions`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	mock.ExpectQuery("SELECT interaction_id FROM bkn_trace_interactions").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("int"))
 	mock.ExpectBegin()
@@ -243,6 +249,9 @@ func TestMariaDBTraceArchivePreservesInternalIntegrityMetadata(t *testing.T) {
 	}
 	if err := json.Unmarshal(entries[0].Payload, &archive); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(string(entries[0].Payload), `"future_integrity"`) || !strings.Contains(string(entries[0].Payload), `18446744073709551615`) {
+		t.Fatalf("freeze lost forward-compatible verdict fields: %s", entries[0].Payload)
 	}
 	if archive.Interaction.Version != 7 || archive.Interaction.Stored == nil || archive.Interaction.Stored.SourceVersion != 7 {
 		t.Fatalf("archive dropped internal metadata: %s", entries[0].Payload)

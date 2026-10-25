@@ -1786,6 +1786,12 @@ func (t *transaction) scanInteraction(row rowScanner) (sessionvo.Interaction, bo
 }
 
 func scanInteractionRows(row rowScanner) (sessionvo.Interaction, error) {
+	return scanInteractionRowsWithRawIntegrity(row, nil)
+}
+
+// Archive capture reuses the same row and size checks, preserving metadata fields
+// that an older binary cannot represent in its typed read model.
+func scanInteractionRowsWithRawIntegrity(row rowScanner, rawIntegrity *json.RawMessage) (sessionvo.Interaction, error) {
 	var value sessionvo.Interaction
 	var manifest string
 	var terminalAt sql.NullTime
@@ -1819,6 +1825,13 @@ func scanInteractionRows(row rowScanner) (sessionvo.Interaction, error) {
 			return sessionvo.Interaction{}, fmt.Errorf("%w: interaction.record_integrity", isessionstore.ErrInvalidEvidenceJSON)
 		}
 	}
+	if rawIntegrity != nil {
+		*rawIntegrity = nil
+		if integrityJSON.Valid {
+			*rawIntegrity = json.RawMessage(integrityJSON.String)
+		}
+	}
+
 	return value, nil
 }
 
