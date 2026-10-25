@@ -14,6 +14,8 @@ const queryBudgetMessageID = "AgentObservability.Message.trace query exceeds its
 
 const archiveIncompleteCandidatesMessageID = "AgentObservability.Message.archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded"
 
+const archivePayloadBudgetMessageID = "AgentObservability.Message.trace archive exceeds its payload budget (100 Interactions, 8 MiB each, 10 MiB per batch); this batch was not started; earlier verified batches remain recorded"
+
 var agentObservabilityEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
@@ -29,6 +31,7 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.trace span search returned incomplete results":                              "trace span search returned incomplete results",
 		"AgentObservability.Message.archive operation is already running":                                       "archive operation is already running",
 
+		archivePayloadBudgetMessageID:        "trace archive exceeds its payload budget (100 Interactions, 8 MiB each, 10 MiB per batch); this batch was not started; earlier verified batches remain recorded",
 		archiveIncompleteCandidatesMessageID: "archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded",
 
 		"AgentObservability.Message.event payload conflicts with durable ledger":      "event payload conflicts with durable ledger",

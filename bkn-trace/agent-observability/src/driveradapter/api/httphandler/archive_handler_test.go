@@ -41,6 +41,7 @@ func TestArchiveCreateErrorMapping(t *testing.T) {
 		code       string
 		authorized bool
 	}{
+		{"payload-budget", archivesvc.ErrArchivePayloadTooLarge, 409, "archive_incomplete_candidates", true},
 		{"incomplete", fmt.Errorf("internal detail: %w", archivesvc.ErrIncompleteCandidates), 409, "archive_incomplete_candidates", true},
 		{"busy", archivesvc.ErrArchiveBusy, 409, "archive_busy", true},
 		{"unknown", fmt.Errorf("internal detail"), 500, "archive_failed", true},
@@ -71,6 +72,9 @@ func TestArchiveCreateErrorMapping(t *testing.T) {
 			}
 			if strings.Contains(rec.Body.String(), "internal detail") {
 				t.Fatal("internal error leaked")
+			}
+			if tc.name == "payload-budget" && !strings.Contains(rec.Body.String(), "8 MiB") {
+				t.Fatal("missing archive budget explanation")
 			}
 			if tc.name == "incomplete" && !strings.Contains(rec.Body.String(), "this batch was not started; earlier batches remain recorded") {
 				t.Fatal("missing safe failure explanation")

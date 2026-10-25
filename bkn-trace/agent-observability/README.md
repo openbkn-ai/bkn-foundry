@@ -57,6 +57,42 @@ an empty terminal page. No first-screen count request, migration or index mappin
 change is introduced. Studio adds the browser through its coordinated PR; older
 Studio versions ignore the additive metadata.
 
+## Bounded Trace archive batches (#1724)
+
+One archive request automatically processes successive Trace batches using the
+existing batch jobs and progress fields. Each selection reads at most 100
+Interaction IDs, closes that result, and packages one Interaction at a time.
+The complete JSON payload of one Interaction is limited to 8 MiB; a batch's
+JSONL data, including newlines, is limited to 10 MiB. The batch leaves headroom for the
+base64-encoded recovery payload and metadata stored in one SQL statement under
+MariaDB's default 16 MiB `max_allowed_packet`; no server setting is changed. Byte-limited batches leave
+the next Interaction for the following selection after verified cleanup.
+
+Before reading SQL payload collections, an archive-only repeatable-read snapshot
+checks their variable-length bytes and row counts (at most 8 MiB and 32,768 rows).
+The final serialized payload is checked again. This bounds loading before JSON
+assembly; it is not a process RSS target. Existing opt-in revision-input locking
+and validation are retained. Technical Trace enrichment runs one Interaction at
+a time, with a bounded OpenSearch response and a final payload limit. Ordinary
+list/detail reads and the existing Span-browser response budget are unchanged.
+
+Every batch has its own verified object, frozen candidates and persisted progress.
+Only successful cleanup advances the run. Cleanup failure stops the request;
+retry revalidates that batch's existing archive before cleanup and continuation.
+The cutoff remains fixed across the request and resumed batches. Totals and
+remaining counts describe each selection, not a permanent snapshot of all
+candidates at request start. Large eligible counts alone no longer load all Trace
+payloads into memory. The object writer also checks the Trace batch budget before
+allocation/upload and bounds its verification download to the frozen length.
+
+A single oversized Interaction or unverifiable technical response stops before
+writing/deleting that batch, returning HTTP 409 `archive_incomplete_candidates`
+with a payload-budget explanation where applicable. Earlier completed batches
+remain recorded. Oversized records require operator handling; retries do not
+truncate, skip or delete them. The existing manifest and database formats are
+unchanged; no migration or streaming object protocol is introduced. This patch
+does not change the separate Freeze-to-Purge SQL concurrency behavior.
+
 ## Technical Trace archive cleanup safety (#1724)
 
 Technical Trace enrichment requires a complete OpenSearch result: no timeout,
@@ -97,8 +133,8 @@ against later external changes.
 
 Archive credentials must permit archive object reads as well as bulk document
 deletion and real-time document reads on the concrete indices. A denied/ambiguous response preserves the
-incomplete-cleanup state. This patch does not change SQL cleanup concurrency,
-stream Trace candidates, or bound full-package memory; these remain follow-ups under #1724. List/detail query paths are unchanged.
+incomplete-cleanup state. SQL cleanup concurrency remains a separate follow-up under #1724; the bounded
+Trace batches described above limit package loading without a streaming redesign. List/detail query paths are unchanged.
 
 ## Root-service discovery (#2140)
 
