@@ -251,7 +251,10 @@ async def _network(run: builtin_tools.Run) -> dict:
 
 async def _metas(run: builtin_tools.Run, ot_ids) -> dict[str, data.ObjectTypeMeta]:
     cache: dict = run.state.setdefault("metas", {})
-    missing = [i for i in dict.fromkeys(ot_ids) if i and i not in cache]
+    # A value node's type is not an object type; asking for it fails the whole lookup.
+    missing = [
+        i for i in dict.fromkeys(ot_ids) if i and i not in cache and not i.startswith(data.VALUE_TYPE_PREFIX)
+    ]
     if missing:
         payload = await _call(run, "get_object_types", ids=missing)
         for raw in payload.get("object_types") or []:
@@ -640,6 +643,11 @@ async def _expand(run: builtin_tools.Run, ids: list[str], direction: str) -> dic
     known = [n for i in wanted if (n := _known_node(run, i))]
     if not known:
         raise ToolException(f"Unknown instance ids: {', '.join(ids[:5])}; find them first")
+    # Value nodes are not instances and have no neighbours to walk to.
+    values = [n["id"] for n in known if str(n.get("object_type_id") or "").startswith(data.VALUE_TYPE_PREFIX)]
+    known = [n for n in known if n["id"] not in values]
+    if not known:
+        raise ToolException("Value nodes are not instances and cannot be expanded; expand the instances linked to them")
     seeds = known[:EXPAND_SEEDS]
     network = await _network(run)
     if network.get("relations_unlisted"):
@@ -657,7 +665,7 @@ async def _expand(run: builtin_tools.Run, ids: list[str], direction: str) -> dic
     # Seeds that are only candidates go on the canvas with their neighbours.
     absent = [s for s in seeds if s["id"] in _candidates(run)]
     seed_refs: dict[str, list[tuple[dict, str, dict]]] = {}
-    skipped_seeds = []
+    skipped_seeds = list(values)
     for seed in seeds:
         meta = metas.get(seed["object_type_id"])
         identity = _seed_identity(meta, seed) if meta and meta.primary_keys else None
