@@ -496,7 +496,7 @@ func TestFinishInteractionWithoutArtifactEndpointFailsWithoutCallingCore(t *test
 		"interaction_id": "int-1", "outcome": "completed",
 		"answer": "BOM 查询完成",
 	}}})
-	if err != nil || result == nil || result.IsError {
+	if err != nil || result == nil || !result.IsError {
 		t.Fatalf("finish without an Artifact endpoint must fail: result=%#v err=%v", result, err)
 	}
 	if finishCalls != 0 {
@@ -513,7 +513,8 @@ func TestFinishInteractionWithoutArtifactEndpointFailsWithoutCallingCore(t *test
 	if err := json.Unmarshal([]byte(text.Text), &envelope); err != nil {
 		t.Fatalf("decode finish error %q: %v", text.Text, err)
 	}
-	if envelope["code"] != "evidence_capture_failed" || envelope["trace_recorded"] != false {
+	errorValue, ok := envelope["error"].(map[string]any)
+	if !ok || errorValue["code"] != "evidence_capture_failed" || errorValue["retryable"] != false || errorValue["required_action"] != "contact_platform_operator" {
 		t.Fatalf("missing endpoint not disclosed: %#v", envelope)
 	}
 }

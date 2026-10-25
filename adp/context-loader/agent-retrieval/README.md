@@ -23,8 +23,10 @@ After every Core replica/worker has upgraded and Core's durable-answer option is
 enabled, set `observability.lifecycle.durable_answer_enabled=true` in this
 service's Helm values (or `BKN_TRACE_DURABLE_ANSWER_ENABLED=true`). It defaults to
 false. Completed MCP finish calls then send the governed answer artifact to
-Core's SQL transaction instead of waiting for an artifact upload. The existing
-one-second Trace post budget remains in force; the model's tool schema and
+Core's SQL transaction instead of waiting for an artifact upload. Preparation
+retains the one-second Trace observation budget. The authoritative
+Interaction finish POST/replay has a separate five-second total budget; tool-attempt
+finalization retains its existing post budget. The model's input schema and
 business execution are unchanged.
 
 Use the returned execution and evidence statuses independently: `completed`
@@ -33,6 +35,18 @@ delivered. A Core rejection or uncertain response is not a completion ACK and
 must not trigger re-execution of business tools. Disabling the option restores
 the legacy synchronous answer path. Question artifacts and other artifact
 writers retain their existing endpoint and credentials.
+
+Interaction finish uses at most three identical POSTs within
+`observability.lifecycle.finish_timeout_ms` / `BKN_TRACE_INTERACTION_FINISH_TIMEOUT_MS`
+(default 5000 ms, accepted range 1–30000; invalid values fall back to 5000).
+This is one total budget, including backoff, not a timeout per retry. Authorized
+submission retains this finite budget across caller disconnects. Only Core's
+matching Interaction ID and requested terminal status confirm success.
+`interaction_finish_unconfirmed` is an MCP tool error with `retry_same_finish`:
+repeat the original finish, never business tools. Error details identify stage,
+cause code and request ID. Domain refusals are not retried or overwritten.
+There is no durable client-side retry queue; process loss or a persistent outage
+can still leave an unaccepted Interaction active until Core's normal lease expiry.
 
 ## Authorization Boundaries
 

@@ -29,6 +29,26 @@ start 提交后若采集失败，响应保留权威 Interaction ID，并说明
 生命周期 Core 故障仍用 `trace_core_unavailable`。明确的采集认证配置缺失属于运维问题，
 不重复重试。不伪造 artifact 引用，问题采集路径也不承诺可靠后台恢复。
 
+### Interaction finish 的权威确认
+
+finish 准备工作保留现有 1 秒观察预算，最终终态 POST／幂等重放另用默认 5000 毫秒
+总预算，配置为 `observability.lifecycle.finish_timeout_ms` 或
+`BKN_TRACE_INTERACTION_FINISH_TIMEOUT_MS`（1–30000 毫秒，无效值使用 5000）。
+最多 3 次完全相同的 POST，包括退避，共享这份预算。授权准备完成后，调用方断开时
+仍可在此有限预算内收尾；工具 attempt 的回执预算及 Core 的 Interaction 租约规则不变。
+
+只有 Core 返回匹配的 Interaction ID 和所请求终态，finish 才确认成功。
+超时、临时故障重试耗尽或无效 ACK 返回 MCP `isError=true`、
+`interaction_finish_unconfirmed`、`required_action=retry_same_finish`，并附阶段、
+原因码和 request 关联信息。不能仅看 HTTP 200 判断已收尾。
+应使用相同 Interaction、outcome、answer 重试原 finish，不重跑业务动作。
+重复同一 POST 由 Core 验证已提交闭包，不把单纯 GET 到 completed 当成接受了另一份答案。
+已 abandoned 等领域拒绝仍返回错误，不强行覆盖终态。
+
+不新增持久化客户端重试队列。Core 持续故障或进程退出时，未被接受的 finish 仍可能
+保持 active，直至租约回收；不承诺未获 Core 接受就必定完成，也不伪造终态。
+本修复不把历史 8081 超时归因为某个尚未证实的存储或 CPU 问题。
+
 ### 调度与时间预算
 
 每个 Core 实例使用一个共享的投影 worker 执行槽，空闲时认领一条就绪任务。

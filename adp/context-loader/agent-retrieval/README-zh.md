@@ -17,6 +17,19 @@ Agent Retrieval 是 ADP context-loader 中的检索服务组件，面向知识�
 5. **get_logic_properties_values**：解析逻辑属性并获取属性值
 6. **Context Loader MCP Server**：对外提供上述五个工具，供 Cursor、Claude Desktop 等 MCP 客户端调用
 
+## Interaction 终态提交预算
+
+finish 的准备工作保留现有 1 秒 Trace 观察预算；最终 POST／幂等重放另用默认
+5 秒总预算，最多 3 次完全相同的请求，包含退避，不是每次都获得 5 秒。
+配置为 `observability.lifecycle.finish_timeout_ms` 或
+`BKN_TRACE_INTERACTION_FINISH_TIMEOUT_MS`，允许 1–30000 毫秒，无效值回退到 5000。
+工具 attempt 的既有收尾预算不变。授权准备完成后，即使调用方断开，仍在此有限预算内
+尝试完成提交。只有 Core 返回匹配的 Interaction ID 和所请求终态，才确认成功。
+`interaction_finish_unconfirmed` 是 MCP 工具错误，指引 `retry_same_finish`：重试原 finish，
+不要重跑业务工具。错误附带阶段、原因码和 request ID；领域拒绝不重试、不覆盖。
+不增加持久化客户端重试队列；进程退出或持续故障时，未被 Core 接受的 Interaction
+仍可能保持 active，直到现有租约规则回收。
+
 ## 权限边界
 
 对象查询面（`search_schema`、`get_kn_detail`、`get_object_types`、对象实例、子图和逻辑属性）统一消费 ontology-query 的授权安全结果：`none` 属性不暴露，`schema` 只暴露元数据，`masked` 实例值按列掩码规则返回；规则仅作用于查询结果中的属性值，不修改源数据。仅 `full` 属性可用于过滤、排序、对象标识或逻辑属性依赖。REST 与 MCP 复用同一服务；Schema、对象实例和逻辑属性响应会返回 ontology-query 提供的有效权限摘要。

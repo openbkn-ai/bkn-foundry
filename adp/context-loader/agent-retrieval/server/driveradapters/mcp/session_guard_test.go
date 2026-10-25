@@ -1438,12 +1438,14 @@ func TestArtifactOutageClassificationDoesNotChangeCoreOutage(t *testing.T) {
 			t.Fatalf("Core outage classification changed: %#v", value)
 		}
 		artifact := lifecycleUnavailable(context.Background(), toolKeyFinishInteraction, "answer_artifact", failure)
-		if artifact == nil || artifact.IsError {
-			t.Fatalf("existing unrecorded-finish behavior changed: %#v", artifact)
+		if artifact == nil || !artifact.IsError {
+			t.Fatalf("unconfirmed finish must remain an error: %#v", artifact)
 		}
-		view := artifact.StructuredContent.(map[string]any)
-		if view["code"] != "evidence_store_unavailable" || view["trace_recorded"] != false {
-			t.Fatalf("artifact outage incorrectly attributed: %#v", view)
+		view := lifecycleErrorFromResult(t, artifact)
+		text, _ := mcpsdk.AsTextContent(artifact.Content[0])
+		var envelope map[string]any
+		if json.Unmarshal([]byte(text.Text), &envelope) != nil || envelope["cause_code"] != "evidence_store_unavailable" || envelope["finish_confirmed"] != false || view["code"] != "interaction_finish_unconfirmed" || view["required_action"] != "retry_same_finish" {
+			t.Fatalf("artifact outage incorrectly attributed: %#v", envelope)
 		}
 	}
 }
@@ -1457,7 +1459,7 @@ func TestArtifactLocalFailureAndThrottlingRemainToolErrors(t *testing.T) {
 		retryable bool
 	}{
 		{name: "local capture failure", failure: errors.New("current request, trace and trusted account context are required"), code: "evidence_capture_failed", action: "contact_platform_operator"},
-		{name: "artifact throttled", failure: &bkntrace.CoreHTTPError{StatusCode: http.StatusTooManyRequests, Code: "TOO_MANY_REQUESTS"}, code: "evidence_store_unavailable", action: "retry_later", retryable: true},
+		{name: "artifact throttled", failure: &bkntrace.CoreHTTPError{StatusCode: http.StatusTooManyRequests, Code: "TOO_MANY_REQUESTS"}, code: "interaction_finish_unconfirmed", action: "retry_same_finish", retryable: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
