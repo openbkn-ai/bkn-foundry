@@ -17,7 +17,13 @@ const archiveIncompleteCandidatesMessageID = "AgentObservability.Message.archive
 var agentObservabilityEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
-		"AgentObservability.Message.archive operation is already running": "archive operation is already running",
+		"AgentObservability.Message.global trace access is required to browse spans":    "global trace access is required to browse spans",
+		"AgentObservability.Message.trace span cursor is invalid or expired":            "trace span cursor is invalid or expired",
+		"AgentObservability.Message.trace span browsing is unavailable":                 "trace span browsing is unavailable",
+		"AgentObservability.Message.legacy trace span format does not support browsing": "legacy trace span format does not support browsing",
+		"AgentObservability.Message.trace span page exceeds query budget":               "trace span page exceeds query budget",
+		"AgentObservability.Message.trace span search returned incomplete results":      "trace span search returned incomplete results",
+		"AgentObservability.Message.archive operation is already running":               "archive operation is already running",
 
 		archiveIncompleteCandidatesMessageID: "archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded",
 

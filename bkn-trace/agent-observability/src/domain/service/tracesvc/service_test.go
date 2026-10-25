@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/opensearchvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/oteltracevo"
 )
 
 type fakeTracePort struct {
@@ -560,4 +561,43 @@ func traceGraphDuplicateSearchResult() []byte {
     ]
   }
 }`)
+}
+
+func TestGraphDuplicateWindowStillReportsTruncation(t *testing.T) {
+	hits := make([]map[string]any, DefaultTraceGraphSpanLimit+1)
+	for i := range hits {
+		hits[i] = map[string]any{"_source": map[string]any{"traceId": "duplicate-window", "spanId": "same", "startTimeUnixNano": "1", "endTimeUnixNano": "2"}}
+	}
+	raw, _ := json.Marshal(map[string]any{"hits": map[string]any{"total": map[string]any{"value": 2000, "relation": "eq"}, "hits": hits}})
+	graph, found, err := New(&fakeTracePort{result: raw}).GetTraceGraphByTraceID(context.Background(), "duplicate-window")
+	if err != nil || !found || !graph.Page.Truncated {
+		t.Fatalf("bounded raw window must not imply all unique spans loaded: %+v, %v", graph.Page, err)
+	}
+}
+
+func TestGraphRejectsPartialSearch(t *testing.T) {
+	for _, prefix := range []string{`"timed_out":true,`, `"_shards":{"failed":1},`} {
+		raw := opensearchvo.SearchResult(`{` + prefix + `"hits":{"hits":[]}}`)
+		if _, _, err := New(&fakeTracePort{result: raw}).GetTraceGraphByTraceID(context.Background(), "trace"); err == nil {
+			t.Fatalf("partial search must fail: %s", raw)
+		}
+	}
+}
+
+func TestGraphExhaustedDuplicateWindowIsNotTruncated(t *testing.T) {
+	hits := make([]map[string]any, DefaultTraceGraphSpanLimit+1)
+	for i := range hits {
+		hits[i] = map[string]any{"_source": map[string]any{"traceId": "exhausted", "spanId": "same", "startTimeUnixNano": "1", "endTimeUnixNano": "2"}}
+	}
+	raw, _ := json.Marshal(map[string]any{"hits": map[string]any{"total": map[string]any{"value": len(hits), "relation": "eq"}, "hits": hits}})
+	graph, found, err := New(&fakeTracePort{result: raw}).GetTraceGraphByTraceID(context.Background(), "exhausted")
+	if err != nil || !found || graph.Page.Truncated || graph.Page.RawRecordCount != len(hits) {
+		t.Fatalf("proven raw exhaustion: %+v, %v", graph.Page, err)
+	}
+}
+func TestTruncatedGraphDoesNotDiagnoseCollectionLossForOutsideParent(t *testing.T) {
+	graph := buildTraceGraph("trace", []spanRecord{{Span: oteltracevo.Span{TraceID: "trace", SpanID: "child", ParentSpanID: "outside", StartTimeUnixNano: "1", EndTimeUnixNano: "2"}}}, true)
+	if contains(graph.PartialReasons, "orphan_span") || !contains(graph.PartialReasons, "parent_outside_display") {
+		t.Fatalf("wrong display-window diagnosis: %v", graph.PartialReasons)
+	}
 }

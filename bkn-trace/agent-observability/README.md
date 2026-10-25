@@ -18,6 +18,45 @@
 - Helm Deployment Chart
 - GitHub Actions 构建与发布流水线
 
+## Span display and browsing (#2158)
+
+Technical detail keeps its existing single graph read: at most 1,001 raw records,
+then at most 1,000 unique Span nodes. `span_display` reports loaded nodes, raw
+records, the display limit and loaded start-time range. `total_count` reuses the
+existing authorized summary cardinality estimate (`total_accuracy=estimated`);
+unavailable or stale estimates are `null`/`unknown`. Truncation means a bounded
+display window, not proof of collection loss. Duplicate raw records can consume
+the window before 1,000 unique nodes. A missing parent in that window is
+inconclusive: it may be uncollected or not loaded. The `parent_outside_display`
+compatibility reason does not prove that a parent record exists outside the
+window. The graph query orders by start time then Span ID.
+
+`GET /api/agent-observability/v1/traces/{trace_id}/spans?cursor=...` is a separate,
+on-demand browser. Each response replaces the current page with up to 100 unique
+Span summaries ordered by Span ID. It never expands the graph. Composite
+aggregation groups duplicate stored Span IDs and returns one recorded version;
+conflicting duplicate versions have no preferred revision. The endpoint supports
+current SS4O flat records and individual OTLP Span records with aggregatable
+`spanId.keyword`; legacy whole `resourceSpans` envelopes are explicitly unsupported
+(422), including mixed storage with missing top-level Span IDs.
+
+Only active `admin`/`super_admin` profiles may read raw Trace spans. Every page
+also rechecks canonical Trace visibility. Other authorized users retain scoped
+summary/Operations detail, with `span_scope_unavailable` and no global Span count
+or raw graph. Cursors are signed, expire after 15 minutes and bind the Trace,
+identity, current grants, sort and fixed page size. Grant sets are canonicalized;
+permission ordering and display-name changes do not invalidate a cursor, while
+actual identity/grant changes still do. Replicas reuse the existing
+cursor signing key; without one, process-local cursors expire on restart or
+routing to another process. A request has a 3-second budget and a 4 MiB upstream
+response limit; partial, timed-out or oversized searches fail explicitly.
+
+Pagination is live, not a snapshot. Records inserted before the current Span ID
+may require restarting from the first page. A full final page may be followed by
+an empty terminal page. No first-screen count request, migration or index mapping
+change is introduced. Studio adds the browser through its coordinated PR; older
+Studio versions ignore the additive metadata.
+
 ## Development
 
 ### 系统审计配置

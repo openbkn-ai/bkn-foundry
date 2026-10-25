@@ -2657,6 +2657,95 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/traces/{trace_id}/spans": {
+            "get": {
+                "description": "Requires current global trace access and canonical trace visibility on every page. Signed cursors describe live Span-ID order; pages do not enlarge the graph or claim an exact total.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "traces"
+                ],
+                "summary": "Browse one bounded page of technical trace spans",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Trace ID",
+                        "name": "trace_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Signed continuation cursor",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/tracesvc.SpanPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "504": {
+                        "description": "Gateway Timeout",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -5657,6 +5746,73 @@ const docTemplate = `{
                 "SupportOperationOutput"
             ]
         },
+        "tracesvc.SpanDisplayRange": {
+            "type": "object",
+            "properties": {
+                "browse_allowed": {
+                    "type": "boolean"
+                },
+                "browse_reason": {
+                    "type": "string"
+                },
+                "display_limit": {
+                    "type": "integer"
+                },
+                "first_start_at": {
+                    "type": "string"
+                },
+                "last_start_at": {
+                    "type": "string"
+                },
+                "loaded_count": {
+                    "type": "integer"
+                },
+                "raw_record_count": {
+                    "type": "integer"
+                },
+                "raw_record_limit": {
+                    "type": "integer"
+                },
+                "sort": {
+                    "type": "string"
+                },
+                "total_accuracy": {
+                    "type": "string"
+                },
+                "total_count": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "tracesvc.SpanPage": {
+            "type": "object",
+            "properties": {
+                "consistency": {
+                    "type": "string"
+                },
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/oteltracevo.TraceGraphNode"
+                    }
+                },
+                "has_more": {
+                    "type": "boolean"
+                },
+                "next_cursor": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "string"
+                },
+                "trace_id": {
+                    "type": "string"
+                }
+            }
+        },
         "tracesvc.TechnicalOperation": {
             "type": "object",
             "properties": {
@@ -5697,6 +5853,9 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "span_display": {
+                    "$ref": "#/definitions/tracesvc.SpanDisplayRange"
                 },
                 "summary": {
                     "$ref": "#/definitions/evidencevo.TraceSummary"

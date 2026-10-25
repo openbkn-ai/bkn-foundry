@@ -559,7 +559,7 @@ func NewApp() (*App, error) {
 	}
 	archiveHandler := httphandler.NewArchiveHandler(archivesvc.New(archiveStore, archiveSource, archiveObjectStore, archivesvc.Options{}), evidenceHandler)
 	traceHandler := httphandler.NewTraceHandlerWithTechnicalSources(
-		traceQueryService, evidenceService, sessionService,
+		traceQueryService, evidenceService, sessionService, observabilityConfig.CursorSigningKey,
 	)
 	sessionHandler := httphandler.NewSessionHandlerWithAssembly(
 		sessionService,

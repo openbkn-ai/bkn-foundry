@@ -2075,6 +2075,50 @@ definitions:
     - SupportClaim
     - SupportArtifactFragment
     - SupportOperationOutput
+  tracesvc.SpanDisplayRange:
+    properties:
+      browse_allowed:
+        type: boolean
+      browse_reason:
+        type: string
+      display_limit:
+        type: integer
+      first_start_at:
+        type: string
+      last_start_at:
+        type: string
+      loaded_count:
+        type: integer
+      raw_record_count:
+        type: integer
+      raw_record_limit:
+        type: integer
+      sort:
+        type: string
+      total_accuracy:
+        type: string
+      total_count:
+        type: integer
+      truncated:
+        type: boolean
+    type: object
+  tracesvc.SpanPage:
+    properties:
+      consistency:
+        type: string
+      entries:
+        items:
+          $ref: '#/definitions/oteltracevo.TraceGraphNode'
+        type: array
+      has_more:
+        type: boolean
+      next_cursor:
+        type: string
+      sort:
+        type: string
+      trace_id:
+        type: string
+    type: object
   tracesvc.TechnicalOperation:
     properties:
       fact:
@@ -2102,6 +2146,8 @@ definitions:
         items:
           type: string
         type: array
+      span_display:
+        $ref: '#/definitions/tracesvc.SpanDisplayRange'
       summary:
         $ref: '#/definitions/evidencevo.TraceSummary'
     type: object
@@ -3842,6 +3888,67 @@ paths:
           schema:
             $ref: '#/definitions/rdto.ErrorResponse'
       summary: Get one typed technical trace
+      tags:
+      - traces
+  /traces/{trace_id}/spans:
+    get:
+      description: Requires current global trace access and canonical trace visibility
+        on every page. Signed cursors describe live Span-ID order; pages do not enlarge
+        the graph or claim an exact total.
+      parameters:
+      - description: Trace ID
+        in: path
+        name: trace_id
+        required: true
+        type: string
+      - description: Signed continuation cursor
+        in: query
+        name: cursor
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/tracesvc.SpanPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "504":
+          description: Gateway Timeout
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Browse one bounded page of technical trace spans
       tags:
       - traces
 securityDefinitions:
