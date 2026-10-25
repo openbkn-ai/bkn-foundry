@@ -14,9 +14,9 @@ on:
     branches: ['**']
     paths:
       - 'infra/sandbox/**'
-      # 沙箱镜像里的 BKN 能力面由这里的工具面渲染而来。改了它而不重新生成产物，
-      # 镜像就会带着过期的签名发出去——所以这条路径也要触发本工作流。
-      - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/**'
+      # MCP 工具面只通过签入的 runtime/sandbox_sdk/_bkn_tools.py 进入镜像（已在
+      # infra/sandbox/** 内）；MCP 行为改动随 agent-retrieval 发布，与沙箱镜像无关。
+      # 产物漂移由 ci-adp-context-loader 在 PR 阶段拦截，这里不再监听 mcp 目录。
       - '.github/workflows/release-infra-sandbox.yml'
       - '.github/workflows/reusable-*.yml'
       # 版本冻结提交（release/<x.y.z> 分支）触发全量重建

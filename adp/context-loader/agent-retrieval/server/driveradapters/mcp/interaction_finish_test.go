@@ -28,12 +28,13 @@ func TestInteractionFinishSubmissionAndConfirmation(t *testing.T) {
 			}
 			ctx, cancel := context.WithCancel(startArtifactTestContext())
 			defer cancel()
-			terminal := "completed"
-			if mode == "failed outcome" {
-				terminal = "failed"
-			}
-			if mode == "cancelled outcome" {
-				terminal = "cancelled"
+			terminal, expectedStatus := "completed", "completed"
+			switch mode {
+			case "failed outcome":
+				terminal, expectedStatus = "failed", "failed"
+			case "cancelled outcome":
+				// Public request and persisted Core response use different spellings.
+				terminal, expectedStatus = "cancelled", "canceled"
 			}
 			posts, commits := 0, 0
 			var originalBody string
@@ -62,7 +63,11 @@ func TestInteractionFinishSubmissionAndConfirmation(t *testing.T) {
 					t.Fatal("retry changed the original finish payload/key")
 				}
 				var body map[string]any
-				if json.Unmarshal(raw, &body) != nil || body["idempotency_key"] == "" {
+				if json.Unmarshal(raw, &body) != nil {
+					t.Fatal("invalid finish JSON")
+				}
+				key, _ := body["idempotency_key"].(string)
+				if key == "" {
 					t.Fatal("missing stable finish key")
 				}
 				if mode == "independent budget" {
@@ -120,7 +125,7 @@ func TestInteractionFinishSubmissionAndConfirmation(t *testing.T) {
 				if mode == "lost acknowledgement" && posts == 1 {
 					return nil, io.ErrUnexpectedEOF
 				}
-				return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.Interaction{InteractionID: "int-finish", ConversationID: "conv-committed", ExecutionStatus: terminal, EvidenceStatus: "assembling"}), nil
+				return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.Interaction{InteractionID: "int-finish", ConversationID: "conv-committed", ExecutionStatus: expectedStatus, EvidenceStatus: "assembling"}), nil
 			})})
 			req := mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{"interaction_id": "int-finish", "outcome": terminal, "answer": "actual business answer"}}}
 			result, err := handleLifecycleTool(client, toolKeyFinishInteraction)(ctx, req)
@@ -138,7 +143,8 @@ func TestInteractionFinishSubmissionAndConfirmation(t *testing.T) {
 				}
 				text, _ := mcpsdk.AsTextContent(result.Content[0])
 				var envelope map[string]any
-				if json.Unmarshal([]byte(text.Text), &envelope) != nil || envelope["finish_confirmed"] != false || envelope["stage"] != "core_call" || value["request_id"] == "" {
+				requestID, _ := value["request_id"].(string)
+				if json.Unmarshal([]byte(text.Text), &envelope) != nil || envelope["finish_confirmed"] != false || envelope["stage"] != "core_call" || requestID == "" {
 					t.Fatalf("unconfirmed finish lost correlation: %#v", envelope)
 				}
 				if mode == "timeout" && posts != 1 || mode != "timeout" && posts != 3 {
@@ -171,7 +177,7 @@ func TestInteractionFinishSubmissionAndConfirmation(t *testing.T) {
 					t.Fatalf("domain refusal retried or overwritten: %#v posts=%d", value, posts)
 				}
 			default:
-				if result.IsError || result.StructuredContent.(map[string]any)["execution_status"] != terminal || commits != 1 {
+				if result.IsError || result.StructuredContent.(map[string]any)["execution_status"] != expectedStatus || commits != 1 {
 					t.Fatalf("finish was not confirmed exactly once: result=%#v commits=%d", result, commits)
 				}
 				wantPosts := 1

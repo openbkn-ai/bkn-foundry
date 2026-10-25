@@ -624,7 +624,7 @@ func (c *LifecycleClient) do(
 		return nil, nil
 	}
 	if err := common.DecodePreciseJSON(io.LimitReader(resp.Body, 1<<20), target); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidLifecycleResponse, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidLifecycleResponse, err)
 	}
 	if interaction, ok := target.(*Interaction); ok {
 		c.rememberLease(ctx, *interaction)

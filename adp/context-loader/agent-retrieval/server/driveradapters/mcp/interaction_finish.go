@@ -51,6 +51,11 @@ func callInteractionFinish(ctx context.Context, client *bkntrace.LifecycleClient
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), interactionFinishTimeout())
 	defer cancel()
+	expectedStatus := stringValue(body["outcome"])
+	// Core's public outcome spelling differs from its persisted status.
+	if expectedStatus == "cancelled" {
+		expectedStatus = "canceled"
+	}
 	var apiErr *bkntrace.APIError
 	for attempt := 0; attempt < 3; attempt++ {
 		if ctx.Err() != nil {
@@ -61,7 +66,7 @@ func callInteractionFinish(ctx context.Context, client *bkntrace.LifecycleClient
 		if errors.Is(err, bkntrace.ErrInvalidLifecycleResponse) {
 			err = errInteractionFinishACK
 		}
-		if apiErr == nil && err == nil && (target.InteractionID != interactionID || target.ExecutionStatus != stringValue(body["outcome"])) {
+		if apiErr == nil && err == nil && (target.InteractionID != interactionID || target.ExecutionStatus != expectedStatus) {
 			err = errInteractionFinishACK
 		}
 		if !retryableInteractionFinish(apiErr, err) {
