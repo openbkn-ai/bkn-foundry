@@ -6,6 +6,7 @@
 package httphandler
 
 import (
+	"cmp"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -13,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -54,16 +56,46 @@ func randomTraceSpanCursorKey() []byte {
 }
 
 func traceSpanScopeBinding(scope evidencevo.QueryScope) string {
-	// QueryScope omits View and AccessProfile from JSON. Include all permission
-	// inputs explicitly, even when an adapter supplied an unchanged fingerprint.
+	// Bind actual current grants, not display metadata or an order-sensitive
+	// upstream fingerprint. Work on copies: trusted profiles may be shared.
+	var profile *evidencevo.AccessProfile
+	if scope.AccessProfile != nil {
+		canonical := *scope.AccessProfile
+		canonical.ActorNameSnapshot = ""
+		canonical.Fingerprint = ""
+		canonical.Roles = sortedSpanScopeValues(canonical.Roles)
+		canonical.ManagedKnowledgeNetworkIDs = sortedSpanScopeValues(canonical.ManagedKnowledgeNetworkIDs)
+		canonical.Permissions = append([]evidencevo.Permission(nil), canonical.Permissions...)
+		for i := range canonical.Permissions {
+			canonical.Permissions[i].Operations = sortedSpanScopeValues(canonical.Permissions[i].Operations)
+		}
+		compare := func(a, b evidencevo.Permission) int {
+			if c := cmp.Compare(a.ResourceType, b.ResourceType); c != 0 {
+				return c
+			}
+			if c := cmp.Compare(a.ResourceID, b.ResourceID); c != 0 {
+				return c
+			}
+			return slices.Compare(a.Operations, b.Operations)
+		}
+		slices.SortFunc(canonical.Permissions, compare)
+		canonical.Permissions = slices.CompactFunc(canonical.Permissions, func(a, b evidencevo.Permission) bool { return compare(a, b) == 0 })
+		profile = &canonical
+	}
 	raw, _ := json.Marshal(struct {
 		AccountID   string
 		AccountType string
 		View        evidencevo.AccessView
 		Profile     *evidencevo.AccessProfile
-	}{scope.AccountID, scope.AccountType, evidencevo.AccessViewTechnical, scope.AccessProfile})
+	}{scope.AccountID, scope.AccountType, evidencevo.AccessViewTechnical, profile})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+func sortedSpanScopeValues(values []string) []string {
+	result := append([]string(nil), values...)
+	slices.Sort(result)
+	return slices.Compact(result)
 }
 
 func encodeTraceSpanCursor(key []byte, traceID, after string, scope evidencevo.QueryScope, now time.Time) (string, error) {

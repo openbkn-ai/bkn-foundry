@@ -126,3 +126,11 @@ func TestSpanDisplayCountsAreExplicitEstimates(t *testing.T) {
 		}
 	}
 }
+
+func TestSpanDisplayRangeKeepsKnownTimesWithInvalidNodes(t *testing.T) {
+	graph := oteltracevo.TraceGraphResponse{Data: oteltracevo.TraceGraphData{Nodes: []oteltracevo.TraceGraphNode{{SpanID: "invalid", StartNano: 0}, {SpanID: "a", StartNano: 10}, {SpanID: "b", StartNano: 20}}}}
+	d := BuildTechnicalTraceDetail(evidencevo.TraceSummary{}, &graph, nil).SpanDisplay
+	if d.FirstStartAt == nil || d.LastStartAt == nil || d.FirstStartAt.UnixNano() != 10 || d.LastStartAt.UnixNano() != 20 {
+		t.Fatalf("invalid node hid known time range: %+v", d)
+	}
+}

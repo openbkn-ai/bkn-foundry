@@ -330,6 +330,8 @@ func buildTraceGraph(traceID string, records []spanRecord, truncated bool) otelt
 				continue
 			}
 			if truncated {
+				// Only absence from the loaded window is known. The parent may
+				// be uncollected or outside the read; do not assert either.
 				partialReasons["parent_outside_display"] = struct{}{}
 			} else {
 				partialReasons["orphan_span"] = struct{}{}

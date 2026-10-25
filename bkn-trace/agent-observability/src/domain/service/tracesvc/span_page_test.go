@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/opensearchvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ihttpaccess/tracequeryport"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,7 @@ import (
 type spanPagePort struct {
 	response []byte
 	query    []byte
+	err      error
 }
 
 func (p *spanPagePort) SearchTraces(context.Context, json.RawMessage) (opensearchvo.SearchResult, error) {
@@ -25,7 +27,7 @@ func (p *spanPagePort) SearchTraces(context.Context, json.RawMessage) (opensearc
 }
 func (p *spanPagePort) SearchTraceSpans(_ context.Context, q json.RawMessage) (opensearchvo.SearchResult, error) {
 	p.query = q
-	return p.response, nil
+	return p.response, p.err
 }
 func spanPageFixture(start, n int) map[string]any {
 	b := []any{}
@@ -122,5 +124,13 @@ func TestSpanPageFlatSourceAndCursorValidation(t *testing.T) {
 	}
 	if _, e = s.ListTraceSpanPage(context.Background(), "trace", "s00000"); !errors.Is(e, ErrSpanPageIncomplete) {
 		t.Fatal("nonadvancing bucket", e)
+	}
+}
+
+func TestSpanPageMapsBoundedPortBudget(t *testing.T) {
+	p := &spanPagePort{err: fmt.Errorf("bounded read: %w", tracequeryport.ErrSpanResponseBudget)}
+	_, err := New(p).ListTraceSpanPage(context.Background(), "trace", "")
+	if !errors.Is(err, ErrSpanPageBudget) {
+		t.Fatalf("error=%v, want page budget", err)
 	}
 }

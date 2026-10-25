@@ -7,6 +7,7 @@ package httphandler
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -65,5 +66,39 @@ func TestTraceSpanCursorBindsEveryAuthorizationInputAndBounds(t *testing.T) {
 	a[0] ^= 1
 	if bytes.Equal(a, newTraceSpanCursorKey()) {
 		t.Fatal("caller mutated shared default signing key")
+	}
+}
+
+func TestTraceSpanCursorIgnoresGrantOrderingAndDisplayMetadata(t *testing.T) {
+	scope := spanHandlerScope()
+	scope.AccessProfile.ActorNameSnapshot = "old name"
+	scope.AccessProfile.Roles = []string{"admin", "auditor"}
+	scope.AccessProfile.ManagedKnowledgeNetworkIDs = []string{"b", "a"}
+	scope.AccessProfile.Permissions = []evidencevo.Permission{{ResourceType: "network", ResourceID: "b", Operations: []string{"read", "write"}}, {ResourceType: "network", ResourceID: "a", Operations: []string{"read"}}}
+	before, _ := json.Marshal(scope.AccessProfile)
+	key := []byte("scope-key")
+	now := time.Now()
+	value, err := encodeTraceSpanCursor(key, "trace", "span-100", scope, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := scope
+	profile := *scope.AccessProfile
+	changed.AccessProfile = &profile
+	profile.ActorNameSnapshot = "new name"
+	profile.Fingerprint = "equivalent-reordered-fingerprint"
+	profile.Roles = []string{"auditor", "admin"}
+	profile.ManagedKnowledgeNetworkIDs = []string{"a", "b"}
+	profile.Permissions = []evidencevo.Permission{{ResourceType: "network", ResourceID: "a", Operations: []string{"read"}}, {ResourceType: "network", ResourceID: "b", Operations: []string{"write", "read"}}}
+	if _, err := decodeTraceSpanCursor(key, value, "trace", changed, now); err != nil {
+		t.Fatalf("equivalent current grants invalidated cursor: %v", err)
+	}
+	after, _ := json.Marshal(scope.AccessProfile)
+	if !bytes.Equal(before, after) {
+		t.Fatal("scope canonicalization mutated trusted grants")
+	}
+	profile.Permissions[1].Operations = []string{"read"}
+	if _, err := decodeTraceSpanCursor(key, value, "trace", changed, now); err == nil {
+		t.Fatal("actual permission change reused cursor")
 	}
 }

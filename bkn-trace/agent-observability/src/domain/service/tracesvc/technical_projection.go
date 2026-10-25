@@ -59,16 +59,25 @@ func BuildTechnicalTraceDetail(
 		detail.SpanDisplay.LoadedCount = len(graph.Data.Nodes)
 		detail.SpanDisplay.RawRecordCount = graph.Page.RawRecordCount
 		detail.SpanDisplay.Truncated = graph.Page.Truncated
-		if len(graph.Data.Nodes) > 0 {
-			first, last := graph.Data.Nodes[0].StartNano, graph.Data.Nodes[len(graph.Data.Nodes)-1].StartNano
-			if first > 0 {
-				t := time.Unix(0, first).UTC()
-				detail.SpanDisplay.FirstStartAt = &t
+		var first, last int64
+		for _, node := range graph.Data.Nodes {
+			if node.StartNano <= 0 {
+				continue
 			}
-			if last > 0 {
-				t := time.Unix(0, last).UTC()
-				detail.SpanDisplay.LastStartAt = &t
+			if first == 0 || node.StartNano < first {
+				first = node.StartNano
 			}
+			if node.StartNano > last {
+				last = node.StartNano
+			}
+		}
+		if first > 0 {
+			t := time.Unix(0, first).UTC()
+			detail.SpanDisplay.FirstStartAt = &t
+		}
+		if last > 0 {
+			t := time.Unix(0, last).UTC()
+			detail.SpanDisplay.LastStartAt = &t
 		}
 	}
 	if summary.SpanCountStatus == "available" && summary.SpanCount > 0 && summary.SpanCount >= detail.SpanDisplay.LoadedCount {

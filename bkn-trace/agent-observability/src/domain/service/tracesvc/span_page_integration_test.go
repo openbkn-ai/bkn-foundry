@@ -73,7 +73,7 @@ func TestSpanPageRealOpenSearch(t *testing.T) {
 	var bulk bytes.Buffer
 	add := func(trace, span string) {
 		fmt.Fprintf(&bulk, "{\"index\":{}}\n")
-		body, _ := json.Marshal(map[string]any{"traceId": trace, "spanId": span, "startTime": "2026-01-01T00:00:00Z", "endTime": "2026-01-01T00:00:01Z", "name": "fixture"})
+		body, _ := json.Marshal(map[string]any{"traceId": trace, "spanId": span, "startTime": "2026-01-01T00:00:00Z", "endTime": "2026-01-01T00:00:01Z", "name": "fixture", "resource": map[string]string{"service.name": "fixture-service"}})
 		bulk.Write(body)
 		bulk.WriteByte('\n')
 	}
@@ -104,6 +104,9 @@ func TestSpanPageRealOpenSearch(t *testing.T) {
 		}
 		pages++
 		for _, entry := range page.Entries {
+			if entry.ServiceName != "fixture-service" {
+				t.Fatalf("dotted resource key was not preserved: %q", entry.ServiceName)
+			}
 			if entry.SpanID <= previous {
 				t.Fatal("duplicate/unordered span")
 			}
