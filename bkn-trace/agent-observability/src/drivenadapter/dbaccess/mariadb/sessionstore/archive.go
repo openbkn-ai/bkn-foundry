@@ -38,27 +38,69 @@ func NewTraceArchiveSourceWithRevisionInputs(store *Store) *TraceArchiveSource {
 }
 
 func (source *TraceArchiveSource) Freeze(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) ([]archivesvc.Candidate, error) {
-	if kind != observabilityvo.ArchiveKindTrace {
-		return nil, nil
-	}
-	rows, err := source.store.db.QueryContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions WHERE execution_status<>? AND terminal_at<? ORDER BY terminal_at ASC, interaction_id ASC`, sessionvo.InteractionActive, archiveRange.To.UTC())
+	batch, err := source.FreezeBatch(ctx, kind, archiveRange)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
-	var candidates []archivesvc.Candidate
-	for rows.Next() {
-		var interactionID string
-		if err := rows.Scan(&interactionID); err != nil {
-			return nil, err
-		}
-		payload, occurredAt, err := source.packageInteraction(ctx, interactionID)
-		if err != nil {
-			return nil, err
-		}
-		candidates = append(candidates, archivesvc.Candidate{ID: interactionID, OccurredAt: occurredAt, Payload: payload})
+	if len(batch.Candidates) != batch.EligibleCount {
+		return nil, archivesvc.ErrIncompleteCandidates
 	}
-	return candidates, rows.Err()
+	return batch.Candidates, nil
+}
+
+// FreezeBatch bounds both selected identities and the JSONL bytes handed to storage.
+func (source *TraceArchiveSource) FreezeBatch(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) (archivesvc.Batch, error) {
+	batch := archivesvc.Batch{Batched: true}
+	if kind != observabilityvo.ArchiveKindTrace {
+		return batch, nil
+	}
+	count, err := source.Count(ctx, kind, archiveRange)
+	if err != nil {
+		return batch, err
+	}
+	batch.EligibleCount = count
+	if count == 0 {
+		return batch, nil
+	}
+	rows, err := source.store.db.QueryContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions WHERE execution_status<>? AND terminal_at<? ORDER BY terminal_at ASC, interaction_id ASC LIMIT ?`, sessionvo.InteractionActive, archiveRange.To.UTC(), archivesvc.MaxTraceArchiveCandidates)
+	if err != nil {
+		return batch, err
+	}
+	ids := make([]string, 0, archivesvc.MaxTraceArchiveCandidates)
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return archivesvc.Batch{}, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	closeErr := rows.Close()
+	if err != nil {
+		return archivesvc.Batch{}, err
+	}
+	if closeErr != nil {
+		return archivesvc.Batch{}, closeErr
+	}
+	// Release the identity result before opening a package transaction, including
+	// with a one-connection pool.
+	bytes := 0
+	for _, id := range ids {
+		payload, occurredAt, err := source.packageInteraction(ctx, id)
+		if err != nil {
+			return archivesvc.Batch{}, err
+		}
+		if len(payload) > archivesvc.MaxTraceArchiveCandidateBytes {
+			return archivesvc.Batch{}, archivesvc.ErrArchivePayloadTooLarge
+		}
+		if bytes+len(payload)+1 > archivesvc.MaxTraceArchiveBatchBytes {
+			break
+		}
+		bytes += len(payload) + 1
+		batch.Candidates = append(batch.Candidates, archivesvc.Candidate{ID: id, OccurredAt: occurredAt, Payload: payload})
+	}
+	return batch, nil
 }
 
 // Count uses exactly the Freeze eligibility predicate without fetching or
@@ -79,7 +121,7 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 	var receipts []sessionvo.Receipt
 	var facts []sessionvo.OperationCallFact
 	var sealed revisionArchiveContents
-	err := source.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+	read := func(tx isessionstore.Transaction) error {
 		var ok bool
 		if source.revisionInputs {
 			interaction, ok = tx.FindInteraction(interactionID)
@@ -102,7 +144,8 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 			}
 		}
 		return nil
-	})
+	}
+	err := source.readBoundedPackage(ctx, interactionID, read)
 	if err != nil {
 		return nil, time.Time{}, err
 	}
@@ -121,10 +164,63 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 	if err != nil {
 		return nil, time.Time{}, err
 	}
+	if len(payload) > archivesvc.MaxTraceArchiveCandidateBytes {
+		return nil, time.Time{}, archivesvc.ErrArchivePayloadTooLarge
+	}
 	if interaction.TerminalAt == nil {
 		return nil, time.Time{}, fmt.Errorf("terminal interaction %s has no terminal time", interactionID)
 	}
 	return payload, *interaction.TerminalAt, nil
+}
+
+// readBoundedPackage checks large SQL collections before decoding any payload.
+// Repeatable read keeps the aggregate preflight and all subsequent lists on the
+// same snapshot; the ordinary service transaction uses read committed instead.
+func (source *TraceArchiveSource) readBoundedPackage(ctx context.Context, id string, read func(isessionstore.Transaction) error) error {
+	tx, err := source.store.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if source.revisionInputs {
+		// Preserve the opt-in revision reader's existing parent lock before opening
+		// the budget snapshot, so its later FindInteraction cannot see a larger row.
+		var found string
+		if err = tx.QueryRowContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions WHERE interaction_id=? FOR UPDATE`, id).Scan(&found); err != nil {
+			return err
+		}
+	}
+	// Variable-length schema fields are capped independently of collection row
+	// overhead. Only scalar counts/lengths cross the SQL boundary at this stage.
+	query := `SELECT SUM(row_count),SUM(payload_bytes) FROM (
+ SELECT COUNT(*) row_count,COALESCE(SUM(COALESCE(OCTET_LENGTH(closure_manifest),0)+COALESCE(OCTET_LENGTH(record_integrity_json),0)),0) payload_bytes FROM bkn_trace_interactions WHERE interaction_id=?
+ UNION ALL SELECT COUNT(*),COALESCE(SUM(COALESCE(OCTET_LENGTH(causation_event_ids),0)),0) FROM bkn_trace_operations WHERE interaction_id=?
+ UNION ALL SELECT COUNT(*),COALESCE(SUM(COALESCE(OCTET_LENGTH(causation_event_ids),0)+COALESCE(OCTET_LENGTH(observed_evidence_refs),0)+COALESCE(OCTET_LENGTH(business_refs),0)+COALESCE(OCTET_LENGTH(artifact_refs),0)+COALESCE(OCTET_LENGTH(partial_reasons),0)),0) FROM bkn_trace_receipts WHERE interaction_id=?
+ UNION ALL SELECT COUNT(*),COALESCE(SUM(COALESCE(OCTET_LENGTH(capability_profile),0)+OCTET_LENGTH(input_payload)+COALESCE(OCTET_LENGTH(output_payload),0)+COALESCE(OCTET_LENGTH(error_payload),0)),0) FROM bkn_trace_operation_call_facts WHERE interaction_id=?`
+	args := []any{id, id, id, id}
+	if source.revisionInputs {
+		query += ` UNION ALL SELECT COUNT(*),COALESCE(SUM(OCTET_LENGTH(included_receipt_ids)+OCTET_LENGTH(included_event_ids)+COALESCE(OCTET_LENGTH(partial_reasons),0)),0) FROM bkn_trace_assembly_revisions WHERE interaction_id=?
+ UNION ALL SELECT COUNT(*),COALESCE(SUM(OCTET_LENGTH(input_package)),0) FROM bkn_trace_revision_inputs WHERE interaction_id=?`
+		args = append(args, id, id)
+	}
+	query += `) archive_budget`
+	var rows, bytes int64
+	if err = tx.QueryRowContext(ctx, query, args...).Scan(&rows, &bytes); err != nil {
+		return err
+	}
+	// Even empty-payload rows occupy structs, IDs and JSON metadata. The row cap
+	// prevents a tiny-byte aggregate from materializing an unbounded collection.
+	if rows > int64(archivesvc.MaxTraceArchiveCandidateBytes/256) || bytes > int64(archivesvc.MaxTraceArchiveCandidateBytes) {
+		return archivesvc.ErrArchivePayloadTooLarge
+	}
+	adapter := &transaction{ctx: ctx, tx: tx}
+	if err = read(adapter); err != nil {
+		return err
+	}
+	if adapter.err != nil {
+		return adapter.err
+	}
+	return tx.Commit()
 }
 
 func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, candidates []archivesvc.Candidate) error {

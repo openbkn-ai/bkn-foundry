@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Trace archive creation now automatically processes bounded batches: at most 100 Interactions, 8 MiB per complete payload and 16 MiB of JSONL per batch. SQL preflight and technical response limits reject oversized packages before cleanup; each verified batch retains independent progress and retry protection. Existing manifest/schema and ordinary list/detail reads are unchanged. No migration or streaming redesign. (#1724)
+
 - Cleanup retry also accepts the v0.1.4 `<jobID>.jsonl` object layout without weakening frozen-payload verification. Safe task messages distinguish object read failures, content mismatch, and unavailable recovery records/read support. (#1724)
 
 - Archive cleanup retries re-read and verify the existing manifest and JSONL object against the durable frozen candidates before deleting any hot records. Missing, damaged or mismatched archives preserve the incomplete task, payload and batch progress; restoring the matching objects allows retry without rewriting the archive. The existing manifest format and ordinary list/detail queries are unchanged. This scoped safety fix leaves #1724 open for remaining archive work.

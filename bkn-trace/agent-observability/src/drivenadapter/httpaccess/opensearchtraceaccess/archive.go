@@ -8,6 +8,7 @@ package opensearchtraceaccess
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -29,6 +30,20 @@ func NewArchiveStore(client *opensearch.Client, index string) *ArchiveStore {
 }
 
 func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.Candidate) ([]archivesvc.Candidate, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Validate core payloads before decoding or issuing any upstream request.
+	inputBytes := 0
+	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if len(candidate.Payload) > archivesvc.MaxTraceArchiveCandidateBytes || len(candidate.Payload)+1 > archivesvc.MaxTraceArchiveBatchBytes-inputBytes {
+			return nil, archivesvc.ErrArchivePayloadTooLarge
+		}
+		inputBytes += len(candidate.Payload) + 1
+	}
 	idsByCandidate := map[string][]string{}
 	all := map[string]struct{}{}
 	for _, candidate := range candidates {
@@ -41,13 +56,19 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 			all[id] = struct{}{}
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(all) == 0 {
 		return candidates, nil
 	}
 	ids := sortedKeys(all)
 	query, _ := json.Marshal(map[string]any{"size": 10000, "track_total_hits": true, "seq_no_primary_term": true, "stored_fields": []string{"_routing"}, "_source": true, "query": map[string]any{"terms": map[string]any{"traceId.keyword": ids}}})
-	body, err := store.client.Search(ctx, store.index, query)
+	body, err := store.client.SearchBounded(ctx, store.index, query, archivesvc.MaxTraceArchiveBatchBytes)
 	if err != nil {
+		if errors.Is(err, opensearch.ErrSearchResponseBudget) {
+			return nil, fmt.Errorf("%w: %w", archivesvc.ErrArchivePayloadTooLarge, err)
+		}
 		return nil, err
 	}
 	var response struct {
@@ -88,8 +109,12 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 	}
 	byTrace := map[string][]json.RawMessage{}
 	recordsByTrace := map[string][]opensearch.FrozenDocument{}
+	bytesByTrace := map[string]int{}
 	seen := map[frozenDocumentKey]struct{}{}
 	for _, hit := range hits {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		var source struct {
 			TraceID string `json:"traceId"`
 		}
@@ -110,6 +135,20 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		if !validFrozenTraceDocument(document) {
 			return nil, fmt.Errorf("%w: technical trace archive omitted document identity or version", archivesvc.ErrIncompleteCandidates)
 		}
+		// Bound raw source and identity strings before marshaling even one frozen
+		// metadata entry. Serialized metadata is then included in the preflight sum.
+		if len(hit.Source)+len(document.Index)+len(document.ID)+len(document.Routing) > archivesvc.MaxTraceArchiveCandidateBytes {
+			return nil, archivesvc.ErrArchivePayloadTooLarge
+		}
+		metadata, err := json.Marshal(document)
+		if err != nil {
+			return nil, err
+		}
+		cost := len(hit.Source) + len(metadata) + 2
+		if cost > archivesvc.MaxTraceArchiveCandidateBytes-bytesByTrace[source.TraceID] {
+			return nil, archivesvc.ErrArchivePayloadTooLarge
+		}
+		bytesByTrace[source.TraceID] += cost
 		key := frozenDocumentKey{document.Index, document.ID, document.Routing}
 		if _, ok := seen[key]; ok {
 			return nil, fmt.Errorf("%w: duplicate technical trace archive document", archivesvc.ErrIncompleteCandidates)
@@ -119,12 +158,29 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		recordsByTrace[source.TraceID] = append(recordsByTrace[source.TraceID], document)
 	}
 	result := make([]archivesvc.Candidate, 0, len(candidates))
+	outputBytes := 0
 	for _, candidate := range candidates {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		var payload map[string]any
 		if err := json.Unmarshal(candidate.Payload, &payload); err != nil {
 			return nil, err
 		}
 		ids := idsByCandidate[candidate.ID]
+		// The sum deliberately includes the bounded core bytes, raw sources,
+		// frozen document metadata and repeated Trace IDs before assembling JSON.
+		preflightBytes := len(candidate.Payload)
+		for _, id := range ids {
+			cost := bytesByTrace[id] + len(id)
+			if cost > archivesvc.MaxTraceArchiveCandidateBytes-preflightBytes {
+				return nil, archivesvc.ErrArchivePayloadTooLarge
+			}
+			preflightBytes += cost
+		}
+		if preflightBytes+1 > archivesvc.MaxTraceArchiveBatchBytes-outputBytes {
+			return nil, archivesvc.ErrArchivePayloadTooLarge
+		}
 		technical := make([]json.RawMessage, 0)
 		records := make([]opensearch.FrozenDocument, 0)
 		for _, id := range ids {
@@ -138,6 +194,15 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		if err != nil {
 			return nil, err
 		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		// JSON escaping and added field/array delimiters can grow the preflight
+		// representation. Check the exact persisted payload and JSONL batch bytes.
+		if len(encoded) > archivesvc.MaxTraceArchiveCandidateBytes || len(encoded)+1 > archivesvc.MaxTraceArchiveBatchBytes-outputBytes {
+			return nil, archivesvc.ErrArchivePayloadTooLarge
+		}
+		outputBytes += len(encoded) + 1
 		candidate.Payload = encoded
 		result = append(result, candidate)
 	}

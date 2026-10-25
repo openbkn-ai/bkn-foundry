@@ -33,11 +33,14 @@ type TraceTechnicalStore interface {
 }
 
 func (source TraceBundleSource) Freeze(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) ([]Candidate, error) {
-	candidates, err := source.Core.Freeze(ctx, kind, archiveRange)
-	if err != nil || len(candidates) == 0 || source.Technical == nil {
-		return candidates, err
+	batch, err := source.FreezeBatch(ctx, kind, archiveRange)
+	if err != nil {
+		return nil, err
 	}
-	return source.Technical.Enrich(ctx, candidates)
+	if batch.EligibleCount != len(batch.Candidates) {
+		return nil, ErrIncompleteCandidates
+	}
+	return batch.Candidates, nil
 }
 
 func (source TraceBundleSource) Count(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) (int, error) {

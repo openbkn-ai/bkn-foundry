@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
 type Config struct {
@@ -76,6 +77,21 @@ type gatewayResponse struct {
 }
 
 func (client *Client) WriteAndVerify(ctx context.Context, job archivesvc.Job, candidates []archivesvc.Candidate) (string, error) {
+	if job.Kind == observabilityvo.ArchiveKindTrace {
+		if len(candidates) > archivesvc.MaxTraceArchiveCandidates {
+			return "", archivesvc.ErrArchivePayloadTooLarge
+		}
+		size := 0
+		for _, c := range candidates {
+			if len(c.Payload) > archivesvc.MaxTraceArchiveCandidateBytes {
+				return "", archivesvc.ErrArchivePayloadTooLarge
+			}
+			size += len(c.Payload) + 1
+			if size > archivesvc.MaxTraceArchiveBatchBytes {
+				return "", archivesvc.ErrArchivePayloadTooLarge
+			}
+		}
+	}
 	if _, err := client.storageID(ctx); err != nil {
 		return "", err
 	}
@@ -98,7 +114,20 @@ func (client *Client) WriteAndVerify(ctx context.Context, job archivesvc.Job, ca
 	if err := client.upload(ctx, manifestKey, manifestBody); err != nil {
 		return "", err
 	}
-	verified, err := client.download(ctx, dataKey)
+	var verified []byte
+	if job.Kind == observabilityvo.ArchiveKindTrace {
+		var body io.ReadCloser
+		body, err = client.Read(ctx, dataKey)
+		if err == nil {
+			verified, err = io.ReadAll(io.LimitReader(body, int64(len(content))+1))
+			_ = body.Close()
+			if err == nil && len(verified) != len(content) {
+				err = fmt.Errorf("archive bundle length mismatch")
+			}
+		}
+	} else {
+		verified, err = client.download(ctx, dataKey)
+	}
 	if err != nil {
 		return "", err
 	}

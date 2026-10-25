@@ -23,6 +23,7 @@ var agentObservabilityZhCN = i18n.I18nMessages{
 		"AgentObservability.Message.trace span search returned incomplete results":                              "Span 查询返回不完整结果，请稍后重试",
 		"AgentObservability.Message.archive operation is already running":                                       "同类归档正在处理，请等待当前操作结束",
 
+		archivePayloadBudgetMessageID:        "Trace归档超过载荷预算（每批最多100个交互、单包8 MiB、每批16 MiB）；本批尚未开始，此前已验证批次的进度仍保留",
 		archiveIncompleteCandidatesMessageID: "本批归档候选结果不完整或无法验证，本批尚未开始；此前批次的进度已保留",
 
 		"AgentObservability.Message.event payload conflicts with durable ledger":      "事件内容与已持久化账本冲突",
