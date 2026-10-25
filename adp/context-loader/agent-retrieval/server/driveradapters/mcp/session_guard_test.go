@@ -1447,3 +1447,33 @@ func TestArtifactOutageClassificationDoesNotChangeCoreOutage(t *testing.T) {
 		}
 	}
 }
+
+func TestArtifactLocalFailureAndThrottlingRemainToolErrors(t *testing.T) {
+	cases := []struct {
+		name      string
+		failure   error
+		code      string
+		action    string
+		retryable bool
+	}{
+		{name: "local capture failure", failure: errors.New("current request, trace and trusted account context are required"), code: "evidence_capture_failed", action: "contact_platform_operator"},
+		{name: "artifact throttled", failure: &bkntrace.CoreHTTPError{StatusCode: http.StatusTooManyRequests, Code: "TOO_MANY_REQUESTS"}, code: "evidence_store_unavailable", action: "retry_later", retryable: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := lifecycleUnavailable(context.Background(), toolKeyFinishInteraction, "answer_artifact", tc.failure)
+			if result == nil || !result.IsError {
+				t.Fatalf("artifact refusal must remain a tool error: %#v", result)
+			}
+			value := lifecycleErrorFromResult(t, result)
+			if value["code"] != tc.code || value["required_action"] != tc.action {
+				t.Fatalf("incorrect artifact error: %#v", value)
+			}
+			// False may be omitted by the JSON encoder; either form must be non-retryable.
+			retryable, _ := value["retryable"].(bool)
+			if retryable != tc.retryable {
+				t.Fatalf("incorrect retry guidance: %#v", value)
+			}
+		})
+	}
+}
