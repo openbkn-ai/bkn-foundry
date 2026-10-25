@@ -74,8 +74,8 @@ func TestLogHTTPResponsePreservesPublisherStatusAlongsideEmptyQuery(t *testing.T
 	if err := json.Unmarshal(response.Body.Bytes(), &wire); err != nil {
 		t.Fatal(err)
 	}
-	if !wire.Partial {
-		t.Fatalf("numbered query must retain coverage warning: %s", response.Body.String())
+	if wire.Partial {
+		t.Fatalf("publisher diagnostics must not alter query completeness: %s", response.Body.String())
 	}
 	if len(wire.SourceStatus) != 1 {
 		t.Fatalf("missing source diagnostics: %s", response.Body.String())

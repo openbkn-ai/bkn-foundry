@@ -43,7 +43,7 @@ func (service *Service) listNumbered(ctx context.Context, profile evidencevo.Acc
 	}
 	status.CountAccuracy = page.CountAccuracy
 	result.SourceStatus = append(result.SourceStatus, status)
-	result.Partial = sourceHasCoverageGap(status)
+	result.Partial = status.Status == observabilityvo.SourceCoverageDegraded
 	result.Count = page.Count
 	result.CountExact = !result.Partial && normalizedAccuracy(page.CountAccuracy) == "exact"
 	for _, record := range page.Records {
