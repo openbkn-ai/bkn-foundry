@@ -14,19 +14,21 @@ import (
 	"strings"
 )
 
+var errCleanupRecoveryState = errors.New("archive cleanup recovery state is unavailable")
+
 // verifyCleanupArchive binds the object bytes to the durable frozen cleanup
 // payloads. Hashing is streamed so retry does not allocate another full bundle.
 func verifyCleanupArchive(ctx context.Context, store ReadStore, job Job) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if len(job.Candidates) != job.CandidateCount {
-		return errors.New("archive cleanup candidates are unavailable")
+	if store == nil || job.ID == "" || job.ManifestRef == "" || !job.Kind.Valid() || job.CandidateCount <= 0 || len(job.Candidates) != job.CandidateCount || len(job.CandidateIDs) != job.CandidateCount {
+		return errCleanupRecoveryState
 	}
 	ids := make(map[string]bool, len(job.CandidateIDs))
 	for _, id := range job.CandidateIDs {
 		if id == "" || ids[id] {
-			return errors.New("archive cleanup candidate identities mismatch")
+			return errCleanupRecoveryState
 		}
 		ids[id] = true
 	}
@@ -34,7 +36,7 @@ func verifyCleanupArchive(ctx context.Context, store ReadStore, job Job) error {
 	var size int64
 	for _, candidate := range job.Candidates {
 		if !ids[candidate.ID] {
-			return errors.New("archive cleanup candidate identities mismatch")
+			return errCleanupRecoveryState
 		}
 		delete(ids, candidate.ID)
 		_, _ = expected.Write(candidate.Payload)
@@ -45,7 +47,10 @@ func verifyCleanupArchive(ctx context.Context, store ReadStore, job Job) error {
 	if err != nil {
 		return err
 	}
-	if !strings.HasSuffix(job.ManifestRef, "/manifest.json") || manifest.DataKey != strings.TrimSuffix(job.ManifestRef, "manifest.json")+"data.jsonl" {
+	// Accept only the two layouts produced by the current and v0.1.4 writers.
+	currentKey := strings.TrimSuffix(job.ManifestRef, "manifest.json") + "data.jsonl"
+	legacyKey := strings.TrimSuffix(job.ManifestRef, "/manifest.json") + ".jsonl"
+	if !strings.HasSuffix(job.ManifestRef, "/manifest.json") || (manifest.DataKey != currentKey && manifest.DataKey != legacyKey) {
 		return errors.New("archive manifest data key mismatch")
 	}
 	if manifest.Hash != hex.EncodeToString(expected.Sum(nil)) {
@@ -53,14 +58,14 @@ func verifyCleanupArchive(ctx context.Context, store ReadStore, job Job) error {
 	}
 	stream, err := store.Read(ctx, manifest.DataKey)
 	if err != nil {
-		return err
+		return errors.Join(errArchiveObjectRead, err)
 	}
 	defer func() { _ = stream.Close() }()
 	actual := sha256.New()
 	// Read at most one byte beyond the exact frozen bundle length.
 	n, err := io.Copy(actual, io.LimitReader(stream, size+1))
 	if err != nil {
-		return err
+		return errors.Join(errArchiveObjectRead, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -69,4 +74,16 @@ func verifyCleanupArchive(ctx context.Context, store ReadStore, job Job) error {
 		return errors.New("archive bundle checksum mismatch")
 	}
 	return nil
+}
+
+// Persist fixed categories only: underlying read errors may contain signed URLs.
+func cleanupVerificationHint(err error) string {
+	switch {
+	case errors.Is(err, errCleanupRecoveryState):
+		return "archive cleanup recovery records or object read support are unavailable; operator review is required"
+	case errors.Is(err, errArchiveObjectRead), errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "archive cleanup could not read objects; check storage access and retry"
+	default:
+		return "archive cleanup manifest or contents do not match frozen candidates; restore the matching archive objects before retrying"
+	}
 }

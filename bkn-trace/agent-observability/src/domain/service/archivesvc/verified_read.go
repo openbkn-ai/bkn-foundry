@@ -16,6 +16,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/observabilityvo"
 )
 
+var errArchiveObjectRead = errors.New("archive object read failed")
+
 // ReadVerifiedBundle is an internal read primitive, not a download API. Job must
 // come from the trusted archive task store. Payload hash proves consistency with
 // its stored manifest, not authenticity of an arbitrary uploaded manifest.
@@ -75,12 +77,12 @@ func readArchiveObject(ctx context.Context, store ReadStore, key string, limit i
 	}
 	stream, err := store.Read(ctx, key)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(errArchiveObjectRead, err)
 	}
 	defer func() { _ = stream.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(stream, int64(limit)+1))
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(errArchiveObjectRead, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err

@@ -82,12 +82,15 @@ technical cleanup behavior.
 
 Before retrying cleanup, the service re-reads the existing manifest and JSONL
 object through the object-store read port. The manifest must match the durable
-job ID, kind and candidate count, reference its sibling `data.jsonl`, and carry
+job ID, kind and candidate count, reference either its sibling `data.jsonl` or the v0.1.4 writer layout
+`<prefix>/<tenant>/<jobID>.jsonl` alongside `<jobID>/manifest.json`, and carry
 the SHA256 of the frozen candidate payloads in their original order. A streamed
 read verifies the exact expected byte length and digest without loading another
 full bundle. Missing, unreadable or mismatched objects, or a custom object store
 without read support, refuse cleanup. The job remains `cleanup_incomplete` with
-its frozen candidates and progress intact; restore the matching object and retry.
+its frozen candidates and progress intact. Safe task hints distinguish storage
+read failures (check access and retry), mismatched contents (restore the matching
+archive), and missing recovery records/read support (operator review).
 The existing manifest format is unchanged, and retry never rewrites the archive.
 This checks the objects read during retry; it does not lock object-store versions
 against later external changes.

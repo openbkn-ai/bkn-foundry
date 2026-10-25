@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Cleanup retry also accepts the v0.1.4 `<jobID>.jsonl` object layout without weakening frozen-payload verification. Safe task messages distinguish object read failures, content mismatch, and unavailable recovery records/read support. (#1724)
+
 - Archive cleanup retries re-read and verify the existing manifest and JSONL object against the durable frozen candidates before deleting any hot records. Missing, damaged or mismatched archives preserve the incomplete task, payload and batch progress; restoring the matching objects allows retry without rewriting the archive. The existing manifest format and ordinary list/detail queries are unchanged. This scoped safety fix leaves #1724 open for remaining archive work.
 
 - Technical Trace root-service filters gain authorized, time/filter-scoped discovery with up to 100 canonical names and explicit refinement/budget feedback. Discovery is on demand, omits terminal question/result bodies and Span statistics, and preserves manual service matching. Root-service SQL selection now excludes foreign receipt tuples when Trace IDs collide. No schema change or additional initial page/detail request is introduced. (#2140)

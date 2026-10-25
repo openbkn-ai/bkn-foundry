@@ -312,7 +312,7 @@ func (service *Service) RetryCleanup(ctx context.Context, jobID string) (job Job
 		if err := verifyCleanupArchive(ctx, reader, current); err != nil {
 			verificationErr := fmt.Errorf("archive cleanup verification failed: %w", err)
 			// Read errors can contain signed object URLs; expose only a safe hint.
-			current.ErrorMessage = "archive cleanup verification failed; restore the matching archive objects before retrying"
+			current.ErrorMessage = cleanupVerificationHint(err)
 			current.UpdatedAt = service.now().UTC()
 			job = current
 			return errors.Join(verificationErr, service.store.Update(current))

@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/url"
 	"reflect"
@@ -105,6 +106,17 @@ func TestRetryCleanupRevalidatesStoredArchiveBeforeDeleting(t *testing.T) {
 					if err == nil || source.purges != 0 || stored.Status != observabilityvo.ArchiveStatusCleanupIncomplete || stored.ErrorMessage == "" {
 						t.Fatalf("unsafe retry: err=%v purges=%d stored=%+v", err, source.purges, stored)
 					}
+					if failure == "missing reader" || strings.HasPrefix(failure, "candidate ") {
+						if !strings.Contains(stored.ErrorMessage, "operator review") {
+							t.Fatalf("misleading recovery hint: %q", stored.ErrorMessage)
+						}
+					} else if failure == "missing manifest" || failure == "missing data" {
+						if !strings.Contains(stored.ErrorMessage, "check storage access") {
+							t.Fatalf("misleading read hint: %q", stored.ErrorMessage)
+						}
+					} else if !strings.Contains(stored.ErrorMessage, "restore") {
+						t.Fatalf("missing mismatch hint: %q", stored.ErrorMessage)
+					}
 					if !reflect.DeepEqual(stored.Candidates, job.Candidates) || !reflect.DeepEqual(stored.BatchProgress, job.BatchProgress) || stored.ManifestRef != job.ManifestRef {
 						t.Fatal("failure lost frozen recovery state")
 					}
@@ -144,8 +156,53 @@ func TestRetryVerificationReadFailurePreservesCauseWithoutExposingSignedURL(t *t
 			t.Fatalf("read failure lost: %+v %v", result, err)
 		}
 		stored, _ := jobs.Get(job.ID)
-		if stored.ErrorMessage == "" || strings.Contains(stored.ErrorMessage, "https://") || strings.Contains(stored.ErrorMessage, "TEST-SIGNATURE") {
+		if !strings.Contains(stored.ErrorMessage, "read") || strings.Contains(stored.ErrorMessage, "restore") || strings.Contains(stored.ErrorMessage, "https://") || strings.Contains(stored.ErrorMessage, "TEST-SIGNATURE") {
 			t.Fatalf("unsafe public message: %q", stored.ErrorMessage)
+		}
+	}
+}
+
+func TestRetryCleanupAcceptsLegacyWriterLayout(t *testing.T) {
+	for _, kind := range []observabilityvo.ArchiveKind{observabilityvo.ArchiveKindLog, observabilityvo.ArchiveKindTrace} {
+		for _, corrupt := range []bool{false, true} {
+			t.Run(string(kind)+fmt.Sprint(corrupt), func(t *testing.T) {
+				now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+				job := newJob(kind, observabilityvo.ArchiveRange{To: now}, []Candidate{{ID: "one", Payload: []byte(`{"id":"one"}`)}}, now)
+				job.Status = observabilityvo.ArchiveStatusCleanupIncomplete
+				job.ManifestRef = "archive/legacy-tenant/" + job.ID + "/manifest.json"
+				objects := archiveFixtureObjects(job)
+				newKey := strings.TrimSuffix(job.ManifestRef, "manifest.json") + "data.jsonl"
+				legacyKey := strings.TrimSuffix(job.ManifestRef, "/manifest.json") + ".jsonl"
+				var manifest map[string]any
+				if err := json.Unmarshal(objects[job.ManifestRef], &manifest); err != nil {
+					t.Fatal(err)
+				}
+				manifest["data_key"] = legacyKey
+				objects[legacyKey] = objects[newKey]
+				delete(objects, newKey)
+				body, err := json.Marshal(manifest)
+				if err != nil {
+					t.Fatal(err)
+				}
+				objects[job.ManifestRef] = body
+				if corrupt {
+					objects[legacyKey] = []byte("corrupt\n")
+				}
+				jobs := NewMemoryStore()
+				if err := jobs.Create(job); err != nil {
+					t.Fatal(err)
+				}
+				source := &traceArchiveFlowCore{}
+				svc := New(jobs, source, &fakeDownloadObjectStore{objects: objects}, Options{})
+				result, err := svc.RetryCleanup(context.Background(), job.ID)
+				if !corrupt {
+					if err != nil || source.purges != 1 || result.Status != observabilityvo.ArchiveStatusCompleted {
+						t.Fatalf("valid v0.1.4 archive blocked: %+v %v purges=%d", result, err, source.purges)
+					}
+				} else if err == nil || source.purges != 0 || result.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
+					t.Fatalf("corrupt legacy archive accepted: %+v %v", result, err)
+				}
+			})
 		}
 	}
 }
