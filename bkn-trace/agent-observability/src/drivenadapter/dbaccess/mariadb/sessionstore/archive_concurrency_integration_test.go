@@ -213,3 +213,63 @@ func archiveConcurrencyDatabase(t *testing.T) *sql.DB {
 	}
 	return db
 }
+
+func TestTraceArchivePreservesExtendedIntegrityMariaDB(t *testing.T) {
+	db := archiveConcurrencyDatabase(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	store := New(db)
+	old := time.Now().UTC().AddDate(0, 0, -31)
+	if err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{ID: "extended", Owner: sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "owner"}, ExternalConversationKey: "extended", Generation: 1, Status: sessionvo.ConversationClosed, RowVersion: 1, CreatedAt: old, UpdatedAt: old})
+		tx.SaveInteraction(sessionvo.Interaction{ID: "extended", ConversationID: "extended", Ordinal: 1, ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceComplete, StartIdempotencyKey: "extended", LeaseToken: "extended", LeaseExpiresAt: old.Add(time.Hour), RowVersion: 1, CreatedAt: old, UpdatedAt: old, TerminalAt: &old})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var version uint64
+	if err := db.QueryRowContext(ctx, "SELECT record_integrity_version FROM bkn_trace_interactions WHERE interaction_id='extended'").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a compatible future writer. The current typed reader understands
+	// the known fields but must not erase the additive metadata or round uint64.
+	raw := fmt.Sprintf(`{"source_version":%d,"applicable":false,"future":{"nested":{"counter":18446744073709551615,"extra":"kept"}}}`, version)
+	if _, err := db.ExecContext(ctx, "UPDATE bkn_trace_interactions SET record_integrity_json=? WHERE interaction_id='extended'", raw); err != nil {
+		t.Fatal(err)
+	}
+	source := NewTraceArchiveSource(store)
+	batch, err := source.FreezeBatch(ctx, observabilityvo.ArchiveKindTrace, observabilityvo.ArchiveRange{To: time.Now().UTC()})
+	if err != nil || len(batch.Candidates) != 1 {
+		t.Fatalf("freeze entries=%d err=%v", len(batch.Candidates), err)
+	}
+	var frozen struct {
+		Interaction struct {
+			Stored json.RawMessage `json:"stored_record_integrity"`
+		} `json:"interaction"`
+	}
+	if err = json.Unmarshal(batch.Candidates[0].Payload, &frozen); err != nil {
+		t.Fatal(err)
+	}
+	var stored struct {
+		SourceVersion uint64 `json:"source_version"`
+		Future        struct {
+			Nested struct {
+				Counter json.Number `json:"counter"`
+				Extra   string      `json:"extra"`
+			} `json:"nested"`
+		} `json:"future"`
+	}
+	if err = json.Unmarshal(frozen.Interaction.Stored, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.SourceVersion != version || stored.Future.Nested.Counter.String() != "18446744073709551615" || stored.Future.Nested.Extra != "kept" {
+		t.Errorf("unchanged extended integrity lost in frozen payload: %s", frozen.Interaction.Stored)
+	}
+	if err = source.Purge(ctx, observabilityvo.ArchiveKindTrace, batch.Candidates); err != nil {
+		t.Errorf("unchanged additive metadata falsely blocked cleanup: %v", err)
+	}
+	var count int
+	if err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM bkn_trace_interactions WHERE interaction_id='extended'").Scan(&count); err != nil || count != 0 {
+		t.Errorf("unchanged extended interaction not cleaned: remaining=%d err=%v", count, err)
+	}
+}

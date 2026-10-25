@@ -163,7 +163,7 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		var payload map[string]any
+		var payload map[string]json.RawMessage
 		if err := json.Unmarshal(candidate.Payload, &payload); err != nil {
 			return nil, err
 		}
@@ -187,9 +187,18 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 			technical = append(technical, byTrace[id]...)
 			records = append(records, recordsByTrace[id]...)
 		}
-		payload["technical_trace_ids"] = ids
-		payload["technical_traces"] = technical
-		payload["technical_trace_records"] = records
+		payload["technical_trace_ids"], err = json.Marshal(ids)
+		if err != nil {
+			return nil, err
+		}
+		payload["technical_traces"], err = json.Marshal(technical)
+		if err != nil {
+			return nil, err
+		}
+		payload["technical_trace_records"], err = json.Marshal(records)
+		if err != nil {
+			return nil, err
+		}
 		encoded, err := json.Marshal(payload)
 		if err != nil {
 			return nil, err

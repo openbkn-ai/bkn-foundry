@@ -140,7 +140,12 @@ current `record_integrity_version` and bounded `record_integrity_json`. Both mus
 match the frozen package: late receipt/fact/lifecycle writes change the source
 version, while a newly computed integrity verdict can arrive at the same version.
 The verdict comparison covers the full JSON object, ignores key order/whitespace
-and preserves exact numbers. Parent row locks remain held through deletion and
+and preserves exact numbers. New archive packages capture the original bounded
+integrity JSON from the same Interaction row/snapshot, including fields unknown
+to the current binary. Technical enrichment preserves that JSON and its numeric
+precision. Older packages that already lost extension fields cannot prove an
+identical complete verdict and still require operator reconciliation.
+Parent row locks remain held through deletion and
 commit, and one changed candidate rolls back the whole SQL batch, including
 previous candidates. Already removed rows remain idempotent; existing sealed
 revision-input checks remain in force.
@@ -149,7 +154,9 @@ Frozen packages need an explicit `record_integrity_version` (zero is valid) and
 matching Interaction identity. Missing or unverifiable legacy metadata refuses
 SQL cleanup. The task stays `cleanup_incomplete` with its original frozen
 payloads, manifest and progress for operator review. A changed source is not
-silently refrozen or replaced during retry. This is a SQL transaction guarantee,
+silently refrozen or replaced during retry. That refusal blocks new same-kind
+archives; repeating the same retry cannot reconcile a genuine source change.
+This is a SQL transaction guarantee,
 not an atomic transaction across OpenSearch and MariaDB: conditional deletion of
 already archived frozen technical documents may have finished before SQL refuses
 cleanup, while late or changed technical versions retain their existing guards.

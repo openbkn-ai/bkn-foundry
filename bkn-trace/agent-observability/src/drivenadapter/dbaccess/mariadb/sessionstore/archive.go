@@ -121,15 +121,17 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 	var receipts []sessionvo.Receipt
 	var facts []sessionvo.OperationCallFact
 	var sealed revisionArchiveContents
+	var rawIntegrity json.RawMessage
 	read := func(tx isessionstore.Transaction) error {
 		var ok bool
+		query := interactionSelect + ` WHERE interaction_id=?`
 		if source.revisionInputs {
-			interaction, ok = tx.FindInteraction(interactionID)
-		} else {
-			interaction, ok = tx.PeekInteraction(interactionID)
+			query += " FOR UPDATE"
 		}
-		if !ok {
-			return fmt.Errorf("interaction %s not found", interactionID)
+		var err error
+		interaction, err = scanInteractionRowsWithRawIntegrity(tx.(*transaction).tx.QueryRowContext(ctx, query, interactionID), &rawIntegrity)
+		if err != nil {
+			return fmt.Errorf("read archive interaction: %w", err)
 		}
 		conversation, ok = tx.PeekConversation(interaction.ConversationID)
 		if !ok {
@@ -153,9 +155,9 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 	// with the interaction so the package does not lose derived source metadata.
 	archivedInteraction := struct {
 		sessionvo.Interaction
-		IntegritySourceVersion uint64                           `json:"record_integrity_version"`
-		StoredRecordIntegrity  *sessionvo.StoredRecordIntegrity `json:"stored_record_integrity,omitempty"`
-	}{Interaction: interaction, IntegritySourceVersion: interaction.IntegritySourceVersion, StoredRecordIntegrity: interaction.StoredRecordIntegrity}
+		IntegritySourceVersion uint64          `json:"record_integrity_version"`
+		StoredRecordIntegrity  json.RawMessage `json:"stored_record_integrity,omitempty"`
+	}{Interaction: interaction, IntegritySourceVersion: interaction.IntegritySourceVersion, StoredRecordIntegrity: rawIntegrity}
 	value := map[string]any{"conversation": conversation, "interaction": archivedInteraction, "operations": operations, "receipts": receipts, "call_facts": facts}
 	if source.revisionInputs {
 		value["revision_evidence"] = sealed

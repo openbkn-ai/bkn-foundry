@@ -111,3 +111,28 @@ func TestArchiveEnrichPreservesMultipleSmallCandidatesAndCancellation(t *testing
 		t.Fatalf("cancellation: %v", err)
 	}
 }
+
+func TestTraceArchiveEnrichmentPreservesFrozenJSONNumbersAndVerdictFields(t *testing.T) {
+	response, _ := json.Marshal(completeArchiveSearch())
+	client := opensearch.NewWithHTTPClient("http://archive-test", opensearch.AuthConfig{}, &http.Client{Transport: archiveSafetyTransport(func(*http.Request) (*http.Response, error) { return archiveHTTP(string(response)), nil })})
+	payload := []byte(`{"interaction":{"interaction_id":"i","record_integrity_version":18446744073709551615,"stored_record_integrity":{"source_version":18446744073709551615,"applicable":false,"future":{"n":18446744073709551615}}},"call_facts":[{"trace_id":"trace-a"}]}`)
+	result, err := NewArchiveStore(client, "trace-read").Enrich(context.Background(), []archivesvc.Candidate{{ID: "i", Payload: payload}})
+	if err != nil || len(result) != 1 {
+		t.Fatalf("enrich: %v", err)
+	}
+	var after struct {
+		Interaction json.RawMessage `json:"interaction"`
+	}
+	var before struct {
+		Interaction json.RawMessage `json:"interaction"`
+	}
+	if err := json.Unmarshal(result[0].Payload, &after); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(payload, &before); err != nil {
+		t.Fatal(err)
+	}
+	if string(after.Interaction) != string(before.Interaction) {
+		t.Fatalf("enrichment rewrote frozen SQL metadata: %s", after.Interaction)
+	}
+}
