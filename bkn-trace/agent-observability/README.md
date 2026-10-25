@@ -18,6 +18,190 @@
 - Helm Deployment Chart
 - GitHub Actions 构建与发布流水线
 
+## Span display and browsing (#2158)
+
+Technical detail keeps its existing single graph read: at most 1,001 raw records,
+then at most 1,000 unique Span nodes. `span_display` reports loaded nodes, raw
+records, the display limit and loaded start-time range. `total_count` reuses the
+existing authorized summary cardinality estimate (`total_accuracy=estimated`);
+unavailable or stale estimates are `null`/`unknown`. Truncation means a bounded
+display window, not proof of collection loss. Duplicate raw records can consume
+the window before 1,000 unique nodes. A missing parent in that window is
+inconclusive: it may be uncollected or not loaded. The `parent_outside_display`
+compatibility reason does not prove that a parent record exists outside the
+window. The graph query orders by start time then Span ID.
+
+`GET /api/agent-observability/v1/traces/{trace_id}/spans?cursor=...` is a separate,
+on-demand browser. Each response replaces the current page with up to 100 unique
+Span summaries ordered by Span ID. It never expands the graph. Composite
+aggregation groups duplicate stored Span IDs and returns one recorded version;
+conflicting duplicate versions have no preferred revision. The endpoint supports
+current SS4O flat records and individual OTLP Span records with aggregatable
+`spanId.keyword`; legacy whole `resourceSpans` envelopes are explicitly unsupported
+(422), including mixed storage with missing top-level Span IDs.
+
+Only active `admin`/`super_admin` profiles may read raw Trace spans. Every page
+also rechecks canonical Trace visibility. Other authorized users retain scoped
+summary/Operations detail, with `span_scope_unavailable` and no global Span count
+or raw graph. Cursors are signed, expire after 15 minutes and bind the Trace,
+identity, current grants, sort and fixed page size. Grant sets are canonicalized;
+permission ordering and display-name changes do not invalidate a cursor, while
+actual identity/grant changes still do. Replicas reuse the existing
+cursor signing key; without one, process-local cursors expire on restart or
+routing to another process. A request has a 3-second budget and a 4 MiB upstream
+response limit; partial, timed-out or oversized searches fail explicitly.
+
+Pagination is live, not a snapshot. Records inserted before the current Span ID
+may require restarting from the first page. A full final page may be followed by
+an empty terminal page. No first-screen count request, migration or index mapping
+change is introduced. Studio adds the browser through its coordinated PR; older
+Studio versions ignore the additive metadata.
+
+## Bounded Trace archive batches (#1724)
+
+One archive request automatically processes successive Trace batches using the
+existing batch jobs and progress fields. Each selection reads at most 100
+Interaction IDs, closes that result, and packages one Interaction at a time.
+The complete JSON payload of one Interaction is limited to 8 MiB; a batch's
+JSONL data, including newlines, is limited to 10 MiB. The batch leaves headroom for the
+base64-encoded recovery payload and metadata stored in one SQL statement under
+MariaDB's default 16 MiB `max_allowed_packet`; no server setting is changed. Byte-limited batches leave
+the next Interaction for the following selection after verified cleanup.
+
+Before reading SQL payload collections, an archive-only repeatable-read snapshot
+checks their variable-length bytes and row counts (at most 8 MiB and 32,768 rows).
+The final serialized payload is checked again. This bounds loading before JSON
+assembly; it is not a process RSS target. Existing opt-in revision-input locking
+and validation are retained. Technical Trace enrichment runs one Interaction at
+a time, with a bounded OpenSearch response and a final payload limit. Ordinary
+list/detail reads and the existing Span-browser response budget are unchanged.
+
+Every batch has its own verified object, frozen candidates and persisted progress.
+Only successful cleanup advances the run. Cleanup failure stops the request;
+retry revalidates that batch's existing archive before cleanup and continuation.
+The cutoff remains fixed across the request and resumed batches. Totals and
+remaining counts describe each selection, not a permanent snapshot of all
+candidates at request start. Large eligible counts alone no longer load all Trace
+payloads into memory. The object writer also checks the Trace batch budget before
+allocation/upload and bounds its verification download to the frozen length.
+
+A single oversized Interaction or unverifiable technical response stops before
+writing/deleting that batch, returning HTTP 409 `archive_incomplete_candidates`
+with a payload-budget explanation where applicable. Earlier completed batches
+remain recorded. Oversized records require operator handling; retries do not
+truncate, skip or delete them. The existing manifest and database formats are
+unchanged; no migration or streaming object protocol is introduced. SQL cleanup
+also verifies frozen source metadata under its parent row lock, as described below.
+
+## Technical Trace archive cleanup safety (#1724)
+
+Technical Trace enrichment requires a complete OpenSearch result: no timeout,
+failed/missing shard evidence, lower-bound total, truncated window, malformed
+source or missing document identity/version. The existing 10,000-document read
+window remains; an incomplete selection stops before object verification or
+cleanup.
+
+New packages retain the existing `technical_traces` sources and additionally
+freeze each record's concrete index, document ID, sequence number, primary term
+and optional routing in `technical_trace_records`. This metadata travels with
+the existing candidate payload and cleanup retry record; no migration is added.
+Only those document versions are conditionally deleted after object verification.
+Late records with the same Trace ID remain hot. Changed versions are retained and
+leave the job `cleanup_incomplete`; retries do not reselect or widen the range.
+Already-removed records are accepted only when their absence is confirmed.
+
+Legacy packages with technical Trace references but no frozen document metadata
+remain readable/downloadable, but automatic cleanup is refused. Their existing
+job and frozen payload stay available for operator review. No fallback deletes
+by Trace ID. Packages with no technical Trace references retain their no-op
+technical cleanup behavior.
+
+Before retrying cleanup, the service re-reads the existing manifest and JSONL
+object through the object-store read port. The manifest must match the durable
+job ID, kind and candidate count, reference either its sibling `data.jsonl` or the v0.1.4 writer layout
+`<prefix>/<tenant>/<jobID>.jsonl` alongside `<jobID>/manifest.json`, and carry
+the SHA256 of the frozen candidate payloads in their original order. A streamed
+read verifies the exact expected byte length and digest without loading another
+full bundle. Missing, unreadable or mismatched objects, or a custom object store
+without read support, refuse cleanup. The job remains `cleanup_incomplete` with
+its frozen candidates and progress intact. Safe task hints distinguish storage
+read failures (check access and retry), mismatched contents (restore the matching
+archive), and missing recovery records/read support (operator review).
+The existing manifest format is unchanged, and retry never rewrites the archive.
+This checks the objects read during retry; it does not lock object-store versions
+against later external changes.
+
+Archive credentials must permit archive object reads as well as bulk document
+deletion and real-time document reads on the concrete indices. A denied/ambiguous
+response preserves the incomplete-cleanup state.
+
+Before hot SQL cleanup, the existing Interaction `FOR UPDATE` read retrieves its
+current `record_integrity_version` and bounded `record_integrity_json`. Both must
+match the frozen package: late receipt/fact/lifecycle writes change the source
+version, while a newly computed integrity verdict can arrive at the same version.
+The verdict comparison covers the full JSON object, ignores key order/whitespace
+and preserves exact numbers. New archive packages capture the original bounded
+integrity JSON from the same Interaction row/snapshot, including fields unknown
+to the current binary. Technical enrichment preserves that JSON and its numeric
+precision. Older packages that already lost extension fields cannot prove an
+identical complete verdict and still require operator reconciliation.
+Parent row locks remain held through deletion and
+commit, and one changed candidate rolls back the whole SQL batch, including
+previous candidates. Already removed rows remain idempotent; existing sealed
+revision-input checks remain in force.
+
+Frozen packages need an explicit `record_integrity_version` (zero is valid) and
+matching Interaction identity. Missing or unverifiable legacy metadata refuses
+SQL cleanup. The task stays `cleanup_incomplete` with its original frozen
+payloads, manifest and progress for operator review. A changed source is not
+silently refrozen or replaced during retry. That refusal blocks new same-kind
+archives; repeating the same retry cannot reconcile a genuine source change.
+This is a SQL transaction guarantee,
+not an atomic transaction across OpenSearch and MariaDB: conditional deletion of
+already archived frozen technical documents may have finished before SQL refuses
+cleanup, while late or changed technical versions retain their existing guards.
+The bounded Trace batches above limit package loading without a streaming
+redesign. List/detail query paths are unchanged.
+
+## Root-service discovery (#2140)
+
+`GET /api/agent-observability/v1/trace-root-services` returns bounded canonical
+root-service names under the current trusted Trace identity. It accepts `from`,
+`to`, `trace_id`, `status`, `tool`, `error_keyword`, a case-insensitive substring
+`q` (at most 256 Unicode characters), and `limit` (1–100, default 100). The current
+`service` filter is excluded from discovering its own alternatives; list paging
+and unsupported filters are rejected rather than silently dropped.
+
+The response is `{ "entries": ["service-name"], "has_more": false }`. Names keep
+their original spelling for the existing service filter. `has_more` means more
+names match than fit in this selection; refine `q` to find them. This is not a
+paginated global service inventory and does not provide approximate Trace counts.
+
+Simple owner/global queries use the same hot SQL receipt membership as ordinary
+Trace lists. Status/error, shared-scope and exact-Trace queries reuse the bounded
+authorized receipt scanner. Root-service SQL metadata and service filtering now
+select source facts through authorized receipt tuples, so an earlier foreign
+fact with the same Trace ID cannot replace an owner's root service. Global
+reader semantics are preserved. No schema or new materialized model is added.
+
+Discovery has a 3-second query budget and returns no names on an actual failure,
+truncated input or timeout. Once an extra distinct authorized name proves
+`has_more`, the scanner stops loading remaining metadata batches while retaining
+PIT cleanup. The SQL discovery statement additionally uses MariaDB's per-statement
+`max_statement_time=3`; it does not change session/global limits. Server timeout
+1969 is mapped to the existing query-timeout response. MariaDB checks its timeout
+at execution checkpoints, so this is a server-side budget rather than an exact
+wall-clock bound. The production artifact reader skips question/result
+content and all Span statistics; error filtering still reads the necessary
+recorded failure metadata. Query cost can grow with the matching receipt set, so
+budget errors ask users to narrow the time range/filters. Existing list/detail
+content loading remains unchanged by default.
+
+Studio loads candidates only after explicit opening, preserves manual exact
+input, and cancels stale requests when other draft filters change. Selection
+changes the draft; the existing Query action submits it. Older backends or failed
+discovery retain manual input. Initial page/detail request counts do not change.
+
 ## Development
 
 ### 系统审计配置
@@ -297,6 +481,57 @@ helm upgrade --install agent-observability charts/agent-observability \
 Context Loader 通过内部监听器携带 application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。公开监听器不信任这些 owner 请求头，而是从 OAuth 与 BKN Safe 重新构造 owner；任一授权依赖不可用时均拒绝写入，不得 fail-open。证据生产者则必须携带 ingest token；内部网络身份不能绕过该校验。
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
+
+### Durable answer handoff (#1691)
+
+The opt-in managed `POST /interactions/{id}/finish` path accepts an
+`answer_artifact` object using the existing EvidenceArtifact contract. Core
+validates the result type, content hash, Interaction and trusted owner, then
+commits the bounded answer task to the existing SQL outbox in the same
+transaction as `execution_status=completed`. The response can therefore report
+`evidence_status=assembling` while the conversation is already free for its next
+Interaction. An outbox ACK means the answer is durably staged, not that the
+artifact has reached OpenSearch.
+
+After the artifact is durably acknowledged and its evidence state is settled,
+the existing task-delivery UPDATE clears only the answer task's SQL body while
+retaining delivery metadata. Pending/dead answers retain their bodies for
+recovery. Delivered answers rely on the artifact store, as in the existing
+synchronous path; the outbox is not a permanent second copy of the answer.
+
+The existing leased worker delivers the artifact idempotently and separately
+updates evidence state. Pending answers participate in every evidence-state
+recalculation; exhausted delivery records a partial evidence result, never a
+business failure or `abandoned`. Accepted tasks survive process restarts.
+Archive cleanup refuses an Interaction while its answer remains unresolved or
+its delivery task is not acknowledged. The existing artifact-ingest endpoint
+retains its synchronous persistence ACK contract.
+
+Both services default `BKN_TRACE_DURABLE_ANSWER_ENABLED` to false. Upgrade **all**
+Core replicas/workers first, then enable Core with `core.durableAnswerEnabled`
+(MariaDB, the OpenSearch evidence store and Core projection must be enabled), and finally enable Context
+Loader with `observability.lifecycle.durable_answer_enabled`. Old workers must
+not share a queue containing the new task type. The old reference-based finish
+remains available. Turning off new admissions does not cancel accepted work;
+drain/reconcile pending and dead-letter answer tasks before rolling Core back
+to a version that cannot handle them.
+
+If SQL/Core is unavailable, finish cannot acknowledge a durable completion;
+retry the original finish request idempotently without repeating business work.
+Ordinary list/detail reads do not upload artifacts or wait for this worker.
+
+The production worker claims one ready task at a time and continuously drains
+ready work; the polling interval applies only after an empty queue or error.
+Default I/O budgets are 2s to claim, 10s for an answer attempt and 2s for its
+independent ACK inside a 30s task lease. Startup requires positive budgets plus
+a 1s safety margin to fit strictly inside that lease. Other handlers retain their
+existing context and single-slot execution. The inserting SQL transaction checks
+the actual packet budget; durable handoff requires `interpolateParams` absent or
+false, preserving the prepared-statement size calculation.
+
+See [managed completion limits](../../help/en/manual/bkn-trace.md#managed-interaction-completion-limits)
+for product scheduling, size, policy, assembly and backlog limits. They do not
+certify a fixed QPS or an environment-specific storage allocation.
 
 ### Interaction 容量配额
 

@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strconv"
 	"testing"
 	"time"
 
@@ -101,6 +100,9 @@ func TestMaterializedIntegrityGenerationThenPagesHaveNoLiveReads(t *testing.T) {
 			if store.reads != 1 {
 				t.Fatalf("background must strictly inspect once: %d", store.reads)
 			}
+			if state := materializationRetryState(t, store, "int"); state.Status != isessionstore.RecordIntegritySucceeded {
+				t.Fatalf("strict verdict not durably successful: %+v", state)
+			}
 			store.readErr = errors.New("page must not read evidence")
 			scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
 			first, applicable, err := service.inspectRecordIntegrityWithScope(context.Background(), "int", scope)
@@ -152,7 +154,8 @@ func TestStoredIntegrityVersionAndActiveRoundCannotInventComplete(t *testing.T) 
 
 func TestMaterializationFailureContinuesCursorAndRetriesWithoutFalseVerdict(t *testing.T) {
 	_, owner, now := integrityFixture()
-	store := &integritySnapshotStore{Store: memorystore.New(), snapshots: map[string]sessionvo.EvidenceSnapshot{}}
+	clock := now
+	store := &integritySnapshotStore{Store: memorystore.NewWithClock(func() time.Time { return clock }), snapshots: map[string]sessionvo.EvidenceSnapshot{}}
 	for _, id := range []string{"a", "b"} {
 		snapshot, _, _ := integrityFixture()
 		snapshot.Interaction.ID = id
@@ -181,9 +184,8 @@ func TestMaterializationFailureContinuesCursorAndRetriesWithoutFalseVerdict(t *t
 	}
 	alignIntegrityFixtureVersions(t, store)
 	service := New(evidencestore.New(), WithSessionStore(store), WithCurrentRecordIntegrity())
-	clock := now
 	batch := func(after string) (string, error) {
-		return service.persistRecordIntegrityBatch(context.Background(), after, 100, func() time.Time { return clock })
+		return service.PersistRecordIntegrityBatch(context.Background(), after, 100)
 	}
 	next, err := batch("")
 	if next != "b" || err == nil {
@@ -200,8 +202,8 @@ func TestMaterializationFailureContinuesCursorAndRetriesWithoutFalseVerdict(t *t
 		t.Fatalf("pass did not terminate: %q %v", next, err)
 	}
 	reads := store.reads
-	clock = clock.Add(recordIntegrityRetryInitial - time.Nanosecond)
-	if next, err := batch(""); next != "a" || err != nil || store.reads != reads {
+	clock = clock.Add(isessionstore.RecordIntegrityBackoff(1) - time.Nanosecond)
+	if next, err := batch(""); next != "" || err != nil || store.reads != reads {
 		t.Fatalf("deferred candidate must advance cursor without inspection or duplicate error: next=%q reads=%d err=%v", next, store.reads, err)
 	}
 	// New work behind the deferred candidate must still materialize in this pass.
@@ -237,8 +239,8 @@ func TestMaterializationFailureContinuesCursorAndRetriesWithoutFalseVerdict(t *t
 	if next, err := batch(""); next != "a" || err != nil {
 		t.Fatalf("next sweep failed retry: %q %v", next, err)
 	}
-	if _, exists := service.integrityRetries.entries["a"]; exists {
-		t.Fatal("successful recovery retained retry state")
+	if state := materializationRetryState(t, store, "a"); state.Status != isessionstore.RecordIntegritySucceeded {
+		t.Fatalf("recovery not durably succeeded: %+v", state)
 	}
 }
 
@@ -290,11 +292,12 @@ func TestMaterializationRepeatedFailureBacksOffAndCapsDelay(t *testing.T) {
 			service := integrityServiceForSnapshot(t, snapshot)
 			store := service.sessionStore.(*integritySnapshotStore)
 			alignIntegrityFixtureVersions(t, store)
+			store.clock = func() time.Time { return clock }
 			if kind == "store_unavailable" {
 				store.readErr = errors.New("store unavailable")
 			}
 			batch := func() (string, error) {
-				return service.persistRecordIntegrityBatch(context.Background(), "", 10, func() time.Time { return clock })
+				return service.PersistRecordIntegrityBatch(context.Background(), "", 10)
 			}
 			for attempt, delay := range []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 5 * time.Minute, 5 * time.Minute} {
 				if next, err := batch(); next != "int" || err == nil || store.reads != attempt+1 {
@@ -303,7 +306,7 @@ func TestMaterializationRepeatedFailureBacksOffAndCapsDelay(t *testing.T) {
 				// Polling before the deadline neither re-reads evidence nor repeats errors.
 				clock = clock.Add(delay - time.Nanosecond)
 				for poll := 0; poll < 3; poll++ {
-					if next, err := batch(); next != "int" || err != nil || store.reads != attempt+1 {
+					if next, err := batch(); next != "" || err != nil || store.reads != attempt+1 {
 						t.Fatalf("premature retry %d: next=%q reads=%d err=%v", attempt, next, store.reads, err)
 					}
 				}
@@ -319,8 +322,8 @@ func TestMaterializationRepeatedFailureBacksOffAndCapsDelay(t *testing.T) {
 				if _, err := batch(); err != nil {
 					t.Fatalf("dependency recovery failed: %v", err)
 				}
-				if len(service.integrityRetries.entries) != 0 {
-					t.Fatal("successful recovery did not clear backoff")
+				if state := materializationRetryState(t, store, "int"); state.Status != isessionstore.RecordIntegritySucceeded {
+					t.Fatalf("recovery not durable: %+v", state)
 				}
 				pending, err = store.ListRecordIntegrityCandidates(context.Background(), "", 10)
 				if err != nil || len(pending) != 0 {
@@ -336,17 +339,19 @@ func TestMaterializationSourceChangeBypassesBackoffAndResetsDelay(t *testing.T) 
 	service := integrityServiceForSnapshot(t, snapshot)
 	store := service.sessionStore.(*integritySnapshotStore)
 	alignIntegrityFixtureVersions(t, store)
+	store.clock = func() time.Time { return clock }
 	store.readErr = errors.New("store unavailable")
 	batch := func() (string, error) {
-		return service.persistRecordIntegrityBatch(context.Background(), "", 10, func() time.Time { return clock })
+		return service.PersistRecordIntegrityBatch(context.Background(), "", 10)
 	}
 	if _, err := batch(); err == nil {
 		t.Fatal("expected initial failure")
 	}
-	clock = clock.Add(recordIntegrityRetryInitial)
+	clock = clock.Add(isessionstore.RecordIntegrityBackoff(1))
 	if _, err := batch(); err == nil {
 		t.Fatal("expected second failure")
 	}
+	oldState := materializationRetryState(t, store, "int")
 	if err := store.InvalidateRecordIntegrity(context.Background(), "int", owner); err != nil {
 		t.Fatal(err)
 	}
@@ -354,31 +359,67 @@ func TestMaterializationSourceChangeBypassesBackoffAndResetsDelay(t *testing.T) 
 	if _, err := batch(); err == nil || store.reads != 3 {
 		t.Fatalf("changed source did not bypass backoff: reads=%d err=%v", store.reads, err)
 	}
-	if retry := service.integrityRetries.entries["int"]; retry.delay != recordIntegrityRetryInitial {
+	if retry := materializationRetryState(t, store, "int"); retry.Attempts != 1 || retry.NextAttemptAt.Sub(clock) != isessionstore.RecordIntegrityBackoff(1) {
 		t.Fatalf("changed source inherited old delay: %+v", retry)
 	}
-	clock = clock.Add(recordIntegrityRetryInitial)
+	preserved, found, err := store.GetRecordIntegrityRetry(context.Background(), "int", oldState.SourceVersion)
+	if err != nil || !found || preserved.Status != isessionstore.RecordIntegritySuperseded || preserved.Reason != "source_changed" || preserved.Attempts != oldState.Attempts || !preserved.FirstAttemptAt.Equal(oldState.FirstAttemptAt) || !preserved.LastAttemptAt.Equal(oldState.LastAttemptAt) || !preserved.NextAttemptAt.Equal(oldState.NextAttemptAt) {
+		t.Fatalf("old source retry history lost: %+v %v", preserved, err)
+	}
+	clock = clock.Add(isessionstore.RecordIntegrityBackoff(1))
 	store.readErr = nil
 	if _, err := batch(); err != nil {
 		t.Fatal(err)
 	}
-	if len(service.integrityRetries.entries) != 0 {
-		t.Fatal("successful changed source retained retry state")
+	if state := materializationRetryState(t, store, "int"); state.Status != isessionstore.RecordIntegritySucceeded {
+		t.Fatalf("changed source recovery not durable: %+v", state)
 	}
 }
 
-func TestMaterializationRetryStateHasBoundedCapacity(t *testing.T) {
-	service := &Service{}
-	now := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
-	service.deferRecordIntegrityRetry("oldest", 1, now.Add(-time.Minute))
-	for i := 0; i < recordIntegrityRetryLimit; i++ {
-		service.deferRecordIntegrityRetry(strconv.Itoa(i), 1, now)
-	}
-	if len(service.integrityRetries.entries) != recordIntegrityRetryLimit {
-		t.Fatalf("retry state exceeds capacity: %d", len(service.integrityRetries.entries))
-	}
-	if _, exists := service.integrityRetries.entries["oldest"]; exists {
-		t.Fatal("did not evict earliest scheduled retry")
+func TestMaterializationStopsAfterEightAttemptsOrThirtyMinutes(t *testing.T) {
+	for _, mode := range []string{"attempts", "deadline"} {
+		t.Run(mode, func(t *testing.T) {
+			snapshot, _, clock := integrityFixture()
+			service := integrityServiceForSnapshot(t, snapshot)
+			store := service.sessionStore.(*integritySnapshotStore)
+			store.clock = func() time.Time { return clock }
+			alignIntegrityFixtureVersions(t, store)
+			store.readErr = errors.New("stable dependency failure")
+			batch := func() error { _, err := service.PersistRecordIntegrityBatch(context.Background(), "", 10); return err }
+			if err := batch(); err == nil {
+				t.Fatal("initial failure missing")
+			}
+			if mode == "attempts" {
+				for i := 1; i < isessionstore.RecordIntegrityMaxAttempts; i++ {
+					clock = materializationRetryState(t, store, "int").NextAttemptAt
+					if err := batch(); err == nil {
+						t.Fatalf("attempt %d failure missing", i+1)
+					}
+				}
+			} else {
+				clock = clock.Add(isessionstore.RecordIntegrityRetryDeadline)
+				if err := batch(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			state := materializationRetryState(t, store, "int")
+			wantAttempts, wantReason := 8, "attempts_exhausted"
+			if mode == "deadline" {
+				wantAttempts, wantReason = 1, "retry_deadline_exceeded"
+			}
+			if state.Status != isessionstore.RecordIntegrityExhausted || state.Attempts != wantAttempts || state.Reason != wantReason {
+				t.Fatalf("terminal state: %+v", state)
+			}
+			reads := store.reads
+			clock = clock.Add(24 * time.Hour)
+			if err := batch(); err != nil || store.reads != reads {
+				t.Fatalf("exhausted source inspected again: reads=%d err=%v", store.reads, err)
+			}
+			report, applicable, err := service.inspectRecordIntegrityWithScope(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+			if err != nil || report != nil || !applicable {
+				t.Fatalf("exhaustion fabricated verdict: %+v %v %v", report, applicable, err)
+			}
+		})
 	}
 }
 
@@ -395,21 +436,25 @@ func TestMaterializationDeferredPageStillReachesNormalCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	alignIntegrityFixtureVersions(t, store)
+	store.clock = func() time.Time { return now }
 	page, err := store.ListRecordIntegrityCandidates(context.Background(), "", 2)
 	if err != nil || len(page) != 2 {
 		t.Fatalf("deferred page fixture: %+v err=%v", page, err)
 	}
 	for _, candidate := range page {
-		service.deferRecordIntegrityRetry(candidate.ID, candidate.IntegritySourceVersion, now)
+		claim, claimed, claimErr := store.ClaimRecordIntegrityRetry(context.Background(), candidate.ID, candidate.IntegritySourceVersion)
+		if claimErr != nil || !claimed {
+			t.Fatalf("claim: %v %v", claimed, claimErr)
+		}
+		if _, finishErr := store.FinishRecordIntegrityRetry(context.Background(), claim, nil, "inspection_failed"); finishErr != nil {
+			t.Fatal(finishErr)
+		}
 	}
-	next, err := service.persistRecordIntegrityBatch(context.Background(), "", 2, func() time.Time { return now })
-	if err != nil || next != "b" || store.reads != 0 {
-		t.Fatalf("deferred page ended sweep or read evidence: next=%q reads=%d err=%v", next, store.reads, err)
-	}
-	next, err = service.persistRecordIntegrityBatch(context.Background(), next, 2, func() time.Time { return now })
+	next, err := service.PersistRecordIntegrityBatch(context.Background(), "", 2)
 	if err != nil || next != "int" || store.reads != 1 {
-		t.Fatalf("normal candidate behind deferred page did not run: next=%q reads=%d err=%v", next, store.reads, err)
+		t.Fatalf("deferred rows consumed candidate page: next=%q reads=%d err=%v", next, store.reads, err)
 	}
+
 	report, applicable, err := service.inspectRecordIntegrityWithScope(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
 	if err != nil || !applicable || report == nil || report.Status != "complete" {
 		t.Fatalf("normal candidate was not saved: %+v err=%v", report, err)
@@ -591,5 +636,61 @@ func TestConversationRetainsKnownMissingWithUnmaterializedRound(t *testing.T) {
 				t.Fatalf("aggregation did live verification: %d", store.reads)
 			}
 		})
+	}
+}
+
+func materializationRetryState(t *testing.T, store *integritySnapshotStore, id string) isessionstore.RecordIntegrityRetry {
+	t.Helper()
+	var version uint64
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		i, ok := tx.PeekInteraction(id)
+		if !ok {
+			t.Fatalf("missing fixture interaction %s", id)
+		}
+		version = i.IntegritySourceVersion
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state, ok, err := store.GetRecordIntegrityRetry(context.Background(), id, version)
+	if err != nil || !ok {
+		t.Fatalf("missing durable retry for fixture: found=%v err=%v", ok, err)
+	}
+	return state
+}
+
+func TestMaterializationCancelledInspectionPersistsAttemptWithoutVerdict(t *testing.T) {
+	snapshot, _, _ := integrityFixture()
+	service := integrityServiceForSnapshot(t, snapshot)
+	store := service.sessionStore.(*integritySnapshotStore)
+	alignIntegrityFixtureVersions(t, store)
+	blocking := &blockingIntegritySnapshotStore{integritySnapshotStore: store, started: make(chan struct{}), release: make(chan struct{})}
+	service.sessionStore = blocking
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	defer close(blocking.release)
+	done := make(chan error, 1)
+	go func() { _, err := service.PersistRecordIntegrityBatch(ctx, "", 10); done <- err }()
+	select {
+	case <-blocking.started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("inspection not entered")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("cancelled attempt did not report failure")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled inspection did not finish")
+	}
+	state := materializationRetryState(t, store, "int")
+	if state.Status != isessionstore.RecordIntegrityRetryWait || state.Attempts != 1 || state.Reason != "attempt_canceled" || state.Token != "" {
+		t.Fatalf("cancelled attempt not durably recorded: %+v", state)
+	}
+	report, applicable, err := service.inspectRecordIntegrityWithScope(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+	if err != nil || !applicable || report != nil {
+		t.Fatalf("cancelled attempt fabricated verdict: %+v %v %v", report, applicable, err)
 	}
 }

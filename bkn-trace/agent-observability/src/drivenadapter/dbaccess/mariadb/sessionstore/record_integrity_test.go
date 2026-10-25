@@ -52,7 +52,7 @@ func TestMariaDBRecordIntegrityCASOnlyFirstMatchingVersion(t *testing.T) {
 func TestMariaDBRecordIntegrityCandidatesReturnLightweightKeyset(t *testing.T) {
 	store, mock := newTransactionErrorStore(t)
 	port := integritySQLPort(t, store)
-	mock.ExpectQuery(`SELECT interaction_id, record_integrity_version FROM bkn_trace_interactions WHERE record_integrity_pending=1 AND interaction_id>\? ORDER BY interaction_id ASC LIMIT \?`).WithArgs("a", 2).WillReturnRows(sqlmock.NewRows([]string{"interaction_id", "record_integrity_version"}).AddRow("b", 3).AddRow("c", 0))
+	mock.ExpectQuery(`SELECT i.interaction_id, i.record_integrity_version FROM bkn_trace_interactions i LEFT JOIN bkn_trace_record_integrity_retries r .*ORDER BY i.interaction_id ASC LIMIT \?`).WithArgs("a", 2).WillReturnRows(sqlmock.NewRows([]string{"interaction_id", "record_integrity_version"}).AddRow("b", 3).AddRow("c", 0))
 	entries, err := port.ListRecordIntegrityCandidates(context.Background(), "a", 2)
 	if err != nil || len(entries) != 2 || entries[0].ID != "b" || entries[0].IntegritySourceVersion != 3 || entries[0].ConversationID != "" {
 		t.Fatalf("wrong candidate page: %#v %v", entries, err)
@@ -221,9 +221,16 @@ func TestMariaDBTraceArchivePreservesInternalIntegrityMetadata(t *testing.T) {
 	store, mock := newTransactionErrorStore(t)
 	stored := sqlIntegrityReport(7)
 	raw, _ := json.Marshal(stored)
+	var extended map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &extended); err != nil {
+		t.Fatal(err)
+	}
+	extended["future_integrity"] = json.RawMessage(`{"sequence":18446744073709551615,"status":"retained"}`)
+	raw, _ = json.Marshal(extended)
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM bkn_trace_interactions`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
 	mock.ExpectQuery("SELECT interaction_id FROM bkn_trace_interactions").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("int"))
 	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT UTC_TIMESTAMP").WillReturnRows(sqlmock.NewRows([]string{"now"}).AddRow(time.Now()))
+	mock.ExpectQuery(`SELECT SUM\(row_count\),SUM\(payload_bytes\)`).WithArgs("int", "int", "int", "int").WillReturnRows(sqlmock.NewRows([]string{"rows", "bytes"}).AddRow(1, len(raw)))
 	mock.ExpectQuery("FROM bkn_trace_interactions").WithArgs("int").WillReturnRows(sqlIntegrityInteractionRows(string(raw), 7))
 	mock.ExpectQuery("FROM bkn_trace_conversations").WithArgs("conv").WillReturnRows(transactionErrorConversationRows(ptrTransactionErrorOwner()))
 	mock.ExpectQuery("FROM bkn_trace_operations").WithArgs("int").WillReturnRows(sqlmock.NewRows([]string{"empty"}))
@@ -242,6 +249,9 @@ func TestMariaDBTraceArchivePreservesInternalIntegrityMetadata(t *testing.T) {
 	}
 	if err := json.Unmarshal(entries[0].Payload, &archive); err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(string(entries[0].Payload), `"future_integrity"`) || !strings.Contains(string(entries[0].Payload), `18446744073709551615`) {
+		t.Fatalf("freeze lost forward-compatible verdict fields: %s", entries[0].Payload)
 	}
 	if archive.Interaction.Version != 7 || archive.Interaction.Stored == nil || archive.Interaction.Stored.SourceVersion != 7 {
 		t.Fatalf("archive dropped internal metadata: %s", entries[0].Payload)

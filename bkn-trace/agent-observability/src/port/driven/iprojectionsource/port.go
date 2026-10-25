@@ -38,6 +38,9 @@ type Query struct {
 	// SummaryOnly retains artifact metadata and question/result content while
 	// omitting supporting result bodies. Full evidence reads leave this false.
 	SummaryOnly bool
+	// OmitSummaryTerminalContent is an internal metadata-only facet read.
+	// It excludes all artifact content, including terminal preview bodies.
+	OmitSummaryTerminalContent bool
 }
 
 type Result struct {

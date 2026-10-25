@@ -31,6 +31,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/extension/enterpriseroute"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iauthorizationscope"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
 func TestWriteRoutesKeepLifecycleAndEvidenceOnSeparateListeners(t *testing.T) {
@@ -497,4 +498,43 @@ func (routeBoundaryBudget) ReadAdmissionBudget(context.Context) (capturepolicysv
 		{Metric: "trace_collector_queue", Source: "collector", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
 		{Metric: "trace_storage_connection_pool", Source: "mariadb", SampleTime: now, Value: 0.5, Threshold: 0.8, Fresh: true},
 	}}, nil
+}
+
+func TestRecordIntegrityStatusRouteUsesTrustedReadIdentity(t *testing.T) {
+	store := sessionstore.New()
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{ID: "status-conv", Owner: sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "owner"}})
+		tx.SaveInteraction(sessionvo.Interaction{ID: "status-int", ConversationID: "status-conv", ExecutionStatus: sessionvo.InteractionCompleted})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	evidenceHandler := httphandler.NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New(), evidencesvc.WithSessionStore(store)), httphandler.EvidenceHandlerSecurityConfig{AllowUnauthenticatedQuery: true})
+	app := newApp(conf.HTTPServerConfig{}, nil, evidenceHandler, nil,
+		httphandler.NewSessionHandler(sessionsvc.New(store, sessionsvc.Options{})),
+		httphandler.NewLedgerHandler(ledgersvc.New(ledgerstore.New()), httphandler.LedgerSecurityConfig{}), nil)
+	for _, tc := range []struct {
+		name, account string
+		want          int
+	}{
+		{"trusted owner", "owner", 200},
+		{"cross owner", "other", 404},
+		{"no identity", "", 401},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, APIBasePath+"/interactions/status-int/record-integrity-status", nil)
+			if tc.account != "" {
+				request.Header.Set("x-account-id", tc.account)
+				request.Header.Set("x-account-type", "user")
+			}
+			response := httptest.NewRecorder()
+			app.server.ServeHTTP(response, request)
+			if response.Code != tc.want {
+				t.Fatalf("route %d: %s", response.Code, response.Body.String())
+			}
+			if tc.want == 200 && !strings.Contains(response.Body.String(), `"status":"pending"`) {
+				t.Fatalf("session wildcard intercepted read: %s", response.Body.String())
+			}
+		})
+	}
 }

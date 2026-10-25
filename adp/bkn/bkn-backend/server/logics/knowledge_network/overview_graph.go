@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 
@@ -21,8 +22,18 @@ import (
 )
 
 type overviewGraphCursor struct {
-	Offset   int    `json:"offset"`
-	Snapshot string `json:"snapshot"`
+	Offset     int    `json:"offset,omitempty"`
+	NodeOffset int    `json:"node_offset,omitempty"`
+	EdgeOffset int    `json:"edge_offset,omitempty"`
+	Scope      string `json:"scope,omitempty"`
+	Snapshot   string `json:"snapshot"`
+}
+
+func overviewCursorScope(conceptGroupID string) string {
+	if conceptGroupID == "" {
+		return ""
+	}
+	return "concept-group:" + conceptGroupID
 }
 
 func overviewVisibleChildIDs(knID string, scope interfaces.PermissionResourceScope) []string {
@@ -109,8 +120,8 @@ func (kns *knowledgeNetworkService) resolveOverviewRelationScope(ctx context.Con
 	return interfaces.PermissionResourceScope{ResourceIDs: visible}, nil
 }
 
-func overviewSnapshot(knID, branch string, updateTime int64, objectTotal, relationTotal int) string {
-	digest := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d:%d:%d", knID, branch, updateTime,
+func overviewSnapshot(knID, branch, scope string, updateTime int64, objectTotal, relationTotal int) string {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%s:%d:%d:%d", knID, branch, scope, updateTime,
 		objectTotal, relationTotal)))
 	return base64.RawURLEncoding.EncodeToString(digest[:12])
 }
@@ -126,7 +137,8 @@ func decodeOverviewCursor(value string) (overviewGraphCursor, error) {
 	if err != nil {
 		return cursor, err
 	}
-	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Offset < 0 || cursor.Snapshot == "" {
+	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.Offset < 0 || cursor.NodeOffset < 0 ||
+		cursor.EdgeOffset < 0 || cursor.Snapshot == "" {
 		return overviewGraphCursor{}, fmt.Errorf("invalid overview graph cursor")
 	}
 	return cursor, nil
@@ -154,7 +166,8 @@ func intersectOverviewIDs(ids []string, allowed []string, unrestricted bool) []s
 	return result
 }
 
-func overviewNodes(items []*interfaces.ObjectType, edges []interfaces.OverviewGraphEdge) []interfaces.OverviewGraphNode {
+func overviewNodes(items []*interfaces.ObjectType, edges []interfaces.OverviewGraphEdge,
+	groupsByObjectType map[string][]interfaces.OverviewGraphConceptGroup) []interfaces.OverviewGraphNode {
 	degree := make(map[string]int, len(items))
 	for _, edge := range edges {
 		degree[edge.SourceID]++
@@ -165,9 +178,71 @@ func overviewNodes(items []*interfaces.ObjectType, edges []interfaces.OverviewGr
 		nodes = append(nodes, interfaces.OverviewGraphNode{
 			ID: item.OTID, Name: item.OTName, Icon: item.Icon, Color: item.Color,
 			IndexStatus: item.IndexStatus, Degree: degree[item.OTID],
+			ConceptGroups: groupsByObjectType[item.OTID],
 		})
 	}
 	return nodes
+}
+
+// overviewConceptGroups returns only concept groups the caller may read. Object-type enrichment
+// already loads memberships in one batch, avoiding extra database reads and per-group requests.
+func (kns *knowledgeNetworkService) overviewConceptGroups(ctx context.Context, knID string,
+	items []*interfaces.ObjectType) (map[string][]interfaces.OverviewGraphConceptGroup, error) {
+	groupIDs := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		for _, group := range item.ConceptGroups {
+			if group == nil || group.CGID == "" {
+				continue
+			}
+			if _, ok := seen[group.CGID]; ok {
+				continue
+			}
+			seen[group.CGID] = struct{}{}
+			groupIDs = append(groupIDs, group.CGID)
+		}
+	}
+	sort.Strings(groupIDs)
+	if len(groupIDs) == 0 {
+		return map[string][]interfaces.OverviewGraphConceptGroup{}, nil
+	}
+	visibleIDs, err := permission.FilterKNChildIDs(ctx, kns.ps,
+		interfaces.RESOURCE_TYPE_CONCEPT_GROUP, knID, groupIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return nil, err
+	}
+	visible := overviewIDSet(visibleIDs)
+	result := make(map[string][]interfaces.OverviewGraphConceptGroup, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		projected := make([]interfaces.OverviewGraphConceptGroup, 0, len(item.ConceptGroups))
+		for _, group := range item.ConceptGroups {
+			if group == nil {
+				continue
+			}
+			if _, ok := visible[group.CGID]; !ok {
+				continue
+			}
+			projected = append(projected, interfaces.OverviewGraphConceptGroup{
+				ID: group.CGID, Name: group.CGName,
+			})
+		}
+		sort.Slice(projected, func(left, right int) bool {
+			if projected[left].Name == projected[right].Name {
+				return projected[left].ID < projected[right].ID
+			}
+			return projected[left].Name < projected[right].Name
+		})
+		if len(projected) > 0 {
+			result[item.OTID] = projected
+		}
+	}
+	return result, nil
 }
 
 // enrichOverviewIndexStatuses reuses the normal object-type detail path so overview nodes see the
@@ -200,6 +275,7 @@ func (kns *knowledgeNetworkService) enrichOverviewIndexStatuses(ctx context.Cont
 		if item != nil {
 			if detail, ok := byID[item.OTID]; ok {
 				item.IndexStatus = detail.IndexStatus
+				item.ConceptGroups = detail.ConceptGroups
 			}
 		}
 	}
@@ -354,30 +430,53 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 			Limit: query.NodeLimit, Sort: "f_name", Direction: interfaces.ASC_DIRECTION,
 		},
 	}
+	var conceptGroupObjectIDs []string
+	if query.ConceptGroupID != "" {
+		conceptGroupObjectIDs, err = kns.cga.GetConceptIDsByConceptGroupIDs(ctx, knID, query.Branch,
+			[]string{query.ConceptGroupID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
+		if err != nil {
+			return nil, err
+		}
+		conceptGroupObjectIDs = intersectOverviewIDs(conceptGroupObjectIDs, visibleObjectIDs,
+			objectScope.Unrestricted)
+		if len(conceptGroupObjectIDs) == 0 {
+			snapshot := overviewSnapshot(knID, query.Branch, overviewCursorScope(query.ConceptGroupID),
+				kn.UpdateTime, 0, 0)
+			return &interfaces.OverviewGraph{Nodes: []interfaces.OverviewGraphNode{},
+				Edges: []interfaces.OverviewGraphEdge{}, Snapshot: snapshot}, nil
+		}
+		objectQuery.OTIDS = conceptGroupObjectIDs
+	}
 	objectTotal, err := kns.ota.GetObjectTypesTotal(ctx, objectQuery)
 	if err != nil {
 		return nil, err
 	}
 	if objectTotal == 0 {
-		snapshot := overviewSnapshot(knID, query.Branch, kn.UpdateTime, 0, 0)
+		snapshot := overviewSnapshot(knID, query.Branch, overviewCursorScope(query.ConceptGroupID),
+			kn.UpdateTime, 0, 0)
 		return &interfaces.OverviewGraph{Nodes: []interfaces.OverviewGraphNode{}, Edges: []interfaces.OverviewGraphEdge{}, Snapshot: snapshot}, nil
 	}
 
 	relationQuery := kns.overviewRelationQuery(knID, query, visibleRelationIDs, visibleObjectIDs,
 		objectScope.Unrestricted)
+	if query.ConceptGroupID != "" {
+		relationQuery.SourceObjectTypeIDs = conceptGroupObjectIDs
+		relationQuery.TargetObjectTypeIDs = conceptGroupObjectIDs
+	}
 	relationTotal, err := kns.rta.GetRelationTypesTotal(ctx, relationQuery)
 	if err != nil {
 		return nil, err
 	}
-	snapshot := overviewSnapshot(knID, query.Branch, kn.UpdateTime, objectTotal, relationTotal)
-	offset := 0
+	scope := overviewCursorScope(query.ConceptGroupID)
+	snapshot := overviewSnapshot(knID, query.Branch, scope, kn.UpdateTime, objectTotal, relationTotal)
+	cursor := overviewGraphCursor{Scope: scope, Snapshot: snapshot}
 	if query.Cursor != "" {
-		cursor, cursorErr := decodeOverviewCursor(query.Cursor)
-		if cursorErr != nil || cursor.Snapshot != snapshot {
+		decoded, cursorErr := decodeOverviewCursor(query.Cursor)
+		if cursorErr != nil || decoded.Snapshot != snapshot || decoded.Scope != scope {
 			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 				berrors.BknBackend_KnowledgeNetwork_InvalidParameter).WithErrorDetails("overview graph cursor is invalid or stale")
 		}
-		offset = cursor.Offset
+		cursor = decoded
 	}
 
 	var objectTypes []*interfaces.ObjectType
@@ -387,24 +486,22 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 		objectTypes, relationTypes, err = kns.listOverviewFocus(ctx, knID, query, relationQuery,
 			visibleObjectIDs, objectScope.Unrestricted)
 	case query.ConceptGroupID != "":
-		var groupIDs []string
-		groupIDs, err = kns.cga.GetConceptIDsByConceptGroupIDs(ctx, knID, query.Branch,
-			[]string{query.ConceptGroupID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
-		if err == nil {
-			groupIDs = intersectOverviewIDs(groupIDs, visibleObjectIDs, objectScope.Unrestricted)
-			if len(groupIDs) > query.NodeLimit {
-				groupIDs = groupIDs[:query.NodeLimit]
-			}
-			objectQuery.OTIDS = groupIDs
-			objectQuery.Offset = 0
-			objectQuery.Limit = query.NodeLimit
+		if cursor.NodeOffset < objectTotal {
+			objectQuery.Offset = cursor.NodeOffset
 			objectTypes, err = kns.ota.ListObjectTypeSummaries(ctx, nil, objectQuery)
-			if err == nil {
-				relationTypes, err = kns.listOverviewEdges(ctx, relationQuery, groupIDs)
+		} else {
+			objectTypes = []*interfaces.ObjectType{}
+		}
+		if err == nil {
+			if cursor.EdgeOffset < relationTotal {
+				relationQuery.Offset = cursor.EdgeOffset
+				relationTypes, err = kns.rta.ListRelationTypeSummaries(ctx, relationQuery)
+			} else {
+				relationTypes = []*interfaces.RelationType{}
 			}
 		}
 	default:
-		objectQuery.Offset = offset
+		objectQuery.Offset = cursor.Offset
 		objectTypes, err = kns.ota.ListObjectTypeSummaries(ctx, nil, objectQuery)
 		if err == nil {
 			pageIDs := make([]string, 0, len(objectTypes))
@@ -420,21 +517,48 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 	if err := kns.enrichOverviewIndexStatuses(ctx, knID, query.Branch, objectTypes); err != nil {
 		return nil, err
 	}
+	groupsByObjectType, err := kns.overviewConceptGroups(ctx, knID, objectTypes)
+	if err != nil {
+		return nil, err
+	}
 	nodeIDSet := make(map[string]struct{}, len(objectTypes))
 	for _, item := range objectTypes {
 		nodeIDSet[item.OTID] = struct{}{}
 	}
-	edges := overviewEdges(relationTypes, nodeIDSet)
+	edgeNodeIDs := nodeIDSet
+	if query.ConceptGroupID != "" {
+		edgeNodeIDs = overviewIDSet(conceptGroupObjectIDs)
+	}
+	edges := overviewEdges(relationTypes, edgeNodeIDs)
 	result := &interfaces.OverviewGraph{
 		Edges: edges, ObjectTypeTotal: objectTotal, RelationTypeTotal: relationTotal,
 		ReturnedEdges: len(edges), Snapshot: snapshot,
 	}
-	result.Nodes = overviewNodes(objectTypes, edges)
+	result.Nodes = overviewNodes(objectTypes, edges, groupsByObjectType)
 	result.ReturnedNodes = len(result.Nodes)
-	if query.FocusObjectTypeID == "" && query.ConceptGroupID == "" && len(objectTypes) > 0 &&
-		offset+len(objectTypes) < objectTotal {
-		result.NextCursor = encodeOverviewCursor(overviewGraphCursor{Offset: offset + len(objectTypes), Snapshot: snapshot})
+	if query.ConceptGroupID != "" {
+		nextNodeOffset := cursor.NodeOffset + len(objectTypes)
+		if len(objectTypes) == 0 {
+			nextNodeOffset = objectTotal
+		}
+		nextEdgeOffset := cursor.EdgeOffset + len(relationTypes)
+		if len(relationTypes) == 0 {
+			nextEdgeOffset = relationTotal
+		}
+		if nextNodeOffset < objectTotal || nextEdgeOffset < relationTotal {
+			result.NextCursor = encodeOverviewCursor(overviewGraphCursor{
+				NodeOffset: nextNodeOffset, EdgeOffset: nextEdgeOffset, Scope: scope, Snapshot: snapshot,
+			})
+		}
+		result.Truncated = result.ReturnedNodes < objectTotal || result.ReturnedEdges < relationTotal
+	} else {
+		if query.FocusObjectTypeID == "" && len(objectTypes) > 0 &&
+			cursor.Offset+len(objectTypes) < objectTotal {
+			result.NextCursor = encodeOverviewCursor(overviewGraphCursor{
+				Offset: cursor.Offset + len(objectTypes), Snapshot: snapshot,
+			})
+		}
+		result.Truncated = result.NextCursor != "" || len(relationTypes) >= query.EdgeLimit || len(edges) < relationTotal
 	}
-	result.Truncated = result.NextCursor != "" || len(relationTypes) >= query.EdgeLimit || len(edges) < relationTotal
 	return result, nil
 }

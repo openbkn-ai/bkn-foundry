@@ -29,8 +29,9 @@ func (s *Store) ListTraceSummaryIdentities(ctx context.Context, query isessionst
 		where, args = append(where, "r.issued_at<=?"), append(args, query.To.UTC())
 	}
 	if query.Service != "" {
-		where = append(where, traceSummaryServicePredicate())
-		args = append(args, query.Service)
+		predicate, serviceArgs := traceSummaryScopedServicePredicate(query)
+		where = append(where, predicate)
+		args = append(args, serviceArgs...)
 	}
 	clause := strings.Join(where, " AND ")
 	if query.Service != "" {
@@ -344,8 +345,8 @@ func normalizeSummaryPageOffset(offset int) int {
 	return offset
 }
 
-// Match the same first nonempty source module selected by canonical enrichment,
-// rather than any descendant service. Both count and page use this predicate.
+// Legacy unscoped predicate retained for frozen capacity/baseline fixtures.
+// Production queries use traceSummaryScopedServicePredicate.
 func traceSummaryServicePredicate() string {
 	return `(SELECT f.source_module FROM bkn_trace_operation_call_facts f
  WHERE f.trace_id=r.trace_id AND f.source_module<>''

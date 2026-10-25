@@ -329,7 +329,7 @@ func (service *Service) listPage(
 		succeeded++
 		page := sourceResult.page
 		result.SourceStatus = append(result.SourceStatus, sourceResult.status)
-		coveragePartial = coveragePartial || sourceResult.status.Status == "degraded"
+		coveragePartial = coveragePartial || sourceResult.status.Status == observabilityvo.SourceCoverageDegraded
 		countExact = countExact && normalizedAccuracy(page.CountAccuracy) == "exact"
 		if page.LastPosition != nil {
 			sourceLastRawPosition[source.ID()] = *page.LastPosition

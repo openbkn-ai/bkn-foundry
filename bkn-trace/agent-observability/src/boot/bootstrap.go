@@ -24,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/auditproducersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/captureadmission"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturecontrollersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/capturepolicysnapshot"
@@ -41,6 +42,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/auditstore"
 	mariadbevidencemigration "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/evidencemigration"
 	mariadbsessionstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/auditpublisherstatus"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/bknsafeaccess"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/businessresolver"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchconversationaudit"
@@ -392,6 +394,23 @@ func NewApp() (*App, error) {
 		kafkaRuntimes = append(kafkaRuntimes, runtime)
 	}
 	coverageStore, coverageStoreSupported := sessionStore.(isourcecoveragestore.Store)
+	var auditProducerMonitor *auditproducersvc.Service
+	if kafkaConfig.Audit.Enabled && observabilityConfig.AuditProducerStatusEndpoint != "" {
+		if !coverageStoreSupported {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("audit producer monitoring requires durable source coverage storage")
+		}
+		statusReader, err := auditpublisherstatus.New(observabilityConfig.AuditProducerStatusEndpoint)
+		if err != nil {
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, errors.New("invalid audit producer status endpoint")
+		}
+		auditProducerMonitor = auditproducersvc.New(coverageStore, statusReader, auditproducersvc.Options{})
+	}
 	coverageMonitorEnabled := observabilityConfig.SourceCoverageMetricsEndpoint != ""
 	if coverageMonitorEnabled && (!coverageStoreSupported || observabilityConfig.SourceCoverageSourceID == "" || observabilityConfig.SourceCoverageDeploymentID == "") {
 		if closeDatabase != nil {
@@ -464,7 +483,11 @@ func NewApp() (*App, error) {
 			return nil, err
 		}
 		if kafkaConfig.Audit.Enabled {
-			auditSource = httphandler.NewAuditLedgerSource(reader)
+			if auditProducerMonitor != nil {
+				auditSource = httphandler.NewAuditLedgerSource(reader, auditProducerMonitor)
+			} else {
+				auditSource = httphandler.NewAuditLedgerSource(reader)
+			}
 		}
 	}
 	if kafkaConfig.Audit.Enabled && auditSource == nil {
@@ -481,6 +504,7 @@ func NewApp() (*App, error) {
 	}
 	historicalProvenanceEnabled := coreConfig.HistoricalProvenanceEnabled
 	sessionOptions := sessionsvc.Options{
+		DurableAnswerEnabled:       coreConfig.DurableAnswerEnabled,
 		EnableHistoricalProvenance: historicalProvenanceEnabled,
 		Capacity: sessionsvc.CapacityLimits{
 			MaxOperationsPerInteraction:   coreConfig.MaxOperationsPerInteraction,
@@ -536,7 +560,7 @@ func NewApp() (*App, error) {
 	}
 	archiveHandler := httphandler.NewArchiveHandler(archivesvc.New(archiveStore, archiveSource, archiveObjectStore, archivesvc.Options{}), evidenceHandler)
 	traceHandler := httphandler.NewTraceHandlerWithTechnicalSources(
-		traceQueryService, evidenceService, sessionService,
+		traceQueryService, evidenceService, sessionService, observabilityConfig.CursorSigningKey,
 	)
 	sessionHandler := httphandler.NewSessionHandlerWithAssembly(
 		sessionService,
@@ -553,7 +577,7 @@ func NewApp() (*App, error) {
 				if err != nil || !found {
 					return nil, "", found, err
 				}
-				raw, hash, err := evidencesvc.EncodeCapture(capture, 64<<20)
+				raw, hash, err := evidencesvc.EncodeCaptureWithContext(ctx, capture, 64<<20)
 				return raw, hash, true, err
 			}
 		}
@@ -598,6 +622,13 @@ func NewApp() (*App, error) {
 			sessionService,
 		)
 	}()
+	if auditProducerMonitor != nil {
+		app.workers.Add(1)
+		go func() {
+			defer app.workers.Done()
+			runAuditProducerMonitor(workerContext, auditProducerMonitor)
+		}()
+	}
 	if coverageMonitorEnabled {
 		coverageMonitor := sourcecoveragesvc.New(
 			coverageStore,
@@ -650,8 +681,19 @@ func NewApp() (*App, error) {
 			}
 			return nil, fmt.Errorf("initialize projection alias: %w", err)
 		}
+		var answerWriter iartifactstore.Writer
+		if strings.EqualFold(evidenceConfig.Store, "opensearch") {
+			answerWriter = evidenceService.AcceptedArtifactWriter()
+		}
+		answerHandler := sessionsvc.NewAnswerArtifactHandler(sessionService, answerWriter)
 		worker := projectorsvc.NewWorker(outboxStore, sink, projectorsvc.WorkerOptions{
-			Metrics: metrics, HistoricalProvenanceHandler: provenanceHandler,
+			BatchSize:             1,
+			LockDuration:          coreConfig.ProjectionLockDuration,
+			LeaseIOTimeout:        coreConfig.ProjectionLeaseIOTimeout,
+			AnswerTaskIOTimeout:   coreConfig.AnswerTaskIOTimeout,
+			AnswerAckIOTimeout:    coreConfig.AnswerAckIOTimeout,
+			AnswerArtifactHandler: answerHandler,
+			Metrics:               metrics, HistoricalProvenanceHandler: provenanceHandler,
 		})
 		app.projection = worker
 		app.workers.Add(1)
@@ -800,17 +842,28 @@ func runProjectionWorker(
 	worker *projectorsvc.Worker,
 	metrics icoremetrics.Recorder,
 ) {
-	timer := time.NewTicker(interval)
-	defer timer.Stop()
+	if interval <= 0 {
+		interval = time.Second
+	}
 	for {
+		if ctx.Err() != nil {
+			return
+		}
+		// Drain claims one production item only when the slot is ready, and keeps
+		// consuming ready work without imposing the idle polling interval per item.
+		if _, err := worker.Drain(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			metrics.Increment(icoremetrics.ProjectionErrorsTotal)
+			log.Printf("BKN Trace projection worker failed: %v", err)
+		}
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
 		case <-timer.C:
-			if _, err := worker.RunOnce(ctx); err != nil {
-				metrics.Increment(icoremetrics.ProjectionErrorsTotal)
-				log.Printf("BKN Trace projection worker failed: %v", err)
-			}
 		}
 	}
 }
@@ -934,6 +987,7 @@ func newAppWithArchiveAndCapture(
 	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", http.NotFound)
 	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", http.NotFound)
 	mux.HandleFunc(APIBasePath+"/traces", readAuth(evidenceHandler.ListTraceExecutions))
+	mux.HandleFunc(APIBasePath+"/trace-root-services", readAuth(evidenceHandler.ListTraceRootServices))
 	typedTraceDetail := readAuth(func(w http.ResponseWriter, r *http.Request) {
 		if traceHandler.GetTraceSubresource(w, r) {
 			return
@@ -955,6 +1009,7 @@ func newAppWithArchiveAndCapture(
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts", evidenceHandler.IngestEvidenceArtifact)
 	mux.HandleFunc(APIBasePath+"/evidence/artifacts/", readAuth(evidenceHandler.GetEvidenceArtifact))
 	mux.HandleFunc(APIBasePath+"/access-profile", readAuth(evidenceHandler.GetAccessProfile))
+	mux.HandleFunc("GET "+APIBasePath+"/interactions/{interaction_id}/record-integrity-status", readAuth(evidenceHandler.GetRecordIntegrityRetryStatus))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs", readAuth(logHandler.ListLogs))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/logs/", readAuth(logHandler.GetLog))
 	mux.HandleFunc(ObservabilityAPIBasePath+"/log-sources", readAuth(logHandler.ListLogSources))

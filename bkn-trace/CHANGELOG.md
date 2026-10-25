@@ -6,6 +6,36 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Defer answer outbox body reads until after the metadata claim commits, sharing the answer task deadline and existing retry/lease fencing. (#1691)
+
+- Durable answer delivery claims work only when its single worker slot is ready and drains ready tasks continuously. Configurable claim/answer/ACK deadlines must fit inside the task lease. New capture checks known policy and the inserting SQL connection's packet budget; committed replay remains policy-independent. Product manuals document timing, size, backlog and recovery limits. Existing user-triggered archive behavior is unchanged. (#1691)
+
+- Opt-in managed finish durably stages answer artifacts in the existing SQL outbox in the same transaction as business completion. Evidence delivery remains separate, with bounded worker retries, idempotent recovery and archive cleanup protection. Upgrade all Core workers before enabling the new path; no `abandoned` fallback. (#1691)
+
+- Large answer processing stays outside lifecycle row locks. Outbox delivery is bounded by payload bytes, projection rebuild skips answer bodies, and acknowledged answer tasks release their SQL body while preserving delivery metadata. Pending/dead answers remain recoverable. (#1691)
+
+- Archive capture preserves the original bounded integrity JSON, including forward-compatible fields, in the same SQL snapshot. Technical enrichment retains its exact JSON numbers, preventing unchanged verdicts from being falsely rejected after capture. Existing stale-source refusal remains. (#1724)
+
+- Trace SQL cleanup now checks the frozen source version and complete stored integrity verdict under the Interaction row lock before deleting records. Late receipts and same-version materialization results cause the whole SQL batch to roll back; frozen jobs remain available for reconciliation. Legacy packages without explicit source metadata refuse automatic SQL cleanup. Existing revision checks and ordinary list/detail queries are unchanged; no migration. (#1724)
+
+- Trace archive creation now automatically processes bounded batches: at most 100 Interactions, 8 MiB per complete payload and 10 MiB of JSONL per batch (leaving room for base64-encoded recovery data under the default 16 MiB database packet limit). SQL preflight and technical response limits reject oversized packages before cleanup; each verified batch retains independent progress and retry protection. Existing manifest/schema and ordinary list/detail reads are unchanged. No migration or streaming redesign. (#1724)
+
+- Cleanup retry also accepts the v0.1.4 `<jobID>.jsonl` object layout without weakening frozen-payload verification. Safe task messages distinguish object read failures, content mismatch, and unavailable recovery records/read support. (#1724)
+
+- Archive cleanup retries re-read and verify the existing manifest and JSONL object against the durable frozen candidates before deleting any hot records. Missing, damaged or mismatched archives preserve the incomplete task, payload and batch progress; restoring the matching objects allows retry without rewriting the archive. The existing manifest format and ordinary list/detail queries are unchanged. This scoped safety fix leaves #1724 open for remaining archive work.
+
+- Technical Trace root-service filters gain authorized, time/filter-scoped discovery with up to 100 canonical names and explicit refinement/budget feedback. Discovery is on demand, omits terminal question/result bodies and Span statistics, and preserves manual service matching. Root-service SQL selection now excludes foreign receipt tuples when Trace IDs collide. No schema change or additional initial page/detail request is introduced. (#2140)
+
+- Technical Trace archives reject incomplete or unverifiable OpenSearch results and freeze concrete document versions for conditional cleanup. Late or changed records are retained; cleanup retries preserve the frozen range. Legacy technical packages without cleanup identities remain readable but refuse automatic cleanup. No migration or list/detail query change is added. This is a safety-only follow-up; #1724 remains open for memory and remaining archive work.
+
+- Technical Trace detail exposes its bounded display range and estimated totals, detects duplicate-record window truncation, and provides an on-demand authorized 100-Span browser without growing the graph. Raw Span reads require global Trace access; scoped users retain authorized summary/Operations. Live pagination explicitly rejects legacy envelopes and incomplete/oversized searches. No migration or first-screen request is added. (#2158)
+
+- Audit source metadata scopes availability to Ledger queries and reports Safe publisher observations separately. An optional, bounded background probe reads one Safe instance's aggregate status; missing or stale observations remain unknown. Delivery recovery preserves durable historical-loss evidence. Publisher/history diagnostics remain independent of query partial flags and stored-record count precision. The log UI consumes this evidence without additional query-time probes. No schema migration is added. (#2109)
+
+- Record-integrity materialization now persists retry diagnostics per interaction/source generation, with at most 8 attempts in 30 minutes and 30-second to 5-minute backoff. Authorized readers can inspect the current generation through read-only `GET /api/agent-observability/v1/interactions/{interaction_id}/record-integrity-status`; reads neither inspect evidence live nor requeue work, and source changes schedule a new generation while preserving prior retry history. Migration 039 requires separate approval before deployment. Older images reject unknown migration ledger versions: safe rollback requires retaining a compatible migration manifest and separately reviewed worker shutdown, rather than directly rolling back the image. No manual requeue or UI is added. (#2149)
+
+- Historical capture can use bounded gzip-body JSON when base64 expansion exceeds the package budget, preserving raw bytes, identity, gaps, old v1 reads and small-package hashes. Encoded and aggregate decoded budgets remain enforced; Revision inputs stay v1. (#2148)
+
 - Trace scanner Tool matching uses the authorized receipt snapshot after archive purge removes SQL receipts. PIT cleanup failures no longer discard complete successful results; deterministic scan-limit errors return 422 while deadlines return 503. (#2144)
 
 - Tool-only and Service+Tool Trace filtering use scoped canonical identity pagination instead of the global 2,000-candidate scan. Root tool metadata remains consistent across filter toggles and bounded projections, sharing the existing root-service metadata roundtrip. Migration 037 adds a nonunique receipt lookup index; its rollback still requires a compatible migration manifest. (#2144)

@@ -102,10 +102,19 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 	ots.EXPECT().GetObjectTypesByIDs(gomock.Any(), (*sql.Tx)(nil), "kn-1", interfaces.MAIN_BRANCH,
 		[]string{"orders", "customers"}).Return([]*interfaces.ObjectType{
 		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders"},
-			IndexStatus: &interfaces.ObjectTypeIndexStatus{State: interfaces.ObjectTypeIndexStateAvailable}},
+			IndexStatus: &interfaces.ObjectTypeIndexStatus{State: interfaces.ObjectTypeIndexStateAvailable},
+			ConceptGroups: []*interfaces.ConceptGroup{
+				{CGID: "group-visible", CGName: "Visible"},
+				{CGID: "group-hidden", CGName: "Hidden"},
+			}},
 		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "customers"},
 			IndexStatus: &interfaces.ObjectTypeIndexStatus{State: interfaces.ObjectTypeIndexStateUnknown}},
 	}, nil)
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		[]string{"kn-1/group-hidden", "kn-1/group-visible"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
+		map[string]interfaces.PermissionResourceOps{
+			"kn-1/group-visible": {ResourceID: "kn-1/group-visible"},
+		}, nil)
 
 	result, err := service.ListOverviewGraph(ctx, "kn-1", interfaces.OverviewGraphQuery{
 		Branch: interfaces.MAIN_BRANCH, NodeLimit: 2, EdgeLimit: 3, ExpandDepth: 1,
@@ -123,6 +132,176 @@ func TestListOverviewGraphUsesAuthorizedBoundedSummaryQueries(t *testing.T) {
 	if result.Nodes[0].IndexStatus == nil || result.Nodes[0].IndexStatus.State != interfaces.ObjectTypeIndexStateAvailable ||
 		result.Nodes[1].IndexStatus == nil || result.Nodes[1].IndexStatus.State != interfaces.ObjectTypeIndexStateUnknown {
 		t.Fatalf("overview index statuses = %#v", result.Nodes)
+	}
+	if fmt.Sprint(result.Nodes[0].ConceptGroups) != "[{group-visible Visible}]" {
+		t.Fatalf("overview concept groups = %#v", result.Nodes[0].ConceptGroups)
+	}
+}
+
+func TestListOverviewGraphScopesConceptGroupCountsBeforeApplyingLimits(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &knowledgeNetworkService{kna: kna, ota: ota, ots: ots, rta: rta, cga: cga, ps: ps}
+
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(
+		&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, UpdateTime: 1234}, nil)
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		ResourceIDs: []string{"kn-1/alpha", "kn-1/beta"},
+	}, nil)
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		ResourceIDs: []string{"kn-1/links"},
+	}, nil)
+	cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"group-1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return(
+		[]string{"hidden", "beta", "alpha"}, nil)
+	ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query interfaces.ObjectTypesQueryParams) (int, error) {
+			if fmt.Sprint(query.OTIDS) != "[beta alpha]" || query.Limit != 1 {
+				t.Fatalf("unexpected group object count query: %#v", query)
+			}
+			return 2, nil
+		})
+	rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query interfaces.RelationTypesQueryParams) (int, error) {
+			if fmt.Sprint(query.RTIDS) != "[links]" || fmt.Sprint(query.SourceObjectTypeIDs) != "[beta alpha]" ||
+				fmt.Sprint(query.TargetObjectTypeIDs) != "[beta alpha]" {
+				t.Fatalf("unexpected group relation count query: %#v", query)
+			}
+			return 0, nil
+		})
+	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
+			if fmt.Sprint(query.OTIDS) != "[beta alpha]" || query.Limit != 1 || query.Sort != "f_name" {
+				t.Fatalf("unexpected group object page query: %#v", query)
+			}
+			return []*interfaces.ObjectType{{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "alpha", OTName: "Alpha"},
+			}}, nil
+		})
+	ots.EXPECT().GetObjectTypesByIDs(gomock.Any(), (*sql.Tx)(nil), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"alpha"}).Return([]*interfaces.ObjectType{{
+		ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "alpha"},
+		ConceptGroups:          []*interfaces.ConceptGroup{{CGID: "group-1", CGName: "Group 1"}},
+	}}, nil)
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		[]string{"kn-1/group-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
+		map[string]interfaces.PermissionResourceOps{
+			"kn-1/group-1": {ResourceID: "kn-1/group-1"},
+		}, nil)
+
+	result, err := service.ListOverviewGraph(context.Background(), "kn-1", interfaces.OverviewGraphQuery{
+		Branch: interfaces.MAIN_BRANCH, ConceptGroupID: "group-1", NodeLimit: 1, EdgeLimit: 3,
+		ExpandDepth: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ObjectTypeTotal != 2 || result.RelationTypeTotal != 0 || result.ReturnedNodes != 1 ||
+		result.ReturnedEdges != 0 || !result.Truncated {
+		t.Fatalf("unexpected concept-group overview result: %#v", result)
+	}
+	if len(result.Nodes) != 1 || result.Nodes[0].ID != "alpha" {
+		t.Fatalf("concept-group nodes = %#v", result.Nodes)
+	}
+	pageCursor, err := decodeOverviewCursor(result.NextCursor)
+	if err != nil || pageCursor.NodeOffset != 1 || pageCursor.EdgeOffset != 0 ||
+		pageCursor.Scope != "concept-group:group-1" {
+		t.Fatalf("concept-group next cursor = %#v, err = %v", pageCursor, err)
+	}
+}
+
+func TestListOverviewGraphDoesNotTruncateCompleteConceptGroupAtEdgeLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	ots := bmock.NewMockObjectTypeService(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &knowledgeNetworkService{kna: kna, ota: ota, ots: ots, rta: rta, cga: cga, ps: ps}
+
+	kna.EXPECT().GetKNByID(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH).Return(
+		&interfaces.KN{KNID: "kn-1", Branch: interfaces.MAIN_BRANCH, UpdateTime: 1234}, nil)
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		ResourceIDs: []string{"kn-1/alpha", "kn-1/beta"},
+	}, nil)
+	ps.EXPECT().ListAccessibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(interfaces.PermissionResourceScope{
+		ResourceIDs: []string{"kn-1/links"},
+	}, nil)
+	cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"group-1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{"beta", "alpha"}, nil)
+	ota.EXPECT().GetObjectTypesTotal(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query interfaces.ObjectTypesQueryParams) (int, error) {
+			if fmt.Sprint(query.OTIDS) != "[beta alpha]" || query.Limit != 2 {
+				t.Fatalf("unexpected group object count query: %#v", query)
+			}
+			return 2, nil
+		})
+	rta.EXPECT().GetRelationTypesTotal(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query interfaces.RelationTypesQueryParams) (int, error) {
+			if fmt.Sprint(query.RTIDS) != "[links]" || fmt.Sprint(query.SourceObjectTypeIDs) != "[beta alpha]" ||
+				fmt.Sprint(query.TargetObjectTypeIDs) != "[beta alpha]" || query.Limit != 1 {
+				t.Fatalf("unexpected group relation count query: %#v", query)
+			}
+			return 1, nil
+		})
+	ota.EXPECT().ListObjectTypeSummaries(gomock.Any(), (*sql.Tx)(nil), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, query interfaces.ObjectTypesQueryParams) ([]*interfaces.ObjectType, error) {
+			if fmt.Sprint(query.OTIDS) != "[beta alpha]" || query.Limit != 2 || query.Sort != "f_name" {
+				t.Fatalf("unexpected group object page query: %#v", query)
+			}
+			return []*interfaces.ObjectType{
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "alpha", OTName: "Alpha"}},
+				{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "beta", OTName: "Beta"}},
+			}, nil
+		})
+	rta.EXPECT().ListRelationTypeSummaries(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, query interfaces.RelationTypesQueryParams) ([]*interfaces.RelationType, error) {
+			if fmt.Sprint(query.SourceObjectTypeIDs) != "[beta alpha]" ||
+				fmt.Sprint(query.TargetObjectTypeIDs) != "[beta alpha]" || query.Limit != 1 {
+				t.Fatalf("unexpected group relation page query: %#v", query)
+			}
+			return []*interfaces.RelationType{{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+					RTID: "links", RTName: "Links", SourceObjectTypeID: "alpha", TargetObjectTypeID: "beta",
+				},
+			}}, nil
+		})
+	ots.EXPECT().GetObjectTypesByIDs(gomock.Any(), (*sql.Tx)(nil), "kn-1", interfaces.MAIN_BRANCH,
+		[]string{"alpha", "beta"}).Return([]*interfaces.ObjectType{
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "alpha"},
+			ConceptGroups: []*interfaces.ConceptGroup{{CGID: "group-1", CGName: "Group 1"}}},
+		{ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "beta"},
+			ConceptGroups: []*interfaces.ConceptGroup{{CGID: "group-1", CGName: "Group 1"}}},
+	}, nil)
+	ps.EXPECT().FilterVisibleResources(gomock.Any(), interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		[]string{"kn-1/group-1"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(
+		map[string]interfaces.PermissionResourceOps{
+			"kn-1/group-1": {ResourceID: "kn-1/group-1"},
+		}, nil)
+
+	result, err := service.ListOverviewGraph(context.Background(), "kn-1", interfaces.OverviewGraphQuery{
+		Branch: interfaces.MAIN_BRANCH, ConceptGroupID: "group-1", NodeLimit: 2, EdgeLimit: 1,
+		ExpandDepth: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ObjectTypeTotal != 2 || result.RelationTypeTotal != 1 || result.ReturnedNodes != 2 ||
+		result.ReturnedEdges != 1 || result.Truncated {
+		t.Fatalf("unexpected complete concept-group overview result: %#v", result)
+	}
+	if result.NextCursor != "" {
+		t.Fatalf("complete concept-group cursor = %q", result.NextCursor)
 	}
 }
 

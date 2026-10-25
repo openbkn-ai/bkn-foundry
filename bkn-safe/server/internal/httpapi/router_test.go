@@ -600,3 +600,17 @@ func TestBKNCreationPoliciesUseTrustedLifecycleSources(t *testing.T) {
 		t.Fatalf("partial lifecycle shape: want 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestAuditPublishStatusIsReadOnlyAggregate(t *testing.T) {
+	r := New(Deps{AuditTelemetry: audit.NewPublishTelemetry()})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/internal/audit/publish-status", nil))
+	if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"status":"unknown"`)) {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/internal/audit/publish-status", nil))
+	if w.Code < 400 {
+		t.Fatal("mutation method accepted")
+	}
+}

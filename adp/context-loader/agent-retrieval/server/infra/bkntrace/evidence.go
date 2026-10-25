@@ -169,47 +169,45 @@ func EvidenceEnabled() bool {
 
 func artifactEnabled() bool { return strings.TrimSpace(os.Getenv(envArtifactEndpoint)) != "" }
 
-func RecordInteractionArtifact(
-	ctx context.Context,
-	conversationID string,
-	interactionID string,
-	artifactType InteractionArtifactType,
-	content any,
-) (string, error) {
-	if CaptureDisabled() || !artifactEnabled() {
-		return "", nil
+// DurableAnswerEnabled is an explicit rollout gate. Enable only after every
+// Core instance can commit answer artifacts with its managed-finish transaction.
+func DurableAnswerEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_DURABLE_ANSWER_ENABLED")), "true")
+}
+
+// BuildInteractionArtifact constructs the existing governed artifact envelope.
+// It performs no upload or publication and makes no durability acknowledgement.
+func BuildInteractionArtifact(ctx context.Context, conversationID, interactionID string, artifactType InteractionArtifactType, content any) (map[string]any, error) {
+	if CaptureDisabled() {
+		return nil, &CoreHTTPError{StatusCode: 409, Code: "CAPTURE_DISABLED", Message: "Evidence capture is disabled"}
 	}
+	artifact, _, err := buildInteractionArtifact(ctx, conversationID, interactionID, artifactType, content)
+	return artifact, err
+}
+
+func buildInteractionArtifact(ctx context.Context, conversationID, interactionID string, artifactType InteractionArtifactType, content any) (map[string]any, eventContext, error) {
 	ec, ok := baseEventContext(ctx)
 	if !ok {
-		return "", errors.New("current request, trace and trusted account context are required")
+		return nil, eventContext{}, errors.New("current request, trace and trusted account context are required")
 	}
 	ec.conversationID = strings.TrimSpace(conversationID)
 	ec.interactionID = strings.TrimSpace(interactionID)
 	ec.operationID = ""
 	ec.attempt = 1
 	if ec.conversationID == "" || ec.interactionID == "" {
-		return "", errors.New("conversation_id and interaction_id are required")
+		return nil, eventContext{}, errors.New("conversation_id and interaction_id are required")
 	}
-	eventType := ""
-	artifactField := ""
 	switch artifactType {
-	case InteractionArtifactQuestion:
-		eventType = "agent.interaction.started"
-		artifactField = "question_artifact_ref"
-	case InteractionArtifactResult:
-		eventType = "claim.created"
-		artifactField = "result_artifact_ref"
+	case InteractionArtifactQuestion, InteractionArtifactResult:
 	default:
-		return "", fmt.Errorf("unsupported interaction artifact type %q", artifactType)
+		return nil, eventContext{}, fmt.Errorf("unsupported interaction artifact type %q", artifactType)
 	}
 	contentHash, err := hashArtifactContent(content)
 	if err != nil {
-		return "", fmt.Errorf("canonicalize interaction artifact: %w", err)
+		return nil, eventContext{}, fmt.Errorf("canonicalize interaction artifact: %w", err)
 	}
 	idHash := sha256.Sum256([]byte(ec.interactionID + "|" + string(artifactType) + "|" + contentHash))
 	artifactID := "art_" + string(artifactType) + "_" + hex.EncodeToString(idHash[:16])
-	artifactRef := "artifact:" + artifactID
-	traceBlock := traceBlockFromEventContext(ec)
 	artifact := map[string]any{
 		"artifact_id":              artifactID,
 		"artifact_type":            string(artifactType),
@@ -228,6 +226,24 @@ func RecordInteractionArtifact(
 		"initiator":                "account:" + ec.accountID,
 		"agent_or_app":             agentOrApp(ec),
 	}
+	return artifact, ec, nil
+}
+
+func RecordInteractionArtifact(ctx context.Context, conversationID, interactionID string, artifactType InteractionArtifactType, content any) (string, error) {
+	if CaptureDisabled() || !artifactEnabled() {
+		return "", nil
+	}
+	artifact, ec, err := buildInteractionArtifact(ctx, conversationID, interactionID, artifactType, content)
+	if err != nil {
+		return "", err
+	}
+	artifactRef := "artifact:" + artifact["artifact_id"].(string)
+	contentHash := artifact["content_hash"].(string)
+	eventType, artifactField := "agent.interaction.started", "question_artifact_ref"
+	if artifactType == InteractionArtifactResult {
+		eventType, artifactField = "claim.created", "result_artifact_ref"
+	}
+	traceBlock := traceBlockFromEventContext(ec)
 	eventPayload := map[string]any{artifactField: artifactRef, "content_hash": contentHash}
 	if ec.applicationName != "" {
 		eventPayload["app_ref"] = ec.applicationName

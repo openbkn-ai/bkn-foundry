@@ -6,6 +6,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ### Features & Improvements
 
+- Add opt-in durable answer handoff to Core managed finish, avoiding synchronous answer-artifact uploads while retaining the existing Trace time budget. Business completion and pending evidence are returned separately; the default legacy path is unchanged. Enable only after all Core workers have upgraded. (#1691)
+
 - Surface actionable permission-request guidance from `run_cypher`, `search_instance`, and `get_logic_properties_values`
   - Preserve explicit row-filter and property-masking impacts across BKN Backend and Context Loader boundaries
   - Put localized Studio request links in both structured tool output and the user-facing message so MCP hosts can present them reliably

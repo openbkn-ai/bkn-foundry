@@ -14,11 +14,26 @@ const queryBudgetMessageID = "AgentObservability.Message.trace query exceeds its
 
 const archiveIncompleteCandidatesMessageID = "AgentObservability.Message.archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded"
 
+const archivePayloadBudgetMessageID = "AgentObservability.Message.trace archive exceeds its payload budget (100 Interactions, 8 MiB each, 10 MiB per batch); this batch was not started; earlier verified batches remain recorded"
+
 var agentObservabilityEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
-		"AgentObservability.Message.archive operation is already running": "archive operation is already running",
+		"AgentObservability.Message.durable answer handoff is not enabled; request operator configuration review without changing the answer or automatically retrying":       "durable answer handoff is not enabled; request operator configuration review without changing the answer or automatically retrying",
+		"AgentObservability.Message.answer artifact exceeds its durable storage byte budget; request operator review without truncating the answer or automatically retrying": "answer artifact exceeds its durable storage byte budget; request operator review without truncating the answer or automatically retrying",
+		"AgentObservability.Message.root service option parameters are invalid":                                                                                               "root service option parameters are invalid",
+		"AgentObservability.Message.root service options are unavailable":                                                                                                     "root service options are unavailable",
+		"AgentObservability.Message.root service options do not support selected filters":                                                                                     "root service options do not support selected filters",
+		"AgentObservability.Message.root service options exceed query budget; narrow the time range or filters":                                                               "root service options exceed query budget; narrow the time range or filters",
+		"AgentObservability.Message.global trace access is required to browse spans":                                                                                          "global trace access is required to browse spans",
+		"AgentObservability.Message.trace span cursor is invalid or expired":                                                                                                  "trace span cursor is invalid or expired",
+		"AgentObservability.Message.trace span browsing is unavailable":                                                                                                       "trace span browsing is unavailable",
+		"AgentObservability.Message.legacy trace span format does not support browsing":                                                                                       "legacy trace span format does not support browsing",
+		"AgentObservability.Message.trace span page exceeds query budget":                                                                                                     "trace span page exceeds query budget",
+		"AgentObservability.Message.trace span search returned incomplete results":                                                                                            "trace span search returned incomplete results",
+		"AgentObservability.Message.archive operation is already running":                                                                                                     "archive operation is already running",
 
+		archivePayloadBudgetMessageID:        "trace archive exceeds its payload budget (100 Interactions, 8 MiB each, 10 MiB per batch); this batch was not started; earlier verified batches remain recorded",
 		archiveIncompleteCandidatesMessageID: "archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded",
 
 		"AgentObservability.Message.event payload conflicts with durable ledger":      "event payload conflicts with durable ledger",
@@ -91,6 +106,8 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.content_hash does not match canonical content":                               "content_hash does not match canonical content",
 		"AgentObservability.Message.completed attempt requires output only":                                      "completed attempt requires output only",
 		"AgentObservability.Message.completed outcome requires an answer artifact":                               "completed outcome requires an answer artifact",
+		"AgentObservability.Message.answer artifact task exceeds byte limit":                                     "answer artifact task exceeds byte limit",
+		"AgentObservability.Message.invalid durable answer artifact or owner":                                    "invalid durable answer artifact or owner",
 		"AgentObservability.Message.conversation expired; create or resume another conversation":                 "conversation expired; create or resume another conversation",
 		"AgentObservability.Message.conversation is closed; create a new generation":                             "conversation is closed; create a new generation",
 		"AgentObservability.Message.conversation_id is required":                                                 "conversation_id is required",
@@ -297,5 +314,7 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.workload requests are accepted only through the internal OpenBKN gateway":          "workload requests are accepted only through the internal OpenBKN gateway",
 		"AgentObservability.Message.workload_identity and a valid endpoint_kind are required":                          "workload_identity and a valid endpoint_kind are required",
 		"AgentObservability.Message.view must be full or summary":                                                      "view must be full or summary",
+		"AgentObservability.Message.failed to read record integrity retry status":                                      "failed to read record integrity retry status",
+		"AgentObservability.Message.record integrity status does not accept query parameters":                          "record integrity status does not accept query parameters",
 	},
 }

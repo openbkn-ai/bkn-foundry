@@ -6,12 +6,32 @@
 package tracesvc
 
 import (
+	"time"
+
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/oteltracevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
+// SpanDisplayRange describes only the loaded graph window. The summary's
+// distinct-span cardinality is an estimate, never a cursor or exhaustion test.
+type SpanDisplayRange struct {
+	LoadedCount    int        `json:"loaded_count"`
+	DisplayLimit   int        `json:"display_limit"`
+	RawRecordLimit int        `json:"raw_record_limit"`
+	RawRecordCount int        `json:"raw_record_count"`
+	TotalCount     *int       `json:"total_count"`
+	TotalAccuracy  string     `json:"total_accuracy"`
+	Sort           string     `json:"sort"`
+	Truncated      bool       `json:"truncated"`
+	FirstStartAt   *time.Time `json:"first_start_at"`
+	LastStartAt    *time.Time `json:"last_start_at"`
+	BrowseAllowed  bool       `json:"browse_allowed"`
+	BrowseReason   string     `json:"browse_reason,omitempty"`
+}
+
 type TechnicalTraceDetail struct {
+	SpanDisplay    SpanDisplayRange                `json:"span_display"`
 	Summary        evidencevo.TraceSummary         `json:"summary"`
 	Graph          *oteltracevo.TraceGraphResponse `json:"graph,omitempty"`
 	Operations     []TechnicalOperation            `json:"operations"`
@@ -33,6 +53,37 @@ func BuildTechnicalTraceDetail(
 ) TechnicalTraceDetail {
 	detail := TechnicalTraceDetail{
 		Summary: summary, Graph: graph, Operations: make([]TechnicalOperation, 0, len(executions)),
+		SpanDisplay: SpanDisplayRange{DisplayLimit: DefaultTraceGraphSpanLimit, RawRecordLimit: DefaultTraceGraphSpanLimit + 1, TotalAccuracy: "unknown", Sort: "loaded_start_time_asc_span_id_asc"},
+	}
+	if graph != nil {
+		detail.SpanDisplay.LoadedCount = len(graph.Data.Nodes)
+		detail.SpanDisplay.RawRecordCount = graph.Page.RawRecordCount
+		detail.SpanDisplay.Truncated = graph.Page.Truncated
+		var first, last int64
+		for _, node := range graph.Data.Nodes {
+			if node.StartNano <= 0 {
+				continue
+			}
+			if first == 0 || node.StartNano < first {
+				first = node.StartNano
+			}
+			if node.StartNano > last {
+				last = node.StartNano
+			}
+		}
+		if first > 0 {
+			t := time.Unix(0, first).UTC()
+			detail.SpanDisplay.FirstStartAt = &t
+		}
+		if last > 0 {
+			t := time.Unix(0, last).UTC()
+			detail.SpanDisplay.LastStartAt = &t
+		}
+	}
+	if summary.SpanCountStatus == "available" && summary.SpanCount > 0 && summary.SpanCount >= detail.SpanDisplay.LoadedCount {
+		count := summary.SpanCount
+		detail.SpanDisplay.TotalCount = &count
+		detail.SpanDisplay.TotalAccuracy = "estimated"
 	}
 	if graph == nil {
 		detail.Partial = true

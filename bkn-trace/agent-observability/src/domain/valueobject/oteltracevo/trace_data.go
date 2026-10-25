@@ -20,6 +20,9 @@ type TraceGraphResponse struct {
 }
 
 type TraceGraphPage struct {
+	RawRecordCount int  `json:"-"`
+	LegacyEnvelope bool `json:"-"`
+
 	NodeCount int  `json:"node_count"`
 	EdgeCount int  `json:"edge_count"`
 	Truncated bool `json:"truncated"`

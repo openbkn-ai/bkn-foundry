@@ -28,15 +28,28 @@ const (
 	EvidenceFailed        EvidenceStatus = "failed"
 )
 
+type AnswerArtifactPersistence struct {
+	EventID     string `json:"event_id"`
+	ContentHash string `json:"content_hash"`
+	State       string `json:"state" enums:"pending,settled,dead"`
+}
+
+const (
+	AnswerArtifactPending = "pending"
+	AnswerArtifactSettled = "settled"
+	AnswerArtifactDead    = "dead"
+)
+
 type ClosureManifest struct {
-	Version              string              `json:"completion_manifest_version" binding:"required"`
-	AnswerArtifactRef    string              `json:"answer_artifact_ref,omitempty"`
-	Claims               []string            `json:"claims,omitempty"`
-	ExpectedOperations   []ExpectedOperation `json:"expected_operations,omitempty"`
-	ExpectedReceipts     []ExpectedReceipt   `json:"expected_receipts,omitempty"`
-	AssemblerDeadline    *time.Time          `json:"assembler_deadline,omitempty"`
-	CompletionReason     string              `json:"completion_reason" binding:"required"`
-	SystemPartialReasons []string            `json:"system_partial_reasons,omitempty"`
+	AnswerArtifactPersistence *AnswerArtifactPersistence `json:"answer_artifact_persistence,omitempty"`
+	Version                   string                     `json:"completion_manifest_version" binding:"required"`
+	AnswerArtifactRef         string                     `json:"answer_artifact_ref,omitempty"`
+	Claims                    []string                   `json:"claims,omitempty"`
+	ExpectedOperations        []ExpectedOperation        `json:"expected_operations,omitempty"`
+	ExpectedReceipts          []ExpectedReceipt          `json:"expected_receipts,omitempty"`
+	AssemblerDeadline         *time.Time                 `json:"assembler_deadline,omitempty"`
+	CompletionReason          string                     `json:"completion_reason" binding:"required"`
+	SystemPartialReasons      []string                   `json:"system_partial_reasons,omitempty"`
 }
 
 type ExpectedOperation struct {

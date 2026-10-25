@@ -272,6 +272,7 @@
             "time": {"type": "integer"},
             "time_bucket": {"type": "object", "additionalProperties": false, "required": ["start", "end"], "properties": {"start": {"type": "integer"}, "end": {"type": "integer"}}},
             "value": {},
+            "display_value": {"type": "string", "description": "数值结果的精确十进制文本，仅用于展示；value 保持原始 JSON 数值。"},
             "status": {"type": "string", "enum": ["ok", "no_data", "unavailable"]},
             "bucket_key": {"type": "string"},
             "available_actions": {"type": "array", "items": {"type": "string", "enum": ["filter", "drill", "participants", "context"]}}

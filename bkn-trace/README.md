@@ -198,6 +198,30 @@ solution for a single oversized record. Trace archive freezing is unchanged,
 and the broader #1724 streaming/OOM work remains open. Ordinary list/detail read
 paths are unchanged.
 
+## Historical attribution capture size
+
+The internal historical-capture encoder keeps the existing v1 JSON bytes and
+hash whenever that representation fits the caller's package budget. If base64
+expansion alone makes v1 exceed the budget, it may use the explicit
+`internal-capture-v2-gzip-bodies` JSON representation: each nonempty raw body is
+stored as a single gzip member. Source JSON bytes, identity, recorded gaps, and
+nil/empty bodies are preserved rather than re-encoded as JSON values.
+
+The production budget remains 64 MiB. Both the encoded package and the manifest
+metadata plus cumulative decompressed bodies must fit the supplied budget.
+Malformed gzip, extra members/trailing bytes, invalid hashes, ambiguous layouts,
+and unsupported versions are rejected. Package size refusals expose
+`ErrCapturePackageBudget`, distinct from missing records and malformed content.
+Historical capture encoding checks cancellation before/during compression.
+
+The decoder continues to read old v1 packages. Revision-input writes and reads
+remain strictly v1; this fallback does not change their persisted contract.
+Small captures keep their prior hashes, avoiding unnecessary regeneration.
+Consumers of v2 must use an updated decoder; a rollback reader predating v2
+cannot reopen new compressed packages. This bounds package/decompressed sizes,
+not encoder peak memory or the preceding snapshot read. It does not expand the
+EE final-view budget or authorize missing historical evidence. (#2148)
+
 ## Verification
 
 Run the BKN Trace license-header check from the Foundry repository root:

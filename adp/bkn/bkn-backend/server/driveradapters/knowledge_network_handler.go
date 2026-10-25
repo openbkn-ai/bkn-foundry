@@ -125,9 +125,9 @@ func isRFC5987AttrChar(value byte) bool {
 
 const (
 	defaultOverviewGraphNodeLimit = 60
-	maxOverviewGraphNodeLimit     = 200
+	maxOverviewGraphNodeLimit     = 500
 	defaultOverviewGraphEdgeLimit = 120
-	maxOverviewGraphEdgeLimit     = 500
+	maxOverviewGraphEdgeLimit     = 1000
 )
 
 func parseOverviewGraphLimit(ctx context.Context, value string, defaultValue, maxValue int) (int, error) {
@@ -195,10 +195,10 @@ func (r *restHandler) ListOverviewGraph(c *gin.Context, caller hydra.Visitor) {
 			WithErrorDetails("focus_object_type_id and concept_group_id are mutually exclusive"))
 		return
 	}
-	if c.Query("cursor") != "" && (focusID != "" || conceptGroupID != "") {
+	if c.Query("cursor") != "" && focusID != "" {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails("cursor cannot be combined with focus_object_type_id or concept_group_id"))
+			WithErrorDetails("cursor cannot be combined with focus_object_type_id"))
 		return
 	}
 	result, err := r.kns.ListOverviewGraph(ctx, c.Param("kn_id"), interfaces.OverviewGraphQuery{

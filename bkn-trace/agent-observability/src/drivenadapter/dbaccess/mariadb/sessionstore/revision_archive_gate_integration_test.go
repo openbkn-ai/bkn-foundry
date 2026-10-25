@@ -44,7 +44,7 @@ func (c *purgeGateConn) ExecContext(ctx context.Context, q string, args []driver
 	return c.Conn.(driver.ExecerContext).ExecContext(ctx, q, args)
 }
 func (c *purgeGateConn) QueryContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Rows, error) {
-	if strings.Contains(q, "SELECT interaction_id FROM bkn_trace_interactions") && len(args) > 0 && args[0].Value == c.c.id {
+	if strings.Contains(q, "SELECT interaction_id") && strings.Contains(q, "FROM bkn_trace_interactions") && len(args) > 0 && args[0].Value == c.c.id {
 		c.c.once.Do(func() { close(c.c.entered) })
 		select {
 		case <-c.c.resume:

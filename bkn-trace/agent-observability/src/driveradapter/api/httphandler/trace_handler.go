@@ -34,24 +34,30 @@ type TraceHandler struct {
 	traceQueryService *tracesvc.TraceQueryService
 	traceSummaries    technicalTraceSummarySource
 	operations        technicalOperationSource
+	spanCursorKey     []byte
 }
 
 func NewTraceHandlerWithTechnicalSources(
 	traceQueryService *tracesvc.TraceQueryService,
 	traceSummaries technicalTraceSummarySource,
 	operations technicalOperationSource,
+	keys ...[]byte,
 ) *TraceHandler {
-	handler := NewTraceHandler(traceQueryService)
+	handler := NewTraceHandler(traceQueryService, keys...)
 	handler.traceSummaries = traceSummaries
 	handler.operations = operations
 	return handler
 }
 
-func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService) *TraceHandler {
-	return &TraceHandler{traceQueryService: traceQueryService}
+func NewTraceHandler(traceQueryService *tracesvc.TraceQueryService, keys ...[]byte) *TraceHandler {
+	return &TraceHandler{traceQueryService: traceQueryService, spanCursorKey: newTraceSpanCursorKey(keys...)}
 }
 
 func (h *TraceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Request) bool {
+	if traceIDFromSpanPath(r.URL.Path) != "" {
+		h.GetTraceSpanPage(w, r)
+		return true
+	}
 	if traceIDFromDetailPath(r.URL.Path) != "" {
 		h.GetTechnicalTraceDetail(w, r)
 		return true
@@ -105,27 +111,47 @@ func (h *TraceHandler) GetTechnicalTraceDetail(w http.ResponseWriter, r *http.Re
 		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace summary"})
 		return
 	}
-	if len(page.Entries) == 0 && len(executions) == 0 {
+	executions = matchingTraceOperations(executions, traceID)
+	summary, summaryFound := matchingTechnicalTraceSummary(page, traceID)
+	if !summaryFound && len(executions) == 0 {
 		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})
 		return
 	}
-	summary := evidencevo.TraceSummary{TraceID: traceID, Status: "unknown"}
-	if len(page.Entries) > 0 {
-		summary = page.Entries[0]
-	} else if len(executions) > 0 {
+	if !summaryFound {
+		summary = evidencevo.TraceSummary{TraceID: traceID, Status: "unknown"}
+	}
+	if !summaryFound && len(executions) > 0 {
 		summary.RootService = executions[0].Fact.SourceModule
 		summary.RootOperation = executions[0].Fact.ToolName
 	}
-	graph, found, err := h.traceQueryService.GetTraceGraphByTraceID(r.Context(), traceID)
-	if err != nil {
-		writeJSON(w, r, http.StatusGatewayTimeout, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace spans"})
-		return
+
+	global := scope.AccessProfile != nil && evidencevo.HasGlobalTraceAccess(*scope.AccessProfile)
+	if !global {
+		summary.SpanCount = 0
+		summary.SpanCountStatus = "unavailable"
 	}
 	var graphPointer *oteltracevo.TraceGraphResponse
-	if found {
-		graphPointer = &graph
+	if global && h.traceQueryService != nil {
+		graph, found, err := h.traceQueryService.GetTraceGraphByTraceID(r.Context(), traceID)
+		if err != nil {
+			writeJSON(w, r, http.StatusGatewayTimeout, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace spans"})
+			return
+		}
+		if found {
+			graphPointer = &graph
+		}
 	}
-	writeJSON(w, r, http.StatusOK, tracesvc.BuildTechnicalTraceDetail(summary, graphPointer, executions))
+	detail := tracesvc.BuildTechnicalTraceDetail(summary, graphPointer, executions)
+	if !global {
+		for i, reason := range detail.PartialReasons {
+			if reason == "span_unavailable" {
+				detail.PartialReasons[i] = "span_scope_unavailable"
+			}
+		}
+	}
+	// Raw span browsing requires global access until the port can constrain owners.
+	h.applySpanDisplay(&detail, global, graphPointer)
+	writeJSON(w, r, http.StatusOK, detail)
 }
 
 func traceIDFromDetailPath(path string) string {
