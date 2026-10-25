@@ -327,6 +327,17 @@ def _check_nodes(run: builtin_tools.Run, ids: list[str]) -> list[str]:
     return ids
 
 
+def _refuse_value_ends(run: builtin_tools.Run, ids: list[str]) -> None:
+    """A path runs through the network between instances; a value node is not one."""
+    values = [
+        i for i in ids if str((_known_node(run, i) or {}).get("object_type_id") or "").startswith(data.VALUE_TYPE_PREFIX)
+    ]
+    if values:
+        raise ToolException(
+            f"Value nodes cannot start or end a path: {', '.join(values[:5])}. Use the instances linked to them."
+        )
+
+
 def _take_off(run: builtin_tools.Run, ids: list[str]) -> None:
     _removed(run).update(ids)
     run.state["selected"] = [i for i in _selected(run) if i not in ids]
@@ -1211,6 +1222,8 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         elif action in ("tree_root", "distance_heatmap", "path_start", "path_end"):
             if id is not None:
                 _check_nodes(run, [id])
+                if action in ("path_start", "path_end"):
+                    _refuse_value_ends(run, [id])
             _record(run, action, id=id)
         elif action == "select":
             chosen = _check_nodes(run, ids or [])
@@ -1223,6 +1236,7 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         elif action == "find_path":
             ends = [i for i in (start, end) if i]
             _check_nodes(run, ends)
+            _refuse_value_ends(run, ends)
             _record(run, "find_path", **({"start": start} if start else {}), **({"end": end} if end else {}))
             return _dump({"planned": "find_path", "note": "The Web searches the path when the plan is applied; its result is not known yet."})
         elif action == "arrange_selection":
