@@ -482,6 +482,44 @@ Context Loader 通过内部监听器携带 application principal、effective sub
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
+### Durable answer handoff (#1691)
+
+The opt-in managed `POST /interactions/{id}/finish` path accepts an
+`answer_artifact` object using the existing EvidenceArtifact contract. Core
+validates the result type, content hash, Interaction and trusted owner, then
+commits the bounded answer task to the existing SQL outbox in the same
+transaction as `execution_status=completed`. The response can therefore report
+`evidence_status=assembling` while the conversation is already free for its next
+Interaction. An outbox ACK means the answer is durably staged, not that the
+artifact has reached OpenSearch.
+
+After the artifact is durably acknowledged and its evidence state is settled,
+the existing task-delivery UPDATE clears only the answer task's SQL body while
+retaining delivery metadata. Pending/dead answers retain their bodies for
+recovery. Delivered answers rely on the artifact store, as in the existing
+synchronous path; the outbox is not a permanent second copy of the answer.
+
+The existing leased worker delivers the artifact idempotently and separately
+updates evidence state. Pending answers participate in every evidence-state
+recalculation; exhausted delivery records a partial evidence result, never a
+business failure or `abandoned`. Accepted tasks survive process restarts.
+Archive cleanup refuses an Interaction while its answer remains unresolved or
+its delivery task is not acknowledged. The existing artifact-ingest endpoint
+retains its synchronous persistence ACK contract.
+
+Both services default `BKN_TRACE_DURABLE_ANSWER_ENABLED` to false. Upgrade **all**
+Core replicas/workers first, then enable Core with `core.durableAnswerEnabled`
+(MariaDB, the OpenSearch evidence store and Core projection must be enabled), and finally enable Context
+Loader with `observability.lifecycle.durable_answer_enabled`. Old workers must
+not share a queue containing the new task type. The old reference-based finish
+remains available. Turning off new admissions does not cancel accepted work;
+drain/reconcile pending and dead-letter answer tasks before rolling Core back
+to a version that cannot handle them.
+
+If SQL/Core is unavailable, finish cannot acknowledge a durable completion;
+retry the original finish request idempotently without repeating business work.
+Ordinary list/detail reads do not upload artifacts or wait for this worker.
+
 ### Interaction 容量配额
 
 Core 在每个 Interaction 内强制限制 Operation、Claim 和已观察 evidence ref，默认分别为 `256`、`32` 和 `4096`。部署方可通过 Chart 的 `core.capacity` 修改它们；Chart 会分别注入 `BKN_TRACE_CORE_MAX_OPERATIONS_PER_INTERACTION`、`BKN_TRACE_CORE_MAX_CLAIMS_PER_INTERACTION` 和 `BKN_TRACE_CORE_MAX_EVIDENCE_REFS_PER_INTERACTION`。这些是仅服务端可控的启动配置，第三方 Agent 不能在请求中覆盖；变更后需要滚动 Core。

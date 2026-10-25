@@ -23,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
 )
@@ -50,6 +51,7 @@ var defaultCapacityLimits = CapacityLimits{
 }
 
 type Options struct {
+	DurableAnswerEnabled bool
 	// RevisionSealer is an internal, opt-in transaction hook. Nil preserves existing behavior.
 	RevisionSealer             func(isessionstore.Transaction, sessionvo.Interaction, sessionvo.AssemblyRevision) error
 	Now                        func() time.Time
@@ -68,6 +70,7 @@ type Options struct {
 }
 
 type Service struct {
+	durableAnswerEnabled       bool
 	revisionSealer             func(isessionstore.Transaction, sessionvo.Interaction, sessionvo.AssemblyRevision) error
 	store                      isessionstore.Store
 	now                        func() time.Time
@@ -125,6 +128,7 @@ func New(store isessionstore.Store, options Options) *Service {
 		evidenceCollectionState:    evidenceCollectionState,
 		captureAdmission:           options.CaptureAdmission,
 		enableHistoricalProvenance: options.EnableHistoricalProvenance,
+		durableAnswerEnabled:       options.DurableAnswerEnabled,
 		projectionGrantIssuer:      strings.TrimSpace(options.ProjectionGrantIssuer),
 		projectionGrantKeyID:       strings.TrimSpace(options.ProjectionGrantKeyID),
 		projectionGrantAudience:    strings.TrimSpace(options.ProjectionGrantAudience),
@@ -196,6 +200,7 @@ type StartInteractionCommand struct {
 }
 
 type TerminateInteractionCommand struct {
+	AnswerArtifact         json.RawMessage
 	Owner                  sessionvo.Owner
 	InteractionID          string
 	Status                 sessionvo.InteractionStatus
@@ -853,6 +858,24 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		return sessionvo.Interaction{}, domainError(CodeIdempotencyConflict, "terminal idempotency key is required")
 	}
 	policyClosure := s.CapturePolicyDisabled()
+	var answer *answerArtifactRequest
+	var answerPayload []byte
+	if len(command.AnswerArtifact) > 0 && !policyClosure {
+		var err error
+		answer, err = s.prepareAnswerArtifact(command)
+		if err != nil {
+			return sessionvo.Interaction{}, err
+		}
+		command.Manifest.AnswerArtifactRef = "artifact:" + answer.Artifact.ArtifactID
+		answerPayload, err = json.Marshal(answer)
+		if err != nil {
+			return sessionvo.Interaction{}, err
+		}
+		if len(answerPayload) > iprojectionoutbox.MaxPayloadBytes {
+			return sessionvo.Interaction{}, domainError(CodeClosureManifestInvalid, "answer artifact task exceeds byte limit")
+		}
+
+	}
 	if !policyClosure && slices.Contains(command.Manifest.SystemPartialReasons, "not_collected_due_to_policy") {
 		return sessionvo.Interaction{}, domainError(CodeClosureManifestInvalid, "policy partial reason is server-owned")
 	}
@@ -871,7 +894,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			return resourceNotDisclosed(CauseInteractionNotInConversation)
 		}
 		if interaction.IsTerminal() && command.DeriveManifest {
-			if managedTerminalReplayMatches(interaction, command) {
+			if managedTerminalReplayMatches(interaction, command) && (answer == nil || interaction.ClosureManifest.AnswerArtifactPersistence != nil && interaction.ClosureManifest.AnswerArtifactPersistence.ContentHash == answer.Artifact.ContentHash) {
 				result = interaction
 				return nil
 			}
@@ -928,6 +951,15 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			return err
 		}
 		now := tx.Now()
+		if answer != nil {
+			taskID := answerArtifactEventID(interaction.ID, command.TerminalIdempotencyKey)
+			command.Manifest.AnswerArtifactPersistence = &sessionvo.AnswerArtifactPersistence{EventID: taskID, ContentHash: answer.Artifact.ContentHash, State: sessionvo.AnswerArtifactPending}
+			if command.Manifest.AssemblerDeadline == nil {
+				deadline := tx.Now().Add(s.assemblyTimeout)
+				command.Manifest.AssemblerDeadline = &deadline
+			}
+			tx.AppendProjection(sessionvo.ProjectionMutation{EventID: taskID, AggregateType: "interaction", AggregateID: interaction.ID, AggregateVersion: interaction.RowVersion + 1, EventType: AnswerArtifactRequested, Payload: answerPayload})
+		}
 		interaction.ExecutionStatus = command.Status
 		interaction.EvidenceStatus = evidenceStatusAtTermination(tx, command.Manifest)
 		interaction.TerminalIdempotencyKey = command.TerminalIdempotencyKey
@@ -1848,6 +1880,13 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 	eventIDs := make([]string, 0)
 	artifactRefs := make([]string, 0)
 	partialReasons := cloneStrings(manifest.SystemPartialReasons)
+	if persistence := manifest.AnswerArtifactPersistence; persistence != nil && persistence.State != sessionvo.AnswerArtifactSettled {
+		reason := "answer_artifact_pending_deadline"
+		if persistence.State == sessionvo.AnswerArtifactDead {
+			reason = "answer_artifact_delivery_failed"
+		}
+		partialReasons = appendUnique(partialReasons, reason)
+	}
 	for _, expected := range manifest.ExpectedReceipts {
 		receiptIDs = append(receiptIDs, expected.ReceiptID)
 		receipt, found := tx.FindReceipt(expected.ReceiptID)
@@ -1985,10 +2024,21 @@ func validTerminalStatus(status sessionvo.InteractionStatus) bool {
 }
 
 func evidenceStatusAtTermination(tx isessionstore.Transaction, manifest sessionvo.ClosureManifest) sessionvo.EvidenceStatus {
+	if persistence := manifest.AnswerArtifactPersistence; persistence != nil {
+		if persistence.State == sessionvo.AnswerArtifactDead {
+			return sessionvo.EvidencePartial
+		}
+		if persistence.State != sessionvo.AnswerArtifactSettled {
+			if manifest.AssemblerDeadline != nil && !manifest.AssemblerDeadline.After(tx.Now()) {
+				return sessionvo.EvidencePartial
+			}
+			return sessionvo.EvidenceAssembling
+		}
+	}
 	if len(manifest.SystemPartialReasons) > 0 {
 		return sessionvo.EvidencePartial
 	}
-	if len(manifest.ExpectedReceipts) == 0 && len(manifest.Claims) == 0 {
+	if len(manifest.ExpectedReceipts) == 0 && len(manifest.Claims) == 0 && manifest.AnswerArtifactPersistence == nil {
 		return sessionvo.EvidenceNotApplicable
 	}
 	for _, expected := range manifest.ExpectedReceipts {

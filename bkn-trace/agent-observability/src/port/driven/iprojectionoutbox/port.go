@@ -41,7 +41,11 @@ func IsPermanent(err error) bool {
 	return errors.As(err, &classified) && classified.Permanent()
 }
 
+const MaxPayloadBytes = (16 << 20) + (64 << 10)
+const MaxLeaseBytes = 32 << 20
+
 type Item struct {
+	PayloadTooLarge  bool      `json:"-"`
 	ID               uint64    `json:"outbox_id"`
 	AggregateType    string    `json:"aggregate_type"`
 	AggregateID      string    `json:"aggregate_id"`

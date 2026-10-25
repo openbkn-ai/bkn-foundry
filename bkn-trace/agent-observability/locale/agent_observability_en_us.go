@@ -104,6 +104,8 @@ var agentObservabilityEnUS = i18n.I18nMessages{
 		"AgentObservability.Message.content_hash does not match canonical content":                               "content_hash does not match canonical content",
 		"AgentObservability.Message.completed attempt requires output only":                                      "completed attempt requires output only",
 		"AgentObservability.Message.completed outcome requires an answer artifact":                               "completed outcome requires an answer artifact",
+		"AgentObservability.Message.answer artifact task exceeds byte limit":                                     "answer artifact task exceeds byte limit",
+		"AgentObservability.Message.invalid durable answer artifact or owner":                                    "invalid durable answer artifact or owner",
 		"AgentObservability.Message.conversation expired; create or resume another conversation":                 "conversation expired; create or resume another conversation",
 		"AgentObservability.Message.conversation is closed; create a new generation":                             "conversation is closed; create a new generation",
 		"AgentObservability.Message.conversation_id is required":                                                 "conversation_id is required",

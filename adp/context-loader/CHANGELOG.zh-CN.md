@@ -6,6 +6,8 @@
 
 ### 功能与改进
 
+- 可选地将答案可靠交给 Core managed finish，保留原 Trace 时间预算，避免同步等待答案 artifact 上传；业务完成与证据待补齐分别返回。默认旧路径不变，须在全部 Core worker 升级后启用。 (#1691)
+
 - `run_cypher`、`search_instance` 和 `get_logic_properties_values` 返回可操作的权限申请引导
   - 在 BKN Backend 与 Context Loader 之间保留明确的行过滤和属性脱敏影响信息
   - 在结构化工具输出和用户可见消息中同时提供本地化的 Studio 申请链接，便于 MCP 宿主稳定展示

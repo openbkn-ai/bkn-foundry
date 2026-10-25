@@ -994,6 +994,10 @@ definitions:
     type: object
   httphandler.managedFinishInteractionRequest:
     properties:
+      answer_artifact:
+        description: AnswerArtifact is an opt-in EvidenceArtifact result object, at
+          most 16 MiB, durably staged with the completed Interaction.
+        type: object
       answer_artifact_ref:
         type: string
       claims:
@@ -1285,6 +1289,19 @@ definitions:
       revision:
         type: integer
     type: object
+  sessionvo.AnswerArtifactPersistence:
+    properties:
+      content_hash:
+        type: string
+      event_id:
+        type: string
+      state:
+        enum:
+        - pending
+        - settled
+        - dead
+        type: string
+    type: object
   sessionvo.AssemblyRevision:
     properties:
       artifact_manifest_hash:
@@ -1496,6 +1513,8 @@ definitions:
     type: object
   sessionvo.ClosureManifest:
     properties:
+      answer_artifact_persistence:
+        $ref: '#/definitions/sessionvo.AnswerArtifactPersistence'
       answer_artifact_ref:
         type: string
       assembler_deadline:
@@ -3018,7 +3037,11 @@ paths:
       - application/json
       description: Derives the current lease and closure manifest from authoritative
         Operations and Receipts. Ordinary Agents do not submit concurrency or closure
-        internals.
+        internals. When durable answer handoff is enabled, optional answer_artifact
+        uses the EvidenceArtifact contract (result type, at most 16 MiB) and is staged
+        in the same SQL transaction as business completion. completed with evidence_status=assembling
+        means evidence delivery is pending, not complete. Existing answer_artifact_ref
+        requests remain supported.
       parameters:
       - description: Interaction ID
         in: path

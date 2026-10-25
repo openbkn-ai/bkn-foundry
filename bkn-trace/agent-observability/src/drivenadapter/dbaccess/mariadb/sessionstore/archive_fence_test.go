@@ -60,7 +60,7 @@ func TestTraceArchiveSQLFence(t *testing.T) {
 				t.Fatal(err)
 			}
 			m.ExpectBegin()
-			rows := sqlmock.NewRows([]string{"interaction_id", "record_integrity_version", "size", "record_integrity_json"})
+			rows := sqlmock.NewRows([]string{"interaction_id", "record_integrity_version", "size", "record_integrity_json", "manifest_size", "manifest"})
 			if name != "already removed" {
 				var size any
 				if current != nil {
@@ -69,7 +69,7 @@ func TestTraceArchiveSQLFence(t *testing.T) {
 				if name == "oversized current" {
 					size = 512<<10 + 1
 				}
-				rows.AddRow("i", version, size, current)
+				rows.AddRow("i", version, size, current, nil, nil)
 			}
 			m.ExpectQuery(`SELECT interaction_id,record_integrity_version.*FOR UPDATE`).WithArgs("i", sessionvo.InteractionActive).WillReturnRows(rows)
 			if wantErr != nil {

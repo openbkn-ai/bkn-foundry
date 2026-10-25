@@ -183,6 +183,8 @@ observability:
     # agent-observability before agent-retrieval. Lifecycle is no longer served
     # on public port 8080; existing custom values must migrate to this URL.
     core_url: "http://agent-observability-internal:8081"
+    # Enable only after every Core worker supports durable answer delivery.
+    durable_answer_enabled: false
   evidence:
     # Core-backed Artifact persistence, rendered as BKN_TRACE_ARTIFACT_ENDPOINT.
     # Required: a completed bkn_finish_interaction needs an answer artifact, so

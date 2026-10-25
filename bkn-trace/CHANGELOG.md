@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Opt-in managed finish durably stages answer artifacts in the existing SQL outbox in the same transaction as business completion. Evidence delivery remains separate, with bounded worker retries, idempotent recovery and archive cleanup protection. Upgrade all Core workers before enabling the new path; no `abandoned` fallback. (#1691)
+
+- Large answer processing stays outside lifecycle row locks. Outbox delivery is bounded by payload bytes, projection rebuild skips answer bodies, and acknowledged answer tasks release their SQL body while preserving delivery metadata. Pending/dead answers remain recoverable. (#1691)
+
 - Archive capture preserves the original bounded integrity JSON, including forward-compatible fields, in the same SQL snapshot. Technical enrichment retains its exact JSON numbers, preventing unchanged verdicts from being falsely rejected after capture. Existing stale-source refusal remains. (#1724)
 
 - Trace SQL cleanup now checks the frozen source version and complete stored integrity verdict under the Interaction row lock before deleting records. Late receipts and same-version materialization results cause the whole SQL batch to roll back; frozen jobs remain available for reconciliation. Legacy packages without explicit source metadata refuse automatic SQL cleanup. Existing revision checks and ordinary list/detail queries are unchanged; no migration. (#1724)

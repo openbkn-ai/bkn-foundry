@@ -114,3 +114,9 @@ type SummaryPageStore interface {
 	ListTraceSummaryIdentities(context.Context, SummaryPageQuery) (SummaryIdentityPage, error)
 	ListConversationSummaryIdentities(context.Context, SummaryPageQuery) (SummaryIdentityPage, error)
 }
+
+// ProjectionLeaseGuard fences an asynchronous handler's SQL state transition.
+// External writes must be idempotent because an expired lease can be reclaimed.
+type ProjectionLeaseGuard interface {
+	CheckProjectionLease(uint64, string) error
+}

@@ -17,6 +17,7 @@ import (
 )
 
 type WorkerOptions struct {
+	AnswerArtifactHandler       AnswerArtifactHandler
 	RevisionInputHandler        RevisionInputHandler
 	Now                         func() time.Time
 	BatchSize                   int
@@ -36,6 +37,11 @@ const historicalProvenanceBuildRequested = "historical_provenance.build_requeste
 // both destinations.
 type HistoricalProvenanceHandler interface {
 	HandleHistoricalProvenance(context.Context, iprojectionoutbox.Item) error
+}
+
+type AnswerArtifactHandler interface {
+	HandleAnswerArtifact(context.Context, iprojectionoutbox.Item) error
+	MarkAnswerArtifactDead(context.Context, iprojectionoutbox.Item) error
 }
 
 type RevisionInputHandler interface {
@@ -114,6 +120,16 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 			} else if retryWindowExpired {
 				failureClass = "retry_window_expired"
 			}
+			if item.EventType == "artifact.persist_requested" && w.options.AnswerArtifactHandler != nil {
+				if err := w.options.AnswerArtifactHandler.MarkAnswerArtifactDead(ctx, item); err != nil {
+					if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
+						continue
+					}
+					if !iprojectionoutbox.IsPermanent(err) {
+						return result, err
+					}
+				}
+			}
 			if err := w.store.MoveToDLQ(ctx, item, failureClass); err != nil {
 				if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
 					continue
@@ -145,6 +161,15 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 }
 
 func (w *Worker) project(ctx context.Context, item iprojectionoutbox.Item) error {
+	if item.PayloadTooLarge {
+		return iprojectionoutbox.Permanent(errors.New("outbox item exceeds payload budget"))
+	}
+	if item.EventType == "artifact.persist_requested" {
+		if w.options.AnswerArtifactHandler == nil {
+			return errors.New("answer artifact handler is not assembled")
+		}
+		return w.options.AnswerArtifactHandler.HandleAnswerArtifact(ctx, item)
+	}
 	if item.EventType == "revision.input.sealed" {
 		if w.options.RevisionInputHandler == nil {
 			return errors.New("revision input handler is not assembled")

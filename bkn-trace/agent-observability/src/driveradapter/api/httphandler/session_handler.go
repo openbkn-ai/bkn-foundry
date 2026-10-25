@@ -124,12 +124,14 @@ type terminalInteractionRequest struct {
 }
 
 type managedFinishInteractionRequest struct {
-	PartialReasons    []string `json:"partial_reasons,omitempty"`
-	Outcome           string   `json:"outcome" binding:"required"`
-	IdempotencyKey    string   `json:"idempotency_key" binding:"required"`
-	AnswerArtifactRef string   `json:"answer_artifact_ref,omitempty"`
-	Claims            []string `json:"claims,omitempty"`
-	Reason            string   `json:"reason,omitempty"`
+	// AnswerArtifact is an opt-in EvidenceArtifact result object, at most 16 MiB, durably staged with the completed Interaction.
+	AnswerArtifact    json.RawMessage `json:"answer_artifact,omitempty" swaggertype:"object"`
+	PartialReasons    []string        `json:"partial_reasons,omitempty"`
+	Outcome           string          `json:"outcome" binding:"required"`
+	IdempotencyKey    string          `json:"idempotency_key" binding:"required"`
+	AnswerArtifactRef string          `json:"answer_artifact_ref,omitempty"`
+	Claims            []string        `json:"claims,omitempty"`
+	Reason            string          `json:"reason,omitempty"`
 }
 
 type expectedOperationRequest struct {
@@ -456,7 +458,11 @@ func (h *SessionHandler) handleManagedFinish(
 	interactionID string,
 ) {
 	var request managedFinishInteractionRequest
-	if err := decodeLifecycleBody(w, r, &request); err != nil {
+	limit := int64(maxLifecycleBodyBytes)
+	if h.service.DurableAnswerEnabled() {
+		limit = 17 << 20
+	}
+	if err := decodeLifecycleBodyLimit(w, r, &request, limit); err != nil {
 		writeLifecycleError(w, r, http.StatusBadRequest, "interaction_required", err.Error())
 		return
 	}
@@ -465,7 +471,7 @@ func (h *SessionHandler) handleManagedFinish(
 		writeLifecycleError(w, r, http.StatusUnprocessableEntity, "interaction_required", "unsupported finish outcome")
 		return
 	}
-	if status == sessionvo.InteractionCompleted && request.AnswerArtifactRef == "" && !h.service.CapturePolicyDisabled() {
+	if status == sessionvo.InteractionCompleted && request.AnswerArtifactRef == "" && len(request.AnswerArtifact) == 0 && !h.service.CapturePolicyDisabled() {
 		writeLifecycleError(w, r, http.StatusUnprocessableEntity, "closure_manifest_invalid", "completed outcome requires an answer artifact")
 		return
 	}
@@ -480,6 +486,7 @@ func (h *SessionHandler) handleManagedFinish(
 	}
 	value, err := h.service.TerminateInteraction(r.Context(), sessionsvc.TerminateInteractionCommand{
 		Owner: owner, InteractionID: interactionID, Status: status,
+		AnswerArtifact:         request.AnswerArtifact,
 		TerminalIdempotencyKey: request.IdempotencyKey, DeriveManifest: true,
 		Manifest: sessionvo.ClosureManifest{
 			Version: "3.0.0", AnswerArtifactRef: request.AnswerArtifactRef,
@@ -741,7 +748,11 @@ func trustedOwnerFromRequest(r *http.Request) (sessionvo.Owner, bool) {
 }
 
 func decodeLifecycleBody(w http.ResponseWriter, r *http.Request, target any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxLifecycleBodyBytes))
+	return decodeLifecycleBodyLimit(w, r, target, maxLifecycleBodyBytes)
+}
+
+func decodeLifecycleBodyLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) error {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return errors.New("request body does not match the lifecycle contract")

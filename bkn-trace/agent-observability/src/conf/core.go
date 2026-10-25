@@ -18,6 +18,7 @@ import (
 const minimumProjectionGrantTTL = 24*time.Hour + 5*time.Minute
 
 type CoreConfig struct {
+	DurableAnswerEnabled          bool
 	Store                         string
 	MariaDBDSN                    string
 	AutoMigrate                   bool
@@ -67,7 +68,14 @@ func NewCoreConfig() (CoreConfig, error) {
 		}
 		autoMigrate = parsed
 	}
+	durableAnswerEnabled, err := optionalBoolEnv("BKN_TRACE_DURABLE_ANSWER_ENABLED")
+	if err != nil {
+		return CoreConfig{}, err
+	}
 	projectionEnabled, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_ENABLED")))
+	if durableAnswerEnabled && (store != "mariadb" || !projectionEnabled || !strings.EqualFold(strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_STORE")), "opensearch")) {
+		return CoreConfig{}, fmt.Errorf("BKN_TRACE_DURABLE_ANSWER_ENABLED requires MariaDB, OpenSearch evidence store and projection workers")
+	}
 	historicalProvenanceEnabled, err := optionalBoolEnv("BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED")
 	if err != nil {
 		return CoreConfig{}, err
@@ -144,7 +152,7 @@ func NewCoreConfig() (CoreConfig, error) {
 	return CoreConfig{
 		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),
 		AutoMigrate: autoMigrate, AbandonInterval: interval, OneShotIdleTTL: oneShotIdleTTL,
-		ProjectionEnabled: projectionEnabled, HistoricalProvenanceEnabled: historicalProvenanceEnabled, ProjectionIndex: projectionIndex,
+		DurableAnswerEnabled: durableAnswerEnabled, ProjectionEnabled: projectionEnabled, HistoricalProvenanceEnabled: historicalProvenanceEnabled, ProjectionIndex: projectionIndex,
 		ProjectionInterval:            projectionInterval,
 		ProjectionBootstrapVersion:    projectionBootstrapVersion,
 		ProjectionRebuildVersion:      projectionRebuildVersion,

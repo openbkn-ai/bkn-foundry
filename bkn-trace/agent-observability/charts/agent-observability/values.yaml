@@ -216,6 +216,8 @@ core:
   # MariaDB explicitly only after its Secret and database are ready.
   store: memory
   autoMigrate: true
+  # Enable only after all Core replicas have upgraded; requires MariaDB and projection.
+  durableAnswerEnabled: false
   abandonInterval: 30s
   oneShotIdleTTL: 15m
   capacity:

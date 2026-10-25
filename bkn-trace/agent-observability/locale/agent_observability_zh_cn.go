@@ -96,6 +96,8 @@ var agentObservabilityZhCN = i18n.I18nMessages{
 		"AgentObservability.Message.content_hash does not match canonical content":                               "content_hash 与规范内容不匹配",
 		"AgentObservability.Message.completed attempt requires output only":                                      "已完成的尝试只能包含输出",
 		"AgentObservability.Message.completed outcome requires an answer artifact":                               "完成结果必须包含答案制品",
+		"AgentObservability.Message.answer artifact task exceeds byte limit":                                     "答案制品任务超过字节上限",
+		"AgentObservability.Message.invalid durable answer artifact or owner":                                    "待保存的答案制品或所属身份无效",
 		"AgentObservability.Message.conversation expired; create or resume another conversation":                 "会话已过期，请创建或恢复其他会话",
 		"AgentObservability.Message.conversation is closed; create a new generation":                             "会话已关闭，请创建新一代会话",
 		"AgentObservability.Message.conversation_id is required":                                                 "缺少 conversation_id 参数",

@@ -504,6 +504,7 @@ func NewApp() (*App, error) {
 	}
 	historicalProvenanceEnabled := coreConfig.HistoricalProvenanceEnabled
 	sessionOptions := sessionsvc.Options{
+		DurableAnswerEnabled:       coreConfig.DurableAnswerEnabled,
 		EnableHistoricalProvenance: historicalProvenanceEnabled,
 		Capacity: sessionsvc.CapacityLimits{
 			MaxOperationsPerInteraction:   coreConfig.MaxOperationsPerInteraction,
@@ -680,8 +681,14 @@ func NewApp() (*App, error) {
 			}
 			return nil, fmt.Errorf("initialize projection alias: %w", err)
 		}
+		var answerWriter iartifactstore.Writer
+		if strings.EqualFold(evidenceConfig.Store, "opensearch") {
+			answerWriter = evidenceService.AcceptedArtifactWriter()
+		}
+		answerHandler := sessionsvc.NewAnswerArtifactHandler(sessionService, answerWriter)
 		worker := projectorsvc.NewWorker(outboxStore, sink, projectorsvc.WorkerOptions{
-			Metrics: metrics, HistoricalProvenanceHandler: provenanceHandler,
+			AnswerArtifactHandler: answerHandler,
+			Metrics:               metrics, HistoricalProvenanceHandler: provenanceHandler,
 		})
 		app.projection = worker
 		app.workers.Add(1)
