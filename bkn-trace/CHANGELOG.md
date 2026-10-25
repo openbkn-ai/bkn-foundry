@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Technical Trace root-service filters gain authorized, time/filter-scoped discovery with up to 100 canonical names and explicit refinement/budget feedback. Discovery is on demand, omits terminal question/result bodies and Span statistics, and preserves manual service matching. Root-service SQL selection now excludes foreign receipt tuples when Trace IDs collide. No schema change or additional initial page/detail request is introduced. (#2140)
+
 - Technical Trace archives reject incomplete or unverifiable OpenSearch results and freeze concrete document versions for conditional cleanup. Late or changed records are retained; cleanup retries preserve the frozen range. Legacy technical packages without cleanup identities remain readable but refuse automatic cleanup. No migration or list/detail query change is added. This is a safety-only follow-up; #1724 remains open for memory and remaining archive work.
 
 - Technical Trace detail exposes its bounded display range and estimated totals, detects duplicate-record window truncation, and provides an on-demand authorized 100-Span browser without growing the graph. Raw Span reads require global Trace access; scoped users retain authorized summary/Operations. Live pagination explicitly rejects legacy envelopes and incomplete/oversized searches. No migration or first-screen request is added. (#2158)

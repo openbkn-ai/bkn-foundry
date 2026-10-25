@@ -2475,6 +2475,112 @@ const docTemplate = `{
                 }
             }
         },
+        "/trace-root-services": {
+            "get": {
+                "description": "On-demand bounded discovery using the current Trace filters and authorization. The service filter itself is excluded. No Span counts or question/result bodies are loaded. Results contain at most 100 canonical names; has_more asks the caller to narrow q. A failed or budget-limited scan never returns a partial catalog.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "traces"
+                ],
+                "summary": "Discover authorized technical Trace root service options",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Started at or after this RFC3339 timestamp",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Started at or before this RFC3339 timestamp",
+                        "name": "to",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exact Trace ID",
+                        "name": "trace_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Execution status",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exact root operation",
+                        "name": "tool",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Recorded error summary substring",
+                        "name": "error_keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Case-insensitive service-name substring; at most 256 Unicode characters",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Maximum options, 1..100; default 100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/evidencevo.TraceRootServiceOptions"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/rdto.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/traces": {
             "get": {
                 "description": "Returns stable trace summaries with reverse request links, generated from authorized trace evidence.",
@@ -3666,6 +3772,20 @@ const docTemplate = `{
                 },
                 "uri": {
                     "type": "string"
+                }
+            }
+        },
+        "evidencevo.TraceRootServiceOptions": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "has_more": {
+                    "type": "boolean"
                 }
             }
         },

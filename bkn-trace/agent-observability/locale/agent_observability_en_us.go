@@ -17,13 +17,17 @@ const archiveIncompleteCandidatesMessageID = "AgentObservability.Message.archive
 var agentObservabilityEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
-		"AgentObservability.Message.global trace access is required to browse spans":    "global trace access is required to browse spans",
-		"AgentObservability.Message.trace span cursor is invalid or expired":            "trace span cursor is invalid or expired",
-		"AgentObservability.Message.trace span browsing is unavailable":                 "trace span browsing is unavailable",
-		"AgentObservability.Message.legacy trace span format does not support browsing": "legacy trace span format does not support browsing",
-		"AgentObservability.Message.trace span page exceeds query budget":               "trace span page exceeds query budget",
-		"AgentObservability.Message.trace span search returned incomplete results":      "trace span search returned incomplete results",
-		"AgentObservability.Message.archive operation is already running":               "archive operation is already running",
+		"AgentObservability.Message.root service option parameters are invalid":                                 "root service option parameters are invalid",
+		"AgentObservability.Message.root service options are unavailable":                                       "root service options are unavailable",
+		"AgentObservability.Message.root service options do not support selected filters":                       "root service options do not support selected filters",
+		"AgentObservability.Message.root service options exceed query budget; narrow the time range or filters": "root service options exceed query budget; narrow the time range or filters",
+		"AgentObservability.Message.global trace access is required to browse spans":                            "global trace access is required to browse spans",
+		"AgentObservability.Message.trace span cursor is invalid or expired":                                    "trace span cursor is invalid or expired",
+		"AgentObservability.Message.trace span browsing is unavailable":                                         "trace span browsing is unavailable",
+		"AgentObservability.Message.legacy trace span format does not support browsing":                         "legacy trace span format does not support browsing",
+		"AgentObservability.Message.trace span page exceeds query budget":                                       "trace span page exceeds query budget",
+		"AgentObservability.Message.trace span search returned incomplete results":                              "trace span search returned incomplete results",
+		"AgentObservability.Message.archive operation is already running":                                       "archive operation is already running",
 
 		archiveIncompleteCandidatesMessageID: "archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded",
 

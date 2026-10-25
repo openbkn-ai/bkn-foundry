@@ -11,13 +11,17 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var agentObservabilityZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
-		"AgentObservability.Message.global trace access is required to browse spans":    "分页查看 Span 需要全局溯源访问权限",
-		"AgentObservability.Message.trace span cursor is invalid or expired":            "Span 分页游标无效或已过期，请重新开始查看",
-		"AgentObservability.Message.trace span browsing is unavailable":                 "Span 分页查看暂不可用",
-		"AgentObservability.Message.legacy trace span format does not support browsing": "旧版 Span 存储格式不支持分页查看",
-		"AgentObservability.Message.trace span page exceeds query budget":               "Span 分页查询超过资源限制",
-		"AgentObservability.Message.trace span search returned incomplete results":      "Span 查询返回不完整结果，请稍后重试",
-		"AgentObservability.Message.archive operation is already running":               "同类归档正在处理，请等待当前操作结束",
+		"AgentObservability.Message.root service option parameters are invalid":                                 "根服务候选查询参数无效",
+		"AgentObservability.Message.root service options are unavailable":                                       "根服务候选暂不可用，可手动输入精确服务名",
+		"AgentObservability.Message.root service options do not support selected filters":                       "根服务候选暂不支持当前筛选条件",
+		"AgentObservability.Message.root service options exceed query budget; narrow the time range or filters": "根服务候选查询超出预算，请缩小时间范围或筛选条件",
+		"AgentObservability.Message.global trace access is required to browse spans":                            "分页查看 Span 需要全局溯源访问权限",
+		"AgentObservability.Message.trace span cursor is invalid or expired":                                    "Span 分页游标无效或已过期，请重新开始查看",
+		"AgentObservability.Message.trace span browsing is unavailable":                                         "Span 分页查看暂不可用",
+		"AgentObservability.Message.legacy trace span format does not support browsing":                         "旧版 Span 存储格式不支持分页查看",
+		"AgentObservability.Message.trace span page exceeds query budget":                                       "Span 分页查询超过资源限制",
+		"AgentObservability.Message.trace span search returned incomplete results":                              "Span 查询返回不完整结果，请稍后重试",
+		"AgentObservability.Message.archive operation is already running":                                       "同类归档正在处理，请等待当前操作结束",
 
 		archiveIncompleteCandidatesMessageID: "本批归档候选结果不完整或无法验证，本批尚未开始；此前批次的进度已保留",
 
