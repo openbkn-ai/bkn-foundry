@@ -358,6 +358,24 @@ LIMIT 3
 - 证据达到 10000 行时整条查询失败（`ReadBudgetExceeded`），不会只返回一部分。这时加条件或调低 LIMIT。
 - 图值不能排序，也不能 DISTINCT；`collect` 不能和其他聚合混用；`collect` 旁边只能返回节点、关系、属性和常量，排序只能按返回的属性的别名。
 
+### 值节点：按属性归类
+
+虚拟边的 `source` 和 `target` 中，有一端可以是一个值（字符串、数字或布尔），而不是节点：
+
+```cypher
+MATCH (m:matches)-[:rel_matches_home_team]->(h:teams)
+WHERE m.tournament_id = 'WC-2022' AND m.knockout_stage = 1
+RETURN h AS source, '主场结果' AS relationType,
+       CASE WHEN m.home_team_win = 1 THEN '胜' ELSE '未胜' END AS target,
+       m.score AS score
+```
+
+- 查询本身照常执行，`target` 列就是一个字符串；在 Studio 的 Cypher 查询页和图探索里，它画成一个空心虚线的**值节点**。
+- 同一个 `relationType` 下相同的值是同一个节点，所以对象按这个值归成几类：上例中赢球的主队都连到「胜」。不同 `relationType` 下的同一个值是不同的节点。
+- 值节点不是实例：没有主键和属性，不能展开邻居，也不能按 id 查询。
+- 两端都是值、值为空或超过 200 个字符的行不画成边，结果照常出现在表格里。
+- 同一行的其他标量列（如上例的 `score`）挂在边上，和普通虚拟边一样。
+
 ---
 
 ## 🗂️ 数据集和索引上的对象类

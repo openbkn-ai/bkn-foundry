@@ -10,10 +10,11 @@ and edges a canvas_result carries. They follow the EE graph explorer's rules
 (studio/src/graph-explorer/graph-explorer.service.ts and cypher-pattern.ts) so
 an instance the server plans has the same id as one the Web already shows.
 
-A node is {id, object_type_id, identity, properties, label[, computed]}; an edge
-is {id, relation_type_id, relation_type_name, source, target[, virtual,
-evidence_count, computed]}. Labels here are only for the model to read; the Web
-renders its own.
+A node is {id, object_type_id, identity, properties, label[, computed, value]};
+a value node stands for a value a derived edge ends at: id `value|<name>|<value>`,
+type `@value:<name>`, no identity. An edge is {id, relation_type_id,
+relation_type_name, source, target[, virtual, evidence_count, computed]}. Labels
+here are only for the model to read; the Web renders its own.
 """
 
 import json
@@ -27,6 +28,10 @@ INSTANCE_IDENTITY = "_instance_identity"
 DISPLAY = "_display"
 # Evidence nodes drawn per derived edge; the rest are counted.
 EVIDENCE_LIMIT = 20
+# A value a derived edge ends at is drawn as a node of this type prefix plus the
+# edge's name; longer values are not drawn.
+VALUE_TYPE_PREFIX = "@value:"
+VALUE_TEXT_LIMIT = 200
 # Properties kept on a node in the result, and characters per value.
 PROPERTY_LIMIT = 40
 VALUE_LIMIT = 500
@@ -74,6 +79,37 @@ def text(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False)
     except (TypeError, ValueError):
         return str(value)
+
+
+def value_text(value: Any) -> str:
+    """A value end's text, as the Web writes it: a whole float as an integer,
+    since JSON reads 2.0 back as 2 there."""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return text(value)
+
+
+def is_value_end(value: Any) -> bool:
+    """Whether a derived edge's end is a value rather than a node: a string,
+    number or boolean whose text is neither empty nor past VALUE_TEXT_LIMIT."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return False
+    if not isinstance(value, (str, int, float, bool)):
+        return False
+    return 0 < len(value_text(value)) <= VALUE_TEXT_LIMIT
+
+
+def value_node(name: str, value: Any) -> dict:
+    """The node a value end is drawn as: one per edge name and value."""
+    label = value_text(value)
+    return {
+        "id": f"value|{name}|{label}",
+        "object_type_id": f"{VALUE_TYPE_PREFIX}{name}",
+        "identity": {},
+        "properties": {},
+        "label": label,
+        "value": True,
+    }
 
 
 def _non_empty(value: Any) -> bool:
@@ -455,10 +491,22 @@ def graph_from_cypher(
         else:
             add_relation(item)
 
+    def add_end(value: Any, name: str) -> str:
+        if _is_object(value):
+            return add_node(value)
+        node = value_node(name, value)
+        nodes.setdefault(node["id"], node)
+        return node["id"]
+
+    def derived_row(source: Any, target: Any, name: Any) -> bool:
+        """`source` / `relationType` / `target`, one end possibly a value."""
+        ends = [_is_object(source) or is_value_end(source), _is_object(target) or is_value_end(target)]
+        return all(ends) and (_is_object(source) or _is_object(target)) and isinstance(name, str) and bool(name.strip())
+
     derived: dict[str, dict] = {}
     for row in entries:
         source, target, name = row.get("source"), row.get("target"), row.get("relationType")
-        if not (_is_object(source) and _is_object(target) and isinstance(name, str) and name.strip()):
+        if not derived_row(source, target, name):
             found = []
             _walk(row, found.append)
             holds_graph = holds_graph or bool(found)
@@ -478,7 +526,7 @@ def graph_from_cypher(
             continue
         holds_graph = True
         name = name.strip()
-        source_id, target_id = add_node(source), add_node(target)
+        source_id, target_id = add_end(source, name), add_end(target, name)
         edge_id = f"virtual|{source_id}|{name}|{target_id}"
         entry = derived.setdefault(
             edge_id,

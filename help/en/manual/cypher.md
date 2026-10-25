@@ -358,6 +358,24 @@ LIMIT 3
 - Evidence reaching 10000 rows fails the whole query (`ReadBudgetExceeded`) rather than returning part of it; add conditions or lower LIMIT.
 - Graph values cannot be sorted or made DISTINCT; `collect` cannot be mixed with other aggregates; beside `collect` only nodes, relationships, properties and constants may be returned, and sorting is by the alias of a returned property.
 
+### Value nodes: grouping by a property
+
+One of a derived relationship's `source` and `target` may be a value (a string, number or boolean) rather than a node:
+
+```cypher
+MATCH (m:matches)-[:rel_matches_home_team]->(h:teams)
+WHERE m.tournament_id = 'WC-2022' AND m.knockout_stage = 1
+RETURN h AS source, 'HOME_RESULT' AS relationType,
+       CASE WHEN m.home_team_win = 1 THEN 'won' ELSE 'not won' END AS target,
+       m.score AS score
+```
+
+- The query runs as any other and the `target` column is a string; Studio's Cypher query page and the graph explorer draw it as a hollow dashed **value node**.
+- The same value under the same `relationType` is one node, so objects group by that value: above, every home team that won joins `won`. The same value under another `relationType` is another node.
+- A value node is not an instance: it has no key or properties, cannot be expanded and cannot be looked up by id.
+- A row whose two ends are both values, or whose value is empty or longer than 200 characters, draws no edge and stays in the table.
+- The row's other scalar columns, such as `score` above, hang on the edge, as on any derived relationship.
+
 ---
 
 ## 🗂️ Object types on datasets and indexes

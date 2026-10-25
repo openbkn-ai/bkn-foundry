@@ -69,7 +69,8 @@ _Id = Field(min_length=1, max_length=512)
 class CanvasNode(BaseModel):
     model_config = {"extra": "ignore"}
     id: str = _Id
-    object_type_id: str = Field(min_length=1, max_length=128)
+    # An object type id, or `@value:<name>` for a value a derived edge ends at.
+    object_type_id: str = Field(min_length=1, max_length=512)
     label: Optional[str] = Field(default=None, max_length=500)
     # Primary key values; needed to name an instance with a composite key.
     identity: Optional[dict[str, Any]] = None
@@ -917,7 +918,11 @@ def _tools(run: builtin_tools.Run) -> list[StructuredTool]:
         `limited` says when it cut the rows. Nodes beyond the canvas limit are not
         planned. Return node and relationship variables (RETURN p,
         r, m), or a derived edge `RETURN a AS source, 'USES' AS relationType, b AS
-        target, count(x) AS n`. Scalar columns returned beside one node variable are
+        target, count(x) AS n`. One end of a derived edge may be a value (`t AS
+        source, 'REGION' AS relationType, t.region AS target`): it is planned as a
+        value node, one per name and value, so instances group by value; a value
+        node is not an instance and cannot be shown, expanded or queried by id.
+        Scalar columns returned beside one node variable are
         attached to that node as computed values (RETURN t, count(g) AS goals); with
         several node variables, name a column `<variable>_<name>` (p_orders) to attach
         it to that variable. Columns no node claims, and results without nodes, come
