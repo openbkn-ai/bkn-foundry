@@ -400,7 +400,9 @@ paths:
         Returns a lightweight, authorization-filtered graph projection for large knowledge networks.
         Counts are calculated after authorization. The initial page and cursor pages are bounded;
         focus_object_type_id expands one node by one or two hops. A cursor is rejected when the
-        network snapshot has changed. Returned edges never reference a node omitted by authorization.
+        network snapshot has changed. When concept_group_id is provided, counts and truncation are
+        scoped to the visible object and relation types in that group. Returned edges never reference
+        a node omitted by authorization or by the bounded node selection.
       parameters:
         - name: kn_id
           in: path
@@ -566,9 +568,11 @@ components:
         object_type_total:
           type: integer
           minimum: 0
+          description: Total visible object types in the network, or in the selected concept group when concept_group_id is provided.
         relation_type_total:
           type: integer
           minimum: 0
+          description: Total visible relations in the network, or relations whose endpoints are both in the selected concept group when concept_group_id is provided.
         returned_nodes:
           type: integer
           minimum: 0
@@ -577,6 +581,7 @@ components:
           minimum: 0
         truncated:
           type: boolean
+          description: Whether the selected projection contains more nodes or edges than this response returned.
         snapshot:
           type: string
         next_cursor:
