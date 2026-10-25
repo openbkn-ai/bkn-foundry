@@ -35,6 +35,11 @@ func TestViewExpiresWithoutRefreshingFromBusinessPath(t *testing.T) {
 	if v.Known() || v.AllowsNewRecords() {
 		t.Fatal("stale view must fail closed")
 	}
+	v = New(2, "disabled")
+	v.updated = time.Now().Add(-31 * time.Second)
+	if v.Known() || v.AllowsNewRecords() || !v.Disabled() {
+		t.Fatal("stale disabled snapshot remains disabled but must be treated as unknown before new staging")
+	}
 }
 
 func TestViewSameRevisionUpdateRefreshesVerifiedState(t *testing.T) {

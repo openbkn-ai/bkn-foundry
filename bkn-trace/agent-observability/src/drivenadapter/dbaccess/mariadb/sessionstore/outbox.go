@@ -29,7 +29,7 @@ func (s *Store) Lease(ctx context.Context, limit int, lockDuration time.Duration
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx, `
 		SELECT outbox_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_id,
-			payload, attempts, created_at
+			OCTET_LENGTH(payload), attempts, created_at
 		FROM bkn_trace_projection_outbox
 		WHERE status IN ('pending', 'processing') AND available_at<=UTC_TIMESTAMP(6)
 		  AND (locked_until IS NULL OR locked_until<=UTC_TIMESTAMP(6))
@@ -38,15 +38,33 @@ func (s *Store) Lease(ctx context.Context, limit int, lockDuration time.Duration
 		return nil, err
 	}
 	var result []iprojectionoutbox.Item
+	var payloadIDs []any
+	remainingBytes := iprojectionoutbox.MaxLeaseBytes
 	for rows.Next() {
 		var item iprojectionoutbox.Item
+		var payloadBytes int64
 		if err := rows.Scan(
 			&item.ID, &item.AggregateType, &item.AggregateID, &item.AggregateVersion,
 			&item.EventType,
-			&item.EventID, &item.Payload, &item.Attempts, &item.CreatedAt,
+			&item.EventID, &payloadBytes, &item.Attempts, &item.CreatedAt,
 		); err != nil {
 			_ = rows.Close()
 			return nil, err
+		}
+		if payloadBytes > iprojectionoutbox.MaxPayloadBytes {
+			// Lease the metadata so the worker can quarantine the row without
+			// loading an unbounded body. The SQL source retains its payload.
+			item.PayloadTooLarge = true
+		} else {
+			if payloadBytes > int64(remainingBytes) {
+				break
+			}
+			remainingBytes -= int(payloadBytes)
+			if item.EventType == "artifact.persist_requested" {
+				item.PayloadDeferred = true
+			} else {
+				payloadIDs = append(payloadIDs, item.ID)
+			}
 		}
 		result = append(result, item)
 	}
@@ -55,6 +73,37 @@ func (s *Store) Lease(ctx context.Context, limit int, lockDuration time.Duration
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	if len(payloadIDs) > 0 {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(payloadIDs)), ",")
+		bodies, err := tx.QueryContext(ctx, "SELECT outbox_id, payload FROM bkn_trace_projection_outbox WHERE outbox_id IN ("+placeholders+")", payloadIDs...)
+		if err != nil {
+			return nil, err
+		}
+		byID := make(map[uint64]int, len(result))
+		for index := range result {
+			byID[result[index].ID] = index
+		}
+		loaded := 0
+		for bodies.Next() {
+			var id uint64
+			var payload []byte
+			if err := bodies.Scan(&id, &payload); err != nil {
+				_ = bodies.Close()
+				return nil, err
+			}
+			result[byID[id]].Payload = payload
+			loaded++
+		}
+		if err := bodies.Close(); err != nil {
+			return nil, err
+		}
+		if err := bodies.Err(); err != nil {
+			return nil, err
+		}
+		if loaded != len(payloadIDs) {
+			return nil, errors.New("leased outbox payload disappeared")
+		}
 	}
 	for index := range result {
 		result[index].LeaseToken = newOutboxLeaseToken()
@@ -78,11 +127,34 @@ func (s *Store) Lease(ctx context.Context, limit int, lockDuration time.Duration
 	return result, nil
 }
 
+// LoadPayload keeps large answer reads outside the short claim transaction.
+// The SQL predicate fences stale workers without taking a row lock during I/O.
+func (s *Store) LoadPayload(ctx context.Context, item iprojectionoutbox.Item) ([]byte, error) {
+	var payload []byte
+	var size int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT CASE WHEN OCTET_LENGTH(payload)<=? THEN payload ELSE NULL END, OCTET_LENGTH(payload)
+		FROM bkn_trace_projection_outbox
+		WHERE outbox_id=? AND status='processing' AND lease_token=?
+		  AND locked_until>UTC_TIMESTAMP(6)`, iprojectionoutbox.MaxPayloadBytes, item.ID, item.LeaseToken).Scan(&payload, &size)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, iprojectionoutbox.ErrLeaseLost
+	}
+	if err != nil {
+		return nil, err
+	}
+	if size > iprojectionoutbox.MaxPayloadBytes {
+		return nil, iprojectionoutbox.Permanent(errors.New("outbox item exceeds payload budget"))
+	}
+	return payload, nil
+}
+
 func (s *Store) MarkDelivered(ctx context.Context, item iprojectionoutbox.Item) error {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE bkn_trace_projection_outbox
 		SET status='delivered', delivered_at=UTC_TIMESTAMP(6), locked_until=NULL,
-			lease_token=NULL, last_error_code=NULL
+			lease_token=NULL, last_error_code=NULL,
+			payload=CASE WHEN event_type='artifact.persist_requested' THEN '{}' ELSE payload END
 		WHERE outbox_id=? AND status='processing' AND lease_token=?`,
 		item.ID, item.LeaseToken)
 	if err != nil {
@@ -128,7 +200,8 @@ func (s *Store) MoveToDLQ(ctx context.Context, item iprojectionoutbox.Item, erro
 		INSERT INTO bkn_trace_dlq (
 			source_kind, source_id, failure_class, attempts,
 			last_error_code, payload, failed_at
-		) VALUES ('projection', ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))
+		) SELECT 'projection', event_id, ?, attempts, ?, payload, UTC_TIMESTAMP(6)
+		FROM bkn_trace_projection_outbox WHERE outbox_id=?
 		ON DUPLICATE KEY UPDATE
 			failure_class=VALUES(failure_class),
 			attempts=VALUES(attempts),
@@ -137,7 +210,7 @@ func (s *Store) MoveToDLQ(ctx context.Context, item iprojectionoutbox.Item, erro
 			failed_at=VALUES(failed_at),
 			replayed_at=NULL,
 			replayed_by=NULL`,
-		item.EventID, errorCode, item.Attempts+1, errorCode, item.Payload,
+		errorCode, errorCode, item.ID,
 	); err != nil {
 		return err
 	}

@@ -33,7 +33,7 @@ func (s *Store) ScanProjectionHistory(
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT outbox_id, aggregate_type, aggregate_id, aggregate_version, event_type, event_id,
-			payload, attempts, created_at
+			CASE WHEN event_type='artifact.persist_requested' THEN NULL ELSE payload END, attempts, created_at
 		FROM bkn_trace_projection_outbox
 		WHERE outbox_id>? AND outbox_id<=?
 		ORDER BY outbox_id LIMIT ?`, after, through, limit)

@@ -14,6 +14,102 @@ Typical ingress prefix:
 
 **Related modules:** platform-wide logging and metrics pipelines (feed-ingester integration).
 
+## Managed Interaction completion limits
+
+With durable answer handoff enabled, Core commits the answer task and business
+completion in one SQL transaction. `execution_status=completed` releases the
+conversation for its next turn; `evidence_status=assembling` means evidence is
+still being delivered. A lost response is not a completion acknowledgement:
+retry the same finish idempotently, without repeating business tools.
+
+### Scheduling and time budgets
+
+Each Core instance uses one shared projection-worker slot. It claims one ready
+task when that slot is free, consumes ready work continuously, and polls again
+after the configured interval only when empty or after a worker error. The
+default 1s interval is not a one-task-per-second throughput limit. A slow answer
+still delays later evidence tasks in that slot; a deferred retry does not keep
+the slot occupied. Other projection handlers retain their existing behavior.
+Answer claims commit metadata and the lease without reading the body. The body
+is then read under the same answer-task deadline as delivery, fenced by the
+current lease. A body-read timeout follows normal counted retries and backoff,
+allowing later ready tasks to proceed; exhausted attempts use the existing DLQ.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `core.projection.leaseIOTimeout` | `2s` | SQL metadata/lease claim I/O deadline |
+| `core.projection.answerTaskIOTimeout` | `10s` | One answer attempt, including SQL body loading, sequential storage calls and SQL settlement |
+| `core.projection.answerAckIOTimeout` | `2s` | Independent result/retry/dead-letter recording deadline |
+| `core.projection.lockDuration` | `30s` | Outbox task lease; separate from the business Interaction lease |
+
+All durations must be positive. Claim + answer + ACK + a 1s safety margin must
+be strictly shorter than the lease; invalid startup configuration is rejected.
+The default total is 15s inside a 30s lease. Increasing the lease alone does not
+increase throughput and delays recovery after a crash. Timeouts bound I/O;
+they are not end-to-end latency guarantees under CPU, database or storage load.
+These answer deadlines do not redefine the runtime limits of enterprise or
+revision-input handlers sharing the worker.
+If another registered handler needs longer execution, its requirements must
+also fit the shared lease; this change does not add lease renewal. An explicitly
+configured startup projection rebuild completes before normal worker consumption.
+The business Interaction's existing lease and renewal rules are unchanged;
+background evidence delivery does not keep a completed Interaction active.
+
+### Size and admission
+
+- A complete encoded answer artifact is at most **16 MiB**, including metadata;
+  this is not a 16 MiB plain-text allowance. Its owner/task wrapper also consumes
+  space. The task limit is 16 MiB + 64 KiB.
+  The managed-finish request envelope is bounded to 17 MiB, including when new
+  admissions are off so an already committed full-body request can replay.
+  Other lifecycle endpoints retain their existing 2 MiB body limit.
+- Core checks the encoded task and protocol allowance against
+  `max_allowed_packet` on the inserting SQL transaction. A database configured
+  for 16 MiB cannot be assumed to accept a full 16 MiB artifact plus its wrapper.
+  An insufficient budget returns a non-retryable storage-limit error and rolls
+  back finish. The operator must resolve the limit before retrying the original
+  finish; the product does not silently truncate answers.
+  The current SQL check reserves 4 KiB for protocol/fixed values and separately
+  counts task metadata; the effective limit is the smallest applicable budget.
+- The durable handoff requires the default prepared-statement path; leave
+  `interpolateParams` absent or false in the Core DSN. Enabling durable handoff
+  with client-side SQL interpolation is rejected because SQL escaping changes
+  the wire-size budget.
+- New capture requires a known, permitting server policy. A disabled policy
+  uses the existing server-owned closure reason without staging new content;
+  an unknown policy is not treated as disabled. Already committed replay and
+  accepted background work do not become new capture admissions.
+  A disabled handoff gate rejects new answer tasks with an operator configuration
+  action; rewriting the answer or automatically retrying cannot enable the feature.
+
+### Assembly, backlog and recovery
+
+The default assembly deadline is **5 minutes**. A periodic check can record
+partial evidence after it expires; this is not a promise of complete evidence
+within five minutes. Late delivery can create a subsequent evidence revision
+without changing the completed business outcome.
+
+Automatic retries default to 10 attempts and a 24h retry-age boundary. Neither
+is a retention limit: dead-letter content is retained, and lease reclamations
+are not the same as counted delivery failures. Accepted tasks survive process
+restarts. Successful delivery releases the outbox answer body only after the
+artifact is acknowledged and SQL evidence state is settled; pending/dead/DLQ
+content remains recoverable. Delivered answers rely on the artifact store.
+
+There is no global pending-byte quota or certified fixed QPS. Budget unfinished
+body storage as arrival rate × average encoded task size × outage duration;
+dead-letter copying can approximately double that body storage. Leave room for
+existing data, undo, indexes and configured logs. For example, 1 MiB tasks at
+one per second accumulate about 3.52 GiB of bodies in one hour without delivery.
+Capacity and waiting time also depend on other work sharing SQL and the worker.
+Shared CPU, SQL and storage pressure can also affect list/detail response times.
+Per-task/claim byte limits do not bound process-wide memory or request concurrency.
+
+Both durable-answer gates default off. Upgrade all Core workers before enabling
+Core and then Context Loader. Before reverting Core binaries, reconcile accepted
+work and retain compatible workers and database packet settings. Never repeat
+completed business work to fill an evidence gap.
+
 ## 💻 CLI
 
 `openbkn agent trace` takes a **conversation id** (from chat output or `openbkn agent sessions <agent_key>`).

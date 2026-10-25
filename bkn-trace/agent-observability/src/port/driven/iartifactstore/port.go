@@ -12,6 +12,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 )
 
+var ErrInvalidAcceptedArtifact = errors.New("accepted artifact trace ownership or role is invalid")
+
+type Writer interface {
+	StoreArtifact(context.Context, evidencevo.EvidenceArtifact) (bool, error)
+}
+
 var ErrArtifactIDConflict = errors.New("BKN_TRACE_ARTIFACT_ID_CONFLICT")
 
 const MaxArtifactQueryLimit = 1000

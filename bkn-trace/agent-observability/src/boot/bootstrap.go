@@ -504,6 +504,7 @@ func NewApp() (*App, error) {
 	}
 	historicalProvenanceEnabled := coreConfig.HistoricalProvenanceEnabled
 	sessionOptions := sessionsvc.Options{
+		DurableAnswerEnabled:       coreConfig.DurableAnswerEnabled,
 		EnableHistoricalProvenance: historicalProvenanceEnabled,
 		Capacity: sessionsvc.CapacityLimits{
 			MaxOperationsPerInteraction:   coreConfig.MaxOperationsPerInteraction,
@@ -680,8 +681,19 @@ func NewApp() (*App, error) {
 			}
 			return nil, fmt.Errorf("initialize projection alias: %w", err)
 		}
+		var answerWriter iartifactstore.Writer
+		if strings.EqualFold(evidenceConfig.Store, "opensearch") {
+			answerWriter = evidenceService.AcceptedArtifactWriter()
+		}
+		answerHandler := sessionsvc.NewAnswerArtifactHandler(sessionService, answerWriter)
 		worker := projectorsvc.NewWorker(outboxStore, sink, projectorsvc.WorkerOptions{
-			Metrics: metrics, HistoricalProvenanceHandler: provenanceHandler,
+			BatchSize:             1,
+			LockDuration:          coreConfig.ProjectionLockDuration,
+			LeaseIOTimeout:        coreConfig.ProjectionLeaseIOTimeout,
+			AnswerTaskIOTimeout:   coreConfig.AnswerTaskIOTimeout,
+			AnswerAckIOTimeout:    coreConfig.AnswerAckIOTimeout,
+			AnswerArtifactHandler: answerHandler,
+			Metrics:               metrics, HistoricalProvenanceHandler: provenanceHandler,
 		})
 		app.projection = worker
 		app.workers.Add(1)
@@ -830,17 +842,28 @@ func runProjectionWorker(
 	worker *projectorsvc.Worker,
 	metrics icoremetrics.Recorder,
 ) {
-	timer := time.NewTicker(interval)
-	defer timer.Stop()
+	if interval <= 0 {
+		interval = time.Second
+	}
 	for {
+		if ctx.Err() != nil {
+			return
+		}
+		// Drain claims one production item only when the slot is ready, and keeps
+		// consuming ready work without imposing the idle polling interval per item.
+		if _, err := worker.Drain(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			metrics.Increment(icoremetrics.ProjectionErrorsTotal)
+			log.Printf("BKN Trace projection worker failed: %v", err)
+		}
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
 		case <-timer.C:
-			if _, err := worker.RunOnce(ctx); err != nil {
-				metrics.Increment(icoremetrics.ProjectionErrorsTotal)
-				log.Printf("BKN Trace projection worker failed: %v", err)
-			}
 		}
 	}
 }

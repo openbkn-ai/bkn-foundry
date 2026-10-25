@@ -216,6 +216,8 @@ core:
   # MariaDB explicitly only after its Secret and database are ready.
   store: memory
   autoMigrate: true
+  # Enable only after all Core replicas have upgraded; requires MariaDB and projection.
+  durableAnswerEnabled: false
   abandonInterval: 30s
   oneShotIdleTTL: 15m
   capacity:
@@ -237,6 +239,11 @@ core:
   capturePolicySnapshotTTL: 15m
   projection:
     enabled: false
+    # Answer task budgets must fit strictly inside the outbox lease, with 1s margin.
+    lockDuration: 30s
+    leaseIOTimeout: 2s
+    answerTaskIOTimeout: 10s
+    answerAckIOTimeout: 2s
     # Single runtime authority for signed historical-provenance projection.
     # The EE image must register its handler when this is enabled.
     historicalProvenance:

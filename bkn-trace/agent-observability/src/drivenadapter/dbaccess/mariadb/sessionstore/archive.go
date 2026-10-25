@@ -133,6 +133,9 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 		if err != nil {
 			return fmt.Errorf("read archive interaction: %w", err)
 		}
+		if err := verifyAnswerArtifactArchive(tx.(*transaction).tx, ctx, interaction.ClosureManifest, false); err != nil {
+			return err
+		}
 		conversation, ok = tx.PeekConversation(interaction.ConversationID)
 		if !ok {
 			return fmt.Errorf("conversation %s not found", interaction.ConversationID)
@@ -243,10 +246,12 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 		var version uint64
 		var integritySize sql.NullInt64
 		var integrity sql.NullString
+		var manifestSize sql.NullInt64
+		var liveManifest sql.NullString
 		// A locking read sees the current version even after earlier candidates
 		// opened a transaction snapshot. Bound metadata before it crosses SQL.
-		query := fmt.Sprintf(`SELECT interaction_id,record_integrity_version,OCTET_LENGTH(record_integrity_json),CASE WHEN OCTET_LENGTH(record_integrity_json)<=%d THEN record_integrity_json ELSE NULL END FROM bkn_trace_interactions WHERE interaction_id=? AND execution_status<>? FOR UPDATE`, isessionstore.MaxStoredRecordIntegrityBytes)
-		err := tx.QueryRowContext(ctx, query, candidate.ID, sessionvo.InteractionActive).Scan(&id, &version, &integritySize, &integrity)
+		query := fmt.Sprintf(`SELECT interaction_id,record_integrity_version,OCTET_LENGTH(record_integrity_json),CASE WHEN OCTET_LENGTH(record_integrity_json)<=%d THEN record_integrity_json ELSE NULL END,OCTET_LENGTH(closure_manifest),CASE WHEN OCTET_LENGTH(closure_manifest)<=%d THEN closure_manifest ELSE NULL END FROM bkn_trace_interactions WHERE interaction_id=? AND execution_status<>? FOR UPDATE`, isessionstore.MaxStoredRecordIntegrityBytes, archivesvc.MaxTraceArchiveCandidateBytes)
+		err := tx.QueryRowContext(ctx, query, candidate.ID, sessionvo.InteractionActive).Scan(&id, &version, &integritySize, &integrity, &manifestSize, &liveManifest)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
@@ -256,9 +261,32 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 		if integritySize.Valid && (integritySize.Int64 <= 0 || integritySize.Int64 > isessionstore.MaxStoredRecordIntegrityBytes || !integrity.Valid) {
 			return errArchiveSQLUnverifiable
 		}
+		if manifestSize.Valid && (manifestSize.Int64 > archivesvc.MaxTraceArchiveCandidateBytes || !liveManifest.Valid) {
+			return errArchiveSQLUnverifiable
+		}
+		if liveManifest.Valid {
+			var currentManifest sessionvo.ClosureManifest
+			if json.Unmarshal([]byte(liveManifest.String), &currentManifest) != nil {
+				return errArchiveSQLUnverifiable
+			}
+			if err := verifyAnswerArtifactArchive(tx, ctx, &currentManifest, true); err != nil {
+				return err
+			}
+		}
 		var currentIntegrity []byte
 		if integrity.Valid {
 			currentIntegrity = []byte(integrity.String)
+		}
+		var frozen struct {
+			Interaction struct {
+				Manifest *sessionvo.ClosureManifest `json:"closure_manifest"`
+			} `json:"interaction"`
+		}
+		if json.Unmarshal(candidate.Payload, &frozen) != nil {
+			return errArchiveSQLUnverifiable
+		}
+		if err := verifyAnswerArtifactArchive(tx, ctx, frozen.Interaction.Manifest, true); err != nil {
+			return err
 		}
 		if err := verifyFrozenSQLSource(candidate, version, currentIntegrity); err != nil {
 			return err
@@ -287,4 +315,30 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 		}
 	}
 	return tx.Commit()
+}
+
+func verifyAnswerArtifactArchive(tx *sql.Tx, ctx context.Context, manifest *sessionvo.ClosureManifest, locking bool) error {
+	if manifest == nil || manifest.AnswerArtifactPersistence == nil {
+		return nil
+	}
+	persistence := manifest.AnswerArtifactPersistence
+	blocked := fmt.Errorf("%w: answer artifact persistence is not settled", archivesvc.ErrIncompleteCandidates)
+	if persistence.State != sessionvo.AnswerArtifactSettled {
+		return blocked
+	}
+	query := `SELECT status FROM bkn_trace_projection_outbox WHERE event_id=? AND event_type='artifact.persist_requested'`
+	if locking {
+		query += " FOR UPDATE"
+	}
+	var status string
+	if err := tx.QueryRowContext(ctx, query, persistence.EventID).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return blocked
+		}
+		return err
+	}
+	if status != "delivered" {
+		return blocked
+	}
+	return nil
 }

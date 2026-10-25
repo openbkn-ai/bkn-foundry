@@ -1586,6 +1586,11 @@ func (t *transaction) AppendProjection(mutation sessionvo.ProjectionMutation) {
 	if t.err != nil {
 		return
 	}
+	if mutation.EventType == "artifact.persist_requested" {
+		if t.err = t.checkAnswerPacketBudget(mutation); t.err != nil {
+			return
+		}
+	}
 	_, t.err = t.tx.ExecContext(t.ctx, `
 		INSERT INTO bkn_trace_projection_outbox (
 			aggregate_type, aggregate_id, aggregate_version, event_type, event_id, payload,
