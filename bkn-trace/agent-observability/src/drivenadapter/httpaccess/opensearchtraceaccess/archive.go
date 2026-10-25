@@ -64,7 +64,7 @@ func (store *ArchiveStore) Enrich(ctx context.Context, candidates []archivesvc.C
 	}
 	ids := sortedKeys(all)
 	query, _ := json.Marshal(map[string]any{"size": 10000, "track_total_hits": true, "seq_no_primary_term": true, "stored_fields": []string{"_routing"}, "_source": true, "query": map[string]any{"terms": map[string]any{"traceId.keyword": ids}}})
-	body, err := store.client.SearchBounded(ctx, store.index, query, archivesvc.MaxTraceArchiveBatchBytes)
+	body, err := store.client.SearchBounded(ctx, store.index, query, archivesvc.MaxTraceArchiveResponseBytes)
 	if err != nil {
 		if errors.Is(err, opensearch.ErrSearchResponseBudget) {
 			return nil, fmt.Errorf("%w: %w", archivesvc.ErrArchivePayloadTooLarge, err)

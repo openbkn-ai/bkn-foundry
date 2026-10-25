@@ -104,7 +104,7 @@ func TestTraceArchiveBatchStopsAtJSONLByteBudgetAndClosesIDRows(t *testing.T) {
 	m.ExpectQuery(`SELECT COUNT\(\*\)`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1000))
 	m.ExpectQuery(`SELECT interaction_id .*LIMIT \?`).WithArgs(sessionvo.InteractionActive, now, 100).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow("a").AddRow("b").AddRow("c")).RowsWillBeClosed()
 	for _, id := range []string{"a", "b", "c"} {
-		expectBoundedArchivePackage(m, id, 6<<20, now)
+		expectBoundedArchivePackage(m, id, 4<<20, now)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

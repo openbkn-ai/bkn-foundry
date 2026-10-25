@@ -75,7 +75,7 @@ jobs:
       - name: Bounded Trace archive integration test
         env:
           BKN_TRACE_ARCHIVE_BATCH_TEST_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/?parseTime=true&multiStatements=true
-        run: go test -tags=integration ./src/drivenadapter/dbaccess/mariadb/sessionstore -run '^TestTraceArchiveBoundedMariaDB$' -count=1 -v
+        run: go test -tags=integration ./src/drivenadapter/dbaccess/mariadb/sessionstore -run '^TestTraceArchive(BoundedMariaDB|CheckpointFitsMariaDBPacket)$' -count=1 -v
       - name: Authorized root-service discovery integration test
         env:
           BKN_ROOT_SERVICES_TEST_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/bkn_trace_ci?parseTime=true&multiStatements=true

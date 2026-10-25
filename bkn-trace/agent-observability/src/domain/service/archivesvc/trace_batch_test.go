@@ -8,6 +8,7 @@ package archivesvc
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -29,10 +30,17 @@ func TestTraceArchiveProcessesOnlyVerifiedBatches(t *testing.T) {
 
 func TestTraceArchiveEnrichmentByteBoundary(t *testing.T) {
 	s := newBatchSourceFixture(t, 3, 3)
-	technical := &sizedTechnicalArchive{payload: bytes.Repeat([]byte{'x'}, MaxTraceArchiveCandidateBytes-1)}
+	technical := &sizedTechnicalArchive{payload: bytes.Repeat([]byte{'x'}, MaxTraceArchiveBatchBytes/2-1)}
 	batch, err := (TraceBundleSource{Core: s, Technical: technical}).FreezeBatch(context.Background(), observabilityvo.ArchiveKindTrace, observabilityvo.ArchiveRange{})
 	if err != nil || len(batch.Candidates) != 2 || batch.EligibleCount != 3 || !batch.Batched || technical.largestCall != 1 {
 		t.Fatalf("unbounded enrichment: count=%d batch=%+v err=%v", len(batch.Candidates), batch, err)
+	}
+	encoded, err := json.Marshal(batch.Candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) >= (16<<20)-(64<<10) {
+		t.Fatalf("batch recovery encoding leaves no default database packet headroom: %d", len(encoded))
 	}
 }
 

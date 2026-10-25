@@ -84,13 +84,13 @@ func (b *archiveBudgetBody) Read(p []byte) (int, error) {
 }
 func (*archiveBudgetBody) Close() error { return nil }
 func TestArchiveEnrichBoundsSearchResponse(t *testing.T) {
-	body := &archiveBudgetBody{remaining: archivesvc.MaxTraceArchiveBatchBytes + 100}
+	body := &archiveBudgetBody{remaining: archivesvc.MaxTraceArchiveResponseBytes + 100}
 	client := opensearch.NewWithHTTPClient("http://test", opensearch.AuthConfig{}, &http.Client{Transport: archiveSafetyTransport(func(*http.Request) (*http.Response, error) { return &http.Response{StatusCode: 200, Body: body}, nil })})
 	got, err := NewArchiveStore(client, "traces").Enrich(context.Background(), frozenArchiveCandidate())
 	if got != nil || !errors.Is(err, archivesvc.ErrArchivePayloadTooLarge) {
 		t.Fatalf("got %d candidates, error %v", len(got), err)
 	}
-	if body.read > archivesvc.MaxTraceArchiveBatchBytes+1 {
+	if body.read > archivesvc.MaxTraceArchiveResponseBytes+1 {
 		t.Fatalf("read %d bytes", body.read)
 	}
 }

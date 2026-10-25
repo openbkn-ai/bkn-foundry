@@ -65,7 +65,7 @@ func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.Han
 			case errors.Is(err, archivesvc.ErrArchiveBusy):
 				writeObservabilityError(w, r, http.StatusConflict, "archive_busy", "archive operation is already running")
 			case errors.Is(err, archivesvc.ErrArchivePayloadTooLarge):
-				writeObservabilityError(w, r, http.StatusConflict, "archive_incomplete_candidates", "trace archive exceeds its payload budget (100 Interactions, 8 MiB each, 16 MiB per batch); this batch was not started; earlier verified batches remain recorded")
+				writeObservabilityError(w, r, http.StatusConflict, "archive_incomplete_candidates", "trace archive exceeds its payload budget (100 Interactions, 8 MiB each, 10 MiB per batch); this batch was not started; earlier verified batches remain recorded")
 			case errors.Is(err, archivesvc.ErrIncompleteCandidates):
 				writeObservabilityError(w, r, http.StatusConflict, "archive_incomplete_candidates", "archive candidate batch is incomplete or unverifiable; this batch was not started; earlier batches remain recorded")
 			case errors.Is(err, archivesvc.ErrNothingToArchive):

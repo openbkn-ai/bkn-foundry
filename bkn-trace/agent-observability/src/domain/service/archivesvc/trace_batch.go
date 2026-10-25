@@ -16,7 +16,9 @@ import (
 const (
 	MaxTraceArchiveCandidates     = 100
 	MaxTraceArchiveCandidateBytes = 8 << 20
-	MaxTraceArchiveBatchBytes     = 16 << 20
+	// Leave room for base64-encoded checkpoint data under MariaDB's default 16 MiB packet.
+	MaxTraceArchiveBatchBytes    = 10 << 20
+	MaxTraceArchiveResponseBytes = 16 << 20
 )
 
 var ErrArchivePayloadTooLarge = errors.New("trace archive payload exceeds its byte budget")

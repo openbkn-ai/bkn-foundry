@@ -63,7 +63,9 @@ One archive request automatically processes successive Trace batches using the
 existing batch jobs and progress fields. Each selection reads at most 100
 Interaction IDs, closes that result, and packages one Interaction at a time.
 The complete JSON payload of one Interaction is limited to 8 MiB; a batch's
-JSONL data, including newlines, is limited to 16 MiB. Byte-limited batches leave
+JSONL data, including newlines, is limited to 10 MiB. The batch leaves headroom for the
+base64-encoded recovery payload and metadata stored in one SQL statement under
+MariaDB's default 16 MiB `max_allowed_packet`; no server setting is changed. Byte-limited batches leave
 the next Interaction for the following selection after verified cleanup.
 
 Before reading SQL payload collections, an archive-only repeatable-read snapshot
