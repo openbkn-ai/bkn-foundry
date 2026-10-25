@@ -266,3 +266,43 @@ func TestSummaryTerminalContentUsesBoundedBatches(t *testing.T) {
 		}
 	}
 }
+
+func TestFacetProjectionOmitsAllTerminalContent(t *testing.T) {
+	a := normalizedOpenSearchArtifact(t)
+	a.ArtifactType = evidencevo.ArtifactTypeResult
+	doc, err := toArtifactDocument(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc.ContentJSON = ""
+	queries := 0
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodPut {
+			return jsonResponse(`{"acknowledged":true}`), nil
+		}
+		if !strings.HasSuffix(r.URL.Path, "/_search") {
+			t.Fatalf("metadata-only facet unexpectedly requested %s", r.URL.Path)
+		}
+		queries++
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), `"excludes":["content_json"]`) {
+			t.Fatal("facet must exclude content_json")
+		}
+		raw, err := json.Marshal(map[string]any{"hits": map[string]any{"hits": []any{map[string]any{"_source": doc, "sort": []any{a.ObservedAt, a.ArtifactID}}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return jsonResponse(string(raw)), nil
+	})
+	page, err := New(client, "facet-test").LoadArtifactProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: a.AccountID, AccountType: a.AccountType}, Limit: 20, SummaryOnly: true, OmitSummaryTerminalContent: true})
+	if err != nil || len(page.Artifacts) != 1 || queries != 1 {
+		t.Fatalf("page=%+v queries=%d err=%v", page, queries, err)
+	}
+	got := page.Artifacts[0]
+	if got.Content != nil || got.ArtifactType != a.ArtifactType || got.ContentHash != a.ContentHash || got.ArtifactID != a.ArtifactID || got.TraceID != a.TraceID {
+		t.Fatal("terminal identity/status metadata not preserved")
+	}
+}

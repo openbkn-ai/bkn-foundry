@@ -56,8 +56,9 @@ func (s *Store) listToolTraceIdentityPage(ctx context.Context, query isessionsto
 	where = append(where, predicate)
 	args = append(args, rootArgs...)
 	if query.Service != "" {
-		where = append(where, traceSummaryServicePredicate())
-		args = append(args, query.Service)
+		predicate, serviceArgs := traceSummaryScopedServicePredicate(query)
+		where = append(where, predicate)
+		args = append(args, serviceArgs...)
 	}
 	// Reuse the existing total-before-cursor statement and empty-page fallback.
 	return s.listServiceTraceIdentityPage(ctx, query, strings.Join(where, " AND "), args)
@@ -92,12 +93,14 @@ func (t *transaction) ListCanonicalTraceRootsByTraceIDs(traceIDs []string, scope
 	// Select the original name and trim it once in Go; SQL need only detect
 	// whether it contains a non-whitespace character.
 	rootWhere := strings.Join(where, " AND ")
+	sourceSQL, sourceArgs := rootServiceSQL("selected.trace_id", isessionstore.SummaryPageQuery{Scope: scope})
 	statement := `SELECT selected.trace_id,
- (SELECT f.source_module FROM bkn_trace_operation_call_facts f WHERE f.trace_id=selected.trace_id AND f.source_module<>'' ORDER BY f.started_at,f.operation_id,f.attempt_no LIMIT 1),
+ ` + sourceSQL + `,
  COALESCE((SELECT rt.tool_name FROM bkn_trace_receipts rt WHERE ` + rootWhere + ` AND ` + nonBlankRootToolSQL("rt") + ` ORDER BY rt.issued_at,rt.receipt_id LIMIT 1),
  (SELECT '' FROM bkn_trace_receipts rt WHERE ` + rootWhere + ` LIMIT 1))
  FROM (` + strings.Join(selects, " UNION ALL ") + `) selected`
 	args = append(args, args...)
+	args = append(sourceArgs, args...)
 	args = append(args, idArgs...)
 	rows, err := t.tx.QueryContext(t.ctx, statement, args...)
 	if err != nil {

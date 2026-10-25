@@ -86,6 +86,39 @@ incomplete-cleanup state. This patch does not change SQL cleanup concurrency,
 reverify object contents on retry, stream Trace candidates, or bound full-package
 memory; these remain follow-ups under #1724. List/detail query paths are unchanged.
 
+## Root-service discovery (#2140)
+
+`GET /api/agent-observability/v1/trace-root-services` returns bounded canonical
+root-service names under the current trusted Trace identity. It accepts `from`,
+`to`, `trace_id`, `status`, `tool`, `error_keyword`, a case-insensitive substring
+`q` (at most 256 Unicode characters), and `limit` (1–100, default 100). The current
+`service` filter is excluded from discovering its own alternatives; list paging
+and unsupported filters are rejected rather than silently dropped.
+
+The response is `{ "entries": ["service-name"], "has_more": false }`. Names keep
+their original spelling for the existing service filter. `has_more` means more
+names match than fit in this selection; refine `q` to find them. This is not a
+paginated global service inventory and does not provide approximate Trace counts.
+
+Simple owner/global queries use the same hot SQL receipt membership as ordinary
+Trace lists. Status/error, shared-scope and exact-Trace queries reuse the bounded
+authorized receipt scanner. Root-service SQL metadata and service filtering now
+select source facts through authorized receipt tuples, so an earlier foreign
+fact with the same Trace ID cannot replace an owner's root service. Global
+reader semantics are preserved. No schema or new materialized model is added.
+
+Discovery has a 3-second query budget and returns no partial names on a failed,
+truncated or timed-out scan. The production artifact reader skips question/result
+content and all Span statistics; error filtering still reads the necessary
+recorded failure metadata. Query cost can grow with the matching receipt set, so
+budget errors ask users to narrow the time range/filters. Existing list/detail
+content loading remains unchanged by default.
+
+Studio loads candidates only after explicit opening, preserves manual exact
+input, and cancels stale requests when other draft filters change. Selection
+changes the draft; the existing Query action submits it. Older backends or failed
+discovery retain manual input. Initial page/detail request counts do not change.
+
 ## Development
 
 ### 系统审计配置

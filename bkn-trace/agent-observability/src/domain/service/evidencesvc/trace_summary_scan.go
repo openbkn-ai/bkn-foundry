@@ -67,49 +67,16 @@ func (s *Service) listScannedTraceSummaryPage(ctx context.Context, o evidencevo.
 	if status == "" && strings.TrimSpace(o.ErrorKeyword) != "" {
 		status = "error"
 	}
-	err = source.ScanTraceSummaryProjection(ctx, iprojectionsource.Query{Scope: o.Scope, From: o.From, To: o.To, Status: status, Tool: o.Tool, SummaryOnly: true}, func(result iprojectionsource.Result) error {
-		if err := ctx.Err(); err != nil {
-			return err
+	err = s.scanMatchedTraceSummaries(ctx, source, o, iprojectionsource.Query{Scope: o.Scope, From: o.From, To: o.To, Status: status, Tool: o.Tool, SummaryOnly: true}, func(trace evidencevo.TraceSummary) error {
+		total++
+		if hasCursor && !traceScanAfter(trace, cursor) {
+			return nil
 		}
-		if result.Truncated {
-			return iprojectionsource.ErrSummaryScanBudgetExceeded
-		}
-		_, traces := evidencevo.BuildExecutionSummaries(result.Traces, result.Artifacts)
-		if len(traces) > 0 && s.sessionStore != nil && result.CanonicalScopes == nil {
-			return ErrSummaryProjectionLag
-		}
-		if s.sessionStore != nil {
-			for _, trace := range traces {
-				if len(result.CanonicalScopes[trace.TraceID]) == 0 {
-					return ErrSummaryProjectionLag
-				}
-			}
-		}
-		// Scanner membership and roots share one complete authorized receipt PIT.
-		// Archive purge can remove SQL receipts without removing this projection;
-		// SQL identity-page race guards therefore do not apply to this path.
-		if err := s.applyTraceMetadata(ctx, traces, o.Scope, false, result.CanonicalScopes); err != nil {
-			return err
-		}
-		for _, trace := range traces {
-			root, found := result.CanonicalRoots[trace.TraceID]
-			if !found {
-				return ErrSummaryProjectionLag
-			}
-			trace.RootOperation = root
-			if !matchesTraceFilters(trace, o) {
-				continue
-			}
-			total++
-			if hasCursor && !traceScanAfter(trace, cursor) {
-				continue
-			}
-			if selected.Len() < retain {
-				heap.Push(selected, trace)
-			} else if traceScanBefore(trace, (*selected)[0]) {
-				heap.Pop(selected)
-				heap.Push(selected, trace)
-			}
+		if selected.Len() < retain {
+			heap.Push(selected, trace)
+		} else if traceScanBefore(trace, (*selected)[0]) {
+			heap.Pop(selected)
+			heap.Push(selected, trace)
 		}
 		return nil
 	})
@@ -147,6 +114,50 @@ func (s *Service) listScannedTraceSummaryPage(ctx context.Context, o evidencevo.
 		s.enrichTraceStats(ctx, empty.Entries)
 	}
 	return empty, true, nil
+}
+
+// scanMatchedTraceSummaries shares canonical authorization and filtering without
+// imposing list pagination, retaining results, or reading Span statistics.
+func (s *Service) scanMatchedTraceSummaries(ctx context.Context, source iprojectionsource.TraceSummaryScanSourcePort, o evidencevo.SummaryQueryOptions, query iprojectionsource.Query, visit func(evidencevo.TraceSummary) error) error {
+	return source.ScanTraceSummaryProjection(ctx, query, func(result iprojectionsource.Result) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if result.Truncated {
+			return iprojectionsource.ErrSummaryScanBudgetExceeded
+		}
+		_, traces := evidencevo.BuildExecutionSummaries(result.Traces, result.Artifacts)
+		if len(traces) > 0 && s.sessionStore != nil && result.CanonicalScopes == nil {
+			return ErrSummaryProjectionLag
+		}
+		if s.sessionStore != nil {
+			for _, trace := range traces {
+				if len(result.CanonicalScopes[trace.TraceID]) == 0 {
+					return ErrSummaryProjectionLag
+				}
+			}
+		}
+		// Scanner membership and roots share one complete authorized receipt PIT.
+		// Archive purge can remove SQL receipts without removing this projection;
+		// SQL identity-page race guards therefore do not apply to this path.
+		if err := s.applyTraceMetadata(ctx, traces, o.Scope, false, result.CanonicalScopes); err != nil {
+			return err
+		}
+		for _, trace := range traces {
+			root, found := result.CanonicalRoots[trace.TraceID]
+			if !found {
+				return ErrSummaryProjectionLag
+			}
+			trace.RootOperation = root
+			if !matchesTraceFilters(trace, o) {
+				continue
+			}
+			if err := visit(trace); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func traceScanBinding(o evidencevo.SummaryQueryOptions) string {

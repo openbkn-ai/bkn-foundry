@@ -625,6 +625,15 @@ definitions:
       uri:
         type: string
     type: object
+  evidencevo.TraceRootServiceOptions:
+    properties:
+      entries:
+        items:
+          type: string
+        type: array
+      has_more:
+        type: boolean
+    type: object
   evidencevo.TraceSummary:
     properties:
       agent_name:
@@ -3766,6 +3775,81 @@ paths:
       summary: Reconcile a Trace/Evidence configuration operation
       tags:
       - trace-evidence
+  /trace-root-services:
+    get:
+      description: On-demand bounded discovery using the current Trace filters and
+        authorization. The service filter itself is excluded. No Span counts or question/result
+        bodies are loaded. Results contain at most 100 canonical names; has_more asks
+        the caller to narrow q. A failed or budget-limited scan never returns a partial
+        catalog.
+      parameters:
+      - description: Started at or after this RFC3339 timestamp
+        in: query
+        name: from
+        type: string
+      - description: Started at or before this RFC3339 timestamp
+        in: query
+        name: to
+        type: string
+      - description: Exact Trace ID
+        in: query
+        name: trace_id
+        type: string
+      - description: Execution status
+        in: query
+        name: status
+        type: string
+      - description: Exact root operation
+        in: query
+        name: tool
+        type: string
+      - description: Recorded error summary substring
+        in: query
+        name: error_keyword
+        type: string
+      - description: Case-insensitive service-name substring; at most 256 Unicode
+          characters
+        in: query
+        name: q
+        type: string
+      - description: Maximum options, 1..100; default 100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/evidencevo.TraceRootServiceOptions'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "405":
+          description: Method Not Allowed
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/rdto.ErrorResponse'
+      summary: Discover authorized technical Trace root service options
+      tags:
+      - traces
   /traces:
     get:
       description: Returns stable trace summaries with reverse request links, generated

@@ -964,6 +964,7 @@ func newAppWithArchiveAndCapture(
 	mux.HandleFunc(APIBasePath+"/traces/by-request/business-graph", http.NotFound)
 	mux.HandleFunc(APIBasePath+"/traces/by-request/snapshot-preview", http.NotFound)
 	mux.HandleFunc(APIBasePath+"/traces", readAuth(evidenceHandler.ListTraceExecutions))
+	mux.HandleFunc(APIBasePath+"/trace-root-services", readAuth(evidenceHandler.ListTraceRootServices))
 	typedTraceDetail := readAuth(func(w http.ResponseWriter, r *http.Request) {
 		if traceHandler.GetTraceSubresource(w, r) {
 			return

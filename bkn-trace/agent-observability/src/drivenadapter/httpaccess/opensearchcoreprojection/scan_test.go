@@ -462,3 +462,37 @@ func TestScanCleanupTimeoutPreservesPrimaryFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestScanFacetFlagAndTraceSelectors(t *testing.T) {
+	for _, omit := range []bool{false, true} {
+		r := scanReceipt("r", "selected", "i", "owner", "root", "2026-10-23T00:00:00Z")
+		other := scanReceipt("other", "other", "i", "owner", "root", "2026-10-23T00:00:00Z")
+		f := &scanFixture{seeds: []receiptDocument{r}, receipts: []receiptDocument{r, other}}
+		s := scanSource(t, f)
+		a := &scanArtifactSource{}
+		s.artifacts = a
+		count := 0
+		err := s.ScanTraceSummaryProjection(context.Background(), iprojectionsource.Query{Scope: evidencevo.QueryScope{AccountID: "owner", AccountType: "user"}, TraceID: "selected", TraceIDs: []string{"selected"}, SummaryOnly: true, OmitSummaryTerminalContent: omit}, func(result iprojectionsource.Result) error {
+			for _, trace := range result.Traces {
+				if trace.TraceID != "selected" {
+					t.Fatal("trace selector expanded to sibling")
+				}
+				count++
+			}
+			return nil
+		})
+		if err != nil || count != 1 || len(a.artifactProjectionQueries) != 1 {
+			t.Fatalf("err=%v count=%d queries=%d", err, count, len(a.artifactProjectionQueries))
+		}
+		if a.artifactProjectionQueries[0].OmitSummaryTerminalContent != omit {
+			t.Fatal("facet flag lost")
+		}
+		raw, err := json.Marshal(f.seedBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(raw), `"trace_id.keyword":{"value":"selected"}`) || !strings.Contains(string(raw), `"trace_id.keyword":["selected"]`) {
+			t.Fatalf("seed omitted selectors: %s", raw)
+		}
+	}
+}
