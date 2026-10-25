@@ -509,6 +509,18 @@ def test_expand_says_which_ids_it_left_out():
     assert out["not_found"] == ["teams-404"]
 
 
+def test_expand_skips_value_nodes_and_never_looks_up_their_type():
+    value = {"id": "value|主场结果|胜", "object_type_id": "@value:主场结果"}
+    run, tools, calls = _expand_run({9: 3}, nodes=[{"id": "teams-9", "object_type_id": "teams"}, value])
+    out = _invoke(tools["expand_neighbours"], ids=["value|主场结果|胜", "teams-9"], direction="in")
+    assert out["skipped_seeds"] == ["value|主场结果|胜"]
+    assert out["planned_added"] == {"nodes": 3, "edges": 3}
+    asked = [i for c in calls if c[0] == "get_object_types" for i in c[1].get("ids") or []]
+    assert not any(i.startswith("@value:") for i in asked)
+    with pytest.raises(ToolException, match="cannot be expanded"):
+        asyncio.run(tools["expand_neighbours"].coroutine(ids=["value|主场结果|胜"], direction="in"))
+
+
 def test_the_canvas_reads_aggregates_this_run_planned():
     run, tools, _ = _expand_run({9: 50}, threshold=20)
     _invoke(tools["expand_neighbours"], ids=["teams-9"], direction="in")
