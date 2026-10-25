@@ -112,6 +112,40 @@ func TestRegisterPublicIncludesOAuthProxyGovernanceRoutes(t *testing.T) {
 	}
 }
 
+func TestOntologyManagerAliasesAreNotRegistered(t *testing.T) {
+	restoreGin := setGinMode()
+	defer restoreGin()
+	engine := gin.New()
+	(&restHandler{appSetting: &common.AppSetting{}}).RegisterPublic(engine)
+
+	routes := map[string]bool{}
+	for _, route := range engine.Routes() {
+		if strings.HasPrefix(route.Path, "/api/ontology-manager/") {
+			t.Fatalf("retired ontology-manager alias remains registered: %s %s", route.Method, route.Path)
+		}
+		routes[route.Method+" "+route.Path] = true
+	}
+	for _, want := range []string{
+		"POST /api/bkn-backend/v1/knowledge-networks",
+		"POST /api/bkn-backend/in/v1/knowledge-networks",
+	} {
+		if !routes[want] {
+			t.Fatalf("canonical route %q is not registered", want)
+		}
+	}
+
+	for _, path := range []string{
+		"/api/ontology-manager/v1/knowledge-networks",
+		"/api/ontology-manager/in/v1/knowledge-networks",
+	} {
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("retired alias %q returned %d, want 404", path, response.Code)
+		}
+	}
+}
+
 func TestObjectMetricRoutesRequireExplicitExtensionRegistration(t *testing.T) {
 	restoreGin := setGinMode()
 	defer restoreGin()

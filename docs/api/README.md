@@ -46,14 +46,11 @@ These directories remain in the repository but are not published on the site. Th
 
 > Every new module directory must be registered in either `MODULES` or `MODULES_UNPUBLISHED`. The `make api-docs-*` targets fail otherwise, preventing documentation from being added silently without appearing on the site.
 
-### ⚠️ `/api/ontology-manager/v1` is a legacy alias
+### bkn-backend API prefixes
 
-bkn-backend registers both `/api/bkn-backend/v1` and `/api/ontology-manager/v1` as equivalent external routes. The same applies to their internal `in/v1` surfaces. The latter was retained for compatibility during the monorepo refactor in #111 and is still exposed by the Helm Ingress.
+bkn-backend serves public APIs under `/api/bkn-backend/v1` and internal APIs under `/api/bkn-backend/in/v1`.
 
-**The canonical prefix is `/api/bkn-backend/v1`**, and this documentation uses only that prefix:
-
-- all in-repository service calls use `/api/bkn-backend/v1`; none use the alias;
-- the alias remains available to avoid breaking existing clients and can be removed after external usage has been ruled out.
+The legacy `/api/ontology-manager/v1` and `/api/ontology-manager/in/v1` aliases have been retired. Clients using either alias must migrate to its `/api/bkn-backend` equivalent.
 
 ## 🔗 Shared definitions
 

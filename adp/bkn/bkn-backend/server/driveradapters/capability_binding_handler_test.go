@@ -25,17 +25,17 @@ import (
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
 
-// Test_CapabilityRoutes_AllPrefixes locks the four-prefix registration (#1257). Registering only
-// /api/bkn-backend/* would hand a 404 to every client still on the ontology-manager alias.
-func Test_CapabilityRoutes_AllPrefixes(t *testing.T) {
-	Convey("能力绑定端点在四个前缀上都注册", t, func() {
+// Test_CapabilityRoutes_CanonicalPrefixes locks capability registration to the supported
+// public and internal bkn-backend surfaces.
+func Test_CapabilityRoutes_CanonicalPrefixes(t *testing.T) {
+	Convey("能力绑定端点在两个规范前缀上注册", t, func() {
 		restore := setGinMode()
 		defer restore()
 
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 		handler := &restHandler{appSetting: &common.AppSetting{}}
-		// RegisterPublic wires both the public and the internal groups.
+		// RegisterPublic wires both the public and internal groups.
 		handler.RegisterPublic(engine)
 
 		registered := map[string]bool{}
@@ -44,8 +44,7 @@ func Test_CapabilityRoutes_AllPrefixes(t *testing.T) {
 		}
 
 		for _, prefix := range []string{
-			"/api/bkn-backend/v1", "/api/ontology-manager/v1",
-			"/api/bkn-backend/in/v1", "/api/ontology-manager/in/v1",
+			"/api/bkn-backend/v1", "/api/bkn-backend/in/v1",
 		} {
 			So(registered[http.MethodPost+" "+prefix+"/knowledge-networks/:kn_id/capabilities"], ShouldBeTrue)
 			So(registered[http.MethodGet+" "+prefix+"/knowledge-networks/:kn_id/capabilities"], ShouldBeTrue)
@@ -83,7 +82,7 @@ func Test_CapabilityRoutes_Audited(t *testing.T) {
 			method, path, action string
 		}{
 			{http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/:kn_id/capabilities", "attach"},
-			{http.MethodDelete, "/api/ontology-manager/v1/knowledge-networks/:kn_id/capabilities/:binding_ids", "detach"},
+			{http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/:kn_id/capabilities/:binding_ids", "detach"},
 		} {
 			rule, ok := registeredOperationAudit(tc.method, tc.path, "")
 			So(ok, ShouldBeTrue)

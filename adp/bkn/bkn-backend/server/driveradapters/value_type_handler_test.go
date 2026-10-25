@@ -37,8 +37,7 @@ func TestValueTypeRoutes(t *testing.T) {
 		registered[route.Method+" "+route.Path] = true
 	}
 	for _, prefix := range []string{
-		"/api/bkn-backend/v1", "/api/ontology-manager/v1",
-		"/api/bkn-backend/in/v1", "/api/ontology-manager/in/v1",
+		"/api/bkn-backend/v1", "/api/bkn-backend/in/v1",
 	} {
 		for _, route := range []string{
 			"POST /knowledge-networks/:kn_id/value-types",
