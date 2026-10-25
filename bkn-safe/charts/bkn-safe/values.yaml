@@ -222,6 +222,11 @@ config:
     # is what made every Helm upgrade invalidate an activated license
     # (openbkn-ai/bkn-foundry#508).
     instanceId: ""
+# Extra container environment, as a list of Kubernetes EnvVar entries. Empty by default. Edition
+# overlays use it for settings core does not know, e.g. the enterprise build's
+# SAFE_KB_API_BASE_URL (knowledge base resources served by kb-api).
+extraEnv: []
+
 resources:
   requests:
     cpu: 200m

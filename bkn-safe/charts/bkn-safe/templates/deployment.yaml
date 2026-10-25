@@ -46,8 +46,9 @@ spec:
                 name: {{ .Release.Name }}-instance-id
             - secretRef:
                 name: {{ .Release.Name }}-secrets
-          {{- if .Values.auditPublisher.enabled }}
+          {{- if or .Values.auditPublisher.enabled .Values.extraEnv }}
           env:
+          {{- if .Values.auditPublisher.enabled }}
             - name: BKN_AUDIT_ENVIRONMENT
               value: {{ required "auditPublisher.environment is required" .Values.auditPublisher.environment | quote }}
             - name: BKN_AUDIT_KAFKA_BROKERS
@@ -64,6 +65,10 @@ spec:
                 secretKeyRef:
                   name: {{ required "auditPublisher.credentialsSecretName is required" .Values.auditPublisher.credentialsSecretName | quote }}
                   key: {{ required "auditPublisher.passwordSecretKey is required" .Values.auditPublisher.passwordSecretKey | quote }}
+          {{- end }}
+          {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- end }}
           ports:
             - name: http
