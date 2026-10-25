@@ -354,6 +354,22 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 			Limit: query.NodeLimit, Sort: "f_name", Direction: interfaces.ASC_DIRECTION,
 		},
 	}
+	var conceptGroupObjectIDs []string
+	if query.ConceptGroupID != "" {
+		conceptGroupObjectIDs, err = kns.cga.GetConceptIDsByConceptGroupIDs(ctx, knID, query.Branch,
+			[]string{query.ConceptGroupID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
+		if err != nil {
+			return nil, err
+		}
+		conceptGroupObjectIDs = intersectOverviewIDs(conceptGroupObjectIDs, visibleObjectIDs,
+			objectScope.Unrestricted)
+		if len(conceptGroupObjectIDs) == 0 {
+			snapshot := overviewSnapshot(knID, query.Branch, kn.UpdateTime, 0, 0)
+			return &interfaces.OverviewGraph{Nodes: []interfaces.OverviewGraphNode{},
+				Edges: []interfaces.OverviewGraphEdge{}, Snapshot: snapshot}, nil
+		}
+		objectQuery.OTIDS = conceptGroupObjectIDs
+	}
 	objectTotal, err := kns.ota.GetObjectTypesTotal(ctx, objectQuery)
 	if err != nil {
 		return nil, err
@@ -365,6 +381,10 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 
 	relationQuery := kns.overviewRelationQuery(knID, query, visibleRelationIDs, visibleObjectIDs,
 		objectScope.Unrestricted)
+	if query.ConceptGroupID != "" {
+		relationQuery.SourceObjectTypeIDs = conceptGroupObjectIDs
+		relationQuery.TargetObjectTypeIDs = conceptGroupObjectIDs
+	}
 	relationTotal, err := kns.rta.GetRelationTypesTotal(ctx, relationQuery)
 	if err != nil {
 		return nil, err
@@ -387,21 +407,14 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 		objectTypes, relationTypes, err = kns.listOverviewFocus(ctx, knID, query, relationQuery,
 			visibleObjectIDs, objectScope.Unrestricted)
 	case query.ConceptGroupID != "":
-		var groupIDs []string
-		groupIDs, err = kns.cga.GetConceptIDsByConceptGroupIDs(ctx, knID, query.Branch,
-			[]string{query.ConceptGroupID}, interfaces.MODULE_TYPE_OBJECT_TYPE)
+		objectQuery.Offset = 0
+		objectTypes, err = kns.ota.ListObjectTypeSummaries(ctx, nil, objectQuery)
 		if err == nil {
-			groupIDs = intersectOverviewIDs(groupIDs, visibleObjectIDs, objectScope.Unrestricted)
-			if len(groupIDs) > query.NodeLimit {
-				groupIDs = groupIDs[:query.NodeLimit]
+			selectedIDs := make([]string, 0, len(objectTypes))
+			for _, item := range objectTypes {
+				selectedIDs = append(selectedIDs, item.OTID)
 			}
-			objectQuery.OTIDS = groupIDs
-			objectQuery.Offset = 0
-			objectQuery.Limit = query.NodeLimit
-			objectTypes, err = kns.ota.ListObjectTypeSummaries(ctx, nil, objectQuery)
-			if err == nil {
-				relationTypes, err = kns.listOverviewEdges(ctx, relationQuery, groupIDs)
-			}
+			relationTypes, err = kns.listOverviewEdges(ctx, relationQuery, selectedIDs)
 		}
 	default:
 		objectQuery.Offset = offset
@@ -435,6 +448,10 @@ func (kns *knowledgeNetworkService) ListOverviewGraph(ctx context.Context, knID 
 		offset+len(objectTypes) < objectTotal {
 		result.NextCursor = encodeOverviewCursor(overviewGraphCursor{Offset: offset + len(objectTypes), Snapshot: snapshot})
 	}
-	result.Truncated = result.NextCursor != "" || len(relationTypes) >= query.EdgeLimit || len(edges) < relationTotal
+	if query.ConceptGroupID != "" {
+		result.Truncated = result.ReturnedNodes < objectTotal || result.ReturnedEdges < relationTotal
+	} else {
+		result.Truncated = result.NextCursor != "" || len(relationTypes) >= query.EdgeLimit || len(edges) < relationTotal
+	}
 	return result, nil
 }
