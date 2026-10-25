@@ -238,11 +238,27 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 	defer func() { _ = tx.Rollback() }()
 	for _, candidate := range candidates {
 		var id string
-		err := tx.QueryRowContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions WHERE interaction_id=? AND execution_status<>? FOR UPDATE`, candidate.ID, sessionvo.InteractionActive).Scan(&id)
+		var version uint64
+		var integritySize sql.NullInt64
+		var integrity sql.NullString
+		// A locking read sees the current version even after earlier candidates
+		// opened a transaction snapshot. Bound metadata before it crosses SQL.
+		query := fmt.Sprintf(`SELECT interaction_id,record_integrity_version,OCTET_LENGTH(record_integrity_json),CASE WHEN OCTET_LENGTH(record_integrity_json)<=%d THEN record_integrity_json ELSE NULL END FROM bkn_trace_interactions WHERE interaction_id=? AND execution_status<>? FOR UPDATE`, isessionstore.MaxStoredRecordIntegrityBytes)
+		err := tx.QueryRowContext(ctx, query, candidate.ID, sessionvo.InteractionActive).Scan(&id, &version, &integritySize, &integrity)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
 		if err != nil {
+			return err
+		}
+		if integritySize.Valid && (integritySize.Int64 <= 0 || integritySize.Int64 > isessionstore.MaxStoredRecordIntegrityBytes || !integrity.Valid) {
+			return errArchiveSQLUnverifiable
+		}
+		var currentIntegrity []byte
+		if integrity.Valid {
+			currentIntegrity = []byte(integrity.String)
+		}
+		if err := verifyFrozenSQLSource(candidate, version, currentIntegrity); err != nil {
 			return err
 		}
 		if source.revisionInputs {
