@@ -68,7 +68,7 @@ func (evidencePayloadArtifactWriter) Put(ctx context.Context, mediaType string, 
 	if scope.Direction == "input" {
 		artifactType = "query"
 	}
-	if scope.Direction == "error" {
+	if scope.Direction == "error" || scope.Direction == "logic_result" {
 		artifactType = "logic_execution"
 	}
 	artifact := map[string]any{

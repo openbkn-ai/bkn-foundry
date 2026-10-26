@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Seal existing structured Function results as fixed result-snapshot Claims and EvidenceRefs without requiring tool-side declarations in the existing SQL Ledger transaction with their actual assembly revision, exact receipt and result hash. Evidence gaps stay partial; no sample-specific business rules, new tables, queues or list/detail read-time inference. (#1332)
+
 - Pure lifecycle ownership reads retain full owner checks without taking the conversation writer lock, avoiding contention between status/detail reads and operation registration. (#2425)
 
 - Defer answer outbox body reads until after the metadata claim commits, sharing the answer task deadline and existing retry/lease fencing. (#1691)

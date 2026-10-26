@@ -59,6 +59,9 @@ func NewWithMetrics(store ievidenceledger.Store, metrics icoremetrics.Recorder) 
 }
 
 func (s *Service) Ingest(ctx context.Context, event ledgervo.Event) (ledgervo.DurableAck, error) {
+	if event.ProducerID == "agent-observability-core" {
+		return ledgervo.DurableAck{}, &DomainError{Code: CodeInvalidEvent, Message: "Core Claim producer identity is reserved"}
+	}
 	if err := validateEvent(event); err != nil {
 		return ledgervo.DurableAck{}, err
 	}
@@ -95,6 +98,9 @@ func (s *Service) Ingest(ctx context.Context, event ledgervo.Event) (ledgervo.Du
 // IngestKafka is the C1 terminal-decision path. Conflict evidence and its
 // Kafka coordinate are committed with the ledger decision in one store tx.
 func (s *Service) IngestKafka(ctx context.Context, event ledgervo.Event, coordinate ievidenceledger.KafkaCoordinate) (ievidenceledger.KafkaResult, error) {
+	if event.ProducerID == "agent-observability-core" {
+		return ievidenceledger.KafkaResult{}, &DomainError{Code: CodeInvalidEvent, Message: "Core Claim producer identity is reserved"}
+	}
 	if err := validateEvent(event); err != nil {
 		return ievidenceledger.KafkaResult{}, err
 	}

@@ -149,11 +149,12 @@ type FuncRequestParams struct {
 
 // HTTPResponse API response.
 type HTTPResponse struct {
-	StatusCode int            `json:"status_code"` // status code.
-	Headers    map[string]any `json:"headers"`     // response header.
-	Body       interface{}    `json:"body"`        // response body.
-	Error      string         `json:"error"`       // error message.
-	Duration   int64          `json:"duration_ms"` // response time.
+	StatusCode        int                `json:"status_code"` // status code.
+	Headers           map[string]any     `json:"headers"`     // response header.
+	Body              interface{}        `json:"body"`        // response body.
+	Error             string             `json:"error"`       // error message.
+	Duration          int64              `json:"duration_ms"` // response time.
+	FunctionExecution *FunctionExecution `json:"function_execution,omitempty"`
 }
 
 // BizStatus status.

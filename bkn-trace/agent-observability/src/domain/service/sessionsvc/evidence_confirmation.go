@@ -88,7 +88,7 @@ func receiptOnlyEvidenceContract(profile *sessionvo.CapabilityProfile) bool {
 	switch profile.EvidenceContract {
 	case "execution_only":
 		return true
-	case "managed_function_execution/v1":
+	case sessionvo.ManagedFunctionExecutionContract:
 		return profile.Resolution == "matched"
 	default:
 		return false
@@ -97,6 +97,8 @@ func receiptOnlyEvidenceContract(profile *sessionvo.CapabilityProfile) bool {
 
 func requiredEvidenceEventType(contract string) string {
 	switch contract {
+	case functionResultContract:
+		return "logic.execution.observed"
 	case "ontology_schema_snapshot/v1":
 		return "ontology.schema.snapshot"
 	case "ontology_metric_result/v1":
@@ -192,7 +194,7 @@ func (s *Service) ReconcileEvidence(ctx context.Context, callback ledgervo.Event
 				interaction.RowVersion++
 				interaction.UpdatedAt = tx.Now()
 				tx.SaveInteraction(interaction)
-				if err := s.freezeAssemblyRevision(tx, interaction, *interaction.ClosureManifest, "evidence_confirmed"); err != nil {
+				if err := s.freezeAssemblyRevision(tx, &interaction, *interaction.ClosureManifest, "evidence_confirmed"); err != nil {
 					return err
 				}
 				if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction.evidence.revised", interaction); err != nil {

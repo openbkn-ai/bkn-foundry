@@ -506,6 +506,8 @@ func retryableTransactionError(err error) bool {
 }
 
 type transaction struct {
+	callSummaries      map[string][]sessionvo.OperationCallSummary
+	derivedGraphs      map[string]derivedCausationGraph
 	integrityDirty     map[string]struct{}
 	strictEvidenceJSON bool
 	ctx                context.Context
@@ -1124,6 +1126,9 @@ const operationCallSummarySelect = `SELECT operation_id, attempt_no, conversatio
 	FROM bkn_trace_operation_call_facts `
 
 func (t *transaction) ListOperationCallSummaries(interactionID string) []sessionvo.OperationCallSummary {
+	if cached, ok := t.callSummaries[interactionID]; ok && t.err == nil {
+		return cloneCallSummaries(cached)
+	}
 	if t.err != nil {
 		return nil
 	}
@@ -1153,6 +1158,15 @@ func (t *transaction) ListOperationCallSummaries(interactionID string) []session
 		result = append(result, value)
 	}
 	t.err = rows.Err()
+	if t.err == nil {
+		if t.callSummaries == nil {
+			t.callSummaries = make(map[string][]sessionvo.OperationCallSummary)
+		}
+		// Batch workers may seal many interactions in one transaction.
+		// Retain only the current interaction's metadata, never the whole batch.
+		clear(t.callSummaries)
+		t.callSummaries[interactionID] = cloneCallSummaries(result)
+	}
 	return result
 }
 
@@ -1228,7 +1242,20 @@ func (t *transaction) ListFirstOperationSourceModulesByTraceIDs(traceIDs []strin
 	return result
 }
 
+// Summaries are reused only inside this transaction and invalidated on writes.
+func cloneCallSummaries(values []sessionvo.OperationCallSummary) []sessionvo.OperationCallSummary {
+	result := append([]sessionvo.OperationCallSummary(nil), values...)
+	for i := range result {
+		if result[i].FinishedAt != nil {
+			v := *result[i].FinishedAt
+			result[i].FinishedAt = &v
+		}
+	}
+	return result
+}
+
 func (t *transaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
+	delete(t.callSummaries, fact.InteractionID)
 	if t.err != nil {
 		return
 	}

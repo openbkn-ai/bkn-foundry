@@ -77,7 +77,7 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
-			s.Logger.WithContext(ctx).Warnf("[ExecuteTool] GetAccountAuthContextFromCtx err :%v", err)
+			s.Logger.WithContext(ctx).Warnf("[ExecuteTool] account context is unavailable; audit entry skipped")
 			return
 		}
 		s.AuditLog.Logger(ctx, &metric.AuditLogBuilderParams{
@@ -273,7 +273,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
-			s.Logger.WithContext(ctx).Warnf("[ExecuteTool] GetAccountAuthContextFromCtx err :%v", err)
+			s.Logger.WithContext(ctx).Warnf("[ExecuteTool] account context is unavailable; audit entry skipped")
 			return
 		}
 		s.AuditLog.Logger(ctx, &metric.AuditLogBuilderParams{
@@ -433,6 +433,14 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 		return nil, err
 	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
+	if err == nil && resp != nil {
+		// Provenance is not accepted from a function's result/body or from a
+		// third-party response. Only the local versioned runtime supplies it.
+		resp.FunctionExecution = nil
+		if tool.SourceType == model.SourceTypeFunction {
+			resp.FunctionExecution = platformFunctionExecution(req, proxyReq.URL, resp)
+		}
+	}
 	return
 }
 

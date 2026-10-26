@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"unicode"
@@ -99,6 +100,12 @@ func (m *managedFunctionGuard) Execute(
 		RefType: "function", RefID: "function:" + input.KnowledgeNetworkID + ":" + input.ToolID,
 		Version: normalizedFunctionVersion(input.Descriptor.Version), DisplayHint: input.Descriptor.Name,
 	}
+	producer := bkntrace.ResultProducer{KnowledgeNetworkID: input.KnowledgeNetworkID, ToolboxID: input.ToolboxID, ToolID: input.ToolID}
+	producesResultClaim := bkntrace.EvidenceEnabled()
+	sourceModule := managedFunctionSourceModule
+	if producesResultClaim {
+		sourceModule = bkntrace.FunctionResultSourceModule
+	}
 	lifecycleContext, state, disposition, apiErr, err := m.guard.Begin(ctx, bkntrace.GuardIntent{
 		Context: bkntrace.BusinessContext{
 			ConversationID: traceContext.ConversationID, InteractionID: traceContext.InteractionID,
@@ -109,7 +116,7 @@ func (m *managedFunctionGuard) Execute(
 				functionRef,
 			},
 		},
-		ToolName: input.ToolID, Protocol: "internal", SourceModule: managedFunctionSourceModule,
+		ToolName: input.ToolID, Protocol: "internal", SourceModule: sourceModule,
 		Input: rawInput, CapabilityProfile: managedFunctionCapabilityProfile(input),
 	})
 	if err != nil || apiErr != nil {
@@ -158,6 +165,12 @@ func (m *managedFunctionGuard) Execute(
 	payload := any(redactFunctionPayload(result))
 	if failed {
 		payload = managedFunctionFailurePayload(result)
+	} else if producesResultClaim && reflect.DeepEqual(result, payload) {
+		// Optional snapshots cannot attest redacted/unsupported results. A
+		// capture failure adds no obligation to the execution receipt; events
+		// actually planned/published still use normal delivery confirmation.
+		redactedResult, _ := payload.(map[string]any)
+		_ = bkntrace.RecordFunctionResult(lifecycleContext, producer, input.Descriptor.Version, redactedResult)
 	}
 	_, finishAPIErr, finishErr := m.guard.Finish(lifecycleContext, state, payload, failed, false)
 	if runErr != nil {
@@ -256,6 +269,7 @@ func managedFunctionCapabilityProfile(input ManagedFunctionTraceInput) []byte {
 		"required_trace_fields": []string{"receipt", "business_refs", "result_completeness"},
 		"failure_policy":        "preserve_execution_and_downgrade", "resolution": "matched",
 	}
+	// Result capture is additive; this receipt contract does not depend on capture.
 	raw, _ := sonic.ConfigStd.Marshal(profile)
 	return raw
 }

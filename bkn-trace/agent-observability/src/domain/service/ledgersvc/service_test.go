@@ -458,3 +458,22 @@ func (m *ledgerTestMetrics) Add(name string, delta uint64) {
 }
 
 func (m *ledgerTestMetrics) Set(string, float64) {}
+
+func TestLiveIngestCannotImpersonateCoreClaimProducer(t *testing.T) {
+	event := testEvent()
+	event.ProducerID = "agent-observability-core"
+	store := ledgerstore.New()
+	service := ledgersvc.New(store)
+	if _, err := service.Ingest(context.Background(), event); !ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent) {
+		t.Fatalf("HTTP producer spoof: %v", err)
+	}
+	if _, err := service.IngestKafka(context.Background(), event, ievidenceledger.KafkaCoordinate{}); !ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent) {
+		t.Fatalf("Kafka producer spoof: %v", err)
+	}
+	if store.LedgerCount() != 0 {
+		t.Fatal("spoofed Core event persisted")
+	}
+	if err := ledgersvc.ValidateHistoricalEvent(event); err != nil {
+		t.Fatalf("historical Core event no longer validates: %v", err)
+	}
+}
