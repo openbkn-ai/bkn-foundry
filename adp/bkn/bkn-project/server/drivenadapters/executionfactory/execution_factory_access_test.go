@@ -133,20 +133,29 @@ func Test_ExecutionFactoryAccess(t *testing.T) {
 			So(efaErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
 
-		Convey("FindPublishedSkill picks the exact name out of the substring matches\n", func() {
+		Convey("FindSkill picks the exact name out of the substring matches, published before a draft\n", func() {
 			handlers["GET "+prefix+"/skills"] = func(w http.ResponseWriter, _ *http.Request) {
 				_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{
 					{"skill_id": "a", "name": "plan_supply_v1_0_0_x", "status": "published"},
+					{"skill_id": "c", "name": "plan_supply_v1_0_0", "status": "unpublish"},
 					{"skill_id": "b", "name": "plan_supply_v1_0_0", "status": "published"},
+					{"skill_id": "d", "name": "plan_draft", "status": "offline"},
+					{"skill_id": "e", "name": "plan_draft", "status": "editing"},
 				}})
 			}
 
-			id, err := efa.FindPublishedSkill(ctx, token, "plan_supply_v1_0_0")
+			id, status, err := efa.FindSkill(ctx, token, "plan_supply_v1_0_0")
 			So(err, ShouldBeNil)
 			So(id, ShouldEqual, "b")
-			So(requests[0].query, ShouldContainSubstring, "status=published")
+			So(status, ShouldEqual, interfaces.SKILL_STATUS_PUBLISHED)
+			So(requests[0].query, ShouldNotContainSubstring, "status=")
 
-			id, err = efa.FindPublishedSkill(ctx, token, "plan")
+			id, status, err = efa.FindSkill(ctx, token, "plan_draft")
+			So(err, ShouldBeNil)
+			So(id, ShouldEqual, "e")
+			So(status, ShouldEqual, "editing")
+
+			id, _, err = efa.FindSkill(ctx, token, "plan")
 			So(err, ShouldBeNil)
 			So(id, ShouldBeEmpty)
 		})

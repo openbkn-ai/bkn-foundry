@@ -55,19 +55,20 @@ func (mr *MockExecutionFactoryAccessMockRecorder) ExportToolbox(ctx, token, boxI
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportToolbox", reflect.TypeOf((*MockExecutionFactoryAccess)(nil).ExportToolbox), ctx, token, boxID)
 }
 
-// FindPublishedSkill mocks base method.
-func (m *MockExecutionFactoryAccess) FindPublishedSkill(ctx context.Context, token, name string) (string, error) {
+// FindSkill mocks base method.
+func (m *MockExecutionFactoryAccess) FindSkill(ctx context.Context, token, name string) (string, string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FindPublishedSkill", ctx, token, name)
+	ret := m.ctrl.Call(m, "FindSkill", ctx, token, name)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
-// FindPublishedSkill indicates an expected call of FindPublishedSkill.
-func (mr *MockExecutionFactoryAccessMockRecorder) FindPublishedSkill(ctx, token, name any) *gomock.Call {
+// FindSkill indicates an expected call of FindSkill.
+func (mr *MockExecutionFactoryAccessMockRecorder) FindSkill(ctx, token, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindPublishedSkill", reflect.TypeOf((*MockExecutionFactoryAccess)(nil).FindPublishedSkill), ctx, token, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindSkill", reflect.TypeOf((*MockExecutionFactoryAccess)(nil).FindSkill), ctx, token, name)
 }
 
 // GetReleasedSkill mocks base method.

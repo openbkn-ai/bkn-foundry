@@ -377,7 +377,7 @@ func Test_Apply(t *testing.T) {
 					newBoxID = id
 					return imported, nil
 				})
-			efa.EXPECT().FindPublishedSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").Return("", nil)
+			efa.EXPECT().FindSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").Return("", "", nil)
 			efa.EXPECT().RegisterSkill(gomock.Any(), token, gomock.Any()).Return("skill-new", nil)
 			efa.EXPECT().PublishSkill(gomock.Any(), token, "skill-new").Return(nil)
 			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "skill-new").Return(skillFiles("Network supply_kn_v1_1_0.\n"), nil)
@@ -397,13 +397,43 @@ func Test_Apply(t *testing.T) {
 
 		Convey("A Skill copy a failed attempt already published is taken, not registered again\n", func() {
 			skill := mustSkill("Network supply_kn.\n")
-			efa.EXPECT().FindPublishedSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").Return("skill-old-copy", nil)
-			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "skill-old-copy").Return(skillFiles("x"), nil)
+			efa.EXPECT().FindSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").
+				Return("skill-old-copy", interfaces.SKILL_STATUS_PUBLISHED, nil)
+			// The frontmatter served back need not match byte for byte; the body does.
+			released := skillFiles("Network supply_kn_v1_1_0.\n")
+			// Read once to check the claim and once to record the copy.
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "skill-old-copy").Return(released, nil).Times(2)
 
 			copies, _, err := Apply(ctx, efa, token, []*Step{{Item: skill, Copy: true}}, oldNet, newNet)
 
 			So(err, ShouldBeNil)
 			So(copies[0].NewID, ShouldEqual, "skill-old-copy")
+		})
+
+		Convey("A Skill published under the copy's name with other content is refused, not bound\n", func() {
+			skill := mustSkill("Network supply_kn.\n")
+			efa.EXPECT().FindSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").
+				Return("someone-else", interfaces.SKILL_STATUS_PUBLISHED, nil)
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "someone-else").Return(skillFiles("Do something else.\n"), nil)
+
+			_, _, err := Apply(ctx, efa, token, []*Step{{Item: skill, Copy: true}}, oldNet, newNet)
+
+			var itemErr *ItemError
+			So(errors.As(err, &itemErr), ShouldBeTrue)
+			So(itemErr.Operation, ShouldEqual, OPERATION_COPY)
+			So(err.Error(), ShouldContainSubstring, "someone-else")
+		})
+
+		Convey("A Skill copy a failed attempt registered but did not publish is published, not registered again\n", func() {
+			skill := mustSkill("Network supply_kn.\n")
+			efa.EXPECT().FindSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").Return("draft-copy", "unpublish", nil)
+			efa.EXPECT().PublishSkill(gomock.Any(), token, "draft-copy").Return(nil)
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "draft-copy").Return(skillFiles("Network supply_kn_v1_1_0.\n"), nil).Times(2)
+
+			copies, _, err := Apply(ctx, efa, token, []*Step{{Item: skill, Copy: true}}, oldNet, newNet)
+
+			So(err, ShouldBeNil)
+			So(copies[0].NewID, ShouldEqual, "draft-copy")
 		})
 
 		Convey("A refused copy names the item\n", func() {

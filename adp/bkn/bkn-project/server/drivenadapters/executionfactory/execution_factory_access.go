@@ -31,8 +31,10 @@ const (
 	// skillMD is the entry file of every Skill package.
 	skillMD = "SKILL.md"
 	// skillListPageSize is the largest page the Skill list serves.
-	skillListPageSize    = "100"
-	skillStatusPublished = "published"
+	skillListPageSize = "100"
+	// Draft statuses of a Skill: never published, and published then edited.
+	skillStatusUnpublished = "unpublish"
+	skillStatusEditing     = "editing"
 )
 
 var (
@@ -157,28 +159,33 @@ func (efa *executionFactoryAccess) GetReleasedSkill(ctx context.Context, token s
 	return files, nil
 }
 
-// FindPublishedSkill calls GET /skills?name=&status=published. The name filter
-// matches substrings, so the exact name is picked from the page.
-func (efa *executionFactoryAccess) FindPublishedSkill(ctx context.Context, token string, name string) (string, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "FindPublishedSkill")
+// FindSkill calls GET /skills?name= without a status, so drafts are listed
+// too. The name filter matches substrings, so the exact name is picked out.
+func (efa *executionFactoryAccess) FindSkill(ctx context.Context, token string, name string) (string, string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "FindSkill")
 	defer span.End()
 
-	query := url.Values{"name": {name}, "status": {skillStatusPublished}, "page_size": {skillListPageSize}}
+	query := url.Values{"name": {name}, "page_size": {skillListPageSize}}
 	httpUrl := fmt.Sprintf("%s/skills?%s", efa.baseUrl, query.Encode())
 	respBody, err := efa.do(ctx, span, http.MethodGet, httpUrl, token, nil, "")
 	if err != nil {
-		return "", fmt.Errorf("find skill %s: %w", name, err)
+		return "", "", fmt.Errorf("find skill %s: %w", name, err)
 	}
 	list := &skillList{}
 	if err := json.Unmarshal(respBody, list); err != nil {
-		return "", fmt.Errorf("unmarshal skill list: %w", err)
+		return "", "", fmt.Errorf("unmarshal skill list: %w", err)
 	}
+	var draftID, draftStatus string
 	for _, s := range list.Data {
-		if s.Name == name && s.Status == skillStatusPublished {
-			return s.SkillID, nil
+		switch {
+		case s.Name != name:
+		case s.Status == interfaces.SKILL_STATUS_PUBLISHED:
+			return s.SkillID, s.Status, nil
+		case draftID == "" && (s.Status == skillStatusUnpublished || s.Status == skillStatusEditing):
+			draftID, draftStatus = s.SkillID, s.Status
 		}
 	}
-	return "", nil
+	return draftID, draftStatus, nil
 }
 
 // RegisterSkill calls POST /skills with file_type=zip and the package as the multipart file "file".
@@ -210,7 +217,7 @@ func (efa *executionFactoryAccess) PublishSkill(ctx context.Context, token strin
 	defer span.End()
 	span.SetAttributes(attr.Key("skill_id").String(skillID))
 
-	reqBody, err := json.Marshal(map[string]string{"status": skillStatusPublished})
+	reqBody, err := json.Marshal(map[string]string{"status": interfaces.SKILL_STATUS_PUBLISHED})
 	if err != nil {
 		return err
 	}

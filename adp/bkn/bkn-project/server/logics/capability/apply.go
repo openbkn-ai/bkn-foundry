@@ -5,6 +5,7 @@
 package capability
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -225,24 +226,76 @@ func copySkill(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token
 	if err != nil {
 		return nil, nil, err
 	}
-	if c.NewID, err = efa.FindPublishedSkill(ctx, token, c.NewName); err != nil {
+	// A Skill under the copy's name is taken only when it holds the copy: one a
+	// failed attempt published, or registered and left a draft.
+	id, status, err := efa.FindSkill(ctx, token, c.NewName)
+	if err != nil {
 		return nil, nil, err
 	}
-	if c.NewID == "" {
+	switch {
+	case id == "":
 		archive, err := SkillArchive(files)
 		if err != nil {
 			return nil, nil, err
 		}
-		if c.NewID, err = efa.RegisterSkill(ctx, token, archive); err != nil {
+		if id, err = efa.RegisterSkill(ctx, token, archive); err != nil {
 			return nil, nil, err
 		}
-		if err := efa.PublishSkill(ctx, token, c.NewID); err != nil {
+		if err := efa.PublishSkill(ctx, token, id); err != nil {
 			return nil, nil, err
+		}
+	case status != interfaces.SKILL_STATUS_PUBLISHED:
+		if err := efa.PublishSkill(ctx, token, id); err != nil {
+			return nil, nil, err
+		}
+		fallthrough
+	default:
+		released, err := efa.GetReleasedSkill(ctx, token, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !sameSkill(files, released) {
+			return nil, nil, fmt.Errorf("skill %s is already named %s and holds other content", id, c.NewName)
 		}
 	}
+	c.NewID = id
 	copied, err := ExportSkill(ctx, efa, token, c.NewID)
 	if err != nil {
 		return nil, nil, err
 	}
 	return c, copied, nil
+}
+
+// sameSkill reports whether two Skills hold the same files. SKILL.md is
+// compared by its trimmed body, so frontmatter execution-factory rewrites on
+// registration does not count as other content.
+func sameSkill(a map[string][]byte, b map[string][]byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for p, data := range a {
+		other, ok := b[p]
+		switch {
+		case !ok:
+			return false
+		case p == SKILL_MD:
+			if skillBody(data) != skillBody(other) {
+				return false
+			}
+		case !bytes.Equal(data, other):
+			return false
+		}
+	}
+	return true
+}
+
+// skillBody is SKILL.md without its frontmatter, trimmed.
+func skillBody(data []byte) string {
+	text := strings.TrimSpace(string(data))
+	if rest, ok := strings.CutPrefix(text, "---"); ok {
+		if _, body, found := strings.Cut(rest, "\n---"); found {
+			text = body
+		}
+	}
+	return strings.TrimSpace(text)
 }
