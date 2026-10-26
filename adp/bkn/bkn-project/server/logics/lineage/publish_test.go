@@ -338,6 +338,83 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Lineage_MainBranchReadOnly)
 		})
 
+		Convey("A project id or notes the release table cannot hold are refused before anything is read\n", func() {
+			req := request
+			req.ProjectID = strings.Repeat("项", 41)
+			_, err := svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Release_InvalidProjectID)
+
+			req = request
+			req.Notes = strings.Repeat("n", 65536)
+			_, err = svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+			status, code = httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Release_InvalidNotes)
+
+			Convey("while the longest values that fit pass\n", func() {
+				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders_v1_0_0").
+					Return(&interfaces.Release{LineageID: "orders", Version: "1.0.0"}, true, nil)
+				req := request
+				req.ProjectID = strings.Repeat("项", 40)
+				req.Notes = strings.Repeat("n", 65535)
+
+				_, err := svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+
+				_, code := httpCode(err)
+				So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
+			})
+		})
+
+		Convey("Definitions the release cannot rename reply 400 and tag nothing, so a fixed branch publishes the same version\n", func() {
+			id := newLineageID()
+			live, _ := setUp(id)
+			networkID := id + "_v1_0_0"
+			// A block name loads but cannot be swapped line for line.
+			broken := definitions("A part, edited.", "A supplier.")
+			broken["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain", "name: |\n  Supply chain", 1))
+			_, err := realGS.CommitFiles(ctx, id, branch, broken, "block name", author)
+			So(err, ShouldBeNil)
+
+			// The reads may run in any order; the network exists only once imported.
+			var imported map[string][]byte
+			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil).AnyTimes()
+			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil).AnyTimes()
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).DoAndReturn(
+				func(context.Context, string, string) (map[string][]byte, error) {
+					if imported == nil {
+						return nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound}
+					}
+					return imported, nil
+				}).AnyTimes()
+
+			_, err = svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
+
+			fixedHead, err := realGS.CommitFiles(ctx, id, branch, definitions("A part, edited.", "A supplier."), "fix name", author)
+			So(err, ShouldBeNil)
+			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, files map[string][]byte) (*interfaces.BKNImportResult, error) {
+					imported = files
+					return &interfaces.BKNImportResult{KNID: networkID}, nil
+				})
+			ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).Return(nil)
+
+			result, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			So(err, ShouldBeNil)
+			So(result.Tag, ShouldEqual, "v1.0.0")
+			tagHead, _ := realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			So(tagHead, ShouldEqual, fixedHead)
+		})
+
 		Convey("An unknown lineage replies 404\n", func() {
 			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), gomock.Any()).Return(nil, false, nil)
 

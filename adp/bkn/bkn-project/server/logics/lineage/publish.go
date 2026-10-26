@@ -32,6 +32,10 @@ const (
 	// maxNetworkIDLength and maxNetworkNameRunes are the bkn-backend limits on a network.
 	maxNetworkIDLength  = 40
 	maxNetworkNameRunes = 40
+	// maxProjectIDRunes and maxNotesBytes are what the release table holds:
+	// f_project_id VARCHAR(40) and f_notes TEXT.
+	maxProjectIDRunes = 40
+	maxNotesBytes     = 65535
 	// maxVersionLength leaves room for the lineage in the network id and for the
 	// base name in the network name.
 	maxVersionLength = 32
@@ -49,10 +53,12 @@ var (
 // PublishRelease checks, tags, imports and records a release under one hold of the
 // lineage lock, so neither main nor the tags move while it runs.
 //
-// main moves only after the release is recorded. Until then a failed attempt
-// leaves main and the release table as they were, and only the tag behind: a
-// retry of the same version from the same branch head reuses that tag, and the
-// import overwrites the network the failed attempt may have created.
+// Every check, the release package included, runs before the tag, the first
+// side effect. main moves only after the release is recorded. Until then a
+// failed attempt leaves main and the release table as they were, and at most
+// the tag behind: a retry of the same version from the same branch head reuses
+// that tag, and the import overwrites the network the failed attempt may have
+// created.
 func (s *lineageService) PublishRelease(ctx context.Context, token string, lineageID string,
 	req interfaces.PublishReleaseRequest, publisher interfaces.AccountInfo,
 	author interfaces.GitAuthor) (*interfaces.PublishReleaseResult, error) {
@@ -66,6 +72,16 @@ func (s *lineageService) PublishRelease(ctx context.Context, token string, linea
 	if len(req.Version) > maxVersionLength || !versionPattern.MatchString(req.Version) {
 		span.SetStatus(codes.Error, "Invalid version")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidVersion)
+	}
+	// The release row is written after the import; a value it cannot hold must
+	// not fail the release only then.
+	if utf8.RuneCountInString(req.ProjectID) > maxProjectIDRunes {
+		span.SetStatus(codes.Error, "Invalid project id")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidProjectID)
+	}
+	if len(req.Notes) > maxNotesBytes {
+		span.SetStatus(codes.Error, "Invalid notes")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Release_InvalidNotes)
 	}
 
 	var result *interfaces.PublishReleaseResult
@@ -165,11 +181,12 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		case !errors.As(err, &backendErr) || backendErr.HTTPCode != http.StatusNotFound:
 			return nil, err
 		}
-		if err := gs.Tag(ctx, lineageID, tag, branchHead); err != nil {
-			return nil, err
-		}
 	}
-	files, err := gs.ReadTree(ctx, lineageID, tagRef(tag))
+
+	// The package is built from the branch head before the tag is made, so
+	// definitions the release cannot rename leave no tag that would block the
+	// same version once the branch is fixed. On a retry the tag is that head.
+	files, err := gs.ReadTree(ctx, lineageID, branchHead)
 	if err != nil {
 		return nil, err
 	}
@@ -177,6 +194,11 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	if err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
 			WithErrorDetails(err.Error())
+	}
+	if !retry {
+		if err := gs.Tag(ctx, lineageID, tag, branchHead); err != nil {
+			return nil, err
+		}
 	}
 
 	imported, err := s.bba.ImportBKN(ctx, token, pkg)

@@ -6,7 +6,9 @@ package errors
 
 const (
 	// 400
-	BknProject_Release_InvalidVersion = "BknProject.Release.InvalidVersion"
+	BknProject_Release_InvalidVersion   = "BknProject.Release.InvalidVersion"
+	BknProject_Release_InvalidProjectID = "BknProject.Release.InvalidProjectID"
+	BknProject_Release_InvalidNotes     = "BknProject.Release.InvalidNotes"
 
 	// 404
 	BknProject_Release_NotFound = "BknProject.Release.NotFound"
@@ -25,6 +27,8 @@ const (
 var (
 	ReleaseErrCodeList = []string{
 		BknProject_Release_InvalidVersion,
+		BknProject_Release_InvalidProjectID,
+		BknProject_Release_InvalidNotes,
 		BknProject_Release_NotFound,
 		BknProject_Release_VersionExists,
 		BknProject_Release_BranchBehind,

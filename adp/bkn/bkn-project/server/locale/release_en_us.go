@@ -10,6 +10,8 @@ var releaseEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
 		"BknProject.Release.InvalidVersion":      "Invalid Version. version must be X.Y.Z with digits only and no leading zeros, at most 32 characters.",
+		"BknProject.Release.InvalidProjectID":    "Invalid Project ID. project_id must be at most 40 characters.",
+		"BknProject.Release.InvalidNotes":        "Invalid Notes. notes must be at most 65535 bytes.",
 		"BknProject.Release.NotFound":            "Release Not Found. No release published this knowledge network.",
 		"BknProject.Release.NetworkExists":       "Network Already Exists. A knowledge network with the id this version maps to already exists and was not created by a release of this lineage; it is not overwritten. Please choose another version or remove that network.",
 		"BknProject.Release.VersionExists":       "Version Already Exists. This version, or the network id it maps to, is already published, or its tag points at another commit; please choose another version.",
