@@ -100,6 +100,33 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 			So(report.LiveCapabilities, ShouldNotContainKey, "release.yaml")
 		})
 
+		Convey("A recorded item that no longer exists is drift, and committing it drops it from release.yaml\n", func() {
+			manifest := "functions:\n  - id: box1\n    digest: sha256:x\n    networks: [orders]\nskills:\n  - id: s1\n    digest: sha256:y\n    networks: [orders]\n"
+			skill := map[string][]byte{"SKILL.md": []byte("---\nname: s\n---\nv1\n")}
+			stored := map[string][]byte{
+				"release.yaml":                []byte(manifest),
+				"functions/box1/toolbox.json": []byte(`{"toolbox":{}}`),
+				"skills/s1/SKILL.md":          skill["SKILL.md"],
+			}
+			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(main, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
+			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(stored, nil)
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, "box1").Return(nil, &interfaces.ExecutionFactoryError{HTTPCode: http.StatusNotFound})
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "s1").Return(skill, nil)
+
+			report, err := svc.DriftCheck(ctx, token, "orders", "orders")
+
+			So(err, ShouldBeNil)
+			So(report.Capabilities, ShouldResemble, interfaces.PathDiff{
+				Added: []string{}, Changed: []string{}, Removed: []string{"functions/box1/toolbox.json"}})
+			So(report.LiveCapabilities, ShouldContainKey, "release.yaml")
+			kept, err := capability.ParseManifest(report.LiveCapabilities["release.yaml"])
+			So(err, ShouldBeNil)
+			So(kept.Functions, ShouldBeEmpty)
+			So(kept.Skills, ShouldHaveLength, 1)
+			So(*kept.Skills[0], ShouldResemble, capability.ManifestEntry{ID: "s1", Digest: "sha256:y", Networks: []string{"orders"}})
+		})
+
 		Convey("A refused function export names the toolbox\n", func() {
 			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(main, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)

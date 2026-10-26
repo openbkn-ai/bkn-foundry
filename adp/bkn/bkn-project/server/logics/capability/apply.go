@@ -50,6 +50,11 @@ func isBuiltIn(err error) bool {
 		strings.HasSuffix(efaErr.ErrorCode, builtInRefusal)
 }
 
+func isNotFound(err error) bool {
+	var efaErr *interfaces.ExecutionFactoryError
+	return errors.As(err, &efaErr) && efaErr.HTTPCode == http.StatusNotFound
+}
+
 // ExportFunction reads the live toolbox boxID.
 func ExportFunction(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token string, boxID string) (*Item, error) {
 	export, err := efa.ExportToolbox(ctx, token, boxID)
@@ -104,17 +109,35 @@ func Export(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token st
 	return items, nil
 }
 
-// ExportManifest reads the live state of every item the manifest lists.
+// ExportManifest reads the live state of every item the manifest lists. An
+// item that no longer exists, a deleted toolbox or a Skill taken offline, is
+// left out, so it shows up as removed rather than failing every later check.
 func ExportManifest(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token string,
 	m *Manifest) ([]*Item, error) {
-	boxIDs, skillIDs := make([]string, 0, len(m.Functions)), make([]string, 0, len(m.Skills))
+	items := make([]*Item, 0, len(m.Functions)+len(m.Skills))
 	for _, e := range m.Functions {
-		boxIDs = append(boxIDs, e.ID)
+		boxItems, err := Export(ctx, efa, token, []string{e.ID}, nil)
+		if isNotFound(err) {
+			otellog.LogInfo(ctx, fmt.Sprintf("Toolbox %s of release.yaml no longer exists", e.ID))
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, boxItems...)
 	}
 	for _, e := range m.Skills {
-		skillIDs = append(skillIDs, e.ID)
+		it, err := ExportSkill(ctx, efa, token, e.ID)
+		if isNotFound(err) {
+			otellog.LogInfo(ctx, fmt.Sprintf("Skill %s of release.yaml is no longer released", e.ID))
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, it)
 	}
-	return Export(ctx, efa, token, boxIDs, skillIDs)
+	return items, nil
 }
 
 // Apply makes the copies the steps call for and returns them, with the items

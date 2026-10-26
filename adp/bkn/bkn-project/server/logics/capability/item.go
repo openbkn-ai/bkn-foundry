@@ -185,6 +185,23 @@ func (m *Manifest) Empty() bool {
 	return len(m.Functions) == 0 && len(m.Skills) == 0
 }
 
+// Keep returns the manifest with only the entries of items, so an item that
+// no longer exists drops out of it.
+func (m *Manifest) Keep(items []*Item) *Manifest {
+	kept := &Manifest{Functions: []*ManifestEntry{}, Skills: []*ManifestEntry{}}
+	for _, it := range items {
+		e := m.Entry(it.Kind, it.ID)
+		switch {
+		case e == nil:
+		case it.Kind == KIND_FUNCTION:
+			kept.Functions = append(kept.Functions, e)
+		default:
+			kept.Skills = append(kept.Skills, e)
+		}
+	}
+	return kept
+}
+
 // Entry returns the entry of an item, or nil.
 func (m *Manifest) Entry(kind Kind, id string) *ManifestEntry {
 	entries := m.Skills

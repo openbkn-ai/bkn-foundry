@@ -57,11 +57,22 @@ func (s *driftService) DriftCheck(ctx context.Context, token string, lineageID s
 		return nil, fmt.Errorf("read main of lineage %s: %w", lineageID, err)
 	}
 
-	_, liveCapabilities, capabilityDiff, err := CheckCapabilities(ctx, s.gs, s.efa, token, lineageID, interfaces.GIT_MAIN_BRANCH)
+	manifest, liveCapabilities, capabilityDiff, err := CheckCapabilities(ctx, s.gs, s.efa, token, lineageID, interfaces.GIT_MAIN_BRANCH)
 	if err != nil {
 		otellog.LogError(ctx, "Check functions and Skills failed", err)
 		span.SetStatus(codes.Error, "Check functions and Skills failed")
 		return nil, err
+	}
+	liveFiles := capability.Files(liveCapabilities)
+	// Committing the drift must drop what no longer exists from release.yaml too,
+	// or every later check reports it again.
+	if kept := manifest.Keep(liveCapabilities); len(kept.Functions)+len(kept.Skills) < len(manifest.Functions)+len(manifest.Skills) {
+		data, err := kept.Marshal()
+		if err != nil {
+			span.SetStatus(codes.Error, "Write release.yaml failed")
+			return nil, err
+		}
+		liveFiles[interfaces.GIT_MANIFEST_FILE] = data
 	}
 
 	report := &interfaces.DriftReport{
@@ -70,7 +81,7 @@ func (s *driftService) DriftCheck(ctx context.Context, token string, lineageID s
 		PathDiff:         DiffFiles(stored, live),
 		Capabilities:     capabilityDiff,
 		Live:             live,
-		LiveCapabilities: capability.Files(liveCapabilities),
+		LiveCapabilities: liveFiles,
 	}
 	span.SetStatus(codes.Ok, "")
 	return report, nil
