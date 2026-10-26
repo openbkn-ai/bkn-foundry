@@ -21,6 +21,9 @@ import (
 // toolboxNameLimit is the longest toolbox name execution-factory accepts, in characters.
 const toolboxNameLimit = 50
 
+// copyNameHashLength is how many hex digits of the copy id a cut copy name keeps.
+const copyNameHashLength = 6
+
 // copyNamespace derives the ids of copies, so a retried release finds the
 // copies its failed attempt made instead of making more.
 var copyNamespace = uuid.MustParse("6b1f0e52-3c8e-4d0b-9a57-2f3c9d1e7a40")
@@ -44,12 +47,14 @@ func copyID(id string, networkID string) string {
 // copyName is <name>_<new network id>, with "-" written as "_" since toolbox
 // names take word characters only. The suffix an earlier copy for the old
 // network appended is replaced, not appended to. limit, when not 0, cuts the
-// name to that many characters.
-func copyName(name string, oldNetworkID string, newNetworkID string, limit int) string {
+// name to that many characters; a cut name ends its base with a short hash of
+// id, the item copied, since two names cut to the same prefix would clash.
+func copyName(name string, id string, oldNetworkID string, newNetworkID string, limit int) string {
 	word := func(id string) string { return "_" + strings.ReplaceAll(id, "-", "_") }
 	base, suffix := strings.TrimSuffix(name, word(oldNetworkID)), word(newNetworkID)
 	if keep := limit - utf8.RuneCountInString(suffix); limit > 0 && utf8.RuneCountInString(base) > keep {
-		base = string([]rune(base)[:keep])
+		hash := "_" + copyID(id, newNetworkID)[:copyNameHashLength]
+		base = string([]rune(base)[:max(keep-len(hash), 0)]) + hash
 	}
 	return base + suffix
 }
@@ -71,7 +76,7 @@ func CopyFunction(item *Item, oldNetworkID string, newNetworkID string) ([]byte,
 		Kind:    KIND_FUNCTION,
 		OldID:   item.ID,
 		NewID:   copyID(item.ID, newNetworkID),
-		NewName: copyName(item.Name, oldNetworkID, newNetworkID, toolboxNameLimit),
+		NewName: copyName(item.Name, item.ID, oldNetworkID, newNetworkID, toolboxNameLimit),
 		ToolIDs: map[string]string{},
 	}
 	box["box_id"], box["box_name"] = c.NewID, c.NewName
@@ -98,7 +103,7 @@ func CopyFunction(item *Item, oldNetworkID string, newNetworkID string) ([]byte,
 // a word in a text file, and a new name in SKILL.md, since a published name
 // must be unique. NewID is left for registration to fill in.
 func CopySkill(item *Item, oldNetworkID string, newNetworkID string) (map[string][]byte, *Copy, error) {
-	c := &Copy{Kind: KIND_SKILL, OldID: item.ID, NewName: copyName(item.Name, oldNetworkID, newNetworkID, 0)}
+	c := &Copy{Kind: KIND_SKILL, OldID: item.ID, NewName: copyName(item.Name, item.ID, oldNetworkID, newNetworkID, 0)}
 	files := make(map[string][]byte, len(item.Files))
 	for p, data := range item.Files {
 		if utf8.Valid(data) {

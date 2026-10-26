@@ -184,12 +184,23 @@ func Test_CopyFunction(t *testing.T) {
 		})
 
 		Convey("The name of an earlier copy loses its suffix and fits 50 characters\n", func() {
-			So(copyName("tools_supply", "supply", "supply_v1_1_0", 50), ShouldEqual, "tools_supply_v1_1_0")
-			So(copyName("tools_supply_x", "supply-x", "supply-x_v1_1_0", 50), ShouldEqual, "tools_supply_x_v1_1_0")
+			So(copyName("tools_supply", "box1", "supply", "supply_v1_1_0", 50), ShouldEqual, "tools_supply_v1_1_0")
+			So(copyName("tools_supply_x", "box1", "supply-x", "supply-x_v1_1_0", 50), ShouldEqual, "tools_supply_x_v1_1_0")
 			long := strings.Repeat("长", 60)
-			name := copyName(long, oldNet, "a_very_long_lineage_identifier_v10_20_30", 50)
+			name := copyName(long, "box1", oldNet, "a_very_long_lineage_identifier_v10_20_30", 50)
 			So([]rune(name), ShouldHaveLength, 50)
 			So(name, ShouldEndWith, "_a_very_long_lineage_identifier_v10_20_30")
+		})
+
+		Convey("Names cut to the same prefix stay apart by the toolbox they copy\n", func() {
+			uuidNet := "0199f7a2-3c4d-7e8f-9a0b-1c2d3e4f5a6b"
+			query := copyName("supply_chain_query", "box-query", oldNet, uuidNet, 50)
+			write := copyName("supply_chain_write", "box-write", oldNet, uuidNet, 50)
+			So(query, ShouldNotEqual, write)
+			So([]rune(query), ShouldHaveLength, 50)
+			So([]rune(write), ShouldHaveLength, 50)
+			So(query, ShouldEndWith, "_"+strings.ReplaceAll(uuidNet, "-", "_"))
+			So(copyName("supply_chain_query", "box-query", oldNet, uuidNet, 50), ShouldEqual, query)
 		})
 	})
 }
