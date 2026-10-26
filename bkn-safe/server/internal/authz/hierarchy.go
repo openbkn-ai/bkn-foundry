@@ -13,6 +13,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -218,6 +219,16 @@ func (en *Enforcer) localDecisionsWithIndex(ctx context.Context, accessorID stri
 	want map[ResourceRef][]string) (map[ResourceRef]map[string]Evaluation, error) {
 	local := make(map[ResourceRef]map[string]Evaluation, len(want))
 	for resource, ops := range want {
+		if !authzresource.Entitled(resource.Type) {
+			// A paid type below its edition carries no rule (#2512), for the
+			// local-scope reads as much as for the effective answer.
+			decisions := make(map[string]Evaluation, len(ops))
+			for _, op := range ops {
+				decisions[op] = noneEvaluation(ScopeLocal)
+			}
+			local[resource] = decisions
+			continue
+		}
 		decisions, err := en.localDecisions(ctx, accessorID, idx, resource, ops)
 		if err != nil {
 			return nil, err
@@ -543,6 +554,10 @@ func (en *Enforcer) derivedDecisionsWithIndex(ctx context.Context, accessorID st
 // authorization writes; they do not change the decision for a saved grant.
 func (en *Enforcer) operationDecisionsWithIndex(ctx context.Context, accessorID string, idx *grantIndex,
 	want map[ResourceRef][]string, validateProvenance bool) (map[ResourceRef]map[string]Evaluation, error) {
+	// A paid resource type below its edition (#2512) is answered here, before any
+	// policy is read, so super administrators and every entry point above get the
+	// same default deny an ungranted resource gets.
+	want, unentitled := splitUnentitled(want)
 	base, err := en.baseEffectiveDecisionsWithIndex(ctx, accessorID, idx, want)
 	if err != nil {
 		return nil, err
@@ -564,14 +579,44 @@ func (en *Enforcer) operationDecisionsWithIndex(ctx context.Context, accessorID 
 		}
 	}
 
-	out := make(map[ResourceRef]map[string]Evaluation, len(want))
+	out := make(map[ResourceRef]map[string]Evaluation, len(want)+len(unentitled))
 	for resource, operations := range want {
 		out[resource] = make(map[string]Evaluation, len(operations))
 		for _, operation := range operations {
 			out[resource][operation] = base[resource][operation]
 		}
 	}
+	for resource, operations := range unentitled {
+		out[resource] = make(map[string]Evaluation, len(operations))
+		for _, operation := range operations {
+			out[resource][operation] = defaultDeny()
+		}
+	}
 	return out, nil
+}
+
+// splitUnentitled moves the resources of paid types the licence in force does
+// not reach out of want. Answering them as default deny makes an under-licensed
+// type indistinguishable from one nobody was granted.
+func splitUnentitled(want map[ResourceRef][]string) (entitled, unentitled map[ResourceRef][]string) {
+	for resource := range want {
+		if !authzresource.Entitled(resource.Type) {
+			entitled = make(map[ResourceRef][]string, len(want))
+			unentitled = map[ResourceRef][]string{}
+			break
+		}
+	}
+	if unentitled == nil {
+		return want, nil
+	}
+	for resource, operations := range want {
+		if authzresource.Entitled(resource.Type) {
+			entitled[resource] = operations
+		} else {
+			unentitled[resource] = operations
+		}
+	}
+	return entitled, unentitled
 }
 
 // applyManagedProxyProvenanceToBatch makes source validity part of every base

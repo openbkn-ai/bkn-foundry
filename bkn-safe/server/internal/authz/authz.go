@@ -31,6 +31,7 @@ import (
 	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 	safemodel "github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -587,11 +588,24 @@ type PermQuery struct {
 // Object/op order follows GetImplicitPermissionsForUser; callers treat the
 // result as sets.
 func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWildcard bool, grants []RoleGrant, err error) {
+	// A paid type below its edition reads as granted to nobody (#2512). The
+	// unscoped "*:*" row cannot name it; callers render those types from the
+	// licence's capabilities, which leave them out.
+	if q.ResourceType != "" && !authzresource.Entitled(q.ResourceType) {
+		return false, []RoleGrant{}, nil
+	}
 	rows, err := en.implicitPermissions(accessorID)
 	if err != nil {
 		return false, nil, err
 	}
 	rows = activePolicyRows(rows)
+	rows = slices.DeleteFunc(rows, func(row []string) bool {
+		if len(row) < 2 {
+			return false
+		}
+		rtype, _ := splitObjectKey(row[1])
+		return !authzresource.Entitled(rtype)
+	})
 	rows = projectCommunityBundleRows(rows, true)
 	grouped := groupGrantsByObject(rows)
 	superAdmin, err := en.hasSuperAdminRole(accessorID)
@@ -1025,6 +1039,11 @@ func (en *Enforcer) AccessibleResources(accessorID, resourceType, op string) ([]
 // represented by concrete IDs without losing its deny exceptions, so the
 // third result asks callers to filter their storage candidates through Safe.
 func (en *Enforcer) AccessibleResourceScope(accessorID, resourceType, op string) ([]string, bool, bool, error) {
+	// Super administrators short-circuit to "unrestricted" below without a
+	// decision; a paid type below its edition must still come back empty (#2512).
+	if !authzresource.Entitled(resourceType) {
+		return []string{}, false, false, nil
+	}
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return nil, false, false, err
@@ -1041,6 +1060,9 @@ func (en *Enforcer) AccessibleResourceScope(accessorID, resourceType, op string)
 // effective registered operation on it.
 func (en *Enforcer) AccessibleResourceScopeAnyOperation(accessorID,
 	resourceType string) ([]string, bool, bool, error) {
+	if !authzresource.Entitled(resourceType) {
+		return []string{}, false, false, nil
+	}
 	idx, err := en.grantIndex(accessorID)
 	if err != nil {
 		return nil, false, false, err

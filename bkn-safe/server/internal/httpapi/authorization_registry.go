@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 )
 
@@ -42,6 +43,9 @@ func authorizationRegistryHandler(registry *authz.Registry) gin.HandlerFunc {
 		}
 		operationsByType := make(map[string][]authorizationRegistryOperation, len(resourceTypes))
 		for _, operation := range operations {
+			if !authzresource.Entitled(operation.ResourceTypeID) {
+				continue
+			}
 			requirementsByOperation, err := registry.Requirements(c.Request.Context(), operation.ResourceTypeID, []string{operation.ID})
 			if err != nil {
 				serverError(c, err)
@@ -66,6 +70,10 @@ func authorizationRegistryHandler(registry *authz.Registry) gin.HandlerFunc {
 
 		items := make([]authorizationRegistryResourceType, 0, len(resourceTypes))
 		for _, resourceType := range resourceTypes {
+			// A paid type below its edition is left out like an absent module (#2512).
+			if !authzresource.Entitled(resourceType.ID) {
+				continue
+			}
 			items = append(items, authorizationRegistryResourceType{
 				ID:         resourceType.ID,
 				Name:       resourceType.Name,

@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/finegrained"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
@@ -58,6 +59,18 @@ func isConcreteResourceID(id string) bool {
 // here would reintroduce an unsupported exception to that contract.
 func isModelAuthorizationResourceType(resourceType string) bool {
 	return resourceType == "small_model" || resourceType == "large_model"
+}
+
+// rejectUnentitledType answers a grant on a paid resource type the licence in
+// force does not reach the way an absent type is answered (#2512). Revocations
+// are not gated: cleaning up after a deleted resource must keep working, and
+// keeping policies is what lets a renewed licence restore them unchanged.
+func rejectUnentitledType(c *gin.Context, resourceType string) bool {
+	if authzresource.Entitled(resourceType) {
+		return false
+	}
+	replyPublicError(c, http.StatusNotFound)
+	return true
 }
 
 // opAuthorize is the resource-level operation that lets someone who is NOT a
@@ -555,6 +568,9 @@ func previewObjectGrantHandler(e *authz.Enforcer) gin.HandlerFunc {
 			replyPublicError(c, http.StatusNotFound)
 			return
 		}
+		if rejectUnentitledType(c, req.Resource.Type) {
+			return
+		}
 		bundleOps, supported := authz.CommunityBundleOperations(req.Resource.Type)
 		if req.Bundle != authz.ActFullBusinessAccess || !supported || !isConcreteResourceID(req.Resource.ID) {
 			replyPublicError(c, http.StatusBadRequest)
@@ -984,6 +1000,9 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB, dir *directory.Servic
 		}
 		if isModelAuthorizationResourceType(req.Resource.Type) {
 			replyPublicError(c, http.StatusNotFound)
+			return
+		}
+		if rejectUnentitledType(c, req.Resource.Type) {
 			return
 		}
 

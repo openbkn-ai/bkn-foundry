@@ -333,6 +333,11 @@ func registerAuthorizationResources(g *gin.RouterGroup, catalog AuthorizationRes
 		if !ok {
 			return
 		}
+		if !authzresource.Entitled(c.Query("resource_type")) {
+			// Answered like a type no provider serves (#2512).
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
 		result, err := catalog.List(c.Request.Context(), c.Query("resource_type"), query)
 		if err != nil {
 			if errors.Is(err, errUnsupportedResourceType) || errors.Is(err, errInvalidAuthorizationResourceParent) {

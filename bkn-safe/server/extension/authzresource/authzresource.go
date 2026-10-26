@@ -22,6 +22,18 @@
 // declares the lowest edition that may use it; whether it may be used is
 // decided per call against the licence in force. A type that is not registered,
 // or not licensed now, behaves exactly like a type core does not know.
+//
+// # Paid resource types
+//
+// RequireEdition is separate from Register: it puts a minimum edition on the
+// resource type itself, so core's enforcer answers every authorization question
+// on it as "not granted" while the licence in force is below that edition —
+// super administrators included (#2512). This is the licence gate for an
+// enterprise-only service that authorizes every request through bkn-safe, such
+// as the knowledge base: it already trusts these answers for every data access,
+// so gating the edition on them adds no trust surface (ee-design.md §2). A type
+// with a provider but no RequireEdition is not gated; a gated type need not
+// have a provider.
 package authzresource
 
 import (
@@ -100,6 +112,32 @@ func Lookup(resourceType string) (Provider, bool) {
 	return item.provider, true
 }
 
-// ResetForTest empties the registry. Test binaries only (socket refuses
+var editions = socket.New[licverify.Edition]("authzresource edition")
+
+// RequireEdition makes resourceType a paid type: below min, core answers every
+// check on it as not granted and refuses grants on it. Assembly-time only;
+// capability names the paid capability the type belongs to.
+func RequireEdition(resourceType, capability string, min licverify.Edition) {
+	if strings.TrimSpace(resourceType) == "" {
+		panic("authzresource: RequireEdition needs a resource type")
+	}
+	if min == "" {
+		panic("authzresource: " + resourceType + " required without a minimum edition")
+	}
+	editions.Add(resourceType, capability, min, min)
+}
+
+// Entitled reports whether the licence in force reaches resourceType's
+// required edition. Types nobody declared are always entitled, which is every
+// type in a community binary.
+func Entitled(resourceType string) bool {
+	min, gated := editions.Get(resourceType)
+	return !gated || entitlement.AtLeast(min)
+}
+
+// ResetForTest empties both registries. Test binaries only (socket refuses
 // otherwise).
-func ResetForTest() { registry.ResetForTest() }
+func ResetForTest() {
+	registry.ResetForTest()
+	editions.ResetForTest()
+}
