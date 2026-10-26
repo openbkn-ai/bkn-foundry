@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
@@ -221,6 +222,10 @@ func (s *adminWriteServices) GrantRolePermissions(ctx context.Context, roleID, r
 	}
 	if isModelAuthorizationResourceType(resourceType) {
 		return errModelAuthorizationManagedBySystem
+	}
+	if !authzresource.Entitled(resourceType) {
+		// A paid type below its edition is not grantable (#2512).
+		return fmt.Errorf("%w: resource type is not available in this edition", adminwrite.ErrInvalid)
 	}
 	// A role granted resource_manage gets its required view_detail (#1121): the
 	// management routes load their target first, so without it the role holds a

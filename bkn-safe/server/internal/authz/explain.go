@@ -7,10 +7,12 @@ package authz
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/casbin/casbin/v2/util"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -125,6 +127,10 @@ func (en *Enforcer) explainBaseWalk(ctx context.Context, idx *grantIndex, access
 		grants, err := en.explanationGrants(idx, current, currentOperation)
 		if err != nil {
 			return nil, err
+		}
+		if !authzresource.Entitled(current.Type) {
+			// A paid type below its edition keeps only its denies (#2512).
+			grants = slices.DeleteFunc(grants, func(grant ExplanationGrant) bool { return grant.Effect != string(EffectDeny) })
 		}
 		step := ExplanationStep{
 			ResourceType: current.Type, ResourceID: current.ID, Operation: currentOperation,

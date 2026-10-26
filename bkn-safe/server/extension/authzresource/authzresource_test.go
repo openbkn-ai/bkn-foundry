@@ -75,3 +75,42 @@ func TestRegisterRejectsIncompleteRegistrations(t *testing.T) {
 		})
 	}
 }
+
+func TestEntitledFollowsTheRequiredEditionPerCall(t *testing.T) {
+	withEdition(t, licverify.EditionCommunity)
+	if !Entitled("knowledge_base") {
+		t.Fatal("an undeclared type was gated")
+	}
+	RequireEdition("knowledge_base", "knowledge_base", licverify.EditionProfessional)
+	if Entitled("knowledge_base") {
+		t.Fatal("a Professional type was entitled on Community")
+	}
+	if !Entitled("other_type") {
+		t.Fatal("the gate reached a type nobody declared")
+	}
+	entitlement.SetGateForTest(entitlement.FixedGate(licverify.EditionEnterprise))
+	if !Entitled("knowledge_base") {
+		t.Fatal("a higher licence did not entitle the type")
+	}
+	// Gating needs no provider: the type was never registered for listings.
+	if _, ok := Lookup("knowledge_base"); ok {
+		t.Fatal("RequireEdition registered a provider")
+	}
+}
+
+func TestRequireEditionRejectsIncompleteDeclarations(t *testing.T) {
+	withEdition(t, licverify.EditionProfessional)
+	for name, require := range map[string]func(){
+		"empty type": func() { RequireEdition(" ", "knowledge_base", licverify.EditionProfessional) },
+		"no edition": func() { RequireEdition("knowledge_base", "knowledge_base", "") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("RequireEdition did not panic")
+				}
+			}()
+			require()
+		})
+	}
+}

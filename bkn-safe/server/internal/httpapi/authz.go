@@ -331,6 +331,11 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB, dir *directory
 		if !bind(c, &req) {
 			return
 		}
+		// Creator grants included: an under-licensed install cannot create the
+		// resource, and kb-api withdraws a knowledge base whose grant failed.
+		if rejectUnentitledType(c, req.Resource.Type) {
+			return
+		}
 		managed, err := managedproxy.IsManaged(c.Request.Context(), db, req.AccessorID)
 		if err != nil {
 			serverError(c, err)

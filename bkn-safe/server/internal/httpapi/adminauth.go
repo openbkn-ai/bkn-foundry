@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 )
 
@@ -258,6 +259,10 @@ func RequireAdminOrResourceOwner(v TokenVerifier, e *authz.Enforcer) gin.Handler
 		}
 		owner := false
 		for _, grant := range grants {
+			if !authzresource.Entitled(grant.ResourceType) {
+				// Owning a paid resource below its edition owns nothing (#2512).
+				continue
+			}
 			for _, op := range grant.Operations {
 				if op == opAuthorize {
 					owner = true
