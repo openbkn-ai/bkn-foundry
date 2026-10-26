@@ -28,7 +28,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
-type bomSealTransaction struct {
+type functionSealTransaction struct {
 	isessionstore.Transaction
 	sources  []ledgervo.Event
 	saved    []ledgervo.Event
@@ -36,10 +36,10 @@ type bomSealTransaction struct {
 	writeErr error
 }
 
-func (tx *bomSealTransaction) ReadEvidenceEventsByIDs([]string) ([]ledgervo.Event, error) {
+func (tx *functionSealTransaction) ReadEvidenceEventsByIDs([]string) ([]ledgervo.Event, error) {
 	return tx.sources, tx.readErr
 }
-func (tx *bomSealTransaction) AppendDerivedEvidence(e ledgervo.Event) (ledgervo.DurableAck, error) {
+func (tx *functionSealTransaction) AppendDerivedEvidence(e ledgervo.Event) (ledgervo.DurableAck, error) {
 	if tx.writeErr != nil {
 		return ledgervo.DurableAck{}, tx.writeErr
 	}
@@ -50,41 +50,48 @@ func (tx *bomSealTransaction) AppendDerivedEvidence(e ledgervo.Event) (ledgervo.
 	return ledgervo.DurableAck{EventID: e.EventID, Durable: true}, nil
 }
 
-func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
-	for _, name := range []string{"normal", "zero", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "null count", "null substitute", "clock skew", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
+func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
+	for _, name := range []string{"normal", "zero", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "missing declaration", "invalid complete", "changed content", "changed claim type", "clock skew", "precise content", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
 		t.Run(name, func(t *testing.T) {
 			now := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 			owner := sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "user"}
-			conclusion := bomConclusion{Products: []string{"P1", "P2"}, SharedCodes: []string{"M1", "M2"}, SharedCount: 2, Caliber: "structure_intersect_only"}
-			if name == "zero" || name == "null count" {
-				conclusion.SharedCodes = []string{}
-				conclusion.SharedCount = 0
+			// A domain-neutral conclusion proves Core does not require sample fields.
+			content := map[string]any{"measurement": "passed", "count": 2}
+			if name == "zero" {
+				content["count"] = 0
 			}
-			producer := bomProducer{KnowledgeNetworkID: "kn", ToolboxID: "box", ToolID: "bom_shared_list", FunctionVersion: "version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
-			encodedConclusion, _ := json.Marshal(conclusion)
-			var nativeResult map[string]any
-			_ = json.Unmarshal(encodedConclusion, &nativeResult)
-			nativeResult["data_source"] = map[string]any{"knowledge_network_id": "kn", "loaded_datasets": []string{"bom"}}
-			if name == "null count" {
-				nativeResult["shared_count"] = nil
+			if name == "precise content" {
+				content["count"], content["text"] = json.Number("9007199254740993"), "<verified>"
 			}
-			if name == "null substitute" {
-				nativeResult["include_substitute"] = nil
+			producer := resultProducer{KnowledgeNetworkID: "kn", ToolboxID: "box", ToolID: "quality_check", FunctionVersion: "version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
+			declaration := map[string]any{"claim_type": "quality.check/v1", "complete": true, "content": content}
+			nativeResult := map[string]any{"trace_evidence": declaration}
+			switch name {
+			case "missing declaration":
+				delete(nativeResult, "trace_evidence")
+			case "invalid complete":
+				declaration["complete"] = "true"
+			case "changed content":
+				declaration["content"] = map[string]any{"changed": true}
+			case "changed claim type":
+				declaration["claim_type"] = "other/v1"
 			}
-			output := map[string]any{"status_code": 200, "function_execution": map[string]any{"toolbox_id": "box", "tool_id": "bom_shared_list", "function_version": "version", "code_sha256": producer.CodeSHA256}, "body": map[string]any{"exit_code": 0, "result": nativeResult}}
+			output := map[string]any{"status_code": 200, "function_execution": map[string]any{"toolbox_id": "box", "tool_id": "quality_check", "function_version": "version", "code_sha256": producer.CodeSHA256}, "body": map[string]any{"exit_code": 0, "result": nativeResult}}
 			outputRaw, _ := json.Marshal(output)
 			payload, _ := sessionvo.InlineJSONPayload(outputRaw)
-			input, _ := sessionvo.InlineJSONPayload(json.RawMessage(`{"kn_id":"kn","toolbox_id":"box","tool_id":"bom_shared_list","function_version":"version"}`))
-			fact := sessionvo.OperationCallFact{OperationID: "op", Attempt: 1, ConversationID: "conv", InteractionID: "int", ReceiptID: "receipt", ToolName: "bom_shared_list", Protocol: sessionvo.ProtocolInternal, SourceModule: bomIntersectionSourceModule, Status: sessionvo.AttemptCompleted, Input: input, Output: &payload, CapabilityProfile: &sessionvo.CapabilityProfile{EvidenceContract: bomIntersectionContract, ToolVersion: "version"}}
-			raw, _ := json.Marshal(conclusion)
+			input, _ := sessionvo.InlineJSONPayload(json.RawMessage(`{"kn_id":"kn","toolbox_id":"box","tool_id":"quality_check","function_version":"version"}`))
+			fact := sessionvo.OperationCallFact{OperationID: "op", Attempt: 1, ConversationID: "conv", InteractionID: "int", ReceiptID: "receipt", ToolName: "quality_check", Protocol: sessionvo.ProtocolInternal, SourceModule: functionResultSourceModule, Status: sessionvo.AttemptCompleted, Input: input, Output: &payload, CapabilityProfile: &sessionvo.CapabilityProfile{EvidenceContract: functionResultContract, ToolVersion: "version"}}
+			raw, _ := json.Marshal(content)
 			var value any
-			_ = json.Unmarshal(raw, &value)
+			decoder := json.NewDecoder(bytes.NewReader(raw))
+			decoder.UseNumber()
+			_ = decoder.Decode(&value)
 			var canonical bytes.Buffer
 			encoder := json.NewEncoder(&canonical)
 			encoder.SetEscapeHTML(false)
 			_ = encoder.Encode(value)
 			sum := sha256.Sum256(bytes.TrimSuffix(canonical.Bytes(), []byte("\n")))
-			proof := bomResultEvidence{Contract: bomIntersectionContract, Complete: true, Producer: producer, Conclusion: conclusion, ArtifactRef: "artifact:bom-result", ContentHash: "sha256:" + hex.EncodeToString(sum[:]), OutputHash: ledgervo.CanonicalPayloadHash(payload.Inline)}
+			proof := functionResultEvidence{Contract: functionResultContract, Complete: true, Producer: producer, ClaimType: "quality.check/v1", ArtifactRef: "artifact:function-result", ContentHash: "sha256:" + hex.EncodeToString(sum[:]), OutputHash: ledgervo.CanonicalPayloadHash(payload.Inline)}
 			if name == "incomplete proof" {
 				proof.Complete = false
 			}
@@ -108,12 +115,12 @@ func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				tx.SaveConversation(sessionvo.Conversation{ID: "conv", Owner: owner})
 				tx.SaveOperationCallFact(fact)
 				tx.SaveReceipt(sessionvo.Receipt{ID: "receipt", ConversationID: "conv", InteractionID: "int", OperationID: "op", Attempt: 1, Status: sessionvo.ReceiptCompleted, EvidenceDurability: sessionvo.DurabilityDurable, ObservedEvidenceRefs: []string{"source"}, RequestID: "req", TraceID: "trace"})
-				interaction := sessionvo.Interaction{ID: "int", ConversationID: "conv", EvidenceStatus: sessionvo.EvidenceComplete, ClosureManifest: &sessionvo.ClosureManifest{Claims: []string{bomClaimID("op", 1)}}}
+				interaction := sessionvo.Interaction{ID: "int", ConversationID: "conv", EvidenceStatus: sessionvo.EvidenceComplete, ClosureManifest: &sessionvo.ClosureManifest{Claims: []string{functionClaimID("op", 1)}}}
 				revision := sessionvo.AssemblyRevision{ID: "real-revision", InteractionID: "int", IncludedEventIDs: []string{"source"}, Completeness: sessionvo.EvidenceComplete, CreatedAt: now.Add(time.Second)}
-				custom := &bomSealTransaction{Transaction: tx, sources: []ledgervo.Event{source}}
+				custom := &functionSealTransaction{Transaction: tx, sources: []ledgervo.Event{source}}
 				switch name {
 				case "caller prefix":
-					interaction.ClosureManifest.Claims = []string{"claim_bom_manual"}
+					interaction.ClosureManifest.Claims = []string{"claim_function_manual"}
 				case "invalid event":
 					custom.writeErr = &ledgersvc.DomainError{Code: ledgersvc.CodeInvalidEvent, Message: "invalid proof"}
 				case "payload conflict":
@@ -142,7 +149,7 @@ func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				if name == "unsupported store" {
 					sealing = tx
 				}
-				_, sealErr := service.sealBOMClaims(sealing, &interaction, &revision)
+				_, sealErr := service.sealFunctionClaims(sealing, &interaction, &revision)
 				if name == "storage failure" {
 					if !errors.Is(sealErr, custom.writeErr) {
 						t.Fatalf("storage error swallowed: %v", sealErr)
@@ -170,14 +177,14 @@ func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				}
 				event := custom.saved[0]
 				claim := event.Claims[0]
-				if claim.ID != bomClaimID("op", 1) || claim.Supports[0].SourceRevisionID != revision.ID || event.EvidenceRefs[0].ContentHash != proof.ContentHash || claim.ContentArtifactRef != proof.ArtifactRef {
+				if claim.Type != proof.ClaimType || claim.ID != functionClaimID("op", 1) || claim.Supports[0].SourceRevisionID != revision.ID || event.EvidenceRefs[0].ContentHash != proof.ContentHash || claim.ContentArtifactRef != proof.ArtifactRef {
 					t.Fatalf("incorrect binding: %+v", event)
 				}
 				assembled := assemblysvc.Assemble("int", []ledgervo.Event{source, event}, interaction.ClosureManifest.Claims)
 				if assembled.Completeness != sessionvo.EvidenceComplete || len(assembled.Claims) != 1 || len(assembled.EvidenceRefs) != 1 {
 					t.Fatalf("assembly=%+v", assembled)
 				}
-				replay := materializedBOMClaim(source, proof, claim.ID, "receipt", sessionvo.AssemblyRevision{ID: revision.ID, CreatedAt: revision.CreatedAt}, 2)
+				replay := materializedFunctionClaim(source, proof, claim.ID, "receipt", sessionvo.AssemblyRevision{ID: revision.ID, CreatedAt: revision.CreatedAt}, 2)
 				if ledgervo.ImmutableRecordHash(replay) != ledgervo.ImmutableRecordHash(event) {
 					t.Fatal("same revision generated a different event")
 				}
@@ -190,8 +197,8 @@ func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
 	}
 }
 
-func TestActualCLBOMResultProof(t *testing.T) {
-	raw, err := os.ReadFile("../../../drivenadapter/dbaccess/mariadb/sessionstore/testdata/bom-intersection-result.json")
+func TestSampleFunctionResultProof(t *testing.T) {
+	raw, err := os.ReadFile("../../../drivenadapter/dbaccess/mariadb/sessionstore/testdata/sample-function-result.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,24 +215,24 @@ func TestActualCLBOMResultProof(t *testing.T) {
 		t.Fatal("fixture source hash does not cover its completeness declaration")
 	}
 	var envelope struct {
-		Payload bomResultEvidence `json:"payload"`
+		Payload functionResultEvidence `json:"payload"`
 	}
 	if err := json.Unmarshal(fixture.Source.Envelope, &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if !validBOMProof(sessionvo.OperationCallFact{Input: fixture.Input, Output: &fixture.Output, CapabilityProfile: fixture.Profile}, envelope.Payload) {
+	if !validFunctionProof(sessionvo.OperationCallFact{Input: fixture.Input, Output: &fixture.Output, CapabilityProfile: fixture.Profile}, envelope.Payload) {
 		t.Fatalf("real CL proof rejected: output hash=%s expected=%s", ledgervo.CanonicalPayloadHash(fixture.Output.Inline), envelope.Payload.OutputHash)
 	}
 }
 
-func TestBOMClaimCapacityKeepsServerManifestBoundedAndReplayable(t *testing.T) {
+func TestFunctionResultClaimCapacityKeepsServerManifestBoundedAndReplayable(t *testing.T) {
 	store := sessionstore.New()
 	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 		for i := 0; i < 33; i++ {
-			tx.SaveOperationCallFact(sessionvo.OperationCallFact{OperationID: fmt.Sprintf("op-%d", i), InteractionID: "int", Attempt: 1, SourceModule: bomIntersectionSourceModule, Status: sessionvo.AttemptCompleted})
+			tx.SaveOperationCallFact(sessionvo.OperationCallFact{OperationID: fmt.Sprintf("op-%d", i), InteractionID: "int", Attempt: 1, SourceModule: functionResultSourceModule, Status: sessionvo.AttemptCompleted})
 		}
 		manifest := deriveClosureManifest(tx, "int", sessionvo.ClosureManifest{Version: "3.0.0", CompletionReason: "completed"}, 32)
-		if len(manifest.Claims) != 32 || !slices.Contains(manifest.SystemPartialReasons, "bom_claim_capacity_exceeded") {
+		if len(manifest.Claims) != 32 || !slices.Contains(manifest.SystemPartialReasons, "function_claim_capacity_exceeded") {
 			t.Fatalf("capacity not represented: %+v", manifest)
 		}
 		current := sessionvo.Interaction{ID: "int", ExecutionStatus: sessionvo.InteractionCompleted, TerminalIdempotencyKey: "finish", ClosureManifest: &manifest}

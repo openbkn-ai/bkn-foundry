@@ -14,25 +14,25 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
-const integrityBOMContract = "bom.structure_intersection/v1"
+const integrityFunctionResultContract = "function_result_evidence/v1"
 
-// Match the registered call and publisher event shape from the real BOM SQL
+// Match the registered call and publisher event shape from the real FunctionResult SQL
 // fixture. The verdict checks an explicit producer declaration, never answer text.
-func integrityBOMFixture() (sessionvo.EvidenceSnapshot, sessionvo.Owner, ledgervo.Event) {
+func integrityFunctionResultFixture() (sessionvo.EvidenceSnapshot, sessionvo.Owner, ledgervo.Event) {
 	snapshot, owner, _ := integrityFixture()
 	f := &snapshot.CallFacts[0]
-	f.ToolName = "bom_shared_list"
-	f.SourceModule = "context-loader-bom-intersection/v1"
-	f.Input, _ = sessionvo.InlineJSONPayload(json.RawMessage(`{"kn_id":"supply","toolbox_id":"box","tool_id":"bom_shared_list","arguments":{"products":["P1","P2"]}}`))
-	f.CapabilityProfile = &sessionvo.CapabilityProfile{Resolution: "matched", EvidenceContract: integrityBOMContract, RequiredTraceFields: []string{"business_refs", "result_completeness"}}
+	f.ToolName = "quality_check"
+	f.SourceModule = "context-loader-function-result/v1"
+	f.Input, _ = sessionvo.InlineJSONPayload(json.RawMessage(`{"kn_id":"supply","toolbox_id":"box","tool_id":"quality_check","arguments":{"products":["P1","P2"]}}`))
+	f.CapabilityProfile = &sessionvo.CapabilityProfile{Resolution: "matched", EvidenceContract: integrityFunctionResultContract, RequiredTraceFields: []string{"business_refs", "result_completeness"}}
 	r := &snapshot.Receipts[0]
-	r.BusinessRefs = []sessionvo.BusinessRef{{RefType: sessionvo.BusinessRefFunction, RefID: "function:supply:bom_shared_list", Version: "approved-version"}}
-	r.ObservedEvidenceRefs = []string{"bom-proof"}
-	event := ledgervo.Event{EventID: "bom-proof", EventType: "logic.execution.observed", ProducerID: "agent-retrieval", Owner: owner, ConversationID: f.ConversationID, InteractionID: f.InteractionID, OperationID: f.OperationID, Attempt: f.Attempt, RequestID: f.RequestID, TraceID: f.TraceID, Envelope: json.RawMessage(`{"payload":{"result_contract":"bom.structure_intersection/v1","complete":true}}`)}
+	r.BusinessRefs = []sessionvo.BusinessRef{{RefType: sessionvo.BusinessRefFunction, RefID: "function:supply:quality_check", Version: "approved-version"}}
+	r.ObservedEvidenceRefs = []string{"result-proof"}
+	event := ledgervo.Event{EventID: "result-proof", EventType: "logic.execution.observed", ProducerID: "agent-retrieval", Owner: owner, ConversationID: f.ConversationID, InteractionID: f.InteractionID, OperationID: f.OperationID, Attempt: f.Attempt, RequestID: f.RequestID, TraceID: f.TraceID, Envelope: json.RawMessage(`{"payload":{"result_contract":"function_result_evidence/v1","complete":true}}`)}
 	return snapshot, owner, event
 }
 
-func setIntegrityBOMEvents(t *testing.T, snapshot *sessionvo.EvidenceSnapshot, events ...ledgervo.Event) {
+func setIntegrityFunctionResultEvents(t *testing.T, snapshot *sessionvo.EvidenceSnapshot, events ...ledgervo.Event) {
 	t.Helper()
 	snapshot.Ledger.Events = nil
 	for _, event := range events {
@@ -44,7 +44,7 @@ func setIntegrityBOMEvents(t *testing.T, snapshot *sessionvo.EvidenceSnapshot, e
 	}
 }
 
-func TestRecordIntegrityBOMTypedResultCompleteness(t *testing.T) {
+func TestRecordIntegrityFunctionResultTypedResultCompleteness(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		payload string
@@ -52,12 +52,12 @@ func TestRecordIntegrityBOMTypedResultCompleteness(t *testing.T) {
 		want    string
 	}{
 		{name: "complete", want: "complete"},
-		{name: "missing", payload: `{"result_contract":"bom.structure_intersection/v1"}`, want: "missing"},
-		{name: "false", payload: `{"result_contract":"bom.structure_intersection/v1","complete":false}`, want: "missing"},
-		{name: "string", payload: `{"result_contract":"bom.structure_intersection/v1","complete":"true"}`, want: "missing"},
-		{name: "null", payload: `{"result_contract":"bom.structure_intersection/v1","complete":null}`, want: "missing"},
-		{name: "number", payload: `{"result_contract":"bom.structure_intersection/v1","complete":1}`, want: "missing"},
-		{name: "truncated flag is not substitute", payload: `{"result_contract":"bom.structure_intersection/v1","truncated":false}`, want: "missing"},
+		{name: "missing", payload: `{"result_contract":"function_result_evidence/v1"}`, want: "missing"},
+		{name: "false", payload: `{"result_contract":"function_result_evidence/v1","complete":false}`, want: "missing"},
+		{name: "string", payload: `{"result_contract":"function_result_evidence/v1","complete":"true"}`, want: "missing"},
+		{name: "null", payload: `{"result_contract":"function_result_evidence/v1","complete":null}`, want: "missing"},
+		{name: "number", payload: `{"result_contract":"function_result_evidence/v1","complete":1}`, want: "missing"},
+		{name: "truncated flag is not substitute", payload: `{"result_contract":"function_result_evidence/v1","truncated":false}`, want: "missing"},
 		{name: "wrong contract", payload: `{"result_contract":"other/v1","complete":true}`, want: "missing"},
 		{name: "missing contract", payload: `{"complete":true}`, want: "missing"},
 		{name: "wrong producer", mutate: func(_ *sessionvo.EvidenceSnapshot, e *ledgervo.Event) { e.ProducerID = "other" }, want: "missing"},
@@ -67,29 +67,29 @@ func TestRecordIntegrityBOMTypedResultCompleteness(t *testing.T) {
 		{name: "wrong registered source", mutate: func(s *sessionvo.EvidenceSnapshot, _ *ledgervo.Event) { s.CallFacts[0].SourceModule = "untrusted" }, want: "missing"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			snapshot, owner, event := integrityBOMFixture()
+			snapshot, owner, event := integrityFunctionResultFixture()
 			if test.payload != "" {
 				event.Envelope = json.RawMessage(`{"payload":` + test.payload + `}`)
 			}
 			if test.mutate != nil {
 				test.mutate(&snapshot, &event)
 			}
-			setIntegrityBOMEvents(t, &snapshot, event)
+			setIntegrityFunctionResultEvents(t, &snapshot, event)
 			report, err := evaluateRecordIntegrity(snapshot, owner, snapshot.Interaction.TerminalAt.UTC(), nil)
 			if err != nil || report == nil || report.Status != test.want {
 				t.Fatalf("%s: report=%+v err=%v", test.name, report, err)
 			}
-			if test.want == "missing" && !hasBOMIntegrityGap(report, "evidence.result_completeness") {
+			if test.want == "missing" && !hasFunctionResultIntegrityGap(report, "evidence.result_completeness") {
 				t.Fatalf("missing declaration not diagnosed: %+v", report)
 			}
 		})
 	}
 }
 
-func TestRecordIntegrityBOMRejectsAmbiguousDeclarationsAndUnrelatedTargets(t *testing.T) {
+func TestRecordIntegrityFunctionResultRejectsAmbiguousDeclarationsAndUnrelatedTargets(t *testing.T) {
 	for _, test := range []string{"two result declarations", "network only", "other function"} {
 		t.Run(test, func(t *testing.T) {
-			snapshot, owner, event := integrityBOMFixture()
+			snapshot, owner, event := integrityFunctionResultFixture()
 			events := []ledgervo.Event{event}
 			field := "business_refs"
 			switch test {
@@ -104,16 +104,16 @@ func TestRecordIntegrityBOMRejectsAmbiguousDeclarationsAndUnrelatedTargets(t *te
 			default:
 				snapshot.Receipts[0].BusinessRefs[0].RefID = "function:supply:other"
 			}
-			setIntegrityBOMEvents(t, &snapshot, events...)
+			setIntegrityFunctionResultEvents(t, &snapshot, events...)
 			report, err := evaluateRecordIntegrity(snapshot, owner, snapshot.Interaction.TerminalAt.UTC(), nil)
-			if err != nil || report == nil || report.Status != "missing" || !hasBOMIntegrityGap(report, field) {
+			if err != nil || report == nil || report.Status != "missing" || !hasFunctionResultIntegrityGap(report, field) {
 				t.Fatalf("%s accepted: report=%+v err=%v", test, report, err)
 			}
 		})
 	}
 }
 
-func hasBOMIntegrityGap(report *evidencevo.RecordIntegrity, field string) bool {
+func hasFunctionResultIntegrityGap(report *evidencevo.RecordIntegrity, field string) bool {
 	for _, missing := range report.Missing {
 		if missing.Field == field {
 			return true

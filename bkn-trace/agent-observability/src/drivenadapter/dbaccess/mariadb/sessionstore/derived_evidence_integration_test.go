@@ -29,11 +29,11 @@ func TestDerivedEvidenceAtomicWithRevisionMariaDB(t *testing.T) {
 	defer cancel()
 	store := New(db)
 	service, owner, interaction, _, _ := durableAnswerSession(t, ctx, db)
-	input, err := sessionvo.InlineJSONPayload(json.RawMessage(`{"bom":true}`))
+	input, err := sessionvo.InlineJSONPayload(json.RawMessage(`{"check":true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	operation, receipt, err := service.EnsureOperation(ctx, sessionsvc.EnsureOperationCommand{Owner: owner, ConversationID: interaction.ConversationID, InteractionID: interaction.ID, OperationKey: "bom", ToolName: "bom_shared_list", Input: input, Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch})
+	operation, receipt, err := service.EnsureOperation(ctx, sessionsvc.EnsureOperationCommand{Owner: owner, ConversationID: interaction.ConversationID, InteractionID: interaction.ID, OperationKey: "quality", ToolName: "quality_check", Input: input, Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch})
 	if err != nil {
 		t.Fatal(err)
 	}

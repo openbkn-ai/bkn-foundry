@@ -21,9 +21,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
-// The fixture is the actual approved BOM native Function result and CL-produced
-// artifact hash/wire event from the isolated #1332 audit, not a Core-made hash.
-func TestBOMClaimLifecycleMariaDB(t *testing.T) {
+// The fixture carries a sample-owned declaration through the same generic
+// producer protocol. Core checks bindings without interpreting business content.
+func TestFunctionResultClaimLifecycleMariaDB(t *testing.T) {
 	for _, mode := range []string{"ready", "late", "failed-then-success"} {
 		t.Run(mode, func(t *testing.T) {
 			db := durableAnswerDatabase(t)
@@ -33,7 +33,7 @@ func TestBOMClaimLifecycleMariaDB(t *testing.T) {
 			service, owner, interaction, finish, _ := durableAnswerSession(t, ctx, db)
 			finish.AnswerArtifact = nil
 			finish.Manifest.AnswerArtifactRef = "artifact:answer-fixture"
-			raw, err := os.ReadFile("testdata/bom-intersection-result.json")
+			raw, err := os.ReadFile("testdata/sample-function-result.json")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -47,7 +47,7 @@ func TestBOMClaimLifecycleMariaDB(t *testing.T) {
 				t.Fatal(err)
 			}
 			if mode == "failed-then-success" {
-				failedOp, failedReceipt, err := service.EnsureOperation(ctx, sessionsvc.EnsureOperationCommand{Owner: owner, ConversationID: interaction.ConversationID, InteractionID: interaction.ID, OperationKey: "failed-bom", ToolName: "bom_shared_list", Protocol: sessionvo.ProtocolInternal, SourceModule: "context-loader-bom-intersection/v1", Input: fixture.Input, CapabilityProfile: fixture.Profile, Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch})
+				failedOp, failedReceipt, err := service.EnsureOperation(ctx, sessionsvc.EnsureOperationCommand{Owner: owner, ConversationID: interaction.ConversationID, InteractionID: interaction.ID, OperationKey: "failed-bom", ToolName: "bom_shared_list", Protocol: sessionvo.ProtocolInternal, SourceModule: "context-loader-function-result/v1", Input: fixture.Input, CapabilityProfile: fixture.Profile, Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -57,7 +57,7 @@ func TestBOMClaimLifecycleMariaDB(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			operation, receipt, err := service.EnsureOperation(ctx, sessionsvc.EnsureOperationCommand{Owner: owner, ConversationID: interaction.ConversationID, InteractionID: interaction.ID, OperationKey: "bom", ToolName: "bom_shared_list", Protocol: sessionvo.ProtocolInternal, SourceModule: "context-loader-bom-intersection/v1", Input: fixture.Input, CapabilityProfile: fixture.Profile, Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch})
+			operation, receipt, err := service.EnsureOperation(ctx, sessionsvc.EnsureOperationCommand{Owner: owner, ConversationID: interaction.ConversationID, InteractionID: interaction.ID, OperationKey: "bom", ToolName: "bom_shared_list", Protocol: sessionvo.ProtocolInternal, SourceModule: "context-loader-function-result/v1", Input: fixture.Input, CapabilityProfile: fixture.Profile, Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch})
 			if err != nil {
 				t.Fatal(err)
 			}

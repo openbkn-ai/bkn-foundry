@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Seal approved BOM structure-intersection Claims and EvidenceRefs in the existing SQL Ledger transaction with their actual assembly revision, exact receipt and result hash. Evidence gaps stay partial; no new tables, queue or list/detail read-time inference. (#1332)
+- Seal explicitly declared conclusions from approved Functions as Claims and EvidenceRefs in the existing SQL Ledger transaction with their actual assembly revision, exact receipt and result hash. Evidence gaps stay partial; no sample-specific business rules, new tables, queues or list/detail read-time inference. (#1332)
 
 - Pure lifecycle ownership reads retain full owner checks without taking the conversation writer lock, avoiding contention between status/detail reads and operation registration. (#2425)
 

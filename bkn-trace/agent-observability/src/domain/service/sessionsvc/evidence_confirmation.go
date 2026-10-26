@@ -97,7 +97,7 @@ func receiptOnlyEvidenceContract(profile *sessionvo.CapabilityProfile) bool {
 
 func requiredEvidenceEventType(contract string) string {
 	switch contract {
-	case bomIntersectionContract:
+	case functionResultContract:
 		return "logic.execution.observed"
 	case "ontology_schema_snapshot/v1":
 		return "ontology.schema.snapshot"

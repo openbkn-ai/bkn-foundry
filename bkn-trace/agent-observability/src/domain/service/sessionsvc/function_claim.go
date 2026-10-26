@@ -22,10 +22,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
-const bomIntersectionContract = "bom.structure_intersection/v1"
-const bomIntersectionSourceModule = "context-loader-bom-intersection/v1"
+const functionResultContract = "function_result_evidence/v1"
+const functionResultSourceModule = "context-loader-function-result/v1"
 
-type bomProducer struct {
+type resultProducer struct {
 	KnowledgeNetworkID string `json:"knowledge_network_id"`
 	ToolboxID          string `json:"toolbox_id"`
 	ToolID             string `json:"tool_id"`
@@ -33,63 +33,54 @@ type bomProducer struct {
 	CodeSHA256         string `json:"code_sha256"`
 }
 
-type bomConclusion struct {
-	Products          []string `json:"products"`
-	IncludeSubstitute bool     `json:"include_substitute"`
-	Depth             *int     `json:"depth"`
-	SharedCodes       []string `json:"shared_codes"`
-	SharedCount       int      `json:"shared_count"`
-	Caliber           string   `json:"caliber"`
+type functionResultEvidence struct {
+	Contract    string         `json:"result_contract"`
+	Complete    bool           `json:"complete"`
+	Producer    resultProducer `json:"producer"`
+	ClaimType   string         `json:"claim_type"`
+	ArtifactRef string         `json:"result_artifact_ref"`
+	ContentHash string         `json:"content_hash"`
+	OutputHash  string         `json:"output_hash"`
 }
 
-type bomResultEvidence struct {
-	Contract    string        `json:"result_contract"`
-	Complete    bool          `json:"complete"`
-	Producer    bomProducer   `json:"producer"`
-	Conclusion  bomConclusion `json:"conclusion"`
-	ArtifactRef string        `json:"result_artifact_ref"`
-	ContentHash string        `json:"content_hash"`
-	OutputHash  string        `json:"output_hash"`
+func functionClaimID(operationID string, attempt uint32) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", operationID, attempt, functionResultContract)))
+	return "claim_function_" + hex.EncodeToString(sum[:16])
 }
 
-func bomClaimID(operationID string, attempt uint32) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", operationID, attempt, bomIntersectionContract)))
-	return "claim_bom_" + hex.EncodeToString(sum[:16])
-}
-
-// Summaries deliberately omit input/output bodies. Only registered BOM attempts
+// Summaries deliberately omit input/output bodies. Only registered Function attempts
 // are loaded in full, and only while sealing their immutable evidence revision.
-func derivedBOMClaimIDs(tx isessionstore.Transaction, interactionID string, includeFailed bool) []string {
+func derivedFunctionClaimIDs(tx isessionstore.Transaction, interactionID string, includeFailed bool) []string {
 	var result []string
 	for _, fact := range tx.ListOperationCallSummaries(interactionID) {
-		if fact.SourceModule == bomIntersectionSourceModule && (includeFailed || fact.Status != sessionvo.AttemptFailed) {
-			result = appendUnique(result, bomClaimID(fact.OperationID, fact.Attempt))
+		if fact.SourceModule == functionResultSourceModule && (includeFailed || fact.Status != sessionvo.AttemptFailed) {
+			result = appendUnique(result, functionClaimID(fact.OperationID, fact.Attempt))
 		}
 	}
 	slices.Sort(result)
 	return result
 }
 
-func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessionvo.Interaction, revision *sessionvo.AssemblyRevision) ([]string, error) {
+func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *sessionvo.Interaction, revision *sessionvo.AssemblyRevision) ([]string, error) {
 	if interaction.ClosureManifest == nil {
 		return nil, nil
 	}
 	var artifacts []string
 	var expected []string
 	for _, id := range interaction.ClosureManifest.Claims {
-		if strings.HasPrefix(id, "claim_bom_") {
+		if strings.HasPrefix(id, "claim_function_") {
 			expected = append(expected, id)
 		}
 	}
 	if len(expected) == 0 {
 		return nil, nil
 	}
-	// Prefixes are not reserved for Core. Only registered BOM attempts own IDs.
+	// Prefixes are not reserved for Core. Only registered Function attempts own IDs.
 	// Keep ordinary finishes on the existing path without any additional read.
 	summaries := tx.ListOperationCallSummaries(interaction.ID)
 	expected = slices.DeleteFunc(expected, func(id string) bool {
 		return !slices.ContainsFunc(summaries, func(f sessionvo.OperationCallSummary) bool {
-			return f.SourceModule == bomIntersectionSourceModule && bomClaimID(f.OperationID, f.Attempt) == id
+			return f.SourceModule == functionResultSourceModule && functionClaimID(f.OperationID, f.Attempt) == id
 		})
 	})
 	if len(expected) == 0 {
@@ -110,7 +101,7 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 			var summary *sessionvo.OperationCallSummary
 			for i := range summaries {
 				f := &summaries[i]
-				if f.SourceModule == bomIntersectionSourceModule && bomClaimID(f.OperationID, f.Attempt) == id {
+				if f.SourceModule == functionResultSourceModule && functionClaimID(f.OperationID, f.Attempt) == id {
 					summary = f
 					break
 				}
@@ -121,7 +112,7 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 			}
 			fact, found := tx.FindOperationCallFact(summary.OperationID, summary.Attempt)
 			receipt, hasReceipt := tx.FindReceiptByOperationAttempt(summary.OperationID, summary.Attempt)
-			if !found || !hasReceipt || fact.Status != sessionvo.AttemptCompleted || receipt.Status != sessionvo.ReceiptCompleted || receipt.EvidenceDurability != sessionvo.DurabilityDurable || len(receipt.PartialReasons) > 0 || fact.CapabilityProfile == nil || fact.CapabilityProfile.EvidenceContract != bomIntersectionContract {
+			if !found || !hasReceipt || fact.Status != sessionvo.AttemptCompleted || receipt.Status != sessionvo.ReceiptCompleted || receipt.EvidenceDurability != sessionvo.DurabilityDurable || len(receipt.PartialReasons) > 0 || fact.CapabilityProfile == nil || fact.CapabilityProfile.EvidenceContract != functionResultContract {
 				missing(id, "claim_result_not_evaluable")
 				continue
 			}
@@ -134,13 +125,13 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 				return nil, err
 			}
 			var source *ledgervo.Event
-			var proof bomResultEvidence
+			var proof functionResultEvidence
 			for i := range sources {
 				e := &sources[i]
 				var envelope struct {
-					Payload bomResultEvidence `json:"payload"`
+					Payload functionResultEvidence `json:"payload"`
 				}
-				if e.ProducerID != "agent-retrieval" || e.EventType != "logic.execution.observed" || e.OperationID != fact.OperationID || e.Attempt != fact.Attempt || e.InteractionID != interaction.ID || e.ConversationID != interaction.ConversationID || e.RequestID != receipt.RequestID || e.TraceID != receipt.TraceID || json.Unmarshal(e.Envelope, &envelope) != nil || envelope.Payload.Contract != bomIntersectionContract {
+				if e.ProducerID != "agent-retrieval" || e.EventType != "logic.execution.observed" || e.OperationID != fact.OperationID || e.Attempt != fact.Attempt || e.InteractionID != interaction.ID || e.ConversationID != interaction.ConversationID || e.RequestID != receipt.RequestID || e.TraceID != receipt.TraceID || json.Unmarshal(e.Envelope, &envelope) != nil || envelope.Payload.Contract != functionResultContract {
 					continue
 				}
 				if source != nil {
@@ -150,7 +141,7 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 				source = e
 				proof = envelope.Payload
 			}
-			if source == nil || !validBOMProof(fact, proof) {
+			if source == nil || !validFunctionProof(fact, proof) {
 				missing(id, "claim_result_not_evaluable")
 				continue
 			}
@@ -159,7 +150,7 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 				missing(id, "claim_owner_mismatch")
 				continue
 			}
-			event := materializedBOMClaim(*source, proof, id, receipt.ID, *revision, uint64(len(revision.IncludedEventIDs)+1))
+			event := materializedFunctionClaim(*source, proof, id, receipt.ID, *revision, uint64(len(revision.IncludedEventIDs)+1))
 			ack, err := writer.AppendDerivedEvidence(event)
 			if errors.Is(err, isessionstore.ErrEvidenceConfirmationLimit) {
 				missing(id, "claim_evidence_budget_exceeded")
@@ -191,29 +182,17 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 	return artifacts, nil
 }
 
-func validBOMProof(fact sessionvo.OperationCallFact, proof bomResultEvidence) bool {
-	p, c := proof.Producer, proof.Conclusion
-	if !proof.Complete || fact.CapabilityProfile == nil || fact.Input.Mode != sessionvo.PayloadInline || fact.Output == nil ||
-		fact.Output.Mode != sessionvo.PayloadInline || len(fact.Output.Inline) > sessionvo.MaxInlinePayloadBytes ||
-		proof.OutputHash != ledgervo.CanonicalPayloadHash(fact.Output.Inline) {
+// Check transport identity and exact persisted output, not business semantics.
+func validFunctionProof(fact sessionvo.OperationCallFact, proof functionResultEvidence) bool {
+	p := proof.Producer
+	if !proof.Complete || strings.TrimSpace(proof.ClaimType) == "" || proof.ClaimType != strings.TrimSpace(proof.ClaimType) || len(proof.ClaimType) > 128 || fact.CapabilityProfile == nil || fact.Input.Mode != sessionvo.PayloadInline || fact.Output == nil || fact.Output.Mode != sessionvo.PayloadInline || len(fact.Output.Inline) > sessionvo.MaxInlinePayloadBytes || proof.OutputHash != ledgervo.CanonicalPayloadHash(fact.Output.Inline) {
 		return false
 	}
-	if !strings.HasPrefix(proof.ArtifactRef, "artifact:") || len(proof.ArtifactRef) <= len("artifact:") ||
-		p.FunctionVersion == "" || p.FunctionVersion == "unversioned" || len(p.CodeSHA256) != 71 ||
-		!strings.HasPrefix(p.CodeSHA256, "sha256:") || fact.CapabilityProfile.ToolVersion != p.FunctionVersion {
-		return false
-	}
-	if len(c.Products) < 2 || c.Caliber != "structure_intersect_only" || c.SharedCodes == nil ||
-		c.SharedCount != len(c.SharedCodes) || c.SharedCount > 5000 || !slices.IsSorted(c.SharedCodes) {
+	if !strings.HasPrefix(proof.ArtifactRef, "artifact:") || len(proof.ArtifactRef) <= len("artifact:") || p.FunctionVersion == "" || p.FunctionVersion == "unversioned" || len(p.CodeSHA256) != 71 || !strings.HasPrefix(p.CodeSHA256, "sha256:") || fact.CapabilityProfile.ToolVersion != p.FunctionVersion {
 		return false
 	}
 	if _, err := hex.DecodeString(p.CodeSHA256[7:]); err != nil {
 		return false
-	}
-	for i, code := range c.SharedCodes {
-		if code == "" || strings.TrimSpace(code) != code || i > 0 && code == c.SharedCodes[i-1] {
-			return false
-		}
 	}
 	var input struct {
 		KN      string `json:"kn_id"`
@@ -233,65 +212,52 @@ func validBOMProof(fact sessionvo.OperationCallFact, proof bomResultEvidence) bo
 			Hash    string `json:"code_sha256"`
 		} `json:"function_execution"`
 		Body struct {
-			ExitCode int `json:"exit_code"`
-			Result   struct {
-				bomConclusion
-				DataSource struct {
-					KnowledgeNetworkID string   `json:"knowledge_network_id"`
-					Datasets           []string `json:"loaded_datasets"`
-				} `json:"data_source"`
-			} `json:"result"`
-		} `json:"body"`
-	}
-	if json.Unmarshal(fact.Output.Inline, &output) != nil || output.StatusCode != 200 || output.Body.ExitCode != 0 || output.Execution.Box != p.ToolboxID || output.Execution.Tool != p.ToolID || output.Execution.Version != p.FunctionVersion || output.Execution.Hash != p.CodeSHA256 {
-		return false
-	}
-	var shape struct {
-		Body struct {
+			Exit   json.RawMessage `json:"exit_code"`
 			Result struct {
-				Count      *int  `json:"shared_count"`
-				Substitute *bool `json:"include_substitute"`
+				Declaration struct {
+					ClaimType string          `json:"claim_type"`
+					Complete  bool            `json:"complete"`
+					Content   json.RawMessage `json:"content"`
+				} `json:"trace_evidence"`
 			} `json:"result"`
-			Exit json.RawMessage `json:"exit_code"`
 		} `json:"body"`
 	}
-	if json.Unmarshal(fact.Output.Inline, &shape) != nil || shape.Body.Result.Count == nil || shape.Body.Result.Substitute == nil {
+	if json.Unmarshal(fact.Output.Inline, &output) != nil || output.StatusCode != 200 || output.Execution.Box != p.ToolboxID || output.Execution.Tool != p.ToolID || output.Execution.Version != p.FunctionVersion || output.Execution.Hash != p.CodeSHA256 {
 		return false
 	}
-	if len(shape.Body.Exit) > 0 {
+	if len(output.Body.Exit) > 0 {
 		var code *int
-		if json.Unmarshal(shape.Body.Exit, &code) != nil || code == nil || *code != 0 {
+		if json.Unmarshal(output.Body.Exit, &code) != nil || code == nil || *code != 0 {
 			return false
 		}
 	}
-	if output.Body.Result.DataSource.KnowledgeNetworkID != p.KnowledgeNetworkID || !slices.Equal(output.Body.Result.DataSource.Datasets, []string{"bom"}) {
+	declaration := output.Body.Result.Declaration
+	if !declaration.Complete || declaration.ClaimType != proof.ClaimType || len(declaration.Content) == 0 || string(declaration.Content) == "null" {
 		return false
 	}
-	left, _ := json.Marshal(c)
-	right, _ := json.Marshal(output.Body.Result.bomConclusion)
-	if !bytes.Equal(left, right) {
+	// Match the artifact writer's precise JSON canonicalization, including large integers.
+	var content any
+	decoder := json.NewDecoder(bytes.NewReader(declaration.Content))
+	decoder.UseNumber()
+	if decoder.Decode(&content) != nil {
 		return false
 	}
 	var buf bytes.Buffer
 	encoder := json.NewEncoder(&buf)
 	encoder.SetEscapeHTML(false)
-	var canonicalContent any
-	if json.Unmarshal(left, &canonicalContent) != nil {
-		return false
-	}
-	if encoder.Encode(canonicalContent) != nil {
+	if encoder.Encode(content) != nil {
 		return false
 	}
 	sum := sha256.Sum256(bytes.TrimSuffix(buf.Bytes(), []byte("\n")))
 	return proof.ContentHash == "sha256:"+hex.EncodeToString(sum[:])
 }
 
-func materializedBOMClaim(source ledgervo.Event, proof bomResultEvidence, id, receiptID string, revision sessionvo.AssemblyRevision, sequence uint64) ledgervo.Event {
+func materializedFunctionClaim(source ledgervo.Event, proof functionResultEvidence, id, receiptID string, revision sessionvo.AssemblyRevision, sequence uint64) ledgervo.Event {
 	ref := sessionvo.EvidenceRef{Ref: proof.ArtifactRef, RefType: sessionvo.EvidenceRefArtifact, SourceInteractionID: source.InteractionID, SourceRevisionID: revision.ID, SourceOperationID: source.OperationID, ArtifactRef: proof.ArtifactRef, Version: proof.Producer.FunctionVersion, ContentHash: proof.ContentHash}
 	support := sessionvo.ClaimSupport{TargetRef: ref.Ref, TargetType: sessionvo.SupportEvidence, SourceInteractionID: ref.SourceInteractionID, SourceRevisionID: ref.SourceRevisionID, SourceOperationID: ref.SourceOperationID, Version: ref.Version, ContentHash: ref.ContentHash, Role: "computed_from", Status: sessionvo.SupportAdopted}
-	claim := sessionvo.Claim{ID: id, Type: bomIntersectionContract, Materiality: sessionvo.ClaimMaterial, Status: sessionvo.ClaimAsserted, ContentArtifactRef: proof.ArtifactRef, RequiredSupportRoles: []string{"computed_from"}, Supports: []sessionvo.ClaimSupport{support}}
+	claim := sessionvo.Claim{ID: id, Type: proof.ClaimType, Materiality: sessionvo.ClaimMaterial, Status: sessionvo.ClaimAsserted, ContentArtifactRef: proof.ArtifactRef, RequiredSupportRoles: []string{"computed_from"}, Supports: []sessionvo.ClaimSupport{support}}
 	sum := sha256.Sum256([]byte(revision.ID + "|" + id))
-	envelope, _ := json.Marshal(map[string]any{"result_contract": bomIntersectionContract, "source_event_id": source.EventID, "receipt_bound_operation_id": source.OperationID, "source_receipt_id": receiptID, "producer": proof.Producer, "result_artifact_ref": proof.ArtifactRef})
+	envelope, _ := json.Marshal(map[string]any{"result_contract": functionResultContract, "source_event_id": source.EventID, "receipt_bound_operation_id": source.OperationID, "source_receipt_id": receiptID, "producer": proof.Producer, "result_artifact_ref": proof.ArtifactRef})
 	emittedAt := revision.CreatedAt
 	if source.EmittedAt.After(emittedAt) {
 		emittedAt = source.EmittedAt

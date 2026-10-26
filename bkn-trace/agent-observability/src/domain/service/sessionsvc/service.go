@@ -1049,7 +1049,7 @@ func managedTerminalReplayMatches(
 	committed := interaction.ClosureManifest
 	committedClaims := committed.Claims
 	if len(committed.Claims) > 0 {
-		serverClaims := derivedBOMClaimIDs(tx, interaction.ID, true)
+		serverClaims := derivedFunctionClaimIDs(tx, interaction.ID, true)
 		committedClaims = make([]string, 0, len(committed.Claims))
 		for _, id := range committed.Claims {
 			if !slices.Contains(serverClaims, id) {
@@ -1070,11 +1070,11 @@ func sameTerminalReasons(committed, requested []string) bool {
 	}
 	filtered := make([]string, 0, len(committed))
 	for _, reason := range committed {
-		if reason != "not_collected_due_to_policy" && reason != "bom_claim_capacity_exceeded" {
+		if reason != "not_collected_due_to_policy" && reason != "function_claim_capacity_exceeded" {
 			filtered = append(filtered, reason)
 		}
 	}
-	return (slices.Contains(committed, "not_collected_due_to_policy") || slices.Contains(committed, "bom_claim_capacity_exceeded")) && sameStrings(filtered, requested)
+	return (slices.Contains(committed, "not_collected_due_to_policy") || slices.Contains(committed, "function_claim_capacity_exceeded")) && sameStrings(filtered, requested)
 }
 
 func sameStrings(left, right []string) bool {
@@ -1105,12 +1105,12 @@ func deriveClosureManifest(
 			Required:  receipt.Required,
 		})
 	}
-	for _, id := range derivedBOMClaimIDs(tx, interactionID, false) {
+	for _, id := range derivedFunctionClaimIDs(tx, interactionID, false) {
 		if slices.Contains(manifest.Claims, id) {
 			continue
 		}
 		if len(manifest.Claims) >= maxClaims {
-			manifest.SystemPartialReasons = appendUnique(manifest.SystemPartialReasons, "bom_claim_capacity_exceeded")
+			manifest.SystemPartialReasons = appendUnique(manifest.SystemPartialReasons, "function_claim_capacity_exceeded")
 			continue
 		}
 		manifest.Claims = append(manifest.Claims, id)
@@ -1964,7 +1964,7 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 		Completeness: interaction.EvidenceStatus, PartialReasons: partialReasons,
 		Trigger: trigger, CreatedAt: tx.Now(),
 	}
-	claimArtifacts, err := s.sealBOMClaims(tx, interaction, &revision)
+	claimArtifacts, err := s.sealFunctionClaims(tx, interaction, &revision)
 	if err != nil {
 		return err
 	}

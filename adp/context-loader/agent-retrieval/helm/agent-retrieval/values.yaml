@@ -190,8 +190,8 @@ observability:
     core_url: "http://agent-observability-internal:8081"
     # Enable only after every Core worker supports durable answer delivery.
     durable_answer_enabled: false
-    # Explicitly approved BOM native Function identities; see Trace BOM claim contract.
-    bom_shared_producers: []
+    # Approved Function identities that explicitly declare structured conclusions.
+    result_producers: []
     # Authoritative finish POST/replay budget; 1..30000 ms, default 5000.
     finish_timeout_ms: 5000
   evidence:

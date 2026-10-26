@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -18,10 +19,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
 
-func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
-	approved := BOMProducer{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "bom_shared_list", FunctionVersion: "published-version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
-	for _, name := range []string{"normal", "zero", "changed code", "changed version", "body spoof", "missing count", "truncated", "wrong products", "duplicate materials", "artifact unavailable", "wrong data source", "null count", "null substitute", "artifact timeout"} {
+func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
+	approved := ResultProducer{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "quality_check", FunctionVersion: "published-version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
+	for _, name := range []string{"normal", "zero", "changed code", "changed version", "body spoof", "missing declaration", "incomplete", "null content", "missing claim type", "artifact unavailable", "artifact timeout", "sample fixture", "invalid complete", "null exit", "numeric content"} {
 		t.Run(name, func(t *testing.T) {
+			approved := approved
 			publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "retrieval", WorkloadIdentity: "retrieval", ProcessBootID: name, CapturePolicyRevision: "41"}, &captureEvidenceSender{})
 			if err != nil {
 				t.Fatal(err)
@@ -51,22 +53,16 @@ func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 			})}
 			t.Setenv(envArtifactEndpoint, "http://trace.local/api/agent-observability/v1/evidence/artifacts")
 			t.Setenv(envArtifactToken, "fixture")
-			proof := map[string]any{"toolbox_id": "box", "tool_id": "bom_shared_list", "function_version": approved.FunctionVersion, "code_sha256": approved.CodeSHA256}
-			conclusion := map[string]any{"products": []string{"P1", "P2"}, "include_substitute": false, "depth": nil, "shared_codes": []string{"M1", "M2"}, "shared_count": 2, "caliber": "structure_intersect_only"}
-			conclusion["data_source"] = map[string]any{"knowledge_network_id": "supply", "loaded_datasets": []string{"bom"}}
-			body := map[string]any{"exit_code": 0, "result": conclusion}
+			proof := map[string]any{"toolbox_id": "box", "tool_id": "quality_check", "function_version": approved.FunctionVersion, "code_sha256": approved.CodeSHA256}
+			content := map[string]any{"measurement": "passed", "count": 2}
+			if name == "zero" {
+				content["count"] = 0
+			}
+			declaration := map[string]any{"claim_type": "quality.check/v1", "complete": true, "content": content}
+			nativeResult := map[string]any{"trace_evidence": declaration}
+			body := map[string]any{"exit_code": 0, "result": nativeResult}
 			result := map[string]any{"status_code": 200, "function_execution": proof, "body": body}
 			switch name {
-			case "null count":
-				conclusion["shared_codes"] = []string{}
-				conclusion["shared_count"] = nil
-			case "null substitute":
-				conclusion["include_substitute"] = nil
-			case "zero":
-				conclusion["shared_codes"] = []string{}
-				conclusion["shared_count"] = 0
-			case "wrong data source":
-				conclusion["data_source"] = map[string]any{"knowledge_network_id": "another-network", "loaded_datasets": []string{"bom"}}
 			case "changed code":
 				proof["code_sha256"] = "sha256:" + strings.Repeat("b", 64)
 			case "changed version":
@@ -74,26 +70,57 @@ func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 			case "body spoof":
 				delete(result, "function_execution")
 				body["function_execution"] = proof
-			case "missing count":
-				delete(conclusion, "shared_count")
-				conclusion["shared_codes"] = []string{}
-			case "truncated":
-				conclusion["truncated"] = true
-			case "wrong products":
-				conclusion["products"] = []string{"P1", "P3"}
-			case "duplicate materials":
-				conclusion["shared_codes"] = []string{"M1", "M1"}
+			case "invalid complete":
+				declaration["complete"] = "true"
+			case "null exit":
+				body["exit_code"] = nil
+			case "numeric content":
+				declaration["content"] = json.RawMessage(`{"count":9007199254740993,"text":"<verified>"}`)
+			case "missing declaration":
+				delete(nativeResult, "trace_evidence")
+			case "incomplete":
+				declaration["complete"] = false
+			case "null content":
+				declaration["content"] = nil
+			case "missing claim type":
+				delete(declaration, "claim_type")
+			}
+			var fixtureProof map[string]any
+			if name == "sample fixture" {
+				raw, err := os.ReadFile("../../../../../../bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore/testdata/sample-function-result.json")
+				if err != nil {
+					t.Fatal(err)
+				}
+				var fixture struct {
+					Output struct {
+						Inline map[string]any `json:"inline"`
+					} `json:"output"`
+					Source struct {
+						Envelope struct {
+							Payload map[string]any `json:"payload"`
+						} `json:"envelope"`
+					} `json:"source"`
+				}
+				if err := json.Unmarshal(raw, &fixture); err != nil {
+					t.Fatal(err)
+				}
+				fixtureProof = fixture.Source.Envelope.Payload
+				producerRaw, _ := json.Marshal(fixtureProof["producer"])
+				if err := json.Unmarshal(producerRaw, &approved); err != nil {
+					t.Fatal(err)
+				}
+				result = fixture.Output.Inline
 			}
 			ctx := common.SetAccountAuthContextToCtx(testTraceContext(), &interfaces.AccountAuthContext{AccountID: "acct_demo", AccountType: interfaces.AccessorTypeUser, TokenInfo: &interfaces.TokenInfo{ClientID: "app"}})
 			trace, _ := common.GetTraceContextFromCtx(ctx)
-			trace.ConversationID = "conv-bom"
+			trace.ConversationID = "conv-result"
 			ctx = common.SetTraceContextToCtx(ctx, trace)
 			ctx = WithTraceAvailability(ctx)
 			if name == "artifact timeout" {
 				ctx.Value(traceAvailabilityKey{}).(*traceAvailability).post = 300 * time.Millisecond
 			}
-			err = RecordBOMIntersection(ctx, approved, approved.FunctionVersion, map[string]any{"products": []string{"P1", "P2"}}, result)
-			good := name == "normal" || name == "zero"
+			err = RecordFunctionResult(ctx, approved, approved.FunctionVersion, result)
+			good := name == "normal" || name == "zero" || name == "sample fixture" || name == "numeric content"
 			if good {
 				if err != nil || writes != 1 || len(publisher.SnapshotQueue()) != 1 {
 					t.Fatalf("err=%v writes=%d records=%d", err, writes, len(publisher.SnapshotQueue()))
@@ -106,17 +133,22 @@ func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 					Claims    []any  `json:"claims"`
 					Envelope  struct {
 						Payload struct {
-							Contract string `json:"result_contract"`
-							Complete bool   `json:"complete"`
-							Hash     string `json:"content_hash"`
+							Contract   string `json:"result_contract"`
+							Complete   bool   `json:"complete"`
+							Hash       string `json:"content_hash"`
+							ClaimType  string `json:"claim_type"`
+							OutputHash string `json:"output_hash"`
 						} `json:"payload"`
 					} `json:"envelope"`
 				}
 				if err := json.Unmarshal(publisher.SnapshotQueue()[0].Value, &wire); err != nil {
 					t.Fatal(err)
 				}
-				if !wire.Envelope.Payload.Complete || wire.EventType != "logic.execution.observed" || len(wire.Claims) != 0 || wire.Envelope.Payload.Contract != BOMIntersectionContract || wire.Envelope.Payload.Hash != artifact["content_hash"] {
+				if !wire.Envelope.Payload.Complete || wire.EventType != "logic.execution.observed" || len(wire.Claims) != 0 || wire.Envelope.Payload.Contract != FunctionResultContract || wire.Envelope.Payload.Hash != artifact["content_hash"] {
 					t.Fatalf("wire=%+v", wire)
+				}
+				if fixtureProof != nil && (wire.Envelope.Payload.ClaimType != fixtureProof["claim_type"] || wire.Envelope.Payload.Hash != fixtureProof["content_hash"] || wire.Envelope.Payload.OutputHash != fixtureProof["output_hash"]) {
+					t.Fatalf("sample producer contract differs from fixture: %+v", wire)
 				}
 			} else if err == nil || len(publisher.SnapshotQueue()) != 0 {
 				t.Fatalf("unverified result emitted evidence: %v", err)
@@ -144,12 +176,12 @@ func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 			}
 		})
 	}
-	raw, _ := json.Marshal([]BOMProducer{approved})
-	t.Setenv("BKN_TRACE_BOM_SHARED_PRODUCERS", string(raw))
-	if _, ok := ConfiguredBOMProducer("supply", "box", "bom_shared_list"); !ok {
+	raw, _ := json.Marshal([]ResultProducer{approved})
+	t.Setenv("BKN_TRACE_RESULT_PRODUCERS", string(raw))
+	if _, ok := ConfiguredResultProducer("supply", "box", "quality_check"); !ok {
 		t.Fatal("approved identity not selected")
 	}
-	if _, ok := ConfiguredBOMProducer("other-network", "box", "bom_shared_list"); ok {
+	if _, ok := ConfiguredResultProducer("other-network", "box", "quality_check"); ok {
 		t.Fatal("approval crossed knowledge-network boundary")
 	}
 }

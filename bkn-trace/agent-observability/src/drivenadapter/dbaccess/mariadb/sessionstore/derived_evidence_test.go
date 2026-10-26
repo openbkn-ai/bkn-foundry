@@ -22,11 +22,11 @@ import (
 
 func derivedClaimEvent() ledgervo.Event {
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
-	event := ledgervo.Event{EventID: "evt-derived", EventType: "claim.created", SchemaVersion: "3.0.0", ConversationID: "conv", InteractionID: "int", OperationID: "op", Attempt: 1, Owner: sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "owner"}, ProducerID: "agent-observability-core", ProducerStreamID: "claim-stream", ProducerEpoch: 1, ProducerSequence: 1, StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: json.RawMessage(`{"source":"fixed-bom"}`)}
+	event := ledgervo.Event{EventID: "evt-derived", EventType: "claim.created", SchemaVersion: "3.0.0", ConversationID: "conv", InteractionID: "int", OperationID: "op", Attempt: 1, Owner: sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "owner"}, ProducerID: "agent-observability-core", ProducerStreamID: "claim-stream", ProducerEpoch: 1, ProducerSequence: 1, StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: json.RawMessage(`{"source":"fixed-function"}`)}
 	event.PayloadHash = ledgervo.CanonicalPayloadHash(event.Envelope)
 	ref := sessionvo.EvidenceRef{Ref: "output:op:1", RefType: sessionvo.EvidenceRefOperationOutput, SourceInteractionID: "int", SourceRevisionID: "rev", SourceOperationID: "op", Version: "v1", ContentHash: "sha256:" + strings.Repeat("a", 64)}
 	event.EvidenceRefs = []sessionvo.EvidenceRef{ref}
-	event.Claims = []sessionvo.Claim{{ID: "claim", Type: "bom.shared_materials/v1", Materiality: sessionvo.ClaimMaterial, Status: sessionvo.ClaimAsserted, ContentArtifactRef: "artifact:claim-result", RequiredSupportRoles: []string{"computed_from"}, Supports: []sessionvo.ClaimSupport{{TargetRef: ref.Ref, TargetType: sessionvo.SupportOperationOutput, SourceInteractionID: ref.SourceInteractionID, SourceRevisionID: ref.SourceRevisionID, SourceOperationID: ref.SourceOperationID, Version: ref.Version, ContentHash: ref.ContentHash, Role: "computed_from", Status: sessionvo.SupportAdopted}}}}
+	event.Claims = []sessionvo.Claim{{ID: "claim", Type: "quality.check/v1", Materiality: sessionvo.ClaimMaterial, Status: sessionvo.ClaimAsserted, ContentArtifactRef: "artifact:claim-result", RequiredSupportRoles: []string{"computed_from"}, Supports: []sessionvo.ClaimSupport{{TargetRef: ref.Ref, TargetType: sessionvo.SupportOperationOutput, SourceInteractionID: ref.SourceInteractionID, SourceRevisionID: ref.SourceRevisionID, SourceOperationID: ref.SourceOperationID, Version: ref.Version, ContentHash: ref.ContentHash, Role: "computed_from", Status: sessionvo.SupportAdopted}}}}
 	return event
 }
 
