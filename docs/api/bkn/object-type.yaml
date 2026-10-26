@@ -641,7 +641,7 @@ paths:
           in: query
           description: |
             With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
-            (aliases and property declarations), such as a 2.x package or an old JSON export, would clear them.
+            (aliases, lifecycle and property declarations), such as a 2.x package or an old JSON export, would clear them.
             Without this parameter the request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared,
             whose details list the declarations; pass true to clear them.
           schema:
@@ -1633,7 +1633,7 @@ paths:
           in: query
           description: |
             With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing object type
-            (aliases and property declarations), such as a 2.x package or an old JSON export, would clear them.
+            (aliases, lifecycle and property declarations), such as a 2.x package or an old JSON export, would clear them.
             Without this parameter the request is refused with 409 BknBackend.ObjectType.DeclarationsWouldBeCleared,
             whose details list the declarations; pass true to clear them.
           schema:
@@ -2101,6 +2101,21 @@ components:
           type: array
           items:
             type: string
+        lifecycle:
+          description: |
+            Whether the object type is still in use (BKN spec 3.0, §4.3); not the index status. Without it the object type
+            is active. status deprecated needs a reason; replaced_by names an active object type. An update that leaves the
+            field out keeps the stored lifecycle; null or {} clears it.
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [active, deprecated]
+            reason:
+              type: string
+            replaced_by:
+              type: string
         tags:
           description: Tags used for business identification
           type: array
@@ -2164,6 +2179,21 @@ components:
           type: array
           items:
             type: string
+        lifecycle:
+          description: |
+            Whether the object type is still in use (BKN spec 3.0, §4.3); not the index status. Without it the object type
+            is active. status deprecated needs a reason; replaced_by names an active object type. An update that leaves the
+            field out keeps the stored lifecycle; null or {} clears it.
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [active, deprecated]
+            reason:
+              type: string
+            replaced_by:
+              type: string
         tags:
           description: Tags used for business identification
           type: array
@@ -2370,6 +2400,21 @@ components:
           type: array
           items:
             type: string
+        lifecycle:
+          description: |
+            Whether the object type is still in use (BKN spec 3.0, §4.3); not the index status. Without it the object type
+            is active. status deprecated needs a reason; replaced_by names an active object type. An update that leaves the
+            field out keeps the stored lifecycle; null or {} clears it.
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [active, deprecated]
+            reason:
+              type: string
+            replaced_by:
+              type: string
         tags:
           description: Tags. May be empty.
           type: array

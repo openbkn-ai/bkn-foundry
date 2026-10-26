@@ -6,7 +6,6 @@
 package interfaces
 
 import (
-	"bytes"
 	"encoding/json"
 )
 
@@ -19,58 +18,55 @@ func NormalizeAliases(aliases []string) []string {
 	return aliases
 }
 
-// carriesAliases reports whether a JSON object has an aliases key at its top level, null included.
-func carriesAliases(data []byte) (bool, error) {
-	if !bytes.Contains(data, []byte(`"aliases"`)) {
-		return false, nil
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return false, err
-	}
-	_, ok := raw[DECLARATION_ALIASES]
-	return ok, nil
-}
-
-// UnmarshalJSON records whether the JSON carried aliases, so an interactive update can keep the
-// stored aliases when it did not.
+// UnmarshalJSON records which declaration fields the JSON carried, so an interactive update can keep
+// the stored ones it left out.
 func (ot *ObjectType) UnmarshalJSON(data []byte) error {
 	type objectType ObjectType
 	var value objectType
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	declared, err := carriesAliases(data)
+	declared, err := carriedKeys(data, DECLARATION_ALIASES, DECLARATION_LIFECYCLE)
 	if err != nil {
 		return err
 	}
 	*ot = ObjectType(value)
-	ot.aliasesDeclared = declared
+	ot.declared = declared
 	return nil
 }
 
 // DeclaresAliases reports whether the JSON this object type was read from carried aliases.
 func (ot *ObjectType) DeclaresAliases() bool {
-	return ot != nil && ot.aliasesDeclared
+	return ot != nil && ot.declared[DECLARATION_ALIASES]
 }
 
-// UnmarshalJSON records whether the JSON carried aliases, as for an object type.
+// DeclaresLifecycle reports whether the JSON this object type was read from carried lifecycle.
+func (ot *ObjectType) DeclaresLifecycle() bool {
+	return ot != nil && ot.declared[DECLARATION_LIFECYCLE]
+}
+
+// UnmarshalJSON records which declaration fields the JSON carried, as for an object type.
 func (at *ActionType) UnmarshalJSON(data []byte) error {
 	type actionType ActionType
 	var value actionType
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	declared, err := carriesAliases(data)
+	declared, err := carriedKeys(data, DECLARATION_ALIASES, DECLARATION_LIFECYCLE)
 	if err != nil {
 		return err
 	}
 	*at = ActionType(value)
-	at.aliasesDeclared = declared
+	at.declared = declared
 	return nil
 }
 
 // DeclaresAliases reports whether the JSON this action type was read from carried aliases.
 func (at *ActionType) DeclaresAliases() bool {
-	return at != nil && at.aliasesDeclared
+	return at != nil && at.declared[DECLARATION_ALIASES]
+}
+
+// DeclaresLifecycle reports whether the JSON this action type was read from carried lifecycle.
+func (at *ActionType) DeclaresLifecycle() bool {
+	return at != nil && at.declared[DECLARATION_LIFECYCLE]
 }

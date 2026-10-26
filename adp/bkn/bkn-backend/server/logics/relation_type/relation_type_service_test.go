@@ -824,6 +824,9 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil).Times(2)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
+			// The overwrite preflight reads the stored relation type; it has no declarations to clear.
+			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"rt1"}).
+				Return([]*interfaces.RelationType{{RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1"}}}, nil)
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
@@ -842,6 +845,8 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			smock.ExpectBegin()
 			rta.EXPECT().GetRelationTypeIDsByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH,
 				[]string{"rt1", "rt2"}).Return([]string{"rt1", "rt2"}, nil)
+			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"rt1", "rt2"}).
+				Return(nil, nil)
 			rta.EXPECT().UpdateRelationTypes(gomock.Any(), gomock.Any(), relationTypes).Return(nil)
 			vbs.EXPECT().WriteDatasetDocument(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			smock.ExpectCommit()
@@ -993,6 +998,9 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 		}
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("rt1", true, nil).AnyTimes()
+		// An interactive update reads the stored relation type to keep the declarations it leaves out.
+		rta.EXPECT().GetRelationTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(&interfaces.RelationType{}, nil).AnyTimes()
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(allowAllRelationPermissionResources).AnyTimes()

@@ -299,7 +299,8 @@ func checkFallbackShape(where string, rt *BknRelationType) error {
 }
 
 // validateRelationProperties checks the relation properties: only an indirect relation has them,
-// with the rules of object type properties, no unique, and no Mapped Field that joins the ends.
+// with the rules of object type properties, each row as ValidateNetwork checks it, no unique, and no
+// Mapped Field that joins the ends.
 func validateRelationProperties(rt *BknRelationType) error {
 	if len(rt.DataProperties) == 0 {
 		return nil
@@ -307,6 +308,14 @@ func validateRelationProperties(rt *BknRelationType) error {
 	indirect, ok := rt.MappingRules.(*InDirectMappingRule)
 	if rt.Endpoint.Type != RELATION_MAPPING_TYPE_INDIRECT || !ok {
 		return specErrorf("only indirect relations have relation properties, but Endpoint Type is %s", rt.Endpoint.Type)
+	}
+	if len(rt.DataProperties) > maxPropertyNum {
+		return specErrorf("relation properties: count %d exceeds max %d", len(rt.DataProperties), maxPropertyNum)
+	}
+	rows := &ValidationResult{}
+	validateDataPropertyRows(rows, "", rt.DataProperties)
+	if !rows.OK() {
+		return specErrorf("relation property: %s", rows.Errors[0].Message)
 	}
 	joins := map[string]bool{}
 	for _, r := range indirect.SourceMappingRules {
@@ -330,10 +339,46 @@ func validateRelationProperties(rt *BknRelationType) error {
 	return validatePropertyDeclarations(rt.DataProperties)
 }
 
+// DefinitionRef names one definition of a network: Kind is object_type, relation_type or
+// action_type.
+type DefinitionRef struct {
+	Kind string
+	ID   string
+}
+
+// DeclarationIssue is a declaration spanning definitions that does not hold. Involved lists the
+// definitions it concerns, the one that refers first; Err names them. A save through the API checks
+// the network it would produce and reports the issues that involve a definition it writes, so a
+// change to the definition referred to says which definition it breaks.
+type DeclarationIssue struct {
+	Involved []DefinitionRef
+	Err      error
+}
+
+// Involves reports whether the issue concerns the definition of the kind and ID.
+func (i DeclarationIssue) Involves(kind, id string) bool {
+	for _, ref := range i.Involved {
+		if ref.Kind == kind && ref.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 // validateNetworkRelations checks the relation and lifecycle declarations that span definitions:
-// replaced_by references, endpoints that are deprecated, and fallback paths. The message names the
-// definition that refers, so a change to the one referred to says what it breaks.
+// replaced_by references, endpoints that are deprecated, and fallback paths. It returns the first
+// issue NetworkRelationIssues finds.
 func validateNetworkRelations(doc *BknNetwork) error {
+	if issues := NetworkRelationIssues(doc); len(issues) > 0 {
+		return issues[0].Err
+	}
+	return nil
+}
+
+// NetworkRelationIssues lists every relation and lifecycle declaration of doc that spans definitions
+// and does not hold, in definition order: replaced_by references, endpoints that are deprecated, and
+// fallback paths. Import refuses a 3.0 package on the first one.
+func NetworkRelationIssues(doc *BknNetwork) []DeclarationIssue {
 	objects := map[string]*BknObjectType{}
 	for _, ot := range doc.ObjectTypes {
 		objects[ot.ID] = ot
@@ -347,43 +392,50 @@ func validateNetworkRelations(doc *BknNetwork) error {
 		actions[at.ID] = at
 	}
 
+	var issues []DeclarationIssue
+	add := func(err error, involved ...DefinitionRef) {
+		issues = append(issues, DeclarationIssue{Involved: involved, Err: err})
+	}
+	replacedBy := func(kind, id string, lc *Lifecycle, lookup func(string) (*Lifecycle, bool)) {
+		if err := checkReplacedBy(kind, id, lc, lookup); err != nil {
+			add(err, DefinitionRef{kind, id}, DefinitionRef{kind, lc.ReplacedBy})
+		}
+	}
+
 	for _, ot := range doc.ObjectTypes {
-		if err := checkReplacedBy(kindObjectType, ot.ID, ot.Lifecycle, func(id string) (*Lifecycle, bool) {
+		replacedBy(kindObjectType, ot.ID, ot.Lifecycle, func(id string) (*Lifecycle, bool) {
 			o, ok := objects[id]
 			if !ok {
 				return nil, false
 			}
 			return o.Lifecycle, true
-		}); err != nil {
-			return err
-		}
+		})
 	}
 	for _, at := range doc.ActionTypes {
-		if err := checkReplacedBy(kindActionType, at.ID, at.Lifecycle, func(id string) (*Lifecycle, bool) {
+		replacedBy(kindActionType, at.ID, at.Lifecycle, func(id string) (*Lifecycle, bool) {
 			a, ok := actions[id]
 			if !ok {
 				return nil, false
 			}
 			return a.Lifecycle, true
-		}); err != nil {
-			return err
-		}
+		})
 	}
 	fallbackOf := map[string]string{}
 	for _, rt := range doc.RelationTypes {
-		if err := checkReplacedBy(kindRelationType, rt.ID, rt.Lifecycle, func(id string) (*Lifecycle, bool) {
+		self := DefinitionRef{kindRelationType, rt.ID}
+		replacedBy(kindRelationType, rt.ID, rt.Lifecycle, func(id string) (*Lifecycle, bool) {
 			r, ok := relations[id]
 			if !ok {
 				return nil, false
 			}
 			return r.Lifecycle, true
-		}); err != nil {
-			return err
-		}
+		})
 		if !isDeprecated(rt.Lifecycle) {
 			for _, end := range []string{rt.Endpoint.Source, rt.Endpoint.Target} {
 				if o, ok := objects[end]; ok && isDeprecated(o.Lifecycle) {
-					return specErrorf("relation type %q: endpoint object type %q is deprecated, so the relation is deprecated too", rt.ID, end)
+					add(specErrorf("relation type %q: endpoint object type %q is deprecated, so the relation is deprecated too", rt.ID, end),
+						self, DefinitionRef{kindObjectType, end})
+					break
 				}
 			}
 		}
@@ -391,31 +443,39 @@ func validateNetworkRelations(doc *BknNetwork) error {
 			continue
 		}
 		where := fmt.Sprintf("relation type %q fallback_for %q", rt.ID, rt.FallbackFor)
+		primaryRef := DefinitionRef{kindRelationType, rt.FallbackFor}
 		primary, ok := relations[rt.FallbackFor]
 		if !ok {
-			return specErrorf("%s: no relation type has this id", where)
+			add(specErrorf("%s: no relation type has this id", where), self, primaryRef)
+			continue
 		}
+		var err error
 		switch {
 		case primary.Importance != "" && primary.Importance != ImportancePrimary:
-			return specErrorf("%s: the relation it stands in for is secondary; a fallback path stands in for a primary relation", where)
+			err = specErrorf("%s: the relation it stands in for is secondary; a fallback path stands in for a primary relation", where)
 		case isDeprecated(primary.Lifecycle):
-			return specErrorf("%s: the relation it stands in for is deprecated; a fallback path stands in for an active relation", where)
+			err = specErrorf("%s: the relation it stands in for is deprecated; a fallback path stands in for an active relation", where)
 		case primary.Endpoint.Source != rt.Endpoint.Source || primary.Endpoint.Target != rt.Endpoint.Target:
-			return specErrorf("%s: the ends differ (%s -> %s and %s -> %s); a fallback path has the Source and Target of its primary relation",
+			err = specErrorf("%s: the ends differ (%s -> %s and %s -> %s); a fallback path has the Source and Target of its primary relation",
 				where, rt.Endpoint.Source, rt.Endpoint.Target, primary.Endpoint.Source, primary.Endpoint.Target)
 		case !containsString(fallbackCardinalities, primary.Endpoint.Cardinality):
-			return specErrorf("%s: the primary relation declares Cardinality %q; it must be many_to_one or one_to_one, so a Source instance has at most one primary counterpart",
+			err = specErrorf("%s: the primary relation declares Cardinality %q; it must be many_to_one or one_to_one, so a Source instance has at most one primary counterpart",
 				where, primary.Endpoint.Cardinality)
+		default:
+			err = checkFallbackShape(where+": primary relation", primary)
 		}
-		if err := checkFallbackShape(where+": primary relation", primary); err != nil {
-			return err
+		if err != nil {
+			add(err, self, primaryRef)
+			continue
 		}
 		if other, taken := fallbackOf[primary.ID]; taken {
-			return specErrorf("%s: relation type %q is already its fallback path; a primary relation has one", where, other)
+			add(specErrorf("%s: relation type %q is already its fallback path; a primary relation has one", where, other),
+				self, primaryRef, DefinitionRef{kindRelationType, other})
+			continue
 		}
 		fallbackOf[primary.ID] = rt.ID
 	}
-	return nil
+	return issues
 }
 
 // checkReplacedBy checks a deprecated definition's replaced_by: a definition of the same kind that is

@@ -9,7 +9,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var actionTypeEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
-		"BknBackend.ActionType.InvalidParameter.Declarations":                                   "Invalid action type declarations. Fix aliases as the error details say and try again.",
+		"BknBackend.ActionType.InvalidParameter.Declarations":                                   "Invalid action type declarations. Fix aliases or lifecycle as the error details say and try again.",
 		"BknBackend.ActionType.DeclarationsWouldBeCleared":                                      "This overwrite would clear existing action type declarations. The error details list the declarations it would clear. Submit again with confirm_clear_declarations=true to clear them, or keep them in the file.",
 		"BknBackend.ActionType.Duplicated.IDInFile":                                             "Same Action Type ID Existed. Please check whether the parameter is correct.",
 		"BknBackend.ActionType.Duplicated.Name":                                                 "Same Action Type Name Existed. Please check whether the parameter is correct.",

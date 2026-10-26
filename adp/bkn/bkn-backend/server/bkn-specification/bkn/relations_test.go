@@ -258,7 +258,8 @@ func TestValidateRelationTypeDeclarations(t *testing.T) {
 }
 
 // Relation properties get the per-property checks of object type properties: name, display name,
-// type and mask rule.
+// type and mask rule. Loading a 3.0 package runs them, as a save through the API does, and
+// ValidateNetwork reports each one.
 func TestValidateNetwork_ChecksRelationProperties(t *testing.T) {
 	valid, err := loadV3(t, withRelations()...)
 	require.NoError(t, err)
@@ -271,12 +272,30 @@ func TestValidateNetwork_ChecksRelationProperties(t *testing.T) {
 	)...)
 	require.Error(t, err, "a constraint check on the misspelt type refuses it at load")
 
-	net, err := loadV3(t, withRelations(
-		v3Edit{fLink, "| weight | 权重 | float |", "| weight | 权重 | flaot |"},
-		v3Edit{fLink, "### Property Constraints\n\n```yaml\nweight:\n  range: {min: 0}\n```\n", ""},
-		v3Edit{fLink, "| since | 起始 |", "| Since! | 起始 |"},
-	)...)
+	edits := []v3Edit{
+		{fLink, "| weight | 权重 | float |", "| weight | 权重 | flaot |"},
+		{fLink, "### Property Constraints\n\n```yaml\nweight:\n  range: {min: 0}\n```\n", ""},
+		{fLink, "| since | 起始 |", "| Since! | 起始 |"},
+	}
+	_, err = loadV3(t, withRelations(edits...)...)
+	assert.ErrorContains(t, err, `relation property: property name "Since!" must match`)
+
+	net, err := loadV3(t, withRelations()...)
 	require.NoError(t, err)
+	for _, rt := range net.RelationTypes {
+		if rt.ID != "pod_link" {
+			continue
+		}
+		for _, p := range rt.DataProperties {
+			switch p.Name {
+			case "weight":
+				p.Type, p.Constraints = "flaot", nil
+			case "since":
+				p.Name = "Since!"
+			}
+		}
+		assert.ErrorContains(t, ValidateRelationTypeDeclarations(rt), "relation property: ")
+	}
 	errs := map[string]string{}
 	for _, e := range ValidateNetwork(net).Errors {
 		if e.Table == "relation_type:pod_link" {
@@ -285,4 +304,45 @@ func TestValidateNetwork_ChecksRelationProperties(t *testing.T) {
 	}
 	assert.Equal(t, `data property "weight" has invalid type "flaot"`, errs["invalid_property_type"])
 	assert.Contains(t, errs, "invalid_property_name")
+}
+
+// NetworkRelationIssues lists every cross-definition issue, each with the definitions it concerns,
+// so a save can report the ones its definitions take part in; the import check stops at the first.
+func TestNetworkRelationIssues_ListsEveryIssueWithItsDefinitions(t *testing.T) {
+	deprecated := &Lifecycle{Status: LifecycleDeprecated, Reason: "replaced"}
+	rel := func(id, src, tgt string) *BknRelationType {
+		return &BknRelationType{
+			BknRelationTypeFrontmatter: BknRelationTypeFrontmatter{ID: id},
+			Endpoint:                   Endpoint{Source: src, Target: tgt, Type: RELATION_MAPPING_TYPE_DIRECT},
+		}
+	}
+	primary := rel("primary", "report", "order")
+	primary.Endpoint.Cardinality = CardinalityManyToOne
+	first := rel("first", "report", "order")
+	first.Importance, first.FallbackFor = ImportanceSecondary, "primary"
+	second := rel("second", "report", "order")
+	second.Importance, second.FallbackFor = ImportanceSecondary, "primary"
+	link1, link2 := rel("link1", "dept", "order"), rel("link2", "report", "dept")
+	doc := &BknNetwork{
+		ObjectTypes: []*BknObjectType{
+			{BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{ID: "dept", Lifecycle: deprecated}},
+			{BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{ID: "report"}},
+			{BknObjectTypeFrontmatter: BknObjectTypeFrontmatter{ID: "order"}},
+		},
+		RelationTypes: []*BknRelationType{primary, first, second, link1, link2},
+	}
+
+	issues := NetworkRelationIssues(doc)
+	require.Len(t, issues, 3)
+	assert.ErrorContains(t, issues[0].Err, `relation type "second" fallback_for "primary": relation type "first" is already its fallback path`)
+	assert.True(t, issues[0].Involves(kindRelationType, "first"), "the fallback path that holds the place is involved too")
+	assert.True(t, issues[0].Involves(kindRelationType, "primary"))
+	assert.ErrorContains(t, issues[1].Err, `relation type "link1": endpoint object type "dept" is deprecated`)
+	assert.ErrorContains(t, issues[2].Err, `relation type "link2": endpoint object type "dept" is deprecated`)
+	for _, issue := range issues[1:] {
+		assert.True(t, issue.Involves(kindObjectType, "dept"), "deprecating the object type is what each relation conflicts with")
+		assert.False(t, issue.Involves(kindRelationType, "primary"))
+	}
+	assert.Equal(t, issues[0].Err, validateNetworkRelations(doc), "the import check refuses on the first issue")
+	assert.Empty(t, NetworkRelationIssues(&BknNetwork{RelationTypes: []*BknRelationType{primary, first}}))
 }

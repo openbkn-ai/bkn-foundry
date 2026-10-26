@@ -147,8 +147,8 @@ func Test_relationTypeAccess_CreateRelationType(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_source_object_type_id,f_target_object_type_id,f_type,f_mapping_rules,"+
-			"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", RT_TABLE_NAME)
+			"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_reverse_name,f_aliases,f_cardinality,f_constraints,f_lifecycle_status,f_deprecation,f_importance,f_fallback_for,f_verification) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", RT_TABLE_NAME)
 
 		Convey("CreateRelationType Success \n", func() {
 			smock.ExpectBegin()
@@ -225,8 +225,8 @@ func Test_relationTypeAccess_CreateRelationTypes(t *testing.T) {
 		second.RTName = "Relation Type 2"
 		sqlStr := fmt.Sprintf("INSERT INTO %s (f_id,f_name,f_tags,f_comment,f_icon,f_color,f_bkn_raw_content,"+
 			"f_kn_id,f_branch,f_source_object_type_id,f_target_object_type_id,f_type,f_mapping_rules,"+
-			"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) "+
-			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", RT_TABLE_NAME)
+			"f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time,f_reverse_name,f_aliases,f_cardinality,f_constraints,f_lifecycle_status,f_deprecation,f_importance,f_fallback_for,f_verification) "+
+			"VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?),(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", RT_TABLE_NAME)
 		smock.ExpectBegin()
 		smock.ExpectExec(sqlStr).WillReturnResult(sqlmock.NewResult(1, 2))
 		tx, err := rta.db.Begin()
@@ -246,7 +246,7 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 			"f_kn_id, f_branch, f_source_object_type_id, f_target_object_type_id, f_type, f_mapping_rules, "+
-			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_reverse_name, f_aliases, f_cardinality, f_constraints, f_lifecycle_status, f_deprecation, f_importance, f_fallback_for, f_verification "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ?", RT_TABLE_NAME)
 
 		mappingRulesBytes, _ := sonic.Marshal(testRelationType.MappingRules)
@@ -254,12 +254,12 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-			"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+			"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 		}).AddRow(
 			"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 			"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, mappingRulesBytes,
 			"admin", "admin", testUpdateTime,
-			"admin", "admin", testUpdateTime,
+			"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		)
 
 		query := interfaces.RelationTypesQueryParams{
@@ -309,12 +309,12 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, mappingRulesBytes,
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime, "f_update_time",
+				"admin", "admin", testUpdateTime, "f_update_time", nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
@@ -333,12 +333,12 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, invalidBytes,
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
+				"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
@@ -359,12 +359,12 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, []byte(""),
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
+				"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
@@ -394,14 +394,14 @@ func Test_relationTypeAccess_ListRelationTypes(t *testing.T) {
 			}
 			sqlStrWithAll := `SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content,
 			 f_kn_id, f_branch, f_source_object_type_id, f_target_object_type_id, f_type, f_mapping_rules, 
-			 f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time 
+			 f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_reverse_name, f_aliases, f_cardinality, f_constraints, f_lifecycle_status, f_deprecation, f_importance, f_fallback_for, f_verification 
 			 FROM t_relation_type WHERE (instr(f_name, ?) > 0 OR instr(f_id, ?) > 0) AND instr(f_tags, ?) > 0 AND f_branch = ? 
 			 AND f_source_object_type_id IN (?) AND f_target_object_type_id IN (?) ORDER BY f_name ASC LIMIT 20 OFFSET 10`
 
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			})
 
 			smock.ExpectQuery(sqlStrWithAll).
@@ -494,17 +494,17 @@ func TestRelationTypeAccessListSummariesReadsListFields(t *testing.T) {
 	sqlStr := "SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_kn_id, f_branch, " +
 		"f_source_object_type_id, f_target_object_type_id, f_type, f_mapping_rules, f_creator, " +
 		"f_creator_type, f_create_time, f_updater, f_updater_type, " +
-		"f_update_time FROM t_relation_type WHERE f_kn_id = ? AND f_branch = ? " +
+		"f_update_time, f_reverse_name, f_aliases, f_cardinality, f_constraints, f_lifecycle_status, f_deprecation, f_importance, f_fallback_for, f_verification FROM t_relation_type WHERE f_kn_id = ? AND f_branch = ? " +
 		"AND f_id <> '' AND f_id = TRIM(f_id) AND instr(f_id, '/') = 0 AND instr(f_id, '*') = 0 " +
 		"ORDER BY f_update_time DESC, f_id ASC LIMIT 10 OFFSET 20"
 	rows := sqlmock.NewRows([]string{
 		"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_kn_id", "f_branch",
 		"f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules", "f_creator",
 		"f_creator_type", "f_create_time", "f_updater", "f_updater_type",
-		"f_update_time",
+		"f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 	}).AddRow("rt1", "Relation 1", `"core"`, "comment", "icon", "#fff", "kn1", "main",
 		"ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, `[]`, "creator", "user", int64(100),
-		"admin", "user", int64(123))
+		"admin", "user", int64(123), nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	smock.ExpectQuery(sqlStr).WithArgs("kn1", interfaces.MAIN_BRANCH).WillReturnRows(rows)
 
 	items, err := rta.ListRelationTypeSummaries(testCtx, query)
@@ -529,7 +529,7 @@ func Test_relationTypeAccess_GetRelationTypeByID(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 			"f_kn_id, f_branch, f_source_object_type_id, f_target_object_type_id, f_type, f_mapping_rules, "+
-			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_reverse_name, f_aliases, f_cardinality, f_constraints, f_lifecycle_status, f_deprecation, f_importance, f_fallback_for, f_verification "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ? AND f_id = ?", RT_TABLE_NAME)
 
 		knID := "kn1"
@@ -542,12 +542,12 @@ func Test_relationTypeAccess_GetRelationTypeByID(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, mappingRulesBytes,
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
+				"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 
 			smock.ExpectQuery(sqlStr).WithArgs(knID, branch, rtID).WillReturnRows(rows)
@@ -580,12 +580,12 @@ func Test_relationTypeAccess_GetRelationTypeByID(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, invalidBytes,
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
+				"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 
 			smock.ExpectQuery(sqlStr).WithArgs(knID, branch, rtID).WillReturnRows(rows)
@@ -609,7 +609,7 @@ func Test_relationTypeAccess_GetRelationTypesByIDs(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 			"f_kn_id, f_branch, f_source_object_type_id, f_target_object_type_id, f_type, f_mapping_rules, "+
-			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_reverse_name, f_aliases, f_cardinality, f_constraints, f_lifecycle_status, f_deprecation, f_importance, f_fallback_for, f_verification "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ? AND f_id IN (?,?)", RT_TABLE_NAME)
 
 		knID := "kn1"
@@ -622,12 +622,12 @@ func Test_relationTypeAccess_GetRelationTypesByIDs(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, mappingRulesBytes,
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
+				"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
@@ -671,12 +671,12 @@ func Test_relationTypeAccess_GetRelationTypesByIDs(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, invalidBytes,
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
+				"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 			smock.ExpectQuery(sqlStr).WithArgs().WillReturnRows(rows)
 
@@ -696,9 +696,7 @@ func Test_relationTypeAccess_UpdateRelationType(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		rta, smock := MockNewRelationTypeAccess(appSetting)
 
-		sqlStr := fmt.Sprintf("UPDATE %s SET f_bkn_raw_content = ?, f_color = ?, f_comment = ?, f_icon = ?, "+
-			"f_mapping_rules = ?, f_name = ?, f_source_object_type_id = ?, f_tags = ?, f_target_object_type_id = ?, "+
-			"f_type = ?, f_update_time = ?, f_updater = ?, f_updater_type = ? WHERE f_id = ? AND f_kn_id = ?", RT_TABLE_NAME)
+		sqlStr := fmt.Sprintf("UPDATE %s SET f_aliases = ?, f_bkn_raw_content = ?, f_cardinality = ?, f_color = ?, f_comment = ?, f_constraints = ?, f_deprecation = ?, f_fallback_for = ?, f_icon = ?, f_importance = ?, f_lifecycle_status = ?, f_mapping_rules = ?, f_name = ?, f_reverse_name = ?, f_source_object_type_id = ?, f_tags = ?, f_target_object_type_id = ?, f_type = ?, f_update_time = ?, f_updater = ?, f_updater_type = ?, f_verification = ? WHERE f_id = ? AND f_kn_id = ?", RT_TABLE_NAME)
 
 		relationType := &interfaces.RelationType{
 			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
@@ -967,7 +965,7 @@ func Test_relationTypeAccess_GetAllRelationTypesByKnID(t *testing.T) {
 
 		sqlStr := fmt.Sprintf("SELECT f_id, f_name, f_tags, f_comment, f_icon, f_color, f_bkn_raw_content, "+
 			"f_kn_id, f_branch, f_source_object_type_id, f_target_object_type_id, f_type, f_mapping_rules, "+
-			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time "+
+			"f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_reverse_name, f_aliases, f_cardinality, f_constraints, f_lifecycle_status, f_deprecation, f_importance, f_fallback_for, f_verification "+
 			"FROM %s WHERE f_kn_id = ? AND f_branch = ?", RT_TABLE_NAME)
 
 		mappingRulesBytes, _ := sonic.Marshal(testRelationType.MappingRules)
@@ -975,17 +973,17 @@ func Test_relationTypeAccess_GetAllRelationTypesByKnID(t *testing.T) {
 		rows := sqlmock.NewRows([]string{
 			"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 			"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-			"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+			"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 		}).AddRow(
 			"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 			"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, mappingRulesBytes,
 			"admin", "admin", testUpdateTime,
-			"admin", "admin", testUpdateTime,
+			"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		).AddRow(
 			"rt2", "Relation Type 2", `"tag2"`, "comment2", "icon2", "color2", "detail2",
 			"kn1", "main", "ot2", "ot3", interfaces.RELATION_TYPE_DIRECT, mappingRulesBytes,
 			"admin", "admin", testUpdateTime,
-			"admin", "admin", testUpdateTime,
+			"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		)
 
 		knID := "kn1"
@@ -1022,12 +1020,12 @@ func Test_relationTypeAccess_GetAllRelationTypesByKnID(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, mappingRulesBytes,
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime, "f_update_time",
+				"admin", "admin", testUpdateTime, "f_update_time", nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 
 			smock.ExpectQuery(sqlStr).WithArgs(knID, branch).WillReturnRows(rows)
@@ -1046,12 +1044,12 @@ func Test_relationTypeAccess_GetAllRelationTypesByKnID(t *testing.T) {
 			rows := sqlmock.NewRows([]string{
 				"f_id", "f_name", "f_tags", "f_comment", "f_icon", "f_color", "f_bkn_raw_content",
 				"f_kn_id", "f_branch", "f_source_object_type_id", "f_target_object_type_id", "f_type", "f_mapping_rules",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_reverse_name", "f_aliases", "f_cardinality", "f_constraints", "f_lifecycle_status", "f_deprecation", "f_importance", "f_fallback_for", "f_verification",
 			}).AddRow(
 				"rt1", "Relation Type 1", `"tag1"`, "comment", "icon", "color", "detail",
 				"kn1", "main", "ot1", "ot2", interfaces.RELATION_TYPE_DIRECT, invalidBytes,
 				"admin", "admin", testUpdateTime,
-				"admin", "admin", testUpdateTime,
+				"admin", "admin", testUpdateTime, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 			)
 
 			smock.ExpectQuery(sqlStr).WithArgs(knID, branch).WillReturnRows(rows)

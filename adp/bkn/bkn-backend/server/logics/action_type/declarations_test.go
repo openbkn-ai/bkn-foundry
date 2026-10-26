@@ -76,8 +76,8 @@ func TestCheckActionTypeAliasNames(t *testing.T) {
 		"dropping the alias in the same save frees the name")
 }
 
-// An interactive update keeps the stored aliases only when the request left them out.
-func TestKeepStoredAliases(t *testing.T) {
+// An interactive update keeps the stored aliases and lifecycle only when the request left them out.
+func TestKeepStoredDeclarations(t *testing.T) {
 	ctx := context.Background()
 	ata := bmock.NewMockActionTypeAccess(gomock.NewController(t))
 	ats := &actionTypeService{ata: ata}
@@ -87,16 +87,28 @@ func TestKeepStoredAliases(t *testing.T) {
 		at.KNID, at.Branch = "kn1", interfaces.MAIN_BRANCH
 		return &at
 	}
+	stored := func() []*interfaces.ActionType {
+		at := approve("核准")
+		at.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED, Reason: "改用审批流"}
+		return []*interfaces.ActionType{at}
+	}
 
-	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"approve"}).
-		Return([]*interfaces.ActionType{approve("核准")}, nil)
+	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"approve"}).Return(stored(), nil)
 	at := decode(`{"id":"approve","name":"审批（新）"}`)
-	require.NoError(t, ats.keepStoredAliases(ctx, at))
+	require.NoError(t, ats.keepStoredDeclarations(ctx, at))
 	assert.Equal(t, []string{"核准"}, at.Aliases, "left out, so kept")
+	assert.Equal(t, stored()[0].Lifecycle, at.Lifecycle, "left out, so kept")
 
+	ata.EXPECT().GetActionTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"approve"}).Return(stored(), nil)
 	at = decode(`{"id":"approve","name":"审批","aliases":[]}`)
-	require.NoError(t, ats.keepStoredAliases(ctx, at), "carried, so nothing is read")
+	require.NoError(t, ats.keepStoredDeclarations(ctx, at))
+	assert.Empty(t, at.Aliases, "carried, so cleared")
+	assert.NotNil(t, at.Lifecycle, "the lifecycle was left out, so it is kept")
+
+	at = decode(`{"id":"approve","name":"审批","aliases":[],"lifecycle":null}`)
+	require.NoError(t, ats.keepStoredDeclarations(ctx, at), "both carried, so nothing is read")
 	assert.Empty(t, at.Aliases)
+	assert.Nil(t, at.Lifecycle)
 }
 
 func TestCheckActionTypeOverwriteKeepsDeclarations(t *testing.T) {

@@ -9,6 +9,8 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var relationTypeEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknBackend.RelationType.InvalidParameter.Declarations":                                     "Invalid relation type declarations. Fix reverse_name, aliases, cardinality, constraints, lifecycle, importance, fallback_for, verification or the relation properties as the error details say and try again.",
+		"BknBackend.RelationType.DeclarationsWouldBeCleared":                                        "This overwrite would clear existing relation type declarations. The error details list the declarations it would clear. Submit again with confirm_clear_declarations=true to clear them, or keep them in the file.",
 		"BknBackend.RelationType.Duplicated.IDInFile":                                               "Same Relation Type ID Existed. Please check whether the parameter is correct.",
 		"BknBackend.RelationType.InvalidParameter":                                                  "Invalid Request Paramter. Please check whether the parameter is correct.",
 		"BknBackend.RelationType.InvalidParameter.ConceptCondition":                                 "Invalid Concept Condition Request Paramter. Please check whether the parameter is correct.",

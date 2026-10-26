@@ -457,3 +457,38 @@ func TestCheckNetworkDeclarationsResolvesPendingValueTypes(t *testing.T) {
 	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `value type "amount_cny" has base_type integer`,
 		"the import's version is checked, nothing read")
 }
+
+// The lifecycle of an object type is a declaration of the object type itself: an interactive update
+// keeps it when left out and clears it on null; an overwrite without it lists it as cleared.
+func TestObjectTypeLifecycleDeclaration(t *testing.T) {
+	deprecated := &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED, Reason: "改用采购单"}
+	stored := declaredObjectType()
+	stored.Lifecycle = deprecated
+
+	decode := func(body string) *interfaces.ObjectType {
+		var ot interfaces.ObjectType
+		require.NoError(t, json.Unmarshal([]byte(body), &ot))
+		return &ot
+	}
+	update := decode(`{"id":"order","name":"订单"}`)
+	keepUndeclared(update, stored)
+	assert.Equal(t, deprecated, update.Lifecycle, "left out, so kept")
+	update = decode(`{"id":"order","name":"订单","lifecycle":null}`)
+	keepUndeclared(update, stored)
+	assert.Nil(t, update.Lifecycle, "null clears")
+
+	assert.Equal(t, []interfaces.ClearedDeclaration{{ObjectTypeID: "order", Fields: []string{interfaces.DECLARATION_LIFECYCLE}}},
+		clearedDeclarations(stored, declaredObjectType()))
+	incoming := declaredObjectType()
+	incoming.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED, Reason: "另一个原因"}
+	assert.Empty(t, clearedDeclarations(stored, incoming))
+
+	ctx := context.Background()
+	active := declaredObjectType()
+	active.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_ACTIVE}
+	require.NoError(t, validateDeclarations(ctx, active))
+	assert.Nil(t, active.Lifecycle, "status active is stored as no lifecycle")
+	noReason := declaredObjectType()
+	noReason.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED}
+	assert.Error(t, validateDeclarations(ctx, noReason))
+}

@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -434,4 +435,35 @@ func TestRelationTypeValidationDetailsRespectLanguage(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The relation properties of indirect mapping_rules are read as JSON from a request body, and kept
+// from a mapping that is already typed, such as one converted from a BKN file.
+func TestValidateIndirectMappingRulesReadsRelationProperties(t *testing.T) {
+	Convey("relation properties of indirect mapping_rules", t, func() {
+		ctx := context.Background()
+		var body struct {
+			MappingRules any `json:"mapping_rules"`
+		}
+		So(json.Unmarshal([]byte(`{"mapping_rules":{
+			"backing_data_source":{"type":"resource","id":"res_employment"},
+			"source_mapping_rules":[{"source_property":{"name":"id"},"target_property":{"name":"emp_id"}}],
+			"target_mapping_rules":[{"source_property":{"name":"dept_id"},"target_property":{"name":"id"}}],
+			"properties":[{"name":"since","type":"date","constraints":{"range":{"min":"2020-01-01"}}}]}}`), &body), ShouldBeNil)
+
+		mapping, err := validateInDirectMappingRules(ctx, body.MappingRules, true)
+		So(err, ShouldBeNil)
+		So(len(mapping.Properties), ShouldEqual, 1)
+		So(mapping.Properties[0].Name, ShouldEqual, "since")
+		So(mapping.Properties[0].Constraints.Range.Min, ShouldEqual, "2020-01-01")
+
+		typed, err := validateInDirectMappingRules(ctx, mapping, true)
+		So(err, ShouldBeNil)
+		So(typed.Properties, ShouldResemble, mapping.Properties)
+
+		delete(body.MappingRules.(map[string]any), "properties")
+		mapping, err = validateInDirectMappingRules(ctx, body.MappingRules, true)
+		So(err, ShouldBeNil)
+		So(mapping.Properties, ShouldBeNil)
+	})
 }

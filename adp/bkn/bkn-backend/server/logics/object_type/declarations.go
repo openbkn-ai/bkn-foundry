@@ -41,6 +41,7 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 		p.Aliases = interfaces.NormalizeAliases(p.Aliases)
 	}
 	objectType.Aliases = interfaces.NormalizeAliases(objectType.Aliases)
+	objectType.Lifecycle = interfaces.NormalizeLifecycle(objectType.Lifecycle)
 	if err := bknsdk.ValidateObjectTypeDeclarations(logics.ToBKNObjectType(objectType)); err != nil {
 		return invalidDeclarations(ctx, err.Error())
 	}
@@ -147,6 +148,9 @@ func keepUndeclared(update *interfaces.ObjectType, stored *interfaces.ObjectType
 	if !update.DeclaresAliases() {
 		update.Aliases = stored.Aliases
 	}
+	if !update.DeclaresLifecycle() {
+		update.Lifecycle = stored.Lifecycle
+	}
 	storedByName := make(map[string]*interfaces.DataProperty, len(stored.DataProperties))
 	for _, p := range stored.DataProperties {
 		if p != nil {
@@ -170,8 +174,15 @@ func clearedDeclarations(stored, incoming *interfaces.ObjectType) []interfaces.C
 		}
 	}
 	var cleared []interfaces.ClearedDeclaration
+	var own []string
 	if len(stored.Aliases) > 0 && len(incoming.Aliases) == 0 {
-		cleared = append(cleared, interfaces.ClearedDeclaration{ObjectTypeID: stored.OTID, Fields: []string{interfaces.DECLARATION_ALIASES}})
+		own = append(own, interfaces.DECLARATION_ALIASES)
+	}
+	if stored.Lifecycle != nil && interfaces.NormalizeLifecycle(incoming.Lifecycle) == nil {
+		own = append(own, interfaces.DECLARATION_LIFECYCLE)
+	}
+	if len(own) > 0 {
+		cleared = append(cleared, interfaces.ClearedDeclaration{ObjectTypeID: stored.OTID, Fields: own})
 	}
 	for _, s := range stored.DataProperties {
 		if !s.HasDeclarations(stored.PrimaryKeys) {

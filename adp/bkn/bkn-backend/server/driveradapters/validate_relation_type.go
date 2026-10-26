@@ -8,6 +8,7 @@ package driveradapters
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -245,9 +246,15 @@ func validateDirectMappingRules(ctx context.Context, mappingRules any, strictMod
 //
 //nolint:unused // Retained for RELATION_TYPE indirect mapping validation.
 func validateInDirectMappingRules(ctx context.Context, mappingRules any, strictMode bool) (*interfaces.InDirectMapping, error) {
-	// Decode the input into an indirect mapping.
+	// Decode the input into an indirect mapping. The relation properties are read as JSON, not by
+	// mapstructure, so they decode the way a stored relation type reads them.
 	var mapping interfaces.InDirectMapping
-	if err := mapstructure.Decode(mappingRules, &mapping); err != nil {
+	properties, err := indirectMappingProperties(mappingRules)
+	if err == nil {
+		err = mapstructure.Decode(mappingRules, &mapping)
+	}
+	mapping.Properties = properties
+	if err != nil {
 		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.IndirectMappingRulesInvalid", nil)
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
@@ -402,4 +409,33 @@ func validateFilteredCrossJoinMappingRules(ctx context.Context, mappingRules any
 	}
 	// source_condition and target_condition are optional; nil means no extra filter for that side.
 	return &mapping, nil
+}
+
+// indirectMappingProperties reads the relation properties of indirect mapping_rules: from a request
+// body, decoded into a map, or from a mapping already typed, such as one converted from a BKN file.
+func indirectMappingProperties(mappingRules any) ([]*interfaces.DataProperty, error) {
+	switch rules := mappingRules.(type) {
+	case *interfaces.InDirectMapping:
+		if rules == nil {
+			return nil, nil
+		}
+		return rules.Properties, nil
+	case interfaces.InDirectMapping:
+		return rules.Properties, nil
+	case map[string]any:
+		raw, ok := rules[interfaces.DECLARATION_PROPERTIES]
+		if !ok || raw == nil {
+			return nil, nil
+		}
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return nil, err
+		}
+		var properties []*interfaces.DataProperty
+		if err := json.Unmarshal(encoded, &properties); err != nil {
+			return nil, err
+		}
+		return properties, nil
+	}
+	return nil, nil
 }

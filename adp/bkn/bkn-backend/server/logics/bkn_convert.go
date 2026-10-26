@@ -63,9 +63,10 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 			Tags:    bknObj.Tags,
 			Comment: bknObj.Description,
 		},
-		Aliases: interfaces.NormalizeAliases(bknObj.Aliases),
-		KNID:    knID,
-		Branch:  branch,
+		Aliases:   interfaces.NormalizeAliases(bknObj.Aliases),
+		Lifecycle: toADPLifecycle(bknObj.Lifecycle),
+		KNID:      knID,
+		Branch:    branch,
 	}
 
 	// Convert DataSource.
@@ -78,27 +79,7 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 	}
 
 	// Convert DataProperties.
-	for _, dp := range bknObj.DataProperties {
-		adpDP := &interfaces.DataProperty{
-			Name:        dp.Name,
-			DisplayName: dp.DisplayName,
-			Type:        dp.Type,
-			Comment:     dp.Description,
-			MaskRule:    dp.MaskRule,
-			Aliases:     interfaces.NormalizeAliases(dp.Aliases),
-			Semantic:    dp.Semantic,
-			Required:    dp.Required,
-			Constraints: toADPConstraints(dp.Constraints),
-		}
-
-		if dp.MappedField != "" {
-			adpDP.MappedField = &interfaces.Field{
-				Name: dp.MappedField,
-			}
-		}
-
-		adpObj.DataProperties = append(adpObj.DataProperties, adpDP)
-	}
+	adpObj.DataProperties = toADPDataProperties(bknObj.DataProperties)
 
 	// Convert LogicProperties.
 	for _, lp := range bknObj.LogicProperties {
@@ -151,11 +132,12 @@ func ToADPObjectType(knID string, branch string, bknObj *bknsdk.BknObjectType) *
 func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 	bknObj := &bknsdk.BknObjectType{
 		BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{
-			Type:    interfaces.MODULE_TYPE_OBJECT_TYPE,
-			ID:      adpObj.OTID,
-			Name:    adpObj.OTName,
-			Tags:    adpObj.Tags,
-			Aliases: adpObj.Aliases,
+			Type:      interfaces.MODULE_TYPE_OBJECT_TYPE,
+			ID:        adpObj.OTID,
+			Name:      adpObj.OTName,
+			Tags:      adpObj.Tags,
+			Aliases:   adpObj.Aliases,
+			Lifecycle: toBKNLifecycle(adpObj.Lifecycle),
 		},
 		Summary:        bknsdk.ExtractSummary(adpObj.Comment),
 		Description:    adpObj.Comment,
@@ -174,25 +156,7 @@ func ToBKNObjectType(adpObj *interfaces.ObjectType) *bknsdk.BknObjectType {
 	}
 
 	// Convert DataProperties.
-	for _, adpDP := range adpObj.DataProperties {
-		dp := &bknsdk.DataProperty{
-			Name:        adpDP.Name,
-			DisplayName: adpDP.DisplayName,
-			Type:        adpDP.Type,
-			Description: adpDP.Comment,
-			MaskRule:    adpDP.MaskRule,
-			Aliases:     adpDP.Aliases,
-			Semantic:    adpDP.Semantic,
-			Required:    adpDP.Required,
-			Constraints: toBKNConstraints(adpDP.Constraints),
-		}
-
-		if adpDP.MappedField != nil {
-			dp.MappedField = adpDP.MappedField.Name
-		}
-
-		bknObj.DataProperties = append(bknObj.DataProperties, dp)
-	}
+	bknObj.DataProperties = toBKNDataProperties(adpObj.DataProperties)
 
 	// Convert LogicProperties.
 	for _, adpLP := range adpObj.LogicProperties {
@@ -260,6 +224,21 @@ func ToADPRelationType(knID string, branch string, bknRel *bknsdk.BknRelationTyp
 		},
 		KNID:   knID,
 		Branch: branch,
+		RelationDeclarations: interfaces.RelationDeclarations{
+			ReverseName:  bknRel.ReverseName,
+			Aliases:      interfaces.NormalizeAliases(bknRel.Aliases),
+			Cardinality:  bknRel.Endpoint.Cardinality,
+			Lifecycle:    toADPLifecycle(bknRel.Lifecycle),
+			Importance:   bknRel.Importance,
+			FallbackFor:  bknRel.FallbackFor,
+			Verification: bknRel.Verification,
+		},
+	}
+	if len(bknRel.RequiredEnds) > 0 || len(bknRel.Characteristics) > 0 {
+		relType.Constraints = &interfaces.RelationConstraints{
+			Required:        append([]string(nil), bknRel.RequiredEnds...),
+			Characteristics: append([]string(nil), bknRel.Characteristics...),
+		}
 	}
 
 	// Convert Endpoint.
@@ -305,6 +284,7 @@ func ToADPRelationType(knID string, branch string, bknRel *bknsdk.BknRelationTyp
 					TargetProp: interfaces.SimpleProperty{Name: rule.TargetProperty},
 				})
 			}
+			indirect.Properties = toADPDataProperties(bknRel.DataProperties)
 			relType.MappingRules = indirect
 
 		case *bknsdk.FilteredCrossJoinMapping:
@@ -330,14 +310,29 @@ func ToBKNRelationType(adpRel *interfaces.RelationType) *bknsdk.BknRelationType 
 			ID:   adpRel.RTID,
 			Name: adpRel.RTName,
 			Tags: adpRel.Tags,
+
+			ReverseName:  adpRel.ReverseName,
+			Aliases:      adpRel.Aliases,
+			Importance:   adpRel.Importance,
+			FallbackFor:  adpRel.FallbackFor,
+			Verification: adpRel.Verification,
+			Lifecycle:    toBKNLifecycle(adpRel.Lifecycle),
 		},
 		Summary:     bknsdk.ExtractSummary(adpRel.Comment),
 		Description: adpRel.Comment,
 		Endpoint: bknsdk.Endpoint{
-			Source: adpRel.SourceObjectTypeID,
-			Target: adpRel.TargetObjectTypeID,
-			Type:   adpRel.Type,
+			Source:      adpRel.SourceObjectTypeID,
+			Target:      adpRel.TargetObjectTypeID,
+			Type:        adpRel.Type,
+			Cardinality: adpRel.Cardinality,
 		},
+	}
+	if adpRel.Constraints != nil {
+		bknRel.RequiredEnds = append([]string(nil), adpRel.Constraints.Required...)
+		bknRel.Characteristics = append([]string(nil), adpRel.Constraints.Characteristics...)
+	}
+	if bknRel.Importance == interfaces.IMPORTANCE_PRIMARY {
+		bknRel.Importance = ""
 	}
 
 	// Convert MappingRules.
@@ -375,6 +370,7 @@ func ToBKNRelationType(adpRel *interfaces.RelationType) *bknsdk.BknRelationType 
 				})
 			}
 			bknRel.MappingRules = indirectRules
+			bknRel.DataProperties = toBKNDataProperties(rules.Properties)
 		case *interfaces.FilteredCrossJoinMapping:
 			filteredRules := &bknsdk.FilteredCrossJoinMapping{
 				SourceCondition: toBKNCondCfg(rules.SourceCondition),
@@ -403,9 +399,10 @@ func ToADPActionType(knID string, branch string, bknAction *bknsdk.BknActionType
 			Tags:    bknAction.Tags,
 			Comment: bknAction.Description,
 		},
-		Aliases: interfaces.NormalizeAliases(bknAction.Aliases),
-		KNID:    knID,
-		Branch:  branch,
+		Aliases:   interfaces.NormalizeAliases(bknAction.Aliases),
+		Lifecycle: toADPLifecycle(bknAction.Lifecycle),
+		KNID:      knID,
+		Branch:    branch,
 	}
 	if adpAction.ActionIntent == "" && bknAction.ActionType != "" {
 		adpAction.ActionIntent = bknAction.ActionType
@@ -483,6 +480,7 @@ func ToBKNActionType(adpAction *interfaces.ActionType) *bknsdk.BknActionType {
 			ActionType:   adpAction.ActionType,
 			ActionIntent: adpAction.ActionIntent,
 			Aliases:      adpAction.Aliases,
+			Lifecycle:    toBKNLifecycle(adpAction.Lifecycle),
 		},
 		Summary:     bknsdk.ExtractSummary(adpAction.Comment),
 		Description: adpAction.Comment,
@@ -709,6 +707,73 @@ func toBKNActionCondCfg(adpCond *interfaces.ActionCondCfg) *bknsdk.ActionCondCfg
 	}
 
 	return bknCond
+}
+
+// toADPDataProperties converts the data properties of an object type or a relation type.
+func toADPDataProperties(props []*bknsdk.DataProperty) []*interfaces.DataProperty {
+	var out []*interfaces.DataProperty
+	for _, dp := range props {
+		adpDP := &interfaces.DataProperty{
+			Name:        dp.Name,
+			DisplayName: dp.DisplayName,
+			Type:        dp.Type,
+			Comment:     dp.Description,
+			MaskRule:    dp.MaskRule,
+			Aliases:     interfaces.NormalizeAliases(dp.Aliases),
+			Semantic:    dp.Semantic,
+			Required:    dp.Required,
+			Constraints: toADPConstraints(dp.Constraints),
+		}
+		if dp.MappedField != "" {
+			adpDP.MappedField = &interfaces.Field{
+				Name: dp.MappedField,
+			}
+		}
+		out = append(out, adpDP)
+	}
+	return out
+}
+
+// toBKNDataProperties converts the data properties of an object type or a relation type.
+func toBKNDataProperties(props []*interfaces.DataProperty) []*bknsdk.DataProperty {
+	var out []*bknsdk.DataProperty
+	for _, adpDP := range props {
+		if adpDP == nil {
+			continue
+		}
+		dp := &bknsdk.DataProperty{
+			Name:        adpDP.Name,
+			DisplayName: adpDP.DisplayName,
+			Type:        adpDP.Type,
+			Description: adpDP.Comment,
+			MaskRule:    adpDP.MaskRule,
+			Aliases:     adpDP.Aliases,
+			Semantic:    adpDP.Semantic,
+			Required:    adpDP.Required,
+			Constraints: toBKNConstraints(adpDP.Constraints),
+		}
+		if adpDP.MappedField != nil {
+			dp.MappedField = adpDP.MappedField.Name
+		}
+		out = append(out, dp)
+	}
+	return out
+}
+
+// toADPLifecycle converts a lifecycle; nil, active, stays nil.
+func toADPLifecycle(lc *bknsdk.Lifecycle) *interfaces.Lifecycle {
+	if lc == nil {
+		return nil
+	}
+	return interfaces.NormalizeLifecycle(&interfaces.Lifecycle{Status: lc.Status, Reason: lc.Reason, ReplacedBy: lc.ReplacedBy})
+}
+
+// toBKNLifecycle converts a lifecycle; nil, active, stays nil.
+func toBKNLifecycle(lc *interfaces.Lifecycle) *bknsdk.Lifecycle {
+	if lc == nil {
+		return nil
+	}
+	return &bknsdk.Lifecycle{Status: lc.Status, Reason: lc.Reason, ReplacedBy: lc.ReplacedBy}
 }
 
 // toADPConstraints carries a property's ### Property Constraints into the stored model.

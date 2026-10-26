@@ -645,10 +645,10 @@ func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, 
 	return ats.updateActionType(ctx, tx, actionType, strictMode, true)
 }
 
-// updateActionType writes actionType over the stored one. keepStoredAliases is the interactive
+// updateActionType writes actionType over the stored one. keepStoredDeclarations is the interactive
 // merge; an import overwrite takes the file as the whole state.
 func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, actionType *interfaces.ActionType,
-	strictMode bool, keepStoredAliases bool) error {
+	strictMode bool, keepStoredDeclarations bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateActionType")
 	defer span.End()
 
@@ -668,8 +668,8 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 	if err != nil {
 		return err
 	}
-	if keepStoredAliases {
-		if err = ats.keepStoredAliases(ctx, actionType); err != nil {
+	if keepStoredDeclarations {
+		if err = ats.keepStoredDeclarations(ctx, actionType); err != nil {
 			return err
 		}
 	}

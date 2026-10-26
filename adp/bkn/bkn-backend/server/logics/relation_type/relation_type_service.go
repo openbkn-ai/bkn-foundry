@@ -154,6 +154,9 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 		if err != nil {
 			return []string{}, err
 		}
+		if err = validateDeclarations(ctx, relationType); err != nil {
+			return []string{}, err
+		}
 
 		bknRel := logics.ToBKNRelationType(relationType)
 		relationType.BKNRawContent = bknsdk.SerializeRelationType(bknRel)
@@ -181,6 +184,11 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 			interfaces.OPERATION_TYPE_MODIFY); err != nil {
 			return []string{}, err
 		}
+	}
+	// After the permission check: the refusal lists stored declarations, which only a caller allowed
+	// to modify these relation types may see.
+	if err = rts.checkOverwriteKeepsDeclarations(ctx, updateRelationTypes, false); err != nil {
+		return []string{}, err
 	}
 
 	// 1. Create the model.
@@ -222,7 +230,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 
 	// Update.
 	if len(updateRelationTypes) == 1 {
-		err = rts.UpdateRelationType(ctx, tx, updateRelationTypes[0], strictMode)
+		err = rts.updateRelationType(ctx, tx, updateRelationTypes[0], strictMode, false)
 		if err != nil {
 			return []string{}, err
 		}
@@ -276,8 +284,11 @@ func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID 
 		}
 	}
 	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
-	_, _, err = rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
+	_, updates, err := rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
 	if err != nil {
+		return err
+	}
+	if err = rts.checkOverwriteKeepsDeclarations(ctx, updates, !permission.KNImportPermissionPrechecked(ctx)); err != nil {
 		return err
 	}
 
@@ -286,6 +297,9 @@ func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID 
 		relationType.Branch = branch
 		err = rts.validateDependency(ctx, nil, relationType, strictMode, batch)
 		if err != nil {
+			return err
+		}
+		if err = validateDeclarations(ctx, relationType); err != nil {
 			return err
 		}
 	}
@@ -578,7 +592,16 @@ func (rts *relationTypeService) GetRelationTypesByIDs(ctx context.Context, knID 
 }
 
 // Update relation types.
+// UpdateRelationType is an interactive update: it keeps the stored declarations its request leaves
+// out.
 func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.Tx, relationType *interfaces.RelationType, strictMode bool) error {
+	return rts.updateRelationType(ctx, tx, relationType, strictMode, true)
+}
+
+// updateRelationType saves a relation type over the stored one. keepStoredDeclarations is set for an
+// interactive update; an overwrite import takes its file as the whole state.
+func (rts *relationTypeService) updateRelationType(ctx context.Context, tx *sql.Tx,
+	relationType *interfaces.RelationType, strictMode bool, keepStoredDeclarations bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update relation type")
 	defer span.End()
 
@@ -596,6 +619,18 @@ func (rts *relationTypeService) UpdateRelationType(ctx context.Context, tx *sql.
 		relationType.KNID, relationType.RTID)
 	err = rts.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
+		return err
+	}
+	if keepStoredDeclarations {
+		stored, err := rts.rta.GetRelationTypeByID(ctx, relationType.KNID, relationType.Branch, relationType.RTID)
+		if err != nil {
+			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+				berrors.BknBackend_RelationType_InternalError_GetRelationTypesByIDsFailed).
+				WithErrorDetails(err.Error())
+		}
+		relationType.KeepUndeclared(stored)
+	}
+	if err = validateDeclarations(ctx, relationType); err != nil {
 		return err
 	}
 
@@ -895,6 +930,11 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 		words := []string{}
 		for _, relationType := range relationTypes {
 			arr := []string{relationType.RTName}
+			// Declarations come right after the name; without them the text is what it was.
+			if relationType.ReverseName != "" {
+				arr = append(arr, relationType.ReverseName)
+			}
+			arr = append(arr, relationType.Aliases...)
 			arr = append(arr, relationType.Tags...)
 			arr = append(arr, relationType.Comment, relationType.BKNRawContent)
 			word := strings.Join(arr, "\n")
@@ -933,6 +973,9 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 
 		document, err := vega_backend.NewDatasetDocument(docid, relationType)
 		if err != nil {
+			return err
+		}
+		if err := interfaces.EncodeIndexedConstraints(document.Document); err != nil {
 			return err
 		}
 		documents = append(documents, document)
@@ -1147,6 +1190,10 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 
 		// 5. Process query results.
 		for _, entry := range datasetResp.Entries {
+			if err := interfaces.DecodeIndexedConstraints(entry); err != nil {
+				return response, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+					berrors.BknBackend_InternalError_UnMarshalDataFailed).WithErrorDetails(err.Error())
+			}
 			// Convert to a relation type struct.
 			jsonByte, err := json.Marshal(entry)
 			if err != nil {
