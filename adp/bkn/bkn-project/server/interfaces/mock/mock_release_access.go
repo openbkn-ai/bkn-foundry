@@ -56,6 +56,20 @@ func (mr *MockReleaseAccessMockRecorder) CountReleases(ctx, lineageID any) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountReleases", reflect.TypeOf((*MockReleaseAccess)(nil).CountReleases), ctx, lineageID)
 }
 
+// CreateRelease mocks base method.
+func (m *MockReleaseAccess) CreateRelease(ctx context.Context, release *interfaces.Release) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateRelease", ctx, release)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateRelease indicates an expected call of CreateRelease.
+func (mr *MockReleaseAccessMockRecorder) CreateRelease(ctx, release any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRelease", reflect.TypeOf((*MockReleaseAccess)(nil).CreateRelease), ctx, release)
+}
+
 // GetReleaseByNetworkID mocks base method.
 func (m *MockReleaseAccess) GetReleaseByNetworkID(ctx context.Context, networkID string) (*interfaces.Release, bool, error) {
 	m.ctrl.T.Helper()

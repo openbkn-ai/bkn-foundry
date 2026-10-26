@@ -111,5 +111,31 @@ func Test_ReleaseAccess(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(exist, ShouldBeFalse)
 		})
+
+		Convey("CreateRelease inserts every column\n", func() {
+			release := &interfaces.Release{
+				ID: "r1", LineageID: "orders", NetworkID: "orders_v1_0_0", Version: "1.0.0", BaseVersion: "", ProjectID: "p1",
+				Publisher: interfaces.AccountInfo{ID: "u1", Type: "user"}, Notes: "first", State: interfaces.RELEASE_STATE_LIVE,
+				CreateTime: 7, UpdateTime: 7,
+			}
+			smock.ExpectExec(regexp.QuoteMeta(
+				"INSERT INTO t_bkn_project_release (f_id,f_lineage_id,f_network_id,f_version,f_base_version,f_project_id,"+
+					"f_publisher,f_publisher_type,f_notes,f_state,f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")).
+				WithArgs("r1", "orders", "orders_v1_0_0", "1.0.0", "", "p1", "u1", "user", "first", "live", int64(7), int64(7)).
+				WillReturnResult(sqlmock.NewResult(1, 1))
+
+			err := ra.CreateRelease(ctx, release)
+
+			So(err, ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("CreateRelease returns the insert error\n", func() {
+			smock.ExpectExec("INSERT INTO t_bkn_project_release").WillReturnError(errors.New("duplicate entry"))
+
+			err := ra.CreateRelease(ctx, &interfaces.Release{ID: "r1"})
+
+			So(err, ShouldNotBeNil)
+		})
 	})
 }

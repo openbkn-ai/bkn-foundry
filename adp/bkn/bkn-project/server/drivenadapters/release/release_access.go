@@ -131,6 +131,29 @@ func (ra *releaseAccess) GetReleaseByNetworkID(ctx context.Context, networkID st
 	return release, true, nil
 }
 
+func (ra *releaseAccess) CreateRelease(ctx context.Context, release *interfaces.Release) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "CreateRelease")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Insert(RELEASE_TABLE_NAME).
+		Columns(releaseColumns...).
+		Values(
+			release.ID, release.LineageID, release.NetworkID, release.Version, release.BaseVersion, release.ProjectID,
+			release.Publisher.ID, release.Publisher.Type, release.Notes, release.State, release.CreateTime, release.UpdateTime,
+		).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Insert data failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // scanRelease reads one row selected with releaseColumns.
 func scanRelease(row interface{ Scan(dest ...any) error }) (*interfaces.Release, error) {
 	release := &interfaces.Release{}

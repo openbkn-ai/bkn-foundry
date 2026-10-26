@@ -14,4 +14,6 @@ type ReleaseAccess interface {
 	CountReleases(ctx context.Context, lineageID string) (int64, error)
 	// GetReleaseByNetworkID returns the release that published the network, and false when there is none.
 	GetReleaseByNetworkID(ctx context.Context, networkID string) (*Release, bool, error)
+	// CreateRelease inserts a release. A second release of the same network fails on the unique key.
+	CreateRelease(ctx context.Context, release *Release) error
 }
