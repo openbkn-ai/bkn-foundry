@@ -74,7 +74,7 @@ func TestCreateUserAccountConflict(t *testing.T) {
 	// An existing account must not hide a genuine storage failure as a 409.
 	if err := db.Callback().Create().Before("gorm:create").Register("test:user-storage-failure", func(tx *gorm.DB) {
 		if tx.Statement.Table == "users" {
-			tx.AddError(errors.New("injected storage failure"))
+			_ = tx.AddError(errors.New("injected storage failure"))
 		}
 	}); err != nil {
 		t.Fatal(err)
