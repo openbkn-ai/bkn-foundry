@@ -485,7 +485,11 @@ func Test_Merge_OpaqueFiles(t *testing.T) {
 				}
 			}
 			So(onFile, ShouldHaveLength, 1)
-			So(result.Summary.Conflicted, ShouldBeGreaterThanOrEqualTo, 1)
+			So(onFile[0].ID, ShouldEqual, "component")
+			// The file keeps ours, whichever definition sorts first.
+			So(findObjectType(loadMerged(result.Files), "piece"), ShouldNotBeNil)
+			So(findObjectType(loadMerged(result.Files), "component"), ShouldBeNil)
+			So(result.Summary, ShouldResemble, interfaces.MergeSummary{Unchanged: 5, Deleted: 1, Ours: 1, Conflicted: 1})
 		})
 
 		Convey("A reference already broken on one side is not blamed on the merge\n", func() {
@@ -559,6 +563,58 @@ func Test_Merge_V3(t *testing.T) {
 			So(net.ActionTypes[0].Description, ShouldEqual, "Restarts a pod that keeps failing.")
 			So(net.ActionTypes[0].Parameters[1].Description, ShouldEqual, "Why the pod is restarted")
 			So(net.ActionTypes[0].ActionSource.ToolID, ShouldEqual, "tool_restart")
+		})
+	})
+}
+
+func Test_Merge_V3_Declarations(t *testing.T) {
+	Convey("Test Merge of 3.0 declarations that span definitions\n", t, func() {
+		const percentPath = "value_types/percent.bkn"
+		const nodePath = "object_types/node.bkn"
+		percent := "---\ntype: value_type\nid: percent\nname: Percent\ntags: []\n---\n\n## ValueType: Percent\n\nA share of a whole.\n\n" +
+			"### Definition\n\n```yaml\nbase_type: float\nunit: \"%\"\n```\n"
+		v3 := v3Set()
+		pod := string(v3["object_types/pod.bkn"])
+		rangeBlock := "cpu_pct:\n  range: {min: 0, max: 100}\n  unit: \"%\"\n"
+		podPercent := strings.Replace(pod, rangeBlock, "cpu_pct:\n  value_type: percent\n", 1)
+		base := with(v3, map[string]string{percentPath: percent, "object_types/pod.bkn": podPercent})
+		// Ours drops the value type and the only reference to it.
+		ours := with(base, map[string]string{percentPath: "", "object_types/pod.bkn": pod})
+		node := strings.NewReplacer("id: pod\n", "id: node\n", "Pod", "Node", "A pod.", "A node.", "res_pod", "res_node", "pods", "nodes").Replace(podPercent)
+
+		Convey("A definition one side adds with a value type the other side deleted is a conflict\n", func() {
+			theirs := with(base, map[string]string{nodePath: node})
+
+			result, err := Merge(base, ours, theirs)
+
+			So(err, ShouldBeNil)
+			So(result.Conflicts, ShouldHaveLength, 1)
+			c := result.Conflicts[0]
+			So(c.Reason, ShouldEqual, interfaces.MERGE_CONFLICT_BROKEN_REFERENCE)
+			So(c.Type, ShouldEqual, "object_type")
+			So(c.ID, ShouldEqual, "node")
+			So(c.File, ShouldEqual, nodePath)
+			So(c.Detail, ShouldContainSubstring, "percent")
+			So(result.Summary, ShouldResemble, interfaces.MergeSummary{Unchanged: 2, Ours: 1, Deleted: 1, Conflicted: 1})
+		})
+
+		Convey("A field merge that references a deleted value type is a conflict, not an error\n", func() {
+			theirs := with(base, map[string]string{"object_types/pod.bkn": strings.Replace(
+				strings.Replace(podPercent, "| cpu_pct | CPU | float | | | | cpu_pct |", "| cpu_pct | CPU | float | | | | cpu_pct |\n| mem_pct | Memory | float | | | | mem_pct |", 1),
+				"cpu_pct:\n  value_type: percent\n", "cpu_pct:\n  value_type: percent\nmem_pct:\n  value_type: percent\n", 1)})
+
+			result, err := Merge(base, ours, theirs)
+
+			So(err, ShouldBeNil)
+			So(result.Conflicts, ShouldHaveLength, 1)
+			c := result.Conflicts[0]
+			So(c.Reason, ShouldEqual, interfaces.MERGE_CONFLICT_BROKEN_REFERENCE)
+			So(c.Type, ShouldEqual, "object_type")
+			So(c.ID, ShouldEqual, "pod")
+			So(c.File, ShouldEqual, "object_types/pod.bkn")
+			So(c.Detail, ShouldContainSubstring, "mem_pct")
+			So(string(result.Files["object_types/pod.bkn"]), ShouldContainSubstring, "mem_pct:\n  value_type: percent")
+			So(result.Summary, ShouldResemble, interfaces.MergeSummary{Unchanged: 2, Deleted: 1, Conflicted: 1})
 		})
 	})
 }

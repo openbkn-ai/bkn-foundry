@@ -95,7 +95,7 @@ func Merge(base, ours, theirs map[string][]byte) (*interfaces.MergeResult, error
 		result:   &interfaces.MergeResult{Files: map[string][]byte{}, Conflicts: []interfaces.MergeConflict{}},
 		models:   map[defKey]any{},
 		outcome:  map[defKey]*int{},
-		owners:   map[string]defKey{},
+		owners:   map[string]owner{},
 		collided: map[defKey]bool{},
 	}
 	for _, k := range unionKeys(b, o, t) {
@@ -171,23 +171,95 @@ func (m *merger) checkReferences(ours, theirs map[string][]byte) error {
 	return nil
 }
 
-// validationErrors runs the SDK's network validation over a file set, keyed so that the same
-// error on two sets compares equal.
+// validationErrors runs the SDK's network validation, and for a 3.0 package its declarations that
+// span definitions, over a file set, keyed so that the same error on two sets compares equal.
 func validationErrors(files map[string][]byte) (map[string]bkn.ValidationError, error) {
 	out := map[string]bkn.ValidationError{}
 	if len(files) == 0 {
 		return out, nil
 	}
-	fsys := bkn.NewMemoryFileSystem()
-	fsys.AddFiles(files)
-	net, err := bkn.LoadNetworkWithFS(fsys, ".")
+	net, err := loadNetwork(files)
 	if err != nil {
 		return nil, err
 	}
-	for _, ve := range bkn.ValidateNetwork(net).Errors {
+	errs := append(bkn.ValidateNetwork(net).Errors, declarationErrors(net)...)
+	for _, ve := range errs {
 		out[strings.Join([]string{ve.Table, ve.Column, ve.Code, ve.Message}, "\x00")] = ve
 	}
 	return out, nil
+}
+
+// loadNetwork loads a file set with the SDK loader. The 3.0 declarations that span definitions are
+// left to declarationErrors: a merge of two valid sides can break them, which is a conflict to
+// report, not a set that fails to load.
+func loadNetwork(files map[string][]byte) (*bkn.BknNetwork, error) {
+	fsys := bkn.NewMemoryFileSystem()
+	fsys.AddFiles(files)
+	return bkn.LoadNetworkDefinitionsWithFS(fsys, ".")
+}
+
+// declarationCode marks a 3.0 declaration error among the validation errors.
+const declarationCode = "declaration"
+
+// declarationErrors lists the 3.0 declarations of net that span definitions and do not hold, each
+// on the definition it belongs to. NetworkRelationIssues lists the lifecycle and relation ones with
+// the definitions involved. ValidateNetworkDeclarations stops at its first error and names the
+// definition only in its message, so the value type references and the aliases are checked one
+// definition at a time, on a network that holds that definition with every value type and the bare
+// names of its peers. A value type name used twice is put on network.bkn; so is the error of the
+// full check when none of these finds one, so that no refusal goes unreported.
+func declarationErrors(net *bkn.BknNetwork) []bkn.ValidationError {
+	if net.BknSpec != bkn.BknSpecV3 {
+		return nil
+	}
+	var out []bkn.ValidationError
+	add := func(table string, err error) {
+		if err != nil {
+			out = append(out, bkn.ValidationError{Table: table, Code: declarationCode, Message: err.Error()})
+		}
+	}
+	for _, issue := range bkn.NetworkRelationIssues(net) {
+		add(issue.Involved[0].Kind+":"+issue.Involved[0].ID, issue.Err)
+	}
+	add(bkn.RootFileName, bkn.ValidateNetworkDeclarations(&bkn.BknNetwork{ValueTypes: net.ValueTypes}))
+
+	// The probes keep of a value type only what a reference is checked against; the id stands in for
+	// the name, so a name used twice is reported once, above.
+	valueTypes := make([]*bkn.BknValueType, 0, len(net.ValueTypes))
+	for _, vt := range net.ValueTypes {
+		valueTypes = append(valueTypes, &bkn.BknValueType{BknValueTypeFrontmatter: bkn.BknValueTypeFrontmatter{ID: vt.ID, Name: vt.ID}, BaseType: vt.BaseType})
+	}
+	for _, ot := range net.ObjectTypes {
+		probe := &bkn.BknNetwork{ValueTypes: valueTypes}
+		for _, other := range net.ObjectTypes {
+			bare := &bkn.BknObjectType{BknObjectTypeFrontmatter: bkn.BknObjectTypeFrontmatter{ID: other.ID, Name: other.Name}}
+			if other == ot {
+				bare.Aliases, bare.DataProperties = ot.Aliases, ot.DataProperties
+			}
+			probe.ObjectTypes = append(probe.ObjectTypes, bare)
+		}
+		add(kindObjectType+":"+ot.ID, bkn.ValidateNetworkDeclarations(probe))
+	}
+	for _, rt := range net.RelationTypes {
+		probe := &bkn.BknNetwork{ValueTypes: valueTypes, RelationTypes: []*bkn.BknRelationType{{
+			BknRelationTypeFrontmatter: bkn.BknRelationTypeFrontmatter{ID: rt.ID}, DataProperties: rt.DataProperties}}}
+		add(kindRelationType+":"+rt.ID, bkn.ValidateNetworkDeclarations(probe))
+	}
+	for _, at := range net.ActionTypes {
+		probe := &bkn.BknNetwork{}
+		for _, other := range net.ActionTypes {
+			bare := &bkn.BknActionType{BknActionTypeFrontmatter: bkn.BknActionTypeFrontmatter{ID: other.ID, Name: other.Name}}
+			if other == at {
+				bare.Aliases = at.Aliases
+			}
+			probe.ActionTypes = append(probe.ActionTypes, bare)
+		}
+		add(kindActionType+":"+at.ID, bkn.ValidateNetworkDeclarations(probe))
+	}
+	if len(out) == 0 {
+		add(bkn.RootFileName, bkn.ValidateNetworkDeclarations(net))
+	}
+	return out
 }
 
 type merger struct {
@@ -200,8 +272,8 @@ type merger struct {
 	// moves it rather than counting it twice.
 	outcome map[defKey]*int
 	// owners maps each result path to the definition written there; collided marks a
-	// definition refused because another one already owns its path.
-	owners   map[string]defKey
+	// definition that lost its path to another one.
+	owners   map[string]owner
 	collided map[defKey]bool
 }
 
@@ -221,17 +293,44 @@ func (m *merger) count(k defKey, counter *int) {
 	m.outcome[k] = counter
 }
 
-// claim reserves path for definition k. Two definitions can land on one path, e.g. when both
-// sides change the id inside the same file; the second is refused as a conflict instead of
-// silently overwriting the first.
-func (m *merger) claim(k defKey, d *definition) bool {
-	if owner, ok := m.owners[d.path]; ok && owner != k {
-		m.conflict(k, d, interfaces.MERGE_CONFLICT_BOTH_CHANGED, nil)
-		m.collided[k] = true
+// owner is the definition written at a result path and the side it came from.
+type owner struct {
+	key  defKey
+	def  *definition
+	ours bool
+}
+
+// claim reserves path for definition k of one side. Two definitions can land on one path, e.g.
+// when both sides change the id inside the same file. One side never has two files at one path,
+// so the two come from different sides, and the path keeps ours whichever arrives first: the
+// theirs definition is refused, or evicted if it came first, and recorded as a conflict.
+func (m *merger) claim(k defKey, d *definition, ours bool) bool {
+	prev, taken := m.owners[d.path]
+	if !taken || prev.key == k {
+		m.owners[d.path] = owner{k, d, ours}
+		return true
+	}
+	if !ours || prev.ours {
+		m.collide(k, d)
 		return false
 	}
-	m.owners[d.path] = k
+	delete(m.models, prev.key)
+	for i, r := range m.rewritten {
+		if r.key == prev.key {
+			m.rewritten = append(m.rewritten[:i], m.rewritten[i+1:]...)
+			break
+		}
+	}
+	m.collide(prev.key, prev.def)
+	m.count(prev.key, &m.result.Summary.Conflicted)
+	m.owners[d.path] = owner{k, d, ours}
 	return true
+}
+
+// collide records that definition k lost its path to another definition.
+func (m *merger) collide(k defKey, d *definition) {
+	m.conflict(k, d, interfaces.MERGE_CONFLICT_BOTH_CHANGED, nil)
+	m.collided[k] = true
 }
 
 type rewrite struct {
@@ -239,8 +338,8 @@ type rewrite struct {
 	path string
 }
 
-func (m *merger) take(k defKey, d *definition) {
-	if !m.claim(k, d) {
+func (m *merger) take(k defKey, d *definition, ours bool) {
+	if !m.claim(k, d, ours) {
 		return
 	}
 	m.result.Files[d.path] = d.data
@@ -255,10 +354,10 @@ func (m *merger) mergeDefinition(k defKey, base, ours, theirs *definition) error
 	case ours == nil && theirs == nil:
 		m.count(k, &sum.Deleted)
 	case base == nil && theirs == nil:
-		m.take(k, ours)
+		m.take(k, ours, true)
 		m.count(k, &sum.Ours)
 	case base == nil && ours == nil:
-		m.take(k, theirs)
+		m.take(k, theirs, false)
 		m.count(k, &sum.Theirs)
 	case ours == nil:
 		if equal(theirs.norm, base.norm) {
@@ -273,24 +372,24 @@ func (m *merger) mergeDefinition(k defKey, base, ours, theirs *definition) error
 			return nil
 		}
 		m.conflict(k, ours, interfaces.MERGE_CONFLICT_DELETED_BY_THEIRS, nil)
-		m.take(k, ours)
+		m.take(k, ours, true)
 		m.count(k, &sum.Conflicted)
 	case equal(ours.norm, theirs.norm):
-		m.take(k, ours)
+		m.take(k, ours, true)
 		if base != nil && equal(ours.norm, base.norm) {
 			m.count(k, &sum.Unchanged)
 		} else {
 			m.count(k, &sum.Ours)
 		}
 	case base != nil && equal(ours.norm, base.norm):
-		m.take(k, theirs)
+		m.take(k, theirs, false)
 		m.count(k, &sum.Theirs)
 	case base != nil && equal(theirs.norm, base.norm):
-		m.take(k, ours)
+		m.take(k, ours, true)
 		m.count(k, &sum.Ours)
 	case k.kind == interfaces.MERGE_TYPE_FILE:
 		m.conflict(k, ours, interfaces.MERGE_CONFLICT_BOTH_CHANGED, nil)
-		m.take(k, ours)
+		m.take(k, ours, true)
 		m.count(k, &sum.Conflicted)
 	default:
 		return m.mergeFields(k, base, ours, theirs)
@@ -308,7 +407,7 @@ func (m *merger) mergeFields(k defKey, base, ours, theirs *definition) error {
 	var conflicts []fieldConflict
 	merged := merge3("", baseNorm, ours.norm, theirs.norm, &conflicts)
 
-	if !m.claim(k, ours) {
+	if !m.claim(k, ours, true) {
 		m.count(k, &m.result.Summary.Conflicted)
 		return nil
 	}
@@ -428,9 +527,7 @@ func loadSide(files map[string][]byte) (map[defKey]*definition, error) {
 	if len(files) == 0 {
 		return defs, nil
 	}
-	fsys := bkn.NewMemoryFileSystem()
-	fsys.AddFiles(files)
-	net, err := bkn.LoadNetworkWithFS(fsys, ".")
+	net, err := loadNetwork(files)
 	if err != nil {
 		return nil, err
 	}
