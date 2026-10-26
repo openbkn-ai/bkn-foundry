@@ -12,6 +12,9 @@ const (
 	MERGE_CONFLICT_DELETED_BY_OURS = "deleted_by_ours"
 	// MERGE_CONFLICT_DELETED_BY_THEIRS: theirs deleted a definition that ours changed.
 	MERGE_CONFLICT_DELETED_BY_THEIRS = "deleted_by_theirs"
+	// MERGE_CONFLICT_BROKEN_REFERENCE: each side is valid on its own, but the merged set refers to
+	// a definition the other side removed, e.g. a new relation to a deleted object type.
+	MERGE_CONFLICT_BROKEN_REFERENCE = "broken_reference"
 )
 
 // MERGE_TYPE_FILE is the conflict type of a file that is not a BKN definition, such as
@@ -34,6 +37,8 @@ type MergeConflict struct {
 	Base   string `json:"base,omitempty"`
 	Ours   string `json:"ours,omitempty"`
 	Theirs string `json:"theirs,omitempty"`
+	// Detail explains a broken reference in the words of the BKN validator.
+	Detail string `json:"detail,omitempty"`
 }
 
 // MergeSummary counts the definitions and files of a merge by outcome.

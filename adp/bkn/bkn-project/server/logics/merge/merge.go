@@ -103,7 +103,83 @@ func Merge(base, ours, theirs map[string][]byte) (*interfaces.MergeResult, error
 	if err := m.serializeMerged(); err != nil {
 		return nil, err
 	}
+	if err := m.checkReferences(ours, theirs); err != nil {
+		return nil, err
+	}
 	return m.result, nil
+}
+
+// checkReferences validates the merged set as a whole. Each side may be valid on its own while
+// the merge is not, for example a relation added by one side to an object type the other side
+// deleted. Validation errors that neither side already had are reported as conflicts; a merged
+// set that does not load at all is an error.
+func (m *merger) checkReferences(ours, theirs map[string][]byte) error {
+	merged, err := validationErrors(m.result.Files)
+	if err != nil {
+		return fmt.Errorf("load merged definitions: %w", err)
+	}
+	known := map[string]bool{}
+	for _, side := range []map[string][]byte{ours, theirs} {
+		errs, err := validationErrors(side)
+		if err != nil {
+			return err
+		}
+		for key := range errs {
+			known[key] = true
+		}
+	}
+
+	files := map[defKey]string{}
+	for p, data := range m.result.Files {
+		if k, ok, _ := definitionKey(p, data); ok {
+			files[k] = p
+		}
+	}
+	keys := make([]string, 0, len(merged))
+	for key := range merged {
+		if !known[key] {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	conflicted := map[defKey]bool{}
+	for _, key := range keys {
+		ve := merged[key]
+		kind, id, _ := strings.Cut(ve.Table, ":")
+		k := defKey{kind, id}
+		m.result.Conflicts = append(m.result.Conflicts, interfaces.MergeConflict{
+			Type:   kind,
+			ID:     id,
+			File:   files[k],
+			Reason: interfaces.MERGE_CONFLICT_BROKEN_REFERENCE,
+			Path:   snakeCase(ve.Column),
+			Detail: ve.Message,
+		})
+		if !conflicted[k] {
+			conflicted[k] = true
+			m.result.Summary.Conflicted++
+		}
+	}
+	return nil
+}
+
+// validationErrors runs the SDK's network validation over a file set, keyed so that the same
+// error on two sets compares equal.
+func validationErrors(files map[string][]byte) (map[string]bkn.ValidationError, error) {
+	out := map[string]bkn.ValidationError{}
+	if len(files) == 0 {
+		return out, nil
+	}
+	fsys := bkn.NewMemoryFileSystem()
+	fsys.AddFiles(files)
+	net, err := bkn.LoadNetworkWithFS(fsys, ".")
+	if err != nil {
+		return nil, err
+	}
+	for _, ve := range bkn.ValidateNetwork(net).Errors {
+		out[strings.Join([]string{ve.Table, ve.Column, ve.Code, ve.Message}, "\x00")] = ve
+	}
+	return out, nil
 }
 
 type merger struct {

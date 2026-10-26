@@ -422,6 +422,41 @@ func Test_Merge_OpaqueFiles(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
+
+	Convey("Test Merge of changes that break references across definitions\n", t, func() {
+		base := baseSet()
+		shipsPath := "relation_types/supplier_ships_part.bkn"
+		ships := strings.NewReplacer("supplier_supplies_part", "supplier_ships_part",
+			"Supplier supplies part", "Supplier ships part").Replace(relationText)
+
+		Convey("A relation one side adds to an object type the other side deleted is a conflict\n", func() {
+			ours := with(base, map[string]string{shipsPath: ships})
+			theirs := with(base, map[string]string{supplierPath: "", suppliesPath: ""})
+
+			result, err := Merge(base, ours, theirs)
+
+			So(err, ShouldBeNil)
+			So(result.Conflicts, ShouldNotBeEmpty)
+			for _, c := range result.Conflicts {
+				So(c.Reason, ShouldEqual, interfaces.MERGE_CONFLICT_BROKEN_REFERENCE)
+				So(c.Type, ShouldEqual, "relation_type")
+				So(c.ID, ShouldEqual, "supplier_ships_part")
+				So(c.File, ShouldEqual, shipsPath)
+				So(c.Detail, ShouldContainSubstring, "supplier")
+			}
+			So(result.Summary.Conflicted, ShouldEqual, 1)
+		})
+
+		Convey("A reference already broken on one side is not blamed on the merge\n", func() {
+			brokenBase := with(base, map[string]string{supplierPath: ""})
+
+			result, err := Merge(brokenBase, brokenBase, with(brokenBase, map[string]string{partPath: objectType("part", "Part", "Edited.",
+				row("id", "string", "Part number"), row("weight", "float", "Weight in kg"))}))
+
+			So(err, ShouldBeNil)
+			So(result.Conflicts, ShouldBeEmpty)
+		})
+	})
 }
 
 // v3Set is a BKN 3.0 package in the spelling of the SDK's own 3.0 fixture.
