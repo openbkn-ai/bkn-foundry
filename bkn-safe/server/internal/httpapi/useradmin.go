@@ -84,6 +84,10 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 			Telephone: req.Telephone, Enabled: true, AccountType: at,
 		}
 		if err := users.CreateLocalUser(ctx, u, req.Password); err != nil {
+			if errors.Is(err, auth.ErrAccountAlreadyExists) {
+				replyPublicErrorDetails(c, http.StatusConflict, gin.H{"reason": "account_already_exists"})
+				return
+			}
 			serverError(c, err)
 			return
 		}

@@ -55,6 +55,10 @@ var ErrManagedLoginDisabled = fmt.Errorf("%w: managed account login disabled", E
 // ErrUserDisabled is returned when the account exists but is disabled.
 var ErrUserDisabled = errors.New("user disabled")
 
+// ErrAccountAlreadyExists indicates a user creation rejected by the unique
+// account constraint, including a concurrent creation of the same account.
+var ErrAccountAlreadyExists = errors.New("account already exists")
+
 // ErrMustChangePassword is returned when credentials are valid but the user must
 // change their password before the login can be accepted (e.g. the seeded admin
 // on first login). The caller should drive the change-password flow.
@@ -117,7 +121,25 @@ func (s *UserStore) CreateLocalUser(ctx context.Context, u *model.User, password
 	u.PasswordHash = string(hash)
 	u.Source = model.SourceLocal
 	u.MustChangePassword = true
-	return s.db.WithContext(ctx).Create(u).Error
+	err = s.db.WithContext(ctx).Create(u).Error
+	if err == nil {
+		return nil
+	}
+	// Translate only this operation's error; changing the shared GORM config
+	// would also change the errors returned by unrelated stores.
+	translated := err
+	if translator, ok := s.db.Dialector.(gorm.ErrorTranslator); ok {
+		translated = translator.Translate(err)
+	}
+	if errors.Is(translated, gorm.ErrDuplicatedKey) {
+		// A duplicate primary key must not be described as an account conflict.
+		// Query after the failed insert so concurrent creates are also covered.
+		var existing model.User
+		if lookupErr := s.db.WithContext(ctx).Select("id").Where("account = ?", u.Account).First(&existing).Error; lookupErr == nil {
+			return ErrAccountAlreadyExists
+		}
+	}
+	return err
 }
 
 // UpdateUser patches mutable profile fields of a user (name/email/telephone/
