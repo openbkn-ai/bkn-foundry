@@ -7,6 +7,7 @@ package bkntrace
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -21,7 +22,7 @@ import (
 
 func TestFunctionResultRequiresVerifiedExecutionIdentity(t *testing.T) {
 	identity := ResultProducer{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "quality_check", FunctionVersion: "published-version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
-	for _, name := range []string{"normal", "zero", "changed code", "invalid code hash", "changed version", "body spoof", "missing result", "null result", "text result", "empty object", "array result", "embedded declaration", "artifact unavailable", "artifact timeout", "sample fixture", "null exit", "numeric content"} {
+	for _, name := range []string{"normal", "zero", "changed code", "invalid code hash", "changed version", "body spoof", "missing result", "null result", "text result", "empty object", "array result", "embedded declaration", "artifact unavailable", "artifact unsafe error", "artifact timeout", "closed publication", "sample fixture", "null exit", "numeric content"} {
 		t.Run(name, func(t *testing.T) {
 			identity := identity
 			publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "retrieval", WorkloadIdentity: "retrieval", ProcessBootID: name, CapturePolicyRevision: "41"}, &captureEvidenceSender{})
@@ -37,6 +38,9 @@ func TestFunctionResultRequiresVerifiedExecutionIdentity(t *testing.T) {
 			var artifact map[string]any
 			artifactHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				writes++
+				if name == "artifact unsafe error" {
+					return nil, errors.New("must-not-log-secret-response")
+				}
 				if name == "artifact timeout" {
 					<-r.Context().Done()
 					return nil, r.Context().Err()
@@ -120,10 +124,40 @@ func TestFunctionResultRequiresVerifiedExecutionIdentity(t *testing.T) {
 			trace.ConversationID = "conv-result"
 			ctx = common.SetTraceContextToCtx(ctx, trace)
 			ctx = WithTraceAvailability(ctx)
+			if name == "closed publication" {
+				ctx = withEvidenceOutcome(ctx)
+				evidenceOutcomeFromContext(ctx).closed = true
+			}
 			if name == "artifact timeout" {
 				ctx.Value(traceAvailabilityKey{}).(*traceAvailability).post = 300 * time.Millisecond
 			}
+			capture, captureErr := os.CreateTemp(t.TempDir(), "snapshot-warning")
+			if captureErr != nil {
+				t.Fatal(captureErr)
+			}
+			previousStdout := os.Stdout
+			os.Stdout = capture
+			t.Cleanup(func() { os.Stdout = previousStdout; _ = capture.Close() })
 			err = RecordFunctionResult(ctx, identity, identity.FunctionVersion, result)
+			os.Stdout = previousStdout
+			if _, seekErr := capture.Seek(0, 0); seekErr != nil {
+				t.Fatal(seekErr)
+			}
+			warnings, readErr := io.ReadAll(capture)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			runtimeFailure := name == "artifact unavailable" || name == "artifact unsafe error" || name == "artifact timeout"
+			if strings.Contains(string(warnings), "stage=publish") != (name == "closed publication") {
+				t.Fatalf("publication diagnostic=%s", warnings)
+			}
+			if (runtimeFailure || name == "closed publication") && !strings.Contains(string(warnings), "operation_id="+trace.OperationID) {
+				t.Fatalf("missing correlation: %s", warnings)
+			}
+			if strings.Contains(string(warnings), "stage=artifact_put") != runtimeFailure || strings.Contains(string(warnings), "must-not-log-secret-response") || strings.Contains(string(warnings), "measurement") {
+				t.Fatalf("unsafe or missing diagnostic: %s", warnings)
+			}
+
 			good := name == "changed code" || name == "normal" || name == "zero" || name == "sample fixture" || name == "numeric content" || name == "empty object" || name == "array result" || name == "embedded declaration"
 			if good {
 				if err != nil || writes != 1 || len(publisher.SnapshotQueue()) != 1 {

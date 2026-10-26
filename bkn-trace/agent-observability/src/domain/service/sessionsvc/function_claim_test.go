@@ -42,8 +42,14 @@ func (tx *functionSealTransaction) FindOperationCallFact(id string, attempt uint
 	return tx.Transaction.FindOperationCallFact(id, attempt)
 }
 
-func (tx *functionSealTransaction) ReadEvidenceEventsByIDs([]string) ([]ledgervo.Event, error) {
-	return tx.sources, tx.readErr
+func (tx *functionSealTransaction) ReadEvidenceEventsByIDs(ids []string) ([]ledgervo.Event, error) {
+	var result []ledgervo.Event
+	for _, e := range append(slices.Clone(tx.sources), tx.saved...) {
+		if slices.Contains(ids, e.EventID) {
+			result = append(result, e)
+		}
+	}
+	return result, tx.readErr
 }
 func (tx *functionSealTransaction) AppendDerivedEvidence(e ledgervo.Event) (ledgervo.DurableAck, error) {
 	if tx.writeErr != nil {
@@ -57,7 +63,7 @@ func (tx *functionSealTransaction) AppendDerivedEvidence(e ledgervo.Event) (ledg
 }
 
 func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
-	for _, name := range []string{"normal", "zero", "no source refs", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "missing result", "null result", "text result", "changed content", "embedded declaration", "clock skew", "precise content", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
+	for _, name := range []string{"normal", "later revision", "zero", "no source refs", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "missing result", "null result", "text result", "changed content", "embedded declaration", "clock skew", "precise content", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
 		t.Run(name, func(t *testing.T) {
 			now := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 			owner := sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "user"}
@@ -163,7 +169,7 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				if name == "unsupported store" {
 					sealing = tx
 				}
-				_, sealErr := service.sealFunctionClaims(sealing, &interaction, &revision)
+				_, sealErr := service.sealFunctionClaims(sealing, &interaction, &revision, nil)
 				if name == "storage failure" {
 					if !errors.Is(sealErr, custom.writeErr) {
 						t.Fatalf("storage error swallowed: %v", sealErr)
@@ -179,7 +185,7 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 					}
 					return nil
 				}
-				good := name == "normal" || name == "zero" || name == "clock skew" || name == "embedded declaration"
+				good := name == "normal" || name == "later revision" || name == "zero" || name == "clock skew" || name == "embedded declaration"
 				if !good {
 					if name == "no source refs" && custom.factReads != 0 {
 						t.Fatalf("uncaptured snapshot loaded full output: %d", custom.factReads)
@@ -204,6 +210,35 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				replay := materializedFunctionClaim(source, proof, claim.ID, "receipt", sessionvo.AssemblyRevision{ID: revision.ID, CreatedAt: revision.CreatedAt}, 2)
 				if ledgervo.ImmutableRecordHash(replay) != ledgervo.ImmutableRecordHash(event) {
 					t.Fatal("same revision generated a different event")
+				}
+				if name == "later revision" {
+					tx.SaveAssemblyRevision(revision)
+					for n, failure := range []error{isessionstore.ErrEvidenceConfirmationLimit, ievidenceledger.ErrCausalityConflict} {
+						custom.writeErr = failure
+						next := sessionvo.AssemblyRevision{ID: fmt.Sprintf("later-%d", n), InteractionID: "int", IncludedEventIDs: []string{"source"}, Completeness: sessionvo.EvidenceComplete, CreatedAt: now.Add(time.Minute)}
+						if _, err := service.sealFunctionClaims(custom, &interaction, &next, tx.ListAssemblyRevisions("int")); err != nil {
+							return err
+						}
+						if len(custom.saved) != 1 || custom.factReads != 1 || len(interaction.ClosureManifest.Claims) != 1 || !slices.Contains(next.IncludedEventIDs, event.EventID) {
+							t.Fatalf("sealed Claim lost on later revision: saved=%d claims=%v included=%v", len(custom.saved), interaction.ClosureManifest.Claims, next.IncludedEventIDs)
+						}
+						view := assemblysvc.Assemble("int", []ledgervo.Event{source, event}, interaction.ClosureManifest.Claims)
+						if len(view.Claims) != 1 || view.Completeness != sessionvo.EvidenceComplete || view.Claims[0].Claim.Supports[0].SourceRevisionID != revision.ID {
+							t.Fatalf("prior Claim binding changed: %+v", view)
+						}
+						tx.SaveAssemblyRevision(next)
+					}
+					saved := custom.saved[0]
+					custom.saved[0].Owner.EffectiveSubjectID = "other-owner"
+					probe := sessionvo.AssemblyRevision{ID: "probe", InteractionID: "int"}
+					if _, err := service.sealFunctionClaims(custom, &interaction, &probe, tx.ListAssemblyRevisions("int")); err == nil {
+						t.Fatal("retained foreign-owner Claim accepted")
+					}
+					custom.saved = nil
+					if _, err := service.sealFunctionClaims(custom, &interaction, &probe, tx.ListAssemblyRevisions("int")); err == nil {
+						t.Fatal("missing sealed event silently removed")
+					}
+					custom.saved = []ledgervo.Event{saved}
 				}
 				return nil
 			})
@@ -280,6 +315,25 @@ func TestEmptyInteractionManifestDoesNotReadCallSummaries(t *testing.T) {
 		manifest := deriveClosureManifest(counting, "empty", sessionvo.ClosureManifest{Version: "3.0.0"})
 		if counting.reads != 0 || len(manifest.Claims) != 0 || len(manifest.ExpectedOperations) != 0 {
 			t.Fatalf("empty finish performed extra reads: %d %+v", counting.reads, manifest)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFreezeAssemblyRevisionWithNilClosureManifest(t *testing.T) {
+	store := sessionstore.New()
+	service := New(store, Options{})
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		interaction := sessionvo.Interaction{ID: "int", EvidenceStatus: sessionvo.EvidenceNotApplicable}
+		manifest := sessionvo.ClosureManifest{Version: "3.0.0", Claims: []string{"caller"}}
+		if err := service.freezeAssemblyRevision(tx, &interaction, manifest, "test"); err != nil {
+			return err
+		}
+		revisions := tx.ListAssemblyRevisions("int")
+		if len(revisions) != 1 || revisions[0].ArtifactManifestHash != hashValue(struct{ Claims, EventIDs, ArtifactRefs []string }{manifest.Claims, []string{}, []string{}}) {
+			t.Fatalf("manifest fallback not hashed: %+v", revisions)
 		}
 		return nil
 	}); err != nil {

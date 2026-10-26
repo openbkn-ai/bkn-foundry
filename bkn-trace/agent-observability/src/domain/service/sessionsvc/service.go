@@ -1953,16 +1953,20 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 		Completeness: interaction.EvidenceStatus, PartialReasons: partialReasons,
 		Trigger: trigger, CreatedAt: tx.Now(),
 	}
-	claimArtifacts, err := s.sealFunctionClaims(tx, interaction, &revision)
+	claimArtifacts, err := s.sealFunctionClaims(tx, interaction, &revision, existing)
 	if err != nil {
 		return err
 	}
 	artifactRefs = append(artifactRefs, claimArtifacts...)
+	claims := manifest.Claims
+	if interaction.ClosureManifest != nil {
+		claims = interaction.ClosureManifest.Claims
+	}
 	revision.ArtifactManifestHash = hashValue(struct {
 		Claims       []string
 		EventIDs     []string
 		ArtifactRefs []string
-	}{interaction.ClosureManifest.Claims, revision.IncludedEventIDs, artifactRefs})
+	}{claims, revision.IncludedEventIDs, artifactRefs})
 	tx.SaveAssemblyRevision(revision)
 	if s.revisionSealer != nil {
 		if err := s.revisionSealer(tx, *interaction, revision); err != nil {

@@ -12,6 +12,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/logger"
 )
 
 const FunctionResultContract = "function_result_evidence/v1"
@@ -87,6 +89,8 @@ func RecordFunctionResult(ctx context.Context, producer ResultProducer, listedVe
 	scope := payloadArtifactScope{InteractionID: ec.interactionID, OperationID: ec.operationID, Direction: "logic_result"}
 	ref, hash, err := (evidencePayloadArtifactWriter{}).Put(withPayloadArtifactScope(ioCtx, scope), "application/json", content)
 	if err != nil {
+		// Diagnostic only: omit error/body/identity strings that may contain secrets.
+		logger.DefaultLogger().WithContext(ctx).Warnf("BKN Trace Function snapshot failed: stage=artifact_put interaction_id=%s operation_id=%s", ec.interactionID, ec.operationID)
 		return err
 	}
 	var normalized any
@@ -103,5 +107,9 @@ func RecordFunctionResult(ctx context.Context, producer ResultProducer, listedVe
 		"result_artifact_ref": ref, "content_hash": hash, "output_hash": hex.EncodeToString(digest[:]),
 	}
 	event := buildEvent(ec, "logic.execution.observed", "context.function_result", payload, "", "")
-	return SubmitEvents(ioCtx, nil, nil, []Event{event})
+	err = SubmitEvents(ioCtx, nil, nil, []Event{event})
+	if err != nil {
+		logger.DefaultLogger().WithContext(ctx).Warnf("BKN Trace Function snapshot failed: stage=publish interaction_id=%s operation_id=%s", ec.interactionID, ec.operationID)
+	}
+	return err
 }

@@ -61,7 +61,7 @@ func derivedFunctionClaimIDs(tx isessionstore.Transaction, interactionID string,
 	return result
 }
 
-func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *sessionvo.Interaction, revision *sessionvo.AssemblyRevision) ([]string, error) {
+func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *sessionvo.Interaction, revision *sessionvo.AssemblyRevision, prior []sessionvo.AssemblyRevision) ([]string, error) {
 	if interaction.ClosureManifest == nil {
 		return nil, nil
 	}
@@ -84,7 +84,50 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 	reader, readable := tx.(isessionstore.EvidenceConfirmationTransaction)
 	if writable && readable {
 		conversation, hasConversation := tx.PeekConversation(interaction.ConversationID)
+		// A sealed Claim remains bound to its original revision. Include that
+		// immutable event again instead of recreating it under a new identity.
+		included := make(map[string]bool)
+		if len(prior) > 0 {
+			for _, eventID := range prior[len(prior)-1].IncludedEventIDs {
+				included[eventID] = true
+			}
+		}
+		for _, id := range interaction.ClosureManifest.Claims {
+			if !slices.Contains(expected, id) {
+				continue
+			}
+			eventID, sourceRevision := "", ""
+			for i := len(prior) - 1; i >= 0; i-- {
+				candidate := functionClaimEventID(prior[i].ID, id)
+				if included[candidate] {
+					eventID, sourceRevision = candidate, prior[i].ID
+					break
+				}
+			}
+			if eventID == "" {
+				continue
+			}
+			events, err := reader.ReadEvidenceEventsByIDs([]string{eventID})
+			if err != nil {
+				return nil, err
+			}
+			if len(events) != 1 {
+				return nil, fmt.Errorf("previously sealed Function Claim %s is unavailable", id)
+			}
+			e := events[0]
+			if !hasConversation || e.EventID != eventID || e.ProducerID != "agent-observability-core" || e.EventType != "claim.created" || !e.Owner.Equal(conversation.Owner) || e.ConversationID != interaction.ConversationID || e.InteractionID != interaction.ID || functionClaimID(e.OperationID, e.Attempt) != id || len(e.Claims) != 1 || e.Claims[0].ID != id || e.Claims[0].Type != functionResultClaimType || len(e.Claims[0].Supports) != 1 || e.Claims[0].Supports[0].SourceRevisionID != sourceRevision || !slices.Contains(e.ArtifactRefs, e.Claims[0].ContentArtifactRef) {
+				return nil, fmt.Errorf("previously sealed Function Claim %s has invalid bindings", id)
+			}
+			revision.IncludedEventIDs = appendUnique(revision.IncludedEventIDs, eventID)
+			for _, ref := range e.ArtifactRefs {
+				artifacts = appendUnique(artifacts, ref)
+			}
+			claims = appendUnique(claims, id)
+		}
 		for _, id := range expected {
+			if slices.Contains(claims, id) {
+				continue
+			}
 			if len(claims) >= s.capacity.MaxClaimsPerInteraction {
 				break
 			}
@@ -237,11 +280,16 @@ func materializedFunctionClaim(source ledgervo.Event, proof functionResultEviden
 	ref := sessionvo.EvidenceRef{Ref: proof.ArtifactRef, RefType: sessionvo.EvidenceRefArtifact, SourceInteractionID: source.InteractionID, SourceRevisionID: revision.ID, SourceOperationID: source.OperationID, ArtifactRef: proof.ArtifactRef, Version: proof.Producer.FunctionVersion, ContentHash: proof.ContentHash}
 	support := sessionvo.ClaimSupport{TargetRef: ref.Ref, TargetType: sessionvo.SupportEvidence, SourceInteractionID: ref.SourceInteractionID, SourceRevisionID: ref.SourceRevisionID, SourceOperationID: ref.SourceOperationID, Version: ref.Version, ContentHash: ref.ContentHash, Role: "computed_from", Status: sessionvo.SupportAdopted}
 	claim := sessionvo.Claim{ID: id, Type: functionResultClaimType, Materiality: sessionvo.ClaimMaterial, Status: sessionvo.ClaimAsserted, ContentArtifactRef: proof.ArtifactRef, RequiredSupportRoles: []string{"computed_from"}, Supports: []sessionvo.ClaimSupport{support}}
-	sum := sha256.Sum256([]byte(revision.ID + "|" + id))
+	eventID := functionClaimEventID(revision.ID, id)
 	envelope, _ := json.Marshal(map[string]any{"result_contract": functionResultContract, "source_event_id": source.EventID, "receipt_bound_operation_id": source.OperationID, "source_receipt_id": receiptID, "producer": proof.Producer, "result_artifact_ref": proof.ArtifactRef})
 	emittedAt := revision.CreatedAt
 	if source.EmittedAt.After(emittedAt) {
 		emittedAt = source.EmittedAt
 	}
-	return ledgervo.Event{EventID: "evt_claim_" + hex.EncodeToString(sum[:16]), EventType: "claim.created", SchemaVersion: "3.0.0", PayloadHash: ledgervo.CanonicalPayloadHash(envelope), Owner: source.Owner, ConversationID: source.ConversationID, InteractionID: source.InteractionID, OperationID: source.OperationID, Attempt: source.Attempt, RequestID: source.RequestID, TraceID: source.TraceID, SpanID: source.SpanID, ProducerID: "agent-observability-core", ProducerStreamID: "core-claims:" + revision.ID, ProducerEpoch: 1, ProducerSequence: sequence, CausationEventIDs: []string{source.EventID}, StartedAt: source.StartedAt, ObservedAt: source.ObservedAt, EmittedAt: emittedAt, Envelope: envelope, BusinessRefs: source.BusinessRefs, ArtifactRefs: []string{proof.ArtifactRef}, Claims: []sessionvo.Claim{claim}, EvidenceRefs: []sessionvo.EvidenceRef{ref}}
+	return ledgervo.Event{EventID: eventID, EventType: "claim.created", SchemaVersion: "3.0.0", PayloadHash: ledgervo.CanonicalPayloadHash(envelope), Owner: source.Owner, ConversationID: source.ConversationID, InteractionID: source.InteractionID, OperationID: source.OperationID, Attempt: source.Attempt, RequestID: source.RequestID, TraceID: source.TraceID, SpanID: source.SpanID, ProducerID: "agent-observability-core", ProducerStreamID: "core-claims:" + revision.ID, ProducerEpoch: 1, ProducerSequence: sequence, CausationEventIDs: []string{source.EventID}, StartedAt: source.StartedAt, ObservedAt: source.ObservedAt, EmittedAt: emittedAt, Envelope: envelope, BusinessRefs: source.BusinessRefs, ArtifactRefs: []string{proof.ArtifactRef}, Claims: []sessionvo.Claim{claim}, EvidenceRefs: []sessionvo.EvidenceRef{ref}}
+}
+
+func functionClaimEventID(revisionID, claimID string) string {
+	sum := sha256.Sum256([]byte(revisionID + "|" + claimID))
+	return "evt_claim_" + hex.EncodeToString(sum[:16])
 }
