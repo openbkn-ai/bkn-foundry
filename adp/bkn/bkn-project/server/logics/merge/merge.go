@@ -92,8 +92,11 @@ func Merge(base, ours, theirs map[string][]byte) (*interfaces.MergeResult, error
 	}
 
 	m := &merger{
-		result: &interfaces.MergeResult{Files: map[string][]byte{}, Conflicts: []interfaces.MergeConflict{}},
-		models: map[defKey]any{},
+		result:   &interfaces.MergeResult{Files: map[string][]byte{}, Conflicts: []interfaces.MergeConflict{}},
+		models:   map[defKey]any{},
+		outcome:  map[defKey]*int{},
+		owners:   map[string]defKey{},
+		collided: map[defKey]bool{},
 	}
 	for _, k := range unionKeys(b, o, t) {
 		if err := m.mergeDefinition(k, b[k], o[k], t[k]); err != nil {
@@ -142,23 +145,28 @@ func (m *merger) checkReferences(ours, theirs map[string][]byte) error {
 		}
 	}
 	sort.Strings(keys)
-	conflicted := map[defKey]bool{}
 	for _, key := range keys {
 		ve := merged[key]
-		kind, id, _ := strings.Cut(ve.Table, ":")
-		k := defKey{kind, id}
-		m.result.Conflicts = append(m.result.Conflicts, interfaces.MergeConflict{
-			Type:   kind,
-			ID:     id,
-			File:   files[k],
+		c := interfaces.MergeConflict{
 			Reason: interfaces.MERGE_CONFLICT_BROKEN_REFERENCE,
 			Path:   snakeCase(ve.Column),
 			Detail: ve.Message,
-		})
-		if !conflicted[k] {
-			conflicted[k] = true
-			m.result.Summary.Conflicted++
 		}
+		var k defKey
+		if ve.Table == bkn.RootFileName {
+			// Errors across the whole network, such as duplicate names, sit on network.bkn.
+			k = defKey{kind: kindNetwork}
+			c.Type, c.File = kindNetwork, bkn.RootFileName
+			if net, ok := m.models[k].(*bkn.BknNetwork); ok {
+				c.ID = net.ID
+			}
+		} else {
+			kind, id, _ := strings.Cut(ve.Table, ":")
+			k = defKey{kind, id}
+			c.Type, c.ID, c.File = kind, id, files[k]
+		}
+		m.result.Conflicts = append(m.result.Conflicts, c)
+		m.count(k, &m.result.Summary.Conflicted)
 	}
 	return nil
 }
@@ -188,6 +196,42 @@ type merger struct {
 	models map[defKey]any
 	// rewritten lists the definitions that were combined and must be serialized again.
 	rewritten []rewrite
+	// outcome is the summary counter each definition was counted under, so a later conflict
+	// moves it rather than counting it twice.
+	outcome map[defKey]*int
+	// owners maps each result path to the definition written there; collided marks a
+	// definition refused because another one already owns its path.
+	owners   map[string]defKey
+	collided map[defKey]bool
+}
+
+// count records the outcome of definition k once. A definition that lost its path to another
+// one is counted as conflicted whatever the caller decided.
+func (m *merger) count(k defKey, counter *int) {
+	if m.collided[k] {
+		counter = &m.result.Summary.Conflicted
+	}
+	if prev, ok := m.outcome[k]; ok {
+		if prev == counter {
+			return
+		}
+		*prev--
+	}
+	*counter++
+	m.outcome[k] = counter
+}
+
+// claim reserves path for definition k. Two definitions can land on one path, e.g. when both
+// sides change the id inside the same file; the second is refused as a conflict instead of
+// silently overwriting the first.
+func (m *merger) claim(k defKey, d *definition) bool {
+	if owner, ok := m.owners[d.path]; ok && owner != k {
+		m.conflict(k, d, interfaces.MERGE_CONFLICT_BOTH_CHANGED, nil)
+		m.collided[k] = true
+		return false
+	}
+	m.owners[d.path] = k
+	return true
 }
 
 type rewrite struct {
@@ -196,6 +240,9 @@ type rewrite struct {
 }
 
 func (m *merger) take(k defKey, d *definition) {
+	if !m.claim(k, d) {
+		return
+	}
 	m.result.Files[d.path] = d.data
 	if d.model != nil {
 		m.models[k] = d.model
@@ -206,45 +253,45 @@ func (m *merger) mergeDefinition(k defKey, base, ours, theirs *definition) error
 	sum := &m.result.Summary
 	switch {
 	case ours == nil && theirs == nil:
-		sum.Deleted++
+		m.count(k, &sum.Deleted)
 	case base == nil && theirs == nil:
 		m.take(k, ours)
-		sum.Ours++
+		m.count(k, &sum.Ours)
 	case base == nil && ours == nil:
 		m.take(k, theirs)
-		sum.Theirs++
+		m.count(k, &sum.Theirs)
 	case ours == nil:
 		if equal(theirs.norm, base.norm) {
-			sum.Deleted++
+			m.count(k, &sum.Deleted)
 			return nil
 		}
 		m.conflict(k, theirs, interfaces.MERGE_CONFLICT_DELETED_BY_OURS, nil)
-		sum.Conflicted++
+		m.count(k, &sum.Conflicted)
 	case theirs == nil:
 		if equal(ours.norm, base.norm) {
-			sum.Deleted++
+			m.count(k, &sum.Deleted)
 			return nil
 		}
 		m.conflict(k, ours, interfaces.MERGE_CONFLICT_DELETED_BY_THEIRS, nil)
 		m.take(k, ours)
-		sum.Conflicted++
+		m.count(k, &sum.Conflicted)
 	case equal(ours.norm, theirs.norm):
 		m.take(k, ours)
 		if base != nil && equal(ours.norm, base.norm) {
-			sum.Unchanged++
+			m.count(k, &sum.Unchanged)
 		} else {
-			sum.Ours++
+			m.count(k, &sum.Ours)
 		}
 	case base != nil && equal(ours.norm, base.norm):
 		m.take(k, theirs)
-		sum.Theirs++
+		m.count(k, &sum.Theirs)
 	case base != nil && equal(theirs.norm, base.norm):
 		m.take(k, ours)
-		sum.Ours++
+		m.count(k, &sum.Ours)
 	case k.kind == interfaces.MERGE_TYPE_FILE:
 		m.conflict(k, ours, interfaces.MERGE_CONFLICT_BOTH_CHANGED, nil)
 		m.take(k, ours)
-		sum.Conflicted++
+		m.count(k, &sum.Conflicted)
 	default:
 		return m.mergeFields(k, base, ours, theirs)
 	}
@@ -261,6 +308,10 @@ func (m *merger) mergeFields(k defKey, base, ours, theirs *definition) error {
 	var conflicts []fieldConflict
 	merged := merge3("", baseNorm, ours.norm, theirs.norm, &conflicts)
 
+	if !m.claim(k, ours) {
+		m.count(k, &m.result.Summary.Conflicted)
+		return nil
+	}
 	model, err := decodeModel(k.kind, merged)
 	if err != nil {
 		return fmt.Errorf("decode merged %s %s: %w", k.kind, k.id, err)
@@ -269,10 +320,10 @@ func (m *merger) mergeFields(k defKey, base, ours, theirs *definition) error {
 	m.rewritten = append(m.rewritten, rewrite{key: k, path: ours.path})
 
 	if len(conflicts) == 0 {
-		m.result.Summary.Merged++
+		m.count(k, &m.result.Summary.Merged)
 		return nil
 	}
-	m.result.Summary.Conflicted++
+	m.count(k, &m.result.Summary.Conflicted)
 	for i := range conflicts {
 		m.conflict(k, ours, interfaces.MERGE_CONFLICT_BOTH_CHANGED, &conflicts[i])
 	}

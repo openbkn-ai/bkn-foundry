@@ -444,7 +444,48 @@ func Test_Merge_OpaqueFiles(t *testing.T) {
 				So(c.File, ShouldEqual, shipsPath)
 				So(c.Detail, ShouldContainSubstring, "supplier")
 			}
-			So(result.Summary.Conflicted, ShouldEqual, 1)
+			// Each definition is counted once: the new relation moves from Ours to Conflicted.
+			So(result.Summary, ShouldResemble, interfaces.MergeSummary{Unchanged: 4, Deleted: 2, Conflicted: 1})
+		})
+
+		Convey("Two object types added with the same name conflict on network.bkn\n", func() {
+			widget := func(id string) string {
+				return objectType(id, "Widget", "A widget.", row("id", "string", "Widget id"))
+			}
+			ours := with(base, map[string]string{"object_types/item.bkn": widget("item")})
+			theirs := with(base, map[string]string{"object_types/gadget.bkn": widget("gadget")})
+
+			result, err := Merge(base, ours, theirs)
+
+			So(err, ShouldBeNil)
+			So(result.Conflicts, ShouldNotBeEmpty)
+			for _, c := range result.Conflicts {
+				So(c.Reason, ShouldEqual, interfaces.MERGE_CONFLICT_BROKEN_REFERENCE)
+				So(c.Type, ShouldEqual, "network")
+				So(c.ID, ShouldEqual, "supply")
+				So(c.File, ShouldEqual, networkPath)
+				So(c.Detail, ShouldContainSubstring, "Widget")
+			}
+			So(result.Summary, ShouldResemble, interfaces.MergeSummary{Unchanged: 5, Ours: 1, Theirs: 1, Conflicted: 1})
+		})
+
+		Convey("Two definitions that claim the same file conflict instead of one overwriting the other\n", func() {
+			ours := with(base, map[string]string{partPath: objectType("piece", "Piece", "A part.",
+				row("id", "string", "Part number"), row("weight", "float", "Weight in kg"))})
+			theirs := with(base, map[string]string{partPath: objectType("component", "Component", "A part.",
+				row("id", "string", "Part number"), row("weight", "float", "Weight in kg"))})
+
+			result, err := Merge(base, ours, theirs)
+
+			So(err, ShouldBeNil)
+			var onFile []interfaces.MergeConflict
+			for _, c := range result.Conflicts {
+				if c.File == partPath && c.Reason == interfaces.MERGE_CONFLICT_BOTH_CHANGED {
+					onFile = append(onFile, c)
+				}
+			}
+			So(onFile, ShouldHaveLength, 1)
+			So(result.Summary.Conflicted, ShouldBeGreaterThanOrEqualTo, 1)
 		})
 
 		Convey("A reference already broken on one side is not blamed on the merge\n", func() {
