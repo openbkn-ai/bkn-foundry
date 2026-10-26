@@ -9,6 +9,14 @@ import "context"
 // GIT_MAIN_BRANCH is the branch that mirrors the live definitions of a lineage.
 const GIT_MAIN_BRANCH = "main"
 
+// The top-level entries of a commit that hold the functions and Skills a
+// network uses. Only main writes them; see ReadCapabilities.
+const (
+	GIT_FUNCTIONS_DIR = "functions"
+	GIT_SKILLS_DIR    = "skills"
+	GIT_MANIFEST_FILE = "release.yaml"
+)
+
 // GitAuthor names who made a commit.
 type GitAuthor struct {
 	Name  string
@@ -57,8 +65,18 @@ type GitStore interface {
 	// FastForward moves branch to the commit to resolves to. It refuses when the
 	// current head of branch is not an ancestor of that commit.
 	FastForward(ctx context.Context, lineageID string, branch string, to string) (string, error)
+	// ReadCapabilities returns the functions/ and skills/ files and release.yaml of
+	// the commit ref resolves to, keyed by their path from the repository root.
+	ReadCapabilities(ctx context.Context, lineageID string, ref string) (map[string][]byte, error)
+	// CommitCapabilities replaces functions/ and skills/ on branch with the files
+	// under them, and release.yaml with files["release.yaml"] when present (it is
+	// kept otherwise). Paths are from the repository root; any other path is
+	// refused. When nothing changes, no commit is made and the head is returned.
+	CommitCapabilities(ctx context.Context, lineageID string, branch string, files map[string][]byte,
+		message string, author GitAuthor) (string, error)
 	// CommitMerge writes a merge commit on branch whose parents are the head of
-	// branch and the commit other resolves to, with files as its bkn/ directory and
+	// branch and the commit other resolves to, with files as its bkn/ directory,
+	// functions/, skills/ and release.yaml taken from other, which is main, and
 	// every other top-level entry taken from the head of branch. It always writes a
 	// commit, even when the tree does not change, so other becomes an ancestor of branch.
 	CommitMerge(ctx context.Context, lineageID string, branch string, other string, files map[string][]byte,
