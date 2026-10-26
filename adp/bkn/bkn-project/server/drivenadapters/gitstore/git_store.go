@@ -148,6 +148,10 @@ func (gs *gitStore) InitLineage(ctx context.Context, lineageID string, files map
 		span.SetStatus(codes.Error, "Invalid lineage id")
 		return "", err
 	}
+	// The only lock taken for a lineage that does not exist yet. Its entry stays
+	// even if the init fails: dropping a mutex another caller may be waiting on
+	// would let two callers hold the lineage at once. The entries stay bounded,
+	// since the lineage service inits only ids bkn-backend has just exported.
 	l := gs.lock(lineageID)
 	l.Lock()
 	defer l.Unlock()
@@ -551,8 +555,11 @@ func (gs *gitStore) CommitMerge(ctx context.Context, lineageID string, branch st
 // WithLineageLock takes the lineage write lock once and hands fn a store whose
 // operations on that lineage skip the lock. sync.RWMutex is not reentrant, so
 // this is how fn reads and writes without deadlocking on the lock it runs under.
+//
+// The lineage must exist before its lock is taken: lock entries are never
+// removed, so a lock per unknown id would let callers grow the map at will.
 func (gs *gitStore) WithLineageLock(ctx context.Context, lineageID string, fn func(store interfaces.GitStore) error) error {
-	if _, err := gs.repoPath(lineageID); err != nil {
+	if _, err := gs.open(lineageID); err != nil {
 		return err
 	}
 	l := gs.lock(lineageID)

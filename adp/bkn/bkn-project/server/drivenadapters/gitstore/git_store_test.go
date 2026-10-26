@@ -307,6 +307,17 @@ func Test_GitStore(t *testing.T) {
 			So(gs.WithLineageLock(ctx, "../escape", func(interfaces.GitStore) error { return nil }), ShouldNotBeNil)
 		})
 
+		Convey("WithLineageLock reports a missing lineage without registering a lock for it\n", func() {
+			called := false
+			err := gs.WithLineageLock(ctx, "missing", func(interfaces.GitStore) error {
+				called = true
+				return nil
+			})
+			So(errors.Is(err, git.ErrRepositoryNotExists), ShouldBeTrue)
+			So(called, ShouldBeFalse)
+			So(gs.locks.locks, ShouldNotContainKey, "missing")
+		})
+
 		Convey("An empty file set leaves no bkn/ directory and reads back empty\n", func() {
 			_, err := gs.CommitFiles(ctx, "orders", "main", map[string][]byte{}, "clear", author)
 			So(err, ShouldBeNil)
