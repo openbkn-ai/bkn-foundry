@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"gopkg.in/yaml.v3"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/drift"
@@ -320,55 +321,16 @@ func buildPackage(files map[string][]byte, networkID string, version string) (ma
 // instead would rebuild the whole file: the SDK serializer writes 2.x
 // frontmatter and needs every definition loaded to write the overview tables.
 func setNetworkHeader(text string, id string, name string) (string, error) {
-	const delimiter = "---"
-	bom := ""
-	if strings.HasPrefix(text, "\ufeff") {
-		bom, text = "\ufeff", strings.TrimPrefix(text, "\ufeff")
-	}
-	open := strings.Index(text, "\n")
-	if !strings.HasPrefix(text, delimiter) || open < 0 {
-		return "", fmt.Errorf("%s has no frontmatter", bkn.RootFileName)
-	}
-	end := strings.Index(text[open:], "\n"+delimiter)
-	if end < 0 {
-		return "", fmt.Errorf("%s has no frontmatter end", bkn.RootFileName)
-	}
-	frontmatter := text[open+1 : open+end+1]
-
-	var doc yaml.Node
-	if err := yaml.Unmarshal([]byte(frontmatter), &doc); err != nil {
-		return "", fmt.Errorf("parse %s frontmatter: %w", bkn.RootFileName, err)
-	}
-	if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
-		return "", fmt.Errorf("%s frontmatter is not a mapping", bkn.RootFileName)
-	}
-	values := map[string]string{"id": id, "name": name}
-	lines := strings.Split(frontmatter, "\n")
-	pairs := doc.Content[0].Content
-	for i := 0; i+1 < len(pairs); i += 2 {
-		key, value := pairs[i], pairs[i+1]
-		replacement, ok := values[key.Value]
-		if !ok {
-			continue
+	return common.EditFrontmatter(text, bkn.RootFileName, func(root *yaml.Node, set common.FrontmatterSetter) error {
+		for key, replacement := range map[string]string{"id": id, "name": name} {
+			k, v := common.MappingValue(root, key)
+			if k == nil {
+				return fmt.Errorf("%s frontmatter has no id or name", bkn.RootFileName)
+			}
+			if err := set(k, v, replacement); err != nil {
+				return err
+			}
 		}
-		// Only a value on the key's own line can be swapped line for line.
-		if value.Kind != yaml.ScalarNode || value.Line != key.Line ||
-			value.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
-			return "", fmt.Errorf("%s frontmatter %s is not a one-line value", bkn.RootFileName, key.Value)
-		}
-		encoded, err := yaml.Marshal(map[string]string{key.Value: replacement})
-		if err != nil {
-			return "", err
-		}
-		line := strings.TrimSuffix(string(encoded), "\n")
-		if strings.HasSuffix(lines[key.Line-1], "\r") {
-			line += "\r"
-		}
-		lines[key.Line-1] = line
-		delete(values, key.Value)
-	}
-	if len(values) > 0 {
-		return "", fmt.Errorf("%s frontmatter has no id or name", bkn.RootFileName)
-	}
-	return bom + text[:open+1] + strings.Join(lines, "\n") + text[open+end+1:], nil
+		return nil
+	})
 }
