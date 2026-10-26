@@ -143,6 +143,35 @@ func TestModelFactoryAccessGetVector(t *testing.T) {
 		return newTestModelFactoryAccess(appSetting, mockHTTPClient), mockHTTPClient
 	}
 
+	for _, tc := range []struct {
+		name, data  string
+		wantIndices []int
+		wantError   bool
+	}{
+		{"missing indices preserve positions", `[{"embedding":[1]},{"embedding":[2]},{"embedding":[3]}]`, []int{0, 1, 2}, false},
+		{"explicit indices are preserved", `[{"index":2,"embedding":[3]},{"index":0,"embedding":[1]},{"index":1,"embedding":[2]}]`, []int{2, 0, 1}, false},
+		{"mixed indices are rejected", `[{"embedding":[1]},{"index":1,"embedding":[2]},{"index":2,"embedding":[3]}]`, nil, true},
+		{"nil response item is rejected", `[null,{"index":1,"embedding":[2]}]`, nil, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mfa, client := setup(t)
+			client.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(http.StatusOK, []byte(`{"data":`+tc.data+`}`), nil)
+			vectors, err := mfa.GetVector(ctx, model.ModelID, words)
+			if tc.wantError {
+				require.Error(t, err)
+				assert.Nil(t, vectors)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, vectors, len(tc.wantIndices))
+			for i, index := range tc.wantIndices {
+				assert.Equal(t, index, vectors[i].Index)
+				assert.Equal(t, []float32{float32(index + 1)}, vectors[i].Vector)
+			}
+		})
+	}
+
 	t.Run("success getting vectors", func(t *testing.T) {
 		mfa, mockHTTPClient := setup(t)
 		response := map[string]any{

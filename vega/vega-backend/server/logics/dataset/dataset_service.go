@@ -427,6 +427,7 @@ func (ds *datasetService) BulkReplaceDocuments(ctx context.Context, res *interfa
 			httpErr.ErrorCode == verrors.VegaBackend_InvalidParameter_RequestBody {
 			return nil, httpErr
 		}
+		otellog.LogError(ctx, "Materialize dataset documents failed", err)
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails("materialize dataset documents failed")
 	}

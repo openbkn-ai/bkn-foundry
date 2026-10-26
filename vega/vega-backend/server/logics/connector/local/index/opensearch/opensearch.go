@@ -17,6 +17,7 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
@@ -887,7 +888,7 @@ func (c *OpenSearchConnector) writeDocuments(ctx context.Context, indexName stri
 			}
 		}
 		if len(chunk) > 0 {
-			stored := c.indexDocumentsChunk(ctx, writes, chunk, create)
+			stored := c.indexDocumentsChunk(ctx, indexName, writes, chunk, create)
 			failed := false
 			for i, position := range positions {
 				results[position] = stored[i]
@@ -905,13 +906,13 @@ func (c *OpenSearchConnector) writeDocuments(ctx context.Context, indexName stri
 }
 
 // indexDocumentsChunk 保留既有 413 / rejected_execution_exception 的单次拆批恢复。
-func (c *OpenSearchConnector) indexDocumentsChunk(ctx context.Context, documents []interfaces.DocumentWrite, encoded [][]byte, stopOnFailure bool) []interfaces.DocumentWriteResult {
-	results, err := c.sendIndexBulkRequest(ctx, documents, encoded)
+func (c *OpenSearchConnector) indexDocumentsChunk(ctx context.Context, indexName string, documents []interfaces.DocumentWrite, encoded [][]byte, stopOnFailure bool) []interfaces.DocumentWriteResult {
+	results, err := c.sendIndexBulkRequest(ctx, indexName, documents, encoded)
 	if err == nil || len(encoded) < 2 || !shouldSplitBulkRequest(err) {
 		return results
 	}
 	split := splitBulkDocumentsByBytes(encoded) + 1
-	left, _ := c.sendIndexBulkRequest(ctx, documents[:split], encoded[:split])
+	left, _ := c.sendIndexBulkRequest(ctx, indexName, documents[:split], encoded[:split])
 	if stopOnFailure {
 		for _, result := range left {
 			if result.Status < 200 || result.Status >= 300 {
@@ -919,13 +920,19 @@ func (c *OpenSearchConnector) indexDocumentsChunk(ctx context.Context, documents
 			}
 		}
 	}
-	right, _ := c.sendIndexBulkRequest(ctx, documents[split:], encoded[split:])
+	right, _ := c.sendIndexBulkRequest(ctx, indexName, documents[split:], encoded[split:])
 	return append(left, right...)
 }
 
 // sendIndexBulkRequest 将请求未知状态和逐条响应分开处理，不公开源端错误细节。
-func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, documents []interfaces.DocumentWrite, encoded [][]byte) ([]interfaces.DocumentWriteResult, error) {
-	results := make([]interfaces.DocumentWriteResult, len(documents))
+func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, indexName string, documents []interfaces.DocumentWrite, encoded [][]byte) (results []interfaces.DocumentWriteResult, err error) {
+	// 在发送边界记录每次请求的失败，包含拆批后调用方不再上抛的错误。
+	defer func() {
+		if err != nil {
+			logger.Errorf("OpenSearch bulk request failed: index=%q, documents=%d, error=%v", indexName, len(documents), err)
+		}
+	}()
+	results = make([]interfaces.DocumentWriteResult, len(documents))
 	var body bytes.Buffer
 	for i, document := range documents {
 		body.Write(encoded[i])
@@ -959,6 +966,10 @@ func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, document
 			Index *struct {
 				ID     string `json:"_id"`
 				Status int    `json:"status"`
+				Error  *struct {
+					Type   string `json:"type"`
+					Reason string `json:"reason"`
+				} `json:"error"`
 			} `json:"index"`
 		} `json:"items"`
 	}
@@ -970,6 +981,7 @@ func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, document
 	}
 	for i, item := range decoded.Items {
 		if item.Index == nil || item.Index.ID == "" || (documents[i].ID != "" && item.Index.ID != documents[i].ID) || item.Index.Status < 200 || item.Index.Status > 599 {
+			logger.Errorf("OpenSearch bulk response item is invalid: index=%q, id=%q, position=%d", indexName, documents[i].ID, i)
 			continue
 		}
 		entry := interfaces.DocumentWriteResult{ID: item.Index.ID, Status: item.Index.Status}
@@ -984,6 +996,13 @@ func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, document
 			entry.Retryable = true
 		default:
 			entry.ErrorCode = interfaces.DocumentRejected
+		}
+		if entry.Status >= 300 {
+			errorType, reason := "", ""
+			if item.Index.Error != nil {
+				errorType, reason = item.Index.Error.Type, item.Index.Error.Reason
+			}
+			logger.Errorf("OpenSearch bulk document failed: index=%q, id=%q, status=%d, type=%q, reason=%q", indexName, entry.ID, entry.Status, errorType, reason)
 		}
 		results[i] = entry
 	}

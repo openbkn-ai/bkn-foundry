@@ -15,9 +15,12 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
@@ -618,6 +621,11 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 
 	for _, failure := range []string{"invalid vector", "registry", "inference"} {
 		t.Run(failure+" prevents entire batch write", func(t *testing.T) {
+			core, logs := observer.New(zap.ErrorLevel)
+			sharedLogger := logger.GetLogger()
+			original := *sharedLogger
+			*sharedLogger = *zap.New(core).Sugar()
+			t.Cleanup(func() { *sharedLogger = original })
 			ctrl := gomock.NewController(t)
 			lim := vmock.NewMockLocalIndexManager(ctrl)
 			mfs := vmock.NewMockModelFactoryService(ctrl)
@@ -641,6 +649,12 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 			var httpErr *httperrors.HTTPError
 			require.ErrorAs(t, err, &httpErr)
 			assert.Equal(t, status, httpErr.HTTPCode)
+			if status == 400 {
+				assert.Empty(t, logs.All())
+			} else {
+				require.Len(t, logs.All(), 1)
+				assert.Contains(t, logs.All()[0].Message, "secret")
+			}
 			assert.NotContains(t, httpErr.Error(), "secret")
 			assert.NotContains(t, entries[1], "content_vector")
 		})

@@ -16,9 +16,12 @@ import (
 	"testing"
 
 	"github.com/bytedance/sonic"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
@@ -546,7 +549,8 @@ func TestOpenSearchConnectorIndexDocuments(t *testing.T) {
 		httpStatus   int
 		transportErr error
 	}{
-		{"partial", `{"errors":true,"items":[{"index":{"_id":"a","status":201}},{"index":{"_id":"b","status":409,"error":{"reason":"secret"}}},{"index":{"_id":"c","status":429}},{"index":{"_id":"d","status":400}}]}`, 200, nil},
+		{"complete", `{"items":[{"index":{"_id":"a","status":201}},{"index":{"_id":"b","status":200}},{"index":{"_id":"c","status":201}},{"index":{"_id":"d","status":200}}]}`, 200, nil},
+		{"partial", `{"errors":true,"items":[{"index":{"_id":"a","status":201}},{"index":{"_id":"b","status":409,"error":{"type":"mapper_parsing_exception","reason":"invalid mapping configuration"}}},{"index":{"_id":"c","status":429}},{"index":{"_id":"d","status":400}}]}`, 200, nil},
 		{"malformed", `{`, 200, nil}, {"missing items", `{"items":[]}`, 200, nil},
 		{"unauthorized", `{"error":"secret"}`, 401, nil},
 		{"forbidden", `{"error":"secret"}`, 403, nil},
@@ -554,6 +558,11 @@ func TestOpenSearchConnectorIndexDocuments(t *testing.T) {
 		{"transport failure", "", 200, io.ErrUnexpectedEOF},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			core, logs := observer.New(zap.ErrorLevel)
+			sharedLogger := logger.GetLogger()
+			original := *sharedLogger
+			*sharedLogger = *zap.New(core).Sugar()
+			t.Cleanup(func() { *sharedLogger = original })
 			calls := 0
 			client, err := opensearch.NewClient(opensearch.Config{DisableRetry: true, Transport: datasetTransport(func(r *http.Request) (*http.Response, error) {
 				calls++
@@ -583,7 +592,18 @@ func TestOpenSearchConnectorIndexDocuments(t *testing.T) {
 			require.Len(t, results, 4)
 			assert.Equal(t, 1, calls)
 			switch tc.name {
+			case "complete":
+				assert.Empty(t, logs.All())
+				for _, result := range results {
+					assert.GreaterOrEqual(t, result.Status, 200)
+					assert.Less(t, result.Status, 300)
+				}
 			case "partial":
+				require.Len(t, logs.All(), 3)
+				assert.Contains(t, logs.All()[0].Message, "mapper_parsing_exception")
+				assert.Contains(t, logs.All()[0].Message, "invalid mapping configuration")
+				assert.Contains(t, logs.All()[0].Message, `index="index"`)
+				assert.Contains(t, logs.All()[0].Message, `id="b"`)
 				assert.Equal(t, 201, results[0].Status)
 				assert.Empty(t, results[0].ErrorCode)
 				assert.Equal(t, interfaces.DocumentConflict, results[1].ErrorCode)
@@ -607,6 +627,15 @@ func TestOpenSearchConnectorIndexDocuments(t *testing.T) {
 					assert.True(t, result.Retryable)
 				}
 			}
+			if tc.name != "partial" && tc.name != "complete" {
+				require.Len(t, logs.All(), 1)
+				assert.Contains(t, logs.All()[0].Message, `index="index"`)
+			}
+			public, err := json.Marshal(results)
+			require.NoError(t, err)
+			assert.NotContains(t, string(public), "secret")
+			assert.NotContains(t, string(public), "mapper_parsing_exception")
+			assert.NotContains(t, string(public), "invalid mapping configuration")
 			assert.NotContains(t, inputs[0].Document, "_id")
 		})
 	}
