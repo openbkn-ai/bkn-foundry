@@ -25,6 +25,16 @@ on:
       # 任一侧改动都要比对，漂移在 PR 里拦下，不留到沙箱发布时才发现。
       - 'infra/sandbox/runtime/sandbox_sdk/_bkn_tools.py'
       - 'infra/sandbox/Makefile'
+  # 不经 PR 的推送（release 回流 main、release 分支直推修复）也要跑：发布流水线
+  # 不再监听 mcp 目录，这里是工具面漂移唯一的守卫。只校验，不构建镜像。
+  push:
+    branches: [main, 'release/**']
+    paths:  # 与 pull_request 保持一致
+      - 'adp/context-loader/**'
+      - '.github/workflows/ci-adp-context-loader.yml'
+      - 'bkn-trace/agent-observability/docs/swagger/**'
+      - 'infra/sandbox/runtime/sandbox_sdk/_bkn_tools.py'
+      - 'infra/sandbox/Makefile'
 
 permissions:
   contents: read
