@@ -219,16 +219,6 @@ func (en *Enforcer) localDecisionsWithIndex(ctx context.Context, accessorID stri
 	want map[ResourceRef][]string) (map[ResourceRef]map[string]Evaluation, error) {
 	local := make(map[ResourceRef]map[string]Evaluation, len(want))
 	for resource, ops := range want {
-		if !authzresource.Entitled(resource.Type) {
-			// A paid type below its edition carries no rule (#2512), for the
-			// local-scope reads as much as for the effective answer.
-			decisions := make(map[string]Evaluation, len(ops))
-			for _, op := range ops {
-				decisions[op] = noneEvaluation(ScopeLocal)
-			}
-			local[resource] = decisions
-			continue
-		}
 		decisions, err := en.localDecisions(ctx, accessorID, idx, resource, ops)
 		if err != nil {
 			return nil, err

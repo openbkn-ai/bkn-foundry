@@ -184,3 +184,44 @@ func TestUndeclaredTypesAreNotGated(t *testing.T) {
 		t.Fatal("an undeclared type was gated")
 	}
 }
+
+// Every local reader shares the gate: a type under a paid parent inherits
+// nothing from it, and explain neither allows a step nor lists kept grants.
+func TestPaidParentIsNotInheritedAndExplainAgrees(t *testing.T) {
+	edition := useEdition(t, licverify.EditionCommunity)
+	authzresource.ResetForTest()
+	t.Cleanup(authzresource.ResetForTest)
+	authzresource.RequireEdition("catalog", "catalog", licverify.EditionProfessional)
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-in", "cat-1")
+	mustNoErr(t, e.GrantObjectPermission("u-1", "catalog", "cat-1", "resource_manage"))
+
+	if mustCheck(t, e, "u-1", "resource", "res-in", "modify") {
+		t.Fatal("a child inherited a grant on a paid parent below its edition")
+	}
+	explained, err := e.ExplainOperation(context.Background(), "u-1", "catalog", "cat-1", "resource_manage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if explained.Evaluation.Allowed() {
+		t.Fatalf("explain evaluation = %+v, want deny", explained.Evaluation)
+	}
+	for _, step := range explained.Steps {
+		if step.Decision == DecisionAllow || len(step.MatchedGrants) != 0 {
+			t.Fatalf("explain step contradicts the gated evaluation: %+v", step)
+		}
+	}
+
+	*edition = licverify.EditionProfessional
+	if !mustCheck(t, e, "u-1", "resource", "res-in", "modify") {
+		t.Fatal("the licensed parent grant was not inherited")
+	}
+	explained, err = e.ExplainOperation(context.Background(), "u-1", "catalog", "cat-1", "resource_manage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !explained.Evaluation.Allowed() || len(explained.Steps) == 0 || len(explained.Steps[0].MatchedGrants) == 0 {
+		t.Fatalf("licensed explain = %+v", explained)
+	}
+}

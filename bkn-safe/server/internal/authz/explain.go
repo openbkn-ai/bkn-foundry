@@ -11,6 +11,7 @@ import (
 	"github.com/casbin/casbin/v2/util"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -122,9 +123,13 @@ func (en *Enforcer) explainBaseWalk(ctx context.Context, idx *grantIndex, access
 			return nil, err
 		}
 		decision := local[currentOperation]
-		grants, err := en.explanationGrants(idx, current, currentOperation)
-		if err != nil {
-			return nil, err
+		grants := []ExplanationGrant{}
+		if authzresource.Entitled(current.Type) {
+			// Kept grants on a paid type below its edition match nothing (#2512).
+			grants, err = en.explanationGrants(idx, current, currentOperation)
+			if err != nil {
+				return nil, err
+			}
 		}
 		step := ExplanationStep{
 			ResourceType: current.Type, ResourceID: current.ID, Operation: currentOperation,

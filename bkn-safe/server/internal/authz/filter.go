@@ -13,6 +13,7 @@ import (
 	"github.com/casbin/casbin/v2/util"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/authzresource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/permobject"
 )
 
@@ -483,6 +484,16 @@ func mergeLocalParts(parts localParts, ops []string) map[string]Evaluation {
 // opinions separately so Core retains the documented wildcard fallback order.
 func (en *Enforcer) localDecisions(ctx context.Context, accessorID string, idx *grantIndex,
 	r ResourceRef, ops []string) (map[string]Evaluation, error) {
+	if !authzresource.Entitled(r.Type) {
+		// A paid type below its edition carries no rule (#2512). Every local
+		// reader comes through here: the batched layer, hierarchy climbs and
+		// explain, so none of them can see or inherit its grants.
+		out := make(map[string]Evaluation, len(ops))
+		for _, op := range ops {
+			out[op] = noneEvaluation(ScopeLocal)
+		}
+		return out, nil
+	}
 	parts := idx.localParts(r, ops)
 	if idx.superAdmin || !permobject.Available() {
 		return mergeLocalParts(parts, ops), nil
