@@ -245,13 +245,26 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event, co
 		return ledgervo.DurableAck{}, false, ievidenceledger.ErrSequenceConflict
 	}
 
+	ack, err := insertAcceptedEvidence(ctx, tx, event, recordHash)
+	if err != nil {
+		return ledgervo.DurableAck{}, retryableTransactionError(err), err
+	}
+	if err := tx.Commit(); err != nil {
+		return ledgervo.DurableAck{}, retryableTransactionError(err), err
+	}
+	return ack, false, nil
+}
+
+// insertAcceptedEvidence writes the Ledger record, projection notice and integrity
+// invalidation using the caller's transaction. It never commits independently.
+func insertAcceptedEvidence(ctx context.Context, tx *sql.Tx, event ledgervo.Event, recordHash string) (ledgervo.DurableAck, error) {
 	envelope, err := json.Marshal(event)
 	if err != nil {
-		return ledgervo.DurableAck{}, false, err
+		return ledgervo.DurableAck{}, err
 	}
 	var now time.Time
 	if err := tx.QueryRowContext(ctx, "SELECT UTC_TIMESTAMP(6)").Scan(&now); err != nil {
-		return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		return ledgervo.DurableAck{}, err
 	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_evidence_event_ledger (
@@ -269,11 +282,11 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event, co
 		event.StartedAt, event.ObservedAt, event.EmittedAt, now, envelope,
 	)
 	if err != nil {
-		return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		return ledgervo.DurableAck{}, err
 	}
 	sequence, err := result.LastInsertId()
 	if err != nil {
-		return ledgervo.DurableAck{}, false, err
+		return ledgervo.DurableAck{}, err
 	}
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_projection_outbox (
@@ -283,21 +296,18 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event, co
 		event.EventID, sequence, event.EventID, envelope, now, now,
 	)
 	if err != nil {
-		return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		return ledgervo.DurableAck{}, err
 	}
 	// New stored events change the integrity source even if receipt
 	// reconciliation later stays pending or has no completion contract.
 	_, err = tx.ExecContext(ctx, `UPDATE bkn_trace_interactions SET record_integrity_version=record_integrity_version+1, record_integrity_json=NULL
 		WHERE interaction_id=? AND execution_status<>?`, event.InteractionID, sessionvo.InteractionActive)
 	if err != nil {
-		return ledgervo.DurableAck{}, retryableTransactionError(err), err
-	}
-	if err := tx.Commit(); err != nil {
-		return ledgervo.DurableAck{}, retryableTransactionError(err), err
+		return ledgervo.DurableAck{}, err
 	}
 	return ledgervo.DurableAck{
 		EventID: event.EventID, Durable: true, IngestSequence: uint64(sequence), IngestedAt: now.UTC(),
-	}, false, nil
+	}, nil
 }
 
 func verifyEvidenceOwnership(ctx context.Context, tx *sql.Tx, event ledgervo.Event) error {

@@ -898,7 +898,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				answer = preparedAnswer
 				request.Manifest.AnswerArtifactRef = "artifact:" + answer.Artifact.ArtifactID
 			}
-			if managedTerminalReplayMatches(interaction, request) && (answer == nil || interaction.ClosureManifest.AnswerArtifactPersistence != nil && interaction.ClosureManifest.AnswerArtifactPersistence.ContentHash == answer.Artifact.ContentHash) {
+			if managedTerminalReplayMatches(interaction, request, tx) && (answer == nil || interaction.ClosureManifest.AnswerArtifactPersistence != nil && interaction.ClosureManifest.AnswerArtifactPersistence.ContentHash == answer.Artifact.ContentHash) {
 				result = interaction
 				return nil
 			}
@@ -940,7 +940,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		if request.DeriveManifest {
 			request.LeaseToken = interaction.LeaseToken
 			request.LeaseEpoch = interaction.LeaseEpoch
-			request.Manifest = deriveClosureManifest(tx, interaction.ID, request.Manifest)
+			request.Manifest = deriveClosureManifest(tx, interaction.ID, request.Manifest, s.capacity.MaxClaimsPerInteraction)
 		}
 		if request.Manifest.AssemblerDeadline == nil && hasRequiredPendingReceipt(tx, request.Manifest) {
 			deadline := tx.Now().Add(s.assemblyTimeout)
@@ -1008,7 +1008,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 			if request.Manifest.AssemblerDeadline != nil && !request.Manifest.AssemblerDeadline.After(tx.Now()) {
 				trigger = "deadline"
 			}
-			if err := s.freezeAssemblyRevision(tx, interaction, request.Manifest, trigger); err != nil {
+			if err := s.freezeAssemblyRevision(tx, &interaction, request.Manifest, trigger); err != nil {
 				return err
 			}
 		}
@@ -1040,16 +1040,27 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 func managedTerminalReplayMatches(
 	interaction sessionvo.Interaction,
 	command TerminateInteractionCommand,
+	tx isessionstore.Transaction,
 ) bool {
 	if interaction.TerminalIdempotencyKey != command.TerminalIdempotencyKey ||
 		interaction.ExecutionStatus != command.Status || interaction.ClosureManifest == nil {
 		return false
 	}
 	committed := interaction.ClosureManifest
+	committedClaims := committed.Claims
+	if len(committed.Claims) > 0 {
+		serverClaims := derivedBOMClaimIDs(tx, interaction.ID, true)
+		committedClaims = make([]string, 0, len(committed.Claims))
+		for _, id := range committed.Claims {
+			if !slices.Contains(serverClaims, id) {
+				committedClaims = append(committedClaims, id)
+			}
+		}
+	}
 	return committed.Version == command.Manifest.Version &&
 		committed.AnswerArtifactRef == command.Manifest.AnswerArtifactRef &&
 		committed.CompletionReason == command.Manifest.CompletionReason &&
-		sameStrings(committed.Claims, command.Manifest.Claims) &&
+		sameStrings(committedClaims, command.Manifest.Claims) &&
 		sameTerminalReasons(committed.SystemPartialReasons, command.Manifest.SystemPartialReasons)
 }
 
@@ -1059,11 +1070,11 @@ func sameTerminalReasons(committed, requested []string) bool {
 	}
 	filtered := make([]string, 0, len(committed))
 	for _, reason := range committed {
-		if reason != "not_collected_due_to_policy" {
+		if reason != "not_collected_due_to_policy" && reason != "bom_claim_capacity_exceeded" {
 			filtered = append(filtered, reason)
 		}
 	}
-	return slices.Contains(committed, "not_collected_due_to_policy") && sameStrings(filtered, requested)
+	return (slices.Contains(committed, "not_collected_due_to_policy") || slices.Contains(committed, "bom_claim_capacity_exceeded")) && sameStrings(filtered, requested)
 }
 
 func sameStrings(left, right []string) bool {
@@ -1082,6 +1093,7 @@ func deriveClosureManifest(
 	tx isessionstore.Transaction,
 	interactionID string,
 	manifest sessionvo.ClosureManifest,
+	maxClaims int,
 ) sessionvo.ClosureManifest {
 	receipts := tx.ListReceipts(interactionID)
 	requiredByOperation := make(map[string]bool, len(receipts))
@@ -1092,6 +1104,16 @@ func deriveClosureManifest(
 			ReceiptID: receipt.ID,
 			Required:  receipt.Required,
 		})
+	}
+	for _, id := range derivedBOMClaimIDs(tx, interactionID, false) {
+		if slices.Contains(manifest.Claims, id) {
+			continue
+		}
+		if len(manifest.Claims) >= maxClaims {
+			manifest.SystemPartialReasons = appendUnique(manifest.SystemPartialReasons, "bom_claim_capacity_exceeded")
+			continue
+		}
+		manifest.Claims = append(manifest.Claims, id)
 	}
 	operations := tx.ListOperations(interactionID)
 	manifest.ExpectedOperations = make([]sessionvo.ExpectedOperation, 0, len(operations))
@@ -1586,7 +1608,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 				interaction.RowVersion++
 				interaction.UpdatedAt = now
 				tx.SaveInteraction(interaction)
-				if err := s.freezeAssemblyRevision(tx, interaction, *interaction.ClosureManifest, "late_receipt"); err != nil {
+				if err := s.freezeAssemblyRevision(tx, &interaction, *interaction.ClosureManifest, "late_receipt"); err != nil {
 					return err
 				}
 				if err := s.appendProjection(tx, "interaction", interaction.ID, "interaction.evidence.revised", interaction); err != nil {
@@ -1762,7 +1784,7 @@ func (s *Service) AbandonExpiredInteractions(ctx context.Context, limit int) ([]
 			now := tx.Now()
 			manifest := deriveClosureManifest(tx, current.ID, sessionvo.ClosureManifest{
 				Version: "3.0.0", CompletionReason: "interaction_abandoned",
-			})
+			}, s.capacity.MaxClaimsPerInteraction)
 			if hasRequiredPendingReceipt(tx, manifest) {
 				manifest.AssemblerDeadline = &now
 			}
@@ -1777,7 +1799,7 @@ func (s *Service) AbandonExpiredInteractions(ctx context.Context, limit int) ([]
 			current.ClosureManifest = &manifest
 			tx.SaveInteraction(current)
 			if current.EvidenceStatus != sessionvo.EvidenceAssembling {
-				if err := s.freezeAssemblyRevision(tx, current, manifest, "lease_expired"); err != nil {
+				if err := s.freezeAssemblyRevision(tx, &current, manifest, "lease_expired"); err != nil {
 					return err
 				}
 			}
@@ -1886,7 +1908,7 @@ func (s *Service) AssembleDueInteractions(ctx context.Context, limit int) ([]ses
 			current.RowVersion++
 			current.UpdatedAt = tx.Now()
 			tx.SaveInteraction(current)
-			if err := s.freezeAssemblyRevision(tx, current, *current.ClosureManifest, "deadline"); err != nil {
+			if err := s.freezeAssemblyRevision(tx, &current, *current.ClosureManifest, "deadline"); err != nil {
 				return err
 			}
 			if err := s.appendProjection(tx, "interaction", current.ID, "interaction.evidence.partial", current); err != nil {
@@ -1900,7 +1922,7 @@ func (s *Service) AssembleDueInteractions(ctx context.Context, limit int) ([]ses
 	return assembled, err
 }
 
-func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interaction sessionvo.Interaction, manifest sessionvo.ClosureManifest, trigger string) error {
+func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interaction *sessionvo.Interaction, manifest sessionvo.ClosureManifest, trigger string) error {
 	existing := tx.ListAssemblyRevisions(interaction.ID)
 	revisionNo := uint64(len(existing) + 1)
 	parentID := ""
@@ -1938,17 +1960,23 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 		ID: s.newID("rev"), RevisionNo: revisionNo, ParentRevisionID: parentID,
 		InteractionID: interaction.ID, CompletionManifestVersion: manifest.Version,
 		IncludedReceiptIDs: receiptIDs, IncludedEventIDs: eventIDs,
-		ArtifactManifestHash: hashValue(struct {
-			Claims       []string
-			EventIDs     []string
-			ArtifactRefs []string
-		}{manifest.Claims, eventIDs, artifactRefs}),
+
 		Completeness: interaction.EvidenceStatus, PartialReasons: partialReasons,
 		Trigger: trigger, CreatedAt: tx.Now(),
 	}
+	claimArtifacts, err := s.sealBOMClaims(tx, interaction, &revision)
+	if err != nil {
+		return err
+	}
+	artifactRefs = append(artifactRefs, claimArtifacts...)
+	revision.ArtifactManifestHash = hashValue(struct {
+		Claims       []string
+		EventIDs     []string
+		ArtifactRefs []string
+	}{manifest.Claims, revision.IncludedEventIDs, artifactRefs})
 	tx.SaveAssemblyRevision(revision)
 	if s.revisionSealer != nil {
-		if err := s.revisionSealer(tx, interaction, revision); err != nil {
+		if err := s.revisionSealer(tx, *interaction, revision); err != nil {
 			return err
 		}
 	}

@@ -99,6 +99,11 @@ func (m *managedFunctionGuard) Execute(
 		RefType: "function", RefID: "function:" + input.KnowledgeNetworkID + ":" + input.ToolID,
 		Version: normalizedFunctionVersion(input.Descriptor.Version), DisplayHint: input.Descriptor.Name,
 	}
+	producer, producesBOMClaim := bkntrace.ConfiguredBOMProducer(input.KnowledgeNetworkID, input.ToolboxID, input.ToolID)
+	sourceModule := managedFunctionSourceModule
+	if producesBOMClaim {
+		sourceModule = bkntrace.BOMIntersectionSourceModule
+	}
 	lifecycleContext, state, disposition, apiErr, err := m.guard.Begin(ctx, bkntrace.GuardIntent{
 		Context: bkntrace.BusinessContext{
 			ConversationID: traceContext.ConversationID, InteractionID: traceContext.InteractionID,
@@ -109,7 +114,7 @@ func (m *managedFunctionGuard) Execute(
 				functionRef,
 			},
 		},
-		ToolName: input.ToolID, Protocol: "internal", SourceModule: managedFunctionSourceModule,
+		ToolName: input.ToolID, Protocol: "internal", SourceModule: sourceModule,
 		Input: rawInput, CapabilityProfile: managedFunctionCapabilityProfile(input),
 	})
 	if err != nil || apiErr != nil {
@@ -158,6 +163,12 @@ func (m *managedFunctionGuard) Execute(
 	payload := any(redactFunctionPayload(result))
 	if failed {
 		payload = managedFunctionFailurePayload(result)
+	} else if producesBOMClaim {
+		redactedResult, _ := payload.(map[string]any)
+		if claimErr := bkntrace.RecordBOMIntersection(lifecycleContext, producer, input.Descriptor.Version, input.Arguments, redactedResult); claimErr != nil {
+			// A missing proof must not change the already-computed business result.
+			bkntrace.MergeTracePartialReasons(lifecycleContext, []string{"bom_claim_not_evaluable"})
+		}
 	}
 	_, finishAPIErr, finishErr := m.guard.Finish(lifecycleContext, state, payload, failed, false)
 	if runErr != nil {
@@ -255,6 +266,9 @@ func managedFunctionCapabilityProfile(input ManagedFunctionTraceInput) []byte {
 		"child_evidence_policy": "managed_descendants", "minimum_trace_schema": "3.0.0",
 		"required_trace_fields": []string{"receipt", "business_refs", "result_completeness"},
 		"failure_policy":        "preserve_execution_and_downgrade", "resolution": "matched",
+	}
+	if _, ok := bkntrace.ConfiguredBOMProducer(input.KnowledgeNetworkID, input.ToolboxID, input.ToolID); ok {
+		profile["evidence_contract"] = bkntrace.BOMIntersectionContract
 	}
 	raw, _ := sonic.ConfigStd.Marshal(profile)
 	return raw

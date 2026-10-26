@@ -11,6 +11,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var agentObservabilityZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"AgentObservability.Message.Core Claim producer identity is reserved":                                                                                                 "Core Claim 生产者身份仅供内部使用",
 		"AgentObservability.Message.durable answer handoff is not enabled; request operator configuration review without changing the answer or automatically retrying":       "持久化答案交接尚未启用；请联系管理员核查配置，不要修改答案或自动重试",
 		"AgentObservability.Message.answer artifact exceeds its durable storage byte budget; request operator review without truncating the answer or automatically retrying": "答案产物超过持久化存储字节预算；请联系管理员核查存储配置，不要自动截断答案或重试",
 		"AgentObservability.Message.root service option parameters are invalid":                                                                                               "根服务候选查询参数无效",

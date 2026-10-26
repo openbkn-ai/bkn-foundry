@@ -6,6 +6,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ### Features & Improvements
 
+- Opt-in, code-pinned BOM intersection producers record a typed, artifact-backed result for Core Claim assembly. Missing execution identity or evidence downgrades Trace without changing the business result; managed finish still rejects caller-owned claims. (#1332)
+
 - Submit Interaction finish with a separate bounded POST/replay budget (default 5 seconds), preserving the exact request/key across finite retries. Unconfirmed submission now returns an MCP tool error with `retry_same_finish`; only a matching Core terminal acknowledgement is success. Tool execution is never repeated. (#2340)
 
 - Preserve canonical business references, operation edges and causation IDs through Kafka evidence publishing; recover transient attempt-finalization infrastructure failures within the existing bounded budget without re-executing tools. (#2425)

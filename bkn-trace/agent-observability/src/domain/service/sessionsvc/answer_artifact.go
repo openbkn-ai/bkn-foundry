@@ -189,7 +189,7 @@ func (s *Service) finishAnswerArtifact(ctx context.Context, item iprojectionoutb
 			if state == sessionvo.AnswerArtifactDead {
 				trigger = "answer_artifact_dead"
 			}
-			if err := s.freezeAssemblyRevision(tx, current, manifest, trigger); err != nil {
+			if err := s.freezeAssemblyRevision(tx, &current, manifest, trigger); err != nil {
 				return err
 			}
 		}

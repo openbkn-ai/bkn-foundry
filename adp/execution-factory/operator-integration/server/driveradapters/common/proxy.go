@@ -449,6 +449,12 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		return
 	}
 	h.Logger.Infof("FunctionExecuteProxy response summary: %v", summarizeExecutionResponse(resp))
+	// Use the same local code value passed to ExecuteCode, rather than a later
+	// metadata lookup: the registered version can be edited during execution.
+	if resp.Status != "timeout" {
+		c.Header(interfaces.FunctionVersionHeader, req.Version)
+		c.Header(interfaces.FunctionCodeHashHeader, fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(execReq.Code))))
+	}
 	replyFunctionExecutionResult(c, resp, execReq.Timeout)
 }
 

@@ -19,6 +19,7 @@ const archivePayloadBudgetMessageID = "AgentObservability.Message.trace archive 
 var agentObservabilityEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"AgentObservability.Message.Core Claim producer identity is reserved":                                                                                                 "Core Claim producer identity is reserved",
 		"AgentObservability.Message.durable answer handoff is not enabled; request operator configuration review without changing the answer or automatically retrying":       "durable answer handoff is not enabled; request operator configuration review without changing the answer or automatically retrying",
 		"AgentObservability.Message.answer artifact exceeds its durable storage byte budget; request operator review without truncating the answer or automatically retrying": "answer artifact exceeds its durable storage byte budget; request operator review without truncating the answer or automatically retrying",
 		"AgentObservability.Message.root service option parameters are invalid":                                                                                               "root service option parameters are invalid",

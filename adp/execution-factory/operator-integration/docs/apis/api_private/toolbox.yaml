@@ -455,6 +455,8 @@ components:
     APIProxyResponse:
       type: object
       properties:
+        function_execution:
+          $ref: '#/components/schemas/FunctionExecution'
         status_code:
           type: integer
           description: "HTTP状态码"
@@ -472,6 +474,21 @@ components:
           description: "错误信息"
       required:
         - status_code
+    FunctionExecution:
+      type: object
+      description: "仅本部署已执行 Function 的服务端来源信息。旧运行时或外部目标不提供；code_sha256 绑定本次实际代码，版本号本身不保证不可变。"
+      required: [toolbox_id, tool_id, function_version, code_sha256]
+      properties:
+        toolbox_id:
+          type: string
+        tool_id:
+          type: string
+        function_version:
+          type: string
+          format: uuid
+        code_sha256:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
     CreateInternalToolBoxReq:
       type: object
       description: "添加更新内置工具箱、工具组件"
