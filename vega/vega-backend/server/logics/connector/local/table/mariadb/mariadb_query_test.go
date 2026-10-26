@@ -108,6 +108,81 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	t.Run("single bit MIN and MAX results use their aggregate aliases", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			aggr  string
+			alias string
+			value byte
+			want  bool
+		}{
+			{name: "default MAX alias", aggr: "max", value: 1, want: true},
+			{name: "explicit MIN alias", aggr: "min", alias: "minimum_flag", value: 0, want: false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				require.NoError(t, err)
+				defer func() { _ = db.Close() }()
+				connector := &MariaDBConnector{db: db, connected: true}
+				resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{
+					{Name: "metric_flag", OriginalType: "bit(1)", Type: interfaces.DataType_Boolean},
+				}}
+				alias := tc.alias
+				if alias == "" {
+					alias = "__value"
+				}
+				mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+					sqlmock.NewColumn(alias).OfType("BIT", []byte{}),
+				).AddRow([]byte{tc.value}).AddRow(nil))
+				result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+					Aggregation: &interfaces.Aggregation{Property: "metric_flag", Aggr: tc.aggr, Alias: tc.alias},
+				})
+				require.NoError(t, err)
+				assert.Equal(t, []map[string]any{{alias: tc.want}, {alias: nil}}, result.Entries)
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+		}
+	})
+
+	t.Run("aggregate alias does not inherit an unprojected single bit field", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{
+			{Name: "metric_flag", OriginalType: "bit(1)", Type: interfaces.DataType_Boolean},
+			{Name: "other_bits", OriginalType: "bit(8)", Type: interfaces.DataType_Other},
+		}}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+			sqlmock.NewColumn("metric_flag").OfType("BIT", []byte{}),
+		).AddRow([]byte{2}))
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+			Aggregation: &interfaces.Aggregation{Property: "other_bits", Aggr: "max", Alias: "metric_flag"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"metric_flag": "\x02"}}, result.Entries)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("grouped single bit field remains a boolean", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{
+			{Name: "metric_flag", OriginalType: "bit(1)", Type: interfaces.DataType_Boolean},
+		}}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+			sqlmock.NewColumn("metric_flag").OfType("BIT", []byte{}),
+		).AddRow([]byte{1}))
+		result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{
+			GroupBy: []*interfaces.GroupByItem{{Property: "metric_flag"}},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"metric_flag": true}}, result.Entries)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("invalid single bit source value fails rather than changing truthiness", func(t *testing.T) {
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)

@@ -110,10 +110,30 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	defer func() { _ = rows.Close() }()
 
 	binaryContentColumns := table.QueryBinaryContentColumns(resource, params)
-	bitOneColumns := make(map[string]bool)
+	bitOneFields := make(map[string]bool)
 	for _, property := range resource.SchemaDefinition {
 		if property != nil && property.Type == interfaces.DataType_Boolean && singleBitType.MatchString(property.OriginalType) {
-			bitOneColumns[property.Name] = true
+			bitOneFields[property.Name] = true
+		}
+	}
+	isAggregate := params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
+	bitOneColumns := bitOneFields
+	if isAggregate {
+		bitOneColumns = make(map[string]bool)
+		for _, group := range params.GroupBy {
+			if group != nil && group.CalendarInterval == "" && bitOneFields[group.Property] {
+				bitOneColumns[group.Property] = true
+			}
+		}
+		if agg := params.Aggregation; agg != nil || (params.Having != nil && params.Having.Field == "count(*)") {
+			alias := "__value"
+			if agg != nil && agg.Alias != "" {
+				alias = agg.Alias
+			}
+			delete(bitOneColumns, alias)
+			if agg != nil && (agg.Aggr == "min" || agg.Aggr == "max") && bitOneFields[agg.Property] {
+				bitOneColumns[alias] = true
+			}
 		}
 	}
 	result, err := c.scanQueryRows(rows, binaryContentColumns, bitOneColumns)
@@ -125,7 +145,6 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		return nil, fmt.Errorf("failed to close query rows: %w", mariadbQueryError(err))
 	}
 
-	isAggregate := params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
 	// Count the complete filtered result, including GROUP BY and HAVING.
 	if params.NeedTotal {
 		countBuilder := sq.Select("COUNT(*)").
