@@ -361,11 +361,18 @@ func Test_LineageService_CommitDefinitions(t *testing.T) {
 
 		Convey("main, an empty upload and an unknown branch are refused\n", func() {
 			_, err := svc.CommitDefinitions(ctx, id, "main", base, "", author)
-			status, _ := httpCode(err)
-			So(status, ShouldEqual, http.StatusForbidden)
+			mainStatus, _ := httpCode(err)
+			So(mainStatus, ShouldEqual, http.StatusForbidden)
 
 			_, err = svc.CommitDefinitions(ctx, id, "project/p1", map[string][]byte{}, "", author)
-			_, code := httpCode(err)
+			status, code := httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+
+			// A set the BKN loader cannot read would only fail later, in sync or publish.
+			_, err = svc.CommitDefinitions(ctx, id, "project/p1",
+				map[string][]byte{"object_types/part.bkn": []byte("---\ntype: object_type\nid: part\n---\n")}, "", author)
+			status, code = httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
 
 			_, err = svc.CommitDefinitions(ctx, id, "project/none", base, "", author)

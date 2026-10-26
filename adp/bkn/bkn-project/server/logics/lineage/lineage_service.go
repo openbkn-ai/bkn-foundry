@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -111,6 +112,15 @@ func (s *lineageService) CommitDefinitions(ctx context.Context, lineageID string
 	if len(files) == 0 {
 		span.SetStatus(codes.Error, "Empty definitions")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions)
+	}
+	// Refuse a set the BKN loader cannot read now; stored, it would only fail later in sync or
+	// publish, far from the upload that caused it.
+	fsys := bkn.NewMemoryFileSystem()
+	fsys.AddFiles(files)
+	if _, err := bkn.LoadNetworkWithFS(fsys, "."); err != nil {
+		span.SetStatus(codes.Error, "Definitions do not load")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(err.Error())
 	}
 	if message == "" {
 		message = fmt.Sprintf("update definitions on %s", branch)
