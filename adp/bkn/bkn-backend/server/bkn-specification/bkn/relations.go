@@ -121,6 +121,9 @@ func validateLifecycle(where string, lc *Lifecycle, ownID string) error {
 		if strings.TrimSpace(lc.Reason) == "" {
 			return specErrorf("%s: status deprecated needs a reason", where)
 		}
+		if lc.ReplacedBy != "" && !idPattern.MatchString(lc.ReplacedBy) {
+			return specErrorf("%s: replaced_by %q is not an id; an id must match %s", where, lc.ReplacedBy, idPattern.String())
+		}
 		if lc.ReplacedBy != "" && lc.ReplacedBy == ownID {
 			return specErrorf("%s: replaced_by %q is the definition itself", where, lc.ReplacedBy)
 		}
@@ -225,6 +228,9 @@ func ValidateRelationTypeDeclarations(rt *BknRelationType) error {
 		return err
 	}
 	if rt.FallbackFor != "" {
+		if !idPattern.MatchString(rt.FallbackFor) {
+			return specErrorf("relation type fallback_for %q is not a relation type id; an id must match %s", rt.FallbackFor, idPattern.String())
+		}
 		if rt.Importance != ImportanceSecondary {
 			return specErrorf("relation type fallback_for goes with importance: secondary; a fallback path is a secondary relation")
 		}

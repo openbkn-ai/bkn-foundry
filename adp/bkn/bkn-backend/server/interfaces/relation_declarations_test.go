@@ -91,6 +91,10 @@ func TestRelationTypeNormalizeAndDeclaredFields(t *testing.T) {
 	assert.Equal(t, RelationDeclarations{}, rt.RelationDeclarations)
 	assert.Nil(t, rt.RelationProperties())
 
+	rt.ReverseName = " 雇员 "
+	rt.NormalizeDeclarations()
+	assert.Equal(t, "雇员", rt.ReverseName, "trimmed, as a name is")
+
 	rt.Verification, rt.FallbackFor, rt.ReverseName = "confirmed", "p", "反"
 	assert.Equal(t, []string{DECLARATION_REVERSE_NAME, DECLARATION_FALLBACK_FOR, DECLARATION_VERIFICATION}, rt.DeclaredFields())
 }

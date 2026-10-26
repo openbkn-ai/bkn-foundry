@@ -361,25 +361,38 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			So(w.Code, ShouldEqual, http.StatusOK)
 		})
 
-		Convey("Refuses 3.0 lifecycles and relation declarations the backend does not store yet", func() {
-			for _, c := range []struct{ path, content, want string }{
-				{"object_types/node.bkn", "---\ntype: object_type\nid: node\nname: 节点\ntags: []\nlifecycle: {status: deprecated, reason: 改用主机}\n---\n\n## ObjectType: 节点\n",
-					`object type \"node\": lifecycle is not supported by this version yet`},
-				{"relation_types/pod_peer.bkn", "---\ntype: relation_type\nid: pod_peer\nname: 同组\ntags: []\nverification: confirmed\n---\n\n## RelationType: 同组\n\n" +
-					"### Endpoint\n\n| Source | Target | Type |\n|--------|--------|------|\n| pod | pod | direct |\n\n" +
-					"### Mapping Rules\n\n| Source Property | Target Property |\n|-----------------|-----------------|\n| name | name |\n",
-					`relation type \"pod_peer\": verification is not supported by this version yet`},
-				{"relation_types/pod_peer.bkn", "---\ntype: relation_type\nid: pod_peer\nname: 同组\ntags: []\n---\n\n## RelationType: 同组\n\n" +
+		Convey("Imports the lifecycles and relation declarations of a 3.0 package", func() {
+			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, false).
+				DoAndReturn(func(_ context.Context, kn *interfaces.KN, _ string, _ bool) (string, error) {
+					var node *interfaces.ObjectType
+					for _, ot := range kn.ObjectTypes {
+						if ot.OTID == "node" {
+							node = ot
+						}
+					}
+					if node == nil || node.Lifecycle == nil || node.Lifecycle.Status != interfaces.LIFECYCLE_DEPRECATED || node.Lifecycle.Reason != "改用主机" {
+						t.Fatalf("the object type lifecycle did not reach the import: %#v", node)
+					}
+					var peer *interfaces.RelationType
+					for _, rt := range kn.RelationTypes {
+						if rt.RTID == "pod_peer" {
+							peer = rt
+						}
+					}
+					if peer == nil || peer.Verification != "confirmed" || peer.Cardinality != "many_to_many" || peer.ReverseName != "" {
+						t.Fatalf("the relation declarations did not reach the import: %#v", peer)
+					}
+					return "kn1", nil
+				})
+			req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "", map[string]string{
+				"object_types/node.bkn": "---\ntype: object_type\nid: node\nname: 节点\ntags: []\nlifecycle: {status: deprecated, reason: 改用主机}\n---\n\n## ObjectType: 节点\n",
+				"relation_types/pod_peer.bkn": "---\ntype: relation_type\nid: pod_peer\nname: 同组\ntags: []\nverification: confirmed\n---\n\n## RelationType: 同组\n\n" +
 					"### Endpoint\n\n| Source | Target | Type | Cardinality |\n|--------|--------|------|-------------|\n| pod | pod | direct | many_to_many |\n\n" +
 					"### Mapping Rules\n\n| Source Property | Target Property |\n|-----------------|-----------------|\n| name | name |\n",
-					`relation type \"pod_peer\": Cardinality is not supported by this version yet`},
-			} {
-				req := newMultipartRequest(t, url, "test.tar", newV3BKNTar(t, "", map[string]string{c.path: c.content}))
-				w := httptest.NewRecorder()
-				engine.ServeHTTP(w, req)
-				So(w.Code, ShouldEqual, http.StatusBadRequest)
-				So(w.Body.String(), ShouldContainSubstring, c.want)
-			}
+			}))
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			So(w.Code, ShouldEqual, http.StatusOK)
 		})
 
 		Convey("Imports a 3.0 package without property declarations", func() {

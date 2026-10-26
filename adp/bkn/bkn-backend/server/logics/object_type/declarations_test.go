@@ -253,6 +253,15 @@ func TestCheckNetworkDeclarations(t *testing.T) {
 		Return([]*interfaces.ValueType{amountCNY}, nil)
 	require.NoError(t, ots.checkNetworkDeclarations(ctx, referencing()))
 
+	// The value type check sees this object type alone: a replaced_by naming another object type is
+	// not refused as missing from it.
+	replaced := referencing()
+	replaced.Lifecycle = &interfaces.Lifecycle{Status: interfaces.LIFECYCLE_DEPRECATED, Reason: "改用采购单", ReplacedBy: "purchase"}
+	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
+		Return([]*interfaces.ValueType{amountCNY}, nil)
+	require.NoError(t, ots.checkNetworkDeclarations(ctx, replaced))
+	assert.Equal(t, "purchase", replaced.Lifecycle.ReplacedBy, "the object type itself keeps its lifecycle")
+
 	vta.EXPECT().GetValueTypesByIDs(gomock.Any(), nil, "kn1", interfaces.MAIN_BRANCH, []string{"amount_cny"}).
 		Return([]*interfaces.ValueType{}, nil)
 	err := ots.checkNetworkDeclarations(ctx, referencing())

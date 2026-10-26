@@ -144,13 +144,6 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	if detail := unstoredDeclaration(bknNetwork); detail != "" {
-		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
-			WithErrorDetails(detail)
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
 	bknNetwork.Branch = branch
 
 	// Import the network.
@@ -550,54 +543,4 @@ func hasArchiveSuffix(filename string) bool {
 		}
 	}
 	return false
-}
-
-// unstoredDeclaration names the first 3.0 declaration in a package that the backend does not store
-// yet: a lifecycle or a relation declaration. The specification library reads them, but the backend
-// stores them only from #2284, so importing would drop them; the upload refuses the package instead.
-// Property declarations, value types and the aliases of object types, action types and data
-// properties are stored. It returns "" when there is none, which is always the case for a 2.x
-// package.
-func unstoredDeclaration(net *bknsdk.BknNetwork) string {
-	if net.BknSpec != bknsdk.BknSpecV3 {
-		return ""
-	}
-	const unsupportedYet = "is not supported by this version yet"
-	for _, ot := range net.ObjectTypes {
-		if ot.Lifecycle != nil {
-			return fmt.Sprintf("object type %q: lifecycle %s", ot.ID, unsupportedYet)
-		}
-	}
-	for _, at := range net.ActionTypes {
-		if at.Lifecycle != nil {
-			return fmt.Sprintf("action type %q: lifecycle %s", at.ID, unsupportedYet)
-		}
-	}
-	for _, rt := range net.RelationTypes {
-		var what string
-		switch {
-		case len(rt.Aliases) > 0:
-			what = "aliases"
-		case rt.ReverseName != "":
-			what = "reverse_name"
-		case rt.Importance != "":
-			what = "importance"
-		case rt.FallbackFor != "":
-			what = "fallback_for"
-		case rt.Verification != "":
-			what = "verification"
-		case rt.Lifecycle != nil:
-			what = "lifecycle"
-		case rt.Endpoint.Cardinality != "":
-			what = "Cardinality"
-		case len(rt.RequiredEnds) > 0 || len(rt.Characteristics) > 0:
-			what = "### Relation Constraints"
-		case len(rt.DataProperties) > 0:
-			what = "### Data Properties"
-		default:
-			continue
-		}
-		return fmt.Sprintf("relation type %q: %s %s", rt.ID, what, unsupportedYet)
-	}
-	return ""
 }

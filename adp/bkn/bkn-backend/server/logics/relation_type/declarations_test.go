@@ -173,3 +173,32 @@ func TestUpdateRelationTypeKeepsUndeclared(t *testing.T) {
 	assert.Empty(t, written.Verification, "carried as null, so cleared")
 	assert.Equal(t, []*interfaces.DataProperty{titleProperty()}, written.RelationProperties(), "left out, so kept")
 }
+
+// In strict mode a relation property must map a column of the backing resource, like the mapping
+// rules; a property kept from before a change of resource that names a column the new one lacks is
+// refused.
+func TestStrictRelationPropertyMapsABackingColumn(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	vbs.EXPECT().GetResourceSchema(gomock.Any(), "res_employment", interfaces.OPERATION_TYPE_QUERY_DATA).
+		Return(&interfaces.VegaResource{ID: "res_employment", Name: "任职表", SchemaDefinition: []*interfaces.Property{
+			{Name: "emp_id"}, {Name: "dept_id"}, {Name: "title"},
+		}}, nil).Times(2)
+	rts := &relationTypeService{vbs: vbs}
+	relation := func(mapped string) *interfaces.RelationType {
+		rt := withProperties(workplace(), titleProperty())
+		rt.SourceObjectTypeID, rt.TargetObjectTypeID = "", ""
+		rt.RelationProperties()[0].MappedField = &interfaces.Field{Name: mapped}
+		return rt
+	}
+
+	require.NoError(t, rts.validateDependency(ctx, nil, relation("title"), true, nil))
+
+	httpErr := declHTTPError(t, rts.validateDependency(ctx, nil, relation("position"), true, nil))
+	assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
+	assert.Equal(t, berrors.BknBackend_RelationType_InvalidParameter, httpErr.ErrorCode)
+	assert.Contains(t, httpErr.ErrorDetails, "position")
+
+	require.NoError(t, rts.validateDependency(ctx, nil, relation("position"), false, nil), "not checked outside strict mode")
+}

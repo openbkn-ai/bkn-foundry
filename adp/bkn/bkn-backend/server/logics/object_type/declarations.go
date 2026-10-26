@@ -84,7 +84,11 @@ func (ots *objectTypeService) checkNetworkDeclarations(ctx context.Context, obje
 		}
 		valueTypes = append(valueTypes, found...)
 	}
-	doc := &bknsdk.BknNetwork{ObjectTypes: []*bknsdk.BknObjectType{logics.ToBKNObjectType(objectType)}}
+	// The network holds this object type and its value types only, so it checks the value type
+	// references alone: the lifecycle refers to other object types, which are not in it.
+	ot := logics.ToBKNObjectType(objectType)
+	ot.Lifecycle = nil
+	doc := &bknsdk.BknNetwork{ObjectTypes: []*bknsdk.BknObjectType{ot}}
 	for _, vt := range valueTypes {
 		doc.ValueTypes = append(doc.ValueTypes, logics.ToBKNValueType(vt))
 	}

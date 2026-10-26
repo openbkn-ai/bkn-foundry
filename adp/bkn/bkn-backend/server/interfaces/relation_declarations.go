@@ -7,6 +7,7 @@ package interfaces
 
 import (
 	"encoding/json"
+	"strings"
 )
 
 // The declaration fields of a relation type (BKN spec 3.0, SPECIFICATION.md §7.6), besides
@@ -114,8 +115,9 @@ func (rt *RelationType) RelationProperties() []*DataProperty {
 
 // NormalizeDeclarations stores the defaults as empty: no aliases, an active lifecycle, importance
 // primary, empty constraints and no relation properties are written as NULL, the way rows saved
-// before the columns read.
+// before the columns read. reverse_name is trimmed, as a name is.
 func (rt *RelationType) NormalizeDeclarations() {
+	rt.ReverseName = strings.TrimSpace(rt.ReverseName)
 	rt.Aliases = NormalizeAliases(rt.Aliases)
 	rt.Lifecycle = NormalizeLifecycle(rt.Lifecycle)
 	if rt.Importance == IMPORTANCE_PRIMARY {

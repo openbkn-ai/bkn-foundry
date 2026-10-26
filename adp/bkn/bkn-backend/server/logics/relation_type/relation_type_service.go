@@ -1505,6 +1505,20 @@ func (rts *relationTypeService) validateDependency(ctx context.Context, tx *sql.
 					}
 				}
 			}
+			// A relation property reads a column of the backing resource, as the mapping rules do;
+			// one kept from before a change of resource may name a column it no longer has.
+			for _, property := range mappingRules.Properties {
+				if property == nil || property.MappedField == nil || property.MappedField.Name == "" {
+					continue
+				}
+				if _, exists := propertiesMap[property.MappedField.Name]; !exists {
+					localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.RelationType.InvalidParameter.Detail.BackingPropertyNotFound", map[string]any{"property": property.MappedField.Name, "resource": res.Name})
+					if renderErr != nil {
+						logger.Errorf("localized message rendering failed: %v", renderErr)
+					}
+					return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_RelationType_InvalidParameter).WithErrorDetails(localizedText)
+				}
+			}
 		case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 			rules := relationType.MappingRules.(*interfaces.FilteredCrossJoinMapping)
 			if sourceObjectType != nil && rules.SourceCondition != nil {
