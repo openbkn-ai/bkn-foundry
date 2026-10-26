@@ -66,11 +66,15 @@ func Test_GitStore(t *testing.T) {
 			So(os.IsNotExist(statErr), ShouldBeTrue)
 
 			// A temporary directory left by a killed run is cleaned up on retry.
-			So(os.MkdirAll(gs.rootDir+"/.tmp-retry-stale.git/objects", 0o755), ShouldBeNil)
+			So(os.MkdirAll(gs.rootDir+"/.tmp-retry.stale.git/objects", 0o755), ShouldBeNil)
+			// The temporary of lineage "retry-x", which may be mid-init under its own lock, is not ours.
+			So(os.MkdirAll(gs.rootDir+"/.tmp-retry-x.1.git/objects", 0o755), ShouldBeNil)
 			_, err = gs.InitLineage(ctx, "retry", base, "init", author)
 			So(err, ShouldBeNil)
-			leftovers, _ := filepath.Glob(gs.rootDir + "/.tmp-retry-*")
+			leftovers, _ := filepath.Glob(gs.rootDir + "/.tmp-retry.*")
 			So(leftovers, ShouldBeEmpty)
+			_, err = os.Stat(gs.rootDir + "/.tmp-retry-x.1.git")
+			So(err, ShouldBeNil)
 			files, err := gs.ReadTree(ctx, "retry", "main")
 			So(err, ShouldBeNil)
 			So(files, ShouldResemble, base)

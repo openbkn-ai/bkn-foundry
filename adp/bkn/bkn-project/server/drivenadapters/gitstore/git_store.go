@@ -146,8 +146,10 @@ func (gs *gitStore) InitLineage(ctx context.Context, lineageID string, files map
 	return hash.String(), nil
 }
 
+// tempPrefix ends in ".", which lineage ids cannot contain, so the temporaries of lineage
+// "orders" never match those of "orders-v2", which may be mid-init under its own lock.
 func tempPrefix(lineageID string) string {
-	return ".tmp-" + lineageID + "-"
+	return ".tmp-" + lineageID + "."
 }
 
 // removeStaleTemps deletes temporary directories left by an InitLineage that
