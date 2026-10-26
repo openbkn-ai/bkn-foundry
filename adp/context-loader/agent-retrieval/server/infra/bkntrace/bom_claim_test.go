@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -19,7 +20,7 @@ import (
 
 func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 	approved := BOMProducer{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "bom_shared_list", FunctionVersion: "published-version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
-	for _, name := range []string{"normal", "zero", "changed code", "changed version", "body spoof", "missing count", "truncated", "wrong products", "duplicate materials", "artifact unavailable", "wrong data source", "null count", "null substitute"} {
+	for _, name := range []string{"normal", "zero", "changed code", "changed version", "body spoof", "missing count", "truncated", "wrong products", "duplicate materials", "artifact unavailable", "wrong data source", "null count", "null substitute", "artifact timeout"} {
 		t.Run(name, func(t *testing.T) {
 			publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "retrieval", WorkloadIdentity: "retrieval", ProcessBootID: name, CapturePolicyRevision: "41"}, &captureEvidenceSender{})
 			if err != nil {
@@ -34,6 +35,10 @@ func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 			var artifact map[string]any
 			artifactHTTPClient = &http.Client{Transport: evidenceRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				writes++
+				if name == "artifact timeout" {
+					<-r.Context().Done()
+					return nil, r.Context().Err()
+				}
 				body, _ := io.ReadAll(r.Body)
 				if err := json.Unmarshal(body, &artifact); err != nil {
 					t.Fatal(err)
@@ -83,6 +88,10 @@ func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 			trace, _ := common.GetTraceContextFromCtx(ctx)
 			trace.ConversationID = "conv-bom"
 			ctx = common.SetTraceContextToCtx(ctx, trace)
+			ctx = WithTraceAvailability(ctx)
+			if name == "artifact timeout" {
+				ctx.Value(traceAvailabilityKey{}).(*traceAvailability).post = 300 * time.Millisecond
+			}
 			err = RecordBOMIntersection(ctx, approved, approved.FunctionVersion, map[string]any{"products": []string{"P1", "P2"}}, result)
 			good := name == "normal" || name == "zero"
 			if good {
@@ -98,6 +107,7 @@ func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 					Envelope  struct {
 						Payload struct {
 							Contract string `json:"result_contract"`
+							Complete bool   `json:"complete"`
 							Hash     string `json:"content_hash"`
 						} `json:"payload"`
 					} `json:"envelope"`
@@ -105,11 +115,32 @@ func TestBOMIntersectionRequiresApprovedExecutedCode(t *testing.T) {
 				if err := json.Unmarshal(publisher.SnapshotQueue()[0].Value, &wire); err != nil {
 					t.Fatal(err)
 				}
-				if wire.EventType != "logic.execution.observed" || len(wire.Claims) != 0 || wire.Envelope.Payload.Contract != BOMIntersectionContract || wire.Envelope.Payload.Hash != artifact["content_hash"] {
+				if !wire.Envelope.Payload.Complete || wire.EventType != "logic.execution.observed" || len(wire.Claims) != 0 || wire.Envelope.Payload.Contract != BOMIntersectionContract || wire.Envelope.Payload.Hash != artifact["content_hash"] {
 					t.Fatalf("wire=%+v", wire)
 				}
 			} else if err == nil || len(publisher.SnapshotQueue()) != 0 {
 				t.Fatalf("unverified result emitted evidence: %v", err)
+			}
+			if name == "artifact timeout" {
+				finishes := 0
+				client := lifecycleClientWithTransport(func(r *http.Request) (*http.Response, error) {
+					if err := r.Context().Err(); err != nil {
+						return nil, err
+					}
+					finishes++
+					done := pendingGuardState().Result
+					done.Operation.AttemptStatus, done.Receipt.ReceiptStatus = "completed", "completed"
+					return lifecycleJSONResponse(200, done), nil
+				})
+				for range 2 {
+					done, apiErr, finishErr := NewGuard(client).Finish(ctx, pendingGuardState(), result, false, false)
+					if finishErr != nil || apiErr != nil || done.Receipt.ReceiptStatus != "completed" {
+						t.Fatalf("artifact exhausted finish budget: result=%+v apiErr=%v err=%v", done, apiErr, finishErr)
+					}
+				}
+				if finishes != 2 {
+					t.Fatalf("terminal writes=%d", finishes)
+				}
 			}
 		})
 	}

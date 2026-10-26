@@ -1,6 +1,7 @@
-// Copyright openbkn.ai
-//
-// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+// Copyright (c) 2026 OpenBKN
+// SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+// Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
 package sessionsvc
 
@@ -10,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -22,6 +24,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
@@ -48,7 +51,7 @@ func (tx *bomSealTransaction) AppendDerivedEvidence(e ledgervo.Event) (ledgervo.
 }
 
 func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
-	for _, name := range []string{"normal", "zero", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "null count", "null substitute"} {
+	for _, name := range []string{"normal", "zero", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "null count", "null substitute", "clock skew", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
 		t.Run(name, func(t *testing.T) {
 			now := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 			owner := sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "user"}
@@ -81,10 +84,15 @@ func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
 			encoder.SetEscapeHTML(false)
 			_ = encoder.Encode(value)
 			sum := sha256.Sum256(bytes.TrimSuffix(canonical.Bytes(), []byte("\n")))
-			proof := bomResultEvidence{Contract: bomIntersectionContract, Producer: producer, Conclusion: conclusion, ArtifactRef: "artifact:bom-result", ContentHash: "sha256:" + hex.EncodeToString(sum[:]), OutputHash: ledgervo.CanonicalPayloadHash(payload.Inline)}
+			proof := bomResultEvidence{Contract: bomIntersectionContract, Complete: true, Producer: producer, Conclusion: conclusion, ArtifactRef: "artifact:bom-result", ContentHash: "sha256:" + hex.EncodeToString(sum[:]), OutputHash: ledgervo.CanonicalPayloadHash(payload.Inline)}
+			if name == "incomplete proof" {
+				proof.Complete = false
+			}
 			envelope, _ := json.Marshal(map[string]any{"payload": proof})
 			source := ledgervo.Event{EventID: "source", EventType: "logic.execution.observed", SchemaVersion: "3.0.0", Envelope: envelope, PayloadHash: ledgervo.CanonicalPayloadHash(envelope), Owner: owner, ConversationID: "conv", InteractionID: "int", OperationID: "op", Attempt: 1, RequestID: "req", TraceID: "trace", ProducerID: "agent-retrieval", StartedAt: now, ObservedAt: now, EmittedAt: now}
 			switch name {
+			case "clock skew":
+				source.StartedAt, source.ObservedAt, source.EmittedAt = now.Add(5*time.Second), now.Add(5*time.Second), now.Add(6*time.Second)
 			case "output changed":
 				fact.Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadInline, Inline: json.RawMessage(`{"changed":true}`)}
 			case "untrusted producer":
@@ -103,6 +111,24 @@ func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				interaction := sessionvo.Interaction{ID: "int", ConversationID: "conv", EvidenceStatus: sessionvo.EvidenceComplete, ClosureManifest: &sessionvo.ClosureManifest{Claims: []string{bomClaimID("op", 1)}}}
 				revision := sessionvo.AssemblyRevision{ID: "real-revision", InteractionID: "int", IncludedEventIDs: []string{"source"}, Completeness: sessionvo.EvidenceComplete, CreatedAt: now.Add(time.Second)}
 				custom := &bomSealTransaction{Transaction: tx, sources: []ledgervo.Event{source}}
+				switch name {
+				case "caller prefix":
+					interaction.ClosureManifest.Claims = []string{"claim_bom_manual"}
+				case "invalid event":
+					custom.writeErr = &ledgersvc.DomainError{Code: ledgersvc.CodeInvalidEvent, Message: "invalid proof"}
+				case "payload conflict":
+					custom.writeErr = ievidenceledger.ErrPayloadConflict
+				case "sequence conflict":
+					custom.writeErr = ievidenceledger.ErrSequenceConflict
+				case "causality conflict":
+					custom.writeErr = ievidenceledger.ErrCausalityConflict
+				case "owner conflict":
+					custom.writeErr = ievidenceledger.ErrOwnerMismatch
+				case "scope conflict":
+					custom.writeErr = ievidenceledger.ErrMissingScope
+				case "storage failure":
+					custom.writeErr = errors.New("database unavailable")
+				}
 				if name == "read budget" {
 					custom.readErr = isessionstore.ErrEvidenceConfirmationLimit
 				}
@@ -116,10 +142,23 @@ func TestBOMClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				if name == "unsupported store" {
 					sealing = tx
 				}
-				if _, err := service.sealBOMClaims(sealing, &interaction, &revision); err != nil {
-					return err
+				_, sealErr := service.sealBOMClaims(sealing, &interaction, &revision)
+				if name == "storage failure" {
+					if !errors.Is(sealErr, custom.writeErr) {
+						t.Fatalf("storage error swallowed: %v", sealErr)
+					}
+					return nil
 				}
-				good := name == "normal" || name == "zero"
+				if sealErr != nil {
+					return sealErr
+				}
+				if name == "caller prefix" {
+					if len(custom.saved) != 0 || revision.Completeness != sessionvo.EvidenceComplete || len(revision.PartialReasons) != 0 || interaction.EvidenceStatus != sessionvo.EvidenceComplete {
+						t.Fatalf("caller Claim altered: %+v", revision)
+					}
+					return nil
+				}
+				good := name == "normal" || name == "zero" || name == "clock skew"
 				if !good {
 					if len(custom.saved) != 0 || revision.Completeness != sessionvo.EvidencePartial || interaction.EvidenceStatus != sessionvo.EvidencePartial {
 						t.Fatalf("unverified Claim: events=%d revision=%+v interaction=%+v", len(custom.saved), revision, interaction)
@@ -164,6 +203,9 @@ func TestActualCLBOMResultProof(t *testing.T) {
 	}
 	if err := json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
+	}
+	if fixture.Source.PayloadHash != ledgervo.CanonicalPayloadHash(fixture.Source.Envelope) {
+		t.Fatal("fixture source hash does not cover its completeness declaration")
 	}
 	var envelope struct {
 		Payload bomResultEvidence `json:"payload"`

@@ -1,6 +1,7 @@
-// Copyright openbkn.ai
-//
-// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+// Copyright (c) 2026 OpenBKN
+// SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+// Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
 package sessionsvc
 
@@ -14,8 +15,10 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/ledgervo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/ievidenceledger"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
@@ -41,6 +44,7 @@ type bomConclusion struct {
 
 type bomResultEvidence struct {
 	Contract    string        `json:"result_contract"`
+	Complete    bool          `json:"complete"`
 	Producer    bomProducer   `json:"producer"`
 	Conclusion  bomConclusion `json:"conclusion"`
 	ArtifactRef string        `json:"result_artifact_ref"`
@@ -80,6 +84,17 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 	if len(expected) == 0 {
 		return nil, nil
 	}
+	// Prefixes are not reserved for Core. Only registered BOM attempts own IDs.
+	// Keep ordinary finishes on the existing path without any additional read.
+	summaries := tx.ListOperationCallSummaries(interaction.ID)
+	expected = slices.DeleteFunc(expected, func(id string) bool {
+		return !slices.ContainsFunc(summaries, func(f sessionvo.OperationCallSummary) bool {
+			return f.SourceModule == bomIntersectionSourceModule && bomClaimID(f.OperationID, f.Attempt) == id
+		})
+	})
+	if len(expected) == 0 {
+		return nil, nil
+	}
 	writer, writable := tx.(isessionstore.DerivedEvidenceTransaction)
 	reader, readable := tx.(isessionstore.EvidenceConfirmationTransaction)
 	missing := func(id, reason string) {
@@ -91,7 +106,6 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 			missing(id, "claim_materialization_unavailable")
 		}
 	} else {
-		summaries := tx.ListOperationCallSummaries(interaction.ID)
 		for _, id := range expected {
 			var summary *sessionvo.OperationCallSummary
 			for i := range summaries {
@@ -151,6 +165,15 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 				missing(id, "claim_evidence_budget_exceeded")
 				continue
 			}
+			// Validation and immutable-record conflicts do not undo business
+			// completion. Database failures still abort the atomic transaction.
+			if ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent) ||
+				errors.Is(err, ievidenceledger.ErrPayloadConflict) || errors.Is(err, ievidenceledger.ErrSequenceConflict) ||
+				errors.Is(err, ievidenceledger.ErrCausalityConflict) || errors.Is(err, ievidenceledger.ErrOwnerMismatch) ||
+				errors.Is(err, ievidenceledger.ErrMissingScope) {
+				missing(id, "claim_result_not_evaluable")
+				continue
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -170,7 +193,7 @@ func (s *Service) sealBOMClaims(tx isessionstore.Transaction, interaction *sessi
 
 func validBOMProof(fact sessionvo.OperationCallFact, proof bomResultEvidence) bool {
 	p, c := proof.Producer, proof.Conclusion
-	if fact.CapabilityProfile == nil || fact.Input.Mode != sessionvo.PayloadInline || fact.Output == nil ||
+	if !proof.Complete || fact.CapabilityProfile == nil || fact.Input.Mode != sessionvo.PayloadInline || fact.Output == nil ||
 		fact.Output.Mode != sessionvo.PayloadInline || len(fact.Output.Inline) > sessionvo.MaxInlinePayloadBytes ||
 		proof.OutputHash != ledgervo.CanonicalPayloadHash(fact.Output.Inline) {
 		return false
@@ -269,5 +292,9 @@ func materializedBOMClaim(source ledgervo.Event, proof bomResultEvidence, id, re
 	claim := sessionvo.Claim{ID: id, Type: bomIntersectionContract, Materiality: sessionvo.ClaimMaterial, Status: sessionvo.ClaimAsserted, ContentArtifactRef: proof.ArtifactRef, RequiredSupportRoles: []string{"computed_from"}, Supports: []sessionvo.ClaimSupport{support}}
 	sum := sha256.Sum256([]byte(revision.ID + "|" + id))
 	envelope, _ := json.Marshal(map[string]any{"result_contract": bomIntersectionContract, "source_event_id": source.EventID, "receipt_bound_operation_id": source.OperationID, "source_receipt_id": receiptID, "producer": proof.Producer, "result_artifact_ref": proof.ArtifactRef})
-	return ledgervo.Event{EventID: "evt_claim_" + hex.EncodeToString(sum[:16]), EventType: "claim.created", SchemaVersion: "3.0.0", PayloadHash: ledgervo.CanonicalPayloadHash(envelope), Owner: source.Owner, ConversationID: source.ConversationID, InteractionID: source.InteractionID, OperationID: source.OperationID, Attempt: source.Attempt, RequestID: source.RequestID, TraceID: source.TraceID, SpanID: source.SpanID, ProducerID: "agent-observability-core", ProducerStreamID: "core-claims:" + revision.ID, ProducerEpoch: 1, ProducerSequence: sequence, CausationEventIDs: []string{source.EventID}, StartedAt: source.StartedAt, ObservedAt: source.ObservedAt, EmittedAt: revision.CreatedAt, Envelope: envelope, BusinessRefs: source.BusinessRefs, ArtifactRefs: []string{proof.ArtifactRef}, Claims: []sessionvo.Claim{claim}, EvidenceRefs: []sessionvo.EvidenceRef{ref}}
+	emittedAt := revision.CreatedAt
+	if source.EmittedAt.After(emittedAt) {
+		emittedAt = source.EmittedAt
+	}
+	return ledgervo.Event{EventID: "evt_claim_" + hex.EncodeToString(sum[:16]), EventType: "claim.created", SchemaVersion: "3.0.0", PayloadHash: ledgervo.CanonicalPayloadHash(envelope), Owner: source.Owner, ConversationID: source.ConversationID, InteractionID: source.InteractionID, OperationID: source.OperationID, Attempt: source.Attempt, RequestID: source.RequestID, TraceID: source.TraceID, SpanID: source.SpanID, ProducerID: "agent-observability-core", ProducerStreamID: "core-claims:" + revision.ID, ProducerEpoch: 1, ProducerSequence: sequence, CausationEventIDs: []string{source.EventID}, StartedAt: source.StartedAt, ObservedAt: source.ObservedAt, EmittedAt: emittedAt, Envelope: envelope, BusinessRefs: source.BusinessRefs, ArtifactRefs: []string{proof.ArtifactRef}, Claims: []sessionvo.Claim{claim}, EvidenceRefs: []sessionvo.EvidenceRef{ref}}
 }

@@ -13,6 +13,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 )
 
 const BOMIntersectionContract = "bom.structure_intersection/v1"
@@ -157,6 +158,10 @@ func RecordBOMIntersection(ctx context.Context, approved BOMProducer, listedVers
 	}
 	ioCtx, release := TraceIOContext(ctx, "post")
 	defer release()
+	// Reserve the rest of the existing post budget for inner and outer Finish.
+	deadline, _ := ioCtx.Deadline()
+	ioCtx, cancel := context.WithTimeout(ioCtx, time.Until(deadline)/3)
+	defer cancel()
 	scope := payloadArtifactScope{InteractionID: ec.interactionID, OperationID: ec.operationID, Direction: "logic_result"}
 	ref, hash, err := (evidencePayloadArtifactWriter{}).Put(withPayloadArtifactScope(ioCtx, scope), "application/json", content)
 	if err != nil {
@@ -172,7 +177,7 @@ func RecordBOMIntersection(ctx context.Context, approved BOMProducer, listedVers
 	}
 	digest := sha256.Sum256(canonical)
 	payload := map[string]any{
-		"result_contract": BOMIntersectionContract, "producer": approved, "conclusion": conclusion,
+		"complete": true, "result_contract": BOMIntersectionContract, "producer": approved, "conclusion": conclusion,
 		"result_artifact_ref": ref, "content_hash": hash, "output_hash": hex.EncodeToString(digest[:]),
 	}
 	event := buildEvent(ec, "logic.execution.observed", "context.bom_structure_intersection", payload, "", "")

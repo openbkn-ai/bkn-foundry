@@ -21,6 +21,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
+const bomResultIntegrityContract = "bom.structure_intersection/v1"
+
 type recordIntegrityBudgetKey struct{}
 type recordIntegrityReadBudget struct {
 	reads int
@@ -196,6 +198,8 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 			return nil, fmt.Errorf("record integrity contract unsupported: %s", profile.EvidenceContract)
 		}
 		found := false
+		bomResult := profile.EvidenceContract == bomResultIntegrityContract
+		bomDeclarations := 0
 		for _, e := range events {
 			if e.EventType != eventType || !e.Owner.Equal(owner) || e.ConversationID != interaction.ConversationID || e.InteractionID != interaction.ID || e.OperationID != f.OperationID || e.Attempt != f.Attempt || e.RequestID != f.RequestID || e.TraceID != f.TraceID {
 				continue
@@ -206,6 +210,18 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 			if err := json.Unmarshal(e.Envelope, &envelope); err != nil {
 				return nil, err
 			}
+			if bomResult {
+				// Only the accepted, receipt-bound typed producer can declare
+				// a verified BOM result. A missing/false/malformed declaration
+				// is a recorded gap, not an unsupported inspection contract.
+				var contract string
+				if f.SourceModule != "context-loader-bom-intersection/v1" || e.ProducerID != "agent-retrieval" || !slices.Contains(r.ObservedEvidenceRefs, e.EventID) || json.Unmarshal(envelope.Payload["result_contract"], &contract) != nil || contract != bomResultIntegrityContract {
+					continue
+				}
+				bomDeclarations++
+				found = string(envelope.Payload["complete"]) == "true"
+				continue
+			}
 			field := "truncated"
 			if eventType == "ontology.schema.snapshot" || eventType == "metric.query.completed" {
 				field = "complete"
@@ -213,6 +229,9 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 			if v, ok := envelope.Payload[field]; ok && (string(v) == "true" || string(v) == "false") {
 				found = true
 			}
+		}
+		if bomResult && bomDeclarations != 1 {
+			found = false
 		}
 		if !found {
 			add(f, "record_content_missing", "evidence.result_completeness")
@@ -314,6 +333,8 @@ func payloadOmitted(payload *sessionvo.PayloadEnvelope) bool {
 
 func integrityEventType(contract string) string {
 	switch contract {
+	case bomResultIntegrityContract:
+		return "logic.execution.observed"
 	case "ontology_schema_snapshot/v1":
 		return "ontology.schema.snapshot"
 	case "ontology_metric_result/v1":
@@ -711,7 +732,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 			return false, nil
 		}
 	}
-	if f.CapabilityProfile != nil && f.CapabilityProfile.EvidenceContract == "managed_function_execution/v1" {
+	if f.CapabilityProfile != nil && (f.CapabilityProfile.EvidenceContract == "managed_function_execution/v1" || f.CapabilityProfile.EvidenceContract == bomResultIntegrityContract) {
 		for ref := range refs {
 			if matchesFunctionBusinessRef(ref, kn, toolbox, f.ToolName) {
 				return true, nil
