@@ -67,8 +67,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1 := c.Group("/api/bkn-project/v1")
 	apiV1.Use(rest.PrivateNoCacheMiddleware())
 
-	// Release lineage (read-only).
+	// Release lineage.
 	apiV1.GET("/lineages/:lineage_id/releases", r.ListReleasesByEx)
+	apiV1.POST("/lineages/:lineage_id/releases", r.PublishReleaseByEx)
 	apiV1.GET("/releases/:network_id", r.GetReleaseByEx)
 
 	// Lineages and project branches. A branch name may contain "/", so the

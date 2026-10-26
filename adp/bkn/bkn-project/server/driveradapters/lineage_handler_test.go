@@ -8,6 +8,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -201,6 +202,43 @@ func Test_LineageRestHandler(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusNotFound)
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Lineage_BknBackendRequestFailed)
 		})
+
+		releasesURL := "/api/bkn-project/v1/lineages/orders/releases"
+
+		Convey("Publish imports with the caller's token, records the caller and replies 201\n", func() {
+			req := interfaces.PublishReleaseRequest{Branch: "project/p1", Version: "1.1.0", ProjectID: "p1", Notes: "n"}
+			publisher := interfaces.AccountInfo{ID: "u1", Type: string(hydra.VisitorType_User)}
+			ls.EXPECT().PublishRelease(gomock.Any(), "Bearer t1", "orders", req, publisher, author).
+				Return(&interfaces.PublishReleaseResult{
+					Release: &interfaces.Release{ID: "r1", NetworkID: "orders_v1_1_0"}, NetworkID: "orders_v1_1_0", Tag: "v1.1.0", Commit: "c5",
+				}, nil)
+
+			w := serveBody(handler, http.MethodPost, releasesURL,
+				[]byte(`{"branch":"project/p1","version":"1.1.0","project_id":"p1","notes":"n"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
+			var body map[string]any
+			So(json.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
+			So(body["network_id"], ShouldEqual, "orders_v1_1_0")
+			So(body["tag"], ShouldEqual, "v1.1.0")
+			So(body["commit"], ShouldEqual, "c5")
+			So(body["release"].(map[string]any)["id"], ShouldEqual, "r1")
+		})
+
+		Convey("Publish replies the service error and refuses a bad body\n", func() {
+			ls.EXPECT().PublishRelease(gomock.Any(), "Bearer t1", "orders", gomock.Any(), gomock.Any(), author).
+				Return(nil, httpError(http.StatusConflict, perrors.BknProject_Release_Drift))
+
+			w := serveBody(handler, http.MethodPost, releasesURL, []byte(`{"branch":"project/p1","version":"1.1.0"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusConflict)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Release_Drift)
+
+			w = serveBody(handler, http.MethodPost, releasesURL, []byte(`not json`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Lineage_InvalidRequestBody)
+		})
 	})
 
 	Convey("Lineage routes need a valid token\n", t, func() {
@@ -216,6 +254,10 @@ func Test_LineageRestHandler(t *testing.T) {
 		as.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).AnyTimes().Return(hydra.Visitor{}, context.Canceled)
 
 		w := serveBody(handler, http.MethodPost, "/api/bkn-project/v1/lineages/orders/branches/project/p1/sync", nil)
+
+		So(w.Result().StatusCode, ShouldEqual, http.StatusUnauthorized)
+
+		w = serveBody(handler, http.MethodPost, "/api/bkn-project/v1/lineages/orders/releases", []byte(`{}`))
 
 		So(w.Result().StatusCode, ShouldEqual, http.StatusUnauthorized)
 	})
