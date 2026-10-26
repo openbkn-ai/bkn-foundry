@@ -375,6 +375,15 @@ func Test_LineageService_CommitDefinitions(t *testing.T) {
 			So(status, ShouldEqual, http.StatusBadRequest)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
 
+			// The loader reads it, but git cannot store "notes" as a file and a directory.
+			clash := definitions("A part.", "A supplier.")
+			clash["notes"] = []byte("a file")
+			clash["notes/a.md"] = []byte("a file below it")
+			_, err = svc.CommitDefinitions(ctx, id, "project/p1", clash, "", author)
+			status, code = httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+
 			_, err = svc.CommitDefinitions(ctx, id, "project/none", base, "", author)
 			_, code = httpCode(err)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotFound)

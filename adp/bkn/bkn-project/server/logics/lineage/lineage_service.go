@@ -12,7 +12,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"path"
+	"slices"
 	"sync"
 
 	"github.com/go-git/go-git/v5"
@@ -112,6 +115,11 @@ func (s *lineageService) CommitDefinitions(ctx context.Context, lineageID string
 	if len(files) == 0 {
 		span.SetStatus(codes.Error, "Empty definitions")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions)
+	}
+	if clash := fileAlsoDirectory(files); clash != "" {
+		span.SetStatus(codes.Error, "Path is both a file and a directory")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(fmt.Sprintf("path %q is both a file and a directory", clash))
 	}
 	// Refuse a set the BKN loader cannot read now; stored, it would only fail later in sync or
 	// publish, far from the upload that caused it.
@@ -255,6 +263,20 @@ func (s *lineageService) CheckDrift(ctx context.Context, token string, lineageID
 	}
 	span.SetStatus(codes.Ok, "")
 	return result, nil
+}
+
+// fileAlsoDirectory returns the first path, in sorted order, that is a file and
+// also a parent directory of another path. Git cannot store such a set, and the
+// loader reads it anyway, so it is checked here with the other upload rules.
+func fileAlsoDirectory(files map[string][]byte) string {
+	for _, p := range slices.Sorted(maps.Keys(files)) {
+		for dir := path.Dir(p); dir != "." && dir != "/"; dir = path.Dir(dir) {
+			if _, ok := files[dir]; ok {
+				return dir
+			}
+		}
+	}
+	return ""
 }
 
 // isProjectBranch accepts the names git accepts for a branch, except main.
