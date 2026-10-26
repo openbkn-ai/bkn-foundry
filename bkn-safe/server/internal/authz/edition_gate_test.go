@@ -250,11 +250,19 @@ func TestPaidParentKeepsItsDenies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(explained.Steps) == 0 || explained.Steps[0].Decision != DecisionDeny {
+		t.Fatalf("explain did not keep the paid parent's deny: %+v", explained.Steps)
+	}
+	keptDeny := false
 	for _, step := range explained.Steps {
 		for _, grant := range step.MatchedGrants {
 			if grant.Effect != EffectDeny {
 				t.Fatalf("explain listed a gated allow: %+v", grant)
 			}
+			keptDeny = keptDeny || (grant.Object == "catalog:cat-1" && grant.Operation == "resource_manage")
 		}
+	}
+	if !keptDeny {
+		t.Fatalf("explain dropped the matched deny: %+v", explained.Steps)
 	}
 }
