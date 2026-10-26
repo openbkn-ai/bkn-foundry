@@ -10,6 +10,7 @@ package driveradapters
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -271,7 +272,8 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 	}
 	params.FilterCondCfg = actualCond
 
-	if err := r.ds.DeleteDocumentsByQuery(ctx, resource, &params); err != nil {
+	result, err := r.ds.DeleteDocumentsByQuery(ctx, resource, &params)
+	if err != nil {
 		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -279,13 +281,84 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 	}
 
 	logger.Debug("Handler deleteResourceDataByQuery Success")
-	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
-	rest.ReplyOkWithHeaders(c, http.StatusNoContent, nil, map[string]string{
+	status := http.StatusNoContent
+	var body any
+	if strings.EqualFold(strings.TrimSpace(c.Query("return_result")), "true") {
+		status = http.StatusOK
+		body = result
+	}
+	oteltrace.AddHttpAttrs4Ok(span, status)
+	rest.ReplyOkWithHeaders(c, status, body, map[string]string{
 		interfaces.X_REQUEST_TOOK: time.Since(start).String(),
 	})
 }
 
 // =========================== PUT /resources/:id/data ===========================
+
+// PutResourceDataByEx 批量完整替换 Dataset 文档。
+func (r *restHandler) PutResourceDataByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.putResourceData(c, visitor, false)
+}
+
+func (r *restHandler) PutResourceDataByIn(c *gin.Context) {
+	r.putResourceData(c, visitor.GenerateVisitor(c), true)
+}
+
+func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor, internal bool) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	if internal {
+		ctx = interfaces.WithS2SInternalAccess(ctx)
+	}
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	resource, ok := r.requireDatasetResource(c, ctx, span, c.Param("id"), interfaces.OPERATION_TYPE_DATA_WRITE)
+	if !ok {
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, interfaces.MaxDatasetBulkBodyBytes)
+	var request struct {
+		Entries []map[string]any `json:"entries"`
+	}
+	data, err := io.ReadAll(c.Request.Body)
+	if err == nil {
+		err = common.UnmarshalPreciseJSON(data, &request)
+	}
+	if err != nil {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(err.Error())
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	if len(request.Entries) == 0 || len(request.Entries) > interfaces.MaxDatasetBulkDocuments {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails("bulk request must contain 1 to 1000 documents")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	results, err := r.ds.BulkReplaceDocuments(ctx, resource, request.Entries)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_UpdateFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"entries": results})
+}
 
 // =========================== GET /resources/:id/data/:docid ===========================
 

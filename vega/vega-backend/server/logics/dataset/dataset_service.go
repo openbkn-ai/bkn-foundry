@@ -245,11 +245,12 @@ func (ds *datasetService) ReplaceDocument(ctx context.Context, res *interfaces.R
 		span.SetStatus(codes.Error, "Materialize dataset document failed")
 		return err
 	}
-	if _, err := ds.lim.IndexDocuments(ctx, res.LocalIndexName, map[string]map[string]any{docID: materialized}); err != nil {
+	results, err := ds.lim.IndexDocuments(ctx, res.LocalIndexName, []interfaces.DocumentWrite{{ID: docID, Document: materialized}})
+	if err != nil || len(results) != 1 || results[0].ID != docID || results[0].Status < 200 || results[0].Status >= 300 {
 		span.SetStatus(codes.Error, "Replace dataset document failed")
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-			WithErrorDetails(err.Error())
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails("dataset document indexing failed")
 	}
+
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
@@ -295,17 +296,17 @@ func (ds *datasetService) DeleteDocuments(ctx context.Context, res *interfaces.R
 }
 
 // DeleteDocumentsByQuery for batch deletion of dataset documents
-func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
+func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.DeleteByQueryResult, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents by query")
 	defer span.End()
 
 	if err := ds.rs.CheckResourcePermission(ctx, res.ID, interfaces.OPERATION_TYPE_DATA_WRITE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
-		return err
+		return nil, err
 	}
 	if params == nil || params.FilterCondCfg == nil {
 		span.SetStatus(codes.Error, "Delete dataset documents rejected without filter")
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("delete-by-query requires a filter condition")
 	}
 	if err := filter_condition.NormalizeValueFrom(params.FilterCondCfg); err != nil {
@@ -317,7 +318,7 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 		case errors.Is(err, filter_condition.ErrUnsupportedOperation):
 			errorCode = verrors.VegaBackend_UnsupportFilterConditionOperation
 		}
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, errorCode).
 			WithErrorDetails(err.Error())
 	}
 	querySchema := local_index.SchemaForQuery(res.SchemaDefinition)
@@ -334,37 +335,42 @@ func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, res *inter
 	if err != nil {
 		var zoneErr *interfaces.ServerTimeZoneError
 		if errors.As(err, &zoneErr) {
-			return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).WithErrorDetails(zoneErr.Error())
+			return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).WithErrorDetails(zoneErr.Error())
 		}
 
 		span.SetStatus(codes.Error, "Build dataset delete condition failed")
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(err.Error())
 	}
 	if actualFilterCond == nil {
 		span.SetStatus(codes.Error, "Delete dataset documents rejected with empty filter")
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("delete-by-query requires a non-empty filter condition")
 	}
 	if !hasEffectiveDeleteFilter(actualFilterCond) {
 		span.SetStatus(codes.Error, "Delete dataset documents rejected with ineffective filter")
-		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails("delete-by-query requires a non-empty filter condition")
 	}
 	params.ActualFilterCond = actualFilterCond
 	// Call the local index store to batch delete documents
-	if err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params); err != nil {
+	result, err := ds.lim.DeleteDocumentsByQuery(ctx, res.LocalIndexName, res, params)
+	if err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
+		var incomplete *interfaces.DeleteByQueryIncompleteError
+		if errors.As(err, &incomplete) {
+			return result, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Dataset_DeleteIncomplete).WithErrorDetails(incomplete.Result)
+		}
 		if reason, ok := interfaces.RequestSideQueryError(err); ok {
-			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(reason)
 		}
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
-			WithErrorDetails(err.Error())
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
+			WithErrorDetails("delete-by-query failed; completion is unknown")
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return result, nil
 }
 
 func hasEffectiveDeleteFilter(condition interfaces.FilterCondition) bool {
@@ -392,4 +398,38 @@ func hasEffectiveDeleteFilter(condition interfaces.FilterCondition) bool {
 		}
 	}
 	return true
+}
+
+// BulkReplaceDocuments 使用调用方已完成存在性、类型校验及 data_write 鉴权的 Dataset；文档条数由调用方校验。
+func (ds *datasetService) BulkReplaceDocuments(ctx context.Context, res *interfaces.Resource,
+	documents []map[string]any) ([]interfaces.DocumentWriteResult, error) {
+
+	seen := make(map[string]struct{}, len(documents))
+	for _, document := range documents {
+		value, exists := document["_id"]
+		if !exists {
+			return nil, invalidDocumentError(ctx, "document id is required")
+		}
+		id, ok := value.(string)
+		if !ok {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			return nil, invalidDocumentError(ctx, "duplicate document id in bulk request")
+		}
+		seen[id] = struct{}{}
+	}
+
+	writes, err := ds.materializeDocuments(ctx, res, documents)
+	if err != nil {
+		var httpErr *httperrors.HTTPError
+		if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusBadRequest &&
+			httpErr.ErrorCode == verrors.VegaBackend_InvalidParameter_RequestBody {
+			return nil, httpErr
+		}
+		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails("materialize dataset documents failed")
+	}
+
+	return ds.lim.IndexDocuments(ctx, res.LocalIndexName, writes)
 }

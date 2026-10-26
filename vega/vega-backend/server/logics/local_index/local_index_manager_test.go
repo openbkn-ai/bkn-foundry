@@ -361,13 +361,14 @@ func TestLocalIndexManagerDeleteDocumentsByQueryDelegatesToConnector(t *testing.
 		var gotSchema []*interfaces.Property
 		connector.EXPECT().
 			DeleteDocumentsByQuery(ctx, "idx", params, SchemaForQuery(resource.SchemaDefinition)).
-			DoAndReturn(func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams, schema []*interfaces.Property) error {
+			DoAndReturn(func(_ context.Context, _ string, p *interfaces.ResourceDataQueryParams, schema []*interfaces.Property) (*interfaces.DeleteByQueryResult, error) {
 				gotParams = p
 				gotSchema = schema
-				return nil
+				return &interfaces.DeleteByQueryResult{}, nil
 			})
 
-		require.NoError(t, manager.DeleteDocumentsByQuery(ctx, "idx", resource, params))
+		_, err := manager.DeleteDocumentsByQuery(ctx, "idx", resource, params)
+		require.NoError(t, err)
 		assert.Nil(t, params.ActualFilterCond)
 		assert.Same(t, params, gotParams)
 		assert.Equal(t, SchemaForQuery(resource.SchemaDefinition), gotSchema)

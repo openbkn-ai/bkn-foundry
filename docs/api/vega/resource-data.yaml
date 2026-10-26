@@ -18,7 +18,7 @@ info:
     1. **通用资源数据查询**：`POST /resources/{id}/data` + `X-HTTP-Method-Override: GET`，
        对任意 category 的 Resource 执行数据查询（filter + 分页）。
     2. **dataset documents 的写/删/访问**：`POST` 的 `Override: POST` 创建一条文档，
-       `PUT` 完整替换一条文档，`GET` / `DELETE` 支持按逗号分隔的文档 ID 批量操作；
+       `PUT /resources/{id}/data` 批量完整替换文档，单条 `PUT` 完整替换一条文档，`GET` / `DELETE` 支持按逗号分隔的文档 ID 批量操作；
        它们以及 `POST` 的 `Override: DELETE` 分支，仅对 `Resource.category=dataset` 生效。
 
     **dataset 不顶层化**：dataset 在系统中只是 `Resource.category=dataset` 的特化形态，
@@ -28,7 +28,8 @@ info:
     `X-HTTP-Method-Override` 头多分发，是为了兼容现有 query 语义并在同一条路径上
     暴露 create / delete-by-filter，避免在仓库内引入新的"动作端点"形态。
 
-    **错误码复用 Resource 系列**：本规范不引入 `Dataset.*` 专属错误码；单条文档不存在
+    **错误码**：常规操作复用 Resource 系列；条件删除部分完成使用
+    `VegaBackend.Dataset.DeleteIncomplete`。单条文档不存在
     与 resource 不存在共用 `VegaBackend.Resource.NotFound`，靠 `error_details` 区分。
 
     cursor 可通过 `DELETE /resources/cursors/{cursor}` 提前关闭，详见
@@ -86,11 +87,21 @@ paths:
 
         **`Override: POST` 响应**：201 + `{ id }`。后端生成文档 ID；携带 `_id` 的 body 返回 400。
 
-        **`Override: DELETE` 响应**：204。空 `filter_condition` 拒绝 400 避免误删全表。
+        **`Override: DELETE` 响应**：成功默认返回 204；`?return_result=true` 时返回
+        200 和 `DeleteByQueryResult`。部分失败、版本冲突或超时返回 500
+        `VegaBackend.Dataset.DeleteIncomplete`，`error_details` 包含删除数量及失败结果。
+        失败时已删除的文档不会回滚，重试前应核验业务状态。
+        空 `filter_condition` 返回 400。
 
         非 dataset category 的 resource 调 Override=POST/DELETE → 400
         `VegaBackend.Resource.InternalError.InvalidCategory`。
       parameters:
+        - name: return_result
+          in: query
+          description: 仅 Override=DELETE 生效；true 时成功返回 200 和实际结果，默认保持 204。
+          schema:
+            type: boolean
+            default: false
         - name: X-HTTP-Method-Override
           description: 必填；值为 GET / POST / DELETE 之一
           in: header
@@ -111,11 +122,13 @@ paths:
                 - $ref: "#/components/schemas/Document"
       responses:
         "200":
-          description: Override=GET 查询成功
+          description: Override=GET 查询成功，或 Override=DELETE 且 return_result=true 时删除完成
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListResponse"
+                oneOf:
+                  - $ref: "#/components/schemas/ListResponse"
+                  - $ref: "#/components/schemas/DeleteByQueryResult"
         "201":
           description: Override=POST 创建成功
           content:
@@ -148,6 +161,62 @@ paths:
           $ref: "#/components/responses/InternalServerError"
         "501":
           $ref: "#/components/responses/NotImplemented"
+    put:
+      summary: 按指定 ID 批量完整替换 Dataset 文档（upsert）
+      operationId: bulkReplaceDatasetDocuments
+      description: |
+        仅支持 Dataset。按 entry 的 `_id` 创建或完整替换文档，未提供的旧字段不保留。
+        每次提交 1–1000 条，请求体不超过 32 MiB。
+
+        `_id` 必须是非空白的有效 UTF-8 字符串，最多 512 字节，同批不能重复。
+        ID 校验失败时整批返回 400；任一文档校验或向量生成失败时整批返回错误，不写入文档。
+
+        写入结果按输入顺序返回，可能部分成功，请逐条检查 `status`、`error_code` 和 `retryable`。
+        `outcome_unknown` 表示可能已经写入，重试前应核验结果，并避免旧数据覆盖新数据。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entries]
+              properties:
+                entries:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items:
+                    allOf:
+                      - $ref: "#/components/schemas/Document"
+                      - type: object
+                        required: [_id]
+                        properties:
+                          _id:
+                            type: string
+                            description: 文档 ID，UTF-8 最多 512 字节，不能全为空白。
+      responses:
+        "200":
+          description: 请求处理完成，含逐条成功或失败结果
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DocumentWriteResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
   /resources/{id}/data/{docid}:
     parameters:
       - name: id
@@ -329,11 +398,47 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
   schemas:
+    DocumentWriteResult:
+      type: object
+      required: [status, retryable]
+      properties:
+        id:
+          type: string
+          description: 文档 ID；条件删除 failures 不提供源端 ID。
+        status:
+          type: integer
+          description: 单条 HTTP 风格状态码，2xx 表示成功。
+        error_code:
+          type: string
+          description: 仅失败时返回；稳定分类，不含底层错误文案。
+          enum: [invalid_document, version_conflict, write_unavailable, write_rejected, outcome_unknown]
+        retryable:
+          type: boolean
+          description: 可在核验业务状态后重试；outcome_unknown 不能推断未写入。
+    DeleteByQueryResult:
+      type: object
+      required: [deleted, version_conflicts, timed_out, failures]
+      properties:
+        deleted:
+          type: integer
+          format: int64
+          minimum: 0
+        version_conflicts:
+          type: integer
+          format: int64
+          minimum: 0
+        timed_out:
+          type: boolean
+        failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentWriteResult"
     Document:
       description: |
         文档对象。content 字段集开放，由具体 dataset schema 决定。
         - `POST /resources/{id}/data`（Override=POST）创建一条文档；不得携带 `_id`。
         - `PUT /resources/{id}/data/{docid}` 如携带 `_id`，以 path 为准。
+        - `PUT /resources/{id}/data` 的 entries 直接包含文档，每条必须通过 `_id` 指定文档 ID。
       type: object
       additionalProperties: true
       properties:

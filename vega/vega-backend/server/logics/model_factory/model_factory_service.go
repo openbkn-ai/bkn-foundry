@@ -72,7 +72,18 @@ func (mfs *modelFactoryService) GetVector(ctx context.Context, m *interfaces.Sma
 		if len(vectors) != len(batch) {
 			return nil, fmt.Errorf("vector count mismatch: expected %d, got %d", len(batch), len(vectors))
 		}
-		result = append(result, vectors...)
+		// 每个模型子批次的 index 从零开始；先校验并重排，再拼接输入顺序。
+		ordered := make([]*interfaces.VectorResp, len(batch))
+		for _, vector := range vectors {
+			if vector == nil || vector.Index < 0 || vector.Index >= len(batch) {
+				return nil, fmt.Errorf("vector response contains an invalid index or nil item")
+			}
+			if ordered[vector.Index] != nil {
+				return nil, fmt.Errorf("vector response contains duplicate index %d", vector.Index)
+			}
+			ordered[vector.Index] = vector
+		}
+		result = append(result, ordered...)
 	}
 	return result, nil
 }

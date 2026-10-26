@@ -397,15 +397,16 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			})
 		indexedBatches := 0
 		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).Times(72).DoAndReturn(
-			func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {
+			func(ctx context.Context, indexName string, documents []interfaces.DocumentWrite) ([]interfaces.DocumentWriteResult, error) {
 				require.Len(t, documents, 1000)
-				for _, document := range documents {
+				for _, write := range documents {
+					document := write.Document
 					id := document["id"].(int64)
 					expected := payloads[(int(id-8001)%1000+indexedBatches+1)%len(payloads)].stored
 					assert.Equal(t, expected, document["payload"])
 				}
 				indexedBatches++
-				return nil, nil
+				return successfulIndexDocuments(ctx, indexName, documents)
 			})
 		newMark := `{"mode":"batch","cursor":[{"key":"id","value":80000}]}`
 		for range 72 {
@@ -481,7 +482,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 				assert.EqualValues(t, 1, *progress.TotalCount)
 				return true, nil
 			})
-		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).Return(nil, nil)
+		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).DoAndReturn(successfulIndexDocuments)
 		mockDB.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
 		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil)
@@ -545,7 +546,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 				}
 				return true, nil
 			})
-		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).Return(nil, nil)
+		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).DoAndReturn(successfulIndexDocuments)
 		newMark := `{"mode":"batch","cursor":[{"key":"id","value":10}]}`
 		mockDB.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
@@ -709,9 +710,9 @@ func TestBatchBuildWorkerReadsSameIncrementalValueAcrossPages(t *testing.T) {
 		})
 	batchSizes := make([]int, 0, 2)
 	lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).Times(2).DoAndReturn(
-		func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {
+		func(ctx context.Context, indexName string, documents []interfaces.DocumentWrite) ([]interfaces.DocumentWriteResult, error) {
 			batchSizes = append(batchSizes, len(documents))
-			return nil, nil
+			return successfulIndexDocuments(ctx, indexName, documents)
 		})
 	for range 2 {
 		mockDB.ExpectBegin()

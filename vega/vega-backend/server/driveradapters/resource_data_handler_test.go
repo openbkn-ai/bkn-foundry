@@ -10,6 +10,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -571,17 +572,18 @@ func Test_ResourceDataRestHandler_DeleteResourceDataByQuery(t *testing.T) {
 		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		ds.EXPECT().DeleteDocumentsByQuery(gomock.Any(), resource, gomock.Any()).Return(nil)
+		ds.EXPECT().DeleteDocumentsByQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.DeleteByQueryResult{Deleted: 3, Failures: []interfaces.DocumentWriteResult{}}, nil)
 
 		body := `{"filter_condition":{"name":"title","operation":"==","value":"old"}}`
-		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(body))
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data?return_result=true", strings.NewReader(body))
 		req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodDelete)
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+		assert.JSONEq(t, `{"deleted":3,"failures":[],"version_conflicts":0,"timed_out":false}`, w.Body.String())
 	})
 
 	t.Run("rejects a selector that does not decode to a filter condition", func(t *testing.T) {
@@ -614,18 +616,6 @@ func Test_ResourceDataRestHandler_DeleteResourceDataByQuery(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "filter is required")
 	})
-}
-
-func Test_ResourceDataRestHandler_PutResourceDataIsNotRegistered(t *testing.T) {
-	restoreGinMode := setGinMode()
-	defer restoreGinMode()
-
-	engine, _, _, _ := setupResourceDataHandlerTest(t)
-	req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"title":"one"}`))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, req)
-	require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 }
 
 func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
@@ -993,4 +983,166 @@ func Test_ResourceDataRestHandler_S2SInternalAccessMarker(t *testing.T) {
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 		assert.False(t, gotS2S, "external endpoint must keep per-account authorization")
 	})
+}
+
+func TestResourceDataRestHandlerPutResourceData(t *testing.T) {
+	t.Run("collection PUT authorizes once and passes loaded resource while preserving numbers", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ds := vmock.NewMockDatasetService(ctrl)
+		engine := gin.New()
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, nil)
+		handler.RegisterPublic(engine)
+		resource := sampleDatasetResource()
+		gomock.InOrder(
+			rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1", interfaces.OPERATION_TYPE_DATA_WRITE).Return(nil).Times(1),
+			rs.EXPECT().InternalGetByID(gomock.Any(), gomock.Nil(), "res-1").Return(resource, nil).Times(1),
+		)
+		ds.EXPECT().BulkReplaceDocuments(gomock.Any(), resource, gomock.Any()).DoAndReturn(func(ctx context.Context, got *interfaces.Resource, entries []map[string]any) ([]interfaces.DocumentWriteResult, error) {
+			require.Same(t, resource, got)
+			require.Len(t, entries, 1)
+			assert.Equal(t, "doc", entries[0]["_id"])
+			assert.Equal(t, "9007199254740993", fmt.Sprint(entries[0]["value"]))
+			account := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+			assert.Equal(t, interfaces.BuiltinAdminID, account.ID)
+			return []interfaces.DocumentWriteResult{{ID: "doc", Status: 201}}, nil
+		})
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"entries":[{"_id":"doc","value":9007199254740993}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, interfaces.BuiltinAdminID)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		require.Equal(t, 200, w.Code)
+		assert.JSONEq(t, `{"entries":[{"id":"doc","status":201,"retryable":false}]}`, w.Body.String())
+	})
+
+	for _, count := range []int{0, 1, interfaces.MaxDatasetBulkDocuments, interfaces.MaxDatasetBulkDocuments + 1} {
+		t.Run(fmt.Sprintf("document count %d", count), func(t *testing.T) {
+			engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+			resource := sampleDatasetResource()
+			rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+			valid := count > 0 && count <= interfaces.MaxDatasetBulkDocuments
+			if valid {
+				ds.EXPECT().BulkReplaceDocuments(gomock.Any(), resource, gomock.Any()).DoAndReturn(func(_ context.Context, _ *interfaces.Resource, entries []map[string]any) ([]interfaces.DocumentWriteResult, error) {
+					assert.Len(t, entries, count)
+					return []interfaces.DocumentWriteResult{}, nil
+				})
+			}
+			var body strings.Builder
+			body.WriteString(`{"entries":[`)
+			for i := 0; i < count; i++ {
+				if i > 0 {
+					body.WriteByte(',')
+				}
+				_, err := fmt.Fprintf(&body, `{"_id":"doc-%d"}`, i)
+				require.NoError(t, err)
+			}
+			body.WriteString(`]}`)
+			req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(body.String()))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			if valid {
+				assert.Equal(t, 200, w.Code)
+			} else {
+				assert.Equal(t, 400, w.Code)
+				assert.Contains(t, w.Body.String(), verrors.VegaBackend_InvalidParameter_RequestBody)
+			}
+		})
+	}
+
+	t.Run("oversized body is rejected before invoking service", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+		body := `{"entries":[{"_id":"doc"}]}` + strings.Repeat(" ", interfaces.MaxDatasetBulkBodyBytes)
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(body))
+		req.ContentLength = -1
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		assert.Equal(t, 400, w.Code)
+		assert.Contains(t, w.Body.String(), verrors.VegaBackend_InvalidParameter_RequestBody)
+	})
+	t.Run("malformed body is rejected", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"entries":`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		assert.Equal(t, 400, w.Code)
+	})
+	t.Run("service denial is preserved", func(t *testing.T) {
+		engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		ds.EXPECT().BulkReplaceDocuments(gomock.Any(), resource, gomock.Any()).Return(nil, httperrors.NewHTTPError(context.Background(), 403, httperrors.PublicError_Forbidden))
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"entries":[{"_id":"doc"}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		assert.Equal(t, 403, w.Code)
+	})
+
+	t.Run("permission denial prevents resource load and service call", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ds := vmock.NewMockDatasetService(ctrl)
+		engine := gin.New()
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, nil)
+		handler.RegisterPublic(engine)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1", interfaces.OPERATION_TYPE_DATA_WRITE).Return(httperrors.NewHTTPError(context.Background(), 403, httperrors.PublicError_Forbidden))
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"entries":`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		assert.Equal(t, 403, w.Code)
+	})
+	for _, tc := range []struct {
+		name     string
+		resource *interfaces.Resource
+		status   int
+	}{
+		{"missing resource", nil, 404}, {"wrong resource category", &interfaces.Resource{Category: interfaces.ResourceCategoryTable}, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine, rs, _, _ := setupResourceDataHandlerTest(t)
+			rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(tc.resource, nil)
+			req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"entries":`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			assert.Equal(t, tc.status, w.Code)
+		})
+	}
+
+}
+
+func TestResourceDataRestHandlerDeleteByQueryProgress(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		t.Run(fmt.Sprint(partial), func(t *testing.T) {
+			engine, rs, ds, _ := setupResourceDataHandlerTest(t)
+			resource := sampleDatasetResource()
+			rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+			progress := &interfaces.DeleteByQueryResult{Deleted: 2, TimedOut: partial, Failures: []interfaces.DocumentWriteResult{}}
+			var failure error
+			if partial {
+				failure = httperrors.NewHTTPError(context.Background(), 500, verrors.VegaBackend_Dataset_DeleteIncomplete).WithErrorDetails(progress)
+			}
+			ds.EXPECT().DeleteDocumentsByQuery(gomock.Any(), resource, gomock.Any()).Return(progress, failure)
+			req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/data", strings.NewReader(`{"filter_condition":{"name":"title","operation":"==","value":"old"}}`))
+			req.Header.Set(interfaces.HTTP_HEADER_METHOD_OVERRIDE, http.MethodDelete)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			if partial {
+				assert.Equal(t, 500, w.Code)
+				assert.Contains(t, w.Body.String(), `"deleted":2`)
+				assert.Contains(t, w.Body.String(), verrors.VegaBackend_Dataset_DeleteIncomplete)
+			} else {
+				assert.Equal(t, 204, w.Code)
+				assert.Empty(t, w.Body.String())
+			}
+		})
+	}
 }

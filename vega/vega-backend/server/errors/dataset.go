@@ -7,8 +7,9 @@
 // Package errors Dataset module error code
 package errors
 
-// Dataset error code (currently all are 400 Bad Request: schema/ Field definition validation)
+// Dataset 错误码涵盖 schema 校验和部分完成的数据操作。
 const (
+	VegaBackend_Dataset_DeleteIncomplete = "VegaBackend.Dataset.DeleteIncomplete"
 	// 400 Bad Request
 	VegaBackend_Dataset_InvalidParameter_SchemaDefinition  = "VegaBackend.Dataset.InvalidParameter.SchemaDefinition"
 	VegaBackend_Dataset_InvalidParameter_FieldName         = "VegaBackend.Dataset.InvalidParameter.FieldName"
@@ -29,6 +30,7 @@ const (
 )
 
 var DatasetErrCodeList = []string{
+	VegaBackend_Dataset_DeleteIncomplete,
 	// 400 Bad Request
 	VegaBackend_Dataset_InvalidParameter_SchemaDefinition,
 	VegaBackend_Dataset_InvalidParameter_FieldName,
