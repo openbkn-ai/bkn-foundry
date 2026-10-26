@@ -10,6 +10,7 @@ const (
 	BknProject_Lineage_InvalidKNID        = "BknProject.Lineage.InvalidKNID"
 	BknProject_Lineage_InvalidBranchName  = "BknProject.Lineage.InvalidBranchName"
 	BknProject_Lineage_InvalidDefinitions = "BknProject.Lineage.InvalidDefinitions"
+	BknProject_Lineage_NotLiveNetwork     = "BknProject.Lineage.NotLiveNetwork"
 
 	// 403
 	BknProject_Lineage_MainBranchReadOnly = "BknProject.Lineage.MainBranchReadOnly"
@@ -36,6 +37,7 @@ var (
 		BknProject_Lineage_InvalidKNID,
 		BknProject_Lineage_InvalidBranchName,
 		BknProject_Lineage_InvalidDefinitions,
+		BknProject_Lineage_NotLiveNetwork,
 		BknProject_Lineage_MainBranchReadOnly,
 		BknProject_Lineage_NotFound,
 		BknProject_Lineage_BranchNotFound,

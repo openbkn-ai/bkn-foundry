@@ -397,8 +397,12 @@ func Test_LineageService_CheckDrift(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		ds := pmock.NewMockDriftService(mockCtrl)
-		svc := &lineageService{ds: ds}
+		ra := pmock.NewMockReleaseAccess(mockCtrl)
+		svc := &lineageService{ds: ds, ra: ra}
 		ctx := context.Background()
+		// Before its first release a lineage's live network is the network it was started from.
+		ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", Limit: 1}).
+			Return([]*interfaces.Release{}, nil).AnyTimes()
 		drifted := &interfaces.DriftReport{LineageID: "orders", KNID: "orders",
 			PathDiff: interfaces.PathDiff{Added: []string{}, Changed: []string{"network.bkn"}, Removed: []string{}}}
 
@@ -433,18 +437,43 @@ func Test_LineageService_CheckDrift(t *testing.T) {
 		})
 
 		Convey("A missing network or lineage replies 404\n", func() {
-			ds.EXPECT().DriftCheck(gomock.Any(), token, "orders", "gone").
+			ds.EXPECT().DriftCheck(gomock.Any(), token, "orders", "orders").
 				Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
-			_, err := svc.CheckDrift(ctx, token, "orders", "gone", false, author)
+			_, err := svc.CheckDrift(ctx, token, "orders", "orders", false, author)
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusNotFound)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_BknBackendRequestFailed)
 
-			ds.EXPECT().DriftCheck(gomock.Any(), token, "missing", "orders").
+			ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "missing", Limit: 1}).
+				Return([]*interfaces.Release{}, nil)
+			ds.EXPECT().DriftCheck(gomock.Any(), token, "missing", "missing").
 				Return(nil, fmt.Errorf("read main of lineage missing: %w", git.ErrRepositoryNotExists))
-			_, err = svc.CheckDrift(ctx, token, "missing", "orders", false, author)
+			_, err = svc.CheckDrift(ctx, token, "missing", "missing", false, author)
 			_, code = httpCode(err)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_NotFound)
+		})
+
+		Convey("A network that is not the lineage's live network is refused before anything is read\n", func() {
+			_, err := svc.CheckDrift(ctx, token, "orders", "x", true, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_NotLiveNetwork)
+		})
+
+		Convey("After a release only the released network is live, not the one it replaced\n", func() {
+			released := pmock.NewMockReleaseAccess(mockCtrl)
+			svc := &lineageService{ds: ds, ra: released}
+			released.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: "orders", Limit: 1}).
+				Return([]*interfaces.Release{{LineageID: "orders", NetworkID: "orders_v1_1_0", Version: "1.1.0"}}, nil).Times(2)
+
+			_, err := svc.CheckDrift(ctx, token, "orders", "orders", true, author)
+			_, code := httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_NotLiveNetwork)
+
+			ds.EXPECT().DriftCheck(gomock.Any(), token, "orders", "orders_v1_1_0").Return(drifted, nil)
+			_, err = svc.CheckDrift(ctx, token, "orders", "orders_v1_1_0", false, author)
+			So(err, ShouldBeNil)
 		})
 
 		Convey("An empty kn_id is refused\n", func() {

@@ -13,6 +13,7 @@ var lineageEnUS = i18n.I18nMessages{
 		"BknProject.Lineage.InvalidKNID":             "Invalid Knowledge Network ID. kn_id is required.",
 		"BknProject.Lineage.InvalidBranchName":       "Invalid Branch Name. Use a git branch name such as project/<id>; main, names with spaces and names with \"..\" are not allowed.",
 		"BknProject.Lineage.InvalidDefinitions":      "Invalid Definitions. The request body must be a non-empty BKN tar in the format bkn-backend exports.",
+		"BknProject.Lineage.NotLiveNetwork":          "Not the lineage's live network. A drift check only runs against the network of the lineage's latest release, or the network it was started from before any release; see error_details.",
 		"BknProject.Lineage.MainBranchReadOnly":      "Main Branch Is Read-Only. main changes only by syncing from the live network or by publishing.",
 		"BknProject.Lineage.NotFound":                "Lineage Not Found. Create the lineage from its knowledge network first.",
 		"BknProject.Lineage.BranchNotFound":          "Branch Not Found. The branch or ref does not exist in this lineage.",

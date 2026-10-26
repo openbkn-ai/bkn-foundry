@@ -13,6 +13,7 @@ var lineageZhCN = i18n.I18nMessages{
 		"BknProject.Lineage.InvalidKNID":             "知识网络 ID 不合法 kn_id 不能为空。",
 		"BknProject.Lineage.InvalidBranchName":       "分支名不合法 请使用形如 project/<id> 的 git 分支名，不能是 main，也不能包含空格或 \"..\"。",
 		"BknProject.Lineage.InvalidDefinitions":      "定义包不合法 请求体必须是非空的 BKN tar 包，格式与 bkn-backend 导出的一致。",
+		"BknProject.Lineage.NotLiveNetwork":          "不是该谱系的线上网络 漂移检查只能针对该谱系最新发布的网络，尚未发布时为创建谱系所用的网络，见 error_details。",
 		"BknProject.Lineage.MainBranchReadOnly":      "main 分支只读 main 只能通过同步线上网络或发布来更新。",
 		"BknProject.Lineage.NotFound":                "发布谱系不存在 请先从知识网络创建该谱系。",
 		"BknProject.Lineage.BranchNotFound":          "分支不存在 该谱系中没有这个分支或引用。",

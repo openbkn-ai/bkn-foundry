@@ -42,11 +42,12 @@ type lineageService struct {
 	gs  interfaces.GitStore
 	bba interfaces.BknBackendAccess
 	ds  interfaces.DriftService
+	ra  interfaces.ReleaseAccess
 }
 
 func NewLineageService() interfaces.LineageService {
 	lsOnce.Do(func() {
-		ls = &lineageService{gs: logics.GS, bba: logics.BBA, ds: drift.NewDriftService()}
+		ls = &lineageService{gs: logics.GS, bba: logics.BBA, ds: drift.NewDriftService(), ra: logics.RA}
 	})
 	return ls
 }
@@ -249,6 +250,18 @@ func (s *lineageService) CheckDrift(ctx context.Context, token string, lineageID
 		span.SetStatus(codes.Error, "Empty kn_id")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidKNID)
 	}
+	// Committing another network's definitions would replace main with them, so only the
+	// lineage's live network is checked; an older release of the lineage is not live either.
+	live, err := s.liveNetwork(ctx, lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Find live network failed")
+		return nil, toHTTPError(ctx, "Find live network failed", err)
+	}
+	if knID != live {
+		span.SetStatus(codes.Error, "Not the live network")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_NotLiveNetwork).
+			WithErrorDetails(map[string]any{"kn_id": knID, "live_network_id": live})
+	}
 	report, err := s.ds.DriftCheck(ctx, token, lineageID, knID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Drift check failed")
@@ -330,4 +343,17 @@ func toHTTPError(ctx context.Context, operation string, err error) error {
 	otellog.LogError(ctx, operation, err)
 	return httperrors.NewHTTPError(ctx, http.StatusInternalServerError, perrors.BknProject_Lineage_InternalError).
 		WithErrorDetails(err.Error())
+}
+
+// liveNetwork returns the network of the lineage's latest release, or the lineage id, which is
+// the network the lineage was started from, before the first release.
+func (s *lineageService) liveNetwork(ctx context.Context, lineageID string) (string, error) {
+	latest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: lineageID, Limit: 1})
+	if err != nil {
+		return "", err
+	}
+	if len(latest) == 0 {
+		return lineageID, nil
+	}
+	return latest[0].NetworkID, nil
 }
