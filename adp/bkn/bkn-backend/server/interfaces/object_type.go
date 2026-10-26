@@ -98,8 +98,12 @@ type ObjectType struct {
 	CommonInfo             `mapstructure:",squash"`
 	// Aliases are the other names of the object type (BKN spec 3.0, §6.8). An interactive update
 	// that leaves them out keeps the stored ones.
-	Aliases         []string `json:"aliases,omitempty" mapstructure:"aliases"`
-	aliasesDeclared bool
+	Aliases []string `json:"aliases,omitempty" mapstructure:"aliases"`
+	// Lifecycle says whether the object type is still in use (BKN spec 3.0, §4.3); nil is active. It
+	// is not Status, which holds the index information.
+	Lifecycle *Lifecycle `json:"lifecycle,omitempty" mapstructure:"lifecycle"`
+	// declared names the declaration fields the JSON carried, null included.
+	declared map[string]bool
 
 	KNID          string          `json:"kn_id" mapstructure:"kn_id"`
 	Branch        string          `json:"branch" mapstructure:"branch"`
@@ -247,34 +251,38 @@ type LengthRange struct {
 // ClearedDeclaration is a stored declaration an overwrite would clear: the file the definition is
 // overwritten with does not carry it.
 type ClearedDeclaration struct {
-	ObjectTypeID string `json:"object_type_id,omitempty"`
-	ActionTypeID string `json:"action_type_id,omitempty"`
+	ObjectTypeID   string `json:"object_type_id,omitempty"`
+	RelationTypeID string `json:"relation_type_id,omitempty"`
+	ActionTypeID   string `json:"action_type_id,omitempty"`
 	// Property is empty for a declaration of the definition itself, such as its aliases.
 	Property string   `json:"property,omitempty"`
 	Fields   []string `json:"fields"`
 }
 
-// EncodeIndexedConstraints rewrites data_properties[].constraints of an object type document for
-// the concept index as a JSON string. The index maps unknown paths dynamically, and a range bound
-// is a number on a numeric property but text on a date property: stored as they are, the first
-// document would fix the field's type and every later one with the other kind would be refused.
-// DecodeIndexedConstraints reverses it. A document without constraints is left as it is.
+// EncodeIndexedConstraints rewrites the property constraints of a concept document for the concept
+// index as JSON strings: data_properties[].constraints of an object type and
+// mapping_rules.properties[].constraints of a relation type. The index maps unknown paths
+// dynamically, and a range bound is a number on a numeric property but text on a date property:
+// stored as they are, the first document would fix the field's type and every later one with the
+// other kind would be refused. DecodeIndexedConstraints reverses it. A document without constraints
+// is left as it is.
 func EncodeIndexedConstraints(doc map[string]any) error {
-	props, _ := doc["data_properties"].([]any)
-	for _, prop := range props {
-		p, ok := prop.(map[string]any)
-		if !ok {
-			continue
-		}
-		if c, exists := p[DECLARATION_CONSTRAINTS]; exists && c != nil {
-			if _, done := c.(string); done {
+	for _, props := range indexedPropertyLists(doc) {
+		for _, prop := range props {
+			p, ok := prop.(map[string]any)
+			if !ok {
 				continue
 			}
-			encoded, err := json.Marshal(c)
-			if err != nil {
-				return err
+			if c, exists := p[DECLARATION_CONSTRAINTS]; exists && c != nil {
+				if _, done := c.(string); done {
+					continue
+				}
+				encoded, err := json.Marshal(c)
+				if err != nil {
+					return err
+				}
+				p[DECLARATION_CONSTRAINTS] = string(encoded)
 			}
-			p[DECLARATION_CONSTRAINTS] = string(encoded)
 		}
 	}
 	return nil
@@ -282,21 +290,37 @@ func EncodeIndexedConstraints(doc map[string]any) error {
 
 // DecodeIndexedConstraints reads back what EncodeIndexedConstraints wrote.
 func DecodeIndexedConstraints(entry map[string]any) error {
-	props, _ := entry["data_properties"].([]any)
-	for _, prop := range props {
-		p, ok := prop.(map[string]any)
-		if !ok {
-			continue
-		}
-		if encoded, isText := p[DECLARATION_CONSTRAINTS].(string); isText {
-			constraints := &PropertyConstraints{}
-			if err := json.Unmarshal([]byte(encoded), constraints); err != nil {
-				return fmt.Errorf("data property %v constraints in the concept index: %w", p["name"], err)
+	for _, props := range indexedPropertyLists(entry) {
+		for _, prop := range props {
+			p, ok := prop.(map[string]any)
+			if !ok {
+				continue
 			}
-			p[DECLARATION_CONSTRAINTS] = constraints
+			if encoded, isText := p[DECLARATION_CONSTRAINTS].(string); isText {
+				constraints := &PropertyConstraints{}
+				if err := json.Unmarshal([]byte(encoded), constraints); err != nil {
+					return fmt.Errorf("data property %v constraints in the concept index: %w", p["name"], err)
+				}
+				p[DECLARATION_CONSTRAINTS] = constraints
+			}
 		}
 	}
 	return nil
+}
+
+// indexedPropertyLists returns the property lists of a concept document: the data properties of an
+// object type and the relation properties of an indirect relation type.
+func indexedPropertyLists(doc map[string]any) [][]any {
+	var lists [][]any
+	if props, ok := doc["data_properties"].([]any); ok {
+		lists = append(lists, props)
+	}
+	if rules, ok := doc["mapping_rules"].(map[string]any); ok {
+		if props, ok := rules[DECLARATION_PROPERTIES].([]any); ok {
+			lists = append(lists, props)
+		}
+	}
+	return lists
 }
 
 // IsEmpty reports whether the constraints declare nothing; {} in a request clears them.

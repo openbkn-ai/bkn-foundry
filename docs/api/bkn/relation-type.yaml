@@ -211,6 +211,16 @@ paths:
             enum: [normal, overwrite, ignore]
             default: normal
           in: query
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing relation type,
+            such as a 2.x package or an old JSON export, would clear them. Without this parameter the request is
+            refused with 409 BknBackend.RelationType.DeclarationsWouldBeCleared, whose details list the cleared
+            declarations (`relation_type_id`, `fields`); pass true to clear them.
+          schema:
+            type: boolean
+            default: false
         - name: strict_mode
           description: Whether to validate dependency existence. Defaults to true. When unset, falls back to the deprecated validate_dependency.
           schema:
@@ -877,6 +887,16 @@ paths:
             enum: [normal, ignore, overwrite]
             default: normal
           in: query
+        - name: confirm_clear_declarations
+          in: query
+          description: |
+            With overwrite, a file that does not carry the BKN spec 3.0 declarations of an existing relation type,
+            such as a 2.x package or an old JSON export, would clear them. Without this parameter the request is
+            refused with 409 BknBackend.RelationType.DeclarationsWouldBeCleared, whose details list the cleared
+            declarations (`relation_type_id`, `fields`); pass true to clear them.
+          schema:
+            type: boolean
+            default: false
       requestBody:
         required: true
         content:
@@ -1010,6 +1030,36 @@ components:
         name:
           description: Data view name. Returned when retrieving details.
           type: string
+    Lifecycle:
+      description: |
+        BKN spec 3.0. Whether the definition is still in use. Without it the definition is active. status
+        deprecated needs a reason; replaced_by names an active definition of the same kind.
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, deprecated]
+        reason:
+          type: string
+        replaced_by:
+          type: string
+    RelationConstraints:
+      description: BKN spec 3.0. The Relation Constraints section of the relation type.
+      type: object
+      properties:
+        required:
+          description: The ends whose every instance has at least one counterpart.
+          type: array
+          items:
+            type: string
+            enum: [source, target]
+        characteristics:
+          description: For a relation from an object type to itself.
+          type: array
+          items:
+            type: string
+            enum: [symmetric, transitive]
     IndirectMappingRule:
       description: Mapping rules for an indirect relation type backed by a Vega resource.
       required:
@@ -1028,6 +1078,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Mapping"
+        properties:
+          description: |
+            BKN spec 3.0. The relation properties: columns of the backing resource read on each edge, written like
+            the data properties of an object type, with mapped_field naming a column that does not join the ends.
+            No unique constraint applies.
+          type: array
+          items:
+            $ref: "#/components/schemas/DataProperty"
     FilteredCrossJoinMappingRule:
       description: |
         Matching rules for the filtered_cross_join relation type (FCJ).
@@ -1464,8 +1522,39 @@ components:
             - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: Mapping rule. For direct, this is a Mapping array; for filtered_cross_join (FCJ), this is a FilteredCrossJoinMappingRule with per-side conditions and no key mapping.
+        reverse_name:
+          description: BKN spec 3.0. The name of the relation read from the target to the source, with the rules of name. Empty is none.
+          type: string
+        aliases:
+          description: BKN spec 3.0. Other names of the relation type. Empty is none.
+          type: array
+          items:
+            type: string
+        cardinality:
+          description: BKN spec 3.0. How many counterparts an instance of each end has, from source to target. Empty is not declared; a filtered_cross_join relation can only be many_to_many.
+          type: string
+          enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+        constraints:
+          $ref: "#/components/schemas/RelationConstraints"
+        lifecycle:
+          $ref: "#/components/schemas/Lifecycle"
+        importance:
+          description: BKN spec 3.0. primary (the default, returned as empty) or secondary.
+          type: string
+          enum: [primary, secondary]
+        fallback_for:
+          description: BKN spec 3.0. On a secondary relation, the ID of the primary relation it stands in for when a source instance has no primary counterpart. Empty is none.
+          type: string
+        verification:
+          description: BKN spec 3.0. confirmed when the relation joins on real identifiers, unconfirmed when it joins by inferred rules. Empty is not declared.
+          type: string
+          enum: [confirmed, unconfirmed]
     UpdateRelationType:
-      description: Relation type update information
+      description: |
+        Relation type update information. The BKN spec 3.0 declarations (reverse_name, aliases, cardinality,
+        constraints, lifecycle, importance, fallback_for, verification and mapping_rules.properties) are each one
+        field: a request that leaves one out keeps the stored value, null, "", [] or {} clears it, and a value
+        replaces it whole.
       required:
         - name
         - branch
@@ -1513,6 +1602,33 @@ components:
             - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
+        reverse_name:
+          description: BKN spec 3.0. The name of the relation read from the target to the source, with the rules of name. Empty is none.
+          type: string
+        aliases:
+          description: BKN spec 3.0. Other names of the relation type. Empty is none.
+          type: array
+          items:
+            type: string
+        cardinality:
+          description: BKN spec 3.0. How many counterparts an instance of each end has, from source to target. Empty is not declared; a filtered_cross_join relation can only be many_to_many.
+          type: string
+          enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+        constraints:
+          $ref: "#/components/schemas/RelationConstraints"
+        lifecycle:
+          $ref: "#/components/schemas/Lifecycle"
+        importance:
+          description: BKN spec 3.0. primary (the default, returned as empty) or secondary.
+          type: string
+          enum: [primary, secondary]
+        fallback_for:
+          description: BKN spec 3.0. On a secondary relation, the ID of the primary relation it stands in for when a source instance has no primary counterpart. Empty is none.
+          type: string
+        verification:
+          description: BKN spec 3.0. confirmed when the relation joins on real identifiers, unconfirmed when it joins by inferred rules. Empty is not declared.
+          type: string
+          enum: [confirmed, unconfirmed]
     RelationTypeDetail:
       description: Relation type
       required:
@@ -1585,6 +1701,33 @@ components:
             - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
+        reverse_name:
+          description: BKN spec 3.0. The name of the relation read from the target to the source, with the rules of name. Empty is none.
+          type: string
+        aliases:
+          description: BKN spec 3.0. Other names of the relation type. Empty is none.
+          type: array
+          items:
+            type: string
+        cardinality:
+          description: BKN spec 3.0. How many counterparts an instance of each end has, from source to target. Empty is not declared; a filtered_cross_join relation can only be many_to_many.
+          type: string
+          enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+        constraints:
+          $ref: "#/components/schemas/RelationConstraints"
+        lifecycle:
+          $ref: "#/components/schemas/Lifecycle"
+        importance:
+          description: BKN spec 3.0. primary (the default, returned as empty) or secondary.
+          type: string
+          enum: [primary, secondary]
+        fallback_for:
+          description: BKN spec 3.0. On a secondary relation, the ID of the primary relation it stands in for when a source instance has no primary counterpart. Empty is none.
+          type: string
+        verification:
+          description: BKN spec 3.0. confirmed when the relation joins on real identifiers, unconfirmed when it joins by inferred rules. Empty is not declared.
+          type: string
+          enum: [confirmed, unconfirmed]
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
@@ -1671,6 +1814,33 @@ components:
             - $ref: "#/components/schemas/IndirectMappingRule"
             - $ref: "#/components/schemas/FilteredCrossJoinMappingRule"
           description: Associated matching rule. For direct, this is a Mapping array; for filtered_cross_join, this is a FilteredCrossJoinMappingRule.
+        reverse_name:
+          description: BKN spec 3.0. The name of the relation read from the target to the source, with the rules of name. Empty is none.
+          type: string
+        aliases:
+          description: BKN spec 3.0. Other names of the relation type. Empty is none.
+          type: array
+          items:
+            type: string
+        cardinality:
+          description: BKN spec 3.0. How many counterparts an instance of each end has, from source to target. Empty is not declared; a filtered_cross_join relation can only be many_to_many.
+          type: string
+          enum: [one_to_one, one_to_many, many_to_one, many_to_many]
+        constraints:
+          $ref: "#/components/schemas/RelationConstraints"
+        lifecycle:
+          $ref: "#/components/schemas/Lifecycle"
+        importance:
+          description: BKN spec 3.0. primary (the default, returned as empty) or secondary.
+          type: string
+          enum: [primary, secondary]
+        fallback_for:
+          description: BKN spec 3.0. On a secondary relation, the ID of the primary relation it stands in for when a source instance has no primary counterpart. Empty is none.
+          type: string
+        verification:
+          description: BKN spec 3.0. confirmed when the relation joins on real identifiers, unconfirmed when it joins by inferred rules. Empty is not declared.
+          type: string
+          enum: [confirmed, unconfirmed]
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:

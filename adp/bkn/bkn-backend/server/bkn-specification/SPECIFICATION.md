@@ -67,7 +67,6 @@ bkn_spec: "3.0"
 | 关系声明：`reverse_name`、`Cardinality`、`### Relation Constraints`、关系属性（§7.6） | 新字段忽略，小节并入描述 | 解析为声明，写错时拒绝 |
 | 值类型 `value_types/`（§16） | 目录忽略 | 解析为值类型定义 |
 | 同义写法、未知内容、被忽略的多余内容（§1.3） | 静默接受、忽略或并入描述 | 每样东西只有一种写法，其余拒绝并指出位置 |
-| bkn-backend 尚未存储的 3.0 声明（上表的生命周期与关系声明，含关系类的别名） | — | 规范库照常解析与校验；上传接口拒绝，错误信息以 `is not supported by this version yet`（此版本尚不支持）结尾并指出位置，不入库后丢失。存储随 bkn-foundry#2284 实现；属性声明、值类型与对象类、行动类、属性的别名已存储 |
 
 3.0 的拒绝原因会出现在上传接口的错误详情中。
 
@@ -266,7 +265,7 @@ frontmatter 中的其他字段除各章节明确列出的之外，2.x 下一律�
 
 ### 4.3 生命周期（3.0）
 
-> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储生命周期为设计中（bkn-foundry#2284）；在此之前上传含这些声明的 3.0 包时按「此版本尚不支持」拒绝并指出位置，不入库后丢失。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储对象类、关系类、行动类的 `lifecycle`，接口读写它，保存时按本节规则检查单个定义；上传与导出 3.0 包时随包往返。保存时检查跨定义的规则（`replaced_by`、端点弃用）与 `deprecated` 不进概念召回仍在实现中（bkn-foundry#2284）。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 对象类、关系类、行动类的 frontmatter 可写 `lifecycle`，取值与含义参考 Palantir 的 status；接口与 JSON 导入导出中是同名、同结构的字段：
 
@@ -768,7 +767,7 @@ value: 启用
 
 ### 7.6 关系声明（3.0）
 
-> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储关系声明为设计中（bkn-foundry#2284）；在此之前上传含这些声明的 3.0 包时按「此版本尚不支持」拒绝并指出位置，不入库后丢失。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 规范库已实现解析、校验与导出。bkn-backend 存储关系声明（`reverse_name`、`aliases`、`Cardinality`、`### Relation Constraints`、`importance`、`fallback_for`、`verification`）与关系属性，关系类接口读写它们，保存时按本节规则检查单个定义；上传与导出 3.0 包时随包往返。保存时检查跨定义的规则（`fallback_for`）与删除被引用的定义时拒绝仍在实现中（bkn-foundry#2284）。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 ````markdown
 ---
@@ -1460,7 +1459,7 @@ unit: 元
 
 ## 附录 C：3.0 完整示例
 
-> **状态：3.0。** 本例的全部声明已在规范库实现，规范库按本例加载与校验通过；bkn-backend 存储关系声明与生命周期（bkn-foundry#2284）前，上传本例按「此版本尚不支持」拒绝。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
+> **状态：3.0。** 本例的全部声明已在规范库实现，规范库按本例加载与校验通过；bkn-backend 可上传、存储并导出本例。设计见 [bkn-docs issue-168](https://github.com/openbkn-ai/bkn-docs/blob/main/docs/foundry/bkn/design/issue-168-property-and-relation-declarations.md)。
 
 一个门诊检验网络，用到 §6.8、§7.6、§16 的全部声明：时间 / 空间 / 状态语义、必填、约束、三种值类型、别名、反向名称、基数、关系约束与关系属性。
 

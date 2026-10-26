@@ -206,10 +206,10 @@ paths:
         - name: confirm_clear_declarations
           in: query
           description: |
-            With overwrite, a file that does not carry the aliases of an existing action type (BKN spec 3.0),
+            With overwrite, a file that does not carry the aliases or lifecycle of an existing action type (BKN spec 3.0),
             such as a 2.x package or an old JSON export, would clear them. Without this parameter the request is
             refused with 409 BknBackend.ActionType.DeclarationsWouldBeCleared, whose details list the cleared
-            aliases (`action_type_id`, `fields`); pass true to clear them.
+            declarations (`action_type_id`, `fields`); pass true to clear them.
           schema:
             type: boolean
             default: false
@@ -533,10 +533,10 @@ paths:
         - name: confirm_clear_declarations
           in: query
           description: |
-            With overwrite, a file that does not carry the aliases of an existing action type (BKN spec 3.0),
+            With overwrite, a file that does not carry the aliases or lifecycle of an existing action type (BKN spec 3.0),
             such as a 2.x package or an old JSON export, would clear them. Without this parameter the request is
             refused with 409 BknBackend.ActionType.DeclarationsWouldBeCleared, whose details list the cleared
-            aliases (`action_type_id`, `fields`); pass true to clear them.
+            declarations (`action_type_id`, `fields`); pass true to clear them.
           schema:
             type: boolean
             default: false
@@ -1034,6 +1034,21 @@ components:
           type: array
           items:
             type: string
+        lifecycle:
+          description: |
+            Whether the action type is still in use (BKN spec 3.0, §4.3); not the index status. Without it the action type
+            is active. status deprecated needs a reason; replaced_by names an active action type. An update that leaves the
+            field out keeps the stored lifecycle; null or {} clears it.
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [active, deprecated]
+            reason:
+              type: string
+            replaced_by:
+              type: string
         tags:
           description: Tags。
           type: array
@@ -1122,6 +1137,21 @@ components:
           type: array
           items:
             type: string
+        lifecycle:
+          description: |
+            Whether the action type is still in use (BKN spec 3.0, §4.3); not the index status. Without it the action type
+            is active. status deprecated needs a reason; replaced_by names an active action type. An update that leaves the
+            field out keeps the stored lifecycle; null or {} clears it.
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [active, deprecated]
+            reason:
+              type: string
+            replaced_by:
+              type: string
         tags:
           description: Tags. May be empty.
           type: array
@@ -1220,6 +1250,21 @@ components:
           type: array
           items:
             type: string
+        lifecycle:
+          description: |
+            Whether the action type is still in use (BKN spec 3.0, §4.3); not the index status. Without it the action type
+            is active. status deprecated needs a reason; replaced_by names an active action type. An update that leaves the
+            field out keeps the stored lifecycle; null or {} clears it.
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [active, deprecated]
+            reason:
+              type: string
+            replaced_by:
+              type: string
         tags:
           description: Tags. May be empty.
           type: array

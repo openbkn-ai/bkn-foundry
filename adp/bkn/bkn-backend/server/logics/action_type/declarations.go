@@ -19,15 +19,16 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/permission"
 )
 
-// The BKN spec 3.0 declarations of an action type are its aliases. A save checks them with the
-// checks a 3.0 import runs; an interactive update keeps the aliases its request leaves out; an
-// overwrite with a file that does not carry them clears them only once confirmed, the same as the
-// property declarations of an object type.
+// The BKN spec 3.0 declarations of an action type are its aliases and its lifecycle. A save checks
+// them with the checks a 3.0 import runs; an interactive update keeps the ones its request leaves
+// out; an overwrite with a file that does not carry them clears them only once confirmed, the same as
+// the property declarations of an object type.
 
-// checkDeclarations checks the aliases of an action type on their own, with the checks a 3.0
-// import runs.
+// checkDeclarations checks the aliases and the lifecycle of an action type on their own, with the
+// checks a 3.0 import runs.
 func (ats *actionTypeService) checkDeclarations(ctx context.Context, actionType *interfaces.ActionType) error {
 	actionType.Aliases = interfaces.NormalizeAliases(actionType.Aliases)
+	actionType.Lifecycle = interfaces.NormalizeLifecycle(actionType.Lifecycle)
 	if err := bknsdk.ValidateActionTypeDeclarations(logics.ToBKNActionType(actionType)); err != nil {
 		return invalidDeclarations(ctx, err.Error())
 	}
@@ -79,10 +80,10 @@ func invalidDeclarations(ctx context.Context, detail string) error {
 		WithErrorDetails(detail)
 }
 
-// keepStoredAliases makes an interactive update keep the stored aliases when its request left
-// them out. It reads the stored action type only then.
-func (ats *actionTypeService) keepStoredAliases(ctx context.Context, actionType *interfaces.ActionType) error {
-	if actionType.DeclaresAliases() {
+// keepStoredDeclarations makes an interactive update keep the stored aliases and lifecycle its
+// request left out. It reads the stored action type only then.
+func (ats *actionTypeService) keepStoredDeclarations(ctx context.Context, actionType *interfaces.ActionType) error {
+	if actionType.DeclaresAliases() && actionType.DeclaresLifecycle() {
 		return nil
 	}
 	stored, err := ats.ata.GetActionTypesByIDs(ctx, actionType.KNID, actionType.Branch, []string{actionType.ATID})
@@ -91,12 +92,18 @@ func (ats *actionTypeService) keepStoredAliases(ctx context.Context, actionType 
 			WithErrorDetails(err.Error())
 	}
 	if len(stored) == 1 {
-		actionType.Aliases = stored[0].Aliases
+		if !actionType.DeclaresAliases() {
+			actionType.Aliases = stored[0].Aliases
+		}
+		if !actionType.DeclaresLifecycle() {
+			actionType.Lifecycle = stored[0].Lifecycle
+		}
 	}
 	return nil
 }
 
-// checkOverwriteKeepsDeclarations refuses an overwrite that would clear stored aliases unless the
+// checkOverwriteKeepsDeclarations refuses an overwrite that would clear stored aliases or a stored
+// lifecycle unless the
 // request confirmed it, and lists what it would clear. checkPermission asks for the modify check
 // on the listed action types, for a caller that has not made it yet; it runs only when there is
 // something to list.
@@ -119,8 +126,19 @@ func (ats *actionTypeService) checkOverwriteKeepsDeclarations(ctx context.Contex
 	var cleared []interfaces.ClearedDeclaration
 	var clearedIDs []string
 	for _, s := range stored {
-		if in, ok := byID[s.ATID]; ok && len(s.Aliases) > 0 && len(in.Aliases) == 0 {
-			cleared = append(cleared, interfaces.ClearedDeclaration{ActionTypeID: s.ATID, Fields: []string{interfaces.DECLARATION_ALIASES}})
+		in, ok := byID[s.ATID]
+		if !ok {
+			continue
+		}
+		var fields []string
+		if len(s.Aliases) > 0 && len(in.Aliases) == 0 {
+			fields = append(fields, interfaces.DECLARATION_ALIASES)
+		}
+		if s.Lifecycle != nil && interfaces.NormalizeLifecycle(in.Lifecycle) == nil {
+			fields = append(fields, interfaces.DECLARATION_LIFECYCLE)
+		}
+		if len(fields) > 0 {
+			cleared = append(cleared, interfaces.ClearedDeclaration{ActionTypeID: s.ATID, Fields: fields})
 			if !slices.Contains(clearedIDs, s.ATID) {
 				clearedIDs = append(clearedIDs, s.ATID)
 			}

@@ -693,6 +693,11 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 		words := []string{}
 		for _, relationType := range relationTypes {
 			arr := []string{relationType.RTName}
+			// Declarations come right after the name; without them the text is what it was.
+			if relationType.ReverseName != "" {
+				arr = append(arr, relationType.ReverseName)
+			}
+			arr = append(arr, relationType.Aliases...)
 			arr = append(arr, relationType.Tags...)
 			arr = append(arr, relationType.Comment, relationType.BKNRawContent)
 			word := strings.Join(arr, "\n")
@@ -735,6 +740,10 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 		var doc map[string]any
 		if err := sonic.Unmarshal(docBytes, &doc); err != nil {
 			logger.Errorf("Failed to unmarshal RelationType: %s", err.Error())
+			return err
+		}
+		if err := interfaces.EncodeIndexedConstraints(doc); err != nil {
+			logger.Errorf("Failed to encode relation property constraints: %s", err.Error())
 			return err
 		}
 
