@@ -6,11 +6,13 @@ package lineage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -188,6 +190,26 @@ func Test_LineageService_PublishRelease_Capabilities(t *testing.T) {
 			So(report.Capabilities.Changed, ShouldResemble, []string{"skills/" + capSkillID + "/SKILL.md"})
 			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("References the copies cannot reach reply 400 before anything is tagged or copied\n", func() {
+			// Flow-style capabilities cannot be rewritten line by line, and the Skill must move.
+			flow := capabilityDefinitions(id, "A part, edited.")
+			flow["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n---",
+				"name: Supply chain\ncapabilities: {skills: [{id: "+capSkillID+", name: plan-supply}]}\n---", 1))
+			_, err := realGS.CommitFiles(ctx, id, branch, flow, "flow style", author)
+			So(err, ShouldBeNil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, capBoxID).Return(capabilityExport(`KN_ID = "`+id+`"`), nil)
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, capSkillID).Return(releasedSkill("Reads "+id+".\n"), nil)
+
+			_, err = svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
 		})
 
 		Convey("A refused copy names the toolbox and records nothing\n", func() {

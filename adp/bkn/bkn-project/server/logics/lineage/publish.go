@@ -203,14 +203,20 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
 			WithErrorDetails(err.Error())
 	}
+	// Functions and Skills follow the network. What to reuse or copy, and whether
+	// the package's references can move to the copies, is settled before the tag
+	// too; the copies are made after it, before the import, so the new network
+	// is created pointing at them.
+	steps, err := s.planCapabilities(ctx, token, pkg, previous, tracked, liveID, networkID)
+	if err != nil {
+		return nil, err
+	}
 	if !retry {
 		if err := gs.Tag(ctx, lineageID, tag, branchHead); err != nil {
 			return nil, err
 		}
 	}
-	// Functions and Skills follow the network: copies are made before the import
-	// so the new network is created pointing at them.
-	pkg, released, err := s.followCapabilities(ctx, token, pkg, previous, tracked, liveID, networkID)
+	pkg, released, err := s.applyCapabilities(ctx, token, pkg, steps, liveID, networkID)
 	if err != nil {
 		return nil, err
 	}
@@ -278,16 +284,16 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	return &interfaces.PublishReleaseResult{Release: release, NetworkID: networkID, Tag: tag, Commit: commit}, nil
 }
 
-// followCapabilities reuses or copies each toolbox and Skill the package
-// references (see capability.Plan) and points the package at the copies. It
-// returns the package and the items the new network uses, as git keeps them.
-// tracked are the live items the previous release recorded, already exported.
-func (s *lineageService) followCapabilities(ctx context.Context, token string, pkg map[string][]byte,
+// planCapabilities decides for each toolbox and Skill the package references
+// whether it is reused or copied (see capability.Plan), and checks that the
+// package's references can move to the copies, without making any. tracked
+// are the live items the previous release recorded, already exported.
+func (s *lineageService) planCapabilities(ctx context.Context, token string, pkg map[string][]byte,
 	previous *capability.Manifest, tracked []*capability.Item, oldNetworkID string,
-	networkID string) (map[string][]byte, []*capability.Item, error) {
+	networkID string) ([]*capability.Step, error) {
 	network, err := loadNetwork(pkg)
 	if err != nil {
-		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
 			WithErrorDetails(err.Error())
 	}
 	boxIDs, skillIDs := capability.References(network)
@@ -313,34 +319,58 @@ func (s *lineageService) followCapabilities(ctx context.Context, token string, p
 	}
 	exported, err := capability.Export(ctx, s.efa, token, newBoxes, newSkills)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	items = append(items, exported...)
 
-	copies, released, err := capability.Apply(ctx, s.efa, token, capability.Plan(previous, items, oldNetworkID),
-		oldNetworkID, networkID)
+	steps := capability.Plan(previous, items, oldNetworkID)
+	copies, err := capability.Preview(steps, oldNetworkID, networkID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := rewriteToCopies(pkg, oldNetworkID, networkID, copies); err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(err.Error())
+	}
+	return steps, nil
+}
+
+// applyCapabilities makes the copies the steps call for and points the package
+// at them. It returns the package and the items the new network uses, as git
+// keeps them.
+func (s *lineageService) applyCapabilities(ctx context.Context, token string, pkg map[string][]byte,
+	steps []*capability.Step, oldNetworkID string, networkID string) (map[string][]byte, []*capability.Item, error) {
+	copies, released, err := capability.Apply(ctx, s.efa, token, steps, oldNetworkID, networkID)
 	if err != nil {
 		return nil, nil, err
 	}
-	rewritten, err := capability.RewritePackage(pkg, oldNetworkID, networkID, copies)
-	if err == nil {
-		network, err = loadNetwork(rewritten)
-	}
-	if err == nil {
-		// A reference the rewrite did not reach would leave the new network on the original.
-		boxIDs, skillIDs = capability.References(network)
-		for _, c := range copies {
-			if slices.Contains(boxIDs, c.OldID) || slices.Contains(skillIDs, c.OldID) {
-				err = fmt.Errorf("%s %s was copied to %s, but the definitions still reference it", c.Kind, c.OldID, c.NewID)
-				break
-			}
-		}
-	}
+	rewritten, err := rewriteToCopies(pkg, oldNetworkID, networkID, copies)
 	if err != nil {
 		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
 			WithErrorDetails(err.Error())
 	}
 	return rewritten, released, nil
+}
+
+// rewriteToCopies points the package at the copies and checks that no
+// reference the rewrite did not reach would leave the new network on an original.
+func rewriteToCopies(pkg map[string][]byte, oldNetworkID string, networkID string,
+	copies []*capability.Copy) (map[string][]byte, error) {
+	rewritten, err := capability.RewritePackage(pkg, oldNetworkID, networkID, copies)
+	if err != nil {
+		return nil, err
+	}
+	network, err := loadNetwork(rewritten)
+	if err != nil {
+		return nil, err
+	}
+	boxIDs, skillIDs := capability.References(network)
+	for _, c := range copies {
+		if slices.Contains(boxIDs, c.OldID) || slices.Contains(skillIDs, c.OldID) {
+			return nil, fmt.Errorf("%s %s was copied to %s, but the definitions still reference it", c.Kind, c.OldID, c.NewID)
+		}
+	}
+	return rewritten, nil
 }
 
 // loadNetwork reads a definition set the way bkn-backend import does.

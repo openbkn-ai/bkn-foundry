@@ -177,6 +177,32 @@ func Apply(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token str
 	return copies, items, nil
 }
 
+// Preview returns the copies the steps call for without making them, so the
+// references a release must move can be checked before anything is created. A
+// function copy gets the ids Apply gives it; a Skill copy gets a stand-in id,
+// since registration assigns the real one.
+func Preview(steps []*Step, oldNetworkID string, newNetworkID string) ([]*Copy, error) {
+	copies := []*Copy{}
+	for _, step := range steps {
+		if !step.Copy {
+			continue
+		}
+		it := step.Item
+		var c *Copy
+		var err error
+		if it.Kind == KIND_FUNCTION {
+			_, c, err = CopyFunction(it, oldNetworkID, newNetworkID)
+		} else if _, c, err = CopySkill(it, oldNetworkID, newNetworkID); err == nil {
+			c.NewID = copyID(it.ID, newNetworkID)
+		}
+		if err != nil {
+			return nil, &ItemError{Kind: it.Kind, ID: it.ID, Name: it.Name, Operation: OPERATION_COPY, Err: err}
+		}
+		copies = append(copies, c)
+	}
+	return copies, nil
+}
+
 func copyFunction(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token string, it *Item,
 	oldNetworkID string, newNetworkID string) (*Copy, *Item, error) {
 	payload, c, err := CopyFunction(it, oldNetworkID, newNetworkID)
