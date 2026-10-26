@@ -88,7 +88,7 @@ func receiptOnlyEvidenceContract(profile *sessionvo.CapabilityProfile) bool {
 	switch profile.EvidenceContract {
 	case "execution_only":
 		return true
-	case "managed_function_execution/v1":
+	case sessionvo.ManagedFunctionExecutionContract:
 		return profile.Resolution == "matched"
 	default:
 		return false

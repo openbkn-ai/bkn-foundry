@@ -30,10 +30,16 @@ import (
 
 type functionSealTransaction struct {
 	isessionstore.Transaction
-	sources  []ledgervo.Event
-	saved    []ledgervo.Event
-	readErr  error
-	writeErr error
+	sources   []ledgervo.Event
+	saved     []ledgervo.Event
+	readErr   error
+	writeErr  error
+	factReads int
+}
+
+func (tx *functionSealTransaction) FindOperationCallFact(id string, attempt uint32) (sessionvo.OperationCallFact, bool) {
+	tx.factReads++
+	return tx.Transaction.FindOperationCallFact(id, attempt)
 }
 
 func (tx *functionSealTransaction) ReadEvidenceEventsByIDs([]string) ([]ledgervo.Event, error) {
@@ -51,7 +57,7 @@ func (tx *functionSealTransaction) AppendDerivedEvidence(e ledgervo.Event) (ledg
 }
 
 func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
-	for _, name := range []string{"normal", "zero", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "missing result", "null result", "text result", "changed content", "embedded declaration", "clock skew", "precise content", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
+	for _, name := range []string{"normal", "zero", "no source refs", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "missing result", "null result", "text result", "changed content", "embedded declaration", "clock skew", "precise content", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
 		t.Run(name, func(t *testing.T) {
 			now := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 			owner := sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "user"}
@@ -84,7 +90,7 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 			outputRaw, _ := json.Marshal(output)
 			payload, _ := sessionvo.InlineJSONPayload(outputRaw)
 			input, _ := sessionvo.InlineJSONPayload(json.RawMessage(`{"kn_id":"kn","toolbox_id":"box","tool_id":"quality_check","function_version":"version"}`))
-			fact := sessionvo.OperationCallFact{OperationID: "op", Attempt: 1, ConversationID: "conv", InteractionID: "int", ReceiptID: "receipt", ToolName: "quality_check", Protocol: sessionvo.ProtocolInternal, SourceModule: functionResultSourceModule, Status: sessionvo.AttemptCompleted, Input: input, Output: &payload, CapabilityProfile: &sessionvo.CapabilityProfile{EvidenceContract: functionResultContract, ToolVersion: "version"}}
+			fact := sessionvo.OperationCallFact{OperationID: "op", Attempt: 1, ConversationID: "conv", InteractionID: "int", ReceiptID: "receipt", ToolName: "quality_check", Protocol: sessionvo.ProtocolInternal, SourceModule: functionResultSourceModule, Status: sessionvo.AttemptCompleted, Input: input, Output: &payload, CapabilityProfile: &sessionvo.CapabilityProfile{EvidenceContract: "managed_function_execution/v1", ToolVersion: "version"}}
 			raw, _ := json.Marshal(content)
 			var value any
 			decoder := json.NewDecoder(bytes.NewReader(raw))
@@ -119,10 +125,14 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				tx.SaveConversation(sessionvo.Conversation{ID: "conv", Owner: owner})
 				tx.SaveOperationCallFact(fact)
 				tx.SaveReceipt(sessionvo.Receipt{ID: "receipt", ConversationID: "conv", InteractionID: "int", OperationID: "op", Attempt: 1, Status: sessionvo.ReceiptCompleted, EvidenceDurability: sessionvo.DurabilityDurable, ObservedEvidenceRefs: []string{"source"}, RequestID: "req", TraceID: "trace"})
-				interaction := sessionvo.Interaction{ID: "int", ConversationID: "conv", EvidenceStatus: sessionvo.EvidenceComplete, ClosureManifest: &sessionvo.ClosureManifest{Claims: []string{functionClaimID("op", 1)}}}
+				interaction := sessionvo.Interaction{ID: "int", ConversationID: "conv", EvidenceStatus: sessionvo.EvidenceComplete, ClosureManifest: &sessionvo.ClosureManifest{ExpectedOperations: []sessionvo.ExpectedOperation{{OperationID: "op"}}}}
 				revision := sessionvo.AssemblyRevision{ID: "real-revision", InteractionID: "int", IncludedEventIDs: []string{"source"}, Completeness: sessionvo.EvidenceComplete, CreatedAt: now.Add(time.Second)}
 				custom := &functionSealTransaction{Transaction: tx, sources: []ledgervo.Event{source}}
 				switch name {
+				case "no source refs":
+					receipt, _ := tx.FindReceiptByOperationAttempt("op", 1)
+					receipt.ObservedEvidenceRefs = nil
+					tx.SaveReceipt(receipt)
 				case "caller prefix":
 					interaction.ClosureManifest.Claims = []string{"claim_function_manual"}
 				case "invalid event":
@@ -164,14 +174,17 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 					return sealErr
 				}
 				if name == "caller prefix" {
-					if len(custom.saved) != 0 || revision.Completeness != sessionvo.EvidenceComplete || len(revision.PartialReasons) != 0 || interaction.EvidenceStatus != sessionvo.EvidenceComplete {
+					if len(custom.saved) != 1 || len(interaction.ClosureManifest.Claims) != 2 || !slices.Contains(interaction.ClosureManifest.Claims, "claim_function_manual") || revision.Completeness != sessionvo.EvidenceComplete || len(revision.PartialReasons) != 0 || interaction.EvidenceStatus != sessionvo.EvidenceComplete {
 						t.Fatalf("caller Claim altered: %+v", revision)
 					}
 					return nil
 				}
 				good := name == "normal" || name == "zero" || name == "clock skew" || name == "embedded declaration"
 				if !good {
-					if len(custom.saved) != 0 || revision.Completeness != sessionvo.EvidencePartial || interaction.EvidenceStatus != sessionvo.EvidencePartial {
+					if name == "no source refs" && custom.factReads != 0 {
+						t.Fatalf("uncaptured snapshot loaded full output: %d", custom.factReads)
+					}
+					if len(custom.saved) != 0 || revision.Completeness != sessionvo.EvidenceComplete || interaction.EvidenceStatus != sessionvo.EvidenceComplete || len(interaction.ClosureManifest.Claims) != 0 || len(revision.PartialReasons) != 0 {
 						t.Fatalf("unverified Claim: events=%d revision=%+v interaction=%+v", len(custom.saved), revision, interaction)
 					}
 					return nil
@@ -229,21 +242,21 @@ func TestSampleFunctionResultProof(t *testing.T) {
 	}
 }
 
-func TestFunctionResultClaimCapacityKeepsServerManifestBoundedAndReplayable(t *testing.T) {
+func TestFunctionResultCandidatesDoNotBecomeManifestObligations(t *testing.T) {
 	store := sessionstore.New()
 	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 		for i := 0; i < 33; i++ {
 			tx.SaveOperation(sessionvo.Operation{ID: fmt.Sprintf("op-%d", i), InteractionID: "int", Attempt: 1})
 			tx.SaveOperationCallFact(sessionvo.OperationCallFact{OperationID: fmt.Sprintf("op-%d", i), InteractionID: "int", Attempt: 1, SourceModule: functionResultSourceModule, Status: sessionvo.AttemptCompleted})
 		}
-		manifest := deriveClosureManifest(tx, "int", sessionvo.ClosureManifest{Version: "3.0.0", CompletionReason: "completed"}, 32)
-		if len(manifest.Claims) != 32 || !slices.Contains(manifest.SystemPartialReasons, "function_claim_capacity_exceeded") {
-			t.Fatalf("capacity not represented: %+v", manifest)
+		manifest := deriveClosureManifest(tx, "int", sessionvo.ClosureManifest{Version: "3.0.0", CompletionReason: "completed"})
+		if len(manifest.Claims) != 0 || len(manifest.SystemPartialReasons) != 0 {
+			t.Fatalf("optional candidates became required: %+v", manifest)
 		}
 		current := sessionvo.Interaction{ID: "int", ExecutionStatus: sessionvo.InteractionCompleted, TerminalIdempotencyKey: "finish", ClosureManifest: &manifest}
 		command := TerminateInteractionCommand{InteractionID: "int", Status: sessionvo.InteractionCompleted, TerminalIdempotencyKey: "finish", Manifest: sessionvo.ClosureManifest{Version: "3.0.0", CompletionReason: "completed"}}
 		if !managedTerminalReplayMatches(current, command, tx) {
-			t.Fatal("server-owned claim capacity reason broke exact finish replay")
+			t.Fatal("optional candidate discovery broke exact finish replay")
 		}
 		return nil
 	}); err != nil {
@@ -264,7 +277,7 @@ func TestEmptyInteractionManifestDoesNotReadCallSummaries(t *testing.T) {
 	store := sessionstore.New()
 	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 		counting := &summaryReadCountingTransaction{Transaction: tx}
-		manifest := deriveClosureManifest(counting, "empty", sessionvo.ClosureManifest{Version: "3.0.0"}, 32)
+		manifest := deriveClosureManifest(counting, "empty", sessionvo.ClosureManifest{Version: "3.0.0"})
 		if counting.reads != 0 || len(manifest.Claims) != 0 || len(manifest.ExpectedOperations) != 0 {
 			t.Fatalf("empty finish performed extra reads: %d %+v", counting.reads, manifest)
 		}

@@ -22,9 +22,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
-const functionResultContract = "function_result_evidence/v1"
+const functionResultContract = sessionvo.FunctionResultContract
 const functionResultClaimType = "function.result/v1"
-const functionResultSourceModule = "context-loader-function-result/v1"
+const functionResultSourceModule = sessionvo.FunctionResultSourceModule
 
 type resultProducer struct {
 	KnowledgeNetworkID string `json:"knowledge_network_id"`
@@ -65,40 +65,29 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 	if interaction.ClosureManifest == nil {
 		return nil, nil
 	}
-	var artifacts []string
-	var expected []string
-	for _, id := range interaction.ClosureManifest.Claims {
-		if strings.HasPrefix(id, "claim_function_") {
-			expected = append(expected, id)
-		}
-	}
-	if len(expected) == 0 {
+	// Only verified snapshots become expected Claims. Missing optional snapshots
+	// must not redefine the existing execution receipt's completeness.
+	if len(interaction.ClosureManifest.ExpectedOperations) == 0 {
 		return nil, nil
 	}
-	// Prefixes are not reserved for Core. Only registered Function attempts own IDs.
-	// Keep ordinary finishes on the existing path without any additional read.
 	summaries := tx.ListOperationCallSummaries(interaction.ID)
-	expected = slices.DeleteFunc(expected, func(id string) bool {
-		return !slices.ContainsFunc(summaries, func(f sessionvo.OperationCallSummary) bool {
-			return f.SourceModule == functionResultSourceModule && functionClaimID(f.OperationID, f.Attempt) == id
-		})
-	})
+	expected := derivedFunctionClaimIDs(tx, interaction.ID, false)
 	if len(expected) == 0 {
 		return nil, nil
 	}
+	claims := slices.Clone(interaction.ClosureManifest.Claims)
+	claims = slices.DeleteFunc(claims, func(id string) bool {
+		return slices.Contains(expected, id)
+	})
+	var artifacts []string
 	writer, writable := tx.(isessionstore.DerivedEvidenceTransaction)
 	reader, readable := tx.(isessionstore.EvidenceConfirmationTransaction)
-	missing := func(id, reason string) {
-		revision.PartialReasons = appendUnique(revision.PartialReasons, reason+":"+id)
-		revision.Completeness = sessionvo.EvidencePartial
-	}
-	if !writable || !readable {
-		for _, id := range expected {
-			missing(id, "claim_materialization_unavailable")
-		}
-	} else {
+	if writable && readable {
 		conversation, hasConversation := tx.PeekConversation(interaction.ConversationID)
 		for _, id := range expected {
+			if len(claims) >= s.capacity.MaxClaimsPerInteraction {
+				break
+			}
 			var summary *sessionvo.OperationCallSummary
 			for i := range summaries {
 				f := &summaries[i]
@@ -107,19 +96,20 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 					break
 				}
 			}
-			if summary == nil {
-				missing(id, "claim_producer_missing")
+			if summary == nil || summary.Status != sessionvo.AttemptCompleted {
 				continue
 			}
-			fact, found := tx.FindOperationCallFact(summary.OperationID, summary.Attempt)
 			receipt, hasReceipt := tx.FindReceiptByOperationAttempt(summary.OperationID, summary.Attempt)
-			if !found || !hasReceipt || fact.Status != sessionvo.AttemptCompleted || receipt.Status != sessionvo.ReceiptCompleted || receipt.EvidenceDurability != sessionvo.DurabilityDurable || len(receipt.PartialReasons) > 0 || fact.CapabilityProfile == nil || fact.CapabilityProfile.EvidenceContract != functionResultContract {
-				missing(id, "claim_result_not_evaluable")
+			if !hasReceipt || receipt.Status != sessionvo.ReceiptCompleted || receipt.EvidenceDurability != sessionvo.DurabilityDurable || len(receipt.PartialReasons) > 0 || len(receipt.ObservedEvidenceRefs) == 0 {
+				continue
+			}
+			// No source event means no optional snapshot; do not load a large output.
+			fact, found := tx.FindOperationCallFact(summary.OperationID, summary.Attempt)
+			if !found || fact.Status != sessionvo.AttemptCompleted || fact.CapabilityProfile == nil || (fact.CapabilityProfile.EvidenceContract != functionResultContract && fact.CapabilityProfile.EvidenceContract != sessionvo.ManagedFunctionExecutionContract) {
 				continue
 			}
 			sources, err := reader.ReadEvidenceEventsByIDs(receipt.ObservedEvidenceRefs)
 			if errors.Is(err, isessionstore.ErrEvidenceConfirmationLimit) {
-				missing(id, "claim_evidence_budget_exceeded")
 				continue
 			}
 			if err != nil {
@@ -132,7 +122,7 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 				var envelope struct {
 					Payload functionResultEvidence `json:"payload"`
 				}
-				if e.ProducerID != "agent-retrieval" || e.EventType != "logic.execution.observed" || e.OperationID != fact.OperationID || e.Attempt != fact.Attempt || e.InteractionID != interaction.ID || e.ConversationID != interaction.ConversationID || e.RequestID != receipt.RequestID || e.TraceID != receipt.TraceID || json.Unmarshal(e.Envelope, &envelope) != nil || envelope.Payload.Contract != functionResultContract {
+				if e.ProducerID != sessionvo.FunctionResultProducerID || e.EventType != "logic.execution.observed" || e.OperationID != fact.OperationID || e.Attempt != fact.Attempt || e.InteractionID != interaction.ID || e.ConversationID != interaction.ConversationID || e.RequestID != receipt.RequestID || e.TraceID != receipt.TraceID || json.Unmarshal(e.Envelope, &envelope) != nil || envelope.Payload.Contract != functionResultContract {
 					continue
 				}
 				if source != nil {
@@ -143,17 +133,14 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 				proof = envelope.Payload
 			}
 			if source == nil || !validFunctionProof(fact, proof) {
-				missing(id, "claim_result_not_evaluable")
 				continue
 			}
 			if !hasConversation || !source.Owner.Equal(conversation.Owner) {
-				missing(id, "claim_owner_mismatch")
 				continue
 			}
 			event := materializedFunctionClaim(*source, proof, id, receipt.ID, *revision, uint64(len(revision.IncludedEventIDs)+1))
 			ack, err := writer.AppendDerivedEvidence(event)
 			if errors.Is(err, isessionstore.ErrEvidenceConfirmationLimit) {
-				missing(id, "claim_evidence_budget_exceeded")
 				continue
 			}
 			// Validation and immutable-record conflicts do not undo business
@@ -162,7 +149,6 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 				errors.Is(err, ievidenceledger.ErrPayloadConflict) || errors.Is(err, ievidenceledger.ErrSequenceConflict) ||
 				errors.Is(err, ievidenceledger.ErrCausalityConflict) || errors.Is(err, ievidenceledger.ErrOwnerMismatch) ||
 				errors.Is(err, ievidenceledger.ErrMissingScope) {
-				missing(id, "claim_result_not_evaluable")
 				continue
 			}
 			if err != nil {
@@ -173,10 +159,11 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 			}
 			revision.IncludedEventIDs = appendUnique(revision.IncludedEventIDs, event.EventID)
 			artifacts = appendUnique(artifacts, proof.ArtifactRef)
+			claims = appendUnique(claims, id)
 		}
 	}
-	if revision.Completeness == sessionvo.EvidencePartial && interaction.EvidenceStatus != sessionvo.EvidencePartial {
-		interaction.EvidenceStatus = sessionvo.EvidencePartial
+	if !sameStrings(interaction.ClosureManifest.Claims, claims) {
+		interaction.ClosureManifest.Claims = claims
 		tx.SaveInteraction(*interaction)
 	}
 	return artifacts, nil

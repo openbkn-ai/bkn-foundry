@@ -940,7 +940,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		if request.DeriveManifest {
 			request.LeaseToken = interaction.LeaseToken
 			request.LeaseEpoch = interaction.LeaseEpoch
-			request.Manifest = deriveClosureManifest(tx, interaction.ID, request.Manifest, s.capacity.MaxClaimsPerInteraction)
+			request.Manifest = deriveClosureManifest(tx, interaction.ID, request.Manifest)
 		}
 		if request.Manifest.AssemblerDeadline == nil && hasRequiredPendingReceipt(tx, request.Manifest) {
 			deadline := tx.Now().Add(s.assemblyTimeout)
@@ -1070,11 +1070,11 @@ func sameTerminalReasons(committed, requested []string) bool {
 	}
 	filtered := make([]string, 0, len(committed))
 	for _, reason := range committed {
-		if reason != "not_collected_due_to_policy" && reason != "function_claim_capacity_exceeded" {
+		if reason != "not_collected_due_to_policy" {
 			filtered = append(filtered, reason)
 		}
 	}
-	return (slices.Contains(committed, "not_collected_due_to_policy") || slices.Contains(committed, "function_claim_capacity_exceeded")) && sameStrings(filtered, requested)
+	return slices.Contains(committed, "not_collected_due_to_policy") && sameStrings(filtered, requested)
 }
 
 func sameStrings(left, right []string) bool {
@@ -1093,7 +1093,6 @@ func deriveClosureManifest(
 	tx isessionstore.Transaction,
 	interactionID string,
 	manifest sessionvo.ClosureManifest,
-	maxClaims int,
 ) sessionvo.ClosureManifest {
 	receipts := tx.ListReceipts(interactionID)
 	requiredByOperation := make(map[string]bool, len(receipts))
@@ -1106,19 +1105,6 @@ func deriveClosureManifest(
 		})
 	}
 	operations := tx.ListOperations(interactionID)
-	if len(operations) > 0 {
-		for _, id := range derivedFunctionClaimIDs(tx, interactionID, false) {
-			if slices.Contains(manifest.Claims, id) {
-				continue
-			}
-			if len(manifest.Claims) >= maxClaims {
-				manifest.SystemPartialReasons = appendUnique(manifest.SystemPartialReasons, "function_claim_capacity_exceeded")
-				continue
-			}
-			manifest.Claims = append(manifest.Claims, id)
-		}
-	}
-
 	manifest.ExpectedOperations = make([]sessionvo.ExpectedOperation, 0, len(operations))
 	for _, operation := range operations {
 		manifest.ExpectedOperations = append(manifest.ExpectedOperations, sessionvo.ExpectedOperation{
@@ -1787,7 +1773,7 @@ func (s *Service) AbandonExpiredInteractions(ctx context.Context, limit int) ([]
 			now := tx.Now()
 			manifest := deriveClosureManifest(tx, current.ID, sessionvo.ClosureManifest{
 				Version: "3.0.0", CompletionReason: "interaction_abandoned",
-			}, s.capacity.MaxClaimsPerInteraction)
+			})
 			if hasRequiredPendingReceipt(tx, manifest) {
 				manifest.AssemblerDeadline = &now
 			}
@@ -1976,7 +1962,7 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 		Claims       []string
 		EventIDs     []string
 		ArtifactRefs []string
-	}{manifest.Claims, revision.IncludedEventIDs, artifactRefs})
+	}{interaction.ClosureManifest.Claims, revision.IncludedEventIDs, artifactRefs})
 	tx.SaveAssemblyRevision(revision)
 	if s.revisionSealer != nil {
 		if err := s.revisionSealer(tx, *interaction, revision); err != nil {

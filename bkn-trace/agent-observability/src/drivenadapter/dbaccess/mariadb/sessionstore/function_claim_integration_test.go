@@ -24,7 +24,7 @@ import (
 // The fixture carries an unchanged sample result through the same generic
 // producer protocol. Core checks bindings without interpreting business content.
 func TestFunctionResultClaimLifecycleMariaDB(t *testing.T) {
-	for _, mode := range []string{"ready", "late", "failed-then-success"} {
+	for _, mode := range []string{"ready", "late", "lost", "failed-then-success"} {
 		t.Run(mode, func(t *testing.T) {
 			db := durableAnswerDatabase(t)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -46,6 +46,7 @@ func TestFunctionResultClaimLifecycleMariaDB(t *testing.T) {
 			if err := json.Unmarshal(raw, &fixture); err != nil {
 				t.Fatal(err)
 			}
+			fixture.Profile.EvidenceContract = "managed_function_execution/v1"
 			if mode == "failed-then-success" {
 				failedOp, failedReceipt, err := service.EnsureOperation(ctx, sessionsvc.EnsureOperationCommand{Owner: owner, ConversationID: interaction.ConversationID, InteractionID: interaction.ID, OperationKey: "failed-bom", ToolName: "bom_shared_list", Protocol: sessionvo.ProtocolInternal, SourceModule: "context-loader-function-result/v1", Input: fixture.Input, CapabilityProfile: fixture.Profile, Required: true, LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch})
 				if err != nil {
@@ -87,7 +88,7 @@ func TestFunctionResultClaimLifecycleMariaDB(t *testing.T) {
 			source.PayloadHash = ledgervo.CanonicalPayloadHash(source.Envelope)
 			ledger := ledgersvc.New(store)
 			ledger.SetDurableObserver(service.ReconcileEvidence)
-			if mode != "late" {
+			if mode != "late" && mode != "lost" {
 				if _, err := ledger.Ingest(ctx, source); err != nil {
 					t.Fatal(err)
 				}
@@ -96,9 +97,19 @@ func TestFunctionResultClaimLifecycleMariaDB(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if mode == "lost" {
+				deadline := time.Now().UTC().Add(-time.Second)
+				finish.Manifest.AssemblerDeadline = &deadline
+			}
 			terminal, err := service.TerminateInteraction(ctx, finish)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if mode == "lost" {
+				if terminal.ExecutionStatus != sessionvo.InteractionCompleted || terminal.EvidenceStatus != sessionvo.EvidencePartial || len(terminal.ClosureManifest.Claims) != 0 {
+					t.Fatalf("lost declared event was hidden: %+v", terminal)
+				}
+				return
 			}
 			if mode == "late" {
 				if terminal.ExecutionStatus != sessionvo.InteractionCompleted || terminal.EvidenceStatus != sessionvo.EvidenceAssembling {

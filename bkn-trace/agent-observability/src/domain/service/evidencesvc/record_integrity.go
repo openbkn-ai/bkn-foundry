@@ -21,7 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
-const functionResultIntegrityContract = "function_result_evidence/v1"
+const functionResultIntegrityContract = sessionvo.FunctionResultContract
 
 type recordIntegrityBudgetKey struct{}
 type recordIntegrityReadBudget struct {
@@ -181,7 +181,7 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 		if f.Status != sessionvo.AttemptCompleted || !slices.Contains(profile.RequiredTraceFields, "result_completeness") {
 			continue
 		}
-		if profile.EvidenceContract == "managed_function_execution/v1" {
+		if profile.EvidenceContract == sessionvo.ManagedFunctionExecutionContract {
 			continue
 		}
 		// A trusted policy stop may omit this call's new result ledger only when
@@ -215,7 +215,7 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 				// a captured Function result. A missing/false/malformed snapshot
 				// is a recorded gap, not an unsupported inspection contract.
 				var contract string
-				if f.SourceModule != "context-loader-function-result/v1" || e.ProducerID != "agent-retrieval" || !slices.Contains(r.ObservedEvidenceRefs, e.EventID) || json.Unmarshal(envelope.Payload["result_contract"], &contract) != nil || contract != functionResultIntegrityContract {
+				if f.SourceModule != sessionvo.FunctionResultSourceModule || e.ProducerID != sessionvo.FunctionResultProducerID || !slices.Contains(r.ObservedEvidenceRefs, e.EventID) || json.Unmarshal(envelope.Payload["result_contract"], &contract) != nil || contract != functionResultIntegrityContract {
 					continue
 				}
 				resultSnapshots++
@@ -732,7 +732,7 @@ func integrityBusinessTargetRecorded(f sessionvo.OperationCallFact, r sessionvo.
 			return false, nil
 		}
 	}
-	if f.CapabilityProfile != nil && (f.CapabilityProfile.EvidenceContract == "managed_function_execution/v1" || f.CapabilityProfile.EvidenceContract == functionResultIntegrityContract) {
+	if f.CapabilityProfile != nil && (f.CapabilityProfile.EvidenceContract == sessionvo.ManagedFunctionExecutionContract || f.CapabilityProfile.EvidenceContract == functionResultIntegrityContract) {
 		for ref := range refs {
 			if matchesFunctionBusinessRef(ref, kn, toolbox, f.ToolName) {
 				return true, nil

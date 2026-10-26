@@ -165,15 +165,12 @@ func (m *managedFunctionGuard) Execute(
 	payload := any(redactFunctionPayload(result))
 	if failed {
 		payload = managedFunctionFailurePayload(result)
-	} else if producesResultClaim && !reflect.DeepEqual(result, payload) {
-		// A redacted snapshot cannot attest the exact original result.
-		state.PartialReasons = append(state.PartialReasons, "function_result_redacted")
-	} else if producesResultClaim {
+	} else if producesResultClaim && reflect.DeepEqual(result, payload) {
+		// Optional snapshots cannot attest redacted/unsupported results. A
+		// capture failure adds no obligation to the execution receipt; events
+		// actually planned/published still use normal delivery confirmation.
 		redactedResult, _ := payload.(map[string]any)
-		if claimErr := bkntrace.RecordFunctionResult(lifecycleContext, producer, input.Descriptor.Version, redactedResult); claimErr != nil {
-			// A missing proof must not change the already-computed business result.
-			state.PartialReasons = append(state.PartialReasons, "function_claim_not_evaluable")
-		}
+		_ = bkntrace.RecordFunctionResult(lifecycleContext, producer, input.Descriptor.Version, redactedResult)
 	}
 	_, finishAPIErr, finishErr := m.guard.Finish(lifecycleContext, state, payload, failed, false)
 	if runErr != nil {
@@ -272,9 +269,7 @@ func managedFunctionCapabilityProfile(input ManagedFunctionTraceInput) []byte {
 		"required_trace_fields": []string{"receipt", "business_refs", "result_completeness"},
 		"failure_policy":        "preserve_execution_and_downgrade", "resolution": "matched",
 	}
-	if bkntrace.EvidenceEnabled() {
-		profile["evidence_contract"] = bkntrace.FunctionResultContract
-	}
+	// Result capture is additive; this receipt contract does not depend on capture.
 	raw, _ := sonic.ConfigStd.Marshal(profile)
 	return raw
 }

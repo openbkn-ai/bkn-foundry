@@ -83,13 +83,13 @@ func TestRunAndCleanTraceGapsPreservesInvalidMarker(t *testing.T) {
 
 func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 	for _, test := range []struct {
-		name          string
-		capture       bool
-		value, reason string
+		name    string
+		capture bool
+		value   string
 	}{
-		{"capture disabled", false, "must-not-persist", ""},
-		{"redacted result", true, "must-not-persist", "function_result_redacted"},
-		{"unverifiable result", true, "[redacted]", "function_claim_not_evaluable"},
+		{"capture disabled", false, "must-not-persist"},
+		{"redacted result", true, "must-not-persist"},
+		{"unverifiable result", true, "[redacted]"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			bkntrace.SetEvidencePublisher(nil)
@@ -97,7 +97,7 @@ func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 			sourceModule, contract := managedFunctionSourceModule, "managed_function_execution/v1"
 			if test.capture {
 				bkntrace.SetEvidencePublisher(managedResultPublisher{})
-				sourceModule, contract = bkntrace.FunctionResultSourceModule, bkntrace.FunctionResultContract
+				sourceModule = bkntrace.FunctionResultSourceModule
 			}
 			var ensureBody map[string]any
 			var finishBody map[string]any
@@ -213,8 +213,8 @@ func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 			}
 			if test.capture {
 				raw, _ := json.Marshal(finishBody["partial_reasons"])
-				if !strings.Contains(string(raw), test.reason) {
-					t.Fatalf("redacted result lacks explicit gap: %s", raw)
+				if strings.Contains(string(raw), "function_result_redacted") || strings.Contains(string(raw), "function_claim_not_evaluable") {
+					t.Fatalf("optional snapshot changed receipt completeness: %s", raw)
 				}
 			}
 		})

@@ -133,6 +133,14 @@ type EvidenceRef struct {
 	AsOf                *time.Time      `json:"as_of,omitempty"`
 }
 
+// Function result capture is an optional addition to the managed execution receipt.
+const (
+	ManagedFunctionExecutionContract = "managed_function_execution/v1"
+	FunctionResultContract           = "function_result_evidence/v1"
+	FunctionResultSourceModule       = "context-loader-function-result/v1"
+	FunctionResultProducerID         = "agent-retrieval"
+)
+
 type ClaimMateriality string
 type ClaimStatus string
 type SupportTargetType string

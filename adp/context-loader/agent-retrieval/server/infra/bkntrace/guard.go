@@ -57,7 +57,6 @@ type GuardState struct {
 	CaptureDisabled bool
 	Result          OperationResult
 	ArtifactRefs    []string
-	PartialReasons  []string // Internal receipt reasons; never copied into Agent metadata.
 }
 
 type GuardDisposition string
@@ -177,15 +176,14 @@ func (g *Guard) Finish(
 		return OperationResult{}, nil, marshalErr
 	}
 	input := FinishAttemptInput{
-		OperationID:    state.Result.Operation.OperationID,
-		Attempt:        state.Result.Operation.Attempt,
-		ReceiptID:      state.Result.Receipt.ReceiptID,
-		RequestID:      traceContext.RequestID,
-		TraceID:        spanContext.TraceID().String(),
-		SpanID:         spanContext.SpanID().String(),
-		Retryable:      retryable,
-		ArtifactRefs:   append([]string(nil), state.ArtifactRefs...),
-		PartialReasons: append([]string(nil), state.PartialReasons...),
+		OperationID:  state.Result.Operation.OperationID,
+		Attempt:      state.Result.Operation.Attempt,
+		ReceiptID:    state.Result.Receipt.ReceiptID,
+		RequestID:    traceContext.RequestID,
+		TraceID:      spanContext.TraceID().String(),
+		SpanID:       spanContext.SpanID().String(),
+		Retryable:    retryable,
+		ArtifactRefs: append([]string(nil), state.ArtifactRefs...),
 	}
 	if failed {
 		input.Error = rawPayload
