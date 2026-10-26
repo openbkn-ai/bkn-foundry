@@ -9,6 +9,8 @@ ARG BASE_IMAGE=ubuntu:24.04
 FROM ${BUILD_IMAGE} AS builder
 
 COPY adp/bkn/bkn-project/server /workspace/adp/bkn/bkn-project/server
+# go.mod replaces the bkn-backend module (BKN SDK) with this local copy.
+COPY adp/bkn/bkn-backend/server /workspace/adp/bkn/bkn-backend/server
 
 ARG SERVER_VERSION=0.1.0
 ARG GOPROXY_URL="https://proxy.golang.org,direct"
