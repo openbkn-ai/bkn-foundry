@@ -411,6 +411,21 @@ func Test_Apply(t *testing.T) {
 			So(errors.Is(err, refused), ShouldBeTrue)
 		})
 
+		Convey("A built-in toolbox is not followed; any other refusal fails the export\n", func() {
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, "builtin").Return(nil, &interfaces.ExecutionFactoryError{
+				HTTPCode: http.StatusForbidden})
+			builtIn := &interfaces.ExecutionFactoryError{HTTPCode: http.StatusForbidden}
+			builtIn.ErrorCode = "AgentOperatorIntegration.Forbidden.CommonInternalComponentNotAllowed"
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, "internal").Return(nil, builtIn)
+
+			items, err := Export(ctx, efa, token, []string{"internal"}, nil)
+			So(err, ShouldBeNil)
+			So(items, ShouldBeEmpty)
+
+			_, err = Export(ctx, efa, token, []string{"builtin"}, nil)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("An export of the wrong toolbox is refused\n", func() {
 			efa.EXPECT().ExportToolbox(gomock.Any(), token, "box-x").Return(toolboxExport("x"), nil)
 			_, err := ExportFunction(ctx, efa, token, "box-x")

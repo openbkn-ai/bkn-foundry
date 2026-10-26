@@ -6,7 +6,10 @@ package capability
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 
@@ -34,6 +37,17 @@ func (e *ItemError) Error() string {
 
 func (e *ItemError) Unwrap() error {
 	return e.Err
+}
+
+// builtInRefusal ends the error code execution-factory replies with when it
+// refuses to export a built-in toolbox (operator-integration
+// infra/errors/error_code.go ErrExtCommonInternalComponentNotAllowed).
+const builtInRefusal = ".CommonInternalComponentNotAllowed"
+
+func isBuiltIn(err error) bool {
+	var efaErr *interfaces.ExecutionFactoryError
+	return errors.As(err, &efaErr) && efaErr.HTTPCode == http.StatusForbidden &&
+		strings.HasSuffix(efaErr.ErrorCode, builtInRefusal)
 }
 
 // ExportFunction reads the live toolbox boxID.
@@ -69,6 +83,12 @@ func Export(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token st
 	items := make([]*Item, 0, len(boxIDs)+len(skillIDs))
 	for _, id := range boxIDs {
 		it, err := ExportFunction(ctx, efa, token, id)
+		if isBuiltIn(err) {
+			// A built-in toolbox belongs to the platform, not to the network:
+			// it is reused as it is and not kept in git.
+			otellog.LogInfo(ctx, fmt.Sprintf("Toolbox %s is built in and is not followed", id))
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
