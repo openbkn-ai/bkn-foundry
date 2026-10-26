@@ -78,6 +78,8 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
 			ra.EXPECT().ListReleases(gomock.Any(), interfaces.ReleasesQuery{LineageID: id, Limit: 1}).Return([]*interfaces.Release{}, nil)
 			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+			// The target network does not exist yet.
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
 			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, files map[string][]byte) (*interfaces.BKNImportResult, error) {
 					imported = files
@@ -150,6 +152,8 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
 			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return([]*interfaces.Release{previous}, nil)
 			bba.EXPECT().ExportBKN(gomock.Any(), token, previous.NetworkID).Return(live, nil)
+			// The target network does not exist yet.
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
 			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{KNID: networkID}, nil)
 			ra.EXPECT().CreateRelease(gomock.Any(), gomock.Any()).Return(nil)
 			// A failed export after the release leaves main at the tag; the release stands.
@@ -213,6 +217,8 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
 			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
 			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+			// The target network does not exist yet.
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
 			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).Return(&interfaces.BKNImportResult{
 				KNID: networkID, Capabilities: &interfaces.CapabilityImportReport{Skipped: skipped}}, nil)
 
@@ -256,6 +262,24 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			})
 		})
 
+		Convey("A network that already exists but no release created replies 409 and is not overwritten\n", func() {
+			id := newLineageID()
+			live, _ := setUp(id)
+			networkID := id + "_v1_0_0"
+			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
+			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(live, nil)
+
+			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Release_NetworkExists)
+			_, err = realGS.ResolveRef(ctx, id, "refs/tags/v1.0.0")
+			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
+		})
+
 		Convey("A version already released replies 409\n", func() {
 			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders_v1_0_0").
 				Return(&interfaces.Release{LineageID: "orders", Version: "1.0.0"}, true, nil)
@@ -278,6 +302,8 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
 			ra.EXPECT().ListReleases(gomock.Any(), gomock.Any()).Return(nil, nil)
 			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(live, nil)
+			// The target network does not exist yet.
+			bba.EXPECT().ExportBKN(gomock.Any(), token, networkID).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusNotFound})
 			bba.EXPECT().ImportBKN(gomock.Any(), token, gomock.Any()).DoAndReturn(
 				func(_ context.Context, _ string, files map[string][]byte) (*interfaces.BKNImportResult, error) {
 					imported = files

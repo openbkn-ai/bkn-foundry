@@ -152,7 +152,19 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 			WithErrorDetails(&interfaces.DriftReport{LineageID: lineageID, KNID: liveID, PathDiff: diff})
 	}
 
+	// The import runs in overwrite mode, so a network that already has this id and that no
+	// release created must not be touched. On a retry the network is the one the failed
+	// attempt created.
 	if !retry {
+		_, err := s.bba.ExportBKN(ctx, token, networkID)
+		var backendErr *interfaces.BknBackendError
+		switch {
+		case err == nil:
+			return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_NetworkExists).
+				WithErrorDetails(map[string]any{"network_id": networkID})
+		case !errors.As(err, &backendErr) || backendErr.HTTPCode != http.StatusNotFound:
+			return nil, err
+		}
 		if err := gs.Tag(ctx, lineageID, tag, branchHead); err != nil {
 			return nil, err
 		}

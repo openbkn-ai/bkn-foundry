@@ -11,6 +11,7 @@ var releaseEnUS = i18n.I18nMessages{
 	Messages: map[string]string{
 		"BknProject.Release.InvalidVersion":      "Invalid Version. version must be X.Y.Z with digits only and no leading zeros, at most 32 characters.",
 		"BknProject.Release.NotFound":            "Release Not Found. No release published this knowledge network.",
+		"BknProject.Release.NetworkExists":       "Network Already Exists. A knowledge network with the id this version maps to already exists and was not created by a release of this lineage; it is not overwritten. Please choose another version or remove that network.",
 		"BknProject.Release.VersionExists":       "Version Already Exists. This version, or the network id it maps to, is already published, or its tag points at another commit; please choose another version.",
 		"BknProject.Release.BranchBehind":        "Branch Behind main. main has changes the branch does not have; sync the branch first.",
 		"BknProject.Release.Drift":               "Live Definitions Drifted. The live network differs from main; error_details lists the paths. Commit the drift to main, sync the branch, then publish again.",

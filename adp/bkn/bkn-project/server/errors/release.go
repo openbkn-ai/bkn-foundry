@@ -16,6 +16,7 @@ const (
 	BknProject_Release_BranchBehind        = "BknProject.Release.BranchBehind"
 	BknProject_Release_Drift               = "BknProject.Release.Drift"
 	BknProject_Release_CapabilitiesSkipped = "BknProject.Release.CapabilitiesSkipped"
+	BknProject_Release_NetworkExists       = "BknProject.Release.NetworkExists"
 
 	// 500
 	BknProject_Release_InternalError = "BknProject.Release.InternalError"
@@ -29,6 +30,7 @@ var (
 		BknProject_Release_BranchBehind,
 		BknProject_Release_Drift,
 		BknProject_Release_CapabilitiesSkipped,
+		BknProject_Release_NetworkExists,
 		BknProject_Release_InternalError,
 	}
 )
