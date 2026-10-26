@@ -21,6 +21,7 @@ var lineageZhCN = i18n.I18nMessages{
 		"BknProject.Lineage.BranchAlreadyExists":     "分支已存在 请换一个分支名。",
 		"BknProject.Lineage.MergeConflict":           "合并冲突 main 与该分支对同一定义做了不同修改，冲突明细见 error_details。",
 		"BknProject.Lineage.BknBackendRequestFailed": "bkn-backend 请求失败 bkn-backend 拒绝了请求，返回内容见 error_details。",
+		"BknProject.Lineage.CapabilityRequestFailed": "函数或 Skill 请求失败 读取或复制网络使用的函数（工具箱）或 Skill 失败，具体对象与原因见 error_details。Skill 必须已发布才能随网络发布。",
 		"BknProject.Lineage.InternalError":           "内部错误 请联系管理员。",
 	},
 }

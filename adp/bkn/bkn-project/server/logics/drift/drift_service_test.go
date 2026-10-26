@@ -15,6 +15,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/capability"
 )
 
 const token = "Bearer test-token"
@@ -26,7 +27,8 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 
 		gs := pmock.NewMockGitStore(mockCtrl)
 		bba := pmock.NewMockBknBackendAccess(mockCtrl)
-		svc := &driftService{gs: gs, bba: bba}
+		efa := pmock.NewMockExecutionFactoryAccess(mockCtrl)
+		svc := &driftService{gs: gs, bba: bba, efa: efa}
 		ctx := context.Background()
 		main := map[string][]byte{
 			"network.bkn":              []byte("network"),
@@ -42,6 +44,7 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 			}
 			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(live, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
+			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(map[string][]byte{}, nil)
 
 			report, err := svc.DriftCheck(ctx, token, "orders", "orders")
 
@@ -60,11 +63,55 @@ func Test_DriftService_DriftCheck(t *testing.T) {
 		Convey("Identical definitions report no drift\n", func() {
 			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders_1-0-0").Return(main, nil)
 			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
+			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(map[string][]byte{}, nil)
 
 			report, err := svc.DriftCheck(ctx, token, "orders", "orders_1-0-0")
 
 			So(err, ShouldBeNil)
 			So(report.Empty(), ShouldBeTrue)
+		})
+
+		Convey("Functions are compared as exported and Skills as released, against what main keeps\n", func() {
+			manifest := "functions:\n  - id: box1\n    digest: sha256:x\nskills:\n  - id: s1\n    digest: sha256:y\n"
+			export := []byte(`{"toolbox":{"configs":[{"box_id":"box1","box_name":"tools","tools":[]}]}}`)
+			exported, err := capability.NewFunction(export)
+			So(err, ShouldBeNil)
+			stored := map[string][]byte{
+				"release.yaml":                []byte(manifest),
+				"functions/box1/toolbox.json": exported.Files[capability.TOOLBOX_FILE],
+				"skills/s1/SKILL.md":          []byte("---\nname: s\n---\nv1\n"),
+			}
+			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(main, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
+			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(stored, nil)
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, "box1").Return(export, nil)
+			// The released version was edited in place; the draft is never read.
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "s1").Return(map[string][]byte{
+				"SKILL.md": []byte("---\nname: s\n---\nv2\n"), "refs/new.md": []byte("new")}, nil)
+
+			report, err := svc.DriftCheck(ctx, token, "orders", "orders")
+
+			So(err, ShouldBeNil)
+			So(report.PathDiff.Empty(), ShouldBeTrue)
+			So(report.Capabilities, ShouldResemble, interfaces.PathDiff{
+				Added: []string{"skills/s1/refs/new.md"}, Changed: []string{"skills/s1/SKILL.md"}, Removed: []string{}})
+			So(report.Empty(), ShouldBeFalse)
+			So(report.LiveCapabilities["skills/s1/refs/new.md"], ShouldResemble, []byte("new"))
+			So(report.LiveCapabilities, ShouldNotContainKey, "release.yaml")
+		})
+
+		Convey("A refused function export names the toolbox\n", func() {
+			bba.EXPECT().ExportBKN(gomock.Any(), token, "orders").Return(main, nil)
+			gs.EXPECT().ReadTree(gomock.Any(), "orders", "main").Return(main, nil)
+			gs.EXPECT().ReadCapabilities(gomock.Any(), "orders", "main").Return(map[string][]byte{
+				"release.yaml": []byte("functions:\n  - id: box1\n")}, nil)
+			efa.EXPECT().ExportToolbox(gomock.Any(), token, "box1").Return(nil, &interfaces.ExecutionFactoryError{HTTPCode: http.StatusForbidden})
+
+			_, err := svc.DriftCheck(ctx, token, "orders", "orders")
+
+			var itemErr *capability.ItemError
+			So(errors.As(err, &itemErr), ShouldBeTrue)
+			So(itemErr.ID, ShouldEqual, "box1")
 		})
 
 		Convey("An export refused by bkn-backend travels back unchanged\n", func() {
@@ -112,6 +159,19 @@ func Test_DriftService_CommitLiveToMain(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(head, ShouldEqual, "abc123")
+		})
+
+		Convey("Drifted functions and Skills are committed too, release.yaml kept\n", func() {
+			report.Capabilities = interfaces.PathDiff{Changed: []string{"skills/s1/SKILL.md"}}
+			report.LiveCapabilities = map[string][]byte{"skills/s1/SKILL.md": []byte("v2")}
+			gs.EXPECT().CommitFiles(gomock.Any(), "orders", "main", report.Live, gomock.Any(), author).Return("abc123", nil)
+			gs.EXPECT().CommitCapabilities(gomock.Any(), "orders", "main", report.LiveCapabilities,
+				"sync live functions and Skills of orders_1-0-0", author).Return("def456", nil)
+
+			head, err := svc.CommitLiveToMain(ctx, report, author)
+
+			So(err, ShouldBeNil)
+			So(head, ShouldEqual, "def456")
 		})
 
 		Convey("A failed commit is reported\n", func() {

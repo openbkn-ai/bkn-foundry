@@ -29,6 +29,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/drift"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/merge"
 )
@@ -41,13 +42,14 @@ var (
 type lineageService struct {
 	gs  interfaces.GitStore
 	bba interfaces.BknBackendAccess
+	efa interfaces.ExecutionFactoryAccess
 	ds  interfaces.DriftService
 	ra  interfaces.ReleaseAccess
 }
 
 func NewLineageService() interfaces.LineageService {
 	lsOnce.Do(func() {
-		ls = &lineageService{gs: logics.GS, bba: logics.BBA, ds: drift.NewDriftService(), ra: logics.RA}
+		ls = &lineageService{gs: logics.GS, bba: logics.BBA, efa: logics.EFA, ds: drift.NewDriftService(), ra: logics.RA}
 	})
 	return ls
 }
@@ -318,6 +320,23 @@ func toHTTPError(ctx context.Context, operation string, err error) error {
 	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) {
 		return httpErr
+	}
+	var itemErr *capability.ItemError
+	if errors.As(err, &itemErr) {
+		// A 4xx from execution-factory is the caller's to fix and keeps its status; anything else is a bad gateway.
+		status := http.StatusBadGateway
+		details := map[string]any{"kind": itemErr.Kind, "id": itemErr.ID, "name": itemErr.Name,
+			"operation": itemErr.Operation, "error": itemErr.Err.Error()}
+		var efaErr *interfaces.ExecutionFactoryError
+		if errors.As(err, &efaErr) {
+			if efaErr.HTTPCode >= http.StatusBadRequest && efaErr.HTTPCode < http.StatusInternalServerError {
+				status = efaErr.HTTPCode
+			}
+			details["error_code"], details["description"] = efaErr.ErrorCode, efaErr.Description
+		}
+		otellog.LogWarn(ctx, fmt.Sprintf("%s: %v", operation, err))
+		return httperrors.NewHTTPError(ctx, status, perrors.BknProject_Lineage_CapabilityRequestFailed).
+			WithErrorDetails(details)
 	}
 	var backendErr *interfaces.BknBackendError
 	if errors.As(err, &backendErr) {

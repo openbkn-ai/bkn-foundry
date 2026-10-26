@@ -26,6 +26,8 @@ const (
 
 	// The status bkn-backend replied with.
 	BknProject_Lineage_BknBackendRequestFailed = "BknProject.Lineage.BknBackendRequestFailed"
+	// The status execution-factory replied with, or 502.
+	BknProject_Lineage_CapabilityRequestFailed = "BknProject.Lineage.CapabilityRequestFailed"
 
 	// 500
 	BknProject_Lineage_InternalError = "BknProject.Lineage.InternalError"
@@ -45,6 +47,7 @@ var (
 		BknProject_Lineage_BranchAlreadyExists,
 		BknProject_Lineage_MergeConflict,
 		BknProject_Lineage_BknBackendRequestFailed,
+		BknProject_Lineage_CapabilityRequestFailed,
 		BknProject_Lineage_InternalError,
 	}
 )

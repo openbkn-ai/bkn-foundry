@@ -19,6 +19,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/capability"
 )
 
 var (
@@ -29,11 +30,12 @@ var (
 type driftService struct {
 	gs  interfaces.GitStore
 	bba interfaces.BknBackendAccess
+	efa interfaces.ExecutionFactoryAccess
 }
 
 func NewDriftService() interfaces.DriftService {
 	dsOnce.Do(func() {
-		ds = &driftService{gs: logics.GS, bba: logics.BBA}
+		ds = &driftService{gs: logics.GS, bba: logics.BBA, efa: logics.EFA}
 	})
 	return ds
 }
@@ -55,14 +57,42 @@ func (s *driftService) DriftCheck(ctx context.Context, token string, lineageID s
 		return nil, fmt.Errorf("read main of lineage %s: %w", lineageID, err)
 	}
 
+	_, liveCapabilities, capabilityDiff, err := CheckCapabilities(ctx, s.gs, s.efa, token, lineageID, interfaces.GIT_MAIN_BRANCH)
+	if err != nil {
+		otellog.LogError(ctx, "Check functions and Skills failed", err)
+		span.SetStatus(codes.Error, "Check functions and Skills failed")
+		return nil, err
+	}
+
 	report := &interfaces.DriftReport{
-		LineageID: lineageID,
-		KNID:      knID,
-		PathDiff:  DiffFiles(stored, live),
-		Live:      live,
+		LineageID:        lineageID,
+		KNID:             knID,
+		PathDiff:         DiffFiles(stored, live),
+		Capabilities:     capabilityDiff,
+		Live:             live,
+		LiveCapabilities: capability.Files(liveCapabilities),
 	}
 	span.SetStatus(codes.Ok, "")
 	return report, nil
+}
+
+// CheckCapabilities reads release.yaml at ref, exports the live state of the
+// toolboxes and Skills it lists and compares their files with those at ref.
+func CheckCapabilities(ctx context.Context, gs interfaces.GitStore, efa interfaces.ExecutionFactoryAccess,
+	token string, lineageID string, ref string) (*capability.Manifest, []*capability.Item, interfaces.PathDiff, error) {
+	stored, err := gs.ReadCapabilities(ctx, lineageID, ref)
+	if err != nil {
+		return nil, nil, interfaces.PathDiff{}, fmt.Errorf("read functions and Skills of lineage %s: %w", lineageID, err)
+	}
+	manifest, err := capability.ParseManifest(stored[interfaces.GIT_MANIFEST_FILE])
+	if err != nil {
+		return nil, nil, interfaces.PathDiff{}, err
+	}
+	live, err := capability.ExportManifest(ctx, efa, token, manifest)
+	if err != nil {
+		return nil, nil, interfaces.PathDiff{}, err
+	}
+	return manifest, live, DiffFiles(capability.StoredFiles(stored), capability.Files(live)), nil
 }
 
 func (s *driftService) CommitLiveToMain(ctx context.Context, report *interfaces.DriftReport, author interfaces.GitAuthor) (string, error) {
@@ -75,6 +105,15 @@ func (s *driftService) CommitLiveToMain(ctx context.Context, report *interfaces.
 		otellog.LogError(ctx, "Commit live definitions failed", err)
 		span.SetStatus(codes.Error, "Commit live definitions failed")
 		return "", fmt.Errorf("commit live definitions of %s to lineage %s: %w", report.KNID, report.LineageID, err)
+	}
+	if !report.Capabilities.Empty() {
+		message = fmt.Sprintf("sync live functions and Skills of %s", report.KNID)
+		head, err = s.gs.CommitCapabilities(ctx, report.LineageID, interfaces.GIT_MAIN_BRANCH, report.LiveCapabilities, message, author)
+		if err != nil {
+			otellog.LogError(ctx, "Commit live functions and Skills failed", err)
+			span.SetStatus(codes.Error, "Commit live functions and Skills failed")
+			return "", fmt.Errorf("commit live functions and Skills to lineage %s: %w", report.LineageID, err)
+		}
 	}
 	span.SetStatus(codes.Ok, "")
 	return head, nil

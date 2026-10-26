@@ -172,14 +172,16 @@ func Test_LineageRestHandler(t *testing.T) {
 
 		Convey("Drift reports without committing by default\n", func() {
 			report := &interfaces.DriftReport{LineageID: "orders", KNID: "orders",
-				PathDiff: interfaces.PathDiff{Added: []string{}, Changed: []string{"network.bkn"}, Removed: []string{}}}
+				PathDiff:     interfaces.PathDiff{Added: []string{}, Changed: []string{"network.bkn"}, Removed: []string{}},
+				Capabilities: interfaces.PathDiff{Added: []string{}, Changed: []string{"skills/s1/SKILL.md"}, Removed: []string{}}}
 			ls.EXPECT().CheckDrift(gomock.Any(), "Bearer t1", "orders", "orders", false, author).
 				Return(&interfaces.DriftResult{DriftReport: report}, nil)
 
 			w := serveBody(handler, http.MethodPost, "/api/bkn-project/v1/lineages/orders/drift", []byte(`{"kn_id":"orders"}`))
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
-			So(w.Body.String(), ShouldEqual, `{"lineage_id":"orders","kn_id":"orders","added":[],"changed":["network.bkn"],"removed":[]}`)
+			So(w.Body.String(), ShouldEqual, `{"lineage_id":"orders","kn_id":"orders","added":[],"changed":["network.bkn"],"removed":[],`+
+				`"capabilities":{"added":[],"changed":["skills/s1/SKILL.md"],"removed":[]}}`)
 		})
 
 		Convey("Drift commits with commit=true\n", func() {

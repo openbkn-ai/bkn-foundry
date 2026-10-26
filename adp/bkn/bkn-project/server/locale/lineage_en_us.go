@@ -21,6 +21,7 @@ var lineageEnUS = i18n.I18nMessages{
 		"BknProject.Lineage.BranchAlreadyExists":     "Branch Already Exists. Please choose another branch name.",
 		"BknProject.Lineage.MergeConflict":           "Merge Conflict. main and the branch changed the same definitions differently; error_details lists the conflicts.",
 		"BknProject.Lineage.BknBackendRequestFailed": "BKN Backend Request Failed. bkn-backend refused the request; error_details holds its reply.",
+		"BknProject.Lineage.CapabilityRequestFailed": "Function or Skill Request Failed. Reading or copying a function (toolbox) or Skill the network uses failed; error_details names it and holds the reason. A Skill must be published to be followed.",
 		"BknProject.Lineage.InternalError":           "Internal Error. Please contact the administrator.",
 	},
 }
