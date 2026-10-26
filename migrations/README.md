@@ -76,6 +76,7 @@ When adding a version, all of the following are required:
 | `bkn-backend` | `openbkn` | `adp/bkn/bkn-backend` |
 | `bkn-backend-trace-outbox` | `openbkn` | `adp/bkn/bkn-backend` |
 | `ontology-query-trace-outbox` | `openbkn` | `adp/bkn/ontology-query` |
+| `bkn-project` | `openbkn` | `adp/bkn/bkn-project` |
 | `vega-backend` | `openbkn` | `vega/vega-backend` |
 | `agent-operator-integration` | `openbkn` | `adp/execution-factory/operator-integration` |
 | `mf-model-manager` | `openbkn` | `infra/mf-model-manager` |

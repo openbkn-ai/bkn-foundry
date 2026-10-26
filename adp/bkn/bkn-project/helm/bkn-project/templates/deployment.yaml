@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.moduleName }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    module: {{ .Values.moduleName }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    {{- if .Values.persistence.enabled }}
+    # A ReadWriteOnce volume cannot be shared with a surge pod on another node.
+    type: Recreate
+    {{- else }}
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+    {{- end }}
+  selector:
+    matchLabels:
+      module: {{ .Values.moduleName }}
+  template:
+    metadata:
+      labels:
+        module: {{ .Values.moduleName }}
+    spec:
+{{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+      dnsConfig:
+        options:
+          - name: single-request-reopen
+          - name: use-vc
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      {{- if .Values.antiAffinity.enabled }}
+      affinity:
+        {{- if eq .Values.antiAffinity.rule "soft" }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchExpressions:
+                    - key: module
+                      operator: In
+                      values:
+                        - {{ .Values.moduleName }}
+        {{- else if eq .Values.antiAffinity.rule "hard" }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchExpressions:
+                  - key: module
+                    operator: In
+                    values:
+                      - {{ .Values.moduleName }}
+        {{- end }}
+      {{- end }}
+      containers:
+      - name: bkn-project
+        image: {{ template "bkn-project.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+          - name: backend
+            containerPort: {{ .Values.service.bknProject.port }}
+        livenessProbe:
+          httpGet:
+            path: /api/bkn-project/v1/health
+            port: backend
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/bkn-project/v1/ready
+            port: backend
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 30
+          failureThreshold: 3
+        env:
+          - name: TZ
+            value: {{ .Values.env.timezone }}
+          - name: LANG
+            value: {{ .Values.env.language }}
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          {{- if .Values.depServices.rds.type }}
+          - name: DB_TYPE
+            value: {{ .Values.depServices.rds.type | quote }}
+          {{- end }}
+          - name: DM_SVC_PATH
+            value: /opt/bkn-project/config
+        resources: {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+          - name: {{ .Values.moduleName }}-cm
+            mountPath: /opt/bkn-project/config
+          - name: {{ .Values.moduleName }}-git
+            mountPath: {{ .Values.config.gitStore.rootDir }}
+      restartPolicy: Always
+      volumes:
+      - name: {{ .Values.moduleName }}-cm
+        configMap:
+          name: {{ .Values.moduleName }}-cm
+      - name: {{ .Values.moduleName }}-git
+        {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.moduleName }}-git
+        {{- else }}
+        emptyDir: {}
+        {{- end }}

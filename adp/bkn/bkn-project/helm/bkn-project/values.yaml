@@ -1,0 +1,108 @@
+namespace: openbkn
+moduleName: bkn-project
+
+# Environment variables: language/time zone.
+env:
+  timezone: Asia/Shanghai
+  language: en_US.UTF-8
+
+replicaCount: 1
+
+# Node selector.
+nodeSelector: {}
+
+image:
+  registry: ghcr.io/openbkn-ai
+  repository: bkn-project
+  tag: "__VERSION__"
+  pullPolicy: IfNotPresent
+
+service:
+  bknProject:
+    type: ClusterIP
+    port: 13016
+    nodePort: 31016
+    ingress:
+      enabled: true
+      interface:
+        path:
+          - /api/bkn-project/v1
+
+# Built-in git store. One bare repository per release lineage is kept under
+# /data/git. The volume is ReadWriteOnce, so keep replicaCount at 1 while it
+# is enabled.
+persistence:
+  enabled: true
+  size: 5Gi
+  # Empty uses the cluster's default StorageClass.
+  storageClass: ""
+
+# Anti-affinity settings.
+antiAffinity:
+  enabled: true
+  rule: "soft" # Optional values: hard, soft.
+
+# Microservice communication dependency configuration.
+depServices:
+  class-443:
+    ingressClass: class-443
+  rds:
+    host: mariadb-mariadb-master.resource.svc.cluster.local.
+    port: 3330
+    user: root
+    password: ""
+    type: MariaDB
+  hydra-admin:
+    # Introspect against bkn-safe's paired Hydra.
+    host: bkn-safe-hydra-admin
+    port: 4445
+    protocol: http
+  bkn-backend:
+    host: bkn-backend-svc
+    port: 13014
+    protocol: http
+
+config:
+  server:
+    runMode: release
+    httpPort: 13016
+    language: zh-CN
+    readTimeOut: 600
+    writeTimeOut: 600
+  log:
+    logLevel: info
+    developMode: false
+    maxAge: 100
+    maxBackups: 20
+    maxSize: 100
+  gitStore:
+    rootDir: /data/git
+  # OTel Collector configuration.
+  otel:
+    # Service name.
+    service_name: "bkn-project"
+    # Runtime environment.
+    environment: "production"
+    # OTLP reporting endpoint.
+    otlp_endpoint: "otelcol-contrib:4318"
+
+    # Trace configuration.
+    trace:
+      enabled: false
+      # Sampling rate: 0.0 - 1.0.
+      sampling_rate: 1.0
+
+    # Log configuration.
+    log:
+      enabled: false
+      # Log level: debug, info, warn, error.
+      level: "info"
+
+# Resource configuration.
+resources:
+  requests:
+    cpu: 0
+    memory: 0Gi
+  limits:
+    cpu: 1
+    memory: 1Gi

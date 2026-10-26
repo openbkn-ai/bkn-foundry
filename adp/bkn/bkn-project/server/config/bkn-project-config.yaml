@@ -1,0 +1,54 @@
+server:
+  runMode: release
+  httpPort: 13016
+  language: zh-CN
+  readTimeOut: 600
+  writeTimeOut: 600
+log:
+  logLevel: debug
+  developMode: false
+  maxAge: 100
+  maxBackups: 20
+  maxSize: 100
+# OTel Collector configuration.
+otel:
+  # Service name.
+  service_name: "bkn-project"
+  # Runtime environment.
+  environment: "production"
+  # OTLP reporting endpoint.
+  otlp_endpoint: "otelcol-contrib:4318"
+
+  # Trace configuration.
+  trace:
+    enabled: false
+    # Sampling rate: 0.0 - 1.0.
+    sampling_rate: 1.0
+
+  # Log configuration.
+  log:
+    enabled: false
+    # Log level: debug, info, warn, error.
+    level: "info"
+
+# Built-in git store: one bare repository per release lineage.
+gitStore:
+  rootDir: /data/git
+
+depServices:
+  class-443:
+    ingressClass: class-443
+  rds:
+    host: mariadb-mariadb-master.resource.svc.cluster.local.
+    port: 3330
+    user: root
+    password: ""
+    type: MariaDB
+  hydra-admin:
+    host: hydra-admin
+    port: 4445
+    protocol: http
+  bkn-backend:
+    host: bkn-backend-svc
+    port: 13014
+    protocol: http

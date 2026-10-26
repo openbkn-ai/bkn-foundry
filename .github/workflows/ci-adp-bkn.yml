@@ -32,6 +32,23 @@ jobs:
           I18N_MODE_UT: "true"
         run: go test -count=1 -gcflags="all=-l" ./...
 
+  bkn-project:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: adp/bkn/bkn-project/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: adp/bkn/bkn-project/server/go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - name: Run BKN project unit tests
+        env:
+          I18N_MODE_UT: "true"
+        run: go test -count=1 -gcflags="all=-l" ./...
+
   ontology-query:
     runs-on: ubuntu-24.04
     defaults:
