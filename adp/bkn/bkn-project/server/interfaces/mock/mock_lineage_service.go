@@ -101,6 +101,21 @@ func (mr *MockLineageServiceMockRecorder) CreateLineage(ctx, token, knID, author
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLineage", reflect.TypeOf((*MockLineageService)(nil).CreateLineage), ctx, token, knID, author)
 }
 
+// PublishRelease mocks base method.
+func (m *MockLineageService) PublishRelease(ctx context.Context, token, lineageID string, req interfaces.PublishReleaseRequest, publisher interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.PublishReleaseResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PublishRelease", ctx, token, lineageID, req, publisher, author)
+	ret0, _ := ret[0].(*interfaces.PublishReleaseResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PublishRelease indicates an expected call of PublishRelease.
+func (mr *MockLineageServiceMockRecorder) PublishRelease(ctx, token, lineageID, req, publisher, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishRelease", reflect.TypeOf((*MockLineageService)(nil).PublishRelease), ctx, token, lineageID, req, publisher, author)
+}
+
 // SyncBranch mocks base method.
 func (m *MockLineageService) SyncBranch(ctx context.Context, lineageID, branch string, author interfaces.GitAuthor) (*interfaces.SyncBranchResult, error) {
 	m.ctrl.T.Helper()

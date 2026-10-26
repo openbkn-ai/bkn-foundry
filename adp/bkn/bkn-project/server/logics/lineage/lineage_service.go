@@ -4,8 +4,8 @@
 
 // Package lineage sets up the git lineage of a knowledge network and lets
 // projects work on their own branches of it. main mirrors the live network and
-// moves only through the drift commit and, later, publishing; project branches
-// take definition uploads and sync main into themselves.
+// moves only through the drift commit and publishing; project branches take
+// definition uploads, sync main into themselves and are published as new networks.
 package lineage
 
 import (

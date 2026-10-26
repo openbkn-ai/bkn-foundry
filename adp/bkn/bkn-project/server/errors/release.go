@@ -5,8 +5,17 @@
 package errors
 
 const (
+	// 400
+	BknProject_Release_InvalidVersion = "BknProject.Release.InvalidVersion"
+
 	// 404
 	BknProject_Release_NotFound = "BknProject.Release.NotFound"
+
+	// 409
+	BknProject_Release_VersionExists       = "BknProject.Release.VersionExists"
+	BknProject_Release_BranchBehind        = "BknProject.Release.BranchBehind"
+	BknProject_Release_Drift               = "BknProject.Release.Drift"
+	BknProject_Release_CapabilitiesSkipped = "BknProject.Release.CapabilitiesSkipped"
 
 	// 500
 	BknProject_Release_InternalError = "BknProject.Release.InternalError"
@@ -14,7 +23,12 @@ const (
 
 var (
 	ReleaseErrCodeList = []string{
+		BknProject_Release_InvalidVersion,
 		BknProject_Release_NotFound,
+		BknProject_Release_VersionExists,
+		BknProject_Release_BranchBehind,
+		BknProject_Release_Drift,
+		BknProject_Release_CapabilitiesSkipped,
 		BknProject_Release_InternalError,
 	}
 )
