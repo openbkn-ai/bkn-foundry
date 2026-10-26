@@ -597,6 +597,24 @@ def test_canvas_control_checks_ids_and_tracks_the_selection():
     assert [a["type"] for a in _result(run)["actions"]] == ["select", "arrange_selection", "remove_nodes"]
 
 
+def test_a_value_node_cannot_start_or_end_a_path():
+    run, tools, _ = _run(
+        nodes=[
+            {"id": "teams-1", "object_type_id": "teams"},
+            {"id": "value|主场结果|胜", "object_type_id": "@value:主场结果"},
+        ]
+    )
+    for action in ("path_start", "path_end"):
+        with pytest.raises(ToolException, match="Value nodes cannot start or end a path"):
+            asyncio.run(tools["canvas_control"].coroutine(action=action, id="value|主场结果|胜"))
+    with pytest.raises(ToolException, match="Value nodes cannot start or end a path"):
+        asyncio.run(tools["canvas_control"].coroutine(action="find_path", start="teams-1", end="value|主场结果|胜"))
+    # A value node may still anchor the views that stay on the canvas.
+    _invoke(tools["canvas_control"], action="distance_heatmap", id="value|主场结果|胜")
+    _invoke(tools["canvas_control"], action="path_start", id="teams-1")
+    assert [a["type"] for a in _result(run)["actions"]] == ["distance_heatmap", "path_start"]
+
+
 def test_undo_takes_back_only_this_runs_view_actions():
     run, tools = _canvas_run()
     with pytest.raises(ToolException, match="nothing to undo"):
