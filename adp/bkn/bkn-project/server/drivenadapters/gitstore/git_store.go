@@ -1,0 +1,577 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+// Package gitstore keeps the definitions of each release lineage in a bare git
+// repository at <rootDir>/<lineage_id>.git, where the lineage id is the base
+// network id. Every commit has this layout:
+//
+//	bkn/          the files of the bkn-backend export tar, paths kept as in the tar
+//	functions/    reserved: exported functions
+//	skills/       reserved: Skill packages
+//	project/      reserved: project metadata
+//	release.yaml  reserved: manifest with the id and content digest of each function and Skill
+//
+// Only bkn/ is written for now; CommitFiles replaces it and keeps every other
+// top-level entry as it is. A bare repository has no worktree, so commits are
+// built directly from blob, tree and commit objects.
+package gitstore
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/filemode"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/codes"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+)
+
+// BKN_DIR is the top-level directory that holds the network definitions.
+const BKN_DIR = "bkn"
+
+// lineageIDPattern is the bkn-backend network id rule. Checking it also keeps
+// the repository path inside the root directory.
+var lineageIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
+
+var (
+	gsOnce   sync.Once
+	gsAccess interfaces.GitStore
+)
+
+type gitStore struct {
+	rootDir string
+
+	mu sync.Mutex
+	// locks serialises writes per lineage. Publishing a release will take the
+	// same lock, so a release and a drift commit never interleave.
+	locks map[string]*sync.RWMutex
+}
+
+func NewGitStore(appSetting *common.AppSetting) interfaces.GitStore {
+	gsOnce.Do(func() {
+		gsAccess = newGitStore(appSetting.GitStoreSetting.RootDir)
+	})
+	return gsAccess
+}
+
+func newGitStore(rootDir string) *gitStore {
+	return &gitStore{rootDir: rootDir, locks: map[string]*sync.RWMutex{}}
+}
+
+func (gs *gitStore) lock(lineageID string) *sync.RWMutex {
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	l, ok := gs.locks[lineageID]
+	if !ok {
+		l = &sync.RWMutex{}
+		gs.locks[lineageID] = l
+	}
+	return l
+}
+
+func (gs *gitStore) repoPath(lineageID string) (string, error) {
+	if !lineageIDPattern.MatchString(lineageID) {
+		return "", fmt.Errorf("invalid lineage id %q", lineageID)
+	}
+	return filepath.Join(gs.rootDir, lineageID+".git"), nil
+}
+
+func (gs *gitStore) open(lineageID string) (*git.Repository, error) {
+	p, err := gs.repoPath(lineageID)
+	if err != nil {
+		return nil, err
+	}
+	repo, err := git.PlainOpen(p)
+	if err != nil {
+		return nil, fmt.Errorf("open repository of lineage %s: %w", lineageID, err)
+	}
+	return repo, nil
+}
+
+func (gs *gitStore) InitLineage(ctx context.Context, lineageID string, files map[string][]byte,
+	message string, author interfaces.GitAuthor) (string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "InitLineage")
+	defer span.End()
+
+	p, err := gs.repoPath(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Invalid lineage id")
+		return "", err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	if _, err := os.Stat(p); err == nil {
+		span.SetStatus(codes.Error, "Repository exists")
+		return "", fmt.Errorf("init repository of lineage %s: %w", lineageID, git.ErrRepositoryAlreadyExists)
+	}
+	// Build the repository in a temporary directory and move it into place in
+	// one rename, so a crash mid-way never leaves a half-made <id>.git behind.
+	// Temporary names start with "." and so never match the lineage id rule.
+	gs.removeStaleTemps(lineageID)
+	tmp, err := os.MkdirTemp(gs.rootDir, tempPrefix(lineageID)+"*.git")
+	if err != nil {
+		span.SetStatus(codes.Error, "Create temporary directory failed")
+		return "", fmt.Errorf("init repository of lineage %s: %w", lineageID, err)
+	}
+	defer os.RemoveAll(tmp) // no-op once renamed
+
+	hash, err := initBareRepository(tmp, files, message, author)
+	if err != nil {
+		span.SetStatus(codes.Error, "Init repository failed")
+		return "", fmt.Errorf("init repository of lineage %s: %w", lineageID, err)
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		span.SetStatus(codes.Error, "Move repository failed")
+		return "", fmt.Errorf("move repository of lineage %s into place: %w", lineageID, err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return hash.String(), nil
+}
+
+// tempPrefix ends in ".", which lineage ids cannot contain, so the temporaries of lineage
+// "orders" never match those of "orders-v2", which may be mid-init under its own lock.
+func tempPrefix(lineageID string) string {
+	return ".tmp-" + lineageID + "."
+}
+
+// removeStaleTemps deletes temporary directories left by an InitLineage that
+// was killed before its rename. The caller holds the lineage write lock.
+func (gs *gitStore) removeStaleTemps(lineageID string) {
+	stale, _ := filepath.Glob(filepath.Join(gs.rootDir, tempPrefix(lineageID)+"*.git"))
+	for _, dir := range stale {
+		_ = os.RemoveAll(dir)
+	}
+}
+
+// initBareRepository creates a bare repository at dir with main at a first
+// commit holding files under bkn/.
+func initBareRepository(dir string, files map[string][]byte, message string, author interfaces.GitAuthor) (plumbing.Hash, error) {
+	repo, err := git.PlainInitWithOptions(dir, &git.PlainInitOptions{
+		InitOptions: git.InitOptions{DefaultBranch: plumbing.NewBranchReferenceName(interfaces.GIT_MAIN_BRANCH)},
+		Bare:        true,
+	})
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	hash, err := commitBknDir(repo, nil, files, message, author)
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	ref := plumbing.NewHashReference(plumbing.NewBranchReferenceName(interfaces.GIT_MAIN_BRANCH), hash)
+	if err := repo.Storer.SetReference(ref); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return hash, nil
+}
+
+func (gs *gitStore) CommitFiles(ctx context.Context, lineageID string, branch string, files map[string][]byte,
+	message string, author interfaces.GitAuthor) (string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "CommitFiles")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return "", err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	branchRef := plumbing.NewBranchReferenceName(branch)
+	head, err := repo.Reference(branchRef, true)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read branch failed")
+		return "", fmt.Errorf("read branch %s of lineage %s: %w", branch, lineageID, err)
+	}
+	parent, err := repo.CommitObject(head.Hash())
+	if err != nil {
+		span.SetStatus(codes.Error, "Read commit failed")
+		return "", err
+	}
+	hash, err := commitBknDir(repo, parent, files, message, author)
+	if err != nil {
+		span.SetStatus(codes.Error, "Commit failed")
+		return "", err
+	}
+	if hash != parent.Hash {
+		if err := repo.Storer.SetReference(plumbing.NewHashReference(branchRef, hash)); err != nil {
+			span.SetStatus(codes.Error, "Set reference failed")
+			return "", err
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return hash.String(), nil
+}
+
+func (gs *gitStore) CreateBranch(ctx context.Context, lineageID string, branch string, from string) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "CreateBranch")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	branchRef := plumbing.NewBranchReferenceName(branch)
+	if err := branchRef.Validate(); err != nil {
+		span.SetStatus(codes.Error, "Invalid branch name")
+		return err
+	}
+	if _, err := repo.Reference(branchRef, false); err == nil {
+		span.SetStatus(codes.Error, "Branch exists")
+		return fmt.Errorf("branch %s of lineage %s: %w", branch, lineageID, git.ErrBranchExists)
+	}
+	hash, err := resolveCommit(repo, from)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve ref failed")
+		return err
+	}
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(branchRef, hash)); err != nil {
+		span.SetStatus(codes.Error, "Set reference failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func (gs *gitStore) Tag(ctx context.Context, lineageID string, name string, ref string) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "Tag")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	hash, err := resolveCommit(repo, ref)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve ref failed")
+		return err
+	}
+	if _, err := repo.CreateTag(name, hash, nil); err != nil {
+		span.SetStatus(codes.Error, "Create tag failed")
+		return fmt.Errorf("tag %s of lineage %s: %w", name, lineageID, err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func (gs *gitStore) ReadTree(ctx context.Context, lineageID string, ref string) (map[string][]byte, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "ReadTree")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return nil, err
+	}
+	l := gs.lock(lineageID)
+	l.RLock()
+	defer l.RUnlock()
+
+	tree, err := bknTree(repo, ref)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read tree failed")
+		return nil, err
+	}
+	files := map[string][]byte{}
+	if tree == nil {
+		span.SetStatus(codes.Ok, "")
+		return files, nil
+	}
+	err = tree.Files().ForEach(func(f *object.File) error {
+		r, err := f.Reader()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = r.Close() }()
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return err
+		}
+		files[f.Name] = data
+		return nil
+	})
+	if err != nil {
+		span.SetStatus(codes.Error, "Read files failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return files, nil
+}
+
+func (gs *gitStore) Diff(ctx context.Context, lineageID string, refA string, refB string) (*interfaces.PathDiff, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "Diff")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return nil, err
+	}
+	l := gs.lock(lineageID)
+	l.RLock()
+	defer l.RUnlock()
+
+	a, err := blobHashes(repo, refA)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read tree failed")
+		return nil, err
+	}
+	b, err := blobHashes(repo, refB)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read tree failed")
+		return nil, err
+	}
+	diff := &interfaces.PathDiff{Added: []string{}, Changed: []string{}, Removed: []string{}}
+	for p, hb := range b {
+		ha, ok := a[p]
+		switch {
+		case !ok:
+			diff.Added = append(diff.Added, p)
+		case ha != hb:
+			diff.Changed = append(diff.Changed, p)
+		}
+	}
+	for p := range a {
+		if _, ok := b[p]; !ok {
+			diff.Removed = append(diff.Removed, p)
+		}
+	}
+	sort.Strings(diff.Added)
+	sort.Strings(diff.Changed)
+	sort.Strings(diff.Removed)
+	span.SetStatus(codes.Ok, "")
+	return diff, nil
+}
+
+func (gs *gitStore) MergeBase(ctx context.Context, lineageID string, refA string, refB string) (string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "MergeBase")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return "", err
+	}
+	l := gs.lock(lineageID)
+	l.RLock()
+	defer l.RUnlock()
+
+	a, err := commitAt(repo, refA)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve ref failed")
+		return "", err
+	}
+	b, err := commitAt(repo, refB)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve ref failed")
+		return "", err
+	}
+	bases, err := a.MergeBase(b)
+	if err != nil {
+		span.SetStatus(codes.Error, "Merge base failed")
+		return "", err
+	}
+	if len(bases) == 0 {
+		span.SetStatus(codes.Error, "No merge base")
+		return "", fmt.Errorf("%s and %s of lineage %s have no common ancestor", refA, refB, lineageID)
+	}
+	span.SetStatus(codes.Ok, "")
+	return bases[0].Hash.String(), nil
+}
+
+func resolveCommit(repo *git.Repository, ref string) (plumbing.Hash, error) {
+	hash, err := repo.ResolveRevision(plumbing.Revision(ref))
+	if err != nil {
+		return plumbing.ZeroHash, fmt.Errorf("resolve %s: %w", ref, err)
+	}
+	return *hash, nil
+}
+
+func commitAt(repo *git.Repository, ref string) (*object.Commit, error) {
+	hash, err := resolveCommit(repo, ref)
+	if err != nil {
+		return nil, err
+	}
+	return repo.CommitObject(hash)
+}
+
+// bknTree returns the bkn/ tree of the commit at ref, or nil when the commit has none.
+func bknTree(repo *git.Repository, ref string) (*object.Tree, error) {
+	commit, err := commitAt(repo, ref)
+	if err != nil {
+		return nil, err
+	}
+	root, err := commit.Tree()
+	if err != nil {
+		return nil, err
+	}
+	tree, err := root.Tree(BKN_DIR)
+	if errors.Is(err, object.ErrDirectoryNotFound) {
+		return nil, nil
+	}
+	return tree, err
+}
+
+func blobHashes(repo *git.Repository, ref string) (map[string]plumbing.Hash, error) {
+	tree, err := bknTree(repo, ref)
+	if err != nil {
+		return nil, err
+	}
+	hashes := map[string]plumbing.Hash{}
+	if tree == nil {
+		return hashes, nil
+	}
+	err = tree.Files().ForEach(func(f *object.File) error {
+		hashes[f.Name] = f.Hash
+		return nil
+	})
+	return hashes, err
+}
+
+// commitBknDir writes a commit whose bkn/ directory holds exactly files and
+// whose other top-level entries are those of parent. It returns parent's hash
+// without writing anything when the tree would not change.
+func commitBknDir(repo *git.Repository, parent *object.Commit, files map[string][]byte,
+	message string, author interfaces.GitAuthor) (plumbing.Hash, error) {
+	entries := []object.TreeEntry{}
+	if parent != nil {
+		root, err := parent.Tree()
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+		for _, e := range root.Entries {
+			if e.Name != BKN_DIR {
+				entries = append(entries, e)
+			}
+		}
+	}
+	if len(files) > 0 {
+		bknHash, err := writeTree(repo, files)
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+		entries = append(entries, object.TreeEntry{Name: BKN_DIR, Mode: filemode.Dir, Hash: bknHash})
+	}
+	rootHash, err := encodeTree(repo, entries)
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	if parent != nil && parent.TreeHash == rootHash {
+		return parent.Hash, nil
+	}
+
+	sig := object.Signature{Name: author.Name, Email: author.Email, When: time.Now()}
+	commit := &object.Commit{Author: sig, Committer: sig, Message: message, TreeHash: rootHash}
+	if parent != nil {
+		commit.ParentHashes = []plumbing.Hash{parent.Hash}
+	}
+	obj := repo.Storer.NewEncodedObject()
+	if err := commit.Encode(obj); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return repo.Storer.SetEncodedObject(obj)
+}
+
+// writeTree writes files as nested trees and returns the hash of the top one.
+func writeTree(repo *git.Repository, files map[string][]byte) (plumbing.Hash, error) {
+	blobs := map[string][]byte{}
+	dirs := map[string]map[string][]byte{}
+	for p, data := range files {
+		if err := validatePath(p); err != nil {
+			return plumbing.ZeroHash, err
+		}
+		name, rest, nested := strings.Cut(p, "/")
+		if !nested {
+			blobs[name] = data
+			continue
+		}
+		if dirs[name] == nil {
+			dirs[name] = map[string][]byte{}
+		}
+		dirs[name][rest] = data
+	}
+
+	entries := make([]object.TreeEntry, 0, len(blobs)+len(dirs))
+	for name, data := range blobs {
+		if _, clash := dirs[name]; clash {
+			return plumbing.ZeroHash, fmt.Errorf("path %q is both a file and a directory", name)
+		}
+		hash, err := writeBlob(repo, data)
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+		entries = append(entries, object.TreeEntry{Name: name, Mode: filemode.Regular, Hash: hash})
+	}
+	for name, sub := range dirs {
+		hash, err := writeTree(repo, sub)
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+		entries = append(entries, object.TreeEntry{Name: name, Mode: filemode.Dir, Hash: hash})
+	}
+	return encodeTree(repo, entries)
+}
+
+func encodeTree(repo *git.Repository, entries []object.TreeEntry) (plumbing.Hash, error) {
+	sort.Sort(object.TreeEntrySorter(entries))
+	obj := repo.Storer.NewEncodedObject()
+	if err := (&object.Tree{Entries: entries}).Encode(obj); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return repo.Storer.SetEncodedObject(obj)
+}
+
+func writeBlob(repo *git.Repository, data []byte) (plumbing.Hash, error) {
+	obj := repo.Storer.NewEncodedObject()
+	obj.SetType(plumbing.BlobObject)
+	w, err := obj.Writer()
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	if _, err := w.Write(data); err != nil {
+		_ = w.Close()
+		return plumbing.ZeroHash, err
+	}
+	if err := w.Close(); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return repo.Storer.SetEncodedObject(obj)
+}
+
+// validatePath accepts only clean, relative, slash-separated paths.
+func validatePath(p string) error {
+	if p == "" || path.IsAbs(p) || path.Clean(p) != p || p == "." || p == ".." ||
+		strings.HasPrefix(p, "../") || strings.ContainsAny(p, "\\\x00") {
+		return fmt.Errorf("invalid file path %q", p)
+	}
+	return nil
+}
