@@ -7,6 +7,7 @@ package authz
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/casbin/casbin/v2/util"
 	"gorm.io/gorm"
@@ -123,13 +124,13 @@ func (en *Enforcer) explainBaseWalk(ctx context.Context, idx *grantIndex, access
 			return nil, err
 		}
 		decision := local[currentOperation]
-		grants := []ExplanationGrant{}
-		if authzresource.Entitled(current.Type) {
-			// Kept grants on a paid type below its edition match nothing (#2512).
-			grants, err = en.explanationGrants(idx, current, currentOperation)
-			if err != nil {
-				return nil, err
-			}
+		grants, err := en.explanationGrants(idx, current, currentOperation)
+		if err != nil {
+			return nil, err
+		}
+		if !authzresource.Entitled(current.Type) {
+			// A paid type below its edition keeps only its denies (#2512).
+			grants = slices.DeleteFunc(grants, func(grant ExplanationGrant) bool { return grant.Effect != string(EffectDeny) })
 		}
 		step := ExplanationStep{
 			ResourceType: current.Type, ResourceID: current.ID, Operation: currentOperation,

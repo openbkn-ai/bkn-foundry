@@ -128,3 +128,24 @@ func TestPaidTypeIsLeftOutOfTheCatalogBelowItsEdition(t *testing.T) {
 		t.Fatalf("catalog at the edition left the type out: %s", catalog.Body.String())
 	}
 }
+
+// Owning a paid resource below its edition does not open the owner-visible
+// directory reads: the fallback skips grants on gated types.
+func TestOwnerFallbackIgnoresPaidTypesBelowTheirEdition(t *testing.T) {
+	r, _, _ := ownerGrantFixtureWithDB(t)
+	edition := licverify.EditionProfessional
+	entitlement.SetGateForTest(entitlement.GateFunc(func() entitlement.Snapshot {
+		return entitlement.Snapshot{Licensed: true, Edition: edition}
+	}))
+	authzresource.ResetForTest()
+	t.Cleanup(authzresource.ResetForTest)
+	authzresource.RequireEdition("knowledge_network", "knowledge_network", licverify.EditionEnterprise)
+
+	if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/users", nil, "u-owner"); w.Code != http.StatusForbidden {
+		t.Fatalf("owner of a gated type read the directory: %d %s", w.Code, w.Body.String())
+	}
+	edition = licverify.EditionEnterprise
+	if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/users", nil, "u-owner"); w.Code != http.StatusOK {
+		t.Fatalf("licensed owner directory read = %d %s, want 200", w.Code, w.Body.String())
+	}
+}

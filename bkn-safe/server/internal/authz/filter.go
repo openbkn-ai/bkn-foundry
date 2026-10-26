@@ -484,16 +484,25 @@ func mergeLocalParts(parts localParts, ops []string) map[string]Evaluation {
 // opinions separately so Core retains the documented wildcard fallback order.
 func (en *Enforcer) localDecisions(ctx context.Context, accessorID string, idx *grantIndex,
 	r ResourceRef, ops []string) (map[string]Evaluation, error) {
-	if !authzresource.Entitled(r.Type) {
-		// A paid type below its edition carries no rule (#2512). Every local
-		// reader comes through here: the batched layer, hierarchy climbs and
-		// explain, so none of them can see or inherit its grants.
-		out := make(map[string]Evaluation, len(ops))
-		for _, op := range ops {
-			out[op] = noneEvaluation(ScopeLocal)
-		}
-		return out, nil
+	decisions, err := en.localRules(ctx, accessorID, idx, r, ops)
+	if err != nil || authzresource.Entitled(r.Type) {
+		return decisions, err
 	}
+	// A paid type below its edition grants nothing (#2512). Every local reader
+	// comes through here: the batched layer, hierarchy climbs and explain, so
+	// none of them can see or inherit its allows. Its denies stay: a deny on a
+	// paid parent still narrows what a wildcard allow on the child type gives.
+	for op, decision := range decisions {
+		if decision.Decision == DecisionAllow {
+			decisions[op] = noneEvaluation(ScopeLocal)
+		}
+	}
+	return decisions, nil
+}
+
+// localRules is localDecisions before the edition gate.
+func (en *Enforcer) localRules(ctx context.Context, accessorID string, idx *grantIndex,
+	r ResourceRef, ops []string) (map[string]Evaluation, error) {
 	parts := idx.localParts(r, ops)
 	if idx.superAdmin || !permobject.Available() {
 		return mergeLocalParts(parts, ops), nil

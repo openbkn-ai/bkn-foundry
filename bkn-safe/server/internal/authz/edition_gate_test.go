@@ -225,3 +225,36 @@ func TestPaidParentIsNotInheritedAndExplainAgrees(t *testing.T) {
 		t.Fatalf("licensed explain = %+v", explained)
 	}
 }
+
+// The gate drops a paid type's allows but keeps its denies: a deny on a paid
+// parent still narrows a wildcard allow that reaches the child.
+func TestPaidParentKeepsItsDenies(t *testing.T) {
+	edition := useEdition(t, licverify.EditionProfessional)
+	authzresource.ResetForTest()
+	t.Cleanup(authzresource.ResetForTest)
+	authzresource.RequireEdition("catalog", "catalog", licverify.EditionProfessional)
+	e, db := newTestEnforcerDB(t)
+	declareCatalogHierarchy(t, db)
+	ownedBy(t, db, "res-in", "cat-1")
+	// An all-types allow (the shape seeds write) reaches the child only as a
+	// wildcard, so the climb consults the parent and meets its deny.
+	mustNoErr(t, e.Grant("u-1", "*", "modify"))
+	mustNoErr(t, e.DenyObjectPermission("u-1", "catalog", "cat-1", "resource_manage"))
+
+	licensed := mustCheck(t, e, "u-1", "resource", "res-in", "modify")
+	*edition = licverify.EditionCommunity
+	if gated := mustCheck(t, e, "u-1", "resource", "res-in", "modify"); gated != licensed || gated {
+		t.Fatalf("modify under a denied paid parent: licensed=%v gated=%v, want both denied", licensed, gated)
+	}
+	explained, err := e.ExplainOperation(context.Background(), "u-1", "catalog", "cat-1", "resource_manage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range explained.Steps {
+		for _, grant := range step.MatchedGrants {
+			if grant.Effect != EffectDeny {
+				t.Fatalf("explain listed a gated allow: %+v", grant)
+			}
+		}
+	}
+}
