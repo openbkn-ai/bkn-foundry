@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -26,6 +27,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/drift"
 )
 
@@ -164,9 +166,14 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	if err != nil {
 		return nil, err
 	}
-	if diff := drift.DiffFiles(stored, live); !diff.Empty() {
+	// So would edits made to the functions and Skills the last release recorded.
+	previous, tracked, capabilityDiff, err := drift.CheckCapabilities(ctx, gs, s.efa, token, lineageID, mainHead)
+	if err != nil {
+		return nil, err
+	}
+	if diff := drift.DiffFiles(stored, live); !diff.Empty() || !capabilityDiff.Empty() {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_Drift).
-			WithErrorDetails(&interfaces.DriftReport{LineageID: lineageID, KNID: liveID, PathDiff: diff})
+			WithErrorDetails(&interfaces.DriftReport{LineageID: lineageID, KNID: liveID, PathDiff: diff, Capabilities: capabilityDiff})
 	}
 
 	// The import runs in overwrite mode, so a network that already has this id and that no
@@ -200,6 +207,12 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		if err := gs.Tag(ctx, lineageID, tag, branchHead); err != nil {
 			return nil, err
 		}
+	}
+	// Functions and Skills follow the network: copies are made before the import
+	// so the new network is created pointing at them.
+	pkg, released, err := s.followCapabilities(ctx, token, pkg, previous, tracked, liveID, networkID)
+	if err != nil {
+		return nil, err
 	}
 
 	imported, err := s.bba.ImportBKN(ctx, token, pkg)
@@ -247,8 +260,94 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		fmt.Sprintf("sync live definitions after release %s", tag), author); err != nil {
 		return nil, err
 	}
+	// release.yaml is what the next release compares against; a lineage that
+	// never used a function or Skill gets none.
+	if len(released) > 0 || !previous.Empty() {
+		manifest, err := capability.NextManifest(previous, released, networkID).Marshal()
+		if err != nil {
+			return nil, err
+		}
+		recorded := capability.Files(released)
+		recorded[interfaces.GIT_MANIFEST_FILE] = manifest
+		if commit, err = gs.CommitCapabilities(ctx, lineageID, interfaces.GIT_MAIN_BRANCH, recorded,
+			fmt.Sprintf("record functions and Skills of release %s", tag), author); err != nil {
+			return nil, err
+		}
+	}
 
 	return &interfaces.PublishReleaseResult{Release: release, NetworkID: networkID, Tag: tag, Commit: commit}, nil
+}
+
+// followCapabilities reuses or copies each toolbox and Skill the package
+// references (see capability.Plan) and points the package at the copies. It
+// returns the package and the items the new network uses, as git keeps them.
+// tracked are the live items the previous release recorded, already exported.
+func (s *lineageService) followCapabilities(ctx context.Context, token string, pkg map[string][]byte,
+	previous *capability.Manifest, tracked []*capability.Item, oldNetworkID string,
+	networkID string) (map[string][]byte, []*capability.Item, error) {
+	network, err := loadNetwork(pkg)
+	if err != nil {
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(err.Error())
+	}
+	boxIDs, skillIDs := capability.References(network)
+	known := map[string]*capability.Item{}
+	for _, it := range tracked {
+		known[it.Dir()] = it
+	}
+	items := []*capability.Item{}
+	var newBoxes, newSkills []string
+	for _, id := range boxIDs {
+		if it, ok := known[(&capability.Item{Kind: capability.KIND_FUNCTION, ID: id}).Dir()]; ok {
+			items = append(items, it)
+		} else {
+			newBoxes = append(newBoxes, id)
+		}
+	}
+	for _, id := range skillIDs {
+		if it, ok := known[(&capability.Item{Kind: capability.KIND_SKILL, ID: id}).Dir()]; ok {
+			items = append(items, it)
+		} else {
+			newSkills = append(newSkills, id)
+		}
+	}
+	exported, err := capability.Export(ctx, s.efa, token, newBoxes, newSkills)
+	if err != nil {
+		return nil, nil, err
+	}
+	items = append(items, exported...)
+
+	copies, released, err := capability.Apply(ctx, s.efa, token, capability.Plan(previous, items, oldNetworkID),
+		oldNetworkID, networkID)
+	if err != nil {
+		return nil, nil, err
+	}
+	rewritten, err := capability.RewritePackage(pkg, oldNetworkID, networkID, copies)
+	if err == nil {
+		network, err = loadNetwork(rewritten)
+	}
+	if err == nil {
+		// A reference the rewrite did not reach would leave the new network on the original.
+		boxIDs, skillIDs = capability.References(network)
+		for _, c := range copies {
+			if slices.Contains(boxIDs, c.OldID) || slices.Contains(skillIDs, c.OldID) {
+				err = fmt.Errorf("%s %s was copied to %s, but the definitions still reference it", c.Kind, c.OldID, c.NewID)
+				break
+			}
+		}
+	}
+	if err != nil {
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(err.Error())
+	}
+	return rewritten, released, nil
+}
+
+// loadNetwork reads a definition set the way bkn-backend import does.
+func loadNetwork(files map[string][]byte) (*bkn.BknNetwork, error) {
+	fsys := bkn.NewMemoryFileSystem()
+	fsys.AddFiles(files)
+	return bkn.LoadNetworkWithFS(fsys, ".")
 }
 
 // tagRef names a tag in full, so a branch of the same name never shadows it.
@@ -303,9 +402,7 @@ func buildPackage(files map[string][]byte, networkID string, version string) (ma
 	}
 	pkg[bkn.RootFileName] = []byte(rewritten)
 
-	fsys := bkn.NewMemoryFileSystem()
-	fsys.AddFiles(pkg)
-	network, err := bkn.LoadNetworkWithFS(fsys, ".")
+	network, err := loadNetwork(pkg)
 	if err != nil {
 		return nil, err
 	}
