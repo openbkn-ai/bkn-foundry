@@ -281,10 +281,12 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 		})
 
 		Convey("A version already released replies 409\n", func() {
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders_v1_0_0").
-				Return(&interfaces.Release{LineageID: "orders", Version: "1.0.0"}, true, nil)
+			id := newLineageID()
+			_, _ = setUp(id)
+			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), id+"_v1_0_0").
+				Return(&interfaces.Release{LineageID: id, Version: "1.0.0"}, true, nil)
 
-			_, err := svc.PublishRelease(ctx, token, "orders", request, publisher, author)
+			_, err := svc.PublishRelease(ctx, token, id, request, publisher, author)
 
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusConflict)
@@ -354,13 +356,15 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Release_InvalidNotes)
 
 			Convey("while the longest values that fit pass\n", func() {
-				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), "orders_v1_0_0").
-					Return(&interfaces.Release{LineageID: "orders", Version: "1.0.0"}, true, nil)
+				id := newLineageID()
+				_, _ = setUp(id)
+				ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), id+"_v1_0_0").
+					Return(&interfaces.Release{LineageID: id, Version: "1.0.0"}, true, nil)
 				req := request
 				req.ProjectID = strings.Repeat("项", 40)
 				req.Notes = strings.Repeat("n", 65535)
 
-				_, err := svc.PublishRelease(ctx, token, "orders", req, publisher, author)
+				_, err := svc.PublishRelease(ctx, token, id, req, publisher, author)
 
 				_, code := httpCode(err)
 				So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
@@ -415,9 +419,7 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(tagHead, ShouldEqual, fixedHead)
 		})
 
-		Convey("An unknown lineage replies 404\n", func() {
-			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), gomock.Any()).Return(nil, false, nil)
-
+		Convey("An unknown lineage replies 404 before anything is read\n", func() {
 			_, err := svc.PublishRelease(ctx, token, "missing", request, publisher, author)
 
 			status, code := httpCode(err)
