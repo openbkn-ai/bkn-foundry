@@ -24,6 +24,8 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknbackend"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
@@ -63,6 +65,8 @@ func Boot() *Application {
 	logics.SetDB(db)
 	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 	logics.SetReleaseAccess(release.NewReleaseAccess(appSetting))
+	logics.SetGitStore(gitstore.NewGitStore(appSetting))
+	logics.SetBknBackendAccess(bknbackend.NewBknBackendAccess(appSetting))
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
 
 	return &Application{

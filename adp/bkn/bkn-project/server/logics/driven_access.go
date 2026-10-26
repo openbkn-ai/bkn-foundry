@@ -11,9 +11,11 @@ import (
 )
 
 var (
-	DB *sql.DB
-	AA interfaces.AuthAccess
-	RA interfaces.ReleaseAccess
+	DB  *sql.DB
+	AA  interfaces.AuthAccess
+	RA  interfaces.ReleaseAccess
+	GS  interfaces.GitStore
+	BBA interfaces.BknBackendAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -26,4 +28,12 @@ func SetAuthAccess(aa interfaces.AuthAccess) {
 
 func SetReleaseAccess(ra interfaces.ReleaseAccess) {
 	RA = ra
+}
+
+func SetGitStore(gs interfaces.GitStore) {
+	GS = gs
+}
+
+func SetBknBackendAccess(bba interfaces.BknBackendAccess) {
+	BBA = bba
 }
