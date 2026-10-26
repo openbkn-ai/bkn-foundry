@@ -23,6 +23,7 @@ import (
 )
 
 const functionResultContract = "function_result_evidence/v1"
+const functionResultClaimType = "function.result/v1"
 const functionResultSourceModule = "context-loader-function-result/v1"
 
 type resultProducer struct {
@@ -37,7 +38,6 @@ type functionResultEvidence struct {
 	Contract    string         `json:"result_contract"`
 	Complete    bool           `json:"complete"`
 	Producer    resultProducer `json:"producer"`
-	ClaimType   string         `json:"claim_type"`
 	ArtifactRef string         `json:"result_artifact_ref"`
 	ContentHash string         `json:"content_hash"`
 	OutputHash  string         `json:"output_hash"`
@@ -185,7 +185,7 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 // Check transport identity and exact persisted output, not business semantics.
 func validFunctionProof(fact sessionvo.OperationCallFact, proof functionResultEvidence) bool {
 	p := proof.Producer
-	if !proof.Complete || strings.TrimSpace(proof.ClaimType) == "" || proof.ClaimType != strings.TrimSpace(proof.ClaimType) || len(proof.ClaimType) > 128 || fact.CapabilityProfile == nil || fact.Input.Mode != sessionvo.PayloadInline || fact.Output == nil || fact.Output.Mode != sessionvo.PayloadInline || len(fact.Output.Inline) > sessionvo.MaxInlinePayloadBytes || proof.OutputHash != ledgervo.CanonicalPayloadHash(fact.Output.Inline) {
+	if !proof.Complete || fact.CapabilityProfile == nil || fact.Input.Mode != sessionvo.PayloadInline || fact.Output == nil || fact.Output.Mode != sessionvo.PayloadInline || len(fact.Output.Inline) > sessionvo.MaxInlinePayloadBytes || proof.OutputHash != ledgervo.CanonicalPayloadHash(fact.Output.Inline) {
 		return false
 	}
 	if !strings.HasPrefix(proof.ArtifactRef, "artifact:") || len(proof.ArtifactRef) <= len("artifact:") || p.FunctionVersion == "" || p.FunctionVersion == "unversioned" || len(p.CodeSHA256) != 71 || !strings.HasPrefix(p.CodeSHA256, "sha256:") || fact.CapabilityProfile.ToolVersion != p.FunctionVersion {
@@ -213,13 +213,7 @@ func validFunctionProof(fact sessionvo.OperationCallFact, proof functionResultEv
 		} `json:"function_execution"`
 		Body struct {
 			Exit   json.RawMessage `json:"exit_code"`
-			Result struct {
-				Declaration struct {
-					ClaimType string          `json:"claim_type"`
-					Complete  bool            `json:"complete"`
-					Content   json.RawMessage `json:"content"`
-				} `json:"trace_evidence"`
-			} `json:"result"`
+			Result json.RawMessage `json:"result"`
 		} `json:"body"`
 	}
 	if json.Unmarshal(fact.Output.Inline, &output) != nil || output.StatusCode != 200 || output.Execution.Box != p.ToolboxID || output.Execution.Tool != p.ToolID || output.Execution.Version != p.FunctionVersion || output.Execution.Hash != p.CodeSHA256 {
@@ -231,13 +225,13 @@ func validFunctionProof(fact sessionvo.OperationCallFact, proof functionResultEv
 			return false
 		}
 	}
-	declaration := output.Body.Result.Declaration
-	if !declaration.Complete || declaration.ClaimType != proof.ClaimType || len(declaration.Content) == 0 || string(declaration.Content) == "null" {
+	result := output.Body.Result
+	if len(result) == 0 || (result[0] != '{' && result[0] != '[') {
 		return false
 	}
-	// Match the artifact writer's precise JSON canonicalization, including large integers.
+	// Verify the opaque result snapshot against the stored artifact hash.
 	var content any
-	decoder := json.NewDecoder(bytes.NewReader(declaration.Content))
+	decoder := json.NewDecoder(bytes.NewReader(result))
 	decoder.UseNumber()
 	if decoder.Decode(&content) != nil {
 		return false
@@ -255,7 +249,7 @@ func validFunctionProof(fact sessionvo.OperationCallFact, proof functionResultEv
 func materializedFunctionClaim(source ledgervo.Event, proof functionResultEvidence, id, receiptID string, revision sessionvo.AssemblyRevision, sequence uint64) ledgervo.Event {
 	ref := sessionvo.EvidenceRef{Ref: proof.ArtifactRef, RefType: sessionvo.EvidenceRefArtifact, SourceInteractionID: source.InteractionID, SourceRevisionID: revision.ID, SourceOperationID: source.OperationID, ArtifactRef: proof.ArtifactRef, Version: proof.Producer.FunctionVersion, ContentHash: proof.ContentHash}
 	support := sessionvo.ClaimSupport{TargetRef: ref.Ref, TargetType: sessionvo.SupportEvidence, SourceInteractionID: ref.SourceInteractionID, SourceRevisionID: ref.SourceRevisionID, SourceOperationID: ref.SourceOperationID, Version: ref.Version, ContentHash: ref.ContentHash, Role: "computed_from", Status: sessionvo.SupportAdopted}
-	claim := sessionvo.Claim{ID: id, Type: proof.ClaimType, Materiality: sessionvo.ClaimMaterial, Status: sessionvo.ClaimAsserted, ContentArtifactRef: proof.ArtifactRef, RequiredSupportRoles: []string{"computed_from"}, Supports: []sessionvo.ClaimSupport{support}}
+	claim := sessionvo.Claim{ID: id, Type: functionResultClaimType, Materiality: sessionvo.ClaimMaterial, Status: sessionvo.ClaimAsserted, ContentArtifactRef: proof.ArtifactRef, RequiredSupportRoles: []string{"computed_from"}, Supports: []sessionvo.ClaimSupport{support}}
 	sum := sha256.Sum256([]byte(revision.ID + "|" + id))
 	envelope, _ := json.Marshal(map[string]any{"result_contract": functionResultContract, "source_event_id": source.EventID, "receipt_bound_operation_id": source.OperationID, "source_receipt_id": receiptID, "producer": proof.Producer, "result_artifact_ref": proof.ArtifactRef})
 	emittedAt := revision.CreatedAt

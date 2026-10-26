@@ -51,7 +51,7 @@ func (tx *functionSealTransaction) AppendDerivedEvidence(e ledgervo.Event) (ledg
 }
 
 func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
-	for _, name := range []string{"normal", "zero", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "missing declaration", "invalid complete", "changed content", "changed claim type", "clock skew", "precise content", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
+	for _, name := range []string{"normal", "zero", "output changed", "untrusted producer", "missing output", "wrong owner", "duplicate evidence", "unsupported store", "read budget", "write budget", "missing result", "null result", "text result", "changed content", "embedded declaration", "clock skew", "precise content", "caller prefix", "invalid event", "payload conflict", "sequence conflict", "causality conflict", "owner conflict", "scope conflict", "storage failure", "incomplete proof"} {
 		t.Run(name, func(t *testing.T) {
 			now := time.Date(2026, 10, 25, 10, 0, 0, 0, time.UTC)
 			owner := sessionvo.Owner{ApplicationPrincipalID: "app", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "user"}
@@ -64,19 +64,23 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				content["count"], content["text"] = json.Number("9007199254740993"), "<verified>"
 			}
 			producer := resultProducer{KnowledgeNetworkID: "kn", ToolboxID: "box", ToolID: "quality_check", FunctionVersion: "version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
-			declaration := map[string]any{"claim_type": "quality.check/v1", "complete": true, "content": content}
-			nativeResult := map[string]any{"trace_evidence": declaration}
-			switch name {
-			case "missing declaration":
-				delete(nativeResult, "trace_evidence")
-			case "invalid complete":
-				declaration["complete"] = "true"
-			case "changed content":
-				declaration["content"] = map[string]any{"changed": true}
-			case "changed claim type":
-				declaration["claim_type"] = "other/v1"
+			var nativeResult any = content
+			if name == "embedded declaration" {
+				content["trace_evidence"] = map[string]any{"claim_type": "untrusted/v1", "complete": false}
 			}
+			switch name {
+			case "missing result", "null result":
+				nativeResult = nil
+			case "text result":
+				nativeResult = "unstructured answer"
+			case "changed content":
+				nativeResult = map[string]any{"changed": true}
+			}
+
 			output := map[string]any{"status_code": 200, "function_execution": map[string]any{"toolbox_id": "box", "tool_id": "quality_check", "function_version": "version", "code_sha256": producer.CodeSHA256}, "body": map[string]any{"exit_code": 0, "result": nativeResult}}
+			if name == "missing result" {
+				delete(output["body"].(map[string]any), "result")
+			}
 			outputRaw, _ := json.Marshal(output)
 			payload, _ := sessionvo.InlineJSONPayload(outputRaw)
 			input, _ := sessionvo.InlineJSONPayload(json.RawMessage(`{"kn_id":"kn","toolbox_id":"box","tool_id":"quality_check","function_version":"version"}`))
@@ -91,7 +95,7 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 			encoder.SetEscapeHTML(false)
 			_ = encoder.Encode(value)
 			sum := sha256.Sum256(bytes.TrimSuffix(canonical.Bytes(), []byte("\n")))
-			proof := functionResultEvidence{Contract: functionResultContract, Complete: true, Producer: producer, ClaimType: "quality.check/v1", ArtifactRef: "artifact:function-result", ContentHash: "sha256:" + hex.EncodeToString(sum[:]), OutputHash: ledgervo.CanonicalPayloadHash(payload.Inline)}
+			proof := functionResultEvidence{Contract: functionResultContract, Complete: true, Producer: producer, ArtifactRef: "artifact:function-result", ContentHash: "sha256:" + hex.EncodeToString(sum[:]), OutputHash: ledgervo.CanonicalPayloadHash(payload.Inline)}
 			if name == "incomplete proof" {
 				proof.Complete = false
 			}
@@ -165,7 +169,7 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 					}
 					return nil
 				}
-				good := name == "normal" || name == "zero" || name == "clock skew"
+				good := name == "normal" || name == "zero" || name == "clock skew" || name == "embedded declaration"
 				if !good {
 					if len(custom.saved) != 0 || revision.Completeness != sessionvo.EvidencePartial || interaction.EvidenceStatus != sessionvo.EvidencePartial {
 						t.Fatalf("unverified Claim: events=%d revision=%+v interaction=%+v", len(custom.saved), revision, interaction)
@@ -177,7 +181,7 @@ func TestFunctionResultClaimSealsExistingModelWithRealRevision(t *testing.T) {
 				}
 				event := custom.saved[0]
 				claim := event.Claims[0]
-				if claim.Type != proof.ClaimType || claim.ID != functionClaimID("op", 1) || claim.Supports[0].SourceRevisionID != revision.ID || event.EvidenceRefs[0].ContentHash != proof.ContentHash || claim.ContentArtifactRef != proof.ArtifactRef {
+				if claim.Type != functionResultClaimType || claim.ID != functionClaimID("op", 1) || claim.Supports[0].SourceRevisionID != revision.ID || event.EvidenceRefs[0].ContentHash != proof.ContentHash || claim.ContentArtifactRef != proof.ArtifactRef {
 					t.Fatalf("incorrect binding: %+v", event)
 				}
 				assembled := assemblysvc.Assemble("int", []ledgervo.Event{source, event}, interaction.ClosureManifest.Claims)

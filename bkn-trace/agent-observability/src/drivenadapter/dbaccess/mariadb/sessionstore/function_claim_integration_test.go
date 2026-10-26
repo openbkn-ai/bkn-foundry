@@ -21,7 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
-// The fixture carries a sample-owned declaration through the same generic
+// The fixture carries an unchanged sample result through the same generic
 // producer protocol. Core checks bindings without interpreting business content.
 func TestFunctionResultClaimLifecycleMariaDB(t *testing.T) {
 	for _, mode := range []string{"ready", "late", "failed-then-success"} {

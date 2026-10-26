@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"unicode"
@@ -163,6 +164,9 @@ func (m *managedFunctionGuard) Execute(
 	payload := any(redactFunctionPayload(result))
 	if failed {
 		payload = managedFunctionFailurePayload(result)
+	} else if producesResultClaim && !reflect.DeepEqual(result, payload) {
+		// A redacted snapshot cannot attest the exact original result.
+		bkntrace.MergeTracePartialReasons(lifecycleContext, []string{"function_result_redacted"})
 	} else if producesResultClaim {
 		redactedResult, _ := payload.(map[string]any)
 		if claimErr := bkntrace.RecordFunctionResult(lifecycleContext, producer, input.Descriptor.Version, redactedResult); claimErr != nil {

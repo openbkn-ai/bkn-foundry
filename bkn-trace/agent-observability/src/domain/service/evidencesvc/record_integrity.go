@@ -199,7 +199,7 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 		}
 		found := false
 		functionResult := profile.EvidenceContract == functionResultIntegrityContract
-		resultDeclarations := 0
+		resultSnapshots := 0
 		for _, e := range events {
 			if e.EventType != eventType || !e.Owner.Equal(owner) || e.ConversationID != interaction.ConversationID || e.InteractionID != interaction.ID || e.OperationID != f.OperationID || e.Attempt != f.Attempt || e.RequestID != f.RequestID || e.TraceID != f.TraceID {
 				continue
@@ -211,14 +211,14 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 				return nil, err
 			}
 			if functionResult {
-				// Only the accepted, receipt-bound typed producer can declare
-				// a verified Function result. A missing/false/malformed declaration
+				// Only the accepted, receipt-bound capture event can record
+				// a captured Function result. A missing/false/malformed snapshot
 				// is a recorded gap, not an unsupported inspection contract.
 				var contract string
 				if f.SourceModule != "context-loader-function-result/v1" || e.ProducerID != "agent-retrieval" || !slices.Contains(r.ObservedEvidenceRefs, e.EventID) || json.Unmarshal(envelope.Payload["result_contract"], &contract) != nil || contract != functionResultIntegrityContract {
 					continue
 				}
-				resultDeclarations++
+				resultSnapshots++
 				found = string(envelope.Payload["complete"]) == "true"
 				continue
 			}
@@ -230,7 +230,7 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 				found = true
 			}
 		}
-		if functionResult && resultDeclarations != 1 {
+		if functionResult && resultSnapshots != 1 {
 			found = false
 		}
 		if !found {

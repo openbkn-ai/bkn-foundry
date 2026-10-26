@@ -28,14 +28,6 @@ type ResultProducer struct {
 	CodeSHA256         string `json:"code_sha256"`
 }
 
-// ResultDeclaration is supplied by an approved Function, never by finish callers.
-// Content and ClaimType are business-owned; Trace does not interpret them.
-type ResultDeclaration struct {
-	ClaimType string          `json:"claim_type"`
-	Complete  bool            `json:"complete"`
-	Content   json.RawMessage `json:"content"`
-}
-
 // ConfiguredResultProducer never accepts identity or approval from tool arguments.
 // Missing/invalid configuration leaves ordinary Function execution unchanged.
 func ConfiguredResultProducer(kn, box, tool string) (ResultProducer, bool) {
@@ -60,7 +52,7 @@ func validResultCodeHash(value string) bool {
 	return err == nil && hex.EncodeToString(decoded) == value[7:]
 }
 
-// RecordFunctionResult captures one explicit conclusion from the approved code.
+// RecordFunctionResult captures the existing structured result from the approved code.
 // Core assigns the real assembly revision when materializing formal evidence.
 func RecordFunctionResult(ctx context.Context, approved ResultProducer, listedVersion string, result map[string]any) error {
 	ec, ok := contextFromRequest(ctx, nil)
@@ -81,9 +73,7 @@ func RecordFunctionResult(ctx context.Context, approved ResultProducer, listedVe
 		} `json:"function_execution"`
 		Body struct {
 			ExitCode json.RawMessage `json:"exit_code"`
-			Result   struct {
-				Declaration ResultDeclaration `json:"trace_evidence"`
-			} `json:"result"`
+			Result   json.RawMessage `json:"result"`
 		} `json:"body"`
 	}
 	if json.Unmarshal(raw, &wire) != nil || wire.StatusCode != 200 ||
@@ -98,11 +88,12 @@ func RecordFunctionResult(ctx context.Context, approved ResultProducer, listedVe
 			return errors.New("function execution did not succeed")
 		}
 	}
-	declaration := wire.Body.Result.Declaration
-	if !declaration.Complete || strings.TrimSpace(declaration.ClaimType) == "" || declaration.ClaimType != strings.TrimSpace(declaration.ClaimType) || len(declaration.ClaimType) > 128 || len(declaration.Content) == 0 || string(declaration.Content) == "null" {
-		return errors.New("function did not declare an evaluable conclusion")
+	// The assertion is only that this execution returned this result snapshot.
+	// Do not interpret business fields or require a tool-owned evidence protocol.
+	content := wire.Body.Result
+	if len(content) == 0 || (content[0] != '{' && content[0] != '[') {
+		return errors.New("function evidence requires an existing structured result")
 	}
-	content := declaration.Content
 	ioCtx, release := TraceIOContext(ctx, "post")
 	defer release()
 	// Reserve the rest of the existing post budget for inner and outer Finish.
@@ -124,7 +115,7 @@ func RecordFunctionResult(ctx context.Context, approved ResultProducer, listedVe
 	}
 	digest := sha256.Sum256(canonical)
 	payload := map[string]any{
-		"complete": true, "result_contract": FunctionResultContract, "producer": approved, "claim_type": declaration.ClaimType,
+		"complete": true, "result_contract": FunctionResultContract, "producer": approved,
 		"result_artifact_ref": ref, "content_hash": hash, "output_hash": hex.EncodeToString(digest[:]),
 	}
 	event := buildEvent(ec, "logic.execution.observed", "context.function_result", payload, "", "")
