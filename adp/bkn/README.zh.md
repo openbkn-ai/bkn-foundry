@@ -6,12 +6,13 @@
 （Business Knowledge Network）的建模与查询能力。它属于 BKN Foundry
 后端，不包含独立产品 UI。
 
-当前子系统由两个 Go 服务组成：
+当前子系统由三个 Go 服务组成：
 
 | 服务 | 路径 | 默认端口 | 职责 |
 | --- | --- | --- | --- |
 | BKN Backend | `bkn-backend/` | `13014` | 知识网络建模、校验、导入导出、概念索引、指标、风险类和行动调度 |
 | Ontology Query | `ontology-query/` | `13018` | 对象数据查询、属性查询、子图查询、行动执行、行动日志和指标数据查询 |
+| BKN Project | `bkn-project/` | `13016` | 从业务需求和数据构建、发布知识网络；发布版本谱系 |
 
 ## 能力范围
 
@@ -45,7 +46,7 @@ adp/bkn/
   README.zh.md       # 本文件
 ```
 
-两个服务大体遵循相同目录结构：
+这些服务大体遵循相同目录结构：
 
 ```text
 server/
