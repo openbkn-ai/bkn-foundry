@@ -478,7 +478,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			}
 			logger.Infof("Indexing batch task %s: source rows=%d, vector fields=%s", buildTaskInfo.ID,
 				readRows, formatEmbeddingFields(embeddingConfig))
-			_, err = bbw.lim.IndexDocuments(ctx, indexName, indexDocuments)
+			err = indexBuildDocuments(ctx, bbw.lim, indexName, indexDocuments)
 			if err != nil {
 				return fmt.Errorf("index documents failed: %w", err)
 			}

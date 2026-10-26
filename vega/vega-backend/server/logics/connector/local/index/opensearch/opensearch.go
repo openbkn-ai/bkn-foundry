@@ -238,9 +238,7 @@ func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string,
 	}
 
 	indexSettings := map[string]any{
-		"number_of_shards":   1,
-		"number_of_replicas": 0,
-		"knn":                true,
+		"knn": true,
 	}
 
 	settings := map[string]any{
@@ -356,21 +354,25 @@ func (c *OpenSearchConnector) CheckIndexExist(ctx context.Context, indexName str
 	return c.indexExist(ctx, indexName)
 }
 
-// Create Documents
+// CreateDocuments 仅适配原始文档和创建结果，复用统一写入流程。
 func (c *OpenSearchConnector) CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error) {
-	if err := c.Connect(ctx); err != nil {
+	writes := make([]interfaces.DocumentWrite, len(documents))
+	for i, document := range documents {
+		id, _ := document["_id"].(string)
+		writes[i] = interfaces.DocumentWrite{ID: id, Document: document}
+	}
+	results, err := c.writeDocuments(ctx, indexName, writes, true)
+	if err != nil {
 		return nil, err
 	}
-
-	encodedDocuments := make([][]byte, 0, len(documents))
-	for _, document := range documents {
-		encoded, err := encodeBulkDocument(indexName, document, c.bulkMaxBytes())
-		if err != nil {
-			return nil, err
+	ids := make([]string, len(results))
+	for i, result := range results {
+		if result.Status < 200 || result.Status >= 300 || result.ID == "" {
+			return nil, fmt.Errorf("create document failed with status %d", result.Status)
 		}
-		encodedDocuments = append(encodedDocuments, encoded)
+		ids[i] = result.ID
 	}
-	return c.indexBulkDocuments(ctx, encodedDocuments)
+	return ids, nil
 }
 
 func (c *OpenSearchConnector) bulkMaxBytes() int {
@@ -380,26 +382,22 @@ func (c *OpenSearchConnector) bulkMaxBytes() int {
 	return defaultBulkRequestMaxBytes
 }
 
-func encodeBulkDocument(indexName string, document map[string]any, maxBytes int) ([]byte, error) {
+// encodeBulkDocument 将 ID 写入 metadata，并从传入文档中删除 _id。
+func encodeBulkDocument(indexName, id string, document map[string]any, maxBytes int) ([]byte, error) {
 	if document == nil {
 		return nil, errors.New("bulk document is required")
 	}
-	opMeta := map[string]map[string]string{"index": {"_index": indexName}}
-	body := make(map[string]any, len(document))
-	for key, value := range document {
-		if key == "_id" {
-			if documentID, ok := value.(string); ok {
-				opMeta["index"]["_id"] = documentID
-				continue
-			}
-		}
-		body[key] = value
+
+	opMeta := map[string]string{"_index": indexName}
+	if id != "" {
+		opMeta["_id"] = id
 	}
-	opBytes, err := sonic.Marshal(opMeta)
+	delete(document, "_id")
+	opBytes, err := sonic.Marshal(map[string]any{"index": opMeta})
 	if err != nil {
 		return nil, fmt.Errorf("marshal bulk operation metadata: %w", err)
 	}
-	bodyBytes, err := sonic.Marshal(body)
+	bodyBytes, err := sonic.Marshal(document)
 	if err != nil {
 		return nil, fmt.Errorf("marshal bulk document: %w", err)
 	}
@@ -412,59 +410,6 @@ func encodeBulkDocument(indexName string, document map[string]any, maxBytes int)
 		return nil, fmt.Errorf("bulk document is %d bytes, exceeding the %d byte request limit", len(encoded), maxBytes)
 	}
 	return encoded, nil
-}
-
-func (c *OpenSearchConnector) indexBulkDocuments(ctx context.Context, documents [][]byte) ([]string, error) {
-	var documentIDs []string
-	maxBytes := c.bulkMaxBytes()
-	chunkDocuments := make([][]byte, 0)
-	chunkBytes := 0
-	for _, document := range documents {
-		if len(chunkDocuments) > 0 && chunkBytes+len(document) > maxBytes {
-			ids, err := c.indexBulkChunk(ctx, chunkDocuments)
-			if err != nil {
-				return nil, err
-			}
-			documentIDs = append(documentIDs, ids...)
-			chunkDocuments = chunkDocuments[:0]
-			chunkBytes = 0
-		}
-		chunkDocuments = append(chunkDocuments, document)
-		chunkBytes += len(document)
-	}
-	if len(chunkDocuments) > 0 {
-		ids, err := c.indexBulkChunk(ctx, chunkDocuments)
-		if err != nil {
-			return nil, err
-		}
-		documentIDs = append(documentIDs, ids...)
-	}
-	return documentIDs, nil
-}
-
-func (c *OpenSearchConnector) indexBulkChunk(ctx context.Context, documents [][]byte) ([]string, error) {
-	ids, err := c.sendBulkRequest(ctx, documents)
-	if err == nil {
-		return ids, nil
-	}
-	if !shouldSplitBulkRequest(err) || len(documents) == 1 {
-		return nil, err
-	}
-
-	splitAt := splitBulkDocumentsByBytes(documents)
-	leftDocuments := documents[:splitAt+1]
-	rightDocuments := documents[splitAt+1:]
-	logger.Warnf("OpenSearch bulk request rejected; splitting %d documents into %d and %d documents by serialized bytes: %v",
-		len(documents), len(leftDocuments), len(rightDocuments), err)
-	leftIDs, err := c.sendBulkRequest(ctx, leftDocuments)
-	if err != nil {
-		return nil, err
-	}
-	rightIDs, err := c.sendBulkRequest(ctx, rightDocuments)
-	if err != nil {
-		return nil, err
-	}
-	return append(leftIDs, rightIDs...), nil
 }
 
 // splitBulkDocumentsByBytes 返回左批最后一条文档的下标。
@@ -508,96 +453,6 @@ func shouldSplitBulkRequest(err error) bool {
 	}
 	return requestErr.statusCode == http.StatusTooManyRequests &&
 		strings.Contains(strings.ToLower(requestErr.detail), "rejected_execution_exception")
-}
-
-func (c *OpenSearchConnector) sendBulkRequest(ctx context.Context, documents [][]byte) ([]string, error) {
-	size := 0
-	for _, document := range documents {
-		size += len(document)
-	}
-	body := make([]byte, 0, size)
-	for _, document := range documents {
-		body = append(body, document...)
-	}
-	req := opensearchapi.BulkRequest{
-		Body:    bytes.NewReader(body),
-		Refresh: "true",
-	}
-
-	resp, err := req.Do(ctx, c.client)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.IsError() {
-		return nil, &bulkRequestError{statusCode: resp.StatusCode, detail: resp.String()}
-	}
-
-	var result map[string]any
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	if hasErrors, ok := result["errors"].(bool); ok && hasErrors {
-		return nil, bulkResponseError(result)
-	}
-	var documentIDs []string
-	if items, ok := result["items"].([]any); ok {
-		for _, item := range items {
-			if itemMap, ok := item.(map[string]any); ok {
-				if indexResult, ok := itemMap["index"].(map[string]any); ok {
-					if documentID, ok := indexResult["_id"].(string); ok {
-						documentIDs = append(documentIDs, documentID)
-					}
-				}
-			}
-		}
-	}
-	return documentIDs, nil
-}
-
-func bulkResponseError(result map[string]any) error {
-	items, ok := result["items"].([]any)
-	if !ok {
-		return errors.New("bulk response contains failed operations")
-	}
-	for _, item := range items {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		indexResult, ok := itemMap["index"].(map[string]any)
-		if !ok {
-			continue
-		}
-		errorObject, ok := indexResult["error"].(map[string]any)
-		if !ok {
-			continue
-		}
-		return fmt.Errorf("failed to create document, error type: %v, reason: %v", errorObject["type"], errorObject["reason"])
-	}
-	return errors.New("bulk response contains failed operations")
-}
-
-// IndexDocuments replaces complete documents when their IDs already exist and
-// creates them otherwise. It uses the OpenSearch bulk index action.
-func (c *OpenSearchConnector) IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error) {
-	indexDocuments := make([]map[string]any, 0, len(documents))
-	for documentID, document := range documents {
-		if documentID == "" {
-			return nil, fmt.Errorf("index document: id is required")
-		}
-		if document == nil {
-			return nil, fmt.Errorf("index document %q: document is required", documentID)
-		}
-		copyDocument := make(map[string]any, len(document)+1)
-		for key, value := range document {
-			copyDocument[key] = value
-		}
-		copyDocument["_id"] = documentID
-		indexDocuments = append(indexDocuments, copyDocument)
-	}
-	return c.CreateDocuments(ctx, indexName, indexDocuments)
 }
 
 // Get Document
@@ -868,29 +723,29 @@ func bulkDeleteResponseError(result map[string]any) error {
 }
 
 // Delete Documents By Query
-func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexName string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) error {
+func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexName string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) (*interfaces.DeleteByQueryResult, error) {
 	if params == nil || params.ActualFilterCond == nil {
-		return errors.New("delete-by-query requires a non-empty filter condition")
+		return nil, errors.New("delete-by-query requires a non-empty filter condition")
 	}
 	if err := c.Connect(ctx); err != nil {
-		return err
+		return nil, err
 	}
 
 	filterQuery, err := c.ConvertFilterCondition(params.ActualFilterCond, schemaDefinition)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if filterQuery == nil {
-		return errors.New("delete-by-query filter produced an empty query")
+		return nil, errors.New("delete-by-query filter produced an empty query")
 	}
 	if isUnconditionalDeleteQuery(filterQuery) {
-		return errors.New("delete-by-query filter produced an unconditional query")
+		return nil, errors.New("delete-by-query filter produced an unconditional query")
 	}
 	query := map[string]any{"query": filterQuery}
 
 	queryBytes, err := sonic.Marshal(query)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	refresh := true
@@ -902,15 +757,56 @@ func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexN
 
 	resp, err := req.Do(ctx, c.client)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.IsError() {
-		return fmt.Errorf("failed to delete documents: %s", resp.String())
+	var response struct {
+		Deleted          *int64 `json:"deleted"`
+		VersionConflicts *int64 `json:"version_conflicts"`
+		TimedOut         *bool  `json:"timed_out"`
+		Failures         *[]struct {
+			Status int `json:"status"`
+		} `json:"failures"`
+	}
+	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("invalid delete-by-query response: %w", err)
+	}
+	if response.Deleted == nil || response.VersionConflicts == nil || response.TimedOut == nil ||
+		response.Failures == nil || *response.Deleted < 0 || *response.VersionConflicts < 0 {
+		return nil, errors.New("incomplete delete-by-query response")
 	}
 
-	return nil
+	result := &interfaces.DeleteByQueryResult{
+		Deleted:          *response.Deleted,
+		VersionConflicts: *response.VersionConflicts,
+		TimedOut:         *response.TimedOut,
+		Failures:         make([]interfaces.DocumentWriteResult, 0, len(*response.Failures)),
+	}
+	for _, failure := range *response.Failures {
+		if failure.Status < 400 || failure.Status > 599 {
+			failure.Status = http.StatusInternalServerError
+		}
+		entry := interfaces.DocumentWriteResult{
+			Status:    failure.Status,
+			ErrorCode: interfaces.DocumentRejected,
+		}
+		switch {
+		case failure.Status == 409:
+			entry.ErrorCode = interfaces.DocumentConflict
+		case failure.Status == 400 || failure.Status == 413 || failure.Status == 422:
+			entry.ErrorCode = interfaces.DocumentInvalid
+		case failure.Status == 408 || failure.Status == 429 || failure.Status >= 500:
+			entry.ErrorCode = interfaces.DocumentUnavailable
+			entry.Retryable = true
+		}
+		result.Failures = append(result.Failures, entry)
+	}
+	if resp.IsError() || result.TimedOut || result.VersionConflicts > 0 || len(result.Failures) > 0 {
+		return result, interfaces.NewDeleteByQueryIncompleteError(result)
+	}
+
+	return result, nil
 }
 
 func isUnconditionalDeleteQuery(query map[string]any) bool {
@@ -938,4 +834,177 @@ func (c *OpenSearchConnector) indexExist(ctx context.Context, indexName string) 
 	defer func() { _ = existsResp.Body.Close() }()
 
 	return existsResp.StatusCode == 200, nil
+}
+
+// IndexDocuments 完整替换文档，按输入顺序逐条返回结果。
+func (c *OpenSearchConnector) IndexDocuments(ctx context.Context, indexName string,
+	documents []interfaces.DocumentWrite) ([]interfaces.DocumentWriteResult, error) {
+
+	return c.writeDocuments(ctx, indexName, documents, false)
+}
+
+// writeDocuments 共用编码、拆批及响应处理；创建允许自动 ID，并保留失败即停止语义。
+func (c *OpenSearchConnector) writeDocuments(ctx context.Context, indexName string,
+	documents []interfaces.DocumentWrite, create bool) ([]interfaces.DocumentWriteResult, error) {
+
+	results := make([]interfaces.DocumentWriteResult, len(documents))
+	encoded := make([][]byte, len(documents))
+	validCount := 0
+	for i, document := range documents {
+		data, err := encodeBulkDocument(indexName, document.ID, document.Document, c.bulkMaxBytes())
+		if err == nil && !create && document.ID == "" {
+			err = errors.New("document id is required")
+		}
+		if err != nil {
+			if create {
+				return nil, err
+			}
+			results[i] = interfaces.DocumentWriteResult{ID: document.ID, Status: 400, ErrorCode: interfaces.DocumentInvalid}
+			continue
+		}
+		encoded[i] = data
+		validCount++
+	}
+	if validCount == 0 {
+		return results, nil
+	}
+	if err := c.Connect(ctx); err != nil {
+		return nil, err
+	}
+	for start := 0; start < len(documents); {
+		end, size := start, 0
+		for end < len(documents) && size+len(encoded[end]) <= c.bulkMaxBytes() {
+			size += len(encoded[end])
+			end++
+		}
+		chunk := make([][]byte, 0, end-start)
+		writes := make([]interfaces.DocumentWrite, 0, end-start)
+		positions := make([]int, 0, end-start)
+		for i := start; i < end; i++ {
+			if encoded[i] != nil {
+				chunk = append(chunk, encoded[i])
+				writes = append(writes, documents[i])
+				positions = append(positions, i)
+			}
+		}
+		if len(chunk) > 0 {
+			stored := c.indexDocumentsChunk(ctx, indexName, writes, chunk, create)
+			failed := false
+			for i, position := range positions {
+				results[position] = stored[i]
+				if stored[i].Status < 200 || stored[i].Status >= 300 {
+					failed = true
+				}
+			}
+			if create && failed {
+				return results, nil
+			}
+		}
+		start = end
+	}
+	return results, nil
+}
+
+// indexDocumentsChunk 保留既有 413 / rejected_execution_exception 的单次拆批恢复。
+func (c *OpenSearchConnector) indexDocumentsChunk(ctx context.Context, indexName string, documents []interfaces.DocumentWrite, encoded [][]byte, stopOnFailure bool) []interfaces.DocumentWriteResult {
+	results, err := c.sendIndexBulkRequest(ctx, indexName, documents, encoded)
+	if err == nil || len(encoded) < 2 || !shouldSplitBulkRequest(err) {
+		return results
+	}
+	split := splitBulkDocumentsByBytes(encoded) + 1
+	left, _ := c.sendIndexBulkRequest(ctx, indexName, documents[:split], encoded[:split])
+	if stopOnFailure {
+		for _, result := range left {
+			if result.Status < 200 || result.Status >= 300 {
+				return append(left, results[split:]...)
+			}
+		}
+	}
+	right, _ := c.sendIndexBulkRequest(ctx, indexName, documents[split:], encoded[split:])
+	return append(left, right...)
+}
+
+// sendIndexBulkRequest 将请求未知状态和逐条响应分开处理，不公开源端错误细节。
+func (c *OpenSearchConnector) sendIndexBulkRequest(ctx context.Context, indexName string, documents []interfaces.DocumentWrite, encoded [][]byte) (results []interfaces.DocumentWriteResult, err error) {
+	// 在发送边界记录每次请求的失败，包含拆批后调用方不再上抛的错误。
+	defer func() {
+		if err != nil {
+			logger.Errorf("OpenSearch bulk request failed: index=%q, documents=%d, error=%v", indexName, len(documents), err)
+		}
+	}()
+	results = make([]interfaces.DocumentWriteResult, len(documents))
+	var body bytes.Buffer
+	for i, document := range documents {
+		body.Write(encoded[i])
+		results[i] = interfaces.DocumentWriteResult{ID: document.ID, Status: 503, ErrorCode: interfaces.DocumentOutcomeUnknown, Retryable: true}
+	}
+	request := opensearchapi.BulkRequest{Body: &body, Refresh: "true"}
+	response, err := request.Do(ctx, c.client)
+	if err != nil {
+		return results, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.IsError() {
+		if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+			for i, document := range documents {
+				results[i] = interfaces.DocumentWriteResult{ID: document.ID, Status: response.StatusCode, ErrorCode: interfaces.DocumentRejected}
+			}
+		}
+		if response.StatusCode == 400 || response.StatusCode == 413 || response.StatusCode == 429 {
+			for i, document := range documents {
+				results[i] = interfaces.DocumentWriteResult{ID: document.ID, Status: response.StatusCode, ErrorCode: interfaces.DocumentInvalid}
+				if response.StatusCode == 429 {
+					results[i].ErrorCode = interfaces.DocumentUnavailable
+					results[i].Retryable = true
+				}
+			}
+		}
+		return results, &bulkRequestError{statusCode: response.StatusCode, detail: response.String()}
+	}
+	var decoded struct {
+		Items []struct {
+			Index *struct {
+				ID     string `json:"_id"`
+				Status int    `json:"status"`
+				Error  *struct {
+					Type   string `json:"type"`
+					Reason string `json:"reason"`
+				} `json:"error"`
+			} `json:"index"`
+		} `json:"items"`
+	}
+	if err := sonic.ConfigDefault.NewDecoder(response.Body).Decode(&decoded); err != nil {
+		return results, err
+	}
+	if len(decoded.Items) != len(documents) {
+		return results, errors.New("bulk response item count does not match request")
+	}
+	for i, item := range decoded.Items {
+		if item.Index == nil || item.Index.ID == "" || (documents[i].ID != "" && item.Index.ID != documents[i].ID) || item.Index.Status < 200 || item.Index.Status > 599 {
+			logger.Errorf("OpenSearch bulk response item is invalid: index=%q, id=%q, position=%d", indexName, documents[i].ID, i)
+			continue
+		}
+		entry := interfaces.DocumentWriteResult{ID: item.Index.ID, Status: item.Index.Status}
+		switch {
+		case entry.Status >= 200 && entry.Status < 300:
+		case entry.Status == 409:
+			entry.ErrorCode = interfaces.DocumentConflict
+		case entry.Status == 400 || entry.Status == 413 || entry.Status == 422:
+			entry.ErrorCode = interfaces.DocumentInvalid
+		case entry.Status == 408 || entry.Status == 429 || entry.Status >= 500:
+			entry.ErrorCode = interfaces.DocumentUnavailable
+			entry.Retryable = true
+		default:
+			entry.ErrorCode = interfaces.DocumentRejected
+		}
+		if entry.Status >= 300 {
+			errorType, reason := "", ""
+			if item.Index.Error != nil {
+				errorType, reason = item.Index.Error.Type, item.Index.Error.Reason
+			}
+			logger.Errorf("OpenSearch bulk document failed: index=%q, id=%q, status=%d, type=%q, reason=%q", indexName, entry.ID, entry.Status, errorType, reason)
+		}
+		results[i] = entry
+	}
+	return results, nil
 }

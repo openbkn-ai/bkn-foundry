@@ -1750,11 +1750,12 @@ func (mr *MockIndexConnectorMockRecorder) DeleteDocuments(ctx, indexName, docIDs
 }
 
 // DeleteDocumentsByQuery mocks base method.
-func (m *MockIndexConnector) DeleteDocumentsByQuery(ctx context.Context, indexName string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) error {
+func (m *MockIndexConnector) DeleteDocumentsByQuery(ctx context.Context, indexName string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) (*interfaces.DeleteByQueryResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteDocumentsByQuery", ctx, indexName, params, schemaDefinition)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(*interfaces.DeleteByQueryResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteDocumentsByQuery indicates an expected call of DeleteDocumentsByQuery.
@@ -1980,10 +1981,10 @@ func (mr *MockIndexConnectorMockRecorder) GetType() *gomock.Call {
 }
 
 // IndexDocuments mocks base method.
-func (m *MockIndexConnector) IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error) {
+func (m *MockIndexConnector) IndexDocuments(ctx context.Context, indexName string, documents []interfaces.DocumentWrite) ([]interfaces.DocumentWriteResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IndexDocuments", ctx, indexName, documents)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]interfaces.DocumentWriteResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

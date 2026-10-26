@@ -538,3 +538,42 @@ func workerTestFullTask(t *testing.T, resource *interfaces.Resource) *interfaces
 		},
 	}
 }
+
+// successfulIndexDocuments 为构建测试返回与请求逐条对应的成功响应。
+func successfulIndexDocuments(_ context.Context, _ string, documents []interfaces.DocumentWrite) ([]interfaces.DocumentWriteResult, error) {
+	results := make([]interfaces.DocumentWriteResult, len(documents))
+	for i, document := range documents {
+		results[i] = interfaces.DocumentWriteResult{ID: document.ID, Status: 201}
+	}
+	return results, nil
+}
+
+func TestIndexBuildDocuments(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		results []interfaces.DocumentWriteResult
+		err     error
+		ok      bool
+	}{
+		{"success", []interfaces.DocumentWriteResult{{ID: "doc", Status: 201}}, nil, true},
+		{"partial failure", []interfaces.DocumentWriteResult{{ID: "doc", Status: 429}}, nil, false},
+		{"unknown outcome", []interfaces.DocumentWriteResult{{ID: "doc", Status: 503, ErrorCode: interfaces.DocumentOutcomeUnknown, Retryable: true}}, nil, false},
+		{"missing result", nil, nil, false},
+		{"mismatched ID", []interfaces.DocumentWriteResult{{ID: "other", Status: 201}}, nil, false},
+		{"request error", nil, errors.New("index unavailable"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lim := vmock.NewMockLocalIndexManager(gomock.NewController(t))
+			lim.EXPECT().IndexDocuments(gomock.Any(), "index", []interfaces.DocumentWrite{{ID: "doc", Document: map[string]any{"content": "hello"}}}).Return(tc.results, tc.err)
+			err := indexBuildDocuments(context.Background(), lim, "index", map[string]map[string]any{"doc": {"content": "hello"}})
+			if tc.ok {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				if tc.err != nil {
+					assert.ErrorIs(t, err, tc.err)
+				}
+			}
+		})
+	}
+}

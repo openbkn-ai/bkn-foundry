@@ -430,3 +430,24 @@ func indexFeatureFieldName(prop *interfaces.Property, feature *interfaces.Proper
 	}
 	return prop.Name
 }
+
+// indexBuildDocuments 适配构建流水线的 ID 映射；全部写入成功后调用方才可推进 checkpoint。
+func indexBuildDocuments(ctx context.Context, lim interfaces.LocalIndexManager, indexName string, documents map[string]map[string]any) error {
+	writes := make([]interfaces.DocumentWrite, 0, len(documents))
+	for id, document := range documents {
+		writes = append(writes, interfaces.DocumentWrite{ID: id, Document: document})
+	}
+	results, err := lim.IndexDocuments(ctx, indexName, writes)
+	if err != nil {
+		return err
+	}
+	if len(results) != len(writes) {
+		return fmt.Errorf("index response document count does not match request")
+	}
+	for i, result := range results {
+		if result.ID != writes[i].ID || result.Status < 200 || result.Status >= 300 {
+			return fmt.Errorf("index document %q failed with status %d", writes[i].ID, result.Status)
+		}
+	}
+	return nil
+}

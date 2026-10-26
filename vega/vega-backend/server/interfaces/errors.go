@@ -231,3 +231,11 @@ type ServerTimeZoneError struct{}
 // NewServerTimeZoneError 创建不泄漏配置细节的服务时区错误。
 func NewServerTimeZoneError() *ServerTimeZoneError { return &ServerTimeZoneError{} }
 func (*ServerTimeZoneError) Error() string         { return "invalid server time zone configuration" }
+
+// DeleteByQueryIncompleteError 保留部分删除已经完成的实际进度。
+type DeleteByQueryIncompleteError struct{ Result *DeleteByQueryResult }
+
+func NewDeleteByQueryIncompleteError(result *DeleteByQueryResult) *DeleteByQueryIncompleteError {
+	return &DeleteByQueryIncompleteError{Result: result}
+}
+func (*DeleteByQueryIncompleteError) Error() string { return "delete-by-query did not complete" }

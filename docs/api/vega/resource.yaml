@@ -176,6 +176,7 @@ paths:
           去空白后重复则返回 400 `VegaBackend.Dataset.Duplicated.FieldDisplayName`。
           其他违反规则的请求返回 400 `VegaBackend.Dataset.*`（详见错误码族）。Dataset 索引在 Resource
           入库前创建，成功响应中的 `index_name` 是服务端分配的 `vega-dataset-<uuidv7>`。
+          新建索引的分片数和副本数遵循 OpenSearch 索引模板及集群默认配置。
       requestBody:
         required: true
         content:

@@ -142,7 +142,10 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 
 	// Parse the response data.
 	var response struct {
-		Data []*interfaces.VectorResp `json:"data"`
+		Data []*struct {
+			interfaces.VectorResp
+			Index *int `json:"index"`
+		} `json:"data"`
 	}
 
 	if err := sonic.Unmarshal(result, &response); err != nil {
@@ -152,6 +155,25 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 	}
 	logger.Debugf("vectorized result length is [%d]", len(response.Data))
 
+	// 兼容不提供 index 的旧适配器；显式 index 仍由 Service 校验并重排。
+	vectors := make([]*interfaces.VectorResp, len(response.Data))
+	indexed := 0
+	for i, item := range response.Data {
+		if item == nil {
+			return nil, fmt.Errorf("vector response contains a nil item")
+		}
+		vector := item.VectorResp
+		vector.Index = i
+		if item.Index != nil {
+			indexed++
+			vector.Index = *item.Index
+		}
+		vectors[i] = &vector
+	}
+	if indexed != 0 && indexed != len(vectors) {
+		return nil, fmt.Errorf("vector response mixes indexed and unindexed items")
+	}
+
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
-	return response.Data, nil
+	return vectors, nil
 }

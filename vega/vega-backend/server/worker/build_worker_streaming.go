@@ -563,7 +563,7 @@ func (sbw *streamingBuildWorker) handleCreateOperation(ctx context.Context, keyM
 			return fmt.Errorf("vectorize streaming document: %w", err)
 		}
 	}
-	if _, err := sbw.lim.IndexDocuments(ctx, indexName, map[string]map[string]any{docID: document}); err != nil {
+	if err := indexBuildDocuments(ctx, sbw.lim, indexName, map[string]map[string]any{docID: document}); err != nil {
 		return fmt.Errorf("%w: %w", errStreamingDocumentWrite, err)
 	}
 	return nil
@@ -600,7 +600,7 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 			return fmt.Errorf("vectorize updated document: %w", err)
 		}
 	}
-	_, err = sbw.lim.IndexDocuments(ctx, indexName, map[string]map[string]any{newDocID: document})
+	err = indexBuildDocuments(ctx, sbw.lim, indexName, map[string]map[string]any{newDocID: document})
 	if err != nil {
 		return fmt.Errorf("failed to update document in local index: %w", err)
 	}

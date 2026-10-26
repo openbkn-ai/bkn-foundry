@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -184,9 +185,7 @@ func TestHandleCreateOperationExcludesUnsupportedFields(t *testing.T) {
 	}
 	docID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
 	require.NoError(t, err)
-	lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", map[string]map[string]any{
-		docID: {"id": 2, "title": "created"},
-	}).Return(nil, nil)
+	lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", []interfaces.DocumentWrite{{ID: docID, Document: map[string]any{"id": 2, "title": "created"}}}).DoAndReturn(successfulIndexDocuments)
 
 	require.NoError(t, worker.handleCreateOperation(
 		context.Background(),
@@ -218,7 +217,7 @@ func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *test
 	require.NoError(t, err)
 
 	gomock.InOrder(
-		lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", map[string]map[string]any{newID: {"id": 2, "title": "updated"}}).Return([]string{newID}, nil),
+		lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", []interfaces.DocumentWrite{{ID: newID, Document: map[string]any{"id": 2, "title": "updated"}}}).Return([]interfaces.DocumentWriteResult{{ID: newID, Status: 201}}, nil),
 		lim.EXPECT().DeleteDocument(gomock.Any(), "index-1", oldID).Return(nil),
 	)
 
@@ -249,7 +248,7 @@ func TestHandleUpdateOperationExcludesUnsupportedFields(t *testing.T) {
 	require.NoError(t, err)
 
 	gomock.InOrder(
-		lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", map[string]map[string]any{newID: {"id": 2}}).Return(nil, nil),
+		lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", []interfaces.DocumentWrite{{ID: newID, Document: map[string]any{"id": 2}}}).DoAndReturn(successfulIndexDocuments),
 		lim.EXPECT().DeleteDocument(gomock.Any(), "index-1", oldID).Return(nil),
 	)
 
@@ -266,33 +265,45 @@ func TestHandleUpdateOperationExcludesUnsupportedFields(t *testing.T) {
 }
 
 func TestHandleUpdateOperationKeepsOldDocumentWhenReplacementWriteFails(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	lim := vmock.NewMockLocalIndexManager(ctrl)
-	worker := &streamingBuildWorker{lim: lim}
-	buildTask := &interfaces.BuildTask{
-		IndexConfig: &interfaces.BuildTaskIndexConfig{
-			IndexConfigContract: interfaces.IndexConfigContract{
-				PrimaryKeyFields:  []string{"id"},
-				IncrementalFields: []string{"id"},
-			},
-		},
+	for _, requestFailure := range []bool{true, false} {
+		t.Run(fmt.Sprint(requestFailure), func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			lim := vmock.NewMockLocalIndexManager(ctrl)
+			worker := &streamingBuildWorker{lim: lim}
+			buildTask := &interfaces.BuildTask{
+				IndexConfig: &interfaces.BuildTaskIndexConfig{
+					IndexConfigContract: interfaces.IndexConfigContract{
+						PrimaryKeyFields:  []string{"id"},
+						IncrementalFields: []string{"id"},
+					},
+				},
+			}
+			newID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
+			require.NoError(t, err)
+
+			if requestFailure {
+				lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", []interfaces.DocumentWrite{{ID: newID, Document: map[string]any{"id": 2}}}).Return(nil, errors.New("write failed"))
+			} else {
+				lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", []interfaces.DocumentWrite{{ID: newID, Document: map[string]any{"id": 2}}}).Return([]interfaces.DocumentWriteResult{{ID: newID, Status: 503}}, nil)
+			}
+
+			err = worker.handleUpdateOperation(
+				context.Background(),
+				map[string]any{"id": 1},
+				map[string]any{"id": 2},
+				"index-1",
+				buildTask,
+				&embeddingPipeline{},
+				[]string{"id"},
+				nil,
+				nil)
+			if requestFailure {
+				require.ErrorContains(t, err, "write failed")
+			} else {
+				require.ErrorContains(t, err, "failed with status 503")
+			}
+		})
 	}
-	newID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
-	require.NoError(t, err)
-
-	lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", map[string]map[string]any{newID: {"id": 2}}).Return(nil, errors.New("write failed"))
-
-	err = worker.handleUpdateOperation(
-		context.Background(),
-		map[string]any{"id": 1},
-		map[string]any{"id": 2},
-		"index-1",
-		buildTask,
-		&embeddingPipeline{},
-		[]string{"id"},
-		nil,
-		nil)
-	require.ErrorContains(t, err, "write failed")
 }
 
 func TestBuildConnectorConfigUsesCaptureDatabase(t *testing.T) {
@@ -336,7 +347,7 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 					task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"id"}}}}
 					id, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: json.Number("2")}})
 					require.NoError(t, err)
-					lim.EXPECT().IndexDocuments(gomock.Any(), "index", map[string]map[string]any{id: {"id": json.Number("2"), "clock": tc.want, "day": "2026-10-19"}}).Return(nil, nil)
+					lim.EXPECT().IndexDocuments(gomock.Any(), "index", []interfaces.DocumentWrite{{ID: id, Document: map[string]any{"id": json.Number("2"), "clock": tc.want, "day": "2026-10-19"}}}).DoAndReturn(successfulIndexDocuments)
 					fields := []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}, {Name: "day", Type: interfaces.DataType_Date}}
 					if operation == "create" {
 						err = worker.handleCreateOperation(context.Background(), map[string]any{"id": json.Number("2")}, after, "index", task, &embeddingPipeline{}, []string{"id", "clock", "day"}, fields, event["schema"])
@@ -382,7 +393,7 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 				if !tc.invalid {
 					docID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
 					require.NoError(t, err)
-					lim.EXPECT().IndexDocuments(gomock.Any(), "index", map[string]map[string]any{docID: {"id": 2, "payload": tc.want}}).Return(nil, nil)
+					lim.EXPECT().IndexDocuments(gomock.Any(), "index", []interfaces.DocumentWrite{{ID: docID, Document: map[string]any{"id": 2, "payload": tc.want}}}).DoAndReturn(successfulIndexDocuments)
 					if operation == "update" {
 						oldID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 1}})
 						require.NoError(t, err)
@@ -410,7 +421,7 @@ func TestStreamingHandlersNormalizeDocuments(t *testing.T) {
 		task := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{PrimaryKeyFields: []string{"clock"}}}}
 		id, err := generateDocumentID([]interfaces.KeyValue{{Key: "clock", Value: "12:00:00.100"}})
 		require.NoError(t, err)
-		lim.EXPECT().IndexDocuments(gomock.Any(), "index", map[string]map[string]any{id: {"clock": "12:00:00.1"}}).Return(nil, nil)
+		lim.EXPECT().IndexDocuments(gomock.Any(), "index", []interfaces.DocumentWrite{{ID: id, Document: map[string]any{"clock": "12:00:00.1"}}}).DoAndReturn(successfulIndexDocuments)
 		after := map[string]any{"clock": "12:00:00.100"}
 		require.NoError(t, worker.handleUpdateOperation(context.Background(), map[string]any{"clock": "12:00:00.100"}, after, "index", task, &embeddingPipeline{}, []string{"clock"}, []*interfaces.Property{{Name: "clock", Type: interfaces.DataType_Time}}, nil))
 		assert.Equal(t, "12:00:00.100", after["clock"])

@@ -9,6 +9,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var datasetEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"VegaBackend.Dataset.DeleteIncomplete":                   "Dataset deletion did not complete; inspect error_details for progress",
 		"VegaBackend.Dataset.InvalidParameter.SchemaDefinition":  "Invalid dataset schema definition. schema_definition cannot be empty; at least one field is required",
 		"VegaBackend.Dataset.InvalidParameter.FieldName":         "Invalid field name. Please check the field parameters",
 		"VegaBackend.Dataset.LengthExceeded.FieldName":           "Field name length exceeded. Please shorten the name",

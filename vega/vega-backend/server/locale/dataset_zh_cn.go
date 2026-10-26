@@ -9,6 +9,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var datasetZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"VegaBackend.Dataset.DeleteIncomplete":                   "Dataset 删除未完成，请查看 error_details 中的实际进度",
 		"VegaBackend.Dataset.InvalidParameter.SchemaDefinition":  "无效的数据集 schema 定义。schema_definition 不能为空，至少包含一个字段",
 		"VegaBackend.Dataset.InvalidParameter.FieldName":         "无效的字段名称。请检查字段参数",
 		"VegaBackend.Dataset.LengthExceeded.FieldName":           "字段名称长度超限。请缩短名称",

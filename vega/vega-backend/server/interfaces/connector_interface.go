@@ -157,8 +157,8 @@ type IndexConnector interface {
 
 	// CreateDocuments writes documents in bulk and returns successfully written IDs; each document may specify its target ID using _id.
 	CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error)
-	// IndexDocuments writes documents in bulk using map keys as document IDs and returns successfully written IDs.
-	IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error)
+	// IndexDocuments 完整替换文档，按输入顺序逐条返回结果。
+	IndexDocuments(ctx context.Context, indexName string, documents []DocumentWrite) ([]DocumentWriteResult, error)
 	// GetDocument retrieves the document identified by docID from the specified index.
 	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)
 	// GetDocuments retrieves documents identified by docIDs from the specified index.
@@ -169,8 +169,8 @@ type IndexConnector interface {
 	UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error)
 	// DeleteDocuments deletes documents identified by docIDs from the specified index.
 	DeleteDocuments(ctx context.Context, indexName string, docIDs []string) error
-	// DeleteDocumentsByQuery deletes matching documents from the specified index using the query parameters and field definitions.
-	DeleteDocumentsByQuery(ctx context.Context, indexName string, params *ResourceDataQueryParams, schemaDefinition []*Property) error
+	// DeleteDocumentsByQuery 返回实际进度，包括部分完成结果。
+	DeleteDocumentsByQuery(ctx context.Context, indexName string, params *ResourceDataQueryParams, schemaDefinition []*Property) (*DeleteByQueryResult, error)
 }
 
 // APIConnector defines the interface for REST/GraphQL API connectors.

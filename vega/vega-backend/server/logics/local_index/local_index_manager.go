@@ -241,10 +241,6 @@ func (lim *localIndexManager) CreateDocuments(ctx context.Context, indexName str
 	return lim.lic.CreateDocuments(ctx, indexName, documents)
 }
 
-func (lim *localIndexManager) IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error) {
-	return lim.lic.IndexDocuments(ctx, indexName, documents)
-}
-
 func (lim *localIndexManager) UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error) {
 	return lim.lic.UpsertDocuments(ctx, indexName, updateRequests)
 }
@@ -257,8 +253,14 @@ func (lim *localIndexManager) DeleteDocuments(ctx context.Context, indexName str
 	return lim.lic.DeleteDocuments(ctx, indexName, docIDs)
 }
 
-func (lim *localIndexManager) DeleteDocumentsByQuery(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
+func (lim *localIndexManager) DeleteDocumentsByQuery(ctx context.Context, indexName string,
+	res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.DeleteByQueryResult, error) {
 	return lim.lic.DeleteDocumentsByQuery(ctx, indexName, params, SchemaForQuery(res.SchemaDefinition))
+}
+
+func (lim *localIndexManager) IndexDocuments(ctx context.Context, indexName string,
+	documents []interfaces.DocumentWrite) ([]interfaces.DocumentWriteResult, error) {
+	return lim.lic.IndexDocuments(ctx, indexName, documents)
 }
 
 // SchemaForQuery returns the searchable physical schema exposed by a managed local index.

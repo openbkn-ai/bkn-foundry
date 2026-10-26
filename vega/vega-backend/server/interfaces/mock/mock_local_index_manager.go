@@ -114,11 +114,12 @@ func (mr *MockLocalIndexManagerMockRecorder) DeleteDocuments(ctx, indexName, doc
 }
 
 // DeleteDocumentsByQuery mocks base method.
-func (m *MockLocalIndexManager) DeleteDocumentsByQuery(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
+func (m *MockLocalIndexManager) DeleteDocumentsByQuery(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.DeleteByQueryResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DeleteDocumentsByQuery", ctx, indexName, res, params)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(*interfaces.DeleteByQueryResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteDocumentsByQuery indicates an expected call of DeleteDocumentsByQuery.
@@ -201,10 +202,10 @@ func (mr *MockLocalIndexManagerMockRecorder) GetIndexMeta(ctx, index any) *gomoc
 }
 
 // IndexDocuments mocks base method.
-func (m *MockLocalIndexManager) IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error) {
+func (m *MockLocalIndexManager) IndexDocuments(ctx context.Context, indexName string, documents []interfaces.DocumentWrite) ([]interfaces.DocumentWriteResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IndexDocuments", ctx, indexName, documents)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]interfaces.DocumentWriteResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

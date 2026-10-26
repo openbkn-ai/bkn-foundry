@@ -175,6 +175,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByEx)
 			resources.PUT("/:id/data/:docid", r.verifyJsonContentType(), r.PutResourceDataDocByEx)
+			resources.PUT("/:id/data", r.verifyJsonContentType(), r.PutResourceDataByEx)
 			resources.GET("/:id/data/:docid", r.GetResourceDataDocByEx)
 			resources.DELETE("/:id/data/:docid", r.DeleteResourceDataByEx)
 		}
@@ -284,6 +285,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 			resources.POST("/:id/data", r.verifyJsonContentType(), r.PostResourceDataByIn)
 			resources.PUT("/:id/data/:docid", r.verifyJsonContentType(), r.PutResourceDataDocByIn)
+			resources.PUT("/:id/data", r.verifyJsonContentType(), r.PutResourceDataByIn)
 			resources.GET("/:id/data/:docid", r.GetResourceDataDocByIn)
 			resources.DELETE("/:id/data/:docid", r.DeleteResourceDataByIn)
 		}
