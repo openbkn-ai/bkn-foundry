@@ -19,11 +19,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
 
-func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
-	approved := ResultProducer{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "quality_check", FunctionVersion: "published-version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
-	for _, name := range []string{"normal", "zero", "changed code", "changed version", "body spoof", "missing result", "null result", "text result", "empty object", "array result", "embedded declaration", "artifact unavailable", "artifact timeout", "sample fixture", "null exit", "numeric content"} {
+func TestFunctionResultRequiresVerifiedExecutionIdentity(t *testing.T) {
+	identity := ResultProducer{KnowledgeNetworkID: "supply", ToolboxID: "box", ToolID: "quality_check", FunctionVersion: "published-version", CodeSHA256: "sha256:" + strings.Repeat("a", 64)}
+	for _, name := range []string{"normal", "zero", "changed code", "invalid code hash", "changed version", "body spoof", "missing result", "null result", "text result", "empty object", "array result", "embedded declaration", "artifact unavailable", "artifact timeout", "sample fixture", "null exit", "numeric content"} {
 		t.Run(name, func(t *testing.T) {
-			approved := approved
+			identity := identity
 			publisher, err := evidencepublisher.New(evidencepublisher.Config{ProducerID: "agent-retrieval", BaseStreamID: "retrieval", WorkloadIdentity: "retrieval", ProcessBootID: name, CapturePolicyRevision: "41"}, &captureEvidenceSender{})
 			if err != nil {
 				t.Fatal(err)
@@ -53,7 +53,7 @@ func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
 			})}
 			t.Setenv(envArtifactEndpoint, "http://trace.local/api/agent-observability/v1/evidence/artifacts")
 			t.Setenv(envArtifactToken, "fixture")
-			proof := map[string]any{"toolbox_id": "box", "tool_id": "quality_check", "function_version": approved.FunctionVersion, "code_sha256": approved.CodeSHA256}
+			proof := map[string]any{"toolbox_id": "box", "tool_id": "quality_check", "function_version": identity.FunctionVersion, "code_sha256": identity.CodeSHA256}
 			content := map[string]any{"measurement": "passed", "count": 2}
 			if name == "zero" {
 				content["count"] = 0
@@ -64,6 +64,8 @@ func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
 			switch name {
 			case "changed code":
 				proof["code_sha256"] = "sha256:" + strings.Repeat("b", 64)
+			case "invalid code hash":
+				proof["code_sha256"] = "unverified"
 			case "changed version":
 				proof["function_version"] = "other-version"
 			case "body spoof":
@@ -108,7 +110,7 @@ func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
 				}
 				fixtureProof = fixture.Source.Envelope.Payload
 				producerRaw, _ := json.Marshal(fixtureProof["producer"])
-				if err := json.Unmarshal(producerRaw, &approved); err != nil {
+				if err := json.Unmarshal(producerRaw, &identity); err != nil {
 					t.Fatal(err)
 				}
 				result = fixture.Output.Inline
@@ -121,8 +123,8 @@ func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
 			if name == "artifact timeout" {
 				ctx.Value(traceAvailabilityKey{}).(*traceAvailability).post = 300 * time.Millisecond
 			}
-			err = RecordFunctionResult(ctx, approved, approved.FunctionVersion, result)
-			good := name == "normal" || name == "zero" || name == "sample fixture" || name == "numeric content" || name == "empty object" || name == "array result" || name == "embedded declaration"
+			err = RecordFunctionResult(ctx, identity, identity.FunctionVersion, result)
+			good := name == "changed code" || name == "normal" || name == "zero" || name == "sample fixture" || name == "numeric content" || name == "empty object" || name == "array result" || name == "embedded declaration"
 			if good {
 				if err != nil || writes != 1 || len(publisher.SnapshotQueue()) != 1 {
 					t.Fatalf("err=%v writes=%d records=%d", err, writes, len(publisher.SnapshotQueue()))
@@ -139,7 +141,8 @@ func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
 							Complete bool   `json:"complete"`
 							Hash     string `json:"content_hash"`
 
-							OutputHash string `json:"output_hash"`
+							OutputHash string         `json:"output_hash"`
+							Producer   ResultProducer `json:"producer"`
 						} `json:"payload"`
 					} `json:"envelope"`
 				}
@@ -148,6 +151,10 @@ func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
 				}
 				if !wire.Envelope.Payload.Complete || wire.EventType != "logic.execution.observed" || len(wire.Claims) != 0 || wire.Envelope.Payload.Contract != FunctionResultContract || wire.Envelope.Payload.Hash != artifact["content_hash"] {
 					t.Fatalf("wire=%+v", wire)
+				}
+				execution := result["function_execution"].(map[string]any)
+				if wire.Envelope.Payload.Producer.CodeSHA256 != execution["code_sha256"] {
+					t.Fatal("recorded code hash differs from actual execution")
 				}
 				if fixtureProof != nil && (wire.Envelope.Payload.Hash != fixtureProof["content_hash"] || wire.Envelope.Payload.OutputHash != fixtureProof["output_hash"]) {
 					t.Fatalf("sample producer contract differs from fixture: %+v", wire)
@@ -177,13 +184,5 @@ func TestFunctionResultRequiresApprovedExecutedCode(t *testing.T) {
 				}
 			}
 		})
-	}
-	raw, _ := json.Marshal([]ResultProducer{approved})
-	t.Setenv("BKN_TRACE_RESULT_PRODUCERS", string(raw))
-	if _, ok := ConfiguredResultProducer("supply", "box", "quality_check"); !ok {
-		t.Fatal("approved identity not selected")
-	}
-	if _, ok := ConfiguredResultProducer("other-network", "box", "quality_check"); ok {
-		t.Fatal("approval crossed knowledge-network boundary")
 	}
 }

@@ -190,8 +190,6 @@ observability:
     core_url: "http://agent-observability-internal:8081"
     # Enable only after every Core worker supports durable answer delivery.
     durable_answer_enabled: false
-    # Approved Function identities for capturing existing structured result snapshots.
-    result_producers: []
     # Authoritative finish POST/replay budget; 1..30000 ms, default 5000.
     finish_timeout_ms: 5000
   evidence:

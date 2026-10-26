@@ -177,9 +177,6 @@ func ClearManagedTraceContext(ctx context.Context) context.Context {
 // It is never permission,
 // operation registration, an authoritative identity, or proof of success.
 func IsTracePartialReason(reason string) bool {
-	if reason == "function_result_redacted" || reason == "function_claim_not_evaluable" {
-		return true
-	}
 	if len(reason) > 256 {
 		return false
 	}

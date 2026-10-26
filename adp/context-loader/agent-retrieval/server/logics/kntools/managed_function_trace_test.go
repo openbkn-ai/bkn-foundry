@@ -20,7 +20,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/bkntrace/evidencepublisher"
 )
+
+type managedResultPublisher struct{}
+
+func (managedResultPublisher) TryPublish(evidencepublisher.Event) evidencepublisher.PublishResult {
+	return evidencepublisher.PublishResult{Disposition: evidencepublisher.Accepted}
+}
 
 type managedFunctionRoundTripFunc func(*http.Request) (*http.Response, error)
 
@@ -75,12 +82,21 @@ func TestRunAndCleanTraceGapsPreservesInvalidMarker(t *testing.T) {
 }
 
 func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
-	for _, approved := range []bool{false, true} {
-		t.Run(fmt.Sprint(approved), func(t *testing.T) {
-			t.Setenv("BKN_TRACE_RESULT_PRODUCERS", "[]")
+	for _, test := range []struct {
+		name          string
+		capture       bool
+		value, reason string
+	}{
+		{"capture disabled", false, "must-not-persist", ""},
+		{"redacted result", true, "must-not-persist", "function_result_redacted"},
+		{"unverifiable result", true, "[redacted]", "function_claim_not_evaluable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			bkntrace.SetEvidencePublisher(nil)
+			t.Cleanup(func() { bkntrace.SetEvidencePublisher(nil) })
 			sourceModule, contract := managedFunctionSourceModule, "managed_function_execution/v1"
-			if approved {
-				t.Setenv("BKN_TRACE_RESULT_PRODUCERS", `[{"knowledge_network_id":"supply","toolbox_id":"box-1","tool_id":"material_where_used","function_version":"1.2.3","code_sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`)
+			if test.capture {
+				bkntrace.SetEvidencePublisher(managedResultPublisher{})
 				sourceModule, contract = bkntrace.FunctionResultSourceModule, bkntrace.FunctionResultContract
 			}
 			var ensureBody map[string]any
@@ -122,6 +138,7 @@ func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 				RequestID: "req_12345678", ConversationID: "conv-1", InteractionID: "int-1",
 				OperationID: "op-execute-tool", Attempt: 1,
 			})
+			ctx = bkntrace.WithTraceAvailability(ctx)
 			ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 				AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 				TokenInfo: &interfaces.TokenInfo{ClientID: "app-1"},
@@ -143,15 +160,15 @@ func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 					t.Fatalf("function received operation %q", traceContext.OperationID)
 				}
 				return map[string]any{
-					"products": []any{"P-1", "P-2"}, "access_token": "must-not-persist",
-					"refreshToken": "must-not-persist", "apiKey": "must-not-persist",
+					"products": []any{"P-1", "P-2"}, "access_token": test.value,
+					"refreshToken": test.value, "apiKey": test.value,
 				}, nil
 			})
 
 			if err != nil {
 				t.Fatalf("managed function trace: %v", err)
 			}
-			if !reflect.DeepEqual(result["products"], []any{"P-1", "P-2"}) || result["access_token"] != "must-not-persist" {
+			if !reflect.DeepEqual(result["products"], []any{"P-1", "P-2"}) || result["access_token"] != test.value {
 				t.Fatalf("business result was changed: %#v", result)
 			}
 			if ensureBody["parent_operation_id"] != "op-execute-tool" ||
@@ -188,9 +205,15 @@ func TestManagedFunctionGuardRecordsBusinessClosureBoundary(t *testing.T) {
 			if functionRef["ref_id"] != "function:supply:material_where_used" {
 				t.Fatalf("function ref violates the Trace Core canonical contract: %#v", functionRef)
 			}
-			if approved {
+			if reasons := bkntrace.TracePartialReasons(ctx); len(reasons) != 0 {
+				t.Fatalf("internal Function gap leaked to Agent metadata: %v", reasons)
+			}
+			if bkntrace.IsTracePartialReason("function_result_redacted") || bkntrace.IsTracePartialReason("function_claim_not_evaluable") {
+				t.Fatal("internal reasons must not enter Agent finish contract")
+			}
+			if test.capture {
 				raw, _ := json.Marshal(finishBody["partial_reasons"])
-				if !strings.Contains(string(raw), "function_result_redacted") {
+				if !strings.Contains(string(raw), test.reason) {
 					t.Fatalf("redacted result lacks explicit gap: %s", raw)
 				}
 			}

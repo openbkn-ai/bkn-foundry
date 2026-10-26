@@ -6,7 +6,7 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ### Features & Improvements
 
-- Opt-in, code-pinned Function producers capture existing structured result snapshots without tool-side evidence declarations for Core Claim assembly. Missing execution identity or evidence downgrades Trace without changing the business result; managed finish still rejects caller-owned claims. (#1332)
+- Platform Functions reuse governed Evidence capture to record existing structured result snapshots and actual execution identity without tool-side evidence declarations for Core Claim assembly. Missing execution identity or evidence downgrades Trace without changing the business result; managed finish still rejects caller-owned claims. (#1332)
 
 - Submit Interaction finish with a separate bounded POST/replay budget (default 5 seconds), preserving the exact request/key across finite retries. Unconfirmed submission now returns an MCP tool error with `retry_same_finish`; only a matching Core terminal acknowledgement is success. Tool execution is never repeated. (#2340)
 

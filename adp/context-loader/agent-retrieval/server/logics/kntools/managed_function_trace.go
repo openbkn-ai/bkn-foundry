@@ -100,7 +100,8 @@ func (m *managedFunctionGuard) Execute(
 		RefType: "function", RefID: "function:" + input.KnowledgeNetworkID + ":" + input.ToolID,
 		Version: normalizedFunctionVersion(input.Descriptor.Version), DisplayHint: input.Descriptor.Name,
 	}
-	producer, producesResultClaim := bkntrace.ConfiguredResultProducer(input.KnowledgeNetworkID, input.ToolboxID, input.ToolID)
+	producer := bkntrace.ResultProducer{KnowledgeNetworkID: input.KnowledgeNetworkID, ToolboxID: input.ToolboxID, ToolID: input.ToolID}
+	producesResultClaim := bkntrace.EvidenceEnabled()
 	sourceModule := managedFunctionSourceModule
 	if producesResultClaim {
 		sourceModule = bkntrace.FunctionResultSourceModule
@@ -166,12 +167,12 @@ func (m *managedFunctionGuard) Execute(
 		payload = managedFunctionFailurePayload(result)
 	} else if producesResultClaim && !reflect.DeepEqual(result, payload) {
 		// A redacted snapshot cannot attest the exact original result.
-		bkntrace.MergeTracePartialReasons(lifecycleContext, []string{"function_result_redacted"})
+		state.PartialReasons = append(state.PartialReasons, "function_result_redacted")
 	} else if producesResultClaim {
 		redactedResult, _ := payload.(map[string]any)
 		if claimErr := bkntrace.RecordFunctionResult(lifecycleContext, producer, input.Descriptor.Version, redactedResult); claimErr != nil {
 			// A missing proof must not change the already-computed business result.
-			bkntrace.MergeTracePartialReasons(lifecycleContext, []string{"function_claim_not_evaluable"})
+			state.PartialReasons = append(state.PartialReasons, "function_claim_not_evaluable")
 		}
 	}
 	_, finishAPIErr, finishErr := m.guard.Finish(lifecycleContext, state, payload, failed, false)
@@ -271,7 +272,7 @@ func managedFunctionCapabilityProfile(input ManagedFunctionTraceInput) []byte {
 		"required_trace_fields": []string{"receipt", "business_refs", "result_completeness"},
 		"failure_policy":        "preserve_execution_and_downgrade", "resolution": "matched",
 	}
-	if _, ok := bkntrace.ConfiguredResultProducer(input.KnowledgeNetworkID, input.ToolboxID, input.ToolID); ok {
+	if bkntrace.EvidenceEnabled() {
 		profile["evidence_contract"] = bkntrace.FunctionResultContract
 	}
 	raw, _ := sonic.ConfigStd.Marshal(profile)

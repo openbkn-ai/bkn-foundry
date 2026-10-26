@@ -79,7 +79,7 @@ jobs:
       - name: Durable answer transaction and recovery integration test
         env:
           BKN_TRACE_DURABLE_ANSWER_ADMIN_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/?parseTime=true&multiStatements=true
-        run: go test -tags=integration ./src/drivenadapter/dbaccess/mariadb/sessionstore -run '^(TestDurableAnswer(TransactionRecovery|PacketBoundary)MariaDB|TestLifecycleReadsDoNotWaitForConversationWriter|TestSlowTraceReadDoesNotBlockOperationRegistration|TestFunctionResultClaimLifecycleMariaDB|TestFunctionResultRecordIntegrityMaterializationMariaDB|TestDerivedEvidenceAtomicWithRevisionMariaDB)$' -count=1 -v
+        run: go test -tags=integration ./src/drivenadapter/dbaccess/mariadb/sessionstore -run '^(TestDurableAnswer(TransactionRecovery|PacketBoundary)MariaDB|TestLifecycleReadsDoNotWaitForConversationWriter|TestSlowTraceReadDoesNotBlockOperationRegistration|TestFunctionResultClaimLifecycleMariaDB|TestFunctionResultExamplesMariaDB|TestFunctionResultRecordIntegrityMaterializationMariaDB|TestDerivedEvidenceAtomicWithRevisionMariaDB)$' -count=1 -v
       - name: Authorized root-service discovery integration test
         env:
           BKN_ROOT_SERVICES_TEST_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/bkn_trace_ci?parseTime=true&multiStatements=true

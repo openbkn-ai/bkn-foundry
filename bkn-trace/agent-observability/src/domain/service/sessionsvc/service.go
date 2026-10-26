@@ -1105,17 +1105,20 @@ func deriveClosureManifest(
 			Required:  receipt.Required,
 		})
 	}
-	for _, id := range derivedFunctionClaimIDs(tx, interactionID, false) {
-		if slices.Contains(manifest.Claims, id) {
-			continue
-		}
-		if len(manifest.Claims) >= maxClaims {
-			manifest.SystemPartialReasons = appendUnique(manifest.SystemPartialReasons, "function_claim_capacity_exceeded")
-			continue
-		}
-		manifest.Claims = append(manifest.Claims, id)
-	}
 	operations := tx.ListOperations(interactionID)
+	if len(operations) > 0 {
+		for _, id := range derivedFunctionClaimIDs(tx, interactionID, false) {
+			if slices.Contains(manifest.Claims, id) {
+				continue
+			}
+			if len(manifest.Claims) >= maxClaims {
+				manifest.SystemPartialReasons = appendUnique(manifest.SystemPartialReasons, "function_claim_capacity_exceeded")
+				continue
+			}
+			manifest.Claims = append(manifest.Claims, id)
+		}
+	}
+
 	manifest.ExpectedOperations = make([]sessionvo.ExpectedOperation, 0, len(operations))
 	for _, operation := range operations {
 		manifest.ExpectedOperations = append(manifest.ExpectedOperations, sessionvo.ExpectedOperation{

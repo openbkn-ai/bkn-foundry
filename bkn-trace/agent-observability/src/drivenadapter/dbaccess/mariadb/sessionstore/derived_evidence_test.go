@@ -79,7 +79,7 @@ func TestDerivedCausationUsesBoundedMetadataAndRejectsCycle(t *testing.T) {
 			}
 			e := derivedClaimEvent()
 			e.CausationEventIDs = []string{"source"}
-			err = verifyDerivedCausationAcyclic(context.Background(), tx, e)
+			err = (&transaction{ctx: context.Background(), tx: tx}).verifyDerivedCausationAcyclic(e)
 			if !errors.Is(err, test.want) {
 				t.Fatalf("got %v want %v", err, test.want)
 			}
@@ -88,5 +88,33 @@ func TestDerivedCausationUsesBoundedMetadataAndRejectsCycle(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestDerivedCausationMetadataIsReadOncePerTransaction(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT event_id,").WithArgs(sessionvo.MaxEvidenceConfirmationBytes, "int", maxDerivedCausationEvents+1).WillReturnRows(sqlmock.NewRows([]string{"event_id", "causes"}).AddRow("source", `[]`))
+	mock.ExpectRollback()
+	sqltx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := &transaction{ctx: context.Background(), tx: sqltx}
+	for _, id := range []string{"first", "second"} {
+		event := derivedClaimEvent()
+		event.EventID = id
+		event.CausationEventIDs = []string{"source"}
+		if err := adapter.verifyDerivedCausationAcyclic(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = sqltx.Rollback()
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

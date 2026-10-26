@@ -93,8 +93,6 @@ spec:
                 value: {{ .Values.observability.lifecycle.finish_timeout_ms | default 5000 | quote }}
               - name: BKN_TRACE_DURABLE_ANSWER_ENABLED
                 value: {{ .Values.observability.lifecycle.durable_answer_enabled | default false | quote }}
-              - name: BKN_TRACE_RESULT_PRODUCERS
-                value: {{ .Values.observability.lifecycle.result_producers | default list | toJson | quote }}
               - name: BKN_TRACE_ARTIFACT_ENDPOINT
                 value: {{ required "observability.evidence.artifact_endpoint is required" .Values.observability.evidence.artifact_endpoint | quote }}
             {{- if .Values.observability.evidence.artifact_secret_name }}

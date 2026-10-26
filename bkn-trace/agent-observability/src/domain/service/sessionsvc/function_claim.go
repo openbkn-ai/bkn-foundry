@@ -97,6 +97,7 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 			missing(id, "claim_materialization_unavailable")
 		}
 	} else {
+		conversation, hasConversation := tx.PeekConversation(interaction.ConversationID)
 		for _, id := range expected {
 			var summary *sessionvo.OperationCallSummary
 			for i := range summaries {
@@ -145,8 +146,7 @@ func (s *Service) sealFunctionClaims(tx isessionstore.Transaction, interaction *
 				missing(id, "claim_result_not_evaluable")
 				continue
 			}
-			conversation, ok := tx.PeekConversation(interaction.ConversationID)
-			if !ok || !source.Owner.Equal(conversation.Owner) {
+			if !hasConversation || !source.Owner.Equal(conversation.Owner) {
 				missing(id, "claim_owner_mismatch")
 				continue
 			}

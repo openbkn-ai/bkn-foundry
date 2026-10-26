@@ -6,7 +6,6 @@
 package sessionstore
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -80,7 +79,7 @@ func (t *transaction) AppendDerivedEvidence(event ledgervo.Event) (ledgervo.Dura
 		}
 		return ledgervo.DurableAck{}, err
 	}
-	if err = verifyDerivedCausationAcyclic(t.ctx, t.tx, event); err != nil {
+	if err = t.verifyDerivedCausationAcyclic(event); err != nil {
 		if !errors.Is(err, ievidenceledger.ErrCausalityConflict) && !errors.Is(err, isessionstore.ErrEvidenceConfirmationLimit) && !errors.Is(err, isessionstore.ErrInvalidEvidenceJSON) {
 			t.err = err
 		}
@@ -118,6 +117,13 @@ func (t *transaction) AppendDerivedEvidence(event ledgervo.Event) (ledgervo.Dura
 	ack, err := insertAcceptedEvidence(t.ctx, t.tx, event, immutableHash)
 	if err != nil {
 		t.err = err
+	} else {
+		graph := t.derivedGraphs[event.InteractionID]
+		graph.events = append(graph.events, ledgervo.Event{EventID: event.EventID, CausationEventIDs: append([]string(nil), event.CausationEventIDs...)})
+		// Conservative SQL JSON rendering allowance; never relax the byte budget.
+		causes, _ := json.Marshal(event.CausationEventIDs)
+		graph.bytes += len(causes) + 2*len(event.CausationEventIDs)
+		t.derivedGraphs[event.InteractionID] = graph
 	}
 	return ack, err
 }
@@ -126,8 +132,26 @@ func (t *transaction) AppendDerivedEvidence(event ledgervo.Event) (ledgervo.Dura
 // Core-only producer, cycle detection reads identities and causal links, never
 // large tool output envelopes. Bounds match existing evidence-confirmation
 // bytes and interaction-reference capacity, and fail closed when exceeded.
-func verifyDerivedCausationAcyclic(ctx context.Context, tx *sql.Tx, event ledgervo.Event) error {
-	rows, err := tx.QueryContext(ctx, `SELECT event_id,
+type derivedCausationGraph struct {
+	events []ledgervo.Event
+	bytes  int
+}
+
+func (t *transaction) verifyDerivedCausationAcyclic(event ledgervo.Event) error {
+	// verifyEvidenceOwnership already holds the conversation/interaction locks;
+	// all Ledger writers take those locks before insertion. Reuse only this
+	// transaction's immutable metadata, including its own accepted inserts.
+	graph, found := t.derivedGraphs[event.InteractionID]
+	if found {
+		if len(graph.events) > maxDerivedCausationEvents || graph.bytes > sessionvo.MaxEvidenceConfirmationBytes {
+			return isessionstore.ErrEvidenceConfirmationLimit
+		}
+		if ledgervo.HasCausationCycle(append(append([]ledgervo.Event(nil), graph.events...), event)) {
+			return ievidenceledger.ErrCausalityConflict
+		}
+		return nil
+	}
+	rows, err := t.tx.QueryContext(t.ctx, `SELECT event_id,
  CASE WHEN SUM(OCTET_LENGTH(COALESCE(JSON_EXTRACT(envelope,'$.causation_event_ids'),'[]'))) OVER () <= ?
  THEN COALESCE(JSON_EXTRACT(envelope,'$.causation_event_ids'),'[]') ELSE NULL END
  FROM bkn_trace_evidence_event_ledger WHERE interaction_id=? ORDER BY event_id LIMIT ? FOR UPDATE`, sessionvo.MaxEvidenceConfirmationBytes, event.InteractionID, maxDerivedCausationEvents+1)
@@ -136,6 +160,7 @@ func verifyDerivedCausationAcyclic(ctx context.Context, tx *sql.Tx, event ledger
 	}
 	defer func() { _ = rows.Close() }()
 	events := []ledgervo.Event{event}
+	totalBytes := 0
 	for rows.Next() {
 		var existing ledgervo.Event
 		var causes []byte
@@ -149,6 +174,7 @@ func verifyDerivedCausationAcyclic(ctx context.Context, tx *sql.Tx, event ledger
 			return fmt.Errorf("%w: derived.causation", isessionstore.ErrInvalidEvidenceJSON)
 		}
 		events = append(events, existing)
+		totalBytes += len(causes)
 	}
 	if err := rows.Err(); err != nil {
 		return err
@@ -156,5 +182,11 @@ func verifyDerivedCausationAcyclic(ctx context.Context, tx *sql.Tx, event ledger
 	if ledgervo.HasCausationCycle(events) {
 		return ievidenceledger.ErrCausalityConflict
 	}
+	if t.derivedGraphs == nil {
+		t.derivedGraphs = make(map[string]derivedCausationGraph)
+	}
+	// Bound memory even if a batch worker seals several interactions.
+	clear(t.derivedGraphs)
+	t.derivedGraphs[event.InteractionID] = derivedCausationGraph{events: append([]ledgervo.Event(nil), events[1:]...), bytes: totalBytes}
 	return nil
 }

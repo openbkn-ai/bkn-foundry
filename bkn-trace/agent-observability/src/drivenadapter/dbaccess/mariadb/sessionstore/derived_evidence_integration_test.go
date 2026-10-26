@@ -100,6 +100,46 @@ func TestDerivedEvidenceAtomicWithRevisionMariaDB(t *testing.T) {
 			t.Fatal("seal or replay was not atomic and unique")
 		}
 	})
+	t.Run("summary refresh after fact update", func(t *testing.T) {
+		err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+			before := tx.ListOperationCallSummaries(interaction.ID)
+			if len(before) != 1 {
+				return errors.New("missing initial summary")
+			}
+			fact, found := tx.FindOperationCallFact(operation.ID, operation.Attempt)
+			if !found {
+				return errors.New("missing fact")
+			}
+			fact.Status = sessionvo.AttemptCompleted
+			tx.SaveOperationCallFact(fact)
+			after := tx.ListOperationCallSummaries(interaction.ID)
+			if len(after) != 1 || after[0].Status != sessionvo.AttemptCompleted {
+				return errors.New("stale summary after write")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("same transaction causal metadata includes earlier inserts", func(t *testing.T) {
+		first, second := event, event
+		first.EventID, first.ProducerStreamID, first.CausationEventIDs = "evt-cache-a", "cache-a", []string{"evt-cache-b"}
+		second.EventID, second.ProducerStreamID, second.CausationEventIDs = "evt-cache-b", "cache-b", []string{first.EventID}
+		err := store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+			if _, err := appendEvent(tx, first); err != nil {
+				return err
+			}
+			_, err := appendEvent(tx, second)
+			return err
+		})
+		if !errors.Is(err, ievidenceledger.ErrCausalityConflict) {
+			t.Fatalf("cached graph missed cycle: %v", err)
+		}
+		if count("bkn_trace_evidence_event_ledger", "event_id", first.EventID) != 0 || count("bkn_trace_evidence_event_ledger", "event_id", second.EventID) != 0 {
+			t.Fatal("failed batch leaked a Claim")
+		}
+	})
 	t.Run("identity hash sequence and attempt conflicts", func(t *testing.T) {
 		tests := []struct {
 			name   string

@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"os"
 	"strings"
 	"time"
 )
@@ -18,7 +17,7 @@ import (
 const FunctionResultContract = "function_result_evidence/v1"
 const FunctionResultSourceModule = "context-loader-function-result/v1"
 
-// ResultProducer pins an operator-approved Function implementation.
+// ResultProducer identifies a server-verified Function execution.
 // A Function version is editable; version alone is not a code identity.
 type ResultProducer struct {
 	KnowledgeNetworkID string `json:"knowledge_network_id"`
@@ -26,22 +25,6 @@ type ResultProducer struct {
 	ToolID             string `json:"tool_id"`
 	FunctionVersion    string `json:"function_version"`
 	CodeSHA256         string `json:"code_sha256"`
-}
-
-// ConfiguredResultProducer never accepts identity or approval from tool arguments.
-// Missing/invalid configuration leaves ordinary Function execution unchanged.
-func ConfiguredResultProducer(kn, box, tool string) (ResultProducer, bool) {
-	var producers []ResultProducer
-	if json.Unmarshal([]byte(os.Getenv("BKN_TRACE_RESULT_PRODUCERS")), &producers) != nil {
-		return ResultProducer{}, false
-	}
-	for _, p := range producers {
-		if p.KnowledgeNetworkID == kn && p.ToolboxID == box && p.ToolID == tool &&
-			p.FunctionVersion != "" && p.FunctionVersion != "unversioned" && validResultCodeHash(p.CodeSHA256) {
-			return p, true
-		}
-	}
-	return ResultProducer{}, false
 }
 
 func validResultCodeHash(value string) bool {
@@ -52,9 +35,9 @@ func validResultCodeHash(value string) bool {
 	return err == nil && hex.EncodeToString(decoded) == value[7:]
 }
 
-// RecordFunctionResult captures the existing structured result from the approved code.
+// RecordFunctionResult captures the existing structured result from the platform execution.
 // Core assigns the real assembly revision when materializing formal evidence.
-func RecordFunctionResult(ctx context.Context, approved ResultProducer, listedVersion string, result map[string]any) error {
+func RecordFunctionResult(ctx context.Context, producer ResultProducer, listedVersion string, result map[string]any) error {
 	ec, ok := contextFromRequest(ctx, nil)
 	if !ok || !EvidenceEnabled() {
 		return errors.New("function evidence requires managed capture")
@@ -77,11 +60,12 @@ func RecordFunctionResult(ctx context.Context, approved ResultProducer, listedVe
 		} `json:"body"`
 	}
 	if json.Unmarshal(raw, &wire) != nil || wire.StatusCode != 200 ||
-		wire.Execution.ToolboxID != approved.ToolboxID || wire.Execution.ToolID != approved.ToolID ||
-		wire.Execution.FunctionVersion != approved.FunctionVersion || listedVersion != approved.FunctionVersion ||
-		wire.Execution.CodeSHA256 != approved.CodeSHA256 {
+		wire.Execution.ToolboxID != producer.ToolboxID || wire.Execution.ToolID != producer.ToolID ||
+		listedVersion == "" || listedVersion == "unversioned" || wire.Execution.FunctionVersion != listedVersion ||
+		!validResultCodeHash(wire.Execution.CodeSHA256) {
 		return errors.New("function producer execution identity is not verified")
 	}
+	producer.FunctionVersion, producer.CodeSHA256 = wire.Execution.FunctionVersion, wire.Execution.CodeSHA256
 	if len(wire.Body.ExitCode) > 0 {
 		var code *int
 		if json.Unmarshal(wire.Body.ExitCode, &code) != nil || code == nil || *code != 0 {
@@ -115,7 +99,7 @@ func RecordFunctionResult(ctx context.Context, approved ResultProducer, listedVe
 	}
 	digest := sha256.Sum256(canonical)
 	payload := map[string]any{
-		"complete": true, "result_contract": FunctionResultContract, "producer": approved,
+		"complete": true, "result_contract": FunctionResultContract, "producer": producer,
 		"result_artifact_ref": ref, "content_hash": hash, "output_hash": hex.EncodeToString(digest[:]),
 	}
 	event := buildEvent(ec, "logic.execution.observed", "context.function_result", payload, "", "")

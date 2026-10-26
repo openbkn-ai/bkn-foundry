@@ -233,6 +233,7 @@ func TestFunctionResultClaimCapacityKeepsServerManifestBoundedAndReplayable(t *t
 	store := sessionstore.New()
 	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 		for i := 0; i < 33; i++ {
+			tx.SaveOperation(sessionvo.Operation{ID: fmt.Sprintf("op-%d", i), InteractionID: "int", Attempt: 1})
 			tx.SaveOperationCallFact(sessionvo.OperationCallFact{OperationID: fmt.Sprintf("op-%d", i), InteractionID: "int", Attempt: 1, SourceModule: functionResultSourceModule, Status: sessionvo.AttemptCompleted})
 		}
 		manifest := deriveClosureManifest(tx, "int", sessionvo.ClosureManifest{Version: "3.0.0", CompletionReason: "completed"}, 32)
@@ -243,6 +244,29 @@ func TestFunctionResultClaimCapacityKeepsServerManifestBoundedAndReplayable(t *t
 		command := TerminateInteractionCommand{InteractionID: "int", Status: sessionvo.InteractionCompleted, TerminalIdempotencyKey: "finish", Manifest: sessionvo.ClosureManifest{Version: "3.0.0", CompletionReason: "completed"}}
 		if !managedTerminalReplayMatches(current, command, tx) {
 			t.Fatal("server-owned claim capacity reason broke exact finish replay")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type summaryReadCountingTransaction struct {
+	isessionstore.Transaction
+	reads int
+}
+
+func (tx *summaryReadCountingTransaction) ListOperationCallSummaries(id string) []sessionvo.OperationCallSummary {
+	tx.reads++
+	return tx.Transaction.ListOperationCallSummaries(id)
+}
+func TestEmptyInteractionManifestDoesNotReadCallSummaries(t *testing.T) {
+	store := sessionstore.New()
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		counting := &summaryReadCountingTransaction{Transaction: tx}
+		manifest := deriveClosureManifest(counting, "empty", sessionvo.ClosureManifest{Version: "3.0.0"}, 32)
+		if counting.reads != 0 || len(manifest.Claims) != 0 || len(manifest.ExpectedOperations) != 0 {
+			t.Fatalf("empty finish performed extra reads: %d %+v", counting.reads, manifest)
 		}
 		return nil
 	}); err != nil {
