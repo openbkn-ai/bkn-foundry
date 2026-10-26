@@ -12,13 +12,14 @@ import (
 )
 
 type scopeColumn struct {
-	column    qm.OutputColumn
-	qualifier string
-	domain    qm.SemanticDomain
+	column     qm.OutputColumn
+	expression *qm.Sqlizer
+	qualifier  string
+	domain     qm.SemanticDomain
 }
 
 type groupBinding struct {
-	source *qm.Expr
+	source *qm.Sqlizer
 	column scopeColumn
 }
 
@@ -26,7 +27,6 @@ type bindingScope struct {
 	columns    []scopeColumn
 	aliases    map[string]bool
 	groups     []groupBinding
-	aggregates []*qm.BoundExpr
 	fallback   *bindingScope
 	groupInput *bindingScope
 }
@@ -59,12 +59,17 @@ func lookupColumn(scope *bindingScope, name []string, origin qm.Origin) (scopeCo
 	}
 	return scopeColumn{}, bindFailure(origin, "字段不在当前作用域")
 }
-func columnExpr(c scopeColumn, origin qm.Origin) *qm.BoundExpr {
-	return &qm.BoundExpr{Kind: qm.ExprField, Type: c.column.Type, Nullable: c.column.Nullable, Field: c.column.ID, Domain: c.domain, Origin: origin}
+func columnExpr(c scopeColumn, origin qm.Origin) *qm.Sqlizer {
+	if c.expression != nil {
+		copy := *c.expression
+		copy.Origin = origin
+		return &copy
+	}
+	return &qm.Sqlizer{Kind: qm.ExprField, Type: c.column.Type, Nullable: c.column.Nullable, Field: c.column.ID, Domain: c.domain, Origin: origin}
 }
 
 // 分组匹配使用来源字段身份，a.id 与未限定的 id 在无歧义时具有相同含义。
-func sameGroupingExpr(a, b *qm.Expr, scope *bindingScope) bool {
+func sameGroupingExpr(a, b *qm.Sqlizer, scope *bindingScope) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
@@ -76,7 +81,7 @@ func sameGroupingExpr(a, b *qm.Expr, scope *bindingScope) bool {
 		right, err := lookupColumn(scope, b.Name, b.Origin)
 		return err == nil && left.column.ID == right.column.ID
 	}
-	if a.Kind != b.Kind || a.Op != b.Op || a.Distinct != b.Distinct || a.Negated != b.Negated || a.CaseBase != b.CaseBase || a.CaseElse != b.CaseElse || a.CastType != b.CastType || a.AggregateSlot != b.AggregateSlot || !slices.Equal(a.Name, b.Name) || !slices.Equal(a.CastParameters, b.CastParameters) || !reflect.DeepEqual(a.Literal, b.Literal) || !reflect.DeepEqual(a.Escape, b.Escape) || len(a.Args) != len(b.Args) {
+	if a.Kind != b.Kind || a.Op != b.Op || a.Distinct != b.Distinct || a.Negated != b.Negated || a.CaseBase != b.CaseBase || a.CaseElse != b.CaseElse || a.CastType != b.CastType || !slices.Equal(a.Name, b.Name) || !slices.Equal(a.CastParameters, b.CastParameters) || !reflect.DeepEqual(a.Literal, b.Literal) || !reflect.DeepEqual(a.Escape, b.Escape) || len(a.Args) != len(b.Args) {
 		return false
 	}
 	for i := range a.Args {
@@ -88,7 +93,7 @@ func sameGroupingExpr(a, b *qm.Expr, scope *bindingScope) bool {
 }
 
 // expressionEncoding 保留字段原有的展示类型；运算类型不能反向改写公共字段契约。
-func expressionEncoding(expr *qm.BoundExpr, scope *bindingScope) qm.OutputEncoding {
+func expressionEncoding(expr *qm.Sqlizer, scope *bindingScope) qm.OutputEncoding {
 	if expr.Kind == qm.ExprField {
 		for current := scope; current != nil; current = current.fallback {
 			for _, column := range current.columns {

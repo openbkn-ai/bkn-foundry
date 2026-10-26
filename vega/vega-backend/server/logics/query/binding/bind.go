@@ -13,12 +13,10 @@ import (
 )
 
 type bindingResult struct {
-	root      qm.BoundRelation
-	schema    qm.Schema
-	scope     bindingScope
-	project   *qm.BoundProject
-	distinct  bool
-	sortInput *bindingScope
+	source qm.Relation
+	query  *qm.SelectBuilder
+	schema qm.Schema
+	scope  bindingScope
 }
 
 type queryBinder struct {
@@ -29,53 +27,40 @@ type queryBinder struct {
 	authorizer   interfaces.SQLQueryAuthorizer
 	nextField    qm.FieldID
 	nextInstance qm.RelationInstanceID
-	nextScope    qm.ScopeID
 	views        map[string]bool
 	active       map[any]bool
-	instances    map[qm.RelationInstanceID]bool
-	scopes       map[qm.ScopeID]bool
 	resources    map[string]*interfaces.Resource
 	connectors   map[string]string
-	dependencies []qm.Dependency
-	slots        []qm.RuntimeSlot
 	nodes, depth int
 }
 
 // Bind 将未绑定 IR 绑定为新的查询，不修改输入，不执行数据查询。
 // semantics 必须由编排层从服务 TZ 创建，不能使用客户端提供的任意语义配置。
-func Bind(ctx context.Context, query *qm.UnboundQuery, semantics qm.SemanticContext, identity qm.ExecutionIdentity,
-	resolver interfaces.SQLQueryResourceResolver, authorizer interfaces.SQLQueryAuthorizer) (*qm.BoundQuery, error) {
+func Bind(ctx context.Context, query *qm.SelectBuilder, semantics qm.SemanticContext, identity qm.ExecutionIdentity,
+	resolver interfaces.SQLQueryResourceResolver, authorizer interfaces.SQLQueryAuthorizer) (*qm.SelectBuilder, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if query == nil || query.Scope == 0 {
-		return nil, bindFailure(qm.Origin{}, "缺少查询或查询块身份")
+	if query == nil {
+		return nil, bindFailure(qm.Origin{}, "缺少查询")
 	}
 	if resolver == nil || authorizer == nil {
 		return nil, bindFailure(qm.Origin{}, "缺少资源或授权端口")
 	}
 	if semantics.Version != qm.CurrentSemanticsVersion || semantics.Location == nil || semantics.TimeZone != semantics.Location.String() ||
-		semantics.TypeRulesVersion != qm.CurrentSemanticsVersion || semantics.ConfigFingerprint == "" || semantics.TimeZoneRevision == "" || semantics.Comparison.StringRule != "utf8_binary" || !semantics.Comparison.CaseSensitive || !semantics.Comparison.TrailingSpaceSignificant {
+		semantics.ConfigFingerprint == "" || semantics.Comparison.StringRule != "utf8_binary" || !semantics.Comparison.CaseSensitive || !semantics.Comparison.TrailingSpaceSignificant {
 		return nil, &qm.CompileError{Kind: qm.ErrorConfiguration, Message: "查询语义上下文无效"}
 	}
 	b := queryBinder{ctx: ctx, semantics: semantics, identity: identity, resolver: resolver, authorizer: authorizer,
-		active: make(map[any]bool), instances: make(map[qm.RelationInstanceID]bool), scopes: map[qm.ScopeID]bool{query.Scope: true}, resources: make(map[string]*interfaces.Resource), connectors: make(map[string]string), nextScope: 1, views: make(map[string]bool), dependencies: []qm.Dependency{{Kind: qm.DependencyConfig, ID: "query_semantics", Version: semantics.Version, ConfigRevision: semantics.ConfigFingerprint}}}
-	result, err := b.relation(query.Root)
+		active: make(map[any]bool), resources: make(map[string]*interfaces.Resource), connectors: make(map[string]string), views: make(map[string]bool)}
+	result, err := b.selectQuery(query)
 	if err != nil {
 		return nil, err
 	}
-	result = b.trimHidden(result)
 	if b.nextField > qm.MaxNodes {
 		return nil, &qm.CompileError{Kind: qm.ErrorLimit, Message: "绑定输出槽数量超限"}
 	}
-	return &qm.BoundQuery{
-		Root:         result.root,
-		Scope:        1,
-		OutputSchema: result.schema,
-		Semantics:    semantics,
-		Dependencies: b.dependencies,
-		RuntimeSlots: b.slots,
-	}, nil
+	return result.query, nil
 }
 
 func bindFailure(origin qm.Origin, message string) error {
@@ -99,4 +84,3 @@ func (b *queryBinder) enter(node any, origin qm.Origin) error {
 func (b *queryBinder) leave(node any)                    { delete(b.active, node); b.depth-- }
 func (b *queryBinder) fieldID() qm.FieldID               { b.nextField++; return b.nextField }
 func (b *queryBinder) instanceID() qm.RelationInstanceID { b.nextInstance++; return b.nextInstance }
-func (b *queryBinder) scopeID() qm.ScopeID               { b.nextScope++; return b.nextScope }

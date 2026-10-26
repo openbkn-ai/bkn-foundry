@@ -24,9 +24,9 @@ type SQLQueryAuthorizer interface {
 		identity querymodel.ExecutionIdentity, operation string) (querymodel.AuthorizationBasis, error)
 }
 
-// SQLQueryTargetResolver 仅解析受控执行候选，不执行用户查询。
-// 返回单个 Scan 的候选绑定，Planner 按完整依赖闭包检查同源并合并字段映射。
-type SQLQueryTargetResolver interface {
-	ResolveSQLQueryTargets(ctx context.Context, scan querymodel.BoundScan,
-		identity querymodel.ExecutionIdentity, options querymodel.ExecutionOptions) ([]querymodel.TargetBinding, error)
+// SQLQuerySourceResolver 补齐已授权 Scan 的物理表名和列名，不执行用户查询。
+// 来源路由由服务层确定；Planner 检查同源并复制各来源节点。
+type SQLQuerySourceResolver interface {
+	ResolveSQLQuerySource(ctx context.Context, scan querymodel.Scan,
+		identity querymodel.ExecutionIdentity) (querymodel.Scan, error)
 }

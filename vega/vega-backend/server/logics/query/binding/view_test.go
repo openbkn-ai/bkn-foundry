@@ -30,7 +30,7 @@ func sourceForViews() *interfaces.Resource {
 	}
 	return source
 }
-func bindResources(t *testing.T, input *qm.UnboundQuery, resources map[string]*interfaces.Resource) (*qm.BoundQuery, []string, error) {
+func bindResources(t *testing.T, input *qm.SelectBuilder, resources map[string]*interfaces.Resource) (*qm.SelectBuilder, []string, error) {
 	t.Helper()
 	semantic, err := NewSemanticContext("UTC")
 	require.NoError(t, err)
@@ -61,40 +61,35 @@ func TestQueryBinderDerivedView(t *testing.T) {
 		query, calls, err := bindResources(t, input, map[string]*interfaces.Resource{"base": sourceForViews(), "view": view})
 		require.NoError(t, err)
 		assert.Equal(t, []string{"authorize:base", "resolve:base", "authorize:view", "resolve:view"}, calls)
-		project := query.Root.(*qm.BoundProject)
-		join := project.Input.(*qm.BoundJoin)
-		boundary := join.Right.(*qm.BoundViewBoundary)
-		fixed := boundary.Input.(*qm.BoundFilter)
-		source := fixed.Input.(*qm.BoundScan)
+		project := query
+		join := project.FromPart.(*qm.Join)
+		boundary := join.Right.(*qm.Subquery)
+		fixed := boundary.Query
+		source := fixed.FromPart.(*qm.Scan)
 		assert.Equal(t, qm.JoinLeft, join.Kind)
-		assert.Equal(t, qm.ViewAuthorizationInvoker, boundary.Authorization.Mode)
-		assert.Equal(t, qm.OriginSavedView, fixed.Predicate.Origin.Kind)
-		assert.Equal(t, "view", fixed.Predicate.Origin.ResourceID)
+		assert.Equal(t, "view", boundary.Resource.ID)
+		assert.Equal(t, qm.OriginSavedView, fixed.WherePart[0].Origin.Kind)
+		assert.Equal(t, "view", fixed.WherePart[0].Origin.ResourceID)
 		assert.Len(t, boundary.OutputSchema, 2)
 		assert.Equal(t, "public_id", boundary.OutputSchema[0].Name)
 		assert.NotEqual(t, source.Instance, boundary.Instance)
-		assert.NotEqual(t, join.Left.(*qm.BoundScan).Instance, source.Instance)
-		assert.Equal(t, boundary.Columns[0].Output, project.Columns[1].Expr.Field)
-		assert.Equal(t, source.Fields[0].ID, boundary.Columns[0].Input)
-		require.Len(t, query.Dependencies, 3)
-		assert.True(t, query.OutputSchema[1].Nullable)
-		for _, dep := range query.Dependencies {
-			if dep.ID == "view" {
-				assert.Equal(t, qm.DependencyView, dep.Kind)
-			}
-		}
-		assert.Equal(t, qm.RelationInstanceID(2), input.Root.(*qm.Project).Input.(*qm.Join).Right.(*qm.Scan).Instance)
+		assert.NotEqual(t, join.Left.(*qm.Scan).Instance, source.Instance)
+		assert.Equal(t, boundary.Columns[0].Output, project.ColumnsPart[1].Expr.Field)
+		assert.Equal(t, source.Fields[0].ID, fixed.ColumnsPart[0].Expr.Field)
+		assert.True(t, query.Schema()[1].Nullable)
+
+		assert.Equal(t, qm.RelationInstanceID(2), input.FromPart.(*qm.Join).Right.(*qm.Scan).Instance)
 	})
 	t.Run("nested view exports stay scoped and hide physical source fields", func(t *testing.T) {
 		resources := map[string]*interfaces.Resource{"base": sourceForViews(), "inner": derivedResource("inner", "base"), "outer": derivedResource("outer", "inner")}
 		query, calls, err := bindResources(t, bindingInput(t, "SELECT v.public_id FROM {{outer}} v"), resources)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"authorize:outer", "resolve:outer", "authorize:inner", "resolve:inner", "authorize:base", "resolve:base"}, calls)
-		outer := query.Root.(*qm.BoundProject).Input.(*qm.BoundViewBoundary)
-		inner := outer.Input.(*qm.BoundViewBoundary)
-		assert.NotEqual(t, outer.Scope, inner.Scope)
+		outer := query.FromPart.(*qm.Subquery)
+		inner := outer.Query.FromPart.(*qm.Subquery)
+		assert.NotEqual(t, outer.Instance, inner.Instance)
 		assert.NotEqual(t, outer.Columns[0].Output, inner.Columns[0].Output)
-		assert.Equal(t, inner.Columns[0].Output, outer.Columns[0].Input)
+		assert.Equal(t, inner.Columns[0].Output, outer.Query.ColumnsPart[0].Expr.Field)
 		for _, sql := range []string{"SELECT v.id FROM {{outer}} v", "SELECT v.flag FROM {{outer}} v", "SELECT base.id FROM {{outer}} v"} {
 			result, _, err := bindResources(t, bindingInput(t, sql), resources)
 			require.Error(t, err)
@@ -181,45 +176,41 @@ func TestQueryBinderDerivedView(t *testing.T) {
 func TestStructuredBinding(t *testing.T) {
 	t.Run("aggregate alias is not rebound to same named source string", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Property: "amount", Aggr: "min", Alias: "name"}, GroupBy: []*interfaces.GroupByItem{{Property: "id"}}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 1}, OutputFields: []string{"name"}, Sort: []*interfaces.SortField{{Field: "id"}}}
-		input, options, err := BuildResourceDataQuery(params, "base")
+		input, err := BuildResourceDataQuery(params, "base")
 		require.NoError(t, err)
 		query, _, err := bindResources(t, input, map[string]*interfaces.Resource{"base": sourceForViews()})
 		require.NoError(t, err)
-		require.Len(t, query.OutputSchema, 1)
-		assert.Equal(t, qm.TypeDecimal, query.OutputSchema[0].Type.Kind)
-		crop := query.Root.(*qm.BoundProject)
-		sort := crop.Input.(*qm.BoundSort)
-		project := sort.Input.(*qm.BoundProject)
-		having := project.Input.(*qm.BoundFilter)
-		aggregate := having.Input.(*qm.BoundAggregate)
-		require.Len(t, aggregate.GroupKeys, 1)
-		assert.Equal(t, qm.ExprField, sort.Keys[0].Expr.Kind)
-		assert.Equal(t, qm.QuerySourceAuto, options.QuerySource)
+		require.Len(t, query.Schema(), 1)
+		assert.Equal(t, qm.TypeDecimal, query.Schema()[0].Type.Kind)
+		parts := query
+		inner := parts.FromPart.(*qm.Subquery).Query
+		require.Len(t, inner.GroupByPart, 1)
+		assert.Equal(t, qm.ExprField, parts.OrderByPart[0].Expr.Kind)
 	})
 	t.Run("literal contains and SQL LIKE remain distinct", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{FilterCondition: map[string]any{"field": "name", "operation": "like", "value": "%_"}}
-		input, _, err := BuildResourceDataQuery(params, "base")
+		input, err := BuildResourceDataQuery(params, "base")
 		require.NoError(t, err)
 		query, _, err := bindResources(t, input, map[string]*interfaces.Resource{"base": sourceForViews()})
 		require.NoError(t, err)
-		predicate := query.Root.(*qm.BoundProject).Input.(*qm.BoundFilter).Predicate
+		predicate := query.WherePart[0]
 		assert.Equal(t, qm.ExprLiteralContains, predicate.Kind)
-		assert.Equal(t, qm.StringValue("%_"), predicate.Args[1].Literal.Data)
+		assert.Equal(t, qm.StringValue("%_"), predicate.Args[1].Value.Data)
 		sql, _, err := bindResources(t, bindingInput(t, "SELECT id FROM {{base}} WHERE name LIKE '%_'"), map[string]*interfaces.Resource{"base": sourceForViews()})
 		require.NoError(t, err)
-		assert.Equal(t, qm.ExprLike, sql.Root.(*qm.BoundProject).Input.(*qm.BoundFilter).Predicate.Kind)
+		assert.Equal(t, qm.ExprLike, sql.WherePart[0].Kind)
 	})
 	t.Run("literal contains cannot be injected as SQL origin", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{FilterCondition: map[string]any{"field": "name", "operation": "like", "value": "x"}}
-		input, _, err := BuildResourceDataQuery(params, "base")
+		input, err := BuildResourceDataQuery(params, "base")
 		require.NoError(t, err)
-		input.Root.(*qm.Project).Input.(*qm.Filter).Predicate.Origin.Kind = qm.OriginSQL
+		input.WherePart[0].Origin.Kind = qm.OriginSQL
 		query, _, err := bindResources(t, input, map[string]*interfaces.Resource{"base": sourceForViews()})
 		require.Error(t, err)
 		assert.Nil(t, query)
 	})
 	t.Run("explicit unknown output uses existing public error", func(t *testing.T) {
-		input, _, err := BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{OutputFields: []string{"missing"}}, "base")
+		input, err := BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{OutputFields: []string{"missing"}}, "base")
 		require.NoError(t, err)
 		query, _, err := bindResources(t, input, map[string]*interfaces.Resource{"base": sourceForViews()})
 		require.Error(t, err)
@@ -231,7 +222,7 @@ func TestStructuredBinding(t *testing.T) {
 	t.Run("default output without fields uses no queryable fields error", func(t *testing.T) {
 		source := sourceForViews()
 		source.SchemaDefinition = nil
-		input, _, err := BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{}, "base")
+		input, err := BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{}, "base")
 		require.NoError(t, err)
 		_, _, err = bindResources(t, input, map[string]*interfaces.Resource{"base": source})
 		require.Error(t, err)

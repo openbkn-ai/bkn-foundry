@@ -4,8 +4,6 @@
 
 package querymodel
 
-type ErrorKind string
-
 const (
 	ErrorSyntax              ErrorKind = "syntax"
 	ErrorUnsupported         ErrorKind = "unsupported_syntax"
@@ -15,6 +13,8 @@ const (
 	ErrorBinding             ErrorKind = "binding"
 	ErrorConfiguration       ErrorKind = "configuration"
 )
+
+type ErrorKind string
 
 // CompileError 仅包含可公开的分类和位置，不包含 SQL 原文或目标信息。
 type CompileError struct {

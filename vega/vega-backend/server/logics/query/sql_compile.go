@@ -15,57 +15,62 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/planning"
 )
 
-// CompileSQLQuery 通过正式服务端口解析、授权、绑定和规划，不创建连接或执行 SQL。
-// HTTP 执行入口在 Connector Prepare/Execute 接入后切换，当前不替换既有执行链路。
-func CompileSQLQuery(ctx context.Context, sql string, resources interfaces.ResourceService, catalogs interfaces.CatalogService) (*qm.ExecutionPlan, error) {
+// PrepareSQLQuery 通过正式服务端口解析、授权、绑定和规划，不创建连接或执行 SQL。
+// 返回查询及独立的依赖快照，由调用层会话持有；条件节点及视图在生成 SQL 前统一绑定。当前不切换 HTTP 入口。
+func PrepareSQLQuery(ctx context.Context, sql string, resources interfaces.ResourceService, catalogs interfaces.CatalogService) (*qm.SelectBuilder, []qm.Dependency, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tree, err := compiler.ParseSQL(sql)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	input, err := compiler.ConvertToIR(tree)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return compileQueryPlan(ctx, input, qm.ExecutionOptions{QuerySource: qm.QuerySourceSource}, resources, catalogs)
+	return prepareQuery(ctx, input, true, resources, catalogs)
 }
 
-// CompileResourceDataQuery 将已通过接口形状校验的 DTO 接入相同的绑定和规划流程。
-// 返回的选项独立承载 API 分页；原生 DSL/文件查询不经过此 SQL 目标解析链路。
-func CompileResourceDataQuery(ctx context.Context, id string, params *interfaces.ResourceDataQueryParams,
-	resources interfaces.ResourceService, catalogs interfaces.CatalogService) (*qm.ExecutionPlan, qm.ExecutionOptions, error) {
+// PrepareResourceDataQuery 将已通过接口形状校验的 DTO 接入相同的绑定和规划流程。
+// API 分页及读取选项沿用原请求，由既有查询会话管理。
+func PrepareResourceDataQuery(ctx context.Context, id string, params *interfaces.ResourceDataQueryParams,
+	resources interfaces.ResourceService, catalogs interfaces.CatalogService) (*qm.SelectBuilder, []qm.Dependency, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, qm.ExecutionOptions{}, err
+		return nil, nil, err
 	}
-	input, options, err := binding.BuildResourceDataQuery(params, id)
+	input, err := binding.BuildResourceDataQuery(params, id)
 	if err != nil {
-		return nil, qm.ExecutionOptions{}, err
+		return nil, nil, err
 	}
-	plan, err := compileQueryPlan(ctx, input, options, resources, catalogs)
-	return plan, options, err
+	return prepareQuery(ctx, input, params.IgnoreLocalIndex != nil && *params.IgnoreLocalIndex, resources, catalogs)
 }
 
-func compileQueryPlan(ctx context.Context, input *qm.UnboundQuery, options qm.ExecutionOptions,
-	resources interfaces.ResourceService, catalogs interfaces.CatalogService) (*qm.ExecutionPlan, error) {
+func prepareQuery(ctx context.Context, input *qm.SelectBuilder, ignoreLocalIndex bool,
+	resources interfaces.ResourceService, catalogs interfaces.CatalogService) (*qm.SelectBuilder, []qm.Dependency, error) {
 	resolver, err := newSQLQueryResolver(ctx, resources, catalogs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	resolver.ignoreLocalIndex = ignoreLocalIndex
 	semantics, err := binding.NewSemanticContext(common.ServerTimeZone())
 	if err != nil {
-		return nil, interfaces.NewServerTimeZoneError()
+		return nil, nil, interfaces.NewServerTimeZoneError()
 	}
 	bound, err := binding.Bind(ctx, input, semantics, resolver.identity, resolver, resolver)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// 目录配置是绑定原生类型及选择目标的共同依赖；不从连接凭据生成指纹。
 	for _, id := range resolver.catalogOrder {
 		catalog := resolver.catalogs[id]
-		bound.Dependencies = append(bound.Dependencies, qm.Dependency{Kind: qm.DependencyCatalog, ID: id,
+		resolver.dependencies = append(resolver.dependencies, qm.Dependency{Kind: qm.DependencyCatalog, ID: id,
 			Version: catalogRevision(catalog), ConfigRevision: catalogRevision(catalog)})
 	}
-	return planning.Plan(ctx, bound, resolver.identity, options, resolver)
+	planned, err := planning.Plan(ctx, bound, resolver.identity, resolver)
+	if err != nil {
+		return nil, nil, err
+	}
+	resolver.dependencies = append(resolver.dependencies, qm.Dependency{Kind: qm.DependencyConfig, ID: "query_semantics", Version: semantics.Version, ConfigRevision: semantics.ConfigFingerprint})
+	return planned, resolver.dependencies, nil
 }

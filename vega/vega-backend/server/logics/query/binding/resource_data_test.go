@@ -21,55 +21,49 @@ func TestBuildResourceDataQuery(t *testing.T) {
 		ignore := true
 		mode := interfaces.BinaryModeMetadata
 		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Offset: 40, Limit: 20}, OutputFields: []string{"id"}, NeedTotal: true, Timeout: time.Second, IgnoreLocalIndex: &ignore, BinaryMode: &mode}
-		query, options, err := BuildResourceDataQuery(params, "orders")
+		query, err := BuildResourceDataQuery(params, "orders")
 		require.NoError(t, err)
-		assert.Equal(t, int64(40), options.Paging.Offset)
-		assert.Equal(t, int64(20), options.Paging.Limit)
-		assert.True(t, options.NeedTotal)
-		assert.Equal(t, qm.QuerySourceSource, options.QuerySource)
-		assert.Equal(t, qm.BinaryMetadata, options.BinaryMode)
-		outer := query.Root.(*qm.Project)
-		inner := outer.Input.(*qm.Project)
-		scan := inner.Input.(*qm.Scan)
+		assert.Equal(t, interfaces.PagingRequest{Offset: 40, Limit: 20}, params.Paging)
+		assert.True(t, params.NeedTotal)
+		assert.Equal(t, time.Second, params.Timeout)
+		assert.Equal(t, interfaces.BinaryModeMetadata, *params.BinaryMode)
+		parts := query
+		scan := parts.FromPart.(*qm.Scan)
 		assert.Equal(t, "orders", scan.ResourceID)
-		assert.Equal(t, qm.ExprWildcard, inner.Columns[0].Expr.Kind)
-		assert.Equal(t, "output_fields[0]", outer.Columns[0].Origin.Path)
+		assert.Equal(t, "output_fields[0]", parts.ColumnsPart[0].Origin.Path)
 		assert.Empty(t, params.Paging.Mode)
 		params.OutputFields[0] = "changed"
-		assert.Equal(t, []string{"id"}, outer.Columns[0].Expr.Name)
+		assert.Equal(t, []string{"id"}, parts.ColumnsPart[0].Expr.Name)
 	})
 	t.Run("aggregate aliases and count remain inside output cropping", func(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Aggr: "min", Property: "amount", Alias: "name"}, GroupBy: []*interfaces.GroupByItem{{Property: "id"}}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: json.Number("1.2300")}, Sort: []*interfaces.SortField{{Field: "name", Direction: "desc"}}, OutputFields: []string{"name"}}
-		query, _, err := BuildResourceDataQuery(params, "orders")
+		query, err := BuildResourceDataQuery(params, "orders")
 		require.NoError(t, err)
-		crop := query.Root.(*qm.Project)
-		sort := crop.Input.(*qm.Sort)
-		project := sort.Input.(*qm.Project)
-		having := project.Input.(*qm.Filter)
-		aggregate := having.Input.(*qm.Aggregate)
-		assert.Len(t, project.Columns, 2)
-		assert.Len(t, aggregate.GroupKeys, 1)
-		assert.Equal(t, "MIN", aggregate.Calls[0].Name[0])
-		assert.True(t, having.Having)
-		assert.Equal(t, qm.ExprAggregateRef, having.Predicate.Args[0].Kind)
-		assert.Equal(t, "1.2300", having.Predicate.Args[1].Literal.Text)
-		assert.Len(t, crop.Columns, 1)
-		assert.Equal(t, "name", project.Columns[1].Alias)
+		crop := query
+		inner := crop.FromPart.(*qm.Subquery).Query
+		assert.Len(t, inner.ColumnsPart, 2)
+		assert.Len(t, inner.GroupByPart, 1)
+		assert.Equal(t, "MIN", inner.ColumnsPart[1].Expr.Name[0])
+		assert.Equal(t, "1.2300", inner.HavingPart[0].Args[1].Literal.Text)
+		assert.Len(t, crop.ColumnsPart, 1)
+		assert.Equal(t, "name", inner.ColumnsPart[1].Alias)
+		assert.Equal(t, qm.ExprCall, inner.HavingPart[0].Args[0].Kind)
 	})
 	t.Run("count distinct and implicit count having", func(t *testing.T) {
-		query, _, err := BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Aggr: "count_distinct", Property: "id"}}, "orders")
+		query, err := BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Aggr: "count_distinct", Property: "id"}}, "orders")
 		require.NoError(t, err)
-		assert.True(t, query.Root.(*qm.Project).Input.(*qm.Aggregate).Calls[0].Distinct)
-		query, _, err = BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "id"}}, Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 1}}, "orders")
+		assert.True(t, query.ColumnsPart[0].Expr.Distinct)
+		query, err = BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{GroupBy: []*interfaces.GroupByItem{{Property: "id"}}, Having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 1}}, "orders")
 		require.NoError(t, err)
-		aggregate := query.Root.(*qm.Project).Input.(*qm.Filter).Input.(*qm.Aggregate)
-		assert.Equal(t, qm.ExprWildcard, aggregate.Calls[0].Args[0].Kind)
+		parts := query
+		assert.Equal(t, qm.ExprWildcard, parts.ColumnsPart[1].Expr.Args[0].Kind)
 	})
-	t.Run("cursor options apply existing defaults", func(t *testing.T) {
-		_, options, err := BuildResourceDataQuery(&interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 5}}, "orders")
+	t.Run("cursor request stays in existing paging contract", func(t *testing.T) {
+		params := &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 5}}
+		query, err := BuildResourceDataQuery(params, "orders")
 		require.NoError(t, err)
-		assert.Equal(t, qm.PagingCursor, options.Paging.Mode)
-		assert.Equal(t, time.Duration(interfaces.DefaultCursorKeepAliveSec)*time.Second, options.Paging.KeepAlive)
+		assert.IsType(t, &qm.Scan{}, query.FromPart)
+		assert.Equal(t, interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 5}, params.Paging)
 	})
 	cases := map[string]*interfaces.ResourceDataQueryParams{
 		"nil request":              nil,
@@ -94,7 +88,7 @@ func TestBuildResourceDataQuery(t *testing.T) {
 	}
 	for name, params := range cases {
 		t.Run(name, func(t *testing.T) {
-			query, _, err := BuildResourceDataQuery(params, "orders")
+			query, err := BuildResourceDataQuery(params, "orders")
 			require.Error(t, err)
 			assert.Nil(t, query)
 		})

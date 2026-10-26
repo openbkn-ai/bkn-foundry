@@ -103,7 +103,7 @@ func TestSourceRelationIdentifier(t *testing.T) {
 			resource.SourceMetadata = tc.meta
 			got, err := sourceRelationIdentifier(resource, tc.connector, qm.Origin{})
 			if tc.invalid {
-				assert.Nil(t, got)
+				assert.Empty(t, got)
 				var ce *qm.CompileError
 				require.ErrorAs(t, err, &ce)
 				assert.Equal(t, qm.ErrorPlanningUnsupported, ce.Kind)
@@ -115,7 +115,7 @@ func TestSourceRelationIdentifier(t *testing.T) {
 	}
 }
 
-func TestSQLQueryResolverResolveSQLQueryTargets(t *testing.T) {
+func TestSQLQueryResolverResolveSQLQuerySource(t *testing.T) {
 	resource := compileTestResource()
 	rs, cs := expectCompileMetadata(t, resource, interfaces.ConnectorTypeMySQL)
 	r, err := newSQLQueryResolver(compileTestContext(), rs, cs)
@@ -124,14 +124,19 @@ func TestSQLQueryResolverResolveSQLQueryTargets(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = r.ResolveSQLQueryResource(compileTestContext(), "orders", r.identity)
 	require.NoError(t, err)
-	scan := qm.BoundScan{Resource: qm.ResourceReference{ID: "orders", CatalogID: "catalog", Version: "11"}, Instance: 1,
-		Fields: []qm.BoundSourceField{{ID: 1, LogicalName: "id", NativeType: qm.NativeType{ConnectorType: interfaces.ConnectorTypeMySQL, Name: "BIGINT"}}, {ID: 2, LogicalName: "created", NativeType: qm.NativeType{ConnectorType: interfaces.ConnectorTypeMySQL, Name: "TIMESTAMP(6)"}}}}
-	candidates, err := r.ResolveSQLQueryTargets(compileTestContext(), scan, r.identity, qm.ExecutionOptions{QuerySource: qm.QuerySourceSource})
+	scan := qm.Scan{Resource: qm.ResourceReference{ID: "orders", CatalogID: "catalog", Version: "11"}, Instance: 1,
+		Fields: []qm.SourceField{{ID: 1, LogicalName: "id", NativeType: qm.NativeType{ConnectorType: interfaces.ConnectorTypeMySQL, Name: "BIGINT"}}, {ID: 2, LogicalName: "created", NativeType: qm.NativeType{ConnectorType: interfaces.ConnectorTypeMySQL, Name: "TIMESTAMP(6)"}}}}
+	mapping, err := r.ResolveSQLQuerySource(compileTestContext(), scan, r.identity)
 	require.NoError(t, err)
-	require.Len(t, candidates, 1)
+	assert.Equal(t, qm.PhysicalIdentifier{"sales.eu", "order.items"}, mapping.Identifier)
+	assert.Equal(t, scan.Resource, mapping.Resource)
+	assert.Equal(t, qm.PhysicalIdentifier{"order.id"}, mapping.Fields[0].Identifier)
+	assert.Empty(t, scan.Identifier)
+	assert.Empty(t, scan.Fields[0].Identifier)
+	assert.Len(t, mapping.Fields, 2)
 	scan.Fields[1] = scan.Fields[0]
-	got, err := r.ResolveSQLQueryTargets(compileTestContext(), scan, r.identity, qm.ExecutionOptions{QuerySource: qm.QuerySourceSource})
-	assert.Nil(t, got)
+	got, err := r.ResolveSQLQuerySource(compileTestContext(), scan, r.identity)
+	assert.Empty(t, got)
 	var ce *qm.CompileError
 	require.ErrorAs(t, err, &ce)
 	assert.Equal(t, qm.ErrorInvalidTree, ce.Kind)

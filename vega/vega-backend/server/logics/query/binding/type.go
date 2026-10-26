@@ -34,8 +34,8 @@ func NewSemanticContext(zone string) (qm.SemanticContext, error) {
 	}
 	digest := sha256.Sum256([]byte(qm.CurrentSemanticsVersion + "\x00" + zone))
 	fingerprint := hex.EncodeToString(digest[:])
-	return qm.SemanticContext{Version: qm.CurrentSemanticsVersion, TimeZone: zone, Location: location, TimeZoneRevision: fingerprint,
-		Comparison: qm.ComparisonPolicy{StringRule: "utf8_binary", CaseSensitive: true, TrailingSpaceSignificant: true}, TypeRulesVersion: qm.CurrentSemanticsVersion, ConfigFingerprint: fingerprint}, nil
+	return qm.SemanticContext{Version: qm.CurrentSemanticsVersion, TimeZone: zone, Location: location,
+		Comparison: qm.ComparisonPolicy{StringRule: "utf8_binary", CaseSensitive: true, TrailingSpaceSignificant: true}, ConfigFingerprint: fingerprint}, nil
 }
 
 func propertyType(property *interfaces.Property, origin qm.Origin) (qm.LogicalType, qm.NativeType, error) {
@@ -141,7 +141,7 @@ func outputEncoding(typ qm.LogicalType) qm.OutputEncoding {
 	return qm.OutputEncoding{Kind: kind, PublicType: public}
 }
 
-func bindLiteral(literal *qm.Literal, origin qm.Origin) (*qm.BoundExpr, error) {
+func bindLiteral(literal *qm.Literal, origin qm.Origin) (*qm.Sqlizer, error) {
 	if literal == nil {
 		return nil, bindFailure(origin, "缺少常量值")
 	}
@@ -196,11 +196,11 @@ func bindLiteral(literal *qm.Literal, origin qm.Origin) (*qm.BoundExpr, error) {
 	default:
 		return nil, bindFailure(origin, "未知常量类型")
 	}
-	return &qm.BoundExpr{
+	return &qm.Sqlizer{
 		Kind:     qm.ExprLiteral,
 		Type:     value.Type,
 		Nullable: value.Type.Kind == qm.TypeNull,
-		Literal:  &value,
+		Value:    &value,
 		Domain:   qm.DomainVega,
 		Origin:   origin,
 	}, nil
@@ -330,15 +330,15 @@ func commonType(a, b qm.LogicalType, origin qm.Origin) (qm.LogicalType, error) {
 	}
 	return qm.LogicalType{}, bindFailure(origin, "表达式类型不兼容，需要明确的 CAST")
 }
-func implicitCast(expr *qm.BoundExpr, typ qm.LogicalType) *qm.BoundExpr {
+func implicitCast(expr *qm.Sqlizer, typ qm.LogicalType) *qm.Sqlizer {
 	if reflect.DeepEqual(expr.Type, typ) {
 		return expr
 	}
-	return &qm.BoundExpr{
+	return &qm.Sqlizer{
 		Kind:     qm.ExprCast,
 		Type:     typ,
 		Nullable: expr.Nullable,
-		Args:     []*qm.BoundExpr{expr},
+		Args:     []*qm.Sqlizer{expr},
 		Domain:   expr.Domain,
 		Origin:   expr.Origin,
 	}

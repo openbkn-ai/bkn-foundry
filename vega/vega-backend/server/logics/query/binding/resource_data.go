@@ -7,18 +7,17 @@ package binding
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	qm "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/querymodel"
 )
 
 // BuildResourceDataQuery 不经过 SQL 文本或 Query Tree，不读取资源、权限和数据源。
-// API 分页只进入 Options；output_fields 裁剪在完整聚合及排序关系之后进行。
-func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id string) (*qm.UnboundQuery, qm.ExecutionOptions, error) {
+// API 分页保留在原请求，由查询会话处理；output_fields 裁剪在完整聚合及排序关系之后进行。
+func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id string) (*qm.SelectBuilder, error) {
 	origin := qm.Origin{Kind: qm.OriginDTO}
-	fail := func(p, message string) (*qm.UnboundQuery, qm.ExecutionOptions, error) {
-		return nil, qm.ExecutionOptions{}, invalid(path(origin, p), message)
+	fail := func(p, message string) (*qm.SelectBuilder, error) {
+		return nil, invalid(path(origin, p), message)
 	}
 	if params == nil || !resourceID.MatchString(id) {
 		return fail("resource_id", "结构化查询或资源 ID 无效")
@@ -42,37 +41,16 @@ func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id strin
 	if paging.Mode == interfaces.PagingModeSingle && paging.KeepAliveSec != 0 {
 		return fail("paging.keep_alive_sec", "single 分页不接受 keep_alive_sec")
 	}
-	options := qm.ExecutionOptions{Paging: qm.PagingOptions{Mode: qm.PagingMode(paging.Mode), Offset: int64(paging.Offset), Limit: int64(paging.Limit)}, NeedTotal: params.NeedTotal, Timeout: params.Timeout, QuerySource: qm.QuerySourceAuto, BinaryMode: qm.BinaryNotRequested}
-	if paging.Mode == interfaces.PagingModeCursor {
-		keep := paging.KeepAliveSec
-		if keep == 0 {
-			keep = interfaces.DefaultCursorKeepAliveSec
-		}
-		options.Paging.KeepAlive = time.Duration(keep) * time.Second
+	if params.BinaryMode != nil && *params.BinaryMode != interfaces.BinaryModeMetadata && *params.BinaryMode != interfaces.BinaryModeContent {
+		return fail("binary_mode", "binary_mode 无效")
 	}
-	if params.IgnoreLocalIndex != nil {
-		options.IgnoreLocalIndex = *params.IgnoreLocalIndex
-		if options.IgnoreLocalIndex {
-			options.QuerySource = qm.QuerySourceSource
-		}
-	}
-	if params.BinaryMode != nil {
-		switch *params.BinaryMode {
-		case interfaces.BinaryModeMetadata:
-			options.BinaryMode = qm.BinaryMetadata
-		case interfaces.BinaryModeContent:
-			options.BinaryMode = qm.BinaryContent
-		default:
-			return fail("binary_mode", "binary_mode 无效")
-		}
-	}
-	var root qm.Relation = &qm.Scan{ResourceID: id, Instance: 1, Origin: path(origin, "resource_id")}
+	parts := &qm.SelectBuilder{FromPart: &qm.Scan{ResourceID: id, Origin: path(origin, "resource_id")}}
 	if params.FilterCondition != nil {
-		predicate, err := FilterExpression(params.FilterCondition, path(origin, "filter_condition"))
+		predicate, err := ConvertFilterCondition(params.FilterCondition, path(origin, "filter_condition"))
 		if err != nil {
-			return nil, qm.ExecutionOptions{}, err
+			return nil, err
 		}
-		root = &qm.Filter{Input: root, Predicate: predicate, Origin: predicate.Origin}
+		parts.WherePart = []*qm.Sqlizer{predicate}
 	}
 	var complete []qm.NamedExpr
 	aggregate := params.Aggregation
@@ -81,7 +59,7 @@ func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id strin
 		aggregate = &interfaces.Aggregation{Aggr: "count", Property: "*"}
 	}
 	if aggregate != nil || len(params.GroupBy) > 0 {
-		node := &qm.Aggregate{Input: root, Origin: path(origin, "aggregation")}
+		var aggregateExpr *qm.Sqlizer
 		names := make(map[string]bool)
 		for i, item := range params.GroupBy {
 			at := path(origin, fmt.Sprintf("group_by[%d]", i))
@@ -93,7 +71,7 @@ func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id strin
 			}
 			names[item.Property] = true
 			e := field(item.Property, at)
-			node.GroupKeys = append(node.GroupKeys, e)
+			parts.GroupByPart = append(parts.GroupByPart, e)
 			complete = append(complete, qm.NamedExpr{Expr: field(item.Property, at), Alias: item.Property, Origin: at})
 		}
 		alias := ""
@@ -119,21 +97,20 @@ func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id strin
 			if property == "" && name == "COUNT" {
 				property = "*"
 			}
-			var arg *qm.Expr
+			var arg *qm.Sqlizer
 			if property == "*" {
 				if name != "COUNT" || distinct {
 					return fail("aggregation.property", "此聚合不接受通配符")
 				}
-				arg = &qm.Expr{Kind: qm.ExprWildcard, Origin: path(origin, "aggregation.property")}
+				arg = &qm.Sqlizer{Kind: qm.ExprWildcard, Origin: path(origin, "aggregation.property")}
 			} else if property != "" {
 				arg = field(property, path(origin, "aggregation.property"))
 			} else {
 				return fail("aggregation.property", "缺少聚合字段")
 			}
-			node.Calls = []*qm.Expr{{Kind: qm.ExprCall, Name: []string{name}, Args: []*qm.Expr{arg}, Distinct: distinct, Origin: path(origin, "aggregation")}}
-			complete = append(complete, qm.NamedExpr{Expr: &qm.Expr{Kind: qm.ExprAggregateRef, AggregateSlot: 0, Origin: path(origin, "aggregation")}, Alias: alias, Origin: path(origin, "aggregation.alias")})
+			aggregateExpr = &qm.Sqlizer{Kind: qm.ExprCall, Name: []string{name}, Args: []*qm.Sqlizer{arg}, Distinct: distinct, Origin: path(origin, "aggregation")}
+			complete = append(complete, qm.NamedExpr{Expr: aggregateExpr, Alias: alias, Origin: path(origin, "aggregation.alias")})
 		}
-		root = node
 		if params.Having != nil {
 			switch params.Having.Operation {
 			case "==", "!=", ">", ">=", "<", "<=", "in", "not_in", "range", "out_range":
@@ -145,24 +122,24 @@ func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id strin
 				return fail("having.field", "HAVING 必须引用实际聚合输出")
 			}
 			raw := map[string]any{"field": params.Having.Field, "operation": params.Having.Operation, "value": params.Having.Value}
-			predicate, err := FilterExpression(raw, path(origin, "having"))
+			predicate, err := ConvertFilterCondition(raw, path(origin, "having"))
 			if err != nil {
-				return nil, qm.ExecutionOptions{}, err
+				return nil, err
 			}
 			// HAVING 比较实际聚合槽，不能按同名源字段再次绑定。
-			rewriteHaving(predicate, params.Having.Field)
-			root = &qm.Filter{Input: root, Predicate: predicate, Having: true, Origin: path(origin, "having")}
+			rewriteHaving(predicate, params.Having.Field, aggregateExpr)
+			parts.HavingPart = []*qm.Sqlizer{predicate}
 		}
-		root = &qm.Project{Input: root, Columns: complete, Origin: path(origin, "aggregation")}
+		parts.ColumnsPart = complete
 	} else if params.Having != nil {
 		return fail("having", "HAVING 缺少聚合查询")
 	}
 	// 明细先保留完整来源作用域，供未输出字段的排序使用；响应列最后裁剪。
 	if len(complete) == 0 {
-		root = &qm.Project{Input: root, Columns: []qm.NamedExpr{{Expr: &qm.Expr{Kind: qm.ExprWildcard, Origin: path(origin, "output_fields")}, Origin: path(origin, "output_fields")}}, Origin: path(origin, "output_fields")}
+		parts.ColumnsPart = []qm.NamedExpr{{Expr: &qm.Sqlizer{Kind: qm.ExprWildcard, Origin: path(origin, "output_fields")}, Origin: path(origin, "output_fields")}}
 	}
 	if len(params.Sort) > 0 {
-		sort := &qm.Sort{Input: root, Origin: path(origin, "sort")}
+
 		for i, item := range params.Sort {
 			if item == nil || item.Field == "" {
 				return fail("sort", "排序字段无效")
@@ -175,12 +152,11 @@ func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id strin
 				return fail("sort", "排序方向无效")
 			}
 			at := path(origin, fmt.Sprintf("sort[%d]", i))
-			sort.Keys = append(sort.Keys, qm.SortKey{Expr: field(item.Field, at), Descending: direction == "desc", Origin: at})
+			parts.OrderByPart = append(parts.OrderByPart, qm.SortKey{Expr: field(item.Field, at), Descending: direction == "desc", Origin: at})
 		}
-		root = sort
 	}
 	if len(params.OutputFields) > 0 {
-		project := &qm.Project{Input: root, Origin: path(origin, "output_fields")}
+		var columns []qm.NamedExpr
 		names := make(map[string]bool)
 		for i, name := range params.OutputFields {
 			if name == "" || names[name] {
@@ -188,20 +164,29 @@ func BuildResourceDataQuery(params *interfaces.ResourceDataQueryParams, id strin
 			}
 			names[name] = true
 			at := path(origin, fmt.Sprintf("output_fields[%d]", i))
-			project.Columns = append(project.Columns, qm.NamedExpr{Expr: field(name, at), Alias: name, Origin: at})
+			columns = append(columns, qm.NamedExpr{Expr: field(name, at), Alias: name, Origin: at})
 		}
-		root = project
+		if len(complete) > 0 {
+			inner := parts
+			parts = &qm.SelectBuilder{FromPart: &qm.Subquery{Query: inner, Alias: "_data", Origin: origin}, ColumnsPart: columns, OrderByPart: parts.OrderByPart}
+			innerParts := inner.Clone()
+			innerParts.OrderByPart = nil
+			parts.FromPart.(*qm.Subquery).Query = innerParts
+		} else {
+			parts.ColumnsPart = columns
+		}
 	}
-	return &qm.UnboundQuery{Root: root, Scope: 1}, options, nil
+	return parts, nil
 }
 
-func rewriteHaving(expr *qm.Expr, name string) {
+func rewriteHaving(expr *qm.Sqlizer, name string, aggregate *qm.Sqlizer) {
 	if expr.Kind == qm.ExprName && len(expr.Name) == 1 && expr.Name[0] == name {
-		expr.Kind = qm.ExprAggregateRef
-		expr.Name = nil
-		expr.AggregateSlot = 0
+		origin := expr.Origin
+		*expr = *aggregate
+		expr.Origin = origin
+		return
 	}
 	for _, arg := range expr.Args {
-		rewriteHaving(arg, name)
+		rewriteHaving(arg, name, aggregate)
 	}
 }

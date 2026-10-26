@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -25,19 +26,21 @@ import (
 var (
 	_ interfaces.SQLQueryResourceResolver = (*sqlQueryResolver)(nil)
 	_ interfaces.SQLQueryAuthorizer       = (*sqlQueryResolver)(nil)
-	_ interfaces.SQLQueryTargetResolver   = (*sqlQueryResolver)(nil)
+	_ interfaces.SQLQuerySourceResolver   = (*sqlQueryResolver)(nil)
 )
 
 // sqlQueryResolver 仅供一次编译使用，不跨用户、请求或 cursor 复用权限决定。
 // 只加载不含敏感连接字段的目录；建立实际源连接留给执行层。
 type sqlQueryResolver struct {
-	resourceService interfaces.ResourceService
-	catalogService  interfaces.CatalogService
-	identity        qm.ExecutionIdentity
-	authorized      map[string]bool
-	resources       map[string]*interfaces.Resource
-	catalogs        map[string]*interfaces.Catalog
-	catalogOrder    []string
+	resourceService  interfaces.ResourceService
+	catalogService   interfaces.CatalogService
+	identity         qm.ExecutionIdentity
+	ignoreLocalIndex bool
+	authorized       map[string]qm.AuthorizationBasis
+	resources        map[string]*interfaces.Resource
+	catalogs         map[string]*interfaces.Catalog
+	catalogOrder     []string
+	dependencies     []qm.Dependency
 }
 
 func newSQLQueryResolver(ctx context.Context, resources interfaces.ResourceService, catalogs interfaces.CatalogService) (*sqlQueryResolver, error) {
@@ -53,7 +56,7 @@ func newSQLQueryResolver(ctx context.Context, resources interfaces.ResourceServi
 	}
 	return &sqlQueryResolver{resourceService: resources, catalogService: catalogs,
 		identity:   qm.ExecutionIdentity{SubjectID: account.ID, SubjectType: account.Type, AuthorizationNamespace: interfaces.AUTH_RESOURCE_TYPE_RESOURCE},
-		authorized: make(map[string]bool), resources: make(map[string]*interfaces.Resource), catalogs: make(map[string]*interfaces.Catalog)}, nil
+		authorized: make(map[string]qm.AuthorizationBasis), resources: make(map[string]*interfaces.Resource), catalogs: make(map[string]*interfaces.Catalog)}, nil
 }
 
 func (r *sqlQueryResolver) checkIdentity(ctx context.Context, identity qm.ExecutionIdentity) error {
@@ -80,16 +83,17 @@ func (r *sqlQueryResolver) AuthorizeSQLQueryResource(ctx context.Context, id str
 	if err := ctx.Err(); err != nil {
 		return qm.AuthorizationBasis{}, err
 	}
-	r.authorized[id] = true
 	// 现有 PEP 只返回决定，没有可声明的 ACL 版本；执行和续页必须重新授权。
-	return qm.AuthorizationBasis{ResourceID: id, Operation: operation, Namespace: identity.AuthorizationNamespace}, nil
+	basis := qm.AuthorizationBasis{ResourceID: id, Operation: operation, Namespace: identity.AuthorizationNamespace}
+	r.authorized[id] = basis
+	return basis, nil
 }
 
 func (r *sqlQueryResolver) ResolveSQLQueryResource(ctx context.Context, id string, identity qm.ExecutionIdentity) (*interfaces.Resource, string, error) {
 	if err := r.checkIdentity(ctx, identity); err != nil {
 		return nil, "", err
 	}
-	if !r.authorized[id] {
+	if r.authorized[id].ResourceID == "" {
 		return nil, "", queryResolverForbidden(ctx)
 	}
 	if resource := r.resources[id]; resource != nil {
@@ -135,60 +139,71 @@ func (r *sqlQueryResolver) ResolveSQLQueryResource(ctx context.Context, id strin
 		r.catalogs[catalog.ID] = catalog
 		r.catalogOrder = append(r.catalogOrder, catalog.ID)
 	}
+	snapshot := any(struct {
+		Connector string
+		Schema    []*interfaces.Property
+	}{catalog.ConnectorType, resource.SchemaDefinition})
+	kind := qm.DependencyResource
+	if resource.Category == interfaces.ResourceCategoryLogicalView {
+		kind = qm.DependencyView
+		snapshot = struct {
+			Schema     []*interfaces.Property
+			LogicType  string
+			Definition any
+		}{resource.SchemaDefinition, resource.LogicType, resource.LogicDefinition}
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		return nil, "", queryResolverError(qm.ErrorConfiguration, qm.Origin{ResourceID: id}, "资源字段元数据无效")
+	}
+	digest := sha256.Sum256(encoded)
+	r.dependencies = append(r.dependencies, qm.Dependency{Kind: kind, ID: id, Version: strconv.FormatInt(resource.UpdateTime, 10), SchemaFingerprint: hex.EncodeToString(digest[:]), Authorization: []qm.AuthorizationBasis{r.authorized[id]}})
 	r.resources[id] = resource
 	return resource, catalog.ConnectorType, nil
 }
 
-func (r *sqlQueryResolver) ResolveSQLQueryTargets(ctx context.Context, scan qm.BoundScan, identity qm.ExecutionIdentity, options qm.ExecutionOptions) ([]qm.TargetBinding, error) {
+func (r *sqlQueryResolver) ResolveSQLQuerySource(ctx context.Context, scan qm.Scan, identity qm.ExecutionIdentity) (qm.Scan, error) {
 	if err := r.checkIdentity(ctx, identity); err != nil {
-		return nil, err
+		return qm.Scan{}, err
 	}
 	resource := r.resources[scan.Resource.ID]
-	if !r.authorized[scan.Resource.ID] || resource == nil {
-		return nil, queryResolverForbidden(ctx)
+	if r.authorized[scan.Resource.ID].ResourceID == "" || resource == nil {
+		return qm.Scan{}, queryResolverForbidden(ctx)
 	}
 	if scan.Resource.CatalogID != resource.CatalogID || scan.Resource.Version != strconv.FormatInt(resource.UpdateTime, 10) {
-		return nil, queryResolverError(qm.ErrorInvalidTree, scan.Origin, "目标资源与绑定快照不一致")
+		return qm.Scan{}, queryResolverError(qm.ErrorInvalidTree, scan.Origin, "目标资源与绑定快照不一致")
 	}
 	catalog := r.catalogs[resource.CatalogID]
 	if catalog == nil {
-		return nil, queryResolverError(qm.ErrorConfiguration, scan.Origin, "缺少绑定目录快照")
+		return qm.Scan{}, queryResolverError(qm.ErrorConfiguration, scan.Origin, "缺少绑定目录快照")
 	}
-	if options.QuerySource == qm.QuerySourceIndex || (options.QuerySource == qm.QuerySourceAuto && !options.IgnoreLocalIndex && resourcelogic.HasAvailableLocalIndex(resource)) {
-		return nil, queryResolverError(qm.ErrorPlanningUnsupported, scan.Origin, "索引路由尚未接入此 SQL 执行链路")
+	if !r.ignoreLocalIndex && resourcelogic.HasAvailableLocalIndex(resource) {
+		return qm.Scan{}, queryResolverError(qm.ErrorPlanningUnsupported, scan.Origin, "索引路由尚未接入此 SQL 执行链路")
 	}
 	if resource.Category != interfaces.ResourceCategoryTable || !sqlCatalogType(catalog.ConnectorType) {
-		return nil, queryResolverError(qm.ErrorPlanningUnsupported, scan.Origin, "资源没有受支持的 SQL 执行目标")
+		return qm.Scan{}, queryResolverError(qm.ErrorPlanningUnsupported, scan.Origin, "资源没有受支持的 SQL 执行目标")
 	}
 	identifier, err := sourceRelationIdentifier(resource, catalog.ConnectorType, scan.Origin)
 	if err != nil {
-		return nil, err
+		return qm.Scan{}, err
 	}
-	encoded, err := json.Marshal(identity)
-	if err != nil {
-		return nil, queryResolverError(qm.ErrorConfiguration, scan.Origin, "查询身份无法编码")
-	}
-	principal := sha256.Sum256(encoded)
-	profile := "catalog:" + catalog.ID + "@" + catalogRevision(catalog)
-	candidate := qm.TargetBinding{Source: qm.QuerySourceSource,
-		Target: qm.ExecutionTarget{CatalogID: catalog.ID, ConnectorType: catalog.ConnectorType, PhysicalTargetKey: "catalog:" + catalog.ID,
-			ConnectionProfile: profile, EffectiveSourceIdentity: profile + ":" + hex.EncodeToString(principal[:]),
-			AuthorizationNamespace: identity.AuthorizationNamespace, ConfigRevision: catalogRevision(catalog), SchemaRevision: catalogRevision(catalog)},
-		Relations: []qm.RelationBinding{{Instance: scan.Instance, ResourceID: resource.ID, Identifier: identifier}}}
+	candidate := scan
+	candidate.Identifier = identifier
+	candidate.Fields = slices.Clone(scan.Fields)
 	properties := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
 	for _, property := range resource.SchemaDefinition {
 		if property == nil || property.Name == "" || properties[property.Name] != nil {
-			return nil, queryResolverError(qm.ErrorConfiguration, scan.Origin, "资源字段元数据无效")
+			return qm.Scan{}, queryResolverError(qm.ErrorConfiguration, scan.Origin, "资源字段元数据无效")
 		}
 		properties[property.Name] = property
 	}
 	if len(scan.Fields) != len(properties) {
-		return nil, queryResolverError(qm.ErrorInvalidTree, scan.Origin, "来源字段与绑定快照不一致")
+		return qm.Scan{}, queryResolverError(qm.ErrorInvalidTree, scan.Origin, "来源字段与绑定快照不一致")
 	}
-	for _, field := range scan.Fields {
+	for i, field := range scan.Fields {
 		property := properties[field.LogicalName]
 		if property == nil || field.NativeType.ConnectorType != catalog.ConnectorType || field.NativeType.Name != property.OriginalType {
-			return nil, queryResolverError(qm.ErrorInvalidTree, scan.Origin, "来源字段与绑定快照不一致")
+			return qm.Scan{}, queryResolverError(qm.ErrorInvalidTree, scan.Origin, "来源字段与绑定快照不一致")
 		}
 		delete(properties, field.LogicalName)
 		name := property.OriginalName
@@ -196,11 +211,11 @@ func (r *sqlQueryResolver) ResolveSQLQueryTargets(ctx context.Context, scan qm.B
 			name = property.Name
 		}
 		if !rawIdentifierPart(name) {
-			return nil, queryResolverError(qm.ErrorPlanningUnsupported, scan.Origin, "原生列名无法安全表示")
+			return qm.Scan{}, queryResolverError(qm.ErrorPlanningUnsupported, scan.Origin, "原生列名无法安全表示")
 		}
-		candidate.Fields = append(candidate.Fields, qm.FieldBinding{Address: qm.FieldAddress{Relation: scan.Instance, Field: field.ID}, Identifier: qm.PhysicalIdentifier{name}, NativeType: field.NativeType, MissingValue: qm.MissingAsNull})
+		candidate.Fields[i].Identifier = qm.PhysicalIdentifier{name}
 	}
-	return []qm.TargetBinding{candidate}, nil
+	return candidate, nil
 }
 
 func sourceRelationIdentifier(resource *interfaces.Resource, connector string, origin qm.Origin) (qm.PhysicalIdentifier, error) {

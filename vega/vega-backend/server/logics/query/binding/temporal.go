@@ -142,12 +142,12 @@ func temporalType(typ qm.LogicalType) bool {
 
 // bindTemporalLiteral 复用公开输入的纯解析规则，但只使用本次查询冻结的时区。
 // 字面值保留自己的精度；commonType 再推导共同类型，不把列精度当作截断规则。
-func bindTemporalLiteral(expr *qm.BoundExpr, target qm.LogicalType, semantics qm.SemanticContext) (*qm.BoundExpr, error) {
-	if expr.Kind != qm.ExprLiteral || expr.Literal == nil {
+func bindTemporalLiteral(expr *qm.Sqlizer, target qm.LogicalType, semantics qm.SemanticContext) (*qm.Sqlizer, error) {
+	if expr.Kind != qm.ExprLiteral || expr.Value == nil {
 		return nil, bindFailure(expr.Origin, "时间常量结构无效")
 	}
 	var raw any
-	switch value := expr.Literal.Data.(type) {
+	switch value := expr.Value.Data.(type) {
 	case qm.StringValue:
 		raw = string(value)
 	case qm.IntegerValue:
@@ -201,7 +201,7 @@ func bindTemporalLiteral(expr *qm.BoundExpr, target qm.LogicalType, semantics qm
 	default:
 		return nil, bindFailure(expr.Origin, "时间常量的目标类型无效")
 	}
-	return &qm.BoundExpr{Kind: qm.ExprLiteral, Type: value.Type, Literal: &value, Origin: expr.Origin, Domain: qm.DomainVega}, nil
+	return &qm.Sqlizer{Kind: qm.ExprLiteral, Type: value.Type, Value: &value, Origin: expr.Origin, Domain: qm.DomainVega}, nil
 }
 
 func temporalLiteralPrecision(raw any) int {
@@ -222,7 +222,7 @@ func temporalLiteralPrecision(raw any) int {
 	return 0
 }
 
-func (b *queryBinder) coerceComparison(expr *qm.BoundExpr, scope *bindingScope) error {
+func (b *queryBinder) coerceComparison(expr *qm.Sqlizer, scope *bindingScope) error {
 	if (expr.Origin.Kind == qm.OriginDTO || expr.Origin.Kind == qm.OriginSavedView) && len(expr.Args) > 1 {
 		target := expr.Args[0].Type
 		public := expressionEncoding(expr.Args[0], scope).PublicType
@@ -243,13 +243,13 @@ func (b *queryBinder) coerceComparison(expr *qm.BoundExpr, scope *bindingScope) 
 	return coerceArguments(expr, true)
 }
 
-func bindTemporalCastLiteral(arg *qm.BoundExpr, target qm.LogicalType, semantics qm.SemanticContext) (*qm.BoundExpr, error) {
+func bindTemporalCastLiteral(arg *qm.Sqlizer, target qm.LogicalType, semantics qm.SemanticContext) (*qm.Sqlizer, error) {
 	bound, err := bindTemporalLiteral(arg, target, semantics)
 	if err != nil {
 		return nil, err
 	}
 	nanos := 0
-	switch value := bound.Literal.Data.(type) {
+	switch value := bound.Value.Data.(type) {
 	case qm.TimeOfDayValue:
 		nanos = value.Nanosecond
 	case qm.LocalDateTimeValue:
@@ -264,6 +264,6 @@ func bindTemporalCastLiteral(arg *qm.BoundExpr, target qm.LogicalType, semantics
 			return nil, bindFailure(arg.Origin, "时间 CAST 不能静默丢失小数秒精度")
 		}
 	}
-	bound.Type, bound.Literal.Type = target, target
+	bound.Type, bound.Value.Type = target, target
 	return bound, nil
 }

@@ -45,7 +45,7 @@ func (b *queryBinder) derivedView(reference *qm.Scan, view *interfaces.Resource)
 	if definition.FilterCondition != nil {
 		conditionOrigin := origin
 		conditionOrigin.Path += ".filter_condition"
-		tree, err := FilterExpression(definition.FilterCondition, conditionOrigin)
+		tree, err := ConvertFilterCondition(definition.FilterCondition, conditionOrigin)
 		if err != nil {
 			return bindingResult{}, interfaces.NewStoredConditionBuildError(err)
 		}
@@ -56,7 +56,7 @@ func (b *queryBinder) derivedView(reference *qm.Scan, view *interfaces.Resource)
 		if predicate.Type.Kind != qm.TypeBoolean && predicate.Type.Kind != qm.TypeNull {
 			return bindingResult{}, interfaces.NewStoredConditionBuildError(bindFailure(conditionOrigin, "固定条件不是布尔表达式"))
 		}
-		input.root = &qm.BoundFilter{BoundRelationBase: relationBase(input.schema, conditionOrigin), Input: input.root, Predicate: predicate}
+		input.query = &qm.SelectBuilder{FromPart: input.source, WherePart: []*qm.Sqlizer{predicate}}
 	}
 	if len(view.SchemaDefinition) == 0 {
 		return bindingResult{}, bindFailure(origin, "视图没有导出字段")
@@ -69,7 +69,7 @@ func (b *queryBinder) derivedView(reference *qm.Scan, view *interfaces.Resource)
 		alias = view.ID
 	}
 	result := bindingResult{scope: bindingScope{aliases: map[string]bool{alias: true}}}
-	mappings := make([]qm.ColumnMapping, 0, len(view.SchemaDefinition))
+	var columns []qm.NamedExpr
 	names := make(map[string]bool)
 	for i, output := range view.SchemaDefinition {
 		at := origin
@@ -114,10 +114,18 @@ func (b *queryBinder) derivedView(reference *qm.Scan, view *interfaces.Resource)
 		c.Origin = at
 		result.schema = append(result.schema, c)
 		result.scope.columns = append(result.scope.columns, scopeColumn{column: c, qualifier: alias, domain: col.domain})
-		mappings = append(mappings, qm.ColumnMapping{Input: old, Output: c.ID})
+		columns = append(columns, qm.NamedExpr{Expr: columnExpr(col, at), Alias: c.Name, Output: c.ID, Encoding: c.Encoding, Origin: at})
 	}
-	result.root = &qm.BoundViewBoundary{BoundRelationBase: relationBase(result.schema, reference.Origin), Input: input.root,
-		Resource: qm.ResourceReference{ID: view.ID, CatalogID: view.CatalogID, Category: view.Category, Version: strconv.FormatInt(view.UpdateTime, 10)}, Scope: b.scopeID(), Instance: reference.Instance, Columns: mappings, Authorization: qm.ViewAuthorization{Mode: qm.ViewAuthorizationInvoker}}
+	parts := &qm.SelectBuilder{FromPart: input.source, ColumnsPart: columns}
+	if input.query != nil {
+		parts.WherePart = input.query.WherePart
+	}
+	query := parts
+	derived := &qm.Subquery{Query: query, Origin: reference.Origin, Alias: alias, Resource: qm.ResourceReference{ID: view.ID, CatalogID: view.CatalogID, Category: view.Category, Version: strconv.FormatInt(view.UpdateTime, 10)}, Instance: reference.Instance, OutputSchema: result.schema}
+	for _, c := range result.schema {
+		derived.Columns = append(derived.Columns, qm.ColumnMapping{Input: c.ID, Output: c.ID})
+	}
+	result.source = derived
 	return result, nil
 }
 

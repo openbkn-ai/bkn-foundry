@@ -4,9 +4,6 @@
 
 package querymodel
 
-// TypeKind 表示计算类型；响应中的类型名称及编码不决定计算语义。
-type TypeKind string
-
 const (
 	TypeNull          TypeKind = "null"
 	TypeBoolean       TypeKind = "boolean"
@@ -26,13 +23,22 @@ const (
 	TypeOther         TypeKind = "other"
 )
 
-type TimeZoneCategory string
-
 const (
 	TimeZoneNone    TimeZoneCategory = "none"
 	TimeZoneLocal   TimeZoneCategory = "local"
 	TimeZoneInstant TimeZoneCategory = "instant"
 )
+
+const (
+	DomainVega          SemanticDomain = "vega"
+	DomainNativeNumeric SemanticDomain = "native_numeric"
+	DomainIndexKeyword  SemanticDomain = "index_keyword"
+)
+
+// TypeKind 表示计算类型；响应中的类型名称及编码不决定计算语义。
+type TypeKind string
+
+type TimeZoneCategory string
 
 // LogicalType 不包含可空性。TimePrecision=nil 表示未知，不能当作秒精度。
 // Precision/Scale 用于 decimal，BitWidth/Unsigned 用于数值。
@@ -50,12 +56,6 @@ type LogicalType struct {
 
 // SemanticDomain 区分已明确绑定的 Vega、源端原生及索引比较语义。
 type SemanticDomain string
-
-const (
-	DomainVega          SemanticDomain = "vega"
-	DomainNativeNumeric SemanticDomain = "native_numeric"
-	DomainIndexKeyword  SemanticDomain = "index_keyword"
-)
 
 // NativeType 保留原生类型身份，不能凭对外 string 类型丢失 LARGEINT 等语义。
 type NativeType struct {

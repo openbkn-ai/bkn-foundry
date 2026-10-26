@@ -18,13 +18,13 @@ import (
 	qm "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/querymodel"
 )
 
-func bindTemporalTest(t *testing.T, property *interfaces.Property, params *interfaces.ResourceDataQueryParams, sql, zone string) (*qm.BoundQuery, error) {
+func bindTemporalTest(t *testing.T, property *interfaces.Property, params *interfaces.ResourceDataQueryParams, sql, zone string) (*qm.SelectBuilder, error) {
 	t.Helper()
 	semantics, err := NewSemanticContext(zone)
 	require.NoError(t, err)
-	var input *qm.UnboundQuery
+	var input *qm.SelectBuilder
 	if params != nil {
-		input, _, err = BuildResourceDataQuery(params, "events")
+		input, err = BuildResourceDataQuery(params, "events")
 		require.NoError(t, err)
 	} else {
 		input = bindingInput(t, sql)
@@ -41,30 +41,31 @@ func bindTemporalTest(t *testing.T, property *interfaces.Property, params *inter
 	return Bind(context.Background(), input, semantics, qm.ExecutionIdentity{}, resolver, authorizer)
 }
 
-func temporalTestLiteral(t *testing.T, expr *qm.BoundExpr) *qm.Value {
+func temporalTestLiteral(t *testing.T, expr *qm.Sqlizer) *qm.Value {
 	t.Helper()
 	for expr.Kind == qm.ExprCast {
 		require.Len(t, expr.Args, 1)
 		expr = expr.Args[0]
 	}
 	require.Equal(t, qm.ExprLiteral, expr.Kind)
-	require.NotNil(t, expr.Literal)
-	return expr.Literal
+	require.NotNil(t, expr.Value)
+	return expr.Value
 }
 
-func temporalTestPredicate(t *testing.T, root qm.BoundRelation) *qm.BoundExpr {
+func temporalTestPredicate(t *testing.T, query *qm.SelectBuilder) *qm.Sqlizer {
 	t.Helper()
-	for {
-		switch node := root.(type) {
-		case *qm.BoundProject:
-			root = node.Input
-		case *qm.BoundFilter:
-			return node.Predicate
-		default:
-			t.Fatalf("expected a filter, got %T", root)
-			return nil
-		}
+	parts := query
+	if len(parts.WherePart) > 0 {
+		return parts.WherePart[0]
 	}
+	if len(parts.HavingPart) > 0 {
+		return parts.HavingPart[0]
+	}
+	if sub, ok := parts.FromPart.(*qm.Subquery); ok {
+		return temporalTestPredicate(t, sub.Query)
+	}
+	t.Fatal("expected WHERE or HAVING")
+	return nil
 }
 
 func TestBindTemporalValues(t *testing.T) {
@@ -75,7 +76,7 @@ func TestBindTemporalValues(t *testing.T) {
 		require.NoError(t, err)
 		query, err := bindTemporalTest(t, local, params, "", "Asia/Shanghai")
 		require.NoError(t, err)
-		predicate := temporalTestPredicate(t, query.Root)
+		predicate := temporalTestPredicate(t, query)
 		value := temporalTestLiteral(t, predicate.Args[1])
 		assert.Equal(t, qm.TypeLocalDateTime, value.Type.Kind)
 		wall := value.Data.(qm.LocalDateTimeValue)
@@ -91,7 +92,7 @@ func TestBindTemporalValues(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{FilterCondition: map[string]any{"field": "created", "operation": "==", "value": "2026-10-21 08:00:00.123456789"}}
 		query, err := bindTemporalTest(t, property, params, "", "Asia/Shanghai")
 		require.NoError(t, err)
-		value := temporalTestLiteral(t, temporalTestPredicate(t, query.Root).Args[1])
+		value := temporalTestLiteral(t, temporalTestPredicate(t, query).Args[1])
 		assert.Equal(t, qm.TypeInstant, value.Type.Kind)
 		assert.Equal(t, "2026-10-21T00:00:00.123456789Z", value.Data.(qm.InstantValue).Time.UTC().Format(time.RFC3339Nano))
 	})
@@ -105,7 +106,7 @@ func TestBindTemporalValues(t *testing.T) {
 		} {
 			query, err := bindTemporalTest(t, &interfaces.Property{Name: "created", Type: tc.public, OriginalType: tc.native}, &interfaces.ResourceDataQueryParams{FilterCondition: map[string]any{"field": "created", "operation": "==", "value": tc.value}}, "", "America/New_York")
 			require.NoError(t, err)
-			value := temporalTestLiteral(t, temporalTestPredicate(t, query.Root).Args[1])
+			value := temporalTestLiteral(t, temporalTestPredicate(t, query).Args[1])
 			assert.Equal(t, tc.kind, value.Type.Kind)
 		}
 	})
@@ -114,7 +115,7 @@ func TestBindTemporalValues(t *testing.T) {
 			property := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime, OriginalType: "date_nanos"}
 			query, err := bindTemporalTest(t, property, &interfaces.ResourceDataQueryParams{FilterCondition: map[string]any{"field": "created", "operation": "==", "value": input}}, "", "UTC")
 			require.NoError(t, err)
-			value := temporalTestLiteral(t, temporalTestPredicate(t, query.Root).Args[1])
+			value := temporalTestLiteral(t, temporalTestPredicate(t, query).Args[1])
 			instant, ok := value.Data.(qm.InstantValue)
 			require.True(t, ok)
 			text, ok := input.(string)
@@ -131,7 +132,7 @@ func TestBindTemporalValues(t *testing.T) {
 			params := &interfaces.ResourceDataQueryParams{FilterCondition: map[string]any{"field": "created", "operation": op, "value": []any{"2026-10-21 00:00:00.1", "2026-10-22 00:00:00.123456789"}}}
 			query, err := bindTemporalTest(t, local, params, "", "UTC")
 			require.NoError(t, err)
-			predicate := temporalTestPredicate(t, query.Root)
+			predicate := temporalTestPredicate(t, query)
 			for _, arg := range predicate.Args[1:] {
 				assert.Equal(t, qm.TypeLocalDateTime, temporalTestLiteral(t, arg).Type.Kind)
 			}
@@ -139,14 +140,14 @@ func TestBindTemporalValues(t *testing.T) {
 		params := &interfaces.ResourceDataQueryParams{Aggregation: &interfaces.Aggregation{Aggr: "min", Property: "created"}, Having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: "2026-10-21 00:00:00.123456789"}}
 		query, err := bindTemporalTest(t, local, params, "", "UTC")
 		require.NoError(t, err)
-		predicate := temporalTestPredicate(t, query.Root)
+		predicate := temporalTestPredicate(t, query)
 		assert.Equal(t, qm.TypeLocalDateTime, temporalTestLiteral(t, predicate.Args[1]).Type.Kind)
 	})
 	t.Run("unknown source precision is not guessed from the constant", func(t *testing.T) {
 		property := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime, OriginalType: "DATETIME"}
 		query, err := bindTemporalTest(t, property, &interfaces.ResourceDataQueryParams{FilterCondition: map[string]any{"field": "created", "operation": "==", "value": "2026-10-21 00:00:00.123456789"}}, "", "UTC")
 		require.NoError(t, err)
-		predicate := temporalTestPredicate(t, query.Root)
+		predicate := temporalTestPredicate(t, query)
 		assert.Nil(t, predicate.Args[0].Type.TimePrecision)
 		assert.Nil(t, predicate.Args[1].Type.TimePrecision)
 		assert.Equal(t, 9, *temporalTestLiteral(t, predicate.Args[1]).Type.TimePrecision)
@@ -155,7 +156,7 @@ func TestBindTemporalValues(t *testing.T) {
 		t.Setenv("TZ", "America/New_York")
 		query, err := bindTemporalTest(t, local, &interfaces.ResourceDataQueryParams{FilterCondition: map[string]any{"field": "created", "operation": "==", "value": "2026-10-21T00:00:00Z"}}, "", "Asia/Shanghai")
 		require.NoError(t, err)
-		value := temporalTestLiteral(t, temporalTestPredicate(t, query.Root).Args[1])
+		value := temporalTestLiteral(t, temporalTestPredicate(t, query).Args[1])
 		assert.Equal(t, 8, value.Data.(qm.LocalDateTimeValue).Time.Hour)
 	})
 	t.Run("public timestamp does not inherit datetime input syntax", func(t *testing.T) {
@@ -185,7 +186,7 @@ func TestBindTemporalSQLCasts(t *testing.T) {
 	assert.Nil(t, query)
 	query, err = bindTemporalTest(t, property, nil, "SELECT id FROM {{events}} WHERE created = CAST('2026-10-21 00:00:00.123456' AS DATETIME(6))", "UTC")
 	require.NoError(t, err)
-	predicate := temporalTestPredicate(t, query.Root)
+	predicate := temporalTestPredicate(t, query)
 	assert.Equal(t, qm.TypeLocalDateTime, temporalTestLiteral(t, predicate.Args[1]).Type.Kind)
 	for _, sql := range []string{
 		"SELECT CAST('2024-02-29' AS DATE) FROM {{events}}",
@@ -210,7 +211,7 @@ func TestBindTemporalSQLCasts(t *testing.T) {
 	publicTimestamp := &interfaces.Property{Name: "created", Type: interfaces.DataType_Timestamp, OriginalType: "TIMESTAMP(6) WITHOUT TIME ZONE"}
 	query, err = bindTemporalTest(t, publicTimestamp, nil, "SELECT CAST(created AS DATETIME(6)) AS changed FROM {{events}}", "UTC")
 	require.NoError(t, err)
-	assert.Equal(t, interfaces.DataType_Datetime, query.OutputSchema[0].Encoding.PublicType)
+	assert.Equal(t, interfaces.DataType_Datetime, query.Schema()[0].Encoding.PublicType)
 
 }
 
@@ -232,9 +233,9 @@ func TestBindProjectionOnlySourceTypes(t *testing.T) {
 			for _, sql := range []string{"SELECT id FROM {{events}}", "SELECT * FROM {{events}}", "SELECT created AS renamed FROM {{events}}"} {
 				query, err := bindTemporalTest(t, property, nil, sql, "UTC")
 				require.NoError(t, err)
-				assert.Equal(t, tc.native, query.Root.(*qm.BoundProject).Input.(*qm.BoundScan).Fields[1].NativeType.Name)
+				assert.Equal(t, tc.native, query.FromPart.(*qm.Scan).Fields[1].NativeType.Name)
 				if sql != "SELECT id FROM {{events}}" {
-					assert.Equal(t, tc.public, query.OutputSchema[len(query.OutputSchema)-1].Encoding.PublicType)
+					assert.Equal(t, tc.public, query.Schema()[len(query.Schema())-1].Encoding.PublicType)
 				}
 			}
 			query, err := bindTemporalTest(t, property, nil, "SELECT id FROM {{events}} WHERE created = 'value'", "UTC")
@@ -279,8 +280,8 @@ func TestBindTemporalSavedView(t *testing.T) {
 	definition.FilterCondition = map[string]any{"field": "created", "operation": ">", "value": "2026-10-21T00:00:00.123456789Z"}
 	query, err = Bind(context.Background(), bindingInput(t, "SELECT * FROM {{view}}"), semantic, qm.ExecutionIdentity{}, resolver, authorizer)
 	require.NoError(t, err)
-	boundary := query.Root.(*qm.BoundProject).Input.(*qm.BoundViewBoundary)
-	value := temporalTestLiteral(t, boundary.Input.(*qm.BoundFilter).Predicate.Args[1])
+	boundary := query.FromPart.(*qm.Subquery)
+	value := temporalTestLiteral(t, boundary.Query.WherePart[0].Args[1])
 	assert.Equal(t, 8, value.Data.(qm.LocalDateTimeValue).Time.Hour)
 }
 
@@ -299,7 +300,7 @@ func TestBindTemporalLiteral(t *testing.T) {
 		{raw: "12:00:00.1234567890", invalid: true},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
-			expr := &qm.BoundExpr{Kind: qm.ExprLiteral, Type: qm.LogicalType{Kind: qm.TypeString}, Literal: &qm.Value{Type: qm.LogicalType{Kind: qm.TypeString}, Data: qm.StringValue(tc.raw)}}
+			expr := &qm.Sqlizer{Kind: qm.ExprLiteral, Type: qm.LogicalType{Kind: qm.TypeString}, Value: &qm.Value{Type: qm.LogicalType{Kind: qm.TypeString}, Data: qm.StringValue(tc.raw)}}
 			got, err := bindTemporalLiteral(expr, qm.LogicalType{Kind: qm.TypeDuration}, semantics)
 			if tc.invalid {
 				assert.Nil(t, got)
@@ -308,8 +309,8 @@ func TestBindTemporalLiteral(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, qm.TypeDuration, got.Type.Kind)
-			assert.Equal(t, tc.want, got.Literal.Data)
-			assert.Equal(t, qm.StringValue(tc.raw), expr.Literal.Data)
+			assert.Equal(t, tc.want, got.Value.Data)
+			assert.Equal(t, qm.StringValue(tc.raw), expr.Value.Data)
 		})
 	}
 }

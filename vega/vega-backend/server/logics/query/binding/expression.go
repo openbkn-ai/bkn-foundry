@@ -13,14 +13,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/functions"
 )
 
-func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool) (*qm.BoundExpr, error) {
+func (b *queryBinder) expr(e *qm.Sqlizer, scope *bindingScope, allowAggregate bool) (*qm.Sqlizer, error) {
 	if err := b.enter(e, qm.Origin{}); err != nil {
 		return nil, err
 	}
 	defer b.leave(e)
 	groups := scope.groups
 	groupInput := scope.groupInput
-	if scope.fallback != nil && !referencesLocalName(e, scope, make(map[*qm.Expr]bool)) {
+	if scope.fallback != nil && !referencesLocalName(e, scope, make(map[*qm.Sqlizer]bool)) {
 		groups = scope.fallback.groups
 		groupInput = scope.fallback.groupInput
 	}
@@ -29,7 +29,7 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 			return columnExpr(group.column, e.Origin), nil
 		}
 	}
-	result := &qm.BoundExpr{Origin: e.Origin, Domain: qm.DomainVega, Distinct: e.Distinct, Negated: e.Negated, CaseBase: e.CaseBase, CaseElse: e.CaseElse}
+	result := &qm.Sqlizer{Origin: e.Origin, Domain: qm.DomainVega, Distinct: e.Distinct, Negated: e.Negated, CaseBase: e.CaseBase, CaseElse: e.CaseElse}
 	switch e.Kind {
 	case qm.ExprName:
 		if len(e.Args) != 0 {
@@ -45,14 +45,7 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 			return nil, bindFailure(e.Origin, "常量结构非法")
 		}
 		return bindLiteral(e.Literal, e.Origin)
-	case qm.ExprAggregateRef:
-		if len(e.Args) != 0 || e.AggregateSlot < 0 || e.AggregateSlot >= len(scope.aggregates) {
-			return nil, bindFailure(e.Origin, "聚合引用不在当前查询块")
-		}
-		copy := *scope.aggregates[e.AggregateSlot]
-		copy.Origin = e.Origin
-		return &copy, nil
-	case qm.ExprField, qm.ExprRuntimeSlot:
+	case qm.ExprField:
 		return nil, bindFailure(e.Origin, "未绑定输入不接受字段 ID 或运行时槽位节点")
 	case qm.ExprWildcard:
 		return nil, bindFailure(e.Origin, "当前位置不接受通配符")
@@ -72,7 +65,7 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 		return bindLiteral(&value, e.Origin)
 	}
 	for _, arg := range e.Args {
-		bound, err := b.expr(arg, scope, false)
+		bound, err := b.expr(arg, scope, allowAggregate)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +85,7 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 		}
 		arg := result.Args[0]
 		result.Kind = qm.ExprUnary
-		result.Operator = qm.ScalarOperator(e.Op)
+		result.Op = qm.ScalarOperator(e.Op)
 		result.Nullable = arg.Nullable
 		switch e.Op {
 		case "NOT":
@@ -127,9 +120,9 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 		if op == "!=" {
 			op = "<>"
 		}
-		result.Operator = qm.ScalarOperator(op)
+		result.Op = qm.ScalarOperator(op)
 		result.Nullable = result.Args[0].Nullable || result.Args[1].Nullable
-		switch result.Operator {
+		switch result.Op {
 		case qm.OperatorAnd, qm.OperatorOr:
 			for _, arg := range result.Args {
 				if arg.Type.Kind != qm.TypeBoolean && arg.Type.Kind != qm.TypeNull {
@@ -146,12 +139,12 @@ func (b *queryBinder) expr(e *qm.Expr, scope *bindingScope, allowAggregate bool)
 			if err := coerceArithmetic(result); err != nil {
 				return nil, err
 			}
-			typ, err := arithmeticType(result.Operator, result.Args[0].Type, result.Args[1].Type, e.Origin)
+			typ, err := arithmeticType(result.Op, result.Args[0].Type, result.Args[1].Type, e.Origin)
 			if err != nil {
 				return nil, err
 			}
 			result.Type = typ
-			result.Nullable = result.Nullable || result.Operator == qm.OperatorDivide || result.Operator == qm.OperatorModulo
+			result.Nullable = result.Nullable || result.Op == qm.OperatorDivide || result.Op == qm.OperatorModulo
 		default:
 			return nil, bindFailure(e.Origin, "未知二元运算符")
 		}
@@ -257,7 +250,7 @@ func singleName(name []string) string {
 	}
 	return name[0]
 }
-func constantIR(e *qm.Expr) bool {
+func constantIR(e *qm.Sqlizer) bool {
 	if e == nil {
 		return false
 	}
@@ -266,7 +259,7 @@ func constantIR(e *qm.Expr) bool {
 	}
 	return e.Kind == qm.ExprUnary && (e.Op == "+" || e.Op == "-") && len(e.Args) == 1 && e.Args[0] != nil && e.Args[0].Kind == qm.ExprLiteral && e.Args[0].Literal != nil && (e.Args[0].Literal.Kind == qm.LiteralInteger || e.Args[0].Literal.Kind == qm.LiteralDecimal)
 }
-func coerceArguments(expr *qm.BoundExpr, comparison bool) error {
+func coerceArguments(expr *qm.Sqlizer, comparison bool) error {
 	typ := qm.LogicalType{Kind: qm.TypeNull}
 	for _, arg := range expr.Args {
 		var err error
@@ -285,7 +278,7 @@ func coerceArguments(expr *qm.BoundExpr, comparison bool) error {
 	return nil
 }
 
-func (b *queryBinder) function(e *qm.Expr, scope *bindingScope, allowAggregate bool) (*qm.BoundExpr, error) {
+func (b *queryBinder) function(e *qm.Sqlizer, scope *bindingScope, allowAggregate bool) (*qm.Sqlizer, error) {
 	signature, ok := functions.Lookup(singleName(e.Name))
 	if !ok {
 		return nil, bindFailure(e.Origin, "函数未开放")
@@ -300,16 +293,9 @@ func (b *queryBinder) function(e *qm.Expr, scope *bindingScope, allowAggregate b
 	if signature.Evaluation == qm.EvaluationStable {
 		precision := 6
 		typ := qm.LogicalType{Kind: qm.TypeInstant, TimePrecision: &precision, TimeZone: qm.TimeZoneInstant}
-		var slot qm.RuntimeSlotID
-		if len(b.slots) > 0 {
-			slot = b.slots[0].ID
-		} else {
-			slot = 1
-			b.slots = append(b.slots, qm.RuntimeSlot{ID: slot, Type: typ, Evaluation: qm.EvaluationStable, Function: "CURRENT_TIMESTAMP", Source: qm.RuntimeQueryStart, Origin: e.Origin})
-		}
-		return &qm.BoundExpr{Kind: qm.ExprRuntimeSlot, RuntimeSlot: slot, Type: typ, Domain: qm.DomainVega, Origin: e.Origin}, nil
+		return &qm.Sqlizer{Kind: qm.ExprCall, Function: "CURRENT_TIMESTAMP", Type: typ, Domain: qm.DomainVega, Origin: e.Origin}, nil
 	}
-	result := &qm.BoundExpr{Kind: qm.ExprCall, Function: qm.FunctionID(signature.Name), Distinct: e.Distinct, Origin: e.Origin, Domain: qm.DomainVega}
+	result := &qm.Sqlizer{Kind: qm.ExprCall, Function: qm.FunctionID(signature.Name), Distinct: e.Distinct, Origin: e.Origin, Domain: qm.DomainVega}
 	for _, arg := range e.Args {
 		if arg != nil && arg.Kind == qm.ExprWildcard {
 			if !signature.AllowStar || e.Distinct || len(arg.Name) != 0 || len(arg.Args) != 0 {
@@ -318,7 +304,17 @@ func (b *queryBinder) function(e *qm.Expr, scope *bindingScope, allowAggregate b
 			result.Function = "COUNT_STAR"
 			continue
 		}
-		bound, err := b.expr(arg, scope, false)
+		argScope := scope
+		aggregateArgument := signature.Evaluation == qm.EvaluationAggregate
+		if aggregateArgument {
+			for current := scope; current != nil; current = current.fallback {
+				if current.groupInput != nil {
+					argScope = current.groupInput
+					break
+				}
+			}
+		}
+		bound, err := b.expr(arg, argScope, allowAggregate && !aggregateArgument)
 		if err != nil {
 			return nil, err
 		}
@@ -381,7 +377,7 @@ func (b *queryBinder) function(e *qm.Expr, scope *bindingScope, allowAggregate b
 	return result, nil
 }
 
-func bindCase(result *qm.BoundExpr, e *qm.Expr) (*qm.BoundExpr, error) {
+func bindCase(result *qm.Sqlizer, e *qm.Sqlizer) (*qm.Sqlizer, error) {
 	end := len(result.Args)
 	if e.CaseElse {
 		end--
@@ -393,12 +389,12 @@ func bindCase(result *qm.BoundExpr, e *qm.Expr) (*qm.BoundExpr, error) {
 	if end-start < 2 || (end-start)%2 != 0 {
 		return nil, bindFailure(e.Origin, "CASE 结构无效")
 	}
-	var args []*qm.BoundExpr
-	var branches []*qm.BoundExpr
+	var args []*qm.Sqlizer
+	var branches []*qm.Sqlizer
 	for i := start; i < end; i += 2 {
 		when := result.Args[i]
 		if e.CaseBase {
-			when = &qm.BoundExpr{Kind: qm.ExprBinary, Operator: qm.OperatorEqual, Args: []*qm.BoundExpr{result.Args[0], when}, Origin: e.Origin, Domain: qm.DomainVega}
+			when = &qm.Sqlizer{Kind: qm.ExprBinary, Op: qm.OperatorEqual, Args: []*qm.Sqlizer{result.Args[0], when}, Origin: e.Origin, Domain: qm.DomainVega}
 			if err := coerceArguments(when, true); err != nil {
 				return nil, err
 			}
@@ -417,7 +413,7 @@ func bindCase(result *qm.BoundExpr, e *qm.Expr) (*qm.BoundExpr, error) {
 		fallback = result.Args[len(result.Args)-1]
 	}
 	branches = append(branches, fallback)
-	merged := &qm.BoundExpr{Args: branches, Origin: e.Origin}
+	merged := &qm.Sqlizer{Args: branches, Origin: e.Origin}
 	if err := coerceArguments(merged, false); err != nil {
 		return nil, err
 	}
@@ -436,7 +432,7 @@ func bindCase(result *qm.BoundExpr, e *qm.Expr) (*qm.BoundExpr, error) {
 	return result, nil
 }
 
-func castType(e *qm.Expr) (qm.LogicalType, error) {
+func castType(e *qm.Sqlizer) (qm.LogicalType, error) {
 	typ := qm.LogicalType{}
 	switch e.CastType {
 	case "SIGNED", "INTEGER", "INT", "BIGINT":
@@ -508,8 +504,8 @@ func supportedCast(from, to qm.LogicalType) bool {
 }
 
 // 排序输出别名优先于输入分组表达式；循环由 expr 的预算检查拒绝。
-func referencesLocalName(e *qm.Expr, scope *bindingScope, seen map[*qm.Expr]bool) bool {
-	pending := []*qm.Expr{e}
+func referencesLocalName(e *qm.Sqlizer, scope *bindingScope, seen map[*qm.Sqlizer]bool) bool {
+	pending := []*qm.Sqlizer{e}
 	for len(pending) > 0 {
 		node := pending[len(pending)-1]
 		pending = pending[:len(pending)-1]
@@ -532,21 +528,21 @@ func referencesLocalName(e *qm.Expr, scope *bindingScope, seen map[*qm.Expr]bool
 	return false
 }
 
-func coerceArithmetic(e *qm.BoundExpr) error {
+func coerceArithmetic(e *qm.Sqlizer) error {
 	common, err := commonType(e.Args[0].Type, e.Args[1].Type, e.Origin)
 	if err != nil {
 		return err
 	}
 	for i, arg := range e.Args {
 		typ := common
-		if common.Kind != qm.TypeNull && common.Kind != qm.TypeFloat && (common.Kind == qm.TypeDecimal || e.Operator == qm.OperatorDivide) {
+		if common.Kind != qm.TypeNull && common.Kind != qm.TypeFloat && (common.Kind == qm.TypeDecimal || e.Op == qm.OperatorDivide) {
 			input := arg.Type
 			if input.Kind == qm.TypeNull {
 				input = common
 			}
 			typ = decimalType(input)
-			if e.Operator == qm.OperatorDivide && arg.Kind == qm.ExprLiteral && arg.Literal != nil && arg.Type.Kind == qm.TypeInteger {
-				digits := len(strings.TrimPrefix(string(arg.Literal.Data.(qm.IntegerValue)), "-"))
+			if e.Op == qm.OperatorDivide && arg.Kind == qm.ExprLiteral && arg.Value != nil && arg.Type.Kind == qm.TypeInteger {
+				digits := len(strings.TrimPrefix(string(arg.Value.Data.(qm.IntegerValue)), "-"))
 				typ = qm.LogicalType{Kind: qm.TypeDecimal, Precision: digits}
 			}
 		}
@@ -555,24 +551,8 @@ func coerceArithmetic(e *qm.BoundExpr) error {
 	return nil
 }
 
-func expressionFields(expr *qm.BoundExpr) []qm.FieldID {
-	var result []qm.FieldID
-	seen := make(map[qm.FieldID]bool)
-	var visit func(*qm.BoundExpr)
-	visit = func(e *qm.BoundExpr) {
-		if e.Kind == qm.ExprField && !seen[e.Field] {
-			result = append(result, e.Field)
-			seen[e.Field] = true
-		}
-		for _, arg := range e.Args {
-			visit(arg)
-		}
-	}
-	visit(expr)
-	return result
-}
-func sameBoundExpr(a, b *qm.BoundExpr) bool {
-	if a.Kind != b.Kind || a.Field != b.Field || a.Operator != b.Operator || a.Function != b.Function || a.RuntimeSlot != b.RuntimeSlot || a.Distinct != b.Distinct || a.Negated != b.Negated || a.CaseBase != b.CaseBase || a.CaseElse != b.CaseElse || !reflect.DeepEqual(a.Type, b.Type) || !reflect.DeepEqual(a.Literal, b.Literal) || !reflect.DeepEqual(a.Escape, b.Escape) || len(a.Args) != len(b.Args) {
+func sameBoundExpr(a, b *qm.Sqlizer) bool {
+	if a.Kind != b.Kind || a.Field != b.Field || a.Op != b.Op || a.Function != b.Function || a.Distinct != b.Distinct || a.Negated != b.Negated || a.CaseBase != b.CaseBase || a.CaseElse != b.CaseElse || !reflect.DeepEqual(a.Type, b.Type) || !reflect.DeepEqual(a.Value, b.Value) || !reflect.DeepEqual(a.Escape, b.Escape) || len(a.Args) != len(b.Args) {
 		return false
 	}
 	for i := range a.Args {

@@ -5,8 +5,6 @@
 package compiler
 
 import (
-	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/functions"
-	"slices"
 	"strings"
 
 	qm "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/querymodel"
@@ -14,7 +12,7 @@ import (
 )
 
 // ConvertToIR 不解析 SQL、不读取资源或权限；输出仍须经过共同 Binder。
-func ConvertToIR(tree *qt.Select) (*qm.UnboundQuery, error) {
+func ConvertToIR(tree *qt.Select) (*qm.SelectBuilder, error) {
 	if err := ValidateQueryTree(tree); err != nil {
 		return nil, err
 	}
@@ -23,52 +21,34 @@ func ConvertToIR(tree *qt.Select) (*qm.UnboundQuery, error) {
 }
 
 type irConverter struct {
-	nextScope    qm.ScopeID
 	nextInstance qm.RelationInstanceID
 }
 
-func origin(span qm.Span) qm.Origin { return qm.Origin{Kind: qm.OriginSQL, Span: span} }
+// SQL 位置仅用于前端语法/策略错误，不进入下游查询对象。
+func origin(_ qm.Span) qm.Origin { return qm.Origin{Kind: qm.OriginSQL} }
 
-func (b *irConverter) query(q *qt.Select) *qm.UnboundQuery {
-	b.nextScope++
-	scope := b.nextScope
-	root := b.relation(q.From)
+func (b *irConverter) query(q *qt.Select) *qm.SelectBuilder {
+	parts := &qm.SelectBuilder{FromPart: b.relation(q.From), DistinctPart: q.Distinct}
 	if q.Where != nil {
-		root = &qm.Filter{Input: root, Predicate: expression(q.Where, nil), Origin: origin(q.Where.Span)}
+		parts.WherePart = []*qm.Sqlizer{expression(q.Where)}
 	}
-	// 所有聚合输出先收集，再构造 HAVING/投影/排序；每个查询块独立编号。
-	calls := []*qm.Expr{}
-	columns := make([]qm.NamedExpr, 0, len(q.Projections))
-	for _, projection := range q.Projections {
-		columns = append(columns, qm.NamedExpr{Expr: expression(projection.Expr, &calls), Alias: projection.Alias, Origin: origin(projection.Span)})
+	for _, column := range q.Projections {
+		parts.ColumnsPart = append(parts.ColumnsPart, qm.NamedExpr{Expr: expression(column.Expr), Alias: column.Alias, Origin: origin(column.Span)})
 	}
-	having := expression(q.Having, &calls)
-	keys := make([]qm.SortKey, 0, len(q.OrderBy))
-	for _, item := range q.OrderBy {
-		keys = append(keys, qm.SortKey{Expr: expression(item.Expr, &calls), Descending: item.Descending, Origin: origin(item.Span)})
+	for _, key := range q.GroupBy {
+		parts.GroupByPart = append(parts.GroupByPart, expression(key))
 	}
-	if len(q.GroupBy) > 0 || len(calls) > 0 || q.Having != nil {
-		group := make([]*qm.Expr, 0, len(q.GroupBy))
-		for _, key := range q.GroupBy {
-			group = append(group, expression(key, nil))
-		}
-		root = &qm.Aggregate{Input: root, GroupKeys: group, Calls: calls, Origin: origin(q.Span)}
+	if q.Having != nil {
+		parts.HavingPart = []*qm.Sqlizer{expression(q.Having)}
 	}
-	if having != nil {
-		root = &qm.Filter{Input: root, Predicate: having, Having: true, Origin: origin(q.Having.Span)}
-	}
-	// 尚未绑定的分组/排序名称保留到 Binder 分配槽，不在 IR 转换 猜测字段。
-	root = &qm.Project{Input: root, Columns: columns, Origin: origin(q.Span)}
-	if q.Distinct {
-		root = &qm.Distinct{Input: root, Origin: origin(q.Span)}
-	}
-	if len(keys) > 0 {
-		root = &qm.Sort{Input: root, Keys: keys, Origin: origin(q.Span)}
+	for _, key := range q.OrderBy {
+		parts.OrderByPart = append(parts.OrderByPart, qm.SortKey{Expr: expression(key.Expr), Descending: key.Descending, Origin: origin(key.Span)})
 	}
 	if q.Limit != nil {
-		root = &qm.Limit{Input: root, Offset: q.Limit.Offset, Count: q.Limit.Count, Origin: origin(q.Limit.Span)}
+		parts.LimitPart = &qm.QueryWindow{Count: q.Limit.Count, Offset: q.Limit.Offset}
 	}
-	return &qm.UnboundQuery{Root: root, Scope: scope}
+	query := parts
+	return query
 }
 
 func (b *irConverter) relation(r *qt.Relation) qm.Relation {
@@ -79,20 +59,20 @@ func (b *irConverter) relation(r *qt.Relation) qm.Relation {
 	case qt.Derived:
 		query := b.query(r.Query)
 		b.nextInstance++
-		return &qm.Subquery{Input: query.Root, Scope: query.Scope, Alias: r.Alias, Instance: b.nextInstance, Origin: origin(r.Span)}
+		return &qm.Subquery{Query: query, Alias: r.Alias, Instance: b.nextInstance, Origin: origin(r.Span)}
 	case qt.Join:
-		return &qm.Join{Left: b.relation(r.Left), Right: b.relation(r.Right), Kind: r.JoinKind, On: expression(r.On, nil), Origin: origin(r.Span)}
+		return &qm.Join{Left: b.relation(r.Left), Right: b.relation(r.Right), Kind: r.JoinKind, On: expression(r.On), Origin: origin(r.Span)}
 	default:
 		// ValidateQueryTree 已排除未知 relation；新增种类必须同步策略与 IR 转换。
 		panic("未检查的关系节点")
 	}
 }
 
-func expression(e *qt.Expr, calls *[]*qm.Expr) *qm.Expr {
+func expression(e *qt.Expr) *qm.Sqlizer {
 	if e == nil {
 		return nil
 	}
-	result := &qm.Expr{Kind: qm.ExprKind(e.Kind), Origin: origin(e.Span), Name: append([]string(nil), e.Name...), Op: e.Op, Distinct: e.Distinct, Negated: e.Negated, CaseBase: e.CaseBase, CaseElse: e.CaseElse, CastType: e.CastType, CastParameters: append([]int(nil), e.CastParameters...)}
+	result := &qm.Sqlizer{Kind: qm.ExprKind(e.Kind), Origin: origin(e.Span), Name: append([]string(nil), e.Name...), Op: qm.ScalarOperator(e.Op), Distinct: e.Distinct, Negated: e.Negated, CaseBase: e.CaseBase, CaseElse: e.CaseElse, CastType: e.CastType, CastParameters: append([]int(nil), e.CastParameters...)}
 	if e.Escape != nil {
 		escape := *e.Escape
 		result.Escape = &escape
@@ -100,53 +80,11 @@ func expression(e *qt.Expr, calls *[]*qm.Expr) *qm.Expr {
 	if e.Kind == qt.Literal {
 		result.Literal = &qm.Literal{Kind: e.LiteralKind, Text: e.Text}
 	}
-	isAggregate := false
 	if e.Kind == qt.Call {
 		result.Name[0] = strings.ToUpper(result.Name[0])
-		signature, _ := functions.Lookup(result.Name[0])
-		isAggregate = signature.Evaluation == qm.EvaluationAggregate
 	}
 	for _, arg := range e.Args {
-		result.Args = append(result.Args, expression(arg, calls))
-	}
-	if isAggregate && calls != nil {
-		index := -1
-		for i, existing := range *calls {
-			if equivalent(existing, result) {
-				index = i
-				break
-			}
-		}
-		if index < 0 {
-			index = len(*calls)
-			*calls = append(*calls, result)
-		}
-		return &qm.Expr{Kind: qm.ExprAggregateRef, AggregateSlot: index, Origin: result.Origin}
+		result.Args = append(result.Args, expression(arg))
 	}
 	return result
-}
-
-// equivalent 仅用于同一查询块内精确相同的聚合复用，位置不参与身份。
-func equivalent(a, b *qm.Expr) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	if a.Kind != b.Kind || a.Op != b.Op || a.Distinct != b.Distinct || a.Negated != b.Negated || a.CaseBase != b.CaseBase || a.CaseElse != b.CaseElse || a.CastType != b.CastType || a.AggregateSlot != b.AggregateSlot || !slices.Equal(a.Name, b.Name) || !slices.Equal(a.CastParameters, b.CastParameters) || len(a.Args) != len(b.Args) {
-		return false
-	}
-	if (a.Literal == nil) != (b.Literal == nil) || (a.Escape == nil) != (b.Escape == nil) {
-		return false
-	}
-	if a.Literal != nil && *a.Literal != *b.Literal {
-		return false
-	}
-	if a.Escape != nil && *a.Escape != *b.Escape {
-		return false
-	}
-	for i := range a.Args {
-		if !equivalent(a.Args[i], b.Args[i]) {
-			return false
-		}
-	}
-	return true
 }

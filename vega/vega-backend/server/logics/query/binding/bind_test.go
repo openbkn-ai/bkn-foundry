@@ -20,7 +20,7 @@ import (
 
 type resourceResolverFunc func(context.Context, string, qm.ExecutionIdentity) (*interfaces.Resource, error)
 type queryAuthorizerFunc func(context.Context, string, qm.ExecutionIdentity, string) (qm.AuthorizationBasis, error)
-type bindingTargetResolverFunc func(context.Context, qm.BoundScan, qm.ExecutionIdentity, qm.ExecutionOptions) ([]qm.TargetBinding, error)
+type bindingSourceResolverFunc func(context.Context, qm.Scan, qm.ExecutionIdentity) (qm.Scan, error)
 
 func (f resourceResolverFunc) ResolveSQLQueryResource(ctx context.Context, id string, identity qm.ExecutionIdentity) (*interfaces.Resource, string, error) {
 	resource, err := f(ctx, id, identity)
@@ -40,7 +40,7 @@ func bindingResource(id string) *interfaces.Resource {
 			{Name: "flag", Type: interfaces.DataType_Boolean, OriginalType: "BOOLEAN"},
 		}}
 }
-func bindingInput(t *testing.T, sql string) *qm.UnboundQuery {
+func bindingInput(t *testing.T, sql string) *qm.SelectBuilder {
 	t.Helper()
 	tree, err := compiler.ParseSQL(sql)
 	require.NoError(t, err)
@@ -48,7 +48,7 @@ func bindingInput(t *testing.T, sql string) *qm.UnboundQuery {
 	require.NoError(t, err)
 	return query
 }
-func bindSQL(t *testing.T, sql string) (*qm.BoundQuery, error) {
+func bindSQL(t *testing.T, sql string) (*qm.SelectBuilder, error) {
 	t.Helper()
 	semantic, err := NewSemanticContext("UTC")
 	require.NoError(t, err)
@@ -80,26 +80,34 @@ func TestBind(t *testing.T) {
 			return qm.AuthorizationBasis{ResourceID: id, Operation: op, Revision: "v1"}, nil
 		})
 		input := bindingInput(t, "SELECT a.id AS left_id, b.id AS right_id FROM {{orders}} a LEFT JOIN {{orders}} b ON a.id=b.id")
+		rawScan := input.FromPart.(*qm.Join).Left.(*qm.Scan)
+		rawScan.Instance = 999
+		rawScan.Identifier = qm.PhysicalIdentifier{"untrusted"}
+		rawScan.Fields = []qm.SourceField{{ID: 999, Identifier: qm.PhysicalIdentifier{"untrusted"}}}
 		query, err := Bind(context.Background(), input, semantic, identity, resolver, authorizer)
 		require.NoError(t, err)
 		assert.Equal(t, []string{"authorize:orders", "resolve:orders"}, events)
-		project := query.Root.(*qm.BoundProject)
-		join := project.Input.(*qm.BoundJoin)
-		left, right := join.Left.(*qm.BoundScan), join.Right.(*qm.BoundScan)
+		assert.Equal(t, qm.PhysicalIdentifier{"untrusted"}, rawScan.Identifier)
+		assert.Equal(t, qm.RelationInstanceID(999), rawScan.Instance)
+		project := query
+		join := project.FromPart.(*qm.Join)
+		left, right := join.Left.(*qm.Scan), join.Right.(*qm.Scan)
 		assert.NotEqual(t, left.Instance, right.Instance)
+		assert.Empty(t, left.Identifier)
+		assert.Empty(t, left.Fields[0].Identifier)
+		assert.NotEqual(t, qm.RelationInstanceID(999), left.Instance)
 		assert.NotEqual(t, left.Fields[0].ID, right.Fields[0].ID)
-		assert.Equal(t, left.Fields[0].ID, project.Columns[0].Expr.Field)
-		assert.Equal(t, right.Fields[0].ID, project.Columns[1].Expr.Field)
-		assert.True(t, query.OutputSchema[1].Nullable)
-		assert.Equal(t, []string{"left_id", "right_id"}, []string{query.OutputSchema[0].Name, query.OutputSchema[1].Name})
-		require.Len(t, query.Dependencies, 2)
-		assert.Equal(t, "10", query.Dependencies[1].Version)
-		assert.NotEmpty(t, query.Dependencies[1].SchemaFingerprint)
+		assert.Equal(t, left.Fields[0].ID, project.ColumnsPart[0].Expr.Field)
+		assert.Equal(t, right.Fields[0].ID, project.ColumnsPart[1].Expr.Field)
+		assert.True(t, query.Schema()[1].Nullable)
+		assert.Equal(t, []string{"left_id", "right_id"}, []string{query.Schema()[0].Name, query.Schema()[1].Name})
+
 		resource.SchemaDefinition[0].Name = "changed"
 		assert.Equal(t, "id", left.Fields[0].LogicalName)
-		input.Root.(*qm.Project).Columns[0].Alias = "changed"
-		assert.Equal(t, "left_id", query.OutputSchema[0].Name)
-		assert.Equal(t, qm.OriginSQL, query.OutputSchema[0].Origin.Kind)
+		parts := input.Clone()
+		parts.ColumnsPart[0].Alias = "changed"
+		assert.Equal(t, "left_id", query.Schema()[0].Name)
+		assert.Equal(t, qm.OriginSQL, query.Schema()[0].Origin.Kind)
 	})
 	t.Run("denial never reads metadata", func(t *testing.T) {
 		semantic, err := NewSemanticContext("UTC")
@@ -121,44 +129,38 @@ func TestBind(t *testing.T) {
 	t.Run("wildcards preserve schema order and projections have unique slots", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT a.*, a.id AS again FROM {{orders}} a")
 		require.NoError(t, err)
-		require.Len(t, query.OutputSchema, 5)
-		assert.Equal(t, "id", query.OutputSchema[0].Name)
-		assert.Equal(t, "flag", query.OutputSchema[3].Name)
-		project := query.Root.(*qm.BoundProject)
-		assert.Equal(t, project.Columns[0].Expr.Field, project.Columns[4].Expr.Field)
-		assert.NotEqual(t, project.Columns[0].Output, project.Columns[4].Output)
+		require.Len(t, query.Schema(), 5)
+		assert.Equal(t, "id", query.Schema()[0].Name)
+		assert.Equal(t, "flag", query.Schema()[3].Name)
+		project := query
+		assert.Equal(t, project.ColumnsPart[0].Expr.Field, project.ColumnsPart[4].Expr.Field)
+		assert.NotEqual(t, project.ColumnsPart[0].Output, project.ColumnsPart[4].Output)
 	})
 	t.Run("grouping having and ordering share aggregate slots", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT id, MIN(amount) AS m, COUNT(*) AS n FROM {{orders}} GROUP BY id HAVING MIN(amount)>1 ORDER BY m DESC")
 		require.NoError(t, err)
-		sort := query.Root.(*qm.BoundSort)
-		project := sort.Input.(*qm.BoundProject)
-		having := project.Input.(*qm.BoundFilter)
-		aggregate := having.Input.(*qm.BoundAggregate)
-		require.Len(t, aggregate.Calls, 2)
-		assert.Equal(t, qm.FunctionID("COUNT_STAR"), aggregate.Calls[1].Expr.Function)
-		assert.False(t, aggregate.Calls[1].Expr.Nullable)
-		assert.Equal(t, qm.TypeInteger, aggregate.Calls[1].Expr.Type.Kind)
-		assert.Equal(t, aggregate.Calls[0].Output, project.Columns[1].Expr.Field)
-		predicate := having.Predicate.Args[0]
+		parts := query
+		require.Len(t, parts.ColumnsPart, 3)
+		assert.Equal(t, qm.FunctionID("COUNT_STAR"), parts.ColumnsPart[2].Expr.Function)
+		assert.False(t, parts.ColumnsPart[2].Expr.Nullable)
+		assert.Equal(t, qm.TypeInteger, parts.ColumnsPart[2].Expr.Type.Kind)
+		predicate := parts.HavingPart[0].Args[0]
 		if predicate.Kind == qm.ExprCast {
 			predicate = predicate.Args[0]
 		}
-		assert.Equal(t, aggregate.Calls[0].Output, predicate.Field)
-		assert.Equal(t, project.Columns[1].Output, sort.Keys[0].Expr.Field)
-		assert.Equal(t, qm.NullsLast, sort.Keys[0].Nulls)
+		assert.True(t, sameBoundExpr(parts.ColumnsPart[1].Expr, predicate))
+		assert.True(t, sameBoundExpr(parts.ColumnsPart[1].Expr, parts.OrderByPart[0].Expr))
+		assert.Equal(t, qm.NullsLast, parts.OrderByPart[0].Nulls)
 	})
 	t.Run("group expressions and derived scopes", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT q.n FROM (SELECT id+1 AS n FROM {{orders}} GROUP BY id+1) q ORDER BY q.n")
 		require.NoError(t, err)
-		sort := query.Root.(*qm.BoundSort)
-		project := sort.Input.(*qm.BoundProject)
-		subquery := project.Input.(*qm.BoundSubquery)
-		assert.Equal(t, subquery.Columns[0].Output, project.Columns[0].Expr.Field)
-		inner := subquery.Input.(*qm.BoundProject)
-		aggregate := inner.Input.(*qm.BoundAggregate)
-		assert.Equal(t, aggregate.GroupKeys[0].Output, inner.Columns[0].Expr.Field)
-		assert.NotEqual(t, inner.Columns[0].Output, subquery.Columns[0].Output)
+		parts := query
+		subquery := parts.FromPart.(*qm.Subquery)
+		inner := subquery.Query
+		assert.Equal(t, subquery.Columns[0].Output, parts.ColumnsPart[0].Expr.Field)
+		assert.True(t, sameBoundExpr(inner.GroupByPart[0], inner.ColumnsPart[0].Expr))
+		assert.NotEqual(t, inner.ColumnsPart[0].Output, subquery.Columns[0].Output)
 	})
 	t.Run("grouping resolves field identity and rejects original ambiguity", func(t *testing.T) {
 		_, err := bindSQL(t, "SELECT id+1 AS n FROM {{orders}} a GROUP BY a.id+1 ORDER BY id+1")
@@ -172,28 +174,23 @@ func TestBind(t *testing.T) {
 	t.Run("hidden ordering stays inside logical limit", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT name FROM {{orders}} ORDER BY id LIMIT 10")
 		require.NoError(t, err)
-		cleanup := query.Root.(*qm.BoundProject)
-		limit := cleanup.Input.(*qm.BoundLimit)
-		sort := limit.Input.(*qm.BoundSort)
-		project := sort.Input.(*qm.BoundProject)
-		require.Len(t, project.OutputSchema, 2)
-		assert.True(t, project.OutputSchema[1].Hidden)
-		assert.Equal(t, project.Columns[1].Output, sort.Keys[0].Expr.Field)
-		assert.Equal(t, int64(10), limit.Count)
-		require.Len(t, query.OutputSchema, 1)
-		assert.Equal(t, "name", query.OutputSchema[0].Name)
-		assert.False(t, query.OutputSchema[0].Hidden)
+		parts := query
+		require.Len(t, parts.OrderByPart, 1)
+		require.Len(t, query.Schema(), 1)
+		assert.NotEqual(t, parts.ColumnsPart[0].Expr.Field, parts.OrderByPart[0].Expr.Field)
+		assert.Equal(t, int64(10), parts.LimitPart.Count)
+		assert.Equal(t, "name", query.Schema()[0].Name)
 	})
 	t.Run("sort output alias shadows input and allows positions", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT name AS id, amount AS a FROM {{orders}} ORDER BY id, 2 DESC")
 		require.NoError(t, err)
-		sort := query.Root.(*qm.BoundSort)
-		assert.Equal(t, query.OutputSchema[0].ID, sort.Keys[0].Expr.Field)
-		assert.Equal(t, qm.TypeString, sort.Keys[0].Expr.Type.Kind)
-		assert.Equal(t, query.OutputSchema[1].ID, sort.Keys[1].Expr.Field)
+		sort := query
+		assert.Equal(t, query.ColumnsPart[0].Expr.Field, sort.OrderByPart[0].Expr.Field)
+		assert.Equal(t, qm.TypeString, sort.OrderByPart[0].Expr.Type.Kind)
+		assert.Equal(t, query.ColumnsPart[1].Expr.Field, sort.OrderByPart[1].Expr.Field)
 		query, err = bindSQL(t, "SELECT MIN(amount) AS id FROM {{orders}} GROUP BY id ORDER BY id")
 		require.NoError(t, err)
-		assert.Equal(t, query.OutputSchema[0].ID, query.Root.(*qm.BoundSort).Keys[0].Expr.Field)
+		assert.True(t, sameBoundExpr(query.ColumnsPart[0].Expr, query.OrderByPart[0].Expr))
 	})
 	t.Run("distinct sort can use projected expressions", func(t *testing.T) {
 		_, err := bindSQL(t, "SELECT DISTINCT id AS n FROM {{orders}} ORDER BY id")
@@ -201,25 +198,24 @@ func TestBind(t *testing.T) {
 		_, err = bindSQL(t, "SELECT DISTINCT id FROM {{orders}} ORDER BY id+1")
 		require.NoError(t, err)
 	})
-	t.Run("stable function only declares one runtime value", func(t *testing.T) {
+	t.Run("stable functions remain typed calls", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT NOW() AS a, CURRENT_TIMESTAMP AS b FROM {{orders}}")
 		require.NoError(t, err)
-		require.Len(t, query.RuntimeSlots, 1)
-		slot := query.RuntimeSlots[0]
-		assert.Equal(t, qm.RuntimeQueryStart, slot.Source)
-		require.NotNil(t, slot.Type.TimePrecision)
-		assert.Equal(t, 6, *slot.Type.TimePrecision)
-		columns := query.Root.(*qm.BoundProject).Columns
-		assert.Equal(t, columns[0].Expr.RuntimeSlot, columns[1].Expr.RuntimeSlot)
-		assert.False(t, columns[0].Expr.Nullable)
+		columns := query.ColumnsPart
+		require.Len(t, columns, 2)
+		for _, column := range columns {
+			assert.Equal(t, qm.ExprCall, column.Expr.Kind)
+			assert.Equal(t, qm.FunctionID("CURRENT_TIMESTAMP"), column.Expr.Function)
+			assert.Equal(t, qm.TypeInstant, column.Expr.Type.Kind)
+		}
 	})
 	t.Run("strict expressions preserve exact types and NULL behavior", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT -9223372036854775808 AS lo, 18446744073709551615 AS hi, 1.2300 AS d, NULL IS NULL AS z, COALESCE(NULL,1) AS c, CASE WHEN flag THEN id ELSE 0 END AS k FROM {{orders}}")
 		require.NoError(t, err)
-		columns := query.Root.(*qm.BoundProject).Columns
-		assert.Equal(t, qm.IntegerValue("-9223372036854775808"), columns[0].Expr.Literal.Data)
+		columns := query.ColumnsPart
+		assert.Equal(t, qm.IntegerValue("-9223372036854775808"), columns[0].Expr.Value.Data)
 		assert.True(t, columns[1].Expr.Type.Unsigned)
-		assert.Equal(t, qm.DecimalValue("1.2300"), columns[2].Expr.Literal.Data)
+		assert.Equal(t, qm.DecimalValue("1.2300"), columns[2].Expr.Value.Data)
 		assert.Equal(t, 4, columns[2].Expr.Type.Scale)
 		assert.False(t, columns[3].Expr.Nullable)
 		assert.False(t, columns[4].Expr.Nullable)
@@ -252,21 +248,22 @@ func TestBind(t *testing.T) {
 		authorizer := queryAuthorizerFunc(func(_ context.Context, id string, _ qm.ExecutionIdentity, op string) (qm.AuthorizationBasis, error) {
 			return qm.AuthorizationBasis{ResourceID: id, Operation: op}, nil
 		})
-		cycle := &qm.Filter{}
-		cycle.Input = cycle
+		source := &qm.Subquery{Alias: "cycle"}
+		cycle := qm.Select().From(source)
+		source.Query = cycle
 		input := bindingInput(t, "SELECT id FROM {{orders}} WHERE flag")
-		expression := input.Root.(*qm.Project).Input.(*qm.Filter).Predicate
+		expression := input.WherePart[0]
 		expression.Kind = qm.ExprUnary
 		expression.Op = "NOT"
-		expression.Args = []*qm.Expr{expression}
-		for _, q := range []*qm.UnboundQuery{nil, {}, {Scope: 1, Root: cycle}, input} {
+		expression.Args = []*qm.Sqlizer{expression}
+		for _, q := range []*qm.SelectBuilder{nil, {}, cycle, input} {
 			result, err := Bind(context.Background(), q, semantic, qm.ExecutionIdentity{}, resolver, authorizer)
 			require.Error(t, err)
 			assert.Nil(t, result)
 		}
-		for _, kind := range []qm.ExprKind{qm.ExprField, qm.ExprRuntimeSlot} {
+		for _, kind := range []qm.ExprKind{qm.ExprField} {
 			query := bindingInput(t, "SELECT id FROM {{orders}}")
-			query.Root.(*qm.Project).Columns[0].Expr.Kind = kind
+			query.ColumnsPart[0].Expr.Kind = kind
 			result, err := Bind(context.Background(), query, semantic, qm.ExecutionIdentity{}, resolver, authorizer)
 			require.Error(t, err)
 			assert.Nil(t, result)
@@ -344,7 +341,7 @@ func TestBind(t *testing.T) {
 			return qm.AuthorizationBasis{ResourceID: id, Operation: op}, nil
 		})
 		input := bindingInput(t, "SELECT name FROM {{orders}} LIMIT 1")
-		input.Root = &qm.Sort{Input: input.Root, Keys: []qm.SortKey{{Expr: &qm.Expr{Kind: qm.ExprName, Name: []string{"id"}}}}}
+		input = qm.Select(qm.As(qm.Field("name"), "name")).FromSelect(input, "limited").OrderBy(qm.SortKey{Expr: qm.Field("id")})
 		query, err := Bind(context.Background(), input, semantic, qm.ExecutionIdentity{}, resolver, authorizer)
 		require.Error(t, err)
 		assert.Nil(t, query)
@@ -352,7 +349,7 @@ func TestBind(t *testing.T) {
 	t.Run("integer literals do not narrow ordinary arithmetic", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT 127+1 AS n, 1/2 AS half FROM {{orders}}")
 		require.NoError(t, err)
-		expressions := query.Root.(*qm.BoundProject).Columns
+		expressions := query.ColumnsPart
 		assert.Equal(t, 64, expressions[0].Expr.Type.BitWidth)
 		assert.Equal(t, qm.TypeDecimal, expressions[1].Expr.Type.Kind)
 		assert.Equal(t, 6, expressions[1].Expr.Type.Scale)
@@ -361,7 +358,7 @@ func TestBind(t *testing.T) {
 	t.Run("decimal arithmetic preserves operand precision", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT 1.23*1.2 AS n FROM {{orders}}")
 		require.NoError(t, err)
-		expr := query.Root.(*qm.BoundProject).Columns[0].Expr
+		expr := query.ColumnsPart[0].Expr
 		assert.Equal(t, qm.LogicalType{Kind: qm.TypeDecimal, Precision: 5, Scale: 3}, expr.Type)
 		assert.Equal(t, qm.LogicalType{Kind: qm.TypeDecimal, Precision: 3, Scale: 2}, expr.Args[0].Type)
 		assert.Equal(t, qm.LogicalType{Kind: qm.TypeDecimal, Precision: 2, Scale: 1}, expr.Args[1].Type)
@@ -369,24 +366,24 @@ func TestBind(t *testing.T) {
 	t.Run("bindings can feed the single source planner", func(t *testing.T) {
 		query, err := bindSQL(t, "SELECT a.id AS aid,b.id AS bid FROM {{orders}} a JOIN {{customers}} b ON a.id=b.id")
 		require.NoError(t, err)
-		resolver := bindingTargetResolverFunc(func(_ context.Context, scan qm.BoundScan, _ qm.ExecutionIdentity, _ qm.ExecutionOptions) ([]qm.TargetBinding, error) {
-			candidate := qm.TargetBinding{
-				Target:    qm.ExecutionTarget{CatalogID: scan.Resource.CatalogID, ConnectorType: "mysql", PhysicalTargetKey: "db", ConnectionProfile: "profile", EffectiveSourceIdentity: "principal", AuthorizationNamespace: "namespace", SchemaRevision: "schema-v1", ConfigRevision: "config-v1"},
-				Source:    qm.QuerySourceSource,
-				Relations: []qm.RelationBinding{{Instance: scan.Instance, ResourceID: scan.Resource.ID, Identifier: qm.PhysicalIdentifier{"db", scan.Resource.ID}}},
+		resolver := bindingSourceResolverFunc(func(_ context.Context, scan qm.Scan, _ qm.ExecutionIdentity) (qm.Scan, error) {
+			candidate := scan
+			candidate.Identifier = qm.PhysicalIdentifier{"db", scan.Resource.ID}
+			candidate.Fields = append([]qm.SourceField(nil), scan.Fields...)
+			for i := range candidate.Fields {
+				candidate.Fields[i].Identifier = qm.PhysicalIdentifier{candidate.Fields[i].LogicalName}
 			}
-			for _, f := range scan.Fields {
-				candidate.Fields = append(candidate.Fields, qm.FieldBinding{Address: qm.FieldAddress{Relation: scan.Instance, Field: f.ID}, Identifier: qm.PhysicalIdentifier{f.LogicalName}, NativeType: f.NativeType})
-			}
-			return []qm.TargetBinding{candidate}, nil
+			return candidate, nil
 		})
-		plan, err := planning.Plan(context.Background(), query, qm.ExecutionIdentity{SubjectID: "caller"}, qm.ExecutionOptions{}, resolver)
+		plan, err := planning.Plan(context.Background(), query, qm.ExecutionIdentity{SubjectID: "caller"}, resolver)
 		require.NoError(t, err)
-		assert.Same(t, query, plan.Query)
-		assert.Len(t, plan.TargetBinding.Relations, 2)
+		assert.NotSame(t, query, plan)
+		join := plan.FromPart.(*qm.Join)
+		assert.Equal(t, qm.PhysicalIdentifier{"db", "orders"}, join.Left.(*qm.Scan).Identifier)
+		assert.Equal(t, qm.PhysicalIdentifier{"db", "customers"}, join.Right.(*qm.Scan).Identifier)
 	})
 }
 
-func (f bindingTargetResolverFunc) ResolveSQLQueryTargets(ctx context.Context, scan qm.BoundScan, identity qm.ExecutionIdentity, options qm.ExecutionOptions) ([]qm.TargetBinding, error) {
-	return f(ctx, scan, identity, options)
+func (f bindingSourceResolverFunc) ResolveSQLQuerySource(ctx context.Context, scan qm.Scan, identity qm.ExecutionIdentity) (qm.Scan, error) {
+	return f(ctx, scan, identity)
 }

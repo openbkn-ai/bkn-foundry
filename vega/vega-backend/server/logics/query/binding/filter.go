@@ -16,9 +16,10 @@ import (
 
 type filterBuilder struct{ nodes int }
 
-// FilterExpression 将外部或保存的条件构造为 IR，不读取字段元数据、不修改输入。
+// ConvertFilterCondition 将 FilterCondCfg 或其公开 JSON 对象转换为 qm.Sqlizer 节点。
+// 转换在准备阶段进行，不读取字段元数据、不修改输入，也不产生 SQL。
 // nil/空对象表示 TRUE；已删除的 real_value、编译条件和未知字段不进入此边界。
-func FilterExpression(raw any, origin qm.Origin) (*qm.Expr, error) {
+func ConvertFilterCondition(raw any, origin qm.Origin) (*qm.Sqlizer, error) {
 	if raw == nil {
 		return boolean(true, origin), nil
 	}
@@ -56,18 +57,13 @@ func invalid(origin qm.Origin, message string) error {
 	return &qm.CompileError{Kind: qm.ErrorInvalidTree, Origin: origin, Message: message}
 }
 func path(origin qm.Origin, suffix string) qm.Origin { origin.Path += suffix; return origin }
-func field(name string, origin qm.Origin) *qm.Expr {
-	return &qm.Expr{Kind: qm.ExprName, Name: []string{name}, Origin: origin}
+func field(name string, origin qm.Origin) *qm.Sqlizer {
+	return qm.Field(name).WithOrigin(origin)
 }
-func boolean(value bool, origin qm.Origin) *qm.Expr {
-	text := "false"
-	if value {
-		text = "true"
-	}
-	return &qm.Expr{Kind: qm.ExprLiteral, Literal: &qm.Literal{Kind: qm.LiteralBoolean, Text: text}, Origin: origin}
-}
-func binary(op string, left, right *qm.Expr, origin qm.Origin) *qm.Expr {
-	return &qm.Expr{Kind: qm.ExprBinary, Op: op, Args: []*qm.Expr{left, right}, Origin: origin}
+func boolean(value bool, origin qm.Origin) *qm.Sqlizer { return qm.Bool(value).WithOrigin(origin) }
+
+func binary(op string, left, right *qm.Sqlizer, origin qm.Origin) *qm.Sqlizer {
+	return qm.Compare(op, left, right).WithOrigin(origin)
 }
 
 // validateFilterJSON 在解码共享条件结构前检查公开字段及深度，避免接受内部状态。
@@ -110,7 +106,7 @@ func validateFilterJSON(encoded json.RawMessage, origin qm.Origin, depth int, no
 	return nil
 }
 
-func (b *filterBuilder) expression(input *interfaces.FilterCondCfg, origin qm.Origin, depth int) (*qm.Expr, error) {
+func (b *filterBuilder) expression(input *interfaces.FilterCondCfg, origin qm.Origin, depth int) (*qm.Sqlizer, error) {
 	b.nodes++
 	if depth > qm.MaxDepth || b.nodes > qm.MaxNodes {
 		return nil, &qm.CompileError{Kind: qm.ErrorLimit, Origin: origin, Message: "过滤条件复杂度超限"}
@@ -125,7 +121,7 @@ func (b *filterBuilder) expression(input *interfaces.FilterCondCfg, origin qm.Or
 		if err := b.consume(max(0, len(input.SubConds)-2), origin); err != nil {
 			return nil, err
 		}
-		var result *qm.Expr
+		var result *qm.Sqlizer
 		op := strings.ToUpper(input.Operation)
 		for i, child := range input.SubConds {
 			expr, err := b.expression(child, path(origin, fmt.Sprintf(".sub_conditions[%d]", i)), depth+1)
@@ -157,7 +153,7 @@ func (b *filterBuilder) expression(input *interfaces.FilterCondCfg, origin qm.Or
 			}
 			return binary("=", lhs, boolean(input.Operation == "true", origin), origin), nil
 		}
-		return &qm.Expr{Kind: qm.ExprIsNull, Args: []*qm.Expr{lhs}, Negated: input.Operation == "not_null", Origin: origin}, nil
+		return &qm.Sqlizer{Kind: qm.ExprIsNull, Args: []*qm.Sqlizer{lhs}, Negated: input.Operation == "not_null", Origin: origin}, nil
 	}
 	if input.Value == nil {
 		return nil, invalid(path(origin, ".value"), "条件缺少值")
@@ -172,7 +168,7 @@ func (b *filterBuilder) expression(input *interfaces.FilterCondCfg, origin qm.Or
 		if err := b.consume(1, origin); err != nil {
 			return nil, err
 		}
-		var rhs *qm.Expr
+		var rhs *qm.Sqlizer
 		var err error
 		switch valueFrom {
 		case interfaces.ValueFrom_Field:
@@ -206,7 +202,7 @@ func (b *filterBuilder) expression(input *interfaces.FilterCondCfg, origin qm.Or
 		if err := b.consume(len(values), origin); err != nil {
 			return nil, err
 		}
-		args := []*qm.Expr{lhs}
+		args := []*qm.Sqlizer{lhs}
 		for i, item := range values {
 			if item == nil {
 				return nil, invalid(origin, "集合及范围条件不接受 NULL")
@@ -218,9 +214,9 @@ func (b *filterBuilder) expression(input *interfaces.FilterCondCfg, origin qm.Or
 			args = append(args, expr)
 		}
 		if input.Operation == "range" || input.Operation == "out_range" {
-			return &qm.Expr{Kind: qm.ExprBetween, Args: args, Negated: input.Operation == "out_range", Origin: origin}, nil
+			return &qm.Sqlizer{Kind: qm.ExprBetween, Args: args, Negated: input.Operation == "out_range", Origin: origin}, nil
 		}
-		return &qm.Expr{Kind: qm.ExprIn, Args: args, Negated: input.Operation == "not_in", Origin: origin}, nil
+		return &qm.Sqlizer{Kind: qm.ExprIn, Args: args, Negated: input.Operation == "not_in", Origin: origin}, nil
 	case "like", "not_like":
 		if err := b.consume(1, origin); err != nil {
 			return nil, err
@@ -230,13 +226,13 @@ func (b *filterBuilder) expression(input *interfaces.FilterCondCfg, origin qm.Or
 			return nil, invalid(origin, "字面子串条件只接受字符串")
 		}
 		rhs, _ := literal(text, path(origin, ".value"))
-		return &qm.Expr{Kind: qm.ExprLiteralContains, Args: []*qm.Expr{lhs, rhs}, Negated: input.Operation == "not_like", Origin: origin}, nil
+		return &qm.Sqlizer{Kind: qm.ExprLiteralContains, Args: []*qm.Sqlizer{lhs, rhs}, Negated: input.Operation == "not_like", Origin: origin}, nil
 	default:
 		return nil, invalid(origin, "此过滤算子尚未接入 IR")
 	}
 }
 
-func literal(value any, origin qm.Origin) (*qm.Expr, error) {
+func literal(value any, origin qm.Origin) (*qm.Sqlizer, error) {
 	input := &qm.Literal{}
 	switch v := value.(type) {
 	case string:
@@ -257,5 +253,5 @@ func literal(value any, origin qm.Origin) (*qm.Expr, error) {
 	default:
 		return nil, invalid(origin, "条件值必须为标量")
 	}
-	return &qm.Expr{Kind: qm.ExprLiteral, Literal: input, Origin: origin}, nil
+	return &qm.Sqlizer{Kind: qm.ExprLiteral, Literal: input, Origin: origin}, nil
 }

@@ -4,6 +4,18 @@
 
 package querymodel
 
+import "time"
+
+const (
+	DependencyResource DependencyKind = "resource"
+	DependencyCatalog  DependencyKind = "catalog"
+	DependencyView     DependencyKind = "view"
+	DependencyConfig   DependencyKind = "config"
+	DependencySchema   DependencyKind = "schema"
+)
+
+const CurrentSemanticsVersion = "vega-query-semantics-v1"
+
 // ExecutionIdentity 保存非敏感身份引用，不携带 token 或连接凭据，也不是授权凭证。
 type ExecutionIdentity struct {
 	SubjectID              string
@@ -23,14 +35,6 @@ type AuthorizationBasis struct {
 
 type DependencyKind string
 
-const (
-	DependencyResource DependencyKind = "resource"
-	DependencyCatalog  DependencyKind = "catalog"
-	DependencyView     DependencyKind = "view"
-	DependencyConfig   DependencyKind = "config"
-	DependencySchema   DependencyKind = "schema"
-)
-
 type Dependency struct {
 	Kind              DependencyKind
 	ID                string
@@ -40,15 +44,18 @@ type Dependency struct {
 	Authorization     []AuthorizationBasis
 }
 
-type ViewAuthorizationMode string
+// SemanticContext 在绑定前确定，同次准备、count、读页及重试都必须复用。
+// TimeZone 来自服务端 TZ（空值回退 UTC），不接受客户端时区覆盖。
+type SemanticContext struct {
+	Version           string
+	TimeZone          string
+	Location          *time.Location
+	Comparison        ComparisonPolicy
+	ConfigFingerprint string
+}
 
-const (
-	ViewAuthorizationInvoker   ViewAuthorizationMode = "invoker"
-	ViewAuthorizationDelegated ViewAuthorizationMode = "delegated"
-)
-
-// v1 无受支持的委托配置时只能采用 invoker；DelegationRef 不包含凭据。
-type ViewAuthorization struct {
-	Mode          ViewAuthorizationMode
-	DelegationRef string
+type ComparisonPolicy struct {
+	StringRule               string
+	CaseSensitive            bool
+	TrailingSpaceSignificant bool
 }
