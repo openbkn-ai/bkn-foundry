@@ -564,6 +564,33 @@ func Test_Merge_V3(t *testing.T) {
 			So(net.ActionTypes[0].Parameters[1].Description, ShouldEqual, "Why the pod is restarted")
 			So(net.ActionTypes[0].ActionSource.ToolID, ShouldEqual, "tool_restart")
 		})
+
+		Convey("A field merge that breaks a rule of the definition itself is a conflict and keeps ours\n", func() {
+			ours := with(base, map[string]string{
+				"object_types/pod.bkn":         strings.Replace(pod, "min: 0, max: 100", "min: 50, max: 100", 1),
+				"action_types/restart_pod.bkn": strings.Replace(action, "Restarts a failing pod.", "Restarts a pod that keeps failing.", 1),
+			})
+			theirs := with(base, map[string]string{
+				"object_types/pod.bkn":         strings.Replace(pod, "min: 0, max: 100", "min: 0, max: 40", 1),
+				"action_types/restart_pod.bkn": strings.Replace(action, "| Reason |", "| Why the pod is restarted |", 1),
+			})
+
+			result, err := Merge(base, ours, theirs)
+
+			So(err, ShouldBeNil)
+			So(result.Conflicts, ShouldHaveLength, 1)
+			c := result.Conflicts[0]
+			So(c.Reason, ShouldEqual, interfaces.MERGE_CONFLICT_INVALID_DEFINITION)
+			So(c.Type, ShouldEqual, "object_type")
+			So(c.ID, ShouldEqual, "pod")
+			So(c.File, ShouldEqual, "object_types/pod.bkn")
+			So(c.Detail, ShouldContainSubstring, "range")
+			So(result.Files["object_types/pod.bkn"], ShouldResemble, ours["object_types/pod.bkn"])
+			So(result.Summary, ShouldResemble, interfaces.MergeSummary{Unchanged: 1, Merged: 1, Conflicted: 1})
+
+			net := loadMerged(result.Files)
+			So(net.ActionTypes[0].Parameters[1].Description, ShouldEqual, "Why the pod is restarted")
+		})
 	})
 }
 

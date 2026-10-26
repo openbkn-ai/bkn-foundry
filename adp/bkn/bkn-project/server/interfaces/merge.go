@@ -15,6 +15,9 @@ const (
 	// MERGE_CONFLICT_BROKEN_REFERENCE: each side is valid on its own, but the merged set refers to
 	// a definition the other side removed, e.g. a new relation to a deleted object type.
 	MERGE_CONFLICT_BROKEN_REFERENCE = "broken_reference"
+	// MERGE_CONFLICT_INVALID_DEFINITION: each side's change is valid, but the definition that
+	// combines them breaks a rule of its own, e.g. a range whose min ends up above its max.
+	MERGE_CONFLICT_INVALID_DEFINITION = "invalid_definition"
 )
 
 // MERGE_TYPE_FILE is the conflict type of a file that is not a BKN definition, such as
@@ -37,7 +40,7 @@ type MergeConflict struct {
 	Base   string `json:"base,omitempty"`
 	Ours   string `json:"ours,omitempty"`
 	Theirs string `json:"theirs,omitempty"`
-	// Detail explains a broken reference in the words of the BKN validator.
+	// Detail explains a broken reference or an invalid definition in the words of the BKN SDK.
 	Detail string `json:"detail,omitempty"`
 }
 

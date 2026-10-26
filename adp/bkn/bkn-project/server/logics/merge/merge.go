@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -103,7 +104,7 @@ func Merge(base, ours, theirs map[string][]byte) (*interfaces.MergeResult, error
 			return nil, err
 		}
 	}
-	if err := m.serializeMerged(); err != nil {
+	if err := m.serializeMerged(ours); err != nil {
 		return nil, err
 	}
 	if err := m.checkReferences(ours, theirs); err != nil {
@@ -443,21 +444,20 @@ func (m *merger) conflict(k defKey, d *definition, reason string, fc *fieldConfl
 
 // serializeMerged writes the combined definitions with the SDK serializer, under the BKN
 // specification of the merged network, and checks that each reads back as the merged model.
-func (m *merger) serializeMerged() error {
+// A combined definition that breaks a rule of its own, though each side's change was valid,
+// is a conflict and keeps ours.
+func (m *merger) serializeMerged(ours map[string][]byte) error {
 	if len(m.rewritten) == 0 {
 		return nil
 	}
-	net, err := m.network()
+	written, err := m.serialize()
 	if err != nil {
 		return err
 	}
-	var buf bytes.Buffer
-	if err := bkn.WriteNetworkToTar(net, &buf); err != nil {
-		return fmt.Errorf("serialize merged network: %w", err)
-	}
-	written, err := readTar(&buf)
-	if err != nil {
-		return fmt.Errorf("read serialized network: %w", err)
+	if m.dropInvalid(ours, written) {
+		if written, err = m.serialize(); err != nil {
+			return err
+		}
 	}
 	for _, r := range m.rewritten {
 		data, ok := written[serializedPath(r.key)]
@@ -485,6 +485,49 @@ func (m *merger) serializeMerged() error {
 		}
 	}
 	return nil
+}
+
+// serialize writes the merged network with the SDK serializer and returns its files by path.
+func (m *merger) serialize() (map[string][]byte, error) {
+	net, err := m.network()
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := bkn.WriteNetworkToTar(net, &buf); err != nil {
+		return nil, fmt.Errorf("serialize merged network: %w", err)
+	}
+	written, err := readTar(&buf)
+	if err != nil {
+		return nil, fmt.Errorf("read serialized network: %w", err)
+	}
+	return written, nil
+}
+
+// dropInvalid loads each combined definition in place of ours' file within ours, which loads,
+// so a failure belongs to that definition. Such a definition is recorded as a conflict and goes
+// back to ours. It reports whether any was dropped.
+func (m *merger) dropInvalid(ours, written map[string][]byte) bool {
+	kept := m.rewritten[:0]
+	for _, r := range m.rewritten {
+		probe := maps.Clone(ours)
+		probe[r.path] = written[serializedPath(r.key)]
+		_, err := loadSide(probe)
+		if err == nil {
+			kept = append(kept, r)
+			continue
+		}
+		d := m.owners[r.path].def
+		c := len(m.result.Conflicts)
+		m.conflict(r.key, d, interfaces.MERGE_CONFLICT_INVALID_DEFINITION, nil)
+		m.result.Conflicts[c].Detail = err.Error()
+		m.result.Files[r.path] = d.data
+		m.models[r.key] = d.model
+		m.count(r.key, &m.result.Summary.Conflicted)
+	}
+	dropped := len(kept) < len(m.rewritten)
+	m.rewritten = kept
+	return dropped
 }
 
 // network assembles the merged network model for the serializer: the network header and every
