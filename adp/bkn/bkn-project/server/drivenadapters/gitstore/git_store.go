@@ -118,29 +118,66 @@ func (gs *gitStore) InitLineage(ctx context.Context, lineageID string, files map
 	l.Lock()
 	defer l.Unlock()
 
-	repo, err := git.PlainInitWithOptions(p, &git.PlainInitOptions{
-		InitOptions: git.InitOptions{DefaultBranch: plumbing.NewBranchReferenceName(interfaces.GIT_MAIN_BRANCH)},
-		Bare:        true,
-	})
+	if _, err := os.Stat(p); err == nil {
+		span.SetStatus(codes.Error, "Repository exists")
+		return "", fmt.Errorf("init repository of lineage %s: %w", lineageID, git.ErrRepositoryAlreadyExists)
+	}
+	// Build the repository in a temporary directory and move it into place in
+	// one rename, so a crash mid-way never leaves a half-made <id>.git behind.
+	// Temporary names start with "." and so never match the lineage id rule.
+	gs.removeStaleTemps(lineageID)
+	tmp, err := os.MkdirTemp(gs.rootDir, tempPrefix(lineageID)+"*.git")
+	if err != nil {
+		span.SetStatus(codes.Error, "Create temporary directory failed")
+		return "", fmt.Errorf("init repository of lineage %s: %w", lineageID, err)
+	}
+	defer os.RemoveAll(tmp) // no-op once renamed
+
+	hash, err := initBareRepository(tmp, files, message, author)
 	if err != nil {
 		span.SetStatus(codes.Error, "Init repository failed")
 		return "", fmt.Errorf("init repository of lineage %s: %w", lineageID, err)
 	}
-	hash, err := commitBknDir(repo, nil, files, message, author)
-	if err != nil {
-		// Leave no half-made repository behind: a retry would find it and fail.
-		_ = os.RemoveAll(p)
-		span.SetStatus(codes.Error, "Commit failed")
-		return "", err
-	}
-	ref := plumbing.NewHashReference(plumbing.NewBranchReferenceName(interfaces.GIT_MAIN_BRANCH), hash)
-	if err := repo.Storer.SetReference(ref); err != nil {
-		_ = os.RemoveAll(p)
-		span.SetStatus(codes.Error, "Set reference failed")
-		return "", err
+	if err := os.Rename(tmp, p); err != nil {
+		span.SetStatus(codes.Error, "Move repository failed")
+		return "", fmt.Errorf("move repository of lineage %s into place: %w", lineageID, err)
 	}
 	span.SetStatus(codes.Ok, "")
 	return hash.String(), nil
+}
+
+func tempPrefix(lineageID string) string {
+	return ".tmp-" + lineageID + "-"
+}
+
+// removeStaleTemps deletes temporary directories left by an InitLineage that
+// was killed before its rename. The caller holds the lineage write lock.
+func (gs *gitStore) removeStaleTemps(lineageID string) {
+	stale, _ := filepath.Glob(filepath.Join(gs.rootDir, tempPrefix(lineageID)+"*.git"))
+	for _, dir := range stale {
+		_ = os.RemoveAll(dir)
+	}
+}
+
+// initBareRepository creates a bare repository at dir with main at a first
+// commit holding files under bkn/.
+func initBareRepository(dir string, files map[string][]byte, message string, author interfaces.GitAuthor) (plumbing.Hash, error) {
+	repo, err := git.PlainInitWithOptions(dir, &git.PlainInitOptions{
+		InitOptions: git.InitOptions{DefaultBranch: plumbing.NewBranchReferenceName(interfaces.GIT_MAIN_BRANCH)},
+		Bare:        true,
+	})
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	hash, err := commitBknDir(repo, nil, files, message, author)
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	ref := plumbing.NewHashReference(plumbing.NewBranchReferenceName(interfaces.GIT_MAIN_BRANCH), hash)
+	if err := repo.Storer.SetReference(ref); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return hash, nil
 }
 
 func (gs *gitStore) CommitFiles(ctx context.Context, lineageID string, branch string, files map[string][]byte,
