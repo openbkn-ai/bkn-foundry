@@ -56,12 +56,35 @@ var (
 
 type gitStore struct {
 	rootDir string
+	locks   *lineageLocks
+	// held is set only on the store WithLineageLock hands to its callback: the
+	// lineage whose write lock the callback already holds. That store serves no
+	// other lineage and does not take the lock again.
+	held string
+}
 
-	mu sync.Mutex
-	// locks serialises writes per lineage. Publishing a release will take the
-	// same lock, so a release and a drift commit never interleave.
+// lineageLocks serialises writes per lineage. Publishing a release will take the
+// same lock, so a release and a drift commit never interleave.
+type lineageLocks struct {
+	mu    sync.Mutex
 	locks map[string]*sync.RWMutex
 }
+
+// rwLocker is the part of sync.RWMutex the store uses.
+type rwLocker interface {
+	Lock()
+	Unlock()
+	RLock()
+	RUnlock()
+}
+
+// heldLock stands in for the lineage lock the caller of WithLineageLock already holds.
+type heldLock struct{}
+
+func (heldLock) Lock()    {}
+func (heldLock) Unlock()  {}
+func (heldLock) RLock()   {}
+func (heldLock) RUnlock() {}
 
 func NewGitStore(appSetting *common.AppSetting) interfaces.GitStore {
 	gsOnce.Do(func() {
@@ -71,23 +94,34 @@ func NewGitStore(appSetting *common.AppSetting) interfaces.GitStore {
 }
 
 func newGitStore(rootDir string) *gitStore {
-	return &gitStore{rootDir: rootDir, locks: map[string]*sync.RWMutex{}}
+	return &gitStore{rootDir: rootDir, locks: &lineageLocks{locks: map[string]*sync.RWMutex{}}}
 }
 
-func (gs *gitStore) lock(lineageID string) *sync.RWMutex {
-	gs.mu.Lock()
-	defer gs.mu.Unlock()
-	l, ok := gs.locks[lineageID]
+func (gs *gitStore) lock(lineageID string) rwLocker {
+	if lineageID == gs.held {
+		return heldLock{}
+	}
+	gs.locks.mu.Lock()
+	defer gs.locks.mu.Unlock()
+	l, ok := gs.locks.locks[lineageID]
 	if !ok {
 		l = &sync.RWMutex{}
-		gs.locks[lineageID] = l
+		gs.locks.locks[lineageID] = l
 	}
 	return l
 }
 
+// repoPath is checked by every operation before it takes a lock. An id that cannot
+// name a repository reports git.ErrRepositoryNotExists: no such repository can exist.
 func (gs *gitStore) repoPath(lineageID string) (string, error) {
 	if !lineageIDPattern.MatchString(lineageID) {
-		return "", fmt.Errorf("invalid lineage id %q", lineageID)
+		return "", fmt.Errorf("invalid lineage id %q: %w", lineageID, git.ErrRepositoryNotExists)
+	}
+	// The store given to a WithLineageLock callback holds one lineage lock only.
+	// Refusing other lineages keeps it from taking a second lock in an order
+	// another caller could reverse.
+	if gs.held != "" && lineageID != gs.held {
+		return "", fmt.Errorf("store is bound to lineage %s, not %s", gs.held, lineageID)
 	}
 	return filepath.Join(gs.rootDir, lineageID+".git"), nil
 }
@@ -408,6 +442,134 @@ func (gs *gitStore) MergeBase(ctx context.Context, lineageID string, refA string
 	return bases[0].Hash.String(), nil
 }
 
+func (gs *gitStore) ResolveRef(ctx context.Context, lineageID string, ref string) (string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "ResolveRef")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return "", err
+	}
+	l := gs.lock(lineageID)
+	l.RLock()
+	defer l.RUnlock()
+
+	hash, err := resolveCommit(repo, ref)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve ref failed")
+		return "", err
+	}
+	span.SetStatus(codes.Ok, "")
+	return hash.String(), nil
+}
+
+func (gs *gitStore) FastForward(ctx context.Context, lineageID string, branch string, to string) (string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "FastForward")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return "", err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	branchRef := plumbing.NewBranchReferenceName(branch)
+	head, err := branchHead(repo, branchRef)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read branch failed")
+		return "", fmt.Errorf("read branch %s of lineage %s: %w", branch, lineageID, err)
+	}
+	target, err := commitAt(repo, to)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve ref failed")
+		return "", err
+	}
+	ok, err := head.IsAncestor(target)
+	if err != nil {
+		span.SetStatus(codes.Error, "Ancestry check failed")
+		return "", err
+	}
+	if !ok && head.Hash != target.Hash {
+		span.SetStatus(codes.Error, "Not a fast-forward")
+		return "", fmt.Errorf("branch %s of lineage %s cannot fast-forward to %s", branch, lineageID, to)
+	}
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(branchRef, target.Hash)); err != nil {
+		span.SetStatus(codes.Error, "Set reference failed")
+		return "", err
+	}
+	span.SetStatus(codes.Ok, "")
+	return target.Hash.String(), nil
+}
+
+func (gs *gitStore) CommitMerge(ctx context.Context, lineageID string, branch string, other string,
+	files map[string][]byte, message string, author interfaces.GitAuthor) (string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "CommitMerge")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return "", err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	branchRef := plumbing.NewBranchReferenceName(branch)
+	head, err := branchHead(repo, branchRef)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read branch failed")
+		return "", fmt.Errorf("read branch %s of lineage %s: %w", branch, lineageID, err)
+	}
+	otherHash, err := resolveCommit(repo, other)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve ref failed")
+		return "", err
+	}
+	rootHash, err := rootTreeWithBkn(repo, head, files)
+	if err != nil {
+		span.SetStatus(codes.Error, "Write tree failed")
+		return "", err
+	}
+	hash, err := writeCommit(repo, rootHash, []plumbing.Hash{head.Hash, otherHash}, message, author)
+	if err != nil {
+		span.SetStatus(codes.Error, "Commit failed")
+		return "", err
+	}
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(branchRef, hash)); err != nil {
+		span.SetStatus(codes.Error, "Set reference failed")
+		return "", err
+	}
+	span.SetStatus(codes.Ok, "")
+	return hash.String(), nil
+}
+
+// WithLineageLock takes the lineage write lock once and hands fn a store whose
+// operations on that lineage skip the lock. sync.RWMutex is not reentrant, so
+// this is how fn reads and writes without deadlocking on the lock it runs under.
+func (gs *gitStore) WithLineageLock(ctx context.Context, lineageID string, fn func(store interfaces.GitStore) error) error {
+	if _, err := gs.repoPath(lineageID); err != nil {
+		return err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	return fn(&gitStore{rootDir: gs.rootDir, locks: gs.locks, held: lineageID})
+}
+
+func branchHead(repo *git.Repository, branchRef plumbing.ReferenceName) (*object.Commit, error) {
+	ref, err := repo.Reference(branchRef, true)
+	if err != nil {
+		return nil, err
+	}
+	return repo.CommitObject(ref.Hash())
+}
+
 func resolveCommit(repo *git.Repository, ref string) (plumbing.Hash, error) {
 	hash, err := repo.ResolveRevision(plumbing.Revision(ref))
 	if err != nil {
@@ -462,6 +624,33 @@ func blobHashes(repo *git.Repository, ref string) (map[string]plumbing.Hash, err
 // without writing anything when the tree would not change.
 func commitBknDir(repo *git.Repository, parent *object.Commit, files map[string][]byte,
 	message string, author interfaces.GitAuthor) (plumbing.Hash, error) {
+	rootHash, err := rootTreeWithBkn(repo, parent, files)
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	if parent == nil {
+		return writeCommit(repo, rootHash, nil, message, author)
+	}
+	if parent.TreeHash == rootHash {
+		return parent.Hash, nil
+	}
+	return writeCommit(repo, rootHash, []plumbing.Hash{parent.Hash}, message, author)
+}
+
+func writeCommit(repo *git.Repository, rootHash plumbing.Hash, parents []plumbing.Hash,
+	message string, author interfaces.GitAuthor) (plumbing.Hash, error) {
+	sig := object.Signature{Name: author.Name, Email: author.Email, When: time.Now()}
+	commit := &object.Commit{Author: sig, Committer: sig, Message: message, TreeHash: rootHash, ParentHashes: parents}
+	obj := repo.Storer.NewEncodedObject()
+	if err := commit.Encode(obj); err != nil {
+		return plumbing.ZeroHash, err
+	}
+	return repo.Storer.SetEncodedObject(obj)
+}
+
+// rootTreeWithBkn writes a root tree whose bkn/ directory holds exactly files and
+// whose other top-level entries are those of parent, and returns its hash.
+func rootTreeWithBkn(repo *git.Repository, parent *object.Commit, files map[string][]byte) (plumbing.Hash, error) {
 	entries := []object.TreeEntry{}
 	if parent != nil {
 		root, err := parent.Tree()
@@ -481,24 +670,7 @@ func commitBknDir(repo *git.Repository, parent *object.Commit, files map[string]
 		}
 		entries = append(entries, object.TreeEntry{Name: BKN_DIR, Mode: filemode.Dir, Hash: bknHash})
 	}
-	rootHash, err := encodeTree(repo, entries)
-	if err != nil {
-		return plumbing.ZeroHash, err
-	}
-	if parent != nil && parent.TreeHash == rootHash {
-		return parent.Hash, nil
-	}
-
-	sig := object.Signature{Name: author.Name, Email: author.Email, When: time.Now()}
-	commit := &object.Commit{Author: sig, Committer: sig, Message: message, TreeHash: rootHash}
-	if parent != nil {
-		commit.ParentHashes = []plumbing.Hash{parent.Hash}
-	}
-	obj := repo.Storer.NewEncodedObject()
-	if err := commit.Encode(obj); err != nil {
-		return plumbing.ZeroHash, err
-	}
-	return repo.Storer.SetEncodedObject(obj)
+	return encodeTree(repo, entries)
 }
 
 // writeTree writes files as nested trees and returns the hash of the top one.

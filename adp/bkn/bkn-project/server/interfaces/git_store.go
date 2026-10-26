@@ -31,6 +31,9 @@ func (d *PathDiff) Empty() bool {
 // repository. File maps are keyed by the path inside the bkn/ directory of a
 // commit, which is the path of the file in the bkn-backend export tar.
 // A ref is anything git resolves to a commit: a branch, a tag or a hash.
+// Errors wrap the go-git sentinels: git.ErrRepositoryNotExists for a lineage
+// without a repository (or an id that cannot name one), git.ErrRepositoryAlreadyExists,
+// git.ErrBranchExists and plumbing.ErrReferenceNotFound.
 //
 //go:generate mockgen -source ../interfaces/git_store.go -destination ../interfaces/mock/mock_git_store.go
 type GitStore interface {
@@ -49,4 +52,21 @@ type GitStore interface {
 	Diff(ctx context.Context, lineageID string, refA string, refB string) (*PathDiff, error)
 	// MergeBase returns the best common ancestor of refA and refB.
 	MergeBase(ctx context.Context, lineageID string, refA string, refB string) (string, error)
+	// ResolveRef returns the hash of the commit ref resolves to.
+	ResolveRef(ctx context.Context, lineageID string, ref string) (string, error)
+	// FastForward moves branch to the commit to resolves to. It refuses when the
+	// current head of branch is not an ancestor of that commit.
+	FastForward(ctx context.Context, lineageID string, branch string, to string) (string, error)
+	// CommitMerge writes a merge commit on branch whose parents are the head of
+	// branch and the commit other resolves to, with files as its bkn/ directory and
+	// every other top-level entry taken from the head of branch. It always writes a
+	// commit, even when the tree does not change, so other becomes an ancestor of branch.
+	CommitMerge(ctx context.Context, lineageID string, branch string, other string, files map[string][]byte,
+		message string, author GitAuthor) (string, error)
+	// WithLineageLock runs fn while holding the write lock of the lineage, so a
+	// read-decide-write sequence is not interleaved with other writes. fn must do
+	// all its work through the store it is given, which serves only this lineage and
+	// does not take the lock again; calling the outer store for the same lineage
+	// from fn deadlocks. The given store must not be used after fn returns.
+	WithLineageLock(ctx context.Context, lineageID string, fn func(store GitStore) error) error
 }

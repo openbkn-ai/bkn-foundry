@@ -6,6 +6,7 @@ package gitstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -189,6 +190,121 @@ func Test_GitStore(t *testing.T) {
 				"object_types/order.bkn":   []byte("order v1"),
 				"object_types/product.bkn": []byte("product v1"),
 			})
+		})
+
+		Convey("ResolveRef resolves branches and reports a missing ref or lineage\n", func() {
+			head, err := gs.ResolveRef(ctx, "orders", "main")
+			So(err, ShouldBeNil)
+			So(head, ShouldEqual, first)
+			_, err = gs.ResolveRef(ctx, "orders", "refs/heads/nope")
+			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
+			_, err = gs.ResolveRef(ctx, "missing", "main")
+			So(errors.Is(err, git.ErrRepositoryNotExists), ShouldBeTrue)
+			_, err = gs.ResolveRef(ctx, "../escape", "main")
+			So(errors.Is(err, git.ErrRepositoryNotExists), ShouldBeTrue)
+		})
+
+		Convey("FastForward moves a branch only forward\n", func() {
+			So(gs.CreateBranch(ctx, "orders", "project/p1", "main"), ShouldBeNil)
+			next, err := gs.CommitFiles(ctx, "orders", "main", map[string][]byte{"network.bkn": []byte("network v2")}, "main edit", author)
+			So(err, ShouldBeNil)
+
+			head, err := gs.FastForward(ctx, "orders", "project/p1", "main")
+			So(err, ShouldBeNil)
+			So(head, ShouldEqual, next)
+			got, _ := gs.ResolveRef(ctx, "orders", "project/p1")
+			So(got, ShouldEqual, next)
+
+			// The branch moves ahead; going back to its own ancestor is refused.
+			_, err = gs.CommitFiles(ctx, "orders", "project/p1", map[string][]byte{"network.bkn": []byte("network v3")}, "branch edit", author)
+			So(err, ShouldBeNil)
+			_, err = gs.FastForward(ctx, "orders", "project/p1", first)
+			So(err, ShouldNotBeNil)
+			_, err = gs.FastForward(ctx, "orders", "project/none", "main")
+			So(errors.Is(err, plumbing.ErrReferenceNotFound), ShouldBeTrue)
+		})
+
+		Convey("CommitMerge writes a two-parent commit and keeps the other top-level entries\n", func() {
+			So(gs.CreateBranch(ctx, "orders", "project/p1", "main"), ShouldBeNil)
+			mainHead, err := gs.CommitFiles(ctx, "orders", "main", map[string][]byte{"network.bkn": []byte("network v2")}, "main edit", author)
+			So(err, ShouldBeNil)
+			branchFiles := map[string][]byte{"network.bkn": []byte("network v1"), "object_types/order.bkn": []byte("order v2")}
+			branchHead, err := gs.CommitFiles(ctx, "orders", "project/p1", branchFiles, "branch edit", author)
+			So(err, ShouldBeNil)
+
+			merged := map[string][]byte{"network.bkn": []byte("network v2"), "object_types/order.bkn": []byte("order v2")}
+			hash, err := gs.CommitMerge(ctx, "orders", "project/p1", "refs/heads/main", merged, "merge main", author)
+			So(err, ShouldBeNil)
+
+			repo, _ := git.PlainOpen(gs.rootDir + "/orders.git")
+			commit, _ := repo.CommitObject(plumbing.NewHash(hash))
+			So(commit.ParentHashes, ShouldResemble, []plumbing.Hash{plumbing.NewHash(branchHead), plumbing.NewHash(mainHead)})
+			So(commit.Message, ShouldEqual, "merge main")
+			files, err := gs.ReadTree(ctx, "orders", "project/p1")
+			So(err, ShouldBeNil)
+			So(files, ShouldResemble, merged)
+			base, err := gs.MergeBase(ctx, "orders", "main", "project/p1")
+			So(err, ShouldBeNil)
+			So(base, ShouldEqual, mainHead)
+
+			Convey("even when the tree does not change\n", func() {
+				again, err := gs.CommitMerge(ctx, "orders", "project/p1", "main", merged, "merge again", author)
+				So(err, ShouldBeNil)
+				So(again, ShouldNotEqual, hash)
+				commit, _ := repo.CommitObject(plumbing.NewHash(again))
+				So(commit.NumParents(), ShouldEqual, 2)
+			})
+		})
+
+		Convey("WithLineageLock runs fn under the lineage lock with a store that does not relock\n", func() {
+			var head string
+			err := gs.WithLineageLock(ctx, "orders", func(store interfaces.GitStore) error {
+				// Reads and writes through the given store do not deadlock.
+				files, err := store.ReadTree(ctx, "orders", "main")
+				if err != nil {
+					return err
+				}
+				files["object_types/order.bkn"] = []byte("order v2")
+				head, err = store.CommitFiles(ctx, "orders", "main", files, "locked edit", author)
+				return err
+			})
+			So(err, ShouldBeNil)
+			got, _ := gs.ResolveRef(ctx, "orders", "main")
+			So(got, ShouldEqual, head)
+
+			// A writer on the outer store waits until fn returns.
+			release := make(chan struct{})
+			entered := make(chan struct{})
+			done := make(chan struct{})
+			go func() {
+				_ = gs.WithLineageLock(ctx, "orders", func(interfaces.GitStore) error {
+					close(entered)
+					<-release
+					return nil
+				})
+			}()
+			<-entered
+			go func() {
+				_, _ = gs.CommitFiles(ctx, "orders", "main", base, "outer", author)
+				close(done)
+			}()
+			select {
+			case <-done:
+				t.Fatal("CommitFiles ran while the lineage lock was held")
+			case <-time.After(50 * time.Millisecond):
+			}
+			close(release)
+			<-done
+
+			// The given store serves its own lineage only.
+			_, err = gs.InitLineage(ctx, "other", base, "init", author)
+			So(err, ShouldBeNil)
+			err = gs.WithLineageLock(ctx, "orders", func(store interfaces.GitStore) error {
+				_, err := store.ReadTree(ctx, "other", "main")
+				return err
+			})
+			So(err, ShouldNotBeNil)
+			So(gs.WithLineageLock(ctx, "../escape", func(interfaces.GitStore) error { return nil }), ShouldNotBeNil)
 		})
 
 		Convey("An empty file set leaves no bkn/ directory and reads back empty\n", func() {
