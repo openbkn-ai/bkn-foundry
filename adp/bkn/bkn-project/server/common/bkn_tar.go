@@ -23,8 +23,15 @@ const checksumFileName = "CHECKSUM"
 // exports. Paths are normalised as bkn-backend does on import: leading "./"
 // removed and cleaned. CHECKSUM is dropped. Entries that escape the archive
 // root are refused.
+//
+// The content read may not exceed len(data). A plain entry's bytes are stored in
+// the archive, so a well-formed BKN tar always fits; only a sparse entry can
+// expand past it, to whatever size its header claims. The budget thus bounds
+// the memory an upload takes by its body limit, and an export by the response
+// already held, without a second limit to keep in step.
 func ReadBKNTar(data []byte) (map[string][]byte, error) {
 	files := map[string][]byte{}
+	budget := int64(len(data))
 	tr := tar.NewReader(bytes.NewReader(data))
 	for {
 		header, err := tr.Next()
@@ -45,9 +52,13 @@ func ReadBKNTar(data []byte) (map[string][]byte, error) {
 		if name == checksumFileName {
 			continue
 		}
-		content, err := io.ReadAll(tr)
+		content, err := io.ReadAll(io.LimitReader(tr, budget+1))
 		if err != nil {
 			return nil, err
+		}
+		budget -= int64(len(content))
+		if budget < 0 {
+			return nil, fmt.Errorf("tar entry %q expands beyond the archive size", header.Name)
 		}
 		files[name] = content
 	}
