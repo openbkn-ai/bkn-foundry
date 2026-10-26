@@ -50,6 +50,12 @@ func (s *releaseService) ListReleases(ctx context.Context, lineageID string, lim
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ListReleases")
 	defer span.End()
 
+	// Guard here as well as in the handler: the paging below indexes by limit.
+	if limit < 1 || limit > interfaces.MAX_RELEASE_LIMIT {
+		span.SetStatus(codes.Error, "Invalid limit")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Limit)
+	}
+
 	query := interfaces.ReleasesQuery{LineageID: lineageID, Limit: limit + 1}
 	if cursor != "" {
 		position, err := decodeCursor(cursor)

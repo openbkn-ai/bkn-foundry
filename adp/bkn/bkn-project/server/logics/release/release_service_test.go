@@ -75,6 +75,13 @@ func Test_ReleaseService_ListReleases(t *testing.T) {
 			So(list.NextCursor, ShouldBeNil)
 		})
 
+		Convey("A limit outside [1, max] is rejected before any read\n", func() {
+			for _, limit := range []int{0, -1, interfaces.MAX_RELEASE_LIMIT + 1} {
+				_, err := svc.ListReleases(ctx, "orders", limit, "")
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_InvalidParameter_Limit)
+			}
+		})
+
 		Convey("A cursor that was not issued is rejected\n", func() {
 			for _, cursor := range []string{"not base64!", "bm90IGpzb24", encodeCursor(interfaces.ReleaseCursor{CreateTime: 1})} {
 				_, err := svc.ListReleases(ctx, "orders", 20, cursor)
