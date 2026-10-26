@@ -518,7 +518,7 @@ func TestOpenSearchConnectorDeleteDocumentsByQuery(t *testing.T) {
 			})})
 			require.NoError(t, err)
 			schema := []*interfaces.Property{{Name: "kind", Type: interfaces.DataType_String}}
-			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "kind", Operation: filter_condition.OperationEqual2, ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: "remove"}}, map[string]*interfaces.Property{"kind": schema[0]})
+			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "kind", Operation: filter_condition.OperationEqual2, ValueFrom: interfaces.ValueFrom_Const, Value: "remove"}, map[string]*interfaces.Property{"kind": schema[0]})
 			require.NoError(t, err)
 			connector := &OpenSearchConnector{client: client}
 			result, err := connector.DeleteDocumentsByQuery(context.Background(), "dataset-1", &interfaces.ResourceDataQueryParams{ActualFilterCond: condition}, schema)

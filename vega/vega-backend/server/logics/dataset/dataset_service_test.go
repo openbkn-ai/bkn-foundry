@@ -659,7 +659,7 @@ func TestDatasetServiceBulkReplaceDocuments(t *testing.T) {
 func TestDatasetServiceDeleteDocumentsByQueryIncompleteResult(t *testing.T) {
 	ds, lim := newDatasetServiceMock(t)
 	resource := &interfaces.Resource{ID: "dataset", LocalIndexName: "index", SchemaDefinition: []*interfaces.Property{{Name: "kind", Type: interfaces.DataType_String}}}
-	params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "kind", Operation: filter_condition.OperationEqual2, ValueOptCfg: interfaces.ValueOptCfg{Value: "old"}}}
+	params := &interfaces.ResourceDataQueryParams{FilterCondCfg: &interfaces.FilterCondCfg{Name: "kind", Operation: filter_condition.OperationEqual2, Value: "old"}}
 	progress := &interfaces.DeleteByQueryResult{Deleted: 2, TimedOut: true, VersionConflicts: 1, Failures: []interfaces.DocumentWriteResult{{ID: "", Status: 400, ErrorCode: interfaces.DocumentInvalid}}}
 	lim.EXPECT().DeleteDocumentsByQuery(gomock.Any(), "index", resource, params).Return(progress, interfaces.NewDeleteByQueryIncompleteError(progress))
 	result, err := ds.DeleteDocumentsByQuery(context.Background(), resource, params)
