@@ -244,9 +244,10 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		ProjectID:   req.ProjectID,
 		Publisher:   publisher,
 		Notes:       req.Notes,
-		State:       interfaces.RELEASE_STATE_LIVE,
-		CreateTime:  now,
-		UpdateTime:  now,
+		// The newest release is live; the state is worked out, not stored.
+		State:      interfaces.RELEASE_STATE_LIVE,
+		CreateTime: now,
+		UpdateTime: now,
 	}
 	if err := s.ra.CreateRelease(ctx, release); err != nil {
 		return nil, err

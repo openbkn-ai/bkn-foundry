@@ -6,10 +6,10 @@ package interfaces
 
 // A release lineage is the chain of knowledge networks published from one base
 // network. Each release is imported as a new network whose id is
-// <base_id>_<version>; the lineage id is the base network id. A release is
-// live until a switch moves the consumers away from it, which archives it (see
-// Switch). The archived state is recorded here only; bkn-backend does not
-// enforce read-only.
+// <base_id>_<version>; the lineage id is the base network id. The newest
+// release is live and every earlier one archived; the state is worked out when
+// a release is read, not stored. Switching consumers (see Switch) changes no
+// state. bkn-backend does not enforce read-only on archived networks.
 
 // Release states.
 const (
@@ -29,7 +29,7 @@ type AccountInfo struct {
 	Type string `json:"type"`
 }
 
-// Release is one row of t_bkn_project_release.
+// Release is one row of t_bkn_project_release, with its state worked out.
 type Release struct {
 	ID          string      `json:"id"`
 	LineageID   string      `json:"lineage_id"`

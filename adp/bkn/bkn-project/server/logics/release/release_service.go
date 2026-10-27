@@ -85,6 +85,17 @@ func (s *releaseService) ListReleases(ctx context.Context, lineageID string, lim
 		next := encodeCursor(interfaces.ReleaseCursor{CreateTime: last.CreateTime, ID: last.ID})
 		list.NextCursor = &next
 	}
+	// The first page opens with the newest release; a later page looks it up.
+	if len(releases) > 0 {
+		liveID := releases[0].ID
+		if cursor != "" {
+			if liveID, err = s.liveReleaseID(ctx, lineageID); err != nil {
+				span.SetStatus(codes.Error, "Get newest release failed")
+				return nil, internalError(ctx, "Get newest release failed", err)
+			}
+		}
+		setStates(list.Entries, liveID)
+	}
 	span.SetStatus(codes.Ok, "")
 	return list, nil
 }
@@ -102,8 +113,35 @@ func (s *releaseService) GetRelease(ctx context.Context, networkID string) (*int
 		span.SetStatus(codes.Error, "Release not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Release_NotFound)
 	}
+	liveID, err := s.liveReleaseID(ctx, release.LineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get newest release failed")
+		return nil, internalError(ctx, "Get newest release failed", err)
+	}
+	setStates([]*interfaces.Release{release}, liveID)
 	span.SetStatus(codes.Ok, "")
 	return release, nil
+}
+
+// liveReleaseID is the id of the lineage's newest release, the live one.
+func (s *releaseService) liveReleaseID(ctx context.Context, lineageID string) (string, error) {
+	newest, err := s.ra.ListReleases(ctx, interfaces.ReleasesQuery{LineageID: lineageID, Limit: 1})
+	if err != nil || len(newest) == 0 {
+		return "", err
+	}
+	return newest[0].ID, nil
+}
+
+// setStates marks the live release live and every other one archived. The
+// state follows from the order of the releases alone: publishing a release
+// archives the one before it, and switching consumers changes neither.
+func setStates(releases []*interfaces.Release, liveID string) {
+	for _, release := range releases {
+		release.State = interfaces.RELEASE_STATE_ARCHIVED
+		if release.ID == liveID {
+			release.State = interfaces.RELEASE_STATE_LIVE
+		}
+	}
 }
 
 // encodeCursor makes the keyset position opaque to clients.

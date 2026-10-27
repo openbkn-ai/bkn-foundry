@@ -31,9 +31,11 @@ var (
 	raAccess interfaces.ReleaseAccess
 )
 
+// f_state is left out: a release's state is worked out when it is read (see
+// interfaces.Release), and the column keeps its default.
 var releaseColumns = []string{
 	"f_id", "f_lineage_id", "f_network_id", "f_version", "f_base_version", "f_project_id",
-	"f_publisher", "f_publisher_type", "f_notes", "f_state", "f_create_time", "f_update_time",
+	"f_publisher", "f_publisher_type", "f_notes", "f_create_time", "f_update_time",
 }
 
 var switchColumns = []string{
@@ -147,7 +149,7 @@ func (ra *releaseAccess) CreateRelease(ctx context.Context, release *interfaces.
 		Columns(releaseColumns...).
 		Values(
 			release.ID, release.LineageID, release.NetworkID, release.Version, release.BaseVersion, release.ProjectID,
-			release.Publisher.ID, release.Publisher.Type, release.Notes, release.State, release.CreateTime, release.UpdateTime,
+			release.Publisher.ID, release.Publisher.Type, release.Notes, release.CreateTime, release.UpdateTime,
 		).
 		ToSql()
 	if err != nil {
@@ -197,7 +199,7 @@ func (ra *releaseAccess) GetLatestSwitch(ctx context.Context, lineageID string) 
 	return sw, true, nil
 }
 
-func (ra *releaseAccess) RecordSwitch(ctx context.Context, sw *interfaces.Switch) (err error) {
+func (ra *releaseAccess) RecordSwitch(ctx context.Context, sw *interfaces.Switch) error {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "RecordSwitch")
 	defer span.End()
 
@@ -210,42 +212,16 @@ func (ra *releaseAccess) RecordSwitch(ctx context.Context, sw *interfaces.Switch
 		span.SetStatus(codes.Error, "Marshal schedules failed")
 		return err
 	}
-	statements := []sq.Sqlizer{
-		sq.Insert(SWITCH_TABLE_NAME).Columns(switchColumns...).Values(
-			sw.ID, sw.LineageID, sw.FromNetworkID, sw.ToNetworkID,
-			sw.Operator.ID, sw.Operator.Type, string(scheduleJSON), sw.CreateTime,
-		),
-		sq.Update(RELEASE_TABLE_NAME).
-			Set("f_state", interfaces.RELEASE_STATE_ARCHIVED).Set("f_update_time", sw.CreateTime).
-			Where(sq.Eq{"f_network_id": sw.FromNetworkID}),
-		sq.Update(RELEASE_TABLE_NAME).
-			Set("f_state", interfaces.RELEASE_STATE_LIVE).Set("f_update_time", sw.CreateTime).
-			Where(sq.Eq{"f_network_id": sw.ToNetworkID}),
-	}
-
-	tx, err := ra.db.BeginTx(ctx, nil)
+	sqlStr, vals, err := sq.Insert(SWITCH_TABLE_NAME).Columns(switchColumns...).Values(
+		sw.ID, sw.LineageID, sw.FromNetworkID, sw.ToNetworkID,
+		sw.Operator.ID, sw.Operator.Type, string(scheduleJSON), sw.CreateTime,
+	).ToSql()
 	if err != nil {
-		span.SetStatus(codes.Error, "Begin transaction failed")
+		span.SetStatus(codes.Error, "Build sql failed")
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-	for _, statement := range statements {
-		sqlStr, vals, buildErr := statement.ToSql()
-		if buildErr != nil {
-			span.SetStatus(codes.Error, "Build sql failed")
-			return buildErr
-		}
-		if _, err = tx.ExecContext(ctx, sqlStr, vals...); err != nil {
-			span.SetStatus(codes.Error, "Write switch failed")
-			return err
-		}
-	}
-	if err = tx.Commit(); err != nil {
-		span.SetStatus(codes.Error, "Commit transaction failed")
+	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Insert data failed")
 		return err
 	}
 	span.SetStatus(codes.Ok, "")
@@ -257,7 +233,7 @@ func scanRelease(row interface{ Scan(dest ...any) error }) (*interfaces.Release,
 	release := &interfaces.Release{}
 	err := row.Scan(
 		&release.ID, &release.LineageID, &release.NetworkID, &release.Version, &release.BaseVersion, &release.ProjectID,
-		&release.Publisher.ID, &release.Publisher.Type, &release.Notes, &release.State, &release.CreateTime, &release.UpdateTime,
+		&release.Publisher.ID, &release.Publisher.Type, &release.Notes, &release.CreateTime, &release.UpdateTime,
 	)
 	if err != nil {
 		return nil, err
