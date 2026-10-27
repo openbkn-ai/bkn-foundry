@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
@@ -73,7 +74,7 @@ func Test_ChooseIdentity(t *testing.T) {
 
 		Convey("A single-field identity is counted over the full table and kept even with duplicates\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
-			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).
 				DoAndReturn(func(_ context.Context, _ interfaces.VegaAccount, sql string, _ int) ([]map[string]any, error) {
 					So(sql, ShouldContainSubstring, "COUNT(DISTINCT `order_no`)")
 					So(sql, ShouldContainSubstring, "{{r_lines}}")
@@ -114,7 +115,7 @@ func Test_ChooseIdentity(t *testing.T) {
 
 		Convey("A count that fails keeps the choice and says why there are no counts\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
-			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).Return(nil, errors.New("timeout"))
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).Return(nil, errors.New("timeout"))
 			expectWrite()
 
 			got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("line_no"), caller)
@@ -124,6 +125,42 @@ func Test_ChooseIdentity(t *testing.T) {
 			So(key.Computed, ShouldBeFalse)
 			So(key.Field, ShouldEqual, "line_no")
 			So(key.Reason, ShouldStartWith, reasonQueryFailed)
+		})
+
+		Convey("Keeping a declared key that counted duplicates is a decision, counted again\n", func() {
+			lines := draft.Items.ObjectTypes[0]
+			lines.PrimaryKeys = []string{"order_no"}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).
+				Return([]map[string]any{{"total": float64(10), "distinct_values": float64(9), "nulls": float64(0)}}, nil)
+			expectWrite()
+
+			got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no"), caller)
+
+			So(err, ShouldBeNil)
+			So(got.Items.ObjectTypes[0].NeedsIdentity, ShouldBeFalse)
+			So(got.Items.ObjectTypes[0].Key.Computed, ShouldBeTrue)
+			decision := got.Items.Decisions[0]
+			So(decision.Action, ShouldEqual, interfaces.DRAFT_DECISION_IDENTITY)
+			So(decision.Before, ShouldResemble, []string{"order_no"})
+			So(decision.After, ShouldResemble, []string{"order_no"})
+		})
+
+		Convey("A slow count gives up well before the gateway does, so the choice is still written\n", func() {
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 30).
+				DoAndReturn(func(qctx context.Context, _ interfaces.VegaAccount, _ string, _ int) ([]map[string]any, error) {
+					deadline, ok := qctx.Deadline()
+					So(ok, ShouldBeTrue)
+					So(time.Until(deadline), ShouldBeLessThanOrEqualTo, identityCountTimeout)
+					return nil, context.DeadlineExceeded
+				})
+			expectWrite()
+
+			got, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", choose("order_no"), caller)
+
+			So(err, ShouldBeNil)
+			So(got.Items.ObjectTypes[0].Key.Reason, ShouldStartWith, reasonQueryFailed)
 		})
 
 		Convey("Choosing the identity an object type already has changes nothing\n", func() {

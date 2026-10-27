@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -20,6 +21,11 @@ import (
 
 // Decisions that read the source tables: choosing an object type's identity, counted over the
 // full table, and restoring a field the privacy rules excluded.
+
+// identityCountTimeout bounds counting a chosen key within the request: gateways commonly cut
+// requests at 60 seconds, and a cut request could no longer write the choice. A slower count
+// gives up, and the choice is kept without counts.
+const identityCountTimeout = 30 * time.Second
 
 func findObjectType(items *interfaces.DraftItems, id string) *interfaces.DraftObjectType {
 	for _, o := range items.ObjectTypes {
@@ -79,9 +85,12 @@ func (s *draftService) ChooseIdentity(ctx context.Context, token string, project
 		// A person may keep a key with duplicates or nulls, e.g. to clean the data later; the
 		// counts stay as found and the check on confirming the draft reports them.
 		key = interfaces.DraftKeyEvidence{Source: interfaces.DRAFT_KEY_CHOSEN, Field: properties[0].MappedField}
-		c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: s.setting.QueryTimeout}
+		timeout := min(s.setting.QueryTimeout, int(identityCountTimeout.Seconds()))
+		c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: timeout}
+		countCtx, cancel := context.WithTimeout(ctx, identityCountTimeout)
 		table := &interfaces.VegaTable{ID: objectType.Table.ResourceID}
-		rows, distinct, nulls, err := c.keyStats(ctx, table, properties[0].MappedField)
+		rows, distinct, nulls, err := c.keyStats(countCtx, table, properties[0].MappedField)
+		cancel()
 		if err != nil {
 			key.Reason = fmt.Sprintf("%s: %v", reasonQueryFailed, err)
 		} else {
