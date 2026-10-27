@@ -9,15 +9,16 @@ history is kept as a lineage. See issue #2520 and epic #2519.
 
 ## Current Capability Scope
 
-- Release lineage store (`t_bkn_project_release`) with read-only APIs.
+- Release lineage store (`t_bkn_project_release`).
 - Git lineages: one bare repository per lineage under `/data/git` (a
   persistent volume in the Helm chart). `main` mirrors the live network;
   projects work on their own branches and sync `main` into them with a
   semantic three-way merge.
 - Drift check between the live network and `main`.
+- Publishing a project branch as a new network `<lineage_id>_v<major>_<minor>_<patch>`
+  named `<base name> · <version>` (ids cut to 40 characters, names to 40
+  characters), tagged `v<version>` in git.
 - Health and readiness endpoints.
-
-Publishing follows in a later change.
 
 ## API
 
@@ -31,6 +32,7 @@ from bkn-backend run with the caller's token, so its permissions apply.
 | GET | `/ready` | 200 when the database is reachable, otherwise 503 |
 | GET | `/lineages/{lineage_id}/releases?limit=&cursor=` | Releases of a lineage, newest first; cursor paging |
 | GET | `/releases/{network_id}` | The release that published a network |
+| POST | `/lineages/{lineage_id}/releases` | Body `{"branch","version","project_id","notes"}`. Publishes the branch: 201 `{"release","network_id","tag","commit"}`. 409 `BranchBehind` (sync the branch first), `Drift` (the paths in `error_details`; commit the drift and sync), `VersionExists`, or `CapabilitiesSkipped` (the network was imported but the release is not recorded; publishing the same version from the same branch head again overwrites it) |
 | POST | `/lineages` | Body `{"kn_id"}`. Exports the live network and starts its lineage on `main`; 201 `{"lineage_id","commit"}`, 409 if it exists |
 | POST | `/lineages/{lineage_id}/branches` | Body `{"name","from"}` (`from` defaults to `main`); 201 `{"name","commit"}`, 409 if it exists |
 | PUT | `/lineages/{lineage_id}/branches/{branch}/definitions?message=` | Body: a BKN tar as bkn-backend exports it (`application/octet-stream`, at most 64 MiB). Replaces the branch definitions; `{"commit","changed":{"added","changed","removed"}}`. `main` is refused with 403 |

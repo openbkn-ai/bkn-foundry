@@ -61,8 +61,25 @@ type DriftResult struct {
 	Commit string `json:"commit,omitempty"`
 }
 
-// LineageService sets up release lineages and keeps project branches in step with main.
-// Errors are *httperrors.HTTPError.
+type PublishReleaseRequest struct {
+	// Branch is the project branch to publish.
+	Branch string `json:"branch"`
+	// Version is X.Y.Z; the release is tagged v<version>.
+	Version   string `json:"version"`
+	ProjectID string `json:"project_id"`
+	Notes     string `json:"notes"`
+}
+
+type PublishReleaseResult struct {
+	Release   *Release `json:"release"`
+	NetworkID string   `json:"network_id"`
+	Tag       string   `json:"tag"`
+	// Commit is the head of main after the release.
+	Commit string `json:"commit"`
+}
+
+// LineageService sets up release lineages, keeps project branches in step with
+// main and publishes them. Errors are *httperrors.HTTPError.
 //
 //go:generate mockgen -source ../interfaces/lineage_service.go -destination ../interfaces/mock/mock_lineage_service.go
 type LineageService interface {
@@ -77,4 +94,7 @@ type LineageService interface {
 	SyncBranch(ctx context.Context, lineageID string, branch string, author GitAuthor) (*SyncBranchResult, error)
 	// CheckDrift compares the live network knID with main; with commit it also commits the live set to main.
 	CheckDrift(ctx context.Context, token string, lineageID string, knID string, commit bool, author GitAuthor) (*DriftResult, error)
+	// PublishRelease imports a project branch with token as a new knowledge network and records the release.
+	PublishRelease(ctx context.Context, token string, lineageID string, req PublishReleaseRequest,
+		publisher AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
 }

@@ -17,9 +17,8 @@ func TestImportInitializesErrorCodes(t *testing.T) {
 	codes := []string{
 		perrors.BknProject_InvalidParameter_Limit,
 		perrors.BknProject_InvalidParameter_Cursor,
-		perrors.BknProject_Release_NotFound,
-		perrors.BknProject_Release_InternalError,
 	}
+	codes = append(codes, perrors.ReleaseErrCodeList...)
 	for _, code := range append(codes, perrors.LineageErrCodeList...) {
 		for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
 			httpErr := httperrors.NewHTTPError(i18n.WithLanguage(t.Context(), language), 400, code)

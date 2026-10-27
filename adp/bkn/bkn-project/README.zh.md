@@ -8,14 +8,14 @@
 
 ## 当前能力范围
 
-- 发布谱系存储（`t_bkn_project_release`）及只读 API。
+- 发布谱系存储（`t_bkn_project_release`）。
 - git 谱系：每个谱系一个裸仓库，位于 `/data/git`（Helm chart 中为持久卷）。
   `main` 对应线上网络；各项目在自己的分支上工作，并通过语义三方合并把
   `main` 同步进分支。
 - 线上网络与 `main` 之间的漂移检查。
+- 把项目分支发布为新网络 `<lineage_id>_v<major>_<minor>_<patch>`，名称为
+  `<基础名称> · <版本>`（ID 与名称均截断到 40 个字符），并在 git 中打标签 `v<version>`。
 - 健康检查与就绪检查接口。
-
-发布流程在后续变更中提供。
 
 ## API
 
@@ -29,6 +29,7 @@
 | GET | `/ready` | 数据库可达时返回 200，否则返回 503 |
 | GET | `/lineages/{lineage_id}/releases?limit=&cursor=` | 谱系下的发布记录，按时间倒序，游标分页 |
 | GET | `/releases/{network_id}` | 产生该网络的发布记录 |
+| POST | `/lineages/{lineage_id}/releases` | 请求体 `{"branch","version","project_id","notes"}`。发布该分支：返回 201 `{"release","network_id","tag","commit"}`。409 `BranchBehind`（请先同步分支）、`Drift`（路径见 `error_details`，请提交漂移并同步）、`VersionExists`，或 `CapabilitiesSkipped`（网络已导入但未记录发布；从同一分支头以同一版本重新发布会覆盖该网络） |
 | POST | `/lineages` | 请求体 `{"kn_id"}`。导出线上网络并在 `main` 上创建谱系；返回 201 `{"lineage_id","commit"}`，已存在返回 409 |
 | POST | `/lineages/{lineage_id}/branches` | 请求体 `{"name","from"}`（`from` 默认 `main`）；返回 201 `{"name","commit"}`，已存在返回 409 |
 | PUT | `/lineages/{lineage_id}/branches/{branch}/definitions?message=` | 请求体为 bkn-backend 导出格式的 BKN tar 包（`application/octet-stream`，最大 64 MiB），替换分支上的定义；返回 `{"commit","changed":{"added","changed","removed"}}`。对 `main` 返回 403 |

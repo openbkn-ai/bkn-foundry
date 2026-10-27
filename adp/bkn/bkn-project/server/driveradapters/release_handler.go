@@ -24,10 +24,12 @@ import (
 )
 
 // Release lineage of published knowledge networks. Every authenticated caller
-// may read it; the routes are read-only.
+// may read it. Publishing imports with the caller's token, so bkn-backend
+// applies its own permissions to the new network.
 
-func (r *restHandler) ListReleasesByEx(c *gin.Context) { r.withExVisitor(c, r.ListReleases) }
-func (r *restHandler) GetReleaseByEx(c *gin.Context)   { r.withExVisitor(c, r.GetRelease) }
+func (r *restHandler) ListReleasesByEx(c *gin.Context)   { r.withExVisitor(c, r.ListReleases) }
+func (r *restHandler) GetReleaseByEx(c *gin.Context)     { r.withExVisitor(c, r.GetRelease) }
+func (r *restHandler) PublishReleaseByEx(c *gin.Context) { r.withExVisitor(c, r.PublishRelease) }
 
 func replyError(c *gin.Context, span trace.Span, err error) {
 	httpErr := err.(*httperrors.HTTPError)
@@ -72,6 +74,33 @@ func (r *restHandler) GetRelease(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, release)
+}
+
+// PublishRelease serves POST /lineages/{lineage_id}/releases with
+// {"branch", "version", "project_id", "notes"}.
+func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	lineageID := c.Param("lineage_id")
+	span.SetAttributes(attr.Key("lineage_id").String(lineageID))
+
+	req := interfaces.PublishReleaseRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, invalidBody(ctx))
+		return
+	}
+	span.SetAttributes(attr.Key("branch").String(req.Branch), attr.Key("version").String(req.Version))
+
+	publisher := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	result, err := r.ls.PublishRelease(ctx, visitor.TokenID, lineageID, req, publisher, gitAuthor(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
+	rest.ReplyOK(c, http.StatusCreated, result)
 }
 
 // parseLimit reads the page size; an absent limit takes the default.

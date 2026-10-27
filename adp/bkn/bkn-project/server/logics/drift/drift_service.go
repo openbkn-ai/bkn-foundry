@@ -58,7 +58,7 @@ func (s *driftService) DriftCheck(ctx context.Context, token string, lineageID s
 	report := &interfaces.DriftReport{
 		LineageID: lineageID,
 		KNID:      knID,
-		PathDiff:  diffFiles(stored, live),
+		PathDiff:  DiffFiles(stored, live),
 		Live:      live,
 	}
 	span.SetStatus(codes.Ok, "")
@@ -80,8 +80,8 @@ func (s *driftService) CommitLiveToMain(ctx context.Context, report *interfaces.
 	return head, nil
 }
 
-// diffFiles compares the bytes of each path: what was added, changed or removed going from base to next.
-func diffFiles(base map[string][]byte, next map[string][]byte) interfaces.PathDiff {
+// DiffFiles compares the bytes of each path: what was added, changed or removed going from base to next.
+func DiffFiles(base map[string][]byte, next map[string][]byte) interfaces.PathDiff {
 	diff := interfaces.PathDiff{Added: []string{}, Changed: []string{}, Removed: []string{}}
 	for p, data := range next {
 		old, ok := base[p]
