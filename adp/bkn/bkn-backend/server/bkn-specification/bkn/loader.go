@@ -58,6 +58,18 @@ func LoadNetwork(rootPath string) (*BknNetwork, error) {
 // If CHECKSUM file exists, it will be validated against the actual file contents.
 // Checksum validation failures are logged as warnings but do not prevent loading.
 func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
+	return loadNetworkWithFS(fsys, rootPath, true)
+}
+
+// LoadNetworkDefinitionsWithFS loads a BKN network like LoadNetworkWithFS, but leaves unchecked the
+// 3.0 declarations that span definitions (ValidateNetworkDeclarations). Every file is still parsed
+// and checked under the specification network.bkn declares. It is for a caller that puts a network
+// together from several sources, such as a merge, and reports those declarations itself.
+func LoadNetworkDefinitionsWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
+	return loadNetworkWithFS(fsys, rootPath, false)
+}
+
+func loadNetworkWithFS(fsys FileSystem, rootPath string, checkDeclarations bool) (*BknNetwork, error) {
 	absRoot := fsys.Abs(rootPath)
 
 	// Ensure rootPath is a directory
@@ -128,7 +140,7 @@ func LoadNetworkWithFS(fsys FileSystem, rootPath string) (*BknNetwork, error) {
 	if fsys.IsDir(fsys.Join(absRoot, "metrics")) {
 		return nil, fmt.Errorf("legacy metrics/*.bkn is unsupported; migrate metrics to object metrics V1 before import")
 	}
-	if opts.v3() {
+	if opts.v3() && checkDeclarations {
 		if err := ValidateNetworkDeclarations(bknDoc); err != nil {
 			return nil, err
 		}

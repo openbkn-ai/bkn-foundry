@@ -63,6 +63,12 @@ bkn_spec: "3.0"
 // substring is not there, so a fixture change cannot silently turn a refusal case into a pass.
 func loadV3(t *testing.T, edits ...v3Edit) (*BknNetwork, error) {
 	t.Helper()
+	return loadFiles(v3FilesWith(t, edits...))
+}
+
+// v3FilesWith is the 3.0 fixture with edits applied.
+func v3FilesWith(t *testing.T, edits ...v3Edit) map[string]string {
+	t.Helper()
 	files := make(map[string]string, len(v3Files))
 	for path, text := range v3Files {
 		files[path] = text
@@ -81,7 +87,7 @@ func loadV3(t *testing.T, edits ...v3Edit) (*BknNetwork, error) {
 		require.Equal(t, 1, strings.Count(text, e.old), "fixture %s must contain %q once", e.file, e.old)
 		files[e.file] = strings.Replace(text, e.old, e.new, 1)
 	}
-	return loadFiles(files)
+	return files
 }
 
 func loadFiles(files map[string]string) (*BknNetwork, error) {

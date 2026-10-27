@@ -179,6 +179,26 @@ func TestValidateValueTypeAndNetworkDeclarations(t *testing.T) {
 	assert.ErrorContains(t, ValidateActionTypeDeclarations(at), "is the same as its own name")
 }
 
+func TestLoadV3_DefinitionsLeaveNetworkDeclarationsToTheCaller(t *testing.T) {
+	files := v3FilesWith(t, withDeclarations(v3Edit{fObj, pcPhase, "phase:\n  value_type: node_phase\n"})...)
+	mfs := NewMemoryFileSystem()
+	for path, text := range files {
+		mfs.AddFile("/net/"+path, []byte(text))
+	}
+	const want = `object type "pod" data property "phase": value type "node_phase" is not defined in this network`
+
+	_, err := LoadNetworkWithFS(mfs, "/net")
+	assert.ErrorContains(t, err, want)
+
+	net, err := LoadNetworkDefinitionsWithFS(mfs, "/net")
+	require.NoError(t, err)
+	assert.Equal(t, BknSpecV3, net.BknSpec)
+	assert.ErrorContains(t, ValidateNetworkDeclarations(net), want)
+
+	_, err = LoadNetworkDefinitionsWithFS(mfs, "/missing")
+	assert.Error(t, err)
+}
+
 func TestWriteV3_ValueTypesAndAliasesRoundTrip(t *testing.T) {
 	net, err := loadV3(t, withDeclarations()...)
 	require.NoError(t, err)
