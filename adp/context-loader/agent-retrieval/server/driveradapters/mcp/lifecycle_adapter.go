@@ -378,12 +378,15 @@ func handleLifecycleTool(
 		method, path, body := lifecycleRequest(name, args)
 		target := &bkntrace.Interaction{}
 		var apiErr *bkntrace.APIError
-		if name == toolKeyFinishInteraction {
+		switch name {
+		case toolKeyFinishInteraction:
 			// Finish preparation keeps the observation budget; the authoritative
 			// terminal POST has its own finite submission/replay budget.
 			release()
 			apiErr, err = callInteractionFinish(ctx, client, path, stringValue(args["interaction_id"]), body, target)
-		} else {
+		case toolKeyStartInteraction:
+			apiErr, err = callInteractionStart(ctx, client, path, stringValue(args["conversation_id"]), body, target)
+		default:
 			apiErr, err = client.Call(ctx, method, path, body, target)
 		}
 		if err != nil {

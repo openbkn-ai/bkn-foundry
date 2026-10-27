@@ -168,7 +168,7 @@ func TestStartInteractionStillRejectsCoreFailuresBeforeQuestionArtifact(t *testi
 				if value["code"] != test.code || value["required_action"] != "retry_later" || value["retryable"] != true {
 					t.Fatalf("Core outage must require retry: %#v", value)
 				}
-				if coreCalls != 1 || artifactCalls != 0 {
+				if coreCalls != 3 || artifactCalls != 0 {
 					t.Fatalf("Core calls=%d artifact calls=%d", coreCalls, artifactCalls)
 				}
 				return
