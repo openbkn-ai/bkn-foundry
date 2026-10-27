@@ -25,6 +25,6 @@ var capabilityBindingZhCN = i18n.I18nMessages{
 		"BknBackend.CapabilityBinding.ExecutionFactoryUnavailable":          "执行工厂不可达，未写入任何绑定。请稍后重试；本次请求没有产生部分写入。",
 		"BknBackend.CapabilityBinding.KnowledgeBaseNotSupported":            "当前部署没有知识库服务，无法挂载知识库。知识库是专业版能力。",
 		"BknBackend.CapabilityBinding.KnowledgeBaseServiceUnavailable":      "知识库服务不可达，未写入任何绑定。请稍后重试。",
-		"BknBackend.CapabilityBinding.ExportMetadataUnavailable":            "能力名称不可用，本次导出已被拒绝。请在执行工厂恢复后重试；本次未导出任何内容，也未改动数据。",
+		"BknBackend.CapabilityBinding.ExportMetadataUnavailable":            "能力名称不可用，本次导出已被拒绝。请在执行工厂与知识库服务恢复后重试；本次未导出任何内容，也未改动数据。",
 	},
 }

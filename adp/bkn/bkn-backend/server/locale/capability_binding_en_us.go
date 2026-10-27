@@ -25,6 +25,6 @@ var capabilityBindingEnUS = i18n.I18nMessages{
 		"BknBackend.CapabilityBinding.ExecutionFactoryUnavailable":          "The execution factory is unreachable; no binding was written. Retry later. This request produced no partial write.",
 		"BknBackend.CapabilityBinding.KnowledgeBaseNotSupported":            "This deployment has no knowledge base service, so a knowledge base cannot be mounted. Knowledge bases are an Enterprise capability.",
 		"BknBackend.CapabilityBinding.KnowledgeBaseServiceUnavailable":      "The knowledge base service is unreachable; no binding was written. Retry later.",
-		"BknBackend.CapabilityBinding.ExportMetadataUnavailable":            "Capability names are unavailable, so the export was refused. Retry once the execution factory is reachable. Nothing was exported and nothing was changed.",
+		"BknBackend.CapabilityBinding.ExportMetadataUnavailable":            "Capability names are unavailable, so the export was refused. Retry once the execution factory and the knowledge base service are reachable. Nothing was exported and nothing was changed.",
 	},
 }

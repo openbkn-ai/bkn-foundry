@@ -6,6 +6,7 @@ package capability_binding
 
 import (
 	"context"
+	"errors"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -80,16 +81,22 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 }
 
 // backfillKnowledgeBases names each mounted knowledge base, one kb-api call per knowledge base on
-// the page, and marks the ones kb-api no longer knows. kb-api unreachable, or not deployed at all,
-// degrades to the stored rows like the execution factory does.
+// the page, and marks the ones kb-api no longer knows. A deployment without kb-api can resolve no
+// knowledge base at all, so its mounts are missing, not a passing outage: answering "metadata
+// unavailable" there would fail every export of the network for as long as kb-api stays absent.
+// kb-api unreachable degrades to the stored rows like the execution factory does.
 func (cbs *capabilityBindingService) backfillKnowledgeBases(ctx context.Context,
 	kbBindings map[string][]*interfaces.CapabilityBinding) bool {
-	if cbs.kba == nil {
-		return false
-	}
 	available := true
 	for kbID, bindings := range kbBindings {
-		kb, err := cbs.kba.GetKnowledgeBase(ctx, kbID)
+		var kb *interfaces.KnowledgeBaseBrief
+		err := interfaces.ErrKnowledgeBaseUnavailable
+		if cbs.kba != nil {
+			kb, err = cbs.kba.GetKnowledgeBase(ctx, kbID)
+		}
+		if errors.Is(err, interfaces.ErrKnowledgeBaseUnavailable) {
+			kb, err = nil, nil
+		}
 		if err != nil {
 			logger.Warnf("capability metadata backfill: knowledge base %s unreachable: %v", kbID, err)
 			available = false
