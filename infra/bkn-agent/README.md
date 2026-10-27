@@ -88,12 +88,10 @@ content. Re-activating an official version also restores its language variants.
 Saving the English effective/shared content as a new administrator version, even
 without editing it, publishes that English text as canonical for every language.
 
-The Agent component schema advances to `0.2.2` without changing the product
-release version. The normal migrator selects `0.2.2/01-claim-prompt-locales.sql`
-for already-installed `0.2.1` databases; earlier versions run their intervening
-deltas first. The current fresh-install snapshot is `0.2.3/init.sql`, which
-includes the complete locale snapshot and the binding index below. Do not modify migration
-progress records or rerun the previous version's initialization snapshot.
+The locale backfill is `0.2.1/10-claim-prompt-locales.sql`; the normal migrator
+runs it with the other `0.2.1` deltas when upgrading from an earlier release. The
+fresh-install snapshot `0.2.1/init.sql` includes the complete locale snapshot and
+the binding index below. Do not rerun the previous version's initialization snapshot.
 
 Run the platform migration phase before starting the new Agent image: the ORM
 requires the nullable `f_localized_content` column. The backfill matches the
@@ -154,11 +152,9 @@ attribution. Upgrade Context Loader together with Agent for this contract.
 
 ## Agent configuration transaction locks
 
-Component schema `0.2.3` adds the nonunique BTREE index
-`ix_agent_prompt_id_agent_id (f_prompt_id, f_agent_id)` through the normal migrator.
-Its complete initialization snapshot includes all `0.2.2` defaults. Existing
-`0.2.2` installations select only `0.2.3/01-agent-prompt-index.sql`; older versions
-select the intervening deltas. Product `VERSION` does not change.
+`0.2.1/11-agent-prompt-index.sql` adds the nonunique BTREE index
+`ix_agent_prompt_id_agent_id (f_prompt_id, f_agent_id)` through the normal migrator;
+the `0.2.1/init.sql` snapshot includes it.
 
 Migrate before starting this image, then run `scripts/check-agent-prompt-index.sql`
 and verify the two index columns in that order. The MySQL/MariaDB locking query

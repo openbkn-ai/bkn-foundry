@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS t_object_type (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  f_aliases TEXT DEFAULT NULL COMMENT '别名，JSON 字符串数组',
+  f_lifecycle_status VARCHAR(20) DEFAULT NULL COMMENT '生命周期状态，空即 active',
+  f_deprecation TEXT DEFAULT NULL COMMENT '弃用说明，JSON：reason、replaced_by',
   PRIMARY KEY (f_kn_id,f_branch,f_id),
   UNIQUE KEY uk_object_type_name (f_kn_id,f_branch,f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '对象类';
@@ -93,6 +96,15 @@ CREATE TABLE IF NOT EXISTS t_relation_type (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  f_reverse_name VARCHAR(40) DEFAULT NULL COMMENT '反向名称',
+  f_aliases TEXT DEFAULT NULL COMMENT '别名，JSON 字符串数组',
+  f_cardinality VARCHAR(20) DEFAULT NULL COMMENT '基数，空为未声明',
+  f_constraints TEXT DEFAULT NULL COMMENT '关系约束，JSON：required、characteristics',
+  f_lifecycle_status VARCHAR(20) DEFAULT NULL COMMENT '生命周期状态，空即 active',
+  f_deprecation TEXT DEFAULT NULL COMMENT '弃用说明，JSON：reason、replaced_by',
+  f_importance VARCHAR(20) DEFAULT NULL COMMENT '主次，空即 primary',
+  f_fallback_for VARCHAR(40) DEFAULT NULL COMMENT '替代的主关系id，空为无',
+  f_verification VARCHAR(20) DEFAULT NULL COMMENT '可信度，空为未声明',
   PRIMARY KEY (f_kn_id,f_branch,f_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '关系类';
 
@@ -123,6 +135,9 @@ CREATE TABLE IF NOT EXISTS t_action_type (
   f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
   f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
   f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  f_aliases TEXT DEFAULT NULL COMMENT '别名，JSON 字符串数组',
+  f_lifecycle_status VARCHAR(20) DEFAULT NULL COMMENT '生命周期状态，空即 active',
+  f_deprecation TEXT DEFAULT NULL COMMENT '弃用说明，JSON：reason、replaced_by',
   PRIMARY KEY (f_kn_id,f_branch,f_id),
   UNIQUE KEY uk_action_type_name (f_kn_id,f_branch,f_name)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '行动类';
@@ -162,6 +177,30 @@ CREATE TABLE IF NOT EXISTS t_concept_group_relation (
   PRIMARY KEY (f_id),
   UNIQUE KEY uk_concept_group_relation (f_kn_id,f_branch,f_group_id,f_concept_type,f_concept_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '分组与概念对应表';
+
+
+-- 值类型
+CREATE TABLE IF NOT EXISTS t_value_type (
+  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '值类型id',
+  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '值类型名称',
+  f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
+  f_comment TEXT NOT NULL COMMENT '备注',
+  f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
+  f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
+  f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
+  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
+  f_base_type VARCHAR(40) NOT NULL DEFAULT '' COMMENT '基础类型',
+  f_definition MEDIUMTEXT DEFAULT NULL COMMENT '取值定义，JSON：enum、range、length、pattern、unit',
+  f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
+  f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
+  f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
+  f_updater VARCHAR(40) NOT NULL DEFAULT '' COMMENT '更新者id',
+  f_updater_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '更新者类型',
+  f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间',
+  PRIMARY KEY (f_kn_id,f_branch,f_id),
+  UNIQUE KEY uk_value_type_name (f_kn_id,f_branch,f_name)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '值类型';
 
 
 -- Action Schedule Management
