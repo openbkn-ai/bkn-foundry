@@ -271,8 +271,44 @@ func validateConceptsQuery(ctx context.Context, query *interfaces.ConceptsQuery)
 		Operation: cond.OperationAnd,
 		SubConds:  []*cond.CondCfg{query.ActualCondition, knFilter, typeFilter, branchFilter},
 	}
+	if query.ExcludeDeprecated {
+		excludeDeprecated(query.ActualCondition)
+	}
 
 	return nil
+}
+
+// notDeprecatedFilter keeps the concepts without lifecycle_status deprecated; only a deprecated
+// concept carries the field, so those without a lifecycle are kept.
+func notDeprecatedFilter() *cond.CondCfg {
+	return &cond.CondCfg{
+		Field:     interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS,
+		Operation: cond.OperationNotEq,
+		ValueOptCfg: cond.ValueOptCfg{
+			ValueFrom: cond.ValueFrom_Const,
+			Value:     interfaces.LIFECYCLE_DEPRECATED,
+		},
+	}
+}
+
+// excludeDeprecated adds the filter around the whole condition, and inside each knn as its own
+// filter so deprecated concepts take none of its k neighbours.
+func excludeDeprecated(root *cond.CondCfg) {
+	var addToKnn func(cfg *cond.CondCfg)
+	addToKnn = func(cfg *cond.CondCfg) {
+		if cfg == nil {
+			return
+		}
+		if cfg.Operation == cond.OperationKNN {
+			cfg.SubConds = append(cfg.SubConds, notDeprecatedFilter())
+			return
+		}
+		for _, sub := range cfg.SubConds {
+			addToKnn(sub)
+		}
+	}
+	addToKnn(root)
+	root.SubConds = append(root.SubConds, notDeprecatedFilter())
 }
 
 func validateCond(ctx context.Context, cfg *cond.CondCfg) error {

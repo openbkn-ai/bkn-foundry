@@ -408,6 +408,7 @@ func maxInt(a, b int) int {
 
 // buildCoarseRecallQuery builds coarse recall query conditions.
 // Business logic: Use knn + match combination query, sort by score in descending order.
+// Recall leaves deprecated concepts out; a query by ID still returns them.
 func (s *localSearchImpl) buildCoarseRecallQuery(knID, query string, limit int, conceptGroups []string) *interfaces.QueryConceptsReq {
 	return &interfaces.QueryConceptsReq{
 		KnID:          knID,
@@ -434,8 +435,9 @@ func (s *localSearchImpl) buildCoarseRecallQuery(knID, query string, limit int, 
 		Sort: []*interfaces.KnSortParams{
 			{Field: "_score", Direction: "desc"},
 		},
-		Limit:     limit,
-		NeedTotal: false,
+		Limit:             limit,
+		NeedTotal:         false,
+		ExcludeDeprecated: true,
 	}
 }
 

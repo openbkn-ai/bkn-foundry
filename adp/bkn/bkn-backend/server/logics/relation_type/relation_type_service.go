@@ -1001,6 +1001,7 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 		if err != nil {
 			return err
 		}
+		interfaces.IndexLifecycleStatus(document.Document)
 		if err := interfaces.EncodeIndexedConstraints(document.Document); err != nil {
 			return err
 		}

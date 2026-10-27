@@ -41,6 +41,24 @@ func NormalizeLifecycle(lc *Lifecycle) *Lifecycle {
 	return lc
 }
 
+// CONCEPT_FIELD_LIFECYCLE_STATUS is the concept index field holding the lifecycle status of an
+// object type, a relation type or an action type. Only a deprecated definition carries it, so
+// recall leaves deprecated concepts out with lifecycle_status not_eq deprecated and keeps the ones
+// without a lifecycle.
+const CONCEPT_FIELD_LIFECYCLE_STATUS = "lifecycle_status"
+
+// IndexLifecycleStatus copies the lifecycle status of a concept document to the flat field the
+// concept index declares; the nested lifecycle object is not indexed.
+func IndexLifecycleStatus(doc map[string]any) {
+	if lc, ok := doc[DECLARATION_LIFECYCLE].(map[string]any); ok {
+		if status, ok := lc["status"].(string); ok && status != "" && status != LIFECYCLE_ACTIVE {
+			doc[CONCEPT_FIELD_LIFECYCLE_STATUS] = status
+			return
+		}
+	}
+	delete(doc, CONCEPT_FIELD_LIFECYCLE_STATUS)
+}
+
 // IsDeprecated reports whether a lifecycle is deprecated.
 func (lc *Lifecycle) IsDeprecated() bool {
 	return lc != nil && lc.Status == LIFECYCLE_DEPRECATED
