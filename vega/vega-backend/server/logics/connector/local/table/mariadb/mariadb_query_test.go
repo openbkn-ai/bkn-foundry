@@ -6,6 +6,7 @@ package mariadb
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -20,6 +21,45 @@ import (
 )
 
 func TestMariaDBConnectorExecuteRawSQL(t *testing.T) {
+	for _, native := range []string{"BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB"} {
+		t.Run(native+" preserves binary content alongside text", func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			connector := &MariaDBConnector{db: db, connected: true}
+			mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+				sqlmock.NewColumn("payload").OfType(native, []byte{}),
+				sqlmock.NewColumn("label").OfType("TEXT", ""),
+			).AddRow([]byte{0xff, 0x00}, []byte("text")).AddRow([]byte{}, []byte{}).AddRow(nil, nil))
+			result, err := connector.ExecuteRawSQL(context.Background(), "SELECT payload, label FROM orders")
+			require.NoError(t, err)
+			assert.Equal(t, []interfaces.ColumnInfo{{Name: "payload", Type: interfaces.DataType_Binary}, {Name: "label", Type: interfaces.DataType_Text}}, result.Columns)
+			assert.Equal(t, []map[string]any{{"payload": []byte{0xff, 0x00}, "label": "text"}, {"payload": []byte{}, "label": ""}, {"payload": nil, "label": nil}}, result.Entries)
+			wire, err := json.Marshal(result.Entries)
+			require.NoError(t, err)
+			assert.JSONEq(t, `[{"payload":"/wA=","label":"text"},{"payload":"","label":""},{"payload":null,"label":null}]`, string(wire))
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+	t.Run("BIT raw results preserve bytes and declare binary", func(t *testing.T) {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		connector := &MariaDBConnector{db: db, connected: true}
+		mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+			sqlmock.NewColumn("bits").OfType("BIT", []byte{}),
+			sqlmock.NewColumn("flag").OfType("TINYINT", int64(0)),
+		).AddRow([]byte{0xff, 0x00}, int64(127)).AddRow([]byte{0}, int64(0)).AddRow(nil, nil))
+		result, err := connector.ExecuteRawSQL(context.Background(), "SELECT bits, flag FROM orders")
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.ColumnInfo{{Name: "bits", Type: interfaces.DataType_Binary}, {Name: "flag", Type: interfaces.DataType_Integer}}, result.Columns)
+		assert.Equal(t, []map[string]any{{"bits": []byte{0xff, 0x00}, "flag": int64(127)}, {"bits": []byte{0}, "flag": int64(0)}, {"bits": nil, "flag": nil}}, result.Entries)
+		wire, err := json.Marshal(result.Entries)
+		require.NoError(t, err)
+		assert.JSONEq(t, `[{"bits":"/wA=","flag":127},{"bits":"AA==","flag":0},{"bits":null,"flag":null}]`, string(wire))
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 	require.NoError(t, err)
 	defer func() { _ = db.Close() }()
@@ -74,6 +114,69 @@ func TestMariaDBConnectorExecuteRawSQL(t *testing.T) {
 }
 
 func TestMariaDBConnectorExecuteQuery(t *testing.T) {
+	t.Run("discovered BIT uses existing binary modes and retains integer values", func(t *testing.T) {
+		metadata, content := interfaces.BinaryModeMetadata, interfaces.BinaryModeContent
+		for _, native := range []string{"bit(1)", "bit(8)", "bit(17)"} {
+			for _, mode := range []*string{nil, &metadata, &content} {
+				modeName := "not requested"
+				if mode != nil {
+					modeName = *mode
+				}
+				t.Run(native+"/"+modeName, func(t *testing.T) {
+					db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+					require.NoError(t, err)
+					defer func() { _ = db.Close() }()
+					connector := &MariaDBConnector{db: db, connected: true}
+					resource := &interfaces.Resource{SourceIdentifier: "orders", SchemaDefinition: []*interfaces.Property{
+						{Name: "bits", OriginalType: native, Type: connector.MapType(native)},
+						{Name: "flag", OriginalType: "tinyint(1)", Type: connector.MapType("tinyint(1)")},
+					}}
+					nonzero, zero := []byte{1}, []byte{0}
+					switch native {
+					case "bit(8)":
+						nonzero = []byte{0xff}
+					case "bit(17)":
+						nonzero, zero = []byte{1, 0xff, 0xff}, []byte{0, 0, 0}
+					}
+					projection := "NULL"
+					rows := sqlmock.NewRows([]string{"bits", "flag"})
+					switch modeName {
+					case interfaces.BinaryModeContent:
+						projection = "`bits`"
+						rows.AddRow(nonzero, int64(127)).AddRow(zero, int64(0)).AddRow(nil, nil)
+					case interfaces.BinaryModeMetadata:
+						projection = "OCTET_LENGTH(`bits`)"
+						rows.AddRow(int64(len(nonzero)), int64(127)).AddRow(int64(len(zero)), int64(0)).AddRow(nil, nil)
+					default:
+						rows.AddRow(nil, int64(127)).AddRow(nil, int64(0)).AddRow(nil, nil)
+					}
+					mock.ExpectQuery("SELECT " + projection + " AS `bits`, `flag` AS `flag` FROM orders LIMIT 10 OFFSET 0").WillReturnRows(rows)
+					result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{BinaryMode: mode, Paging: interfaces.PagingRequest{Limit: 10}})
+					require.NoError(t, err)
+					require.Len(t, result.Entries, 3)
+					assert.Equal(t, int64(127), result.Entries[0]["flag"])
+					assert.Equal(t, int64(0), result.Entries[1]["flag"])
+					assert.Nil(t, result.Entries[2]["flag"])
+					switch modeName {
+					case interfaces.BinaryModeContent:
+						assert.Equal(t, nonzero, result.Entries[0]["bits"])
+						assert.Equal(t, zero, result.Entries[1]["bits"])
+						assert.Nil(t, result.Entries[2]["bits"])
+					case interfaces.BinaryModeMetadata:
+						assert.Equal(t, int64(len(nonzero)), result.Entries[0]["bits"])
+						assert.Equal(t, int64(len(zero)), result.Entries[1]["bits"])
+						assert.Nil(t, result.Entries[2]["bits"])
+					default:
+						for _, entry := range result.Entries {
+							assert.Equal(t, interfaces.ResourceValue{Mode: interfaces.ResourceValueModeUnavailable, Reason: interfaces.ResourceValueReasonNotRequested}, entry["bits"])
+						}
+					}
+					require.NoError(t, mock.ExpectationsWereMet())
+				})
+			}
+		}
+	})
+
 	t.Run("aggregate alias conflicts reject duplicate result columns", func(t *testing.T) {
 		for _, kind := range []string{"explicit", "default", "implicit"} {
 			t.Run(kind, func(t *testing.T) {

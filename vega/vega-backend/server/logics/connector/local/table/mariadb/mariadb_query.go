@@ -128,7 +128,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 }
 
 // ExecuteRawSQL executes SQL that has passed the caller's read-only and resource policy checks.
-// Column types come from the driver, byte values become strings, and TotalCount is the returned row count.
+// 列类型来自驱动；binary 列保留原始字节，其他值沿用原生查询转换，TotalCount 为返回行数。
 func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("failed to connect for raw query: %w", err)
@@ -145,7 +145,14 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sqlStr string) (*i
 		return nil, fmt.Errorf("failed to read result column types: %w", err)
 	}
 
-	result, err := c.scanQueryRows(rows, nil)
+	// binary 列保留原始字节，避免文本转换损坏内容；JSON 编码输出 base64。
+	binaryColumns := make(map[string]bool)
+	for _, column := range columnTypes {
+		if c.MapType(column.DatabaseTypeName()) == interfaces.DataType_Binary {
+			binaryColumns[column.Name()] = true
+		}
+	}
+	result, err := c.scanQueryRows(rows, binaryColumns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan raw query rows: %w", err)
 	}
