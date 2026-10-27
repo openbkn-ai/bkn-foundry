@@ -80,7 +80,7 @@ func (b *treeBuilder) query(ctx g.ISelectQueryContext) *sb.SelectBuilder {
 			if number, ok := param.Value.(json.Number); ok && !strings.ContainsAny(string(number), ".eE") {
 				position, err := strconv.ParseUint(string(number), 10, 64)
 				if err != nil || position == 0 {
-					b.fail(CodeSyntax, order, "排序位置必须为正整数")
+					b.fail(CodeSyntax, order, "ORDER BY position must be a positive integer")
 				}
 				item.Position, item.Expr = position, nil
 			}
@@ -169,7 +169,7 @@ func (b *treeBuilder) predicate(ctx g.IPredicateContext) sb.SqlNode {
 		return b.node(ctx, &sb.IsNull{Expr: left, Negated: negated}, left)
 	case ctx.IN() != nil:
 		if len(ctx.ExpressionList().AllExpression()) > maxINValues {
-			b.fail(CodeLimit, ctx, "IN 列表长度超限")
+			b.fail(CodeLimit, ctx, "IN list length exceeds the limit")
 			return nil
 		}
 		values := b.expressions(ctx.ExpressionList())
@@ -184,7 +184,7 @@ func (b *treeBuilder) predicate(ctx g.IPredicateContext) sb.SqlNode {
 			escape = stringValue(ctx.STRING().GetText())
 		}
 		if utf8.RuneCountInString(escape) != 1 {
-			b.fail(CodeSyntax, ctx, "LIKE 转义字符必须是单个字符")
+			b.fail(CodeSyntax, ctx, "LIKE escape must be a single character")
 		}
 		return b.node(ctx, &sb.Like{Expr: left, Pattern: pattern, Escape: &escape, Negated: negated}, left, pattern)
 	}
@@ -282,12 +282,12 @@ func (b *treeBuilder) primary(ctx g.IPrimaryExpressionContext) sb.SqlNode {
 		}
 		name := strings.ToUpper(identifier(call.Identifier()))
 		if !allowedSQLFunction(name) {
-			b.fail(CodeUnsupported, ctx, "函数未开放")
+			b.fail(CodeUnsupported, ctx, "function is not supported")
 			return nil
 		}
 		distinct := call.DISTINCT() != nil
 		if !validSQLFunctionArguments(name, args, distinct) {
-			b.fail(CodeUnsupported, ctx, "函数参数数量、DISTINCT 或通配符用法不支持")
+			b.fail(CodeUnsupported, ctx, "unsupported function argument count, DISTINCT, or wildcard usage")
 			return nil
 		}
 		return b.node(ctx, &sb.Function{Name: name, Args: args, Distinct: distinct}, args...)
@@ -346,7 +346,7 @@ func (b *treeBuilder) node(ctx antlr.ParserRuleContext, node sb.SqlNode, childre
 		return nil
 	}
 	if node == nil {
-		b.fail(CodeUnsupported, ctx, "表达式节点未开放")
+		b.fail(CodeUnsupported, ctx, "expression node is not supported")
 		return nil
 	}
 	depth := 1
@@ -355,7 +355,7 @@ func (b *treeBuilder) node(ctx antlr.ParserRuleContext, node sb.SqlNode, childre
 	}
 	b.nodes++
 	if depth > maxDepth || b.nodes > maxNodes {
-		b.fail(CodeLimit, ctx, "表达式深度或节点数量超限")
+		b.fail(CodeLimit, ctx, "expression depth or node count exceeds the limit")
 		return nil
 	}
 	b.depths[node] = depth
@@ -365,7 +365,7 @@ func (b *treeBuilder) node(ctx antlr.ParserRuleContext, node sb.SqlNode, childre
 func (b *treeBuilder) unsigned(token antlr.Token) uint64 {
 	value, err := strconv.ParseUint(token.GetText(), 10, 64)
 	if err != nil && b.err == nil {
-		b.err = errorAt(CodeSyntax, token, "LIMIT 或类型参数必须是 uint64 范围内的整数")
+		b.err = errorAt(CodeSyntax, token, "LIMIT or type parameter must be an integer in the uint64 range")
 	}
 	return value
 }
@@ -447,7 +447,7 @@ func (b *treeBuilder) castType(ctx g.ITypeNameContext) sb.CastType {
 	case "JSON":
 		return sb.CastJSON
 	default:
-		b.fail(CodeUnsupported, ctx, "转换目标类型未开放")
+		b.fail(CodeUnsupported, ctx, "cast target type is not supported")
 		return ""
 	}
 }
@@ -480,7 +480,7 @@ func (b *treeBuilder) projectionName(ctx g.IExpressionContext, expr sb.SqlNode) 
 		name = name[:end]
 	}
 	if strings.ContainsRune(name, '\x00') {
-		b.fail(CodeUnsupported, ctx, "默认输出列名包含非法字符，请显式指定别名")
+		b.fail(CodeUnsupported, ctx, "default output name contains invalid characters; specify an explicit alias")
 	}
 	return name
 }

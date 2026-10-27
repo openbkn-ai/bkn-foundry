@@ -339,7 +339,7 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	}
 	if catalog.ConnectorType == interfaces.ConnectorTypeMySQL || catalog.ConnectorType == interfaces.ConnectorTypeMariaDB {
 		if inputDialect != "mysql" {
-			return nil, mysqlQueryInvalid(ctx, "MariaDB/MySQL 查询仅支持 mysql 输入语法")
+			return nil, mysqlQueryInvalid(ctx, "MariaDB/MySQL queries only support mysql input syntax")
 		}
 		if parseErr != nil {
 			return nil, mysqlQueryInvalid(ctx, parseErr.Error())
@@ -458,7 +458,7 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 
 	if session.SQLQuery != nil && session.PageOffset > math.MaxInt-session.PageLimit {
 		rawQueryCursorSessions.remove(session.ID)
-		return nil, mysqlQueryInvalid(ctx, "cursor 分页偏移超出支持范围")
+		return nil, mysqlQueryInvalid(ctx, "cursor paging offset exceeds the supported range")
 	}
 	options := &rawSQLBuildOptions{offset: session.PageOffset, limit: session.PageLimit + 1}
 	var result *interfaces.RawQueryResponse
@@ -1180,7 +1180,7 @@ func (rqs *rawQueryService) prepareMySQLBuilder(ctx context.Context, query *sb.S
 				return nil, err
 			}
 			if resource.Category != interfaces.ResourceCategoryTable {
-				return nil, mysqlQueryInvalid(ctx, "当前 SQL 查询仅支持物理表资源")
+				return nil, mysqlQueryInvalid(ctx, "SQL queries currently only support physical table resources")
 			}
 			if resource.CatalogID != catalog.ID {
 				return nil, mysqlCursorChanged(ctx)
@@ -1204,11 +1204,11 @@ func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *inte
 			read = sb.Select(&sb.Alias{Expr: &sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}, Name: rawQueryTotalCountColumn}).FromSelect(query, "_raw_query_total")
 		} else {
 			if options.offset < 0 || options.limit < 0 {
-				return nil, mysqlQueryInvalid(ctx, "分页偏移和数量不能为负数")
+				return nil, mysqlQueryInvalid(ctx, "paging offset and limit must not be negative")
 			}
 			offset, limit := uint64(options.offset), uint64(options.limit)
 			if query.OffsetPart > math.MaxUint64-offset {
-				return nil, mysqlQueryInvalid(ctx, "分页偏移超出源端范围")
+				return nil, mysqlQueryInvalid(ctx, "paging offset exceeds the source range")
 			}
 			if query.LimitPart != nil {
 				if offset >= *query.LimitPart {
@@ -1230,7 +1230,7 @@ func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *inte
 	defer func() { _ = connector.Close(ctx) }()
 	executor, ok := connector.(interfaces.SQLBuilderExecutor)
 	if !ok {
-		return nil, mysqlQueryInvalid(ctx, "连接器尚未支持 SQL Builder 执行")
+		return nil, mysqlQueryInvalid(ctx, "connector does not support SQL Builder execution")
 	}
 	result, err := executor.ExecuteSQLBuilder(ctx, read)
 	if err != nil {
@@ -1243,11 +1243,11 @@ func (rqs *rawQueryService) executeSQLBuilder(ctx context.Context, catalog *inte
 func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *interfaces.CursorSession, catalog *interfaces.Catalog) error {
 	query := session.SQLQuery
 	if session.PageOffset < 0 {
-		return mysqlQueryInvalid(ctx, "分页偏移不能为负数")
+		return mysqlQueryInvalid(ctx, "paging offset must not be negative")
 	}
 	offset := uint64(session.PageOffset)
 	if query.OffsetPart > math.MaxUint64-offset {
-		return mysqlQueryInvalid(ctx, "分页偏移超出源端范围")
+		return mysqlQueryInvalid(ctx, "paging offset exceeds the source range")
 	}
 	read := *query
 	read.OffsetPart += offset
@@ -1262,7 +1262,7 @@ func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *i
 	session.SQLConnector = connector
 	executor, ok := connector.(interfaces.SQLBuilderRowsExecutor)
 	if !ok {
-		return mysqlQueryInvalid(ctx, "连接器尚未支持 SQL Rows 执行")
+		return mysqlQueryInvalid(ctx, "connector does not support SQL Rows execution")
 	}
 	// 保留请求身份与观测信息，Rows 生命周期由会话控制，不能随首屏 HTTP 请求结束。
 	cursorCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))

@@ -77,7 +77,7 @@ func isNullSql(n sb.IsNull) (string, []any, error) {
 
 func inSql(in sb.In) (string, []any, error) {
 	if len(in.Values) == 0 {
-		return "", nil, fmt.Errorf("IN 列表不能为空")
+		return "", nil, fmt.Errorf("IN list must not be empty")
 	}
 	b := sqlBuffer{}
 	b.writeByte('(')
@@ -110,7 +110,7 @@ func betweenSql(between sb.Between) (string, []any, error) {
 
 func likeSql(like sb.Like) (string, []any, error) {
 	if like.Escape != nil && (!utf8.ValidString(*like.Escape) || utf8.RuneCountInString(*like.Escape) != 1) {
-		return "", nil, fmt.Errorf("LIKE 转义字符必须是单个有效字符")
+		return "", nil, fmt.Errorf("LIKE escape must be a single valid character")
 	}
 	b := sqlBuffer{}
 	b.writeByte('(')
@@ -146,13 +146,13 @@ func arithmeticSql(e sb.Arithmetic) (string, []any, error) {
 	case sb.Add, sb.Subtract, sb.Multiply, sb.Divide, sb.Modulo:
 		return binarySql(e.Left, string(e.Op), e.Right)
 	default:
-		return "", nil, fmt.Errorf("算术运算符无效")
+		return "", nil, fmt.Errorf("invalid arithmetic operator")
 	}
 }
 
 func unarySql(e sb.Unary) (string, []any, error) {
 	if e.Op != sb.Positive && e.Op != sb.Negative {
-		return "", nil, fmt.Errorf("一元运算符无效")
+		return "", nil, fmt.Errorf("invalid unary operator")
 	}
 	b := sqlBuffer{}
 	b.writeString("(" + string(e.Op))
@@ -166,29 +166,29 @@ func functionSql(f sb.Function) (string, []any, error) {
 	for i, c := range f.Name {
 		valid := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || (i > 0 && c >= '0' && c <= '9')
 		if !valid {
-			return "", nil, fmt.Errorf("函数名称无效")
+			return "", nil, fmt.Errorf("invalid function name")
 		}
 	}
 	if f.Name == "" || (f.Distinct && len(f.Args) == 0) {
-		return "", nil, fmt.Errorf("函数名称或 DISTINCT 参数为空")
+		return "", nil, fmt.Errorf("function name or DISTINCT arguments are empty")
 	}
 	name := strings.ToUpper(f.Name)
 	// 时间精度属于语法参数，MySQL 不接受 NOW(?)；只输出已验证的 0..6 整数。
 	if (name == "NOW" || name == "CURRENT_TIMESTAMP") && len(f.Args) != 0 {
 		if len(f.Args) != 1 || f.Distinct {
-			return "", nil, fmt.Errorf("时间函数精度无效")
+			return "", nil, fmt.Errorf("invalid temporal function precision")
 		}
 		param, ok := f.Args[0].(*sb.Param)
 		if !ok || param == nil {
-			return "", nil, fmt.Errorf("时间函数精度必须为整数常量")
+			return "", nil, fmt.Errorf("temporal function precision must be an integer literal")
 		}
 		number, ok := param.Value.(json.Number)
 		if !ok {
-			return "", nil, fmt.Errorf("时间函数精度必须为整数常量")
+			return "", nil, fmt.Errorf("temporal function precision must be an integer literal")
 		}
 		precision, err := strconv.ParseUint(string(number), 10, 8)
 		if err != nil || precision > 6 {
-			return "", nil, fmt.Errorf("时间函数精度超出范围")
+			return "", nil, fmt.Errorf("temporal function precision is out of range")
 		}
 		return name + "(" + strconv.FormatUint(precision, 10) + ")", nil, nil
 	}
@@ -204,7 +204,7 @@ func functionSql(f sb.Function) (string, []any, error) {
 
 func caseSql(c sb.Case) (string, []any, error) {
 	if len(c.WhenParts) == 0 {
-		return "", nil, fmt.Errorf("CASE 缺少 WHEN 分支")
+		return "", nil, fmt.Errorf("CASE requires a WHEN branch")
 	}
 	b := sqlBuffer{}
 	b.writeString("CASE")
@@ -252,7 +252,7 @@ func castSql(c sb.Cast) (string, []any, error) {
 	case sb.CastJSON:
 		target = "JSON"
 	default:
-		return "", nil, fmt.Errorf("逻辑转换类型暂无 MySQL 映射")
+		return "", nil, fmt.Errorf("logical cast type has no MySQL mapping")
 	}
 	parameters := c.Parameters
 	maxParameters := 0
@@ -263,26 +263,26 @@ func castSql(c sb.Cast) (string, []any, error) {
 	case "FLOAT":
 		maxParameters = 1
 		if len(parameters) > 0 && parameters[0] > 53 {
-			return "", nil, fmt.Errorf("FLOAT 精度超出范围")
+			return "", nil, fmt.Errorf("FLOAT precision is out of range")
 		}
 	case "TIME", "DATETIME":
 		maxParameters = 1
 		if len(parameters) > 0 && parameters[0] > 6 {
-			return "", nil, fmt.Errorf("时间精度超出范围")
+			return "", nil, fmt.Errorf("temporal precision is out of range")
 		}
 	case "DECIMAL":
 		maxParameters = 2
 		if len(parameters) > 0 && (parameters[0] == 0 || parameters[0] > 65) {
-			return "", nil, fmt.Errorf("DECIMAL 精度超出范围")
+			return "", nil, fmt.Errorf("DECIMAL precision is out of range")
 		}
 		if len(parameters) > 1 && (parameters[1] > 30 || parameters[1] > parameters[0]) {
-			return "", nil, fmt.Errorf("DECIMAL 小数位超出范围")
+			return "", nil, fmt.Errorf("DECIMAL scale is out of range")
 		}
 	default:
-		return "", nil, fmt.Errorf("CAST 目标类型不受支持")
+		return "", nil, fmt.Errorf("CAST target type is not supported")
 	}
 	if len(parameters) > maxParameters {
-		return "", nil, fmt.Errorf("CAST 类型参数数量无效")
+		return "", nil, fmt.Errorf("invalid CAST type parameter count")
 	}
 	if len(parameters) > 0 {
 		parts := make([]string, len(parameters))
@@ -323,7 +323,7 @@ func conditionsSql(conditions []sb.SqlNode, separator, empty string) (string, []
 func numericLiteralSQL(number json.Number) (string, []any, error) {
 	text := string(number)
 	if text == "" || (text[0] != '-' && (text[0] < '0' || text[0] > '9')) || !json.Valid([]byte(text)) {
-		return "", nil, fmt.Errorf("数值字面量无效")
+		return "", nil, fmt.Errorf("invalid numeric literal")
 	}
 	if strings.ContainsAny(text, "eE") {
 		return "?", []any{number}, nil
@@ -340,7 +340,7 @@ func numericLiteralSQL(number json.Number) (string, []any, error) {
 		scale = len(digits) - dot - 1
 	}
 	if precision < 1 || precision > 65 || scale > 30 {
-		return "", nil, fmt.Errorf("数值字面量超出 DECIMAL 支持范围")
+		return "", nil, fmt.Errorf("numeric literal exceeds the supported DECIMAL range")
 	}
 	return "CAST(? AS DECIMAL(" + strconv.Itoa(precision) + "," + strconv.Itoa(scale) + "))", []any{number}, nil
 }

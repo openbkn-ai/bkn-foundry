@@ -568,7 +568,7 @@ func render(node sb.SqlNode) (string, []any, error) {
 	case *sb.Interval:
 		if n != nil {
 			if !calendarUnit(string(n.Unit)) {
-				return "", nil, fmt.Errorf("日历间隔单位无效")
+				return "", nil, fmt.Errorf("invalid calendar interval unit")
 			}
 			b := sqlBuffer{}
 			b.writeString("INTERVAL ")
@@ -601,16 +601,16 @@ func render(node sb.SqlNode) (string, []any, error) {
 			return castSql(*n)
 		}
 	}
-	return "", nil, fmt.Errorf("查询节点为空或类型不受支持")
+	return "", nil, fmt.Errorf("query node is nil or unsupported")
 }
 
 // ToSql 根据结构化查询生成 MySQL SQL 和按出现顺序排列的参数，不执行请求。
 func ToSql(q *sb.SelectBuilder) (string, []any, error) {
 	if q == nil || len(q.ColumnsPart) == 0 {
-		return "", nil, fmt.Errorf("SELECT 缺少投影")
+		return "", nil, fmt.Errorf("SELECT requires a projection")
 	}
 	if q.FromPart == nil && len(q.JoinsPart) != 0 {
-		return "", nil, fmt.Errorf("JOIN 缺少 FROM 来源")
+		return "", nil, fmt.Errorf("JOIN requires a FROM source")
 	}
 	b := sqlBuffer{}
 	b.writeString("SELECT ")
@@ -673,7 +673,7 @@ func tableSql(t sb.Table) (string, []any, error) {
 
 func subquerySql(s sb.Subquery) (string, []any, error) {
 	if s.Query == nil {
-		return "", nil, fmt.Errorf("子查询为空")
+		return "", nil, fmt.Errorf("subquery is nil")
 	}
 	alias, err := quoteIdentifier(s.Alias)
 	if err != nil {
@@ -698,10 +698,10 @@ func joinSql(j sb.Join) (string, []any, error) {
 	case sb.CrossJoin:
 		keyword = "CROSS JOIN"
 	default:
-		return "", nil, fmt.Errorf("JOIN 类型无效")
+		return "", nil, fmt.Errorf("invalid JOIN kind")
 	}
 	if j.Kind == sb.CrossJoin && j.On != nil {
-		return "", nil, fmt.Errorf("CROSS JOIN 不接受 ON")
+		return "", nil, fmt.Errorf("CROSS JOIN does not accept ON")
 	}
 	b := sqlBuffer{}
 	b.writeString(keyword + " ")
@@ -728,7 +728,7 @@ func joinedTableSql(j sb.JoinedTable) (string, []any, error) {
 func orderSql(o sb.Order) (string, []any, error) {
 	if o.Position != 0 {
 		if o.Expr != nil || o.Nulls != sb.NullsDefault {
-			return "", nil, fmt.Errorf("排序位置与表达式或 NULL 规则冲突")
+			return "", nil, fmt.Errorf("ORDER BY position conflicts with an expression or NULL ordering")
 		}
 		direction := " ASC"
 		if o.Descending {
@@ -737,7 +737,7 @@ func orderSql(o sb.Order) (string, []any, error) {
 		return strconv.FormatUint(o.Position, 10) + direction, nil, nil
 	}
 	if o.Nulls != sb.NullsDefault && o.Nulls != sb.NullsFirst && o.Nulls != sb.NullsLast {
-		return "", nil, fmt.Errorf("NULL 排序规则无效")
+		return "", nil, fmt.Errorf("invalid NULL ordering")
 	}
 	direction := " ASC"
 	if o.Descending {
@@ -762,7 +762,7 @@ func orderSql(o sb.Order) (string, []any, error) {
 
 func quoteIdentifier(name string) (string, error) {
 	if name == "" || !utf8.ValidString(name) || strings.ContainsRune(name, '\x00') {
-		return "", fmt.Errorf("标识符为空或包含非法字符")
+		return "", fmt.Errorf("identifier is empty or contains invalid characters")
 	}
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`", nil
 }
@@ -777,7 +777,7 @@ func (b *sqlBuffer) writePart(part sb.SqlNode) {
 		return
 	}
 	if text == "" {
-		b.err = fmt.Errorf("查询节点生成空 SQL")
+		b.err = fmt.Errorf("query node generated empty SQL")
 		return
 	}
 	b.writeString(text)

@@ -56,10 +56,10 @@ type budgetLexer struct {
 // 此处检查开放函数及调用形式；源表类型规则和物理目标能力由执行阶段检查。
 func ParseSQL(input string) (*sqlbuilder.SelectBuilder, error) {
 	if len(input) > maxSQLBytes {
-		return nil, &ParseError{Code: CodeLimit, Line: 1, Column: 1, Message: "SQL 字节数超限"}
+		return nil, &ParseError{Code: CodeLimit, Line: 1, Column: 1, Message: "SQL byte size exceeds the limit"}
 	}
 	if !utf8.ValidString(input) {
-		return nil, &ParseError{Code: CodeSyntax, Line: 1, Column: 1, Message: "SQL 必须是有效 UTF-8"}
+		return nil, &ParseError{Code: CodeSyntax, Line: 1, Column: 1, Message: "SQL must be valid UTF-8"}
 	}
 	errors := &parseErrors{DefaultErrorListener: antlr.NewDefaultErrorListener()}
 	lexer := generated.NewSqlBaseLexer(antlr.NewInputStream(input))
@@ -78,18 +78,18 @@ func ParseSQL(input string) (*sqlbuilder.SelectBuilder, error) {
 		}
 		switch token.GetTokenType() {
 		case generated.SqlBaseLexerUNSUPPORTED, generated.SqlBaseLexerFORBIDDEN_COMMENT:
-			return nil, errorAt(CodeUnsupported, token, "语法未开放")
+			return nil, errorAt(CodeUnsupported, token, "syntax is not supported")
 		case generated.SqlBaseLexerLPAREN, generated.SqlBaseLexerCASE:
 			depth++
 		case generated.SqlBaseLexerRPAREN, generated.SqlBaseLexerEND:
 			depth--
 		case generated.SqlBaseLexerRESOURCE:
 			if len(strings.TrimSpace(token.GetText()[2:len(token.GetText())-2])) > 40 {
-				return nil, errorAt(CodeSyntax, token, "资源 ID 长度超限")
+				return nil, errorAt(CodeSyntax, token, "resource ID length exceeds the limit")
 			}
 		}
 		if depth < 0 {
-			return nil, errorAt(CodeSyntax, token, "闭合符号不匹配")
+			return nil, errorAt(CodeSyntax, token, "unmatched closing delimiter")
 		}
 		switch token.GetTokenType() {
 		case generated.SqlBaseLexerNOT, generated.SqlBaseLexerPLUS, generated.SqlBaseLexerMINUS:
@@ -98,7 +98,7 @@ func ParseSQL(input string) (*sqlbuilder.SelectBuilder, error) {
 			prefix = 0
 		}
 		if depth > maxDepth || prefix > maxDepth {
-			return nil, errorAt(CodeLimit, token, "SQL 嵌套深度超限")
+			return nil, errorAt(CodeLimit, token, "SQL nesting depth exceeds the limit")
 		}
 		tokens.Consume()
 	}
@@ -119,7 +119,7 @@ func ParseSQL(input string) (*sqlbuilder.SelectBuilder, error) {
 }
 
 func (e *ParseError) Error() string {
-	return fmt.Sprintf("SQL %s（第 %d 行，第 %d 列）: %s", e.Code, e.Line, e.Column, e.Message)
+	return fmt.Sprintf("SQL %s (line %d, column %d): %s", e.Code, e.Line, e.Column, e.Message)
 }
 
 func errorAt(code ErrorCode, token antlr.Token, message string) *ParseError {
@@ -128,7 +128,7 @@ func errorAt(code ErrorCode, token antlr.Token, message string) *ParseError {
 
 func (e *parseErrors) SyntaxError(_ antlr.Recognizer, _ interface{}, line, column int, _ string, _ antlr.RecognitionException) {
 	if e.err == nil {
-		e.err = &ParseError{Code: CodeSyntax, Line: line, Column: column + 1, Message: "SQL 语法无效"}
+		e.err = &ParseError{Code: CodeSyntax, Line: line, Column: column + 1, Message: "invalid SQL syntax"}
 	}
 }
 
@@ -138,7 +138,7 @@ func (l *budgetLexer) NextToken() antlr.Token {
 		l.count++
 	}
 	if l.count > maxTokens && l.errors.err == nil {
-		l.errors.err = errorAt(CodeLimit, token, "SQL token 数量超限")
+		l.errors.err = errorAt(CodeLimit, token, "SQL token count exceeds the limit")
 	}
 	if l.errors.err != nil {
 		return l.GetTokenFactory().Create(l.GetTokenSourceCharStreamPair(), antlr.TokenEOF, "", antlr.TokenDefaultChannel, token.GetStart(), token.GetStop(), token.GetLine(), token.GetColumn())
@@ -150,10 +150,10 @@ func (l *budgetLexer) NextToken() antlr.Token {
 // 不代替 ParseSQL；选定 MySQL 目标后必须完成严格的 SELECT 解析。
 func ResourceIDs(input string) ([]string, error) {
 	if len(input) > maxSQLBytes {
-		return nil, &ParseError{Code: CodeLimit, Line: 1, Column: 1, Message: "SQL 字节数超限"}
+		return nil, &ParseError{Code: CodeLimit, Line: 1, Column: 1, Message: "SQL byte size exceeds the limit"}
 	}
 	if !utf8.ValidString(input) {
-		return nil, &ParseError{Code: CodeSyntax, Line: 1, Column: 1, Message: "SQL 必须是有效 UTF-8"}
+		return nil, &ParseError{Code: CodeSyntax, Line: 1, Column: 1, Message: "SQL must be valid UTF-8"}
 	}
 	lexer := generated.NewSqlBaseLexer(antlr.NewInputStream(input))
 	lexer.RemoveErrorListeners()
@@ -161,7 +161,7 @@ func ResourceIDs(input string) ([]string, error) {
 	var ids []string
 	for count := 0; ; count++ {
 		if count > maxTokens {
-			return nil, &ParseError{Code: CodeLimit, Line: 1, Column: 1, Message: "SQL token 数量超限"}
+			return nil, &ParseError{Code: CodeLimit, Line: 1, Column: 1, Message: "SQL token count exceeds the limit"}
 		}
 		token := lexer.NextToken()
 		if token.GetTokenType() == antlr.TokenEOF {
@@ -173,7 +173,7 @@ func ResourceIDs(input string) ([]string, error) {
 		text := token.GetText()
 		id := strings.TrimSpace(text[2 : len(text)-2])
 		if len(id) > 40 {
-			return nil, errorAt(CodeSyntax, token, "资源 ID 长度超限")
+			return nil, errorAt(CodeSyntax, token, "resource ID length exceeds the limit")
 		}
 		if !seen[id] {
 			ids = append(ids, id)
