@@ -1570,9 +1570,16 @@ func (s *Service) getInteractionSummary(ctx context.Context, interactionID strin
 	if interactionID == "" || !trustedQueryScope(scope) {
 		return evidencevo.InteractionSummary{}, false, nil
 	}
-	requests, traces, metadata, err := s.loadExecutionSummaries(ctx, evidencevo.SummaryQueryOptions{
+	if s.projectionSource == nil {
+		return evidencevo.InteractionSummary{}, false, errors.New("execution summary projection source is not configured")
+	}
+	// Receipt projection already supplies the call identities. Read only the
+	// authorized artifact metadata and terminal texts needed by this summary;
+	// supporting bodies and discarded legacy traces are not detail dependencies.
+	requests, traces, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
 		Scope: scope, InteractionID: interactionID,
-	})
+		Limit: summaryCandidateLimit(evidencevo.SummaryQueryOptions{}), SummaryOnly: true,
+	}, summaryLoadMetadata{}, false)
 	if err != nil {
 		return evidencevo.InteractionSummary{}, false, err
 	}
