@@ -190,6 +190,104 @@ func (bba *bknBackendAccess) CreateSchedule(ctx context.Context, token string, k
 	return created.ID, nil
 }
 
+// CreateKN calls POST /knowledge-networks with {"id", "name"}.
+func (bba *bknBackendAccess) CreateKN(ctx context.Context, token string, id string, name string) (string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateKN")
+	defer span.End()
+	span.SetAttributes(attr.Key("kn_id").String(id))
+
+	httpUrl := bba.networksUrl()
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
+
+	headers := map[string]string{"Authorization": token, rest.ContentTypeKey: rest.ContentTypeJson}
+	body := interfaces.KnowledgeNetwork{ID: id, Name: name}
+	respCode, respBody, err := bba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, body)
+	logger.Debugf("CreateKN finished, kn_id is [%s], response code is [%d]", id, respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http create network failed")
+		return "", fmt.Errorf("create network %s: %w", name, err)
+	}
+	if respCode != http.StatusCreated {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 201")
+		return "", backendError(respCode, respBody)
+	}
+
+	created := &struct {
+		ID string `json:"id"`
+	}{}
+	if err := json.Unmarshal(respBody, created); err != nil || created.ID == "" {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "No id in the reply")
+		return "", fmt.Errorf("create network %s: no id in the reply: %s", name, respBody)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return created.ID, nil
+}
+
+// GetKN calls GET /knowledge-networks/{kn_id}?branch=main.
+func (bba *bknBackendAccess) GetKN(ctx context.Context, token string, knID string) (*interfaces.KnowledgeNetwork, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetKN")
+	defer span.End()
+	span.SetAttributes(attr.Key("kn_id").String(knID))
+
+	httpUrl := fmt.Sprintf("%s/%s", bba.networksUrl(), url.PathEscape(knID))
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
+
+	query := url.Values{"branch": []string{interfaces.GIT_MAIN_BRANCH}}
+	respCode, respBody, err := bba.httpClient.GetNoUnmarshal(ctx, httpUrl, query, map[string]string{"Authorization": token})
+	logger.Debugf("GetKN finished, kn_id is [%s], response code is [%d]", knID, respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get network failed")
+		return nil, fmt.Errorf("get network %s: %w", knID, err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, backendError(respCode, respBody)
+	}
+
+	network := &interfaces.KnowledgeNetwork{}
+	if err := json.Unmarshal(respBody, network); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal network failed")
+		return nil, fmt.Errorf("unmarshal network %s: %w", knID, err)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return network, nil
+}
+
+// ListKNIDs calls GET /knowledge-networks?limit=-1, which lists only the networks the caller can see.
+func (bba *bknBackendAccess) ListKNIDs(ctx context.Context, token string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListKNIDs")
+	defer span.End()
+
+	httpUrl := bba.networksUrl()
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
+
+	query := url.Values{"limit": []string{noLimit}}
+	respCode, respBody, err := bba.httpClient.GetNoUnmarshal(ctx, httpUrl, query, map[string]string{"Authorization": token})
+	logger.Debugf("ListKNIDs finished, response code is [%d]", respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http list networks failed")
+		return nil, fmt.Errorf("list networks: %w", err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, backendError(respCode, respBody)
+	}
+
+	list := &struct {
+		Entries []*interfaces.KnowledgeNetwork `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, list); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal networks failed")
+		return nil, fmt.Errorf("unmarshal networks: %w", err)
+	}
+	ids := make([]string, 0, len(list.Entries))
+	for _, network := range list.Entries {
+		ids = append(ids, network.ID)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return ids, nil
+}
+
 // SetScheduleStatus calls PUT /knowledge-networks/{kn_id}/action-schedules/{schedule_id}/status.
 func (bba *bknBackendAccess) SetScheduleStatus(ctx context.Context, token string, knID string,
 	scheduleID string, status string) error {
@@ -213,6 +311,10 @@ func (bba *bknBackendAccess) SetScheduleStatus(ctx context.Context, token string
 	}
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return nil
+}
+
+func (bba *bknBackendAccess) networksUrl() string {
+	return fmt.Sprintf("%s/knowledge-networks", bba.baseUrl)
 }
 
 func (bba *bknBackendAccess) schedulesUrl(knID string) string {

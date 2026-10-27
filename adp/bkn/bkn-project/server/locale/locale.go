@@ -21,6 +21,8 @@ func Register() {
 		i18n.RegisterI18n(&releaseZhCN)
 		i18n.RegisterI18n(&lineageEnUS)
 		i18n.RegisterI18n(&lineageZhCN)
+		i18n.RegisterI18n(&projectEnUS)
+		i18n.RegisterI18n(&projectZhCN)
 
 		if err := i18n.ValidateMessageBundles(); err != nil {
 			panic(err)

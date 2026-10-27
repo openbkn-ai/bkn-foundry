@@ -257,3 +257,93 @@ func Test_BknBackendAccess_Schedules(t *testing.T) {
 		})
 	})
 }
+
+func Test_BknBackendAccess_Networks(t *testing.T) {
+	Convey("Test bknBackendAccess network calls\n", t, func() {
+		type request struct {
+			method, path, query, auth string
+			body                      map[string]any
+		}
+		var got []request
+		status, respBody := http.StatusOK, ""
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			req := request{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, auth: r.Header.Get("Authorization")}
+			if data, _ := io.ReadAll(r.Body); len(data) > 0 {
+				_ = json.Unmarshal(data, &req.body)
+			}
+			got = append(got, req)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(respBody))
+		}))
+		defer server.Close()
+		bba := &bknBackendAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/bkn-backend/v1"}
+		ctx := context.Background()
+		const networksPath = "/api/bkn-backend/v1/knowledge-networks"
+
+		Convey("CreateKN posts the id and name and returns the id bkn-backend gave\n", func() {
+			status, respBody = http.StatusCreated, `{"id":"01a1-generated"}`
+
+			id, err := bba.CreateKN(ctx, token, "", "Orders")
+
+			So(err, ShouldBeNil)
+			So(id, ShouldEqual, "01a1-generated")
+			So(got[0].method, ShouldEqual, http.MethodPost)
+			So(got[0].path, ShouldEqual, networksPath)
+			So(got[0].auth, ShouldEqual, token)
+			So(got[0].body, ShouldResemble, map[string]any{"id": "", "name": "Orders"})
+		})
+
+		Convey("CreateKN without an id in the reply fails\n", func() {
+			status, respBody = http.StatusCreated, `{}`
+
+			_, err := bba.CreateKN(ctx, token, "orders", "Orders")
+
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("GetKN reads the network of main\n", func() {
+			respBody = `{"id":"orders","name":"Orders","branch":"main"}`
+
+			network, err := bba.GetKN(ctx, token, "orders")
+
+			So(err, ShouldBeNil)
+			So(network, ShouldResemble, &interfaces.KnowledgeNetwork{ID: "orders", Name: "Orders"})
+			So(got[0].method, ShouldEqual, http.MethodGet)
+			So(got[0].path, ShouldEqual, networksPath+"/orders")
+			So(got[0].query, ShouldEqual, "branch=main")
+		})
+
+		Convey("ListKNIDs reads every network the caller can see in one page\n", func() {
+			respBody = `{"entries":[{"id":"orders","name":"Orders"},{"id":"parts","name":"Parts"}],"total_count":2}`
+
+			ids, err := bba.ListKNIDs(ctx, token)
+
+			So(err, ShouldBeNil)
+			So(ids, ShouldResemble, []string{"orders", "parts"})
+			So(got[0].path, ShouldEqual, networksPath)
+			So(got[0].query, ShouldEqual, "limit=-1")
+		})
+
+		Convey("ListKNIDs of no network is empty\n", func() {
+			respBody = `{"entries":null,"total_count":0}`
+
+			ids, err := bba.ListKNIDs(ctx, token)
+
+			So(err, ShouldBeNil)
+			So(ids, ShouldNotBeNil)
+			So(ids, ShouldBeEmpty)
+		})
+
+		Convey("A bkn-backend error keeps its status and error code\n", func() {
+			status, respBody = http.StatusForbidden, `{"error_code":"Public.Forbidden"}`
+
+			_, err := bba.GetKN(ctx, token, "orders")
+
+			var backendErr *interfaces.BknBackendError
+			So(errors.As(err, &backendErr), ShouldBeTrue)
+			So(backendErr.HTTPCode, ShouldEqual, http.StatusForbidden)
+			So(backendErr.ErrorCode, ShouldEqual, "Public.Forbidden")
+		})
+	})
+}

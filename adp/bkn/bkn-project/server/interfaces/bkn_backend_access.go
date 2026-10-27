@@ -86,4 +86,16 @@ type BknBackendAccess interface {
 	CreateSchedule(ctx context.Context, token string, knID string, schedule *ActionSchedule) (string, error)
 	// SetScheduleStatus turns a schedule of the network on or off.
 	SetScheduleStatus(ctx context.Context, token string, knID string, scheduleID string, status string) error
+	// CreateKN creates an empty network and returns its id; bkn-backend makes one up when id is empty.
+	CreateKN(ctx context.Context, token string, id string, name string) (string, error)
+	// GetKN returns the network, or bkn-backend's 403 or 404 when the caller cannot see it.
+	GetKN(ctx context.Context, token string, knID string) (*KnowledgeNetwork, error)
+	// ListKNIDs returns the ids of every network the caller can see.
+	ListKNIDs(ctx context.Context, token string) ([]string, error)
+}
+
+// KnowledgeNetwork is what bkn-project reads of a bkn-backend network.
+type KnowledgeNetwork struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }

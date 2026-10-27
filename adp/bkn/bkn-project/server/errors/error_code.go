@@ -33,4 +33,5 @@ func init() {
 	httperrors.Register(errCodeList)
 	httperrors.Register(ReleaseErrCodeList)
 	httperrors.Register(LineageErrCodeList)
+	httperrors.Register(ProjectErrCodeList)
 }
