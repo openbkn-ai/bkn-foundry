@@ -21,6 +21,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/agiledragon/gomonkey/v2"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 	"github.com/stretchr/testify/assert"
@@ -149,6 +150,109 @@ func (p *deadlineInspectingPolicy) ValidateTableReferences(context.Context, stri
 }
 
 func TestRawQueryServiceExecute(t *testing.T) {
+	for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB} {
+		t.Run(connectorType+" actual connector", func(t *testing.T) {
+			t.Run("single page binds exact values and counts the logical query", func(t *testing.T) {
+				svc, rs, cs, cf := mysqlRawServices(t)
+				mysqlRawMetadata(rs, cs, builderTestResource(), true, connectorType)
+				mocks := nativeSQLConnectorMocks(t, cf, connectorType, 2)
+				base := "SELECT `o`.`id`, CAST(? AS DECIMAL(19,3)) AS `amount`, ? AS `optional` FROM `sales.eu`.`order.items` AS `o` WHERE (`o`.`id` > ?) ORDER BY `o`.`id` ASC"
+				mocks[0].ExpectQuery("SELECT COUNT(*) AS `_raw_query_total_count` FROM ("+base+" LIMIT 5 OFFSET 2) AS `_raw_query_total`").
+					WithArgs("9007199254740993.125", nil, int64(1)).
+					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn(rawQueryTotalCountColumn).OfType("BIGINT", int64(0))).AddRow(5)).RowsWillBeClosed()
+				mocks[0].ExpectClose()
+				mocks[1].ExpectQuery(base+" LIMIT 2 OFFSET 3").WithArgs("9007199254740993.125", nil, int64(1)).
+					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+						sqlmock.NewColumn("id").OfType("BIGINT", int64(0)),
+						sqlmock.NewColumn("amount").OfType("DECIMAL", ""),
+						sqlmock.NewColumn("optional").OfType("VARCHAR", ""),
+					).AddRow(4, []byte("9007199254740993.125"), nil).AddRow(5, []byte("9007199254740993.125"), nil)).RowsWillBeClosed()
+				mocks[1].ExpectClose()
+
+				result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+					QueryFormat: interfaces.QueryFormatSQL,
+					Query:       "SELECT o.id, 9007199254740993.125 AS amount, NULL AS optional FROM {{ orders }} o WHERE o.id > 1 ORDER BY o.id LIMIT 5 OFFSET 2",
+					NeedTotal:   true, Paging: interfaces.PagingRequest{Limit: 2, Offset: 1},
+				})
+				require.NoError(t, err)
+				assert.Equal(t, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}, {Name: "amount", Type: interfaces.DataType_Decimal}, {Name: "optional", Type: interfaces.DataType_String}}, result.Columns)
+				assert.Equal(t, []map[string]any{{"id": int64(4), "amount": "9007199254740993.125", "optional": nil}, {"id": int64(5), "amount": "9007199254740993.125", "optional": nil}}, result.Entries)
+				require.NotNil(t, result.TotalCount)
+				assert.EqualValues(t, 5, *result.TotalCount)
+				assert.Equal(t, []string{"orders"}, result.ResourceIDs)
+			})
+			t.Run("cursor keeps the actual connector and Rows after the first request ends", func(t *testing.T) {
+				svc, rs, cs, cf := mysqlRawServices(t)
+				resource := builderTestResource()
+				mysqlRawMetadata(rs, cs, resource, true, connectorType)
+				mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+				mocks[0].ExpectQuery("SELECT `id`, CAST(? AS DECIMAL(19,3)) AS `amount` FROM `sales.eu`.`order.items` WHERE (`id` > ?) ORDER BY `id` ASC LIMIT 3 OFFSET 2").
+					WithArgs("9007199254740993.125", int64(0)).
+					WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+						sqlmock.NewColumn("id").OfType("BIGINT", int64(0)),
+						sqlmock.NewColumn("amount").OfType("DECIMAL", ""),
+					).AddRow(3, []byte("9007199254740993.125")).AddRow(4, nil).AddRow(5, []byte("9007199254740993.125"))).RowsWillBeClosed()
+				mocks[0].ExpectClose()
+				firstCtx, cancel := context.WithCancel(compileTestContext())
+				defer cancel()
+				first, err := svc.Execute(firstCtx, &interfaces.RawQueryRequest{
+					QueryFormat: interfaces.QueryFormatSQL,
+					Query:       "SELECT id, 9007199254740993.125 AS amount FROM {{orders}} WHERE id > 0 ORDER BY id LIMIT 4 OFFSET 1",
+					Paging:      interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 2, Offset: 1},
+				})
+				require.NoError(t, err)
+				require.NotNil(t, first.Paging.NextCursor)
+				token := *first.Paging.NextCursor
+				assert.Equal(t, []map[string]any{{"id": int64(3), "amount": "9007199254740993.125"}, {"id": int64(4), "amount": nil}}, first.Entries)
+				session, ok := rawQueryCursorSessions.acquire(token)
+				require.True(t, ok)
+				retainedRows := session.SQLRows
+				assert.IsType(t, &mysql.MariaDBConnector{}, session.SQLConnector)
+				rawQueryCursorSessions.release(session)
+				cancel()
+
+				mysqlRawMetadata(rs, cs, resource, true, connectorType)
+				last, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: token}})
+				require.NoError(t, err)
+				assert.Equal(t, first.Columns, last.Columns)
+				assert.Equal(t, []map[string]any{{"id": int64(5), "amount": "9007199254740993.125"}}, last.Entries)
+				assert.Nil(t, last.TotalCount)
+				assert.Nil(t, last.Paging.NextCursor)
+				assert.NoError(t, retainedRows.Err())
+				assert.Empty(t, rawQueryCursorSessions.sessions)
+			})
+			for _, failure := range []string{"unknown column", "duplicate output names", "cursor read failure"} {
+				t.Run(failure+" releases the source without exposing its error", func(t *testing.T) {
+					svc, rs, cs, cf := mysqlRawServices(t)
+					mysqlRawMetadata(rs, cs, builderTestResource(), true, connectorType)
+					mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+					request := &interfaces.RawQueryRequest{QueryFormat: interfaces.QueryFormatSQL, Query: "SELECT id FROM {{orders}}", Paging: interfaces.PagingRequest{Limit: 2}}
+					statement := "SELECT `id` FROM `sales.eu`.`order.items` LIMIT 2"
+					status := http.StatusBadRequest
+					if failure == "cursor read failure" {
+						request.Paging.Mode = interfaces.PagingModeCursor
+						statement = "SELECT `id` FROM `sales.eu`.`order.items`"
+						status = http.StatusInternalServerError
+					}
+					expected := mocks[0].ExpectQuery(statement)
+					switch failure {
+					case "unknown column":
+						expected.WillReturnError(&mysqldriver.MySQLError{Number: 1054, Message: "private source detail"})
+					case "duplicate output names":
+						expected.WillReturnRows(sqlmock.NewRows([]string{"id", "id"}).AddRow(1, 2)).RowsWillBeClosed()
+					case "cursor read failure":
+						expected.WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2).RowError(1, errors.New("private source detail"))).RowsWillBeClosed()
+					}
+					mocks[0].ExpectClose()
+					result, err := svc.Execute(compileTestContext(), request)
+					assertHTTPError(t, err, status)
+					assert.Nil(t, result)
+					assert.NotContains(t, err.Error(), "private source detail")
+					assert.Empty(t, rawQueryCursorSessions.sessions)
+				})
+			}
+		})
+	}
 	t.Run("execute rejects disabled catalog for open search query", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := vmock.NewMockCatalogService(ctrl)
@@ -1715,6 +1819,48 @@ func mysqlRawMetadata(rs *vmock.MockResourceService, cs *vmock.MockCatalogServic
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "orders").Return(resource, nil)
 	}
 }
+
+// nativeSQLConnectorMocks 仅替换数据库打开边界，服务、解析器和连接器均执行生产实现。
+func nativeSQLConnectorMocks(t *testing.T, cf *vmock.MockConnectorFactory, connectorType string, count int) []sqlmock.Sqlmock {
+	t.Helper()
+	dbs := make([]*sql.DB, count)
+	mocks := make([]sqlmock.Sqlmock, count)
+	for i := range dbs {
+		var err error
+		dbs[i], mocks[i], err = sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual), sqlmock.MonitorPingsOption(true))
+		require.NoError(t, err)
+		mocks[i].ExpectPing()
+	}
+	opened := 0
+	patch := gomonkey.ApplyFunc(sql.Open, func(driver, _ string) (*sql.DB, error) {
+		require.Equal(t, "mysql", driver)
+		require.Less(t, opened, len(dbs), "no extra data query or connection may be opened")
+		db := dbs[opened]
+		opened++
+		return db, nil
+	})
+	t.Cleanup(func() {
+		for id := range rawQueryCursorSessions.sessions {
+			rawQueryCursorSessions.remove(id)
+		}
+		patch.Reset()
+		assert.Equal(t, count, opened)
+		for i, db := range dbs {
+			assert.NoError(t, mocks[i].ExpectationsWereMet())
+			_ = db.Close()
+		}
+	})
+	cf.EXPECT().CreateConnectorInstance(gomock.Any(), connectorType, gomock.Any()).DoAndReturn(
+		func(context.Context, string, interfaces.ConnectorConfig) (interfaces.Connector, error) {
+			builder := mysql.NewMySQLConnector()
+			if connectorType == interfaces.ConnectorTypeMariaDB {
+				builder = mysql.NewMariaDBConnector()
+			}
+			return builder.New(interfaces.ConnectorConfig{"host": "db.test", "port": 3306, "username": "test", "password": "test-only"})
+		}).Times(count)
+	return mocks
+}
+
 func mysqlRawRead(t *testing.T, cf *vmock.MockConnectorFactory, statement string, args []any, entries []map[string]any, failure error, connectorTypes ...string) {
 	t.Helper()
 	connectorType := interfaces.ConnectorTypeMySQL
