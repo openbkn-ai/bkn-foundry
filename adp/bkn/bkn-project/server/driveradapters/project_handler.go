@@ -30,6 +30,9 @@ const (
 func (r *restHandler) CreateProjectByEx(c *gin.Context) { r.withExVisitor(c, r.CreateProject) }
 func (r *restHandler) ListProjectsByEx(c *gin.Context)  { r.withExVisitor(c, r.ListProjects) }
 func (r *restHandler) GetProjectByEx(c *gin.Context)    { r.withExVisitor(c, r.GetProject) }
+func (r *restHandler) SetProjectCatalogsByEx(c *gin.Context) {
+	r.withExVisitor(c, r.SetProjectCatalogs)
+}
 
 // ProjectActionByEx serves POST /projects/{project_id}:archive and :unarchive.
 func (r *restHandler) ProjectActionByEx(c *gin.Context) {
@@ -118,6 +121,31 @@ func (r *restHandler) SetProjectArchived(c *gin.Context, visitor hydra.Visitor, 
 	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("archived").Bool(archived))
 
 	entry, err := r.ps.SetProjectArchived(ctx, visitor.TokenID, id, archived, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, entry)
+}
+
+// SetProjectCatalogs serves PUT /projects/{project_id}/catalogs with {"catalog_ids"}.
+func (r *restHandler) SetProjectCatalogs(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	req := interfaces.SetProjectCatalogsRequest{}
+	// The catalogs are replaced as a whole, so leaving them out is not taken for none.
+	if err := c.ShouldBindJSON(&req); err != nil || req.CatalogIDs == nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidRequestBody))
+		return
+	}
+
+	entry, err := r.ps.SetProjectCatalogs(ctx, visitor.TokenID, id, req.CatalogIDs, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return

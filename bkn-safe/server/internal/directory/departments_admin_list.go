@@ -88,19 +88,6 @@ func (s *Service) subtreeMemberCounts(ctx context.Context, deptIDs []string) (ma
 			childrenOf[d.ParentID] = append(childrenOf[d.ParentID], d.ID)
 		}
 	}
-	subtreeCache := map[string][]string{}
-	var subtree func(id string) []string
-	subtree = func(id string) []string {
-		if cached, ok := subtreeCache[id]; ok {
-			return cached
-		}
-		ids := []string{id}
-		for _, child := range childrenOf[id] {
-			ids = append(ids, subtree(child)...)
-		}
-		subtreeCache[id] = ids
-		return ids
-	}
 	type row struct {
 		UserID       string
 		DepartmentID string
@@ -122,10 +109,25 @@ func (s *Service) subtreeMemberCounts(ctx context.Context, deptIDs []string) (ma
 	}
 	for _, id := range deptIDs {
 		users := map[string]struct{}{}
-		for _, did := range subtree(id) {
+		// Count each reachable department once, even in legacy cyclic data.
+		// An explicit stack also handles deep valid trees without recursion or
+		// retaining a quadratic cache of every node's entire subtree.
+		seen := map[string]bool{}
+		pending := []string{id}
+		for len(pending) > 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			did := pending[len(pending)-1]
+			pending = pending[:len(pending)-1]
+			if seen[did] {
+				continue
+			}
+			seen[did] = true
 			for uid := range usersByDept[did] {
 				users[uid] = struct{}{}
 			}
+			pending = append(pending, childrenOf[did]...)
 		}
 		out[id] = int64(len(users))
 	}

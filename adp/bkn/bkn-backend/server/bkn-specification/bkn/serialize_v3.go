@@ -50,8 +50,7 @@ func listField(key string, items []string) frontmatterField {
 }
 
 func capabilitiesField(capabilities *BknCapabilities) *frontmatterField {
-	if capabilities == nil || (len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0 &&
-		len(capabilities.MCPTools) == 0) {
+	if capabilities.IsEmpty() {
 		return nil
 	}
 	var node yaml.Node

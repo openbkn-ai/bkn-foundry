@@ -35,6 +35,9 @@ const (
 	// KNProxyTargetTypeSkill is the bkn-safe resource type of a mounted Skill.
 	// Its grant sources are best effort: see IsBestEffortProxyGrantSource.
 	KNProxyTargetTypeSkill = "skill"
+	// KNProxyTargetTypeKnowledgeBase is the bkn-safe resource type of a mounted knowledge base.
+	// Its grant sources are best effort as well.
+	KNProxyTargetTypeKnowledgeBase = "knowledge_base"
 )
 
 // ManagedProxyStatusError is a non-success status answered by bkn-safe's
@@ -63,12 +66,13 @@ const (
 // IsBestEffortProxyGrantSource reports whether a grant source may be left
 // unmaterialized without failing the network's proxy synchronization.
 //
-// Only a mounted Skill qualifies. A delegator who lacks execute on it, or an
-// authorization service that predates Skill sources, leaves that one Skill
-// unreadable through the proxy instead of blocking every proxied data read and
-// execution of the network.
+// Only a mounted Skill or knowledge base qualifies. A delegator who lacks the
+// operation on it, or an authorization service that predates its sources, leaves
+// that one capability unreadable through the proxy instead of blocking every
+// proxied data read and execution of the network.
 func IsBestEffortProxyGrantSource(source ProxyGrantSourceSpec) bool {
-	return source.BindingType == KNProxyBindingTypeCapability && source.ResourceType == KNProxyTargetTypeSkill
+	return source.BindingType == KNProxyBindingTypeCapability &&
+		(source.ResourceType == KNProxyTargetTypeSkill || source.ResourceType == KNProxyTargetTypeKnowledgeBase)
 }
 
 // KNProxyAccount is BKN's authoritative, environment-local mapping between one

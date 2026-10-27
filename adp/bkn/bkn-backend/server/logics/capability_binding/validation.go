@@ -6,6 +6,7 @@ package capability_binding
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -122,6 +123,10 @@ func (cbs *capabilityBindingService) resolveEntries(ctx context.Context,
 			if err := cbs.validateMCPTool(ctx, boxes, ownerID, capabilityID); err != nil {
 				return nil, err
 			}
+		case interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE:
+			if err := cbs.validateKnowledgeBase(ctx, capabilityID); err != nil {
+				return nil, err
+			}
 		}
 		resolved = append(resolved, &resolvedCapability{
 			capabilityType: capabilityType,
@@ -200,6 +205,32 @@ func (cbs *capabilityBindingService) validateSkill(ctx context.Context, skillID 
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
 			berrors.BknBackend_CapabilityBinding_TargetNotAvailable).
 			WithErrorDetails(fmt.Sprintf("skill is not published: skill_id=%s status=%s", skillID, skill.Status))
+	}
+	return nil
+}
+
+// validateKnowledgeBase checks that kb-api knows the knowledge base. A deployment without kb-api
+// refuses the mount outright: it has no knowledge bases, and a binding it could never resolve
+// would only advertise something the network cannot read.
+func (cbs *capabilityBindingService) validateKnowledgeBase(ctx context.Context, kbID string) error {
+	if cbs.kba == nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_KnowledgeBaseNotSupported)
+	}
+	kb, err := cbs.kba.GetKnowledgeBase(ctx, kbID)
+	if errors.Is(err, interfaces.ErrKnowledgeBaseUnavailable) {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_KnowledgeBaseNotSupported)
+	}
+	if err != nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadGateway,
+			berrors.BknBackend_CapabilityBinding_KnowledgeBaseServiceUnavailable).
+			WithErrorDetails(fmt.Sprintf("knowledge base %s: %s", kbID, err.Error()))
+	}
+	if kb == nil {
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest,
+			berrors.BknBackend_CapabilityBinding_TargetNotFound).
+			WithErrorDetails(fmt.Sprintf("knowledge base not found: kb_id=%s", kbID))
 	}
 	return nil
 }

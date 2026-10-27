@@ -9,6 +9,8 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var bknSafeZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"BknSafe.Department.Cycle":                           "父部门不能是当前部门、其后代或已有循环中的部门。请选择其他父部门。",
+		"BknSafe.Department.ParentNotFound":                  "父部门或其祖先部门不存在。请刷新部门列表并选择已有的父部门。",
 		"BknSafe.InvalidRequest":                             "请求参数无效。请检查请求参数。",
 		"BknSafe.Unauthorized":                               "认证失败。请提供有效的认证凭据。",
 		"BknSafe.Forbidden":                                  "没有执行此操作的权限。请联系管理员授予所需权限。",

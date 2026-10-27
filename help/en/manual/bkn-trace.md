@@ -14,6 +14,41 @@ Typical ingress prefix:
 
 **Related modules:** platform-wide logging and metrics pipelines (feed-ingester integration).
 
+## Community and EE API boundary
+
+Community exposes authorized recorded facts and technical Trace reads. Native
+enterprise provenance requires the target Trace service to contain and assemble
+the EE implementation, pass runtime entitlement, and authorize the current
+identity's record scope. All paths below use `/api/agent-observability/v1`:
+
+| Endpoint | Scope |
+| --- | --- |
+| `GET /interactions/{id}`, `GET /interactions/{id}/operations` | Core recorded facts |
+| `GET /interactions/{id}/business-graph` | Authorized projection of Core's recorded assembly revision; not native EE detail or explanations |
+| `GET /traces`, `GET /traces/{trace_id}` | Core technical execution reads |
+| `GET /business-provenance/conversations`, `GET /business-provenance/interactions` | EE business search |
+| `GET /business-provenance/interactions/{id}` | EE native business-resolution detail |
+| `GET /business-provenance/interactions/{id}/explanations` | Read-only EE explanation lookup: `ready` or `not_generated` |
+
+Community does not mount these EE routes; this boundary already exists in 0.2.0.
+A plain 404 alone cannot identify a missing record, missing license, or gateway
+fault: the EE availability gate can return the same plain 404. Core's structured
+`resource_not_disclosed` means the requested record cannot be disclosed in the
+current scope. A successful Core read does not establish access to an EE route.
+
+Another EE service, a certificate, or an administrator role does not establish
+that the target Trace image contains the EE implementation. Clients should keep
+authorized basic facts visible and report the enterprise view as unavailable or
+undisclosed. Explanation GET does not generate content; generation is a separate,
+explicit EE POST, never an implicit panel-open or availability probe. Nonempty
+enterprise acceptance needs existing real records and actual authorization;
+`completed` or nonempty Operations cannot substitute for a `ready` explanation.
+
+The former trace/request Evidence Chain, Business Graph, and Evidence Node paths
+are not part of the currently mounted enterprise read contract. See the
+[module README](../../../bkn-trace/agent-observability/README.md#community-与-ee-读取边界2517)
+for the complete boundary and diagnostic guidance.
+
 ## Managed Interaction completion limits
 
 With durable answer handoff enabled, Core commits the answer task and business

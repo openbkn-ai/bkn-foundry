@@ -372,48 +372,103 @@ func (s *Service) DepartmentsExist(ctx context.Context, ids []string) error {
 // (or sets it beforehand); ParentID "" makes it a root. Type defaults to
 // "department" at the DB layer when empty.
 func (s *Service) CreateDepartment(ctx context.Context, d *model.Department) error {
-	return s.db.WithContext(ctx).Create(d).Error
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		parents, err := lockDepartmentHierarchy(tx)
+		if err != nil {
+			return err
+		}
+		if err := validateDepartmentParent(parents, d.ID, d.ParentID); err != nil {
+			return err
+		}
+		return tx.Create(d).Error
+	})
 }
 
 // UpdateDepartment patches the given mutable fields (name/parent_id/type) of a
 // department. A no-op update may report zero affected rows on MySQL, so it is
 // still successful when the department exists. Returns gorm.ErrRecordNotFound
-// only when no row matches.
+// only when no row matches. Ordinary edits, including an unchanged parent,
+// access only the target department; actual parent changes lock the hierarchy.
 func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[string]any) error {
-	res := s.db.WithContext(ctx).Model(&model.Department{}).Where("id = ?", id).Updates(fields)
-	if res.Error != nil {
-		return res.Error
+	db := s.db.WithContext(ctx)
+	if _, hasParent := fields["parent_id"]; !hasParent {
+		res := db.Model(&model.Department{}).Where("id = ?", id).Updates(fields)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return s.requireDepartment(ctx, id)
+		}
+		return nil
 	}
-	if res.RowsAffected == 0 {
-		return s.requireDepartment(ctx, id)
+	if parentID, ok := fields["parent_id"].(string); ok {
+		// Editors may submit the current parent along with ordinary fields.
+		// Check and update under the target row's lock so concurrent moves
+		// cannot turn an ordinary edit into an unchecked hierarchy write.
+		unchangedParent := false
+		err := db.Transaction(func(tx *gorm.DB) error {
+			var current model.Department
+			if err := tx.Select("id", "parent_id").Clauses(clause.Locking{Strength: "UPDATE"}).
+				First(&current, "id = ?", id).Error; err != nil {
+				return err
+			}
+			if current.ParentID != parentID {
+				return nil
+			}
+			unchangedParent = true
+			return tx.Model(&model.Department{}).Where("id = ?", id).Updates(fields).Error
+		})
+		if err != nil || unchangedParent {
+			return err
+		}
+		// Release the target lock before acquiring hierarchy locks. Moves lock
+		// the forest consistently and revalidate its current state below.
 	}
-	return nil
+	return db.Transaction(func(tx *gorm.DB) error {
+		parents, err := lockDepartmentHierarchy(tx)
+		if err != nil {
+			return err
+		}
+		if _, ok := parents[id]; !ok {
+			return gorm.ErrRecordNotFound
+		}
+		if parentID, ok := fields["parent_id"].(string); ok {
+			if err := validateDepartmentParent(parents, id, parentID); err != nil {
+				return err
+			}
+		}
+		return tx.Model(&model.Department{}).Where("id = ?", id).Updates(fields).Error
+	})
 }
 
 // DeleteDepartment removes a department, but only if it is empty: no child
 // departments and no member users. Returns ErrDepartmentNotEmpty otherwise, or
 // gorm.ErrRecordNotFound if the id doesn't exist.
 func (s *Service) DeleteDepartment(ctx context.Context, id string) error {
-	db := s.db.WithContext(ctx)
-	var children int64
-	if err := db.Model(&model.Department{}).Where("parent_id = ?", id).Count(&children).Error; err != nil {
-		return err
-	}
-	var members int64
-	if err := db.Model(&model.UserDepartment{}).Where("department_id = ?", id).Count(&members).Error; err != nil {
-		return err
-	}
-	if children > 0 || members > 0 {
-		return ErrDepartmentNotEmpty
-	}
-	res := db.Where("id = ?", id).Delete(&model.Department{})
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Coordinate deletion with creates/moves so a validated parent cannot
+		// disappear before its child is attached.
+		parents, err := lockDepartmentHierarchy(tx)
+		if err != nil {
+			return err
+		}
+		if _, ok := parents[id]; !ok {
+			return gorm.ErrRecordNotFound
+		}
+		for _, parentID := range parents {
+			if parentID == id {
+				return ErrDepartmentNotEmpty
+			}
+		}
+		var members int64
+		if err := tx.Model(&model.UserDepartment{}).Where("department_id = ?", id).Count(&members).Error; err != nil {
+			return err
+		}
+		if members > 0 {
+			return ErrDepartmentNotEmpty
+		}
+		return tx.Where("id = ?", id).Delete(&model.Department{}).Error
+	})
 }
 
 // GroupMembers returns the member user ids of a group.

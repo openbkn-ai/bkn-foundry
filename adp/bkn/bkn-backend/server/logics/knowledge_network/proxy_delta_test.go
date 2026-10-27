@@ -271,13 +271,13 @@ func TestDeniedExistingSkillDeltaRemovesOnlyItsMaterializedGrant(t *testing.T) {
 		delta.targetVersion == delta.baseVersion {
 		t.Fatalf("materialized skill delta = %#v", delta)
 	}
-	err = refuseNewlyMountedSkillsWithoutGrant(t.Context(), selection,
+	err = refuseNewlyMountedCapabilitiesWithoutGrant(t.Context(), selection,
 		[]*interfaces.CapabilityBinding{{ID: "binding-1"}},
 		[]*interfaces.CapabilityBinding{{ID: "binding-1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL}})
 	if err != nil {
 		t.Fatalf("existing best-effort skill was rejected: %v", err)
 	}
-	err = refuseNewlyMountedSkillsWithoutGrant(t.Context(), selection, nil,
+	err = refuseNewlyMountedCapabilitiesWithoutGrant(t.Context(), selection, nil,
 		[]*interfaces.CapabilityBinding{{ID: "binding-1", CapabilityType: interfaces.CAPABILITY_TYPE_SKILL}})
 	var httpErr *httperrors.HTTPError
 	if !errors.As(err, &httpErr) || httpErr.HTTPCode != http.StatusForbidden {

@@ -1159,8 +1159,7 @@ func parseCapabilities(fmData map[string]any) *BknCapabilities {
 	if err := yaml.Unmarshal(encoded, capabilities); err != nil {
 		return nil
 	}
-	if len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0 &&
-		len(capabilities.MCPTools) == 0 {
+	if capabilities.IsEmpty() {
 		return nil
 	}
 	return capabilities

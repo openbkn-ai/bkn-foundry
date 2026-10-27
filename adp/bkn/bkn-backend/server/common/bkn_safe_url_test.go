@@ -66,3 +66,24 @@ func TestNormalizeBknSafeURLRejectsInvalidValuesWithoutEchoingThem(t *testing.T)
 		})
 	}
 }
+
+func TestNormalizeKBAPIURL(t *testing.T) {
+	for raw, want := range map[string]string{
+		"":                              "",
+		"   ":                           "",
+		" http://kb-api.openbkn:8001/ ": "http://kb-api.openbkn:8001",
+		"HTTPS://kb.example.com/base/":  "https://kb.example.com/base",
+	} {
+		got, err := NormalizeKBAPIURL(raw)
+		if err != nil || got != want {
+			t.Fatalf("NormalizeKBAPIURL(%q) = %q, %v; want %q", raw, got, err, want)
+		}
+	}
+	// A missing scheme parses as scheme "kb-api.openbkn" and would only fail at call time.
+	for _, raw := range []string{"kb-api.openbkn:8001", "ftp://kb-api:8001", "http://user:secret@kb-api:8001", "http://kb-api:8001?x=1"} {
+		got, err := NormalizeKBAPIURL(raw)
+		if err == nil || got != "" || strings.Contains(err.Error(), raw) {
+			t.Fatalf("NormalizeKBAPIURL(%q) = %q, %v; want an error that does not echo the value", raw, got, err)
+		}
+	}
+}

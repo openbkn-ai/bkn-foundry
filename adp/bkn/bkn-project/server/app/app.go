@@ -25,12 +25,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/bknbackend"
+	draftaccess "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/executionfactory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/gitstore"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/release"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/drivenadapters/vega"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/driveradapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 )
 
 // Application is a booted bkn-project process that has not started serving yet.
@@ -68,10 +71,17 @@ func Boot() *Application {
 	logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 	logics.SetReleaseAccess(release.NewReleaseAccess(appSetting))
 	logics.SetProjectAccess(project.NewProjectAccess(appSetting))
+	logics.SetDraftAccess(draftaccess.NewDraftAccess(appSetting))
+	logics.SetVegaAccess(vega.NewVegaAccess(appSetting))
 	logics.SetGitStore(gitstore.NewGitStore(appSetting))
 	logics.SetBknBackendAccess(bknbackend.NewBknBackendAccess(appSetting))
 	logics.SetExecutionFactoryAccess(executionfactory.NewExecutionFactoryAccess(appSetting))
 	logger.Infof("Git store root: %s", appSetting.GitStoreSetting.RootDir)
+
+	// Drafting runs in this process; drafts a previous run left drafting will never finish.
+	if err := draft.NewDraftService(appSetting).FailInterrupted(context.Background()); err != nil {
+		logger.Errorf("Failed to fail interrupted drafts: %v", err)
+	}
 
 	return &Application{
 		appSetting:    appSetting,

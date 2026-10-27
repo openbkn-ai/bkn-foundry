@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/draft"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
@@ -46,6 +47,7 @@ type restHandler struct {
 	rs         interfaces.ReleaseService
 	ls         interfaces.LineageService
 	ps         interfaces.ProjectService
+	drs        interfaces.DraftService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
@@ -56,6 +58,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		rs:         release.NewReleaseService(),
 		ls:         lineage.NewLineageService(),
 		ps:         project.NewProjectService(),
+		drs:        draft.NewDraftService(appSetting),
 	}
 }
 
@@ -91,6 +94,15 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/projects", r.ListProjectsByEx)
 	apiV1.GET("/projects/:project_id", r.GetProjectByEx)
 	apiV1.POST("/projects/:project_id", r.ProjectActionByEx)
+	apiV1.PUT("/projects/:project_id/catalogs", r.SetProjectCatalogsByEx)
+
+	// Ontology drafts: drafting and restoring an excluded field are custom methods,
+	// ontology/draft:generate and draft:restore; people edit items one by one and choose
+	// object types' identities.
+	apiV1.GET("/projects/:project_id/ontology/draft", r.GetDraftByEx)
+	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
+	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
+	apiV1.PUT("/projects/:project_id/ontology/draft/object_types/:item_id/identity", r.ChooseIdentityByEx)
 
 	logger.Info("RestHandler RegisterPublic")
 }

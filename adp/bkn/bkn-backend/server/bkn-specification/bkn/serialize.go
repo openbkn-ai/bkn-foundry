@@ -658,8 +658,7 @@ func serializeConceptGroup(cg *BknConceptGroup, otIndex map[string]*BknObjectTyp
 // fields above it: nesting and quoting are exactly where hand-built YAML breaks, and a name with
 // a colon in it would silently produce a file that no longer parses.
 func serializeCapabilities(capabilities *BknCapabilities) string {
-	if capabilities == nil || (len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0 &&
-		len(capabilities.MCPTools) == 0) {
+	if capabilities.IsEmpty() {
 		return ""
 	}
 	encoded, err := yaml.Marshal(map[string]*BknCapabilities{"capabilities": capabilities})

@@ -1,0 +1,158 @@
+openapi: 3.1.0
+info:
+  title: BKN Safe department writes
+  version: 0.1.0
+  description: |
+    Administrator department creation and updates. Parent validation and the
+    hierarchy mutation share a database transaction and locks across replicas.
+    A rejected request leaves the department unchanged and creates no business
+    audit event. Legacy cyclic data is not automatically repaired; department
+    list member counts visit each reachable department once and deduplicate users.
+servers:
+  - url: /api/safe/v1/admin
+security:
+  - OAuth2: []
+paths:
+  /departments:
+    post:
+      operationId: createSafeDepartment
+      summary: Create a department
+      description: Requires admin-dept create permission. A supplied ID cannot also be its parent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/DepartmentFields'
+                - type: object
+                  required: [name]
+                  properties:
+                    id:
+                      type: string
+                      description: Optional identifier; generated when omitted or empty.
+      responses:
+        '201':
+          description: Department created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/InvalidDepartment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: A non-empty department code is already in use.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /departments/{id}:
+    put:
+      operationId: updateSafeDepartment
+      summary: Update supplied department fields
+      description: |
+        Requires admin-dept edit permission. Existing partial-update behavior is
+        preserved: omitted fields are unchanged. An empty parent_id makes a root.
+        Ordinary edits, including a resubmitted unchanged parent_id, access only
+        the target department. Changes to parent_id lock and validate the hierarchy:
+        the new parent must exist and cannot be the department itself, any
+        descendant, or a node whose ancestor chain contains a cycle or missing node.
+        Concurrent moves cannot both commit when their combined result is a cycle.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepartmentFields'
+      responses:
+        '204':
+          description: Department updated, including a valid unchanged parent.
+        '400':
+          $ref: '#/components/responses/InvalidDepartment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: The department being updated does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '409':
+          description: A non-empty department code is already in use.
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  securitySchemes:
+    OAuth2:
+      $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
+  schemas:
+    DepartmentFields:
+      type: object
+      properties:
+        name:
+          type: string
+        parent_id:
+          type: string
+          description: Existing parent department ID, or empty for a root.
+        type:
+          type: string
+        manager_id:
+          type: string
+        code:
+          type: string
+        email:
+          type: string
+        remark:
+          type: string
+  responses:
+    InvalidDepartment:
+      description: |
+        Invalid request. BknSafe.Department.Cycle means the parent would create
+        or join a cycle. BknSafe.Department.ParentNotFound means the parent or
+        one of its ancestors does not exist. description and the legacy error
+        field contain a readable message localized using Accept-Language.
+        Other validation failures use BknSafe.InvalidRequest.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    Forbidden:
+      description: Department write permission required.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'
+    InternalError:
+      description: Internal failure; the transaction does not commit.
+      content:
+        application/json:
+          schema:
+            $ref: '../_shared/errors.yaml#/components/schemas/Error'

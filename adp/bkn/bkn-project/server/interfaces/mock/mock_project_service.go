@@ -100,3 +100,18 @@ func (mr *MockProjectServiceMockRecorder) SetProjectArchived(ctx, token, id, arc
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectArchived", reflect.TypeOf((*MockProjectService)(nil).SetProjectArchived), ctx, token, id, archived, caller)
 }
+
+// SetProjectCatalogs mocks base method.
+func (m *MockProjectService) SetProjectCatalogs(ctx context.Context, token, id string, catalogIDs []string, caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetProjectCatalogs", ctx, token, id, catalogIDs, caller)
+	ret0, _ := ret[0].(*interfaces.ProjectEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetProjectCatalogs indicates an expected call of SetProjectCatalogs.
+func (mr *MockProjectServiceMockRecorder) SetProjectCatalogs(ctx, token, id, catalogIDs, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProjectCatalogs", reflect.TypeOf((*MockProjectService)(nil).SetProjectCatalogs), ctx, token, id, catalogIDs, caller)
+}
