@@ -65,6 +65,58 @@ def test_metric_design_scope_accepts_maximum_length_network_id():
         })
 
 
+def test_metric_design_accepts_maximum_length_object_type_ids():
+    maximum = "o" * 128
+    value = request(
+        scope={
+            "kn_id": "network-1",
+            "owner_object_type_id": maximum,
+            "metric_type": "derived",
+            "mode": "create",
+        },
+        candidates={
+            "properties": [],
+            "published_metrics": [{
+                "id": "metric-1",
+                "version": 1,
+                "name": "Metric",
+                "type": "atomic",
+                "scope": "object_set",
+                "object_type_id": maximum,
+            }],
+        },
+    )
+    assert value.scope.owner_object_type_id == maximum
+    assert value.candidates.published_metrics[0].object_type_id == maximum
+
+
+@pytest.mark.parametrize("field", ["scope", "candidate"])
+def test_metric_design_rejects_overlong_object_type_ids(field):
+    overlong = "o" * 129
+    overrides = {}
+    if field == "scope":
+        overrides["scope"] = {
+            "kn_id": "network-1",
+            "owner_object_type_id": overlong,
+            "metric_type": "atomic",
+            "mode": "create",
+        }
+    else:
+        overrides["candidates"] = {
+            "properties": [],
+            "published_metrics": [{
+                "id": "metric-1",
+                "version": 1,
+                "name": "Metric",
+                "type": "atomic",
+                "scope": "object_set",
+                "object_type_id": overlong,
+            }],
+        }
+    with pytest.raises(ValidationError):
+        request(**overrides)
+
+
 def test_proposal_uses_server_captured_before_value_and_revision():
     result = validate_proposal(proposal(), request())
     assert result["kind"] == "metric_design_proposal"

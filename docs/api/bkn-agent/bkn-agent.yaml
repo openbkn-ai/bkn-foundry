@@ -2431,7 +2431,7 @@ components:
           title: Scope
         object_type_id:
           type: string
-          maxLength: 100
+          maxLength: 128
           minLength: 1
           title: Object Type Id
       additionalProperties: false
@@ -2619,7 +2619,7 @@ components:
           title: Kn Id
         owner_object_type_id:
           type: string
-          maxLength: 100
+          maxLength: 128
           minLength: 1
           title: Owner Object Type Id
         metric_type:
