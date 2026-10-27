@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/filter_condition"
 )
 
@@ -24,7 +25,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "name", "==", "alice")
 		sql, args := toSQL(t, c, cond)
-		if sql != "`name` = ?" {
+		if sql != "(`name` = ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != "alice" {
@@ -35,7 +36,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "==", float64(1785295334428))
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` = ?" {
+		if sql != "(`created_at` = ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != time.UnixMilli(1785295334428).UTC() {
@@ -46,7 +47,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "==", "1785295334428")
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` = ?" {
+		if sql != "(`created_at` = ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != time.UnixMilli(1785295334428).UTC() {
@@ -56,7 +57,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 	t.Run("accept complete datetime without numeric coercion", func(t *testing.T) {
 		t.Setenv("TZ", "UTC")
 		sql, args := toSQL(t, &MariaDBConnector{}, mustNewCond(t, "created_at", "==", "2026-01-01 00:00:00"))
-		assert.Equal(t, "`created_at` = ?", sql)
+		assert.Equal(t, "(`created_at` = ?)", sql)
 		assert.Equal(t, []any{time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}, args)
 	})
 	t.Run("convert equal field to field", func(t *testing.T) {
@@ -72,7 +73,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		sql, _ := toSQL(t, c, cond)
-		if sql != "`name` = `tags`" {
+		if sql != "(`name` = `tags`)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -90,7 +91,7 @@ func TestMariaDBConnectorConvertFilterConditionEqual(t *testing.T) {
 		}
 		sql, _ := toSQL(t, c, cond)
 		// OriginalName t1.col must become the qualified identifier `t1`.`col`.
-		if sql != "`t1`.`col` = ?" {
+		if sql != "(`t1`.`col` = ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -100,7 +101,7 @@ func TestMariaDBConnectorConvertFilterConditionNotEqual(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "name", "!=", "bob")
 		sql, args := toSQL(t, c, cond)
-		if sql != "`name` <> ?" {
+		if sql != "(`name` <> ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != "bob" {
@@ -111,7 +112,7 @@ func TestMariaDBConnectorConvertFilterConditionNotEqual(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "!=", float64(1785295334428))
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` <> ?" {
+		if sql != "(`created_at` <> ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != time.UnixMilli(1785295334428).UTC() {
@@ -124,7 +125,7 @@ func TestMariaDBConnectorConvertFilterConditionGt(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "age", ">", 18)
 		sql, args := toSQL(t, c, cond)
-		if sql != "`age` > ?" {
+		if sql != "(`age` > ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != 18 {
@@ -137,7 +138,7 @@ func TestMariaDBConnectorConvertFilterConditionGte(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "age", ">=", 18)
 		sql, _ := toSQL(t, c, cond)
-		if sql != "`age` >= ?" {
+		if sql != "(`age` >= ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -145,7 +146,7 @@ func TestMariaDBConnectorConvertFilterConditionGte(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", ">=", json.Number("1710000000000"))
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` >= ?" {
+		if sql != "(`created_at` >= ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != time.UnixMilli(1710000000000).UTC() {
@@ -158,7 +159,7 @@ func TestMariaDBConnectorConvertFilterConditionLt(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "age", "<", 65)
 		sql, _ := toSQL(t, c, cond)
-		if sql != "`age` < ?" {
+		if sql != "(`age` < ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -168,7 +169,7 @@ func TestMariaDBConnectorConvertFilterConditionLte(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "age", "<=", 65)
 		sql, _ := toSQL(t, c, cond)
-		if sql != "`age` <= ?" {
+		if sql != "(`age` <= ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -178,7 +179,7 @@ func TestMariaDBConnectorConvertFilterConditionIn(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "name", "in", []any{"alice", "bob"})
 		sql, args := toSQL(t, c, cond)
-		if sql != "`name` IN (?,?)" {
+		if sql != "(`name` IN (?, ?))" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 2 {
@@ -189,7 +190,7 @@ func TestMariaDBConnectorConvertFilterConditionIn(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "in", []any{1785295334428, 1785381734428})
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` IN (?, ?)" {
+		if sql != "(`created_at` IN (?, ?))" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 2 || args[0] != time.UnixMilli(1785295334428).UTC() || args[1] != time.UnixMilli(1785381734428).UTC() {
@@ -202,7 +203,7 @@ func TestMariaDBConnectorConvertFilterConditionNotIn(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "name", "not_in", []any{"alice"})
 		sql, _ := toSQL(t, c, cond)
-		if sql != "`name` NOT IN (?)" {
+		if sql != "(`name` NOT IN (?))" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -210,7 +211,7 @@ func TestMariaDBConnectorConvertFilterConditionNotIn(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "not_in", []any{1785295334428, 1785381734428})
 		sql, args := toSQL(t, c, cond)
-		if sql != "`created_at` NOT IN (?, ?)" {
+		if sql != "(`created_at` NOT IN (?, ?))" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 2 || args[0] != time.UnixMilli(1785295334428).UTC() || args[1] != time.UnixMilli(1785381734428).UTC() {
@@ -224,7 +225,7 @@ func TestMariaDBDateExpressionsKeepTimeValuesRaw(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "event_time", ">=", "14:30:00")
 		sql, args := toSQL(t, c, cond)
-		if sql != "`event_time` >= ?" {
+		if sql != "(`event_time` >= ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != "14:30:00" {
@@ -253,7 +254,7 @@ func TestMariaDBDateExpressionsKeepCursorTimestampsNative(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cond := mustNewCond(t, "created_at", ">", value)
 			sql, args := toSQL(t, c, cond)
-			if sql != "`created_at` > ?" {
+			if sql != "(`created_at` > ?)" {
 				t.Errorf("unexpected SQL: %s", sql)
 			}
 			if len(args) != 1 || !args[0].(time.Time).Equal(wantTime) {
@@ -267,10 +268,10 @@ func TestMariaDBConnectorConvertFilterConditionLike(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "name", "like", "ali")
 		sql, args := toSQL(t, c, cond)
-		if sql != "`name` LIKE ?" {
+		if sql != "(`name` LIKE CONCAT('%', REPLACE(REPLACE(REPLACE(?, '!', '!!'), '%', '!%'), '_', '!_'), '%') ESCAPE '!')" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 1 || args[0] != "%ali%" {
+		if len(args) != 1 || args[0] != "ali" {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -284,8 +285,8 @@ func TestMariaDBConnectorConvertFilterConditionLike(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected string arg, got %T", args[0])
 		}
-		// Preserve the escaped percent sign in the bound LIKE pattern.
-		if !strings.Contains(argStr, `\%`) {
+		// The bound value stays literal; the renderer escapes LIKE metacharacters using !.
+		if argStr != "100%" {
 			t.Errorf("expected escaped %%, got %s", argStr)
 		}
 	})
@@ -296,7 +297,7 @@ func TestMariaDBConnectorConvertFilterConditionNull(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{Name: "name", Operation: "null"}
 		cond, _ := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		sql, _ := toSQL(t, c, cond)
-		if sql != "`name` IS NULL" {
+		if sql != "(`name` IS NULL)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -307,7 +308,7 @@ func TestMariaDBConnectorConvertFilterConditionNotNull(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{Name: "name", Operation: "not_null"}
 		cond, _ := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		sql, _ := toSQL(t, c, cond)
-		if sql != "`name` IS NOT NULL" {
+		if sql != "(`name` IS NOT NULL)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 	})
@@ -318,7 +319,7 @@ func TestMariaDBConnectorConvertFilterConditionEmpty(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{Name: "name", Operation: "empty"}
 		cond, _ := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		sql, args := toSQL(t, c, cond)
-		if sql != "`name` = ?" {
+		if sql != "(`name` = ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != "" {
@@ -331,7 +332,7 @@ func TestMariaDBConnectorConvertFilterConditionRange(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "age", "range", []any{18, 65})
 		sql, args := toSQL(t, c, cond)
-		if !strings.Contains(sql, "`age` >= ?") || !strings.Contains(sql, "`age` <= ?") {
+		if !strings.Contains(sql, "(`age` >= ?)") || !strings.Contains(sql, "(`age` <= ?)") {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 2 {
@@ -342,8 +343,8 @@ func TestMariaDBConnectorConvertFilterConditionRange(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "range", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
-		if !strings.Contains(sql, "`created_at` >= ?") ||
-			!strings.Contains(sql, "`created_at` <= ?") {
+		if !strings.Contains(sql, "(`created_at` >= ?)") ||
+			!strings.Contains(sql, "(`created_at` <= ?)") {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 2 || args[0] != time.UnixMilli(1710000000000).UTC() || args[1] != time.UnixMilli(1710003600000).UTC() {
@@ -356,8 +357,8 @@ func TestMariaDBConnectorConvertFilterConditionOutRange(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "out_range", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
-		if !strings.Contains(sql, "`created_at` < ?") ||
-			!strings.Contains(sql, "`created_at` > ?") {
+		if !strings.Contains(sql, "(`created_at` < ?)") ||
+			!strings.Contains(sql, "(`created_at` > ?)") {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 2 || args[0] != time.UnixMilli(1710000000000).UTC() || args[1] != time.UnixMilli(1710003600000).UTC() {
@@ -370,8 +371,8 @@ func TestMariaDBConnectorConvertFilterConditionBetween(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "created_at", "between", []any{1710000000000, 1710003600000})
 		sql, args := toSQL(t, c, cond)
-		if !strings.Contains(sql, "`created_at` >= ?") ||
-			!strings.Contains(sql, "`created_at` <= ?") {
+		if !strings.Contains(sql, "(`created_at` >= ?)") ||
+			!strings.Contains(sql, "(`created_at` <= ?)") {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 2 || args[0] != time.UnixMilli(1710000000000).UTC() || args[1] != time.UnixMilli(1710003600000).UTC() {
@@ -384,7 +385,7 @@ func TestMariaDBConnectorConvertFilterConditionRegex(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "name", "regex", "^ali.*")
 		sql, args := toSQL(t, c, cond)
-		if sql != "`name` REGEXP ?" {
+		if sql != "(`name` REGEXP ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != "^ali.*" {
@@ -398,7 +399,7 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 		cfg := &interfaces.FilterCondCfg{Name: "is_active", Operation: "true"}
 		cond, _ := filter_condition.NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		sql, args := toSQL(t, c, cond)
-		if sql != "`is_active` = ?" {
+		if sql != "(`is_active` = ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if len(args) != 1 || args[0] != true {
@@ -413,8 +414,8 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 			operation string
 			sql       string
 		}{
-			{operation: "true", sql: "`flag` <> ?"},
-			{operation: "false", sql: "`flag` = ?"},
+			{operation: "true", sql: "(`flag` <> ?)"},
+			{operation: "false", sql: "(`flag` = ?)"},
 		} {
 			condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "flag", Operation: test.operation}, fields)
 			if err != nil {
@@ -424,7 +425,7 @@ func TestMariaDBConnectorConvertFilterConditionTrue(t *testing.T) {
 			if err != nil {
 				t.Fatalf("convert %s condition: %v", test.operation, err)
 			}
-			statement, args, err := expression.ToSql()
+			statement, args, err := render(expression)
 			if err != nil {
 				t.Fatalf("render %s condition: %v", test.operation, err)
 			}
@@ -453,10 +454,10 @@ func TestMariaDBConnectorConvertFilterConditionPrefix(t *testing.T) {
 		c := &MariaDBConnector{}
 		cond := mustNewCond(t, "name", "prefix", "ali")
 		sql, args := toSQL(t, c, cond)
-		if sql != "`name` LIKE ?" {
+		if sql != "(`name` LIKE ? ESCAPE ?)" {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
-		if len(args) != 1 || args[0] != "ali%" {
+		if len(args) != 2 || args[0] != "ali%" || args[1] != "!" {
 			t.Errorf("unexpected args: %v", args)
 		}
 	})
@@ -487,7 +488,7 @@ func TestMariaDBConnectorConvertFilterConditionAnd(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		sql, args := toSQL(t, c, cond)
-		if !strings.Contains(sql, "`name` = ?") || !strings.Contains(sql, "`age` > ?") {
+		if !strings.Contains(sql, "(`name` = ?)") || !strings.Contains(sql, "(`age` > ?)") {
 			t.Errorf("unexpected SQL: %s", sql)
 		}
 		if !strings.Contains(sql, " AND ") {
@@ -519,29 +520,6 @@ func TestMariaDBConnectorConvertFilterConditionOr(t *testing.T) {
 	})
 }
 
-func TestSpecialReplacer(t *testing.T) {
-	t.Run("special replacer", func(t *testing.T) {
-		tests := []struct {
-			input    string
-			expected string
-		}{
-			{`hello`, `hello`},
-			{`%`, `\%`},
-			{`_`, `\_`},
-			{`'`, `\'`},
-			{`\`, `\\\\`},
-			{`100%_done`, `100\%\_done`},
-		}
-		for _, tt := range tests {
-			got := likeEscaper.Replace(tt.input)
-			if got != tt.expected {
-				t.Errorf("Special.Replace(%q) = %q, want %q", tt.input, got, tt.expected)
-			}
-		}
-	})
-}
-
-// testFieldsMap defines the scalar fields and alias used by condition tests.
 func testFieldsMap() map[string]*interfaces.Property {
 	return map[string]*interfaces.Property{
 		"name":       {Name: "name", OriginalName: "name", Type: interfaces.DataType_String},
@@ -562,7 +540,7 @@ func toSQL(t *testing.T, connector *MariaDBConnector, cond interfaces.FilterCond
 	if err != nil {
 		t.Fatalf("ConvertFilterCondition failed: %v", err)
 	}
-	sql, args, err := sqlizer.ToSql()
+	sql, args, err := render(sqlizer)
 	if err != nil {
 		t.Fatalf("ToSql failed: %v", err)
 	}
@@ -597,17 +575,17 @@ func TestMariaDBConnectorConvertFilterConditionCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			expr, err := (&MariaDBConnector{}).ConvertFilterConditionCurrent(cond)
+			expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
 			if err != nil {
 				t.Fatal(err)
 			}
-			sql, args, err := expr.ToSql()
+			sql, args, err := render(expr)
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := "DATE_FORMAT(`created_at`, '" + tc.format + "') = DATE_FORMAT(NOW(), '" + tc.format + "')"
-			if sql != want || len(args) != 0 {
-				t.Fatalf("got SQL %q args %v, want %q without parameters", sql, args, want)
+			want := "(DATE_FORMAT(`created_at`, ?) = DATE_FORMAT(NOW(), ?))"
+			if sql != want || len(args) != 2 || args[0] != tc.format || args[1] != tc.format {
+				t.Fatalf("got SQL %q args %v, want %q with the same format twice", sql, args, want)
 			}
 		})
 	}
@@ -630,7 +608,7 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			expr, err := (&MariaDBConnector{}).ConvertFilterConditionBefore(cond)
+			expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
 			if !tc.valid {
 				if err == nil || expr != nil {
 					t.Fatalf("expected rejection, got expression %v error %v", expr, err)
@@ -640,11 +618,11 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sql, args, err := expr.ToSql()
+			sql, args, err := render(expr)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if sql != "`created` < DATE_SUB(NOW(), INTERVAL ? DAY)" || len(args) != 1 || args[0] != int64(2) {
+			if sql != "(`created` < DATE_SUB(NOW(), INTERVAL ? DAY))" || len(args) != 1 || args[0] != int64(2) {
 				t.Fatalf("unexpected SQL %q args %v", sql, args)
 			}
 		})
@@ -659,7 +637,7 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 		} {
 			t.Run(tc.unit, func(t *testing.T) {
 				cond := &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(2), tc.unit}}
-				expr, err := (&MariaDBConnector{}).ConvertFilterConditionBefore(cond)
+				expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
 				if !tc.valid {
 					if err == nil || expr != nil {
 						t.Fatalf("expected unit rejection, got expression %v error %v", expr, err)
@@ -669,11 +647,11 @@ func TestMariaDBConnectorConvertFilterConditionBefore(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				sql, args, err := expr.ToSql()
+				sql, args, err := render(expr)
 				if err != nil {
 					t.Fatal(err)
 				}
-				want := "`created` < DATE_SUB(NOW(), INTERVAL ? " + strings.ToUpper(tc.unit) + ")"
+				want := "(`created` < DATE_SUB(NOW(), INTERVAL ? " + strings.ToUpper(tc.unit) + "))"
 				if sql != want || len(args) != 1 || args[0] != int64(2) {
 					t.Fatalf("unexpected SQL %q args %v", sql, args)
 				}
@@ -710,7 +688,7 @@ func TestMariaDBConnectorTemporalInputContract(t *testing.T) {
 						require.NoError(t, err)
 						expr, err := (&MariaDBConnector{}).ConvertFilterCondition(cond)
 						require.NoError(t, err)
-						sql, args, err := expr.ToSql()
+						sql, args, err := render(expr)
 						require.NoError(t, err)
 						assert.NotEmpty(t, sql)
 						require.Len(t, args, count)
@@ -735,4 +713,99 @@ func TestMariaDBConnectorTemporalInputContract(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMariaDBConnectorConvertFilterCondition(t *testing.T) {
+	field := &interfaces.Property{Name: "x", Type: interfaces.DataType_String}
+	cfg := &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Const}
+	connector := &MariaDBConnector{}
+	for _, tc := range []struct {
+		name      string
+		condition interfaces.FilterCondition
+		sql       string
+		args      []any
+	}{
+		{"equal", &filter_condition.EqualCond{Cfg: cfg, Lfield: field, Value: "a"}, "(`x` = ?)", []any{"a"}},
+		{"null equality", &filter_condition.EqualCond{Cfg: cfg, Lfield: field}, "(`x` IS NULL)", nil},
+		{"null inequality", &filter_condition.NotEqualCond{Cfg: cfg, Lfield: field}, "(`x` IS NOT NULL)", nil},
+		{"field comparison", &filter_condition.GtCond{Cfg: &interfaces.FilterCondCfg{ValueFrom: interfaces.ValueFrom_Field}, Lfield: field, Rfield: &interfaces.Property{Name: "y"}}, "(`x` > `y`)", nil},
+		{"in", &filter_condition.InCond{Lfield: field, Value: []any{"a", nil}}, "(`x` IN (?, ?))", []any{"a", nil}},
+		{"empty in", &filter_condition.InCond{Lfield: field}, "(1=0)", nil},
+		{"empty not in", &filter_condition.NotInCond{Lfield: field}, "(1=1)", nil},
+		{"inclusive range", &filter_condition.RangeCond{Lfield: field, Value: []any{1, 2}}, "((`x` >= ?) AND (`x` <= ?))", []any{1, 2}},
+		{"outside range", &filter_condition.OutRangeCond{Lfield: field, Value: []any{1, 2}}, "((`x` < ?) OR (`x` > ?))", []any{1, 2}},
+		{"regex", &filter_condition.RegexCond{Lfield: field, Value: "a.*'"}, "(`x` REGEXP ?)", []any{"a.*'"}},
+		{"CSV contains", &filter_condition.ContainCond{Lfield: field, Value: []any{"a", "b"}}, "((FIND_IN_SET(?, `x`) > ?) AND (FIND_IN_SET(?, `x`) > ?))", []any{"a", 0, "b", 0}},
+		{"prefix literal", &filter_condition.PrefixCond{Lfield: field, Value: "a%_!"}, "(`x` LIKE ? ESCAPE ?)", []any{"a!%!_!!%", "!"}},
+		{"current month", &filter_condition.CurrentCond{Lfield: field, Value: filter_condition.CurrentMonth}, "(DATE_FORMAT(`x`, ?) = DATE_FORMAT(NOW(), ?))", []any{"%Y-%m", "%Y-%m"}},
+		{"before", &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(2), "day"}}, "(`x` < DATE_SUB(NOW(), INTERVAL ? DAY))", []any{int64(2)}},
+		{"tinyint true", &filter_condition.TrueCond{Lfield: &interfaces.Property{Name: "x", Type: interfaces.DataType_Integer, OriginalType: "TINYINT(1)"}}, "(`x` <> ?)", []any{0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			node, err := connector.ConvertFilterCondition(tc.condition)
+			require.NoError(t, err)
+			sql, args, err := render(node)
+			require.NoError(t, err)
+			assert.Equal(t, tc.sql, sql)
+			assert.Equal(t, tc.args, args)
+		})
+	}
+	t.Run("parsed LIKE is literal and parameters never become SQL", func(t *testing.T) {
+		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "x", Operation: filter_condition.OperationLike, Value: `O'Reilly\%_!`}, map[string]*interfaces.Property{"x": field})
+		require.NoError(t, err)
+		node, err := connector.ConvertFilterCondition(condition)
+		require.NoError(t, err)
+		sql, args, err := render(node)
+		require.NoError(t, err)
+		assert.Contains(t, sql, "LIKE CONCAT")
+		assert.NotContains(t, sql, "O'Reilly")
+		assert.Equal(t, []any{"O'Reilly%_!"}, args)
+	})
+	t.Run("temporal parsing preserves the server timezone and precision", func(t *testing.T) {
+		t.Setenv("TZ", "UTC")
+		field := &interfaces.Property{Name: "created", Type: interfaces.DataType_Datetime}
+		condition, err := filter_condition.NewFilterCondition(context.Background(), &interfaces.FilterCondCfg{Name: "created", Operation: filter_condition.OperationEqual, Value: "2026-10-27T12:30:00.123456Z"}, map[string]*interfaces.Property{"created": field})
+		require.NoError(t, err)
+		node, err := connector.ConvertFilterCondition(condition)
+		require.NoError(t, err)
+		sql, args, err := render(node)
+		require.NoError(t, err)
+		assert.Equal(t, "(`created` = ?)", sql)
+		require.Len(t, args, 1)
+		value, ok := args[0].(time.Time)
+		require.True(t, ok)
+		assert.True(t, value.Equal(time.Date(2026, 10, 27, 12, 30, 0, 123456000, time.UTC)))
+	})
+	t.Run("unsupported fulltext and interval syntax are rejected", func(t *testing.T) {
+		for _, condition := range []interfaces.FilterCondition{&filter_condition.MatchCond{}, &filter_condition.BeforeCond{Lfield: field, Value: []any{int64(1), "day); DROP TABLE t"}}} {
+			node, err := connector.ConvertFilterCondition(condition)
+			assert.Error(t, err)
+			assert.Nil(t, node)
+		}
+	})
+	t.Run("composite conditions retain null semantics", func(t *testing.T) {
+		condition := &filter_condition.AndCond{SubConds: []interfaces.FilterCondition{&filter_condition.NullCond{Lfield: field}, &filter_condition.OrCond{SubConds: []interfaces.FilterCondition{&filter_condition.EmptyCond{Lfield: field}, &filter_condition.NotExistCond{Lfield: field}}}}}
+		node, err := connector.ConvertFilterCondition(condition)
+		require.NoError(t, err)
+		sql, args, err := render(node)
+		require.NoError(t, err)
+		assert.Equal(t, "((`x` IS NULL) AND ((`x` = ?) OR (`x` IS NULL)))", sql)
+		assert.Equal(t, []any{""}, args)
+		assert.IsType(t, &sb.And{}, node)
+	})
+}
+
+func TestSqlColumnName(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{
+		{"name", "`name`"}, {"t1.name", "`t1`.`name`"}, {"col`name", "`col``name`"}, {" t1 . name ", "`t1`.`name`"},
+	} {
+		sql, args, err := render(sqlColumnName(tc.name))
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, sql)
+		assert.Empty(t, args)
+	}
+	sql, args, err := render(sqlColumnName(""))
+	require.Error(t, err)
+	assert.Empty(t, sql)
+	assert.Nil(t, args)
 }

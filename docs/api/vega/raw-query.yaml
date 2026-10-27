@@ -24,27 +24,27 @@ info:
     Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。当前可用的 SQL 子集为
     同一 Catalog 内的 `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和
     常用聚合函数（`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。子查询不被只读策略单独禁止；
-    MySQL 连接器使用 Vega 的 Go 解析器与结构化 Builder，只接受 `mysql` 输入语法（含默认值），
+    MariaDB/MySQL 连接器使用 Vega 的 Go 解析器与结构化 Builder，只接受 `mysql` 输入语法（含默认值），
     不调用 SQLGlot；支持显式子查询、JOIN、DISTINCT、分组、排序和 LIMIT/OFFSET，窗口函数不开放。
     其他连接器继续使用原有 SQLGlot 流程，其窗口函数和其他内置函数须被识别为安全表达式，
     且由 `input_dialect` 和底层连接器支持。
 
     不支持 `WITH` / CTE、`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、
-    锁定读取，以及写入、DDL、事务、权限与过程类语句。MySQL 函数使用明确的只读内置函数名单，
+    锁定读取，以及写入、DDL、事务、权限与过程类语句。MariaDB/MySQL 函数使用明确的只读内置函数名单，
     包括常用聚合、数值、字符串和日期函数；在访问连接器前检查参数数量及 DISTINCT / * 的组合。
     例如 COUNT()、COUNT(DISTINCT *)、ABS(1,2) 会返回 400；字段类型及分组语义由目标数据库检查。
     其他目标仅允许 SQLGlot 可识别的具名内置表达式。
     UDF 与未开放的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
     内置函数（如 `pg_read_file`、`http_get`、`sleep`、`system`）另被显式拒绝。违反策略返回 HTTP 400
     `VegaBackend.Query.InvalidParameter`，`error_details` 为
-    MySQL 返回不含 SQL 原文的解析或能力错误，其他目标返回
+    MariaDB/MySQL 返回不含 SQL 原文的解析或能力错误，其他目标返回
     `raw query rejected by read-only policy`；请改写为受支持的单条顶层 `SELECT`。
 
-    MySQL 对没有显式别名的计算表达式固定输出名称，避免参数占位符改变列名及子查询引用；
+    MariaDB/MySQL 对没有显式别名的计算表达式固定输出名称，避免参数占位符改变列名及子查询引用；
     例如 SELECT 1,2 的输出列名为 `1`、`2`。重复输出名称仍需使用不同的显式别名。
 
-    MySQL 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
-    total_count 统计原始逻辑查询的结果行数。MySQL cursor 只执行一次数据查询，在服务端保留
+    MariaDB/MySQL 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
+    total_count 统计原始逻辑查询的结果行数。MariaDB/MySQL cursor 只执行一次数据查询，在服务端保留
     同一个 Rows 和连接，续页继续扫描，不重复执行 OFFSET 查询；额外预读一行判断是否有下一页。
     每次续页重新校验资源权限和源端元数据版本；权限撤销或版本改变会关闭 cursor，版本改变返回
     HTTP 409。读取超时、取消或结果集读取失败会终止 cursor，调用方应重新发起查询；读取前的
@@ -90,7 +90,7 @@ paths:
       description: |
         **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
 
-        - SQL（省略方言，按 MySQL 解析）：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql"}`
+        - SQL（省略方言，按 MariaDB/MySQL 解析）：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql"}`
         - PostgreSQL SQL：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"postgres"}`
         - SQL Server T-SQL：`{"query":"SELECT TOP (20) * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"tsql"}`
         - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
@@ -320,7 +320,7 @@ components:
           description: 可携带但不会覆盖首次请求冻结的值。
           type: boolean
     PagingRequest:
-      description: MySQL cursor 保留同一次数据查询的 Rows，续页继续读取；其他 SQL 连接器使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
+      description: MariaDB/MySQL cursor 保留同一次数据查询的 Rows，续页继续读取；其他 SQL 连接器使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
       type: object
       allOf:
         - if:

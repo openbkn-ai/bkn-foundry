@@ -33,6 +33,21 @@ const (
 	CastJSON            CastType = "json"
 )
 
+const (
+	IntervalMicrosecond IntervalUnit = "microsecond"
+	IntervalSecond      IntervalUnit = "second"
+	IntervalMinute      IntervalUnit = "minute"
+	IntervalHour        IntervalUnit = "hour"
+	IntervalDay         IntervalUnit = "day"
+	IntervalWeek        IntervalUnit = "week"
+	IntervalMonth       IntervalUnit = "month"
+	IntervalQuarter     IntervalUnit = "quarter"
+	IntervalYear        IntervalUnit = "year"
+)
+
+// IntervalUnit 是 SQL 日历间隔单位，由目标生成器检查并输出为关键字。
+type IntervalUnit string
+
 type CastType string
 
 // Column 是字段引用；Qualifier 是来源别名，Name 是单个列名。
@@ -116,6 +131,18 @@ type Like struct {
 	Pattern SqlNode
 	Escape  *string
 	Negated bool
+}
+
+// Regex 表示正则匹配，Pattern 始终是结构化表达式或绑定值。
+type Regex struct {
+	Expr    SqlNode
+	Pattern SqlNode
+}
+
+// Interval 表示 DATE_SUB 等函数的日历间隔语法，不携带原始 SQL 片段。
+type Interval struct {
+	Value SqlNode
+	Unit  IntervalUnit
 }
 
 // Contains 表达字面包含，模式中的 % 和 _ 不具有 SQL 通配符含义。
@@ -214,3 +241,7 @@ func (*Function) sqlNode() {}
 func (*Case) sqlNode() {}
 
 func (*Cast) sqlNode() {}
+
+func (*Regex) sqlNode() {}
+
+func (*Interval) sqlNode() {}

@@ -28,11 +28,11 @@ type CursorSession struct {
 	ResourceIDs  []string
 	CompiledSQL  string
 
-	// MySQL 保存结构化查询；物理名称及版本在每次续页前复核。
+	// MariaDB/MySQL 保存结构化查询；物理名称及版本在每次续页前复核。
 	SQLQuery             *sqlbuilder.SelectBuilder
 	SQLResourceVersions  map[string]int64
 	SQLCatalogUpdateTime int64
-	// MySQL cursor 保留首次执行的结果集和连接，续页只继续读取。
+	// MariaDB/MySQL cursor 保留首次执行的结果集和连接，续页只继续读取。
 	SQLRows       *sql.Rows
 	SQLColumns    []ColumnInfo
 	SQLPendingRow map[string]any
