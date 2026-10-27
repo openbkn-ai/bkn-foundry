@@ -23,7 +23,7 @@ func TestRawQueryServicePrepareSQLQueryIntegration(t *testing.T) {
 	require.NoError(t, exec.Command("python3", "-c", "import sqlglot").Run(), "integration tests require the production SQLGlot runtime")
 	for _, tc := range []struct{ name, input, connectorType, reference string }{
 		{"mysql input to postgres dotted table", "mysql", interfaces.ConnectorTypePostgreSQL, `"Sales.eu"."Orders.part"`},
-		{"postgres input to mysql quoted name", "postgres", interfaces.ConnectorTypeMySQL, "`Sales`.`ord``ers`"},
+		{"postgres input to mariadb quoted name", "postgres", interfaces.ConnectorTypeMariaDB, "`Sales`.`ord``ers`"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)

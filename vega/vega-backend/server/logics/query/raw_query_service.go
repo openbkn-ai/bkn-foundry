@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,12 +27,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/common"
 	verrors "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
+	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/catalog"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/factory"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/dataset"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/querypolicy"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/sqlglot"
 	resourcelogic "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/resource"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/sql/compiler"
 )
 
 var (
@@ -143,15 +146,26 @@ func (rqs *rawQueryService) executeInitialSQLQuery(ctx context.Context, req *int
 
 	var totalCount int64
 	if req.NeedTotal {
-		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+		if prepared.builder != nil {
+			var counted *interfaces.RawQueryResponse
+			counted, err = rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, &rawSQLBuildOptions{count: true})
+			if err == nil {
+				totalCount, err = rawQueryTotalCount(counted)
+			}
+		} else {
+			totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+		}
 		if err != nil {
 			return nil, err
 		}
 	}
-	result, err := rqs.executeSQL(queryCtx, prepared.catalog, prepared.sql, interfaces.PagingModeSingle, &rawSQLBuildOptions{
-		offset: req.Paging.Offset,
-		limit:  req.Paging.Limit,
-	})
+	options := &rawSQLBuildOptions{offset: req.Paging.Offset, limit: req.Paging.Limit}
+	var result *interfaces.RawQueryResponse
+	if prepared.builder != nil {
+		result, err = rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, options)
+	} else {
+		result, err = rqs.executeSQL(queryCtx, prepared.catalog, prepared.sql, interfaces.PagingModeSingle, options)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +187,15 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	}
 	var totalCount int64
 	if req.NeedTotal {
-		totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+		if prepared.builder != nil {
+			var counted *interfaces.RawQueryResponse
+			counted, err = rqs.executeSQLBuilder(queryCtx, prepared.catalog, prepared.builder, &rawSQLBuildOptions{count: true})
+			if err == nil {
+				totalCount, err = rawQueryTotalCount(counted)
+			}
+		} else {
+			totalCount, err = rqs.executeSQLTotalCount(queryCtx, prepared.catalog, prepared.sql)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -190,6 +212,9 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	if err != nil {
 		return nil, cursorSessionCreateError(ctx, err)
 	}
+	session.SQLQuery = prepared.builder
+	session.SQLResourceVersions = prepared.resourceVersions
+	session.SQLCatalogUpdateTime = prepared.catalog.UpdateTime
 	session.PageOffset = req.Paging.Offset
 	session.TotalCount = totalCount
 	session.HasTotalCount = req.NeedTotal
@@ -233,6 +258,11 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("cursor catalog changed")
 	}
+	if session.SQLQuery != nil {
+		if err := rqs.validateSQLBuilderCursor(queryCtx, session, catalog); err != nil {
+			return nil, err
+		}
+	}
 	switch session.QueryFormat {
 	case interfaces.QueryFormatSQL:
 		return rqs.executeSQLCursorPage(queryCtx, session, catalog, warnings)
@@ -245,18 +275,38 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 }
 
 type preparedSQLQuery struct {
-	catalog     *interfaces.Catalog
-	resourceIDs []string
-	sql         string
-	warnings    []string
+	catalog          *interfaces.Catalog
+	resourceIDs      []string
+	sql              string
+	builder          *sb.SelectBuilder
+	resourceVersions map[string]int64
+	warnings         []string
 }
 
 // prepareSQLQuery is the shared SQL preparation pipeline for both single and
-// cursor execution. Policy validation deliberately happens after controlled
-// resource binding and before compilation or connector execution.
+// cursor execution. MySQL 使用原生 Builder；其他目标保留 SQLGlot 的资源绑定与策略校验。
 func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
 	inputDialect := req.EffectiveInputDialect()
-	resourceIDs, err := rqs.extractResourceIDs(ctx, req.Query, inputDialect)
+	var resourceIDs []string
+	var parsed *sb.SelectBuilder
+	var parseErr, err error
+	if inputDialect == "mysql" {
+		parsed, parseErr = compiler.ParseSQL(req.Query.(string))
+		if parseErr == nil {
+			seen := make(map[string]bool)
+			for _, table := range sqlBuilderTables(parsed) {
+				if !seen[table.ResourceID] {
+					resourceIDs = append(resourceIDs, table.ResourceID)
+					seen[table.ResourceID] = true
+				}
+			}
+		} else {
+			// 仅提取路由信息；MySQL 目标仍返回原解析错误，其他目标保留旧语法能力。
+			resourceIDs, err = compiler.ResourceIDs(req.Query.(string))
+		}
+	} else {
+		resourceIDs, err = rqs.extractResourceIDs(ctx, req.Query, inputDialect)
+	}
 	if err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Query_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("extract resource ids failed: %v", err))
@@ -268,6 +318,15 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	catalog, warnings, err := rqs.checkSameDataSource(ctx, resourceIDs)
 	if err != nil {
 		return nil, err
+	}
+	if catalog.ConnectorType == interfaces.ConnectorTypeMySQL {
+		if inputDialect != "mysql" {
+			return nil, mysqlQueryInvalid(ctx, "MySQL 查询仅支持 mysql 输入语法")
+		}
+		if parseErr != nil {
+			return nil, mysqlQueryInvalid(ctx, parseErr.Error())
+		}
+		return rqs.prepareMySQLBuilder(ctx, parsed, catalog, resourceIDs, warnings)
 	}
 	targetDialect, err := targetDialectForCatalog(ctx, catalog)
 	if err != nil {
@@ -379,10 +438,17 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 	pageCtx, cancel := queryExecutionContext(ctx, session.QueryTimeoutSec)
 	defer cancel()
 
-	result, err := rqs.executeSQL(pageCtx, catalog, session.CompiledSQL, interfaces.PagingModeCursor, &rawSQLBuildOptions{
-		offset: session.PageOffset,
-		limit:  session.PageLimit + 1,
-	})
+	if session.SQLQuery != nil && session.PageOffset > math.MaxInt-session.PageLimit {
+		return nil, mysqlQueryInvalid(ctx, "cursor 分页偏移超出支持范围")
+	}
+	options := &rawSQLBuildOptions{offset: session.PageOffset, limit: session.PageLimit + 1}
+	var result *interfaces.RawQueryResponse
+	var err error
+	if session.SQLQuery != nil {
+		result, err = rqs.executeSQLBuilder(pageCtx, catalog, session.SQLQuery, options)
+	} else {
+		result, err = rqs.executeSQL(pageCtx, catalog, session.CompiledSQL, interfaces.PagingModeCursor, options)
+	}
 	if err != nil {
 		return nil, err
 	}

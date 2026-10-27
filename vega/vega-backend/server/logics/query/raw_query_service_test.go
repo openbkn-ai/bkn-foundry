@@ -491,7 +491,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			assert.Equal(t, "at least one resource_id is required for SQL queries", httpErr.ErrorDetails)
 		})
 	}
-	t.Run("revalidates transpiled SQL", func(t *testing.T) {
+	t.Run("revalidates transpiled SQL for unchanged MariaDB", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := vmock.NewMockCatalogService(ctrl)
 		mockRS := vmock.NewMockResourceService(ctrl)
@@ -507,7 +507,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
 		mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil).AnyTimes()
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMySQL,
+			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeMariaDB,
 		}, nil)
 
 		policy := &recordingPolicy{resourceIDs: []string{"resource-1"}}

@@ -8,7 +8,13 @@ import (
 	"context"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/querymodel"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
 )
+
+// SQLBuilderExecutor 在源端执行公共 Builder，旧连接器无需实现此端口。
+type SQLBuilderExecutor interface {
+	ExecuteSQLBuilder(context.Context, *sqlbuilder.SelectBuilder) (*RawQueryResponse, error)
+}
 
 // SQLQueryConnector 消费标准 Bound IR 查询对象，不产生另一份 Builder 或 SQL 制品。
 // 服务层负责解析、条件转换、授权、绑定和目标规划；Connector Prepare 只检查能力。

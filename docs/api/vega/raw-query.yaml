@@ -24,14 +24,23 @@ info:
     Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。当前可用的 SQL 子集为
     同一 Catalog 内的 `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和
     常用聚合函数（`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。子查询不被只读策略单独禁止；
-    窗口函数与其他内置函数须由 SQLGlot 识别为安全表达式，且由 `input_dialect` 和底层连接器支持。
+    MySQL 连接器使用 Vega 的 Go 解析器与结构化 Builder，只接受 `mysql` 输入语法（含默认值），
+    不调用 SQLGlot；支持显式子查询、JOIN、DISTINCT、分组、排序和 LIMIT/OFFSET，窗口函数不开放。
+    其他连接器继续使用原有 SQLGlot 流程，其窗口函数和其他内置函数须被识别为安全表达式，
+    且由 `input_dialect` 和底层连接器支持。
 
     不支持 `WITH` / CTE、`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、
-    锁定读取，以及写入、DDL、事务、权限与过程类语句。函数仅允许 SQLGlot 可识别的具名
-    内置表达式：UDF 与未建模的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
+    锁定读取，以及写入、DDL、事务、权限与过程类语句。MySQL 函数使用明确的只读内置函数名单，
+    包括常用聚合、数值、字符串和日期函数；其他目标仅允许 SQLGlot 可识别的具名内置表达式。
+    UDF 与未开放的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
     内置函数（如 `pg_read_file`、`http_get`、`sleep`、`system`）另被显式拒绝。违反策略返回 HTTP 400
     `VegaBackend.Query.InvalidParameter`，`error_details` 为
-    `raw query rejected by read-only policy`；请改写为单条顶层 `SELECT`。
+    MySQL 返回不含 SQL 原文的解析或能力错误，其他目标返回
+    `raw query rejected by read-only policy`；请改写为受支持的单条顶层 `SELECT`。
+
+    MySQL 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
+    total_count 统计原始逻辑查询的结果行数。Cursor 在服务端保存 Builder，每次续页重新校验
+    资源权限和源端元数据版本；版本改变返回 HTTP 409，调用方应重新发起查询。
 
     MySQL/MariaDB 映射为 binary 的结果列（BIT、BINARY、VARBINARY 和各类 BLOB）
     以原始字节的 base64 字符串返回，空字节串返回空字符串，NULL 保持 null。

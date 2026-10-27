@@ -6,7 +6,11 @@
 
 package interfaces
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
+)
 
 // CursorSession is the server-owned state shared by Raw Query and Resource
 // Data cursor pagination. It is intentionally not part of an HTTP payload.
@@ -21,6 +25,11 @@ type CursorSession struct {
 	CatalogID    string
 	ResourceIDs  []string
 	CompiledSQL  string
+
+	// MySQL 保存结构化查询；物理名称及版本在每次续页前复核。
+	SQLQuery             *sqlbuilder.SelectBuilder
+	SQLResourceVersions  map[string]int64
+	SQLCatalogUpdateTime int64
 
 	QueryFormat     QueryFormat
 	OpenSearchQuery map[string]any
