@@ -485,3 +485,45 @@ func TestObjectTypeListAndSearchReuseCountResourceBatch(t *testing.T) {
 		})
 	}
 }
+
+func TestObjectTypeRowCountsBatchesPolicies(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	svc := &objectTypeService{ps: ps}
+	var objects []*interfaces.ObjectType
+	resources := map[string]vegaResourceLookup{}
+	count, stamp := int64(1), int64(100)
+	for i := range 101 {
+		id := fmt.Sprint(i)
+		objects = append(objects, boundObjectType(id, id, "main"))
+		resources[id] = vegaResourceLookup{resource: &interfaces.VegaResource{RowCount: &count, RowCountTime: &stamp}}
+	}
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Nil()).DoAndReturn(func(_ context.Context, _ string, refs []string, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+		ops := map[string]interfaces.PermissionResourceOps{}
+		for _, ref := range refs {
+			ops[ref] = interfaces.PermissionResourceOps{ResourceID: ref, Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA}}
+		}
+		return ops, nil
+	}).AnyTimes()
+	calls := 0
+	ps.EXPECT().ResolveRowFilters(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+		calls++
+		if len(refs) > 100 {
+			return nil, errors.New("policy batch too large")
+		}
+		var entries []interfaces.RowFilterDecisionEntry
+		for _, ref := range refs {
+			entries = append(entries, interfaces.RowFilterDecisionEntry{ObjectTypeRef: ref, Predicate: interfaces.RowFilterPredicate{Kind: "true"}})
+		}
+		return entries, nil
+	}).AnyTimes()
+	svc.enrichObjectTypeRowCounts(readerContext(), objects, resources)
+	if calls != 2 {
+		t.Fatalf("policy calls = %d, want 2", calls)
+	}
+	for _, ot := range objects {
+		if ot.RowCount == nil || *ot.RowCount != count {
+			t.Fatalf("missing count for %s", ot.OTID)
+		}
+	}
+}

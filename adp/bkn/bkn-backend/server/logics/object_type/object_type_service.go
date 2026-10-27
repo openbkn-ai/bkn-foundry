@@ -2415,9 +2415,13 @@ func (ots *objectTypeService) enrichObjectTypeRowCounts(ctx context.Context,
 	if err != nil {
 		return
 	}
-	decisions, err := ots.ps.ResolveRowFilters(ctx, refs)
-	if err != nil {
-		return
+	var decisions []interfaces.RowFilterDecisionEntry
+	// The row-filter API accepts at most 100 object types per call.
+	for batch := range slices.Chunk(refs, 100) {
+		entries, err := ots.ps.ResolveRowFilters(ctx, batch)
+		if err == nil {
+			decisions = append(decisions, entries...)
+		}
 	}
 	for _, decision := range decisions {
 		ot := candidates[decision.ObjectTypeRef]
