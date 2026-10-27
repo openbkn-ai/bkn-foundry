@@ -185,6 +185,18 @@ func writeErr(c *gin.Context, err error) {
 		code = httperrors.AdminWriteInvalid
 	}
 	var details any
+	var unregistered *UnregisteredPermissionError
+	if errors.As(err, &unregistered) {
+		reason := "unregistered_operation"
+		if unregistered.UnknownResourceType {
+			reason = "unregistered_resource_type"
+		}
+		permissionDetails := gin.H{"reason": reason, "resource_type": unregistered.ResourceType}
+		if !unregistered.UnknownResourceType {
+			permissionDetails["operation"] = unregistered.Operation
+		}
+		details = permissionDetails
+	}
 	var conflict interface{ ExistingRoleID() string }
 	if errors.As(err, &conflict) {
 		details = gin.H{"existing_id": conflict.ExistingRoleID()}

@@ -344,6 +344,7 @@ func TestThreeAdminRoleBindingsAreMutuallyExclusive(t *testing.T) {
 // sibling routes — minting a wildcard policy or grabbing safe_admin directly.
 func TestRoleBindingEscalationGuards(t *testing.T) {
 	r, e, db, users := newAdminServer(t)
+	seedCatalogOps(t, db, "agent", "use")
 	ctx := t.Context()
 
 	const (
@@ -588,6 +589,7 @@ func TestDepartmentCreateThenSaveWithoutChanges(t *testing.T) {
 
 func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 	r, e, db, _ := newAdminServer(t)
+	seedCatalogOps(t, db, "audit", "list")
 	db.Create(&model.Role{ID: "sys-1", Name: "超级管理员", Source: model.RoleSourceSystem})
 
 	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/roles",

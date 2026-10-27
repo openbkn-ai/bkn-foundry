@@ -227,6 +227,24 @@ func (s *adminWriteServices) GrantRolePermissions(ctx context.Context, roleID, r
 		// A paid type below its edition is not grantable (#2512).
 		return fmt.Errorf("%w: resource type is not available in this edition", adminwrite.ErrInvalid)
 	}
+	// Normalization preserves unknown operations and grantability only rejects
+	// registered, read-only operations. Validate the complete requested set
+	// against the registry before expanding dependencies or writing any policy.
+	registry := s.e.Registry()
+	if _, err := registry.ResourceType(ctx, resourceType); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return &adminwrite.UnregisteredPermissionError{ResourceType: resourceType, UnknownResourceType: true}
+		}
+		return err
+	}
+	for _, op := range requestedOps {
+		if _, err := registry.Operation(ctx, resourceType, op); err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return &adminwrite.UnregisteredPermissionError{ResourceType: resourceType, Operation: op}
+			}
+			return err
+		}
+	}
 	// A role granted resource_manage gets its required view_detail (#1121): the
 	// management routes load their target first, so without it the role holds a
 	// verb it can never reach.
