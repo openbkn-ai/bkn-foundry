@@ -85,6 +85,8 @@ func TestValidateDeclarations(t *testing.T) {
 	require.NoError(t, validateDeclarations(ctx, ot))
 	assert.False(t, ot.DataProperties[0].Required, "required on a primary key is not stored")
 	assert.True(t, ot.DataProperties[1].Required, "required on another property is kept")
+	require.NoError(t, validateDeclarations(ctx, ot), "an overwrite checks the same object type twice")
+	assert.False(t, ot.DataProperties[0].Required)
 
 	ot = declaredObjectType()
 	ot.DataProperties[2] = decodeProperty(t, `{"name":"amount","type":"decimal","constraints":{}}`)

@@ -360,6 +360,17 @@ func (p *DataProperty) Declares(field string) bool {
 	return p != nil && p.declared[field]
 }
 
+// DropImpliedRequired clears required on a primary key, which is required by definition, and
+// forgets that the JSON carried it: a later check of the same property must not read the cleared
+// value as a written false.
+func (p *DataProperty) DropImpliedRequired() {
+	if p == nil {
+		return
+	}
+	p.Required = false
+	delete(p.declared, DECLARATION_REQUIRED)
+}
+
 // HasDeclarations reports whether the property carries any declaration. Required on a primary key
 // is implied and does not count.
 func (p *DataProperty) HasDeclarations(primaryKeys []string) bool {

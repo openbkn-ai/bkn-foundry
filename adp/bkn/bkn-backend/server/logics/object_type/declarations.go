@@ -39,7 +39,7 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 			// A primary key is required by definition, so required on it says nothing. It is not
 			// stored, as the 3.0 export already leaves it out; a value stored before is dropped on
 			// the next save.
-			p.Required = false
+			p.DropImpliedRequired()
 		}
 		if p.Constraints.IsEmpty() {
 			p.Constraints = nil
