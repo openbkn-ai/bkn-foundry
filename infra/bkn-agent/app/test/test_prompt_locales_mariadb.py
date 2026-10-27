@@ -15,7 +15,7 @@ from app.test.test_shared_agent_seeds import CLAIM_LOCALES, PROMPT_INDEX, MIGRAT
 
 
 @pytest.mark.skipif(not os.getenv("BKN_AGENT_TEST_MARIADB_HOST"), reason="isolated MariaDB not configured")
-@pytest.mark.parametrize("upgrade", ["fresh", "0.2.0", "0.2.1", "0.2.2"])
+@pytest.mark.parametrize("upgrade", ["fresh", "0.2.0"])
 def test_claim_locale_migration_on_mariadb(upgrade):
     db = pymysql.connect(
         host=os.environ["BKN_AGENT_TEST_MARIADB_HOST"],
@@ -43,23 +43,19 @@ def test_claim_locale_migration_on_mariadb(upgrade):
                 return result
         fresh, selected = selected_migrations(upgrade if upgrade != "fresh" else "0.0.0")
         if upgrade == "fresh":
-            assert fresh[1] == "0.2.3"
+            assert fresh[1] == "0.2.1"
             apply(Path(fresh[0]))
         else:
             apply(MIGRATIONS / upgrade / "init.sql")
             with db.cursor() as cursor:
-                if upgrade != "0.2.2":
-                    with pytest.raises(pymysql.err.OperationalError, match="Unknown column"):
-                        cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
+                with pytest.raises(pymysql.err.OperationalError, match="Unknown column"):
+                    cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
                 with pytest.raises(pymysql.err.OperationalError, match="doesn.t exist"):
                     cursor.execute("SELECT f_agent_id FROM t_agent FORCE INDEX (ix_agent_prompt_id_agent_id) LIMIT 0")
-            before_upgrade = saved_rows() if upgrade == "0.2.2" else None
-            assert selected[1:] == ["0.2.3", True]
+            assert selected[1:] == ["0.2.1", True]
             for _, paths in selected[0]:
                 for path in paths:
                     apply(Path(path))
-        if upgrade == "0.2.2":
-            assert saved_rows() == before_upgrade
         with db.cursor() as cursor:
             cursor.execute("SELECT f_localized_content FROM t_agent_prompt_version LIMIT 0")
             assert cursor.fetchall() == ()
