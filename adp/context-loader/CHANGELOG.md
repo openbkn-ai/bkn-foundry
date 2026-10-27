@@ -8,6 +8,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ### Features & Improvements
 
+- `search_schema` outputs the BKN spec 3.0 stage 1 property declarations on data properties: `semantic`, `required`, `unit`, `crs` and `timezone` in full mode, only `semantic` in brief mode. An undeclared field is omitted, so a network without declarations gets the same output as before. `get_kn_detail` and `get_object_types` do not carry them. (#2260)
+
 - Platform Functions reuse governed Evidence capture to record existing structured result snapshots and actual execution identity without tool-side evidence declarations for Core Claim assembly. Snapshots omitted before publication preserve existing receipt completeness. Once a snapshot event is declared, delivery/confirmation failure can still make evidence partial. Runtime capture failures emit sanitized diagnostics; managed finish still rejects caller-owned claims. (#1332)
 
 - Submit Interaction finish with a separate bounded POST/replay budget (default 5 seconds), preserving the exact request/key across finite retries. Unconfirmed submission now returns an MCP tool error with `retry_same_finish`; only a matching Core terminal acknowledgement is success. Tool execution is never repeated. (#2340)

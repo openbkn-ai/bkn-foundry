@@ -1010,9 +1010,14 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 					Name:                prop.Name,
 					Type:                prop.Type,
 					ConditionOperations: prop.ConditionOperations,
+					Semantic:            prop.Semantic,
 				}
 				if !brief {
 					p.Comment = prop.Comment
+					p.Required = prop.Required
+					if c := prop.Constraints; c != nil {
+						p.Unit, p.CRS, p.Timezone = c.Unit, c.CRS, c.Timezone
+					}
 				}
 				if includeColumns {
 					p.Column = mappedFieldColumn(prop.MappedField, prop.Name)

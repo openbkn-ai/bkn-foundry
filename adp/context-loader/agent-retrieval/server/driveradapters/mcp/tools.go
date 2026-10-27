@@ -828,6 +828,8 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		}
 		// A listed page is complete for what it asked: nothing was requested by name,
 		// so nothing can be missing from it.
+		// Property declarations are search_schema's to surface (#2260).
+		interfaces.OmitPropertyDeclarations(matched)
 		complete := len(args.IDs) == 0 || len(matched) == len(args.IDs)
 		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "object", knID, schemaObjectTypeIDs(matched), matched, complete)
 		resp := &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched,

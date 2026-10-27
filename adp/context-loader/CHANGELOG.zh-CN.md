@@ -8,6 +8,8 @@
 
 ### 功能与改进
 
+- `search_schema` 在数据属性上输出 BKN 规范 3.0 阶段 1 的属性声明：完整模式输出 `semantic`、`required`、`unit`、`crs`、`timezone`，精简模式只输出 `semantic`；未声明的字段不输出，无声明网络的输出与之前相同。`get_kn_detail` 和 `get_object_types` 不输出这些字段。 (#2260)
+
 - 复用既有 Evidence 捕获开关，记录平台函数的实际执行身份与既有结构化结果，无需用户或样例额外声明证据，交给 Core 组装正式 Claim；发布前未生成快照不影响原回执完整性；一旦声明快照事件，其投递或确认失败仍可能使证据变为 partial。运行期捕获失败记录脱敏诊断；受管 finish 仍拒绝调用方提交 claims。 (#1332)
 
 - Interaction finish 使用独立、有界的终态提交／重放预算（默认 5 秒），有限重试保留完全相同的请求和幂等键。未确认提交返回 MCP 工具错误并指引 `retry_same_finish`；只有匹配的 Core 终态 ACK 才确认成功，不重新执行业务。 (#2340)
