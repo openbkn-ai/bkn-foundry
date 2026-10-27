@@ -713,6 +713,7 @@ async def list_prompts(session: AsyncSession, page: int, size: int):
 async def publish_prompt_version(
     session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str,
     commit: bool = True,
+    *, preserve_vars_schema: bool = False,
 ):
     locked_agent_ids = None
     if not commit:
@@ -723,6 +724,14 @@ async def publish_prompt_version(
     )
     if not head:
         return None
+    if preserve_vars_schema:
+        # Inherit the active version after taking the Prompt lock, including
+        # after a rollback. A locking read avoids an older MariaDB RR snapshot.
+        current = await session.get(
+            PromptVersionRow, (prompt_id, head.f_current_version),
+            populate_existing=True, with_for_update=True,
+        )
+        vars_schema = current.f_vars_schema if current else None
     latest_query = (select(PromptVersionRow.f_version)
                     .where(PromptVersionRow.f_prompt_id == prompt_id)
                     .order_by(PromptVersionRow.f_version.desc()).limit(1))

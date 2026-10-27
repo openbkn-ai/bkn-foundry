@@ -592,10 +592,15 @@ async def publish_shared_prompt(
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):
-    """Publish new shared Prompt content; it becomes a new Agent version."""
+    """Publish new shared Prompt content; it becomes a new Agent version.
+
+    Omit vars_schema to retain the currently active Prompt's variable schema;
+    supply an object to replace it, or explicit null to clear it.
+    """
     agent = await _shared_editor(session, account, agent_id)
     await dao.publish_prompt_version(
-        session, agent.prompt_id, body.content, body.vars_schema, account.account_id, commit=False
+        session, agent.prompt_id, body.content, body.vars_schema, account.account_id,
+        commit=False, preserve_vars_schema="vars_schema" not in body.model_fields_set,
     )
     await session.commit()
     return await _shared_prompt(session, agent)
