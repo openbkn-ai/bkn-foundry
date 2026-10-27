@@ -782,8 +782,8 @@ components:
         object_type_ref:
           type: string
           minLength: 3
-          maxLength: 81
-          pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+          maxLength: 257
+          pattern: '^[a-z0-9][a-z0-9_-]{0,127}/[a-z0-9][a-z0-9_-]{0,127}$'
           description: Canonical resource ID part `<kn_id>/<ot_id>` without an `object_type:` prefix.
         properties:
           type: array
@@ -869,8 +869,8 @@ components:
     RowFilterObjectTypeRef:
       type: string
       minLength: 3
-      maxLength: 81
-      pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+      maxLength: 257
+      pattern: '^[a-z0-9][a-z0-9_-]{0,127}/[a-z0-9][a-z0-9_-]{0,127}$'
     RowFilterPropertyName:
       type: string
       pattern: '^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$'

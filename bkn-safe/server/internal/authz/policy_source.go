@@ -210,7 +210,7 @@ func validatePolicyGrant(grant PolicyGrant) error {
 	if strings.TrimSpace(grant.AccessorID) == "" || len(grant.AccessorID) > 64 {
 		return fmt.Errorf("invalid grant accessor")
 	}
-	if strings.TrimSpace(grant.Object) == "" || len(grant.Object) > 255 {
+	if strings.TrimSpace(grant.Object) == "" || len(grant.Object) > 322 {
 		return fmt.Errorf("invalid grant object")
 	}
 	if strings.TrimSpace(grant.Operation) == "" || len(grant.Operation) > 64 {

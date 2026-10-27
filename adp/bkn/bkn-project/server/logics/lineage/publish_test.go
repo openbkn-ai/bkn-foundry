@@ -293,12 +293,12 @@ func Test_LineageService_PublishRelease(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Release_VersionExists)
 		})
 
-		Convey("A 38-character lineage id is cut so the network id fits 40 characters\n", func() {
+		Convey("A lineage ID over the old limit is preserved when the release ID fits 128 characters\n", func() {
 			seq++
 			id := fmt.Sprintf("%s_%04d", strings.Repeat("s", 33), seq)
 			So(id, ShouldHaveLength, 38)
 			live, _ := setUp(id)
-			networkID := strings.Repeat("s", 33) + "_v1_0_0"
+			networkID := id + "_v1_0_0"
 			var imported map[string][]byte
 
 			ra.EXPECT().GetReleaseByNetworkID(gomock.Any(), networkID).Return(nil, false, nil)
@@ -434,17 +434,17 @@ func Test_ReleaseNetworkID(t *testing.T) {
 		So(releaseNetworkID("supply_ontology_hand", "1.1.0"), ShouldEqual, "supply_ontology_hand_v1_1_0")
 
 		Convey("A long lineage id is cut and loses the separator the cut leaves\n", func() {
-			lineageID := strings.Repeat("a", 31) + "_bcdef"
-			So(lineageID, ShouldHaveLength, 37)
+			lineageID := strings.Repeat("a", 121) + "_bcdef"
+			So(lineageID, ShouldHaveLength, 127)
 			id := releaseNetworkID(lineageID, "1.10.0")
-			So(id, ShouldEqual, strings.Repeat("a", 31)+"_v1_10_0")
+			So(id, ShouldEqual, strings.Repeat("a", 120)+"_v1_10_0")
 			So(len(id), ShouldBeLessThanOrEqualTo, maxNetworkIDLength)
 		})
 
 		Convey("The longest version still leaves part of the lineage id\n", func() {
-			id := releaseNetworkID(strings.Repeat("b", 40), strings.Repeat("9", 28)+".0.0")
+			id := releaseNetworkID(strings.Repeat("b", 128), strings.Repeat("9", 28)+".0.0")
 			So(id, ShouldHaveLength, maxNetworkIDLength)
-			So(id, ShouldStartWith, "bbbbbb_v")
+			So(id, ShouldStartWith, strings.Repeat("b", 94)+"_v")
 		})
 	})
 }
@@ -457,14 +457,14 @@ func Test_ReleaseNetworkName(t *testing.T) {
 			So(releaseNetworkName("Supply chain · 1.0.0", "1.1.0"), ShouldEqual, "Supply chain · 1.1.0")
 		})
 
-		Convey("A long base name is cut by characters to fit 40\n", func() {
-			name := releaseNetworkName(strings.Repeat("供应链", 20), "1.10.0")
+		Convey("A long base name is cut by characters to fit 128\n", func() {
+			name := releaseNetworkName(strings.Repeat("供应链", 50), "1.10.0")
 			So(utf8.RuneCountInString(name), ShouldEqual, maxNetworkNameRunes)
 			So(name, ShouldEndWith, " · 1.10.0")
 			So(utf8.ValidString(name), ShouldBeTrue)
 
-			cut := releaseNetworkName(strings.Repeat("x", 31)+" tail", "1.0.0")
-			So(cut, ShouldEqual, strings.Repeat("x", 31)+" · 1.0.0")
+			cut := releaseNetworkName(strings.Repeat("x", 119)+" tail", "1.0.0")
+			So(cut, ShouldEqual, strings.Repeat("x", 119)+" · 1.0.0")
 		})
 	})
 }

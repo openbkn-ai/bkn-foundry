@@ -87,8 +87,8 @@ func validateObjectName(ctx context.Context, objectName string, objectType strin
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, objectNameErrorCode[objectType][0])
 	}
 
-	if utf8.RuneCountInString(objectName) > interfaces.OBJECT_NAME_MAX_LENGTH {
-		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.NameLengthExceeded", map[string]any{"objectType": objectType, "objectName": objectName, "limit": interfaces.OBJECT_NAME_MAX_LENGTH})
+	if utf8.RuneCountInString(objectName) > interfaces.RESOURCE_NAME_MAX_LENGTH {
+		localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknBackend.Validation.Detail.NameLengthExceeded", map[string]any{"objectType": objectType, "objectName": objectName, "limit": interfaces.RESOURCE_NAME_MAX_LENGTH})
 		if renderErr != nil {
 			logger.Errorf("localized message rendering failed: %v", renderErr)
 		}
@@ -457,7 +457,7 @@ func validateCond(ctx context.Context, cfg *cond.CondCfg) error {
 
 func validateID(ctx context.Context, id string) error {
 	if id != "" {
-		// IDs may contain lowercase letters, digits, underscores, and hyphens; they cannot start with an underscore or exceed 40 characters.
+		// IDs may contain lowercase letters, digits, underscores, and hyphens; they cannot start with an underscore or exceed the resource ID limit.
 		re := regexp2.MustCompile(interfaces.RegexPattern_NonBuiltin_ID, regexp2.RE2)
 		match, err := re.MatchString(id)
 		if err != nil || !match {

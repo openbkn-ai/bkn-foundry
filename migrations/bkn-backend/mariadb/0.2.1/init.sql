@@ -8,8 +8,8 @@ USE openbkn;
 
 -- 业务知识网络
 CREATE TABLE IF NOT EXISTS t_knowledge_network (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
-  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络名称',
+  f_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络名称',
   f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
   f_comment TEXT NOT NULL COMMENT '备注',
   f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
@@ -30,14 +30,14 @@ CREATE TABLE IF NOT EXISTS t_knowledge_network (
 
 -- 对象类
 CREATE TABLE IF NOT EXISTS t_object_type (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类id',
-  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类名称',
+  f_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '对象类id',
+  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '对象类名称',
   f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
   f_comment TEXT NOT NULL COMMENT '备注',
   f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
   f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
   f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_data_source VARCHAR(255) NOT NULL COMMENT '数据来源，当前只有视图',
   f_data_properties LONGTEXT DEFAULT NULL COMMENT '数据属性',
@@ -61,8 +61,8 @@ CREATE TABLE IF NOT EXISTS t_object_type (
 
 -- 对象类状态
 CREATE TABLE IF NOT EXISTS t_object_type_status (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类id',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '对象类id',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_incremental_key VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类增量键',
   f_incremental_value VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类当前增量值',
@@ -77,17 +77,17 @@ CREATE TABLE IF NOT EXISTS t_object_type_status (
 
 -- 关系类
 CREATE TABLE IF NOT EXISTS t_relation_type (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关系类id',
-  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关系类名称',
+  f_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '关系类id',
+  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '关系类名称',
   f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
   f_comment TEXT NOT NULL COMMENT '备注',
   f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
   f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
   f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
-  f_source_object_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '起点对象类',
-  f_target_object_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '终点对象类',
+  f_source_object_type_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '起点对象类',
+  f_target_object_type_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '终点对象类',
   f_type VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关联类型',
   f_mapping_rules TEXT DEFAULT NULL COMMENT '关联规则',
   f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS t_relation_type (
   f_lifecycle_status VARCHAR(20) DEFAULT NULL COMMENT '生命周期状态，空即 active',
   f_deprecation TEXT DEFAULT NULL COMMENT '弃用说明，JSON：reason、replaced_by',
   f_importance VARCHAR(20) DEFAULT NULL COMMENT '主次，空即 primary',
-  f_fallback_for VARCHAR(40) DEFAULT NULL COMMENT '替代的主关系id，空为无',
+  f_fallback_for VARCHAR(128) DEFAULT NULL COMMENT '替代的主关系id，空为无',
   f_verification VARCHAR(20) DEFAULT NULL COMMENT '可信度，空为未声明',
   PRIMARY KEY (f_kn_id,f_branch,f_id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT = '关系类';
@@ -111,18 +111,18 @@ CREATE TABLE IF NOT EXISTS t_relation_type (
 
 -- 行动类
 CREATE TABLE IF NOT EXISTS t_action_type (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '行动类id',
-  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '行动类名称',
+  f_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '行动类id',
+  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '行动类名称',
   f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
   f_comment TEXT NOT NULL COMMENT '备注',
   f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
   f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
   f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_action_type VARCHAR(40) NOT NULL DEFAULT '' COMMENT '行动类型',
   f_action_intent VARCHAR(40) NOT NULL DEFAULT '' COMMENT '行动意图',
-  f_object_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类',
+  f_object_type_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '对象类',
   f_condition TEXT DEFAULT NULL COMMENT '行动条件',
   f_affect TEXT DEFAULT NULL COMMENT '行动影响',
   f_impact_contracts TEXT DEFAULT NULL COMMENT '行动影响契约',
@@ -145,14 +145,14 @@ CREATE TABLE IF NOT EXISTS t_action_type (
 
 -- 概念分组
 CREATE TABLE IF NOT EXISTS t_concept_group (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念分组id',
-  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念分组名称',
+  f_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '概念分组id',
+  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '概念分组名称',
   f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
   f_comment TEXT NOT NULL COMMENT '备注',
   f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
   f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
   f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
   f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
@@ -168,11 +168,11 @@ CREATE TABLE IF NOT EXISTS t_concept_group (
 -- 分组与概念对应表
 CREATE TABLE IF NOT EXISTS t_concept_group_relation (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '主键id',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
-  f_group_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念分组id',
+  f_group_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '概念分组id',
   f_concept_type VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念类型',
-  f_concept_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '概念id',
+  f_concept_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '概念id',
   f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间',
   PRIMARY KEY (f_id),
   UNIQUE KEY uk_concept_group_relation (f_kn_id,f_branch,f_group_id,f_concept_type,f_concept_id)
@@ -181,14 +181,14 @@ CREATE TABLE IF NOT EXISTS t_concept_group_relation (
 
 -- 值类型
 CREATE TABLE IF NOT EXISTS t_value_type (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '值类型id',
-  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '值类型名称',
+  f_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '值类型id',
+  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '值类型名称',
   f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
   f_comment TEXT NOT NULL COMMENT '备注',
   f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
   f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
   f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_base_type VARCHAR(40) NOT NULL DEFAULT '' COMMENT '基础类型',
   f_definition MEDIUMTEXT DEFAULT NULL COMMENT '取值定义，JSON：enum、range、length、pattern、unit',
@@ -208,9 +208,9 @@ CREATE TABLE IF NOT EXISTS t_value_type (
 CREATE TABLE IF NOT EXISTS t_action_schedule (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Schedule ID',
   f_name VARCHAR(100) NOT NULL DEFAULT '' COMMENT 'Schedule name',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Branch',
-  f_action_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Action type ID to execute',
+  f_action_type_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Action type ID to execute',
   f_cron_expression VARCHAR(100) NOT NULL DEFAULT '' COMMENT 'Standard 5-field cron expression (min hour dom mon dow)',
   f_instance_identities MEDIUMTEXT DEFAULT NULL COMMENT 'JSON array of target object instance identities',
   f_dynamic_params MEDIUMTEXT DEFAULT NULL COMMENT 'JSON object of dynamic parameters',
@@ -236,14 +236,14 @@ CREATE TABLE IF NOT EXISTS t_action_schedule (
 
 -- Risk Type
 CREATE TABLE IF NOT EXISTS t_risk_type (
-  f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '风险类ID',
-  f_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '风险类名称',
+  f_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '风险类ID',
+  f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '风险类名称',
   f_comment TEXT NOT NULL COMMENT '描述',
   f_tags VARCHAR(255) DEFAULT NULL COMMENT '标签',
   f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
   f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
   f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_creator VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
   f_creator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '创建者类型',
@@ -263,13 +263,13 @@ CREATE TABLE IF NOT EXISTS t_metric_definition (
   f_icon VARCHAR(255) NOT NULL DEFAULT '' COMMENT '图标',
   f_color VARCHAR(40) NOT NULL DEFAULT '' COMMENT '颜色',
   f_bkn_raw_content MEDIUMTEXT NOT NULL COMMENT 'BKNRawContent',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_unit_type VARCHAR(64) NOT NULL DEFAULT '' COMMENT '单位类型',
   f_unit VARCHAR(64) NOT NULL DEFAULT '' COMMENT '单位',
   f_metric_type VARCHAR(32) NOT NULL DEFAULT 'atomic' COMMENT '指标类型 atomic|derived|composite',
   f_scope_type VARCHAR(32) NOT NULL DEFAULT 'object_type' COMMENT '统计主体类型',
-  f_scope_ref VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象类或子图ID',
+  f_scope_ref VARCHAR(128) NOT NULL DEFAULT '' COMMENT '对象类或子图ID',
   f_time_dimension LONGTEXT DEFAULT NULL COMMENT '时间维度 JSON',
   f_calculation_formula LONGTEXT NOT NULL COMMENT '计算公式 JSON',
   f_analysis_dimensions LONGTEXT DEFAULT NULL COMMENT '分析维度 JSON',
@@ -314,7 +314,7 @@ CREATE TABLE IF NOT EXISTS t_operation_audit (
 
 -- Environment-local one-to-one mapping and publication synchronization state.
 CREATE TABLE IF NOT EXISTS t_kn_proxy_account (
-  f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_kn_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_proxy_account_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_proxy_account_type VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'app',
   f_lifecycle_status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'active',
@@ -341,7 +341,7 @@ CREATE TABLE IF NOT EXISTS t_kn_proxy_account (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Knowledge network managed proxy mapping';
 
 CREATE TABLE IF NOT EXISTS t_kn_proxy_published_grant_source (
-  f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_kn_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_binding_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_binding_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_resource_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -356,7 +356,7 @@ CREATE TABLE IF NOT EXISTS t_kn_proxy_published_grant_source (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='Published managed proxy grant snapshot';
 
 CREATE TABLE IF NOT EXISTS t_kn_proxy_planned_grant_source (
-  f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_kn_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_binding_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_binding_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_resource_type VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -372,7 +372,7 @@ CREATE TABLE IF NOT EXISTS t_kn_proxy_planned_grant_source (
 
 CREATE TABLE IF NOT EXISTS t_kn_proxy_sync_outbox (
   f_id VARCHAR(40) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-  f_kn_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  f_kn_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_proxy_account_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   f_generation BIGINT NOT NULL,
   f_base_version VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT '',
@@ -397,7 +397,7 @@ CREATE TABLE IF NOT EXISTS t_kn_proxy_sync_outbox (
 -- 知识网络能力绑定：登记 Skill / Function 对知识网络的归属，主数据留在执行工厂。
 CREATE TABLE IF NOT EXISTS t_kn_capability_binding (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '绑定id',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络id',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_capability_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT '能力类型：skill / function',
   f_owner_id VARCHAR(64) NOT NULL DEFAULT '' COMMENT '所属容器id：function 时为 box_id，skill 时为空',
@@ -418,14 +418,14 @@ CREATE TABLE IF NOT EXISTS t_kn_capability_binding (
 
 
 CREATE TABLE IF NOT EXISTS t_object_metric_definition (
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '对象指标ID',
   f_version INT NOT NULL DEFAULT 1 COMMENT '不可变版本号',
   f_code VARCHAR(128) NOT NULL DEFAULT '' COMMENT '稳定指标编码',
   f_name VARCHAR(128) NOT NULL DEFAULT '' COMMENT '指标名称',
   f_description TEXT NOT NULL COMMENT '业务定义',
-  f_owner_object_type_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '主归属对象类ID',
+  f_owner_object_type_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '主归属对象类ID',
   f_metric_type VARCHAR(32) NOT NULL COMMENT 'atomic|derived|composite',
   f_status VARCHAR(32) NOT NULL DEFAULT 'draft' COMMENT 'draft|validated|published|deprecated',
   f_definition LONGTEXT NOT NULL COMMENT '对象指标V1定义JSON',
@@ -444,10 +444,10 @@ CREATE TABLE IF NOT EXISTS t_object_metric_definition (
 
 CREATE TABLE IF NOT EXISTS t_object_metric_reference (
   f_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '引用记录ID',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '业务知识网络ID',
   f_branch VARCHAR(40) NOT NULL DEFAULT '' COMMENT '分支',
   f_source_type VARCHAR(24) NOT NULL COMMENT 'metric_version|logic_property',
-  f_source_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT '来源指标或对象类ID',
+  f_source_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT '来源指标或对象类ID',
   f_source_version INT NOT NULL DEFAULT 0 COMMENT '来源指标版本；逻辑属性为0',
   f_source_field VARCHAR(128) NOT NULL DEFAULT '' COMMENT '引用字段路径',
   f_source_property_name VARCHAR(40) NOT NULL DEFAULT '' COMMENT '逻辑属性名称',

@@ -1409,7 +1409,7 @@ func normalizeSpec(spec SourceSpec) (SourceSpec, error) {
 		spec.BindingType == "" || spec.BindingID == "" || spec.ResourceID == "" ||
 		strings.Contains(spec.ResourceType, ":") || strings.Contains(spec.ResourceType, "*") ||
 		strings.Contains(spec.ResourceID, "*") || strings.Contains(spec.Operation, "*") ||
-		len(spec.ResourceType) > 64 || len(spec.ResourceID) > 128 || len(spec.Operation) > 64 ||
+		len(spec.ResourceType) > 64 || len(spec.ResourceID) > 257 || len(spec.Operation) > 64 ||
 		len(spec.SourceID) > 128 || len(spec.KNID) > 128 || len(spec.BindingType) > 64 || len(spec.BindingID) > 128 {
 		return SourceSpec{}, ErrInvalidRequest
 	}

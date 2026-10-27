@@ -9,6 +9,10 @@ info:
     Lists are filtered before total and pagination. See
     `../knowledge-network-authorization.md`.
 
+    Resource IDs use lowercase letters, digits, underscores, and hyphens, start
+    with a letter or digit, and contain at most 128 characters. Resource names
+    contain at most 128 Unicode characters.
+
     Strict validation of nested object, relation, and action types preserves each child's public
     dependency error contract: invalid bindings remain 400, user-scoped authorization remains
     403, controlled dependency failures are 502, and timeout/unavailable failures are 503.
@@ -411,9 +415,12 @@ components:
         id:
           description: ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -480,9 +487,12 @@ components:
         id:
           description: ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags. May be empty.
           type: array
@@ -1329,6 +1339,7 @@ components:
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1353,9 +1364,12 @@ components:
         id:
           description: Concept group ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Concept group name
           type: string
+          maxLength: 128
     ConceptGroupDetail:
       description: Concept group details
       required:
@@ -1377,9 +1391,12 @@ components:
         id:
           description: ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags. May be empty.
           type: array

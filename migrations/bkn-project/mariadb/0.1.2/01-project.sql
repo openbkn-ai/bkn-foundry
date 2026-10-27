@@ -10,9 +10,9 @@ USE openbkn;
 CREATE TABLE IF NOT EXISTS t_bkn_project_project (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Project ID',
   f_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Project name',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID: the lineage ID',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID: the lineage ID',
   f_branch VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Git branch of the lineage',
-  f_baseline_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Live knowledge network when the project started',
+  f_baseline_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Live knowledge network when the project started',
   f_catalog_ids TEXT NOT NULL COMMENT 'Data catalog IDs the project uses, JSON array',
   f_archived TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived: hidden from the default list',
   f_owner VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Owner ID: the creator',

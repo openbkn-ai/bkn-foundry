@@ -17,8 +17,8 @@ PROTOCOL = "metric-design-v1"
 class MetricDesignScope(BaseModel):
     model_config = {"extra": "forbid"}
 
-    kn_id: str = Field(min_length=1, max_length=50, pattern=r"^[0-9A-Za-z_.-]+$")
-    owner_object_type_id: str = Field(min_length=1, max_length=100)
+    kn_id: str = Field(min_length=1, max_length=128, pattern=r"^[0-9A-Za-z_.-]+$")
+    owner_object_type_id: str = Field(min_length=1, max_length=128)
     metric_type: Literal["atomic", "derived", "composite"]
     mode: Literal["create", "edit"]
     metric_id: str | None = Field(default=None, max_length=100)
@@ -47,7 +47,7 @@ class MetricCandidate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     type: Literal["atomic", "derived", "composite"]
     scope: Literal["object_instance", "object_set"]
-    object_type_id: str = Field(min_length=1, max_length=100)
+    object_type_id: str = Field(min_length=1, max_length=128)
 
 
 class MetricDesignCandidates(BaseModel):

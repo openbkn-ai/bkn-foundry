@@ -208,7 +208,7 @@ func parseRelationConstraintsV3(rel *BknRelationType, sectionText string) error 
 // it on a 3.0 definition; a save through the API runs the same check.
 func ValidateRelationTypeDeclarations(rt *BknRelationType) error {
 	if rt.ReverseName != "" {
-		if msg := validateObjectName(rt.ReverseName, ""); msg != "" {
+		if msg := validateFieldDisplayName(rt.ReverseName); msg != "" {
 			return specErrorf("relation type reverse_name: %s", msg)
 		}
 	}

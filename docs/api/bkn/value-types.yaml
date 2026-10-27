@@ -24,6 +24,9 @@ info:
 
     All APIs are exposed under /api/bkn-backend/v1, require OAuth2 authentication, and default the
     branch query parameter to main. Writes are recorded in the operation audit.
+    Resource IDs use lowercase letters, digits, underscores, and hyphens, start
+    with a letter or digit, and contain at most 128 characters. Resource names
+    contain at most 128 Unicode characters.
 security:
   - OAuth2: []
 paths:
@@ -235,6 +238,8 @@ components:
       description: Business knowledge network ID
       schema:
         type: string
+        maxLength: 128
+        pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
     VTID:
       name: vt_id
       in: path
@@ -242,6 +247,8 @@ components:
       description: Value type ID
       schema:
         type: string
+        maxLength: 128
+        pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
     Branch:
       name: branch
       in: query
@@ -297,9 +304,12 @@ components:
         id:
           type: string
           description: Optional on creation; generated when empty. Ignored on update.
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           type: string
-          description: Name, unique in the network, with a maximum length of 40
+          description: Name, unique in the network, with a maximum length of 128 Unicode characters
+          maxLength: 128
         tags:
           type: array
           items:
@@ -369,6 +379,8 @@ components:
           properties:
             kn_id:
               type: string
+              maxLength: 128
+              pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
             branch:
               type: string
             module_type:

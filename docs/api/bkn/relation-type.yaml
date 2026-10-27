@@ -9,6 +9,10 @@ info:
     deletes use `modify` and `delete`. Lists and searches are filtered before
     total and pagination. See `../knowledge-network-authorization.md`.
 
+    Resource IDs use lowercase letters, digits, underscores, and hyphens, start
+    with a letter or digit, and contain at most 128 characters. Resource names
+    contain at most 128 Unicode characters.
+
     With `strict_mode=true`, indirect relation mappings read the backing Vega schema under the
     source contract's `query_data` operation; they do not introduce an implicit `view_detail`
     requirement. Main-branch publication reuses the effective delegator selected by Proxy
@@ -245,7 +249,7 @@ paths:
                 list relation types - first request:
                   value:
                     entries:
-                      - id: pod_2_node_TEST
+                      - id: pod_2_node_test
                         name: belongs to 2
                         tags:
                           - topology
@@ -1492,9 +1496,12 @@ components:
         id:
           description: ID. It cannot be changed after creation and may contain only lowercase English letters, digits, underscores, and hyphens. It cannot start with an underscore or hyphen.
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1515,9 +1522,13 @@ components:
         source_object_type_id:
           description: Source object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         target_object_type_id:
           description: Target object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         type:
           description: Relation type
           enum:
@@ -1575,6 +1586,7 @@ components:
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1595,9 +1607,13 @@ components:
         source_object_type_id:
           description: Source object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         target_object_type_id:
           description: Target object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         type:
           description: Relation type
           enum:
@@ -1662,9 +1678,12 @@ components:
         id:
           description: Relation type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Relation type name
           type: string
+          maxLength: 128
         tags:
           description: Tags. May be empty.
           type: array
@@ -1781,9 +1800,12 @@ components:
         id:
           description: Relation type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Relation type name
           type: string
+          maxLength: 128
         tags:
           description: Tags. May be empty.
           type: array

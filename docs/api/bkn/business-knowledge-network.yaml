@@ -9,6 +9,10 @@ info:
     corresponding instance operations. Lists are authorization-filtered before
     total and pagination. See `../knowledge-network-authorization.md`.
 
+    Resource IDs use lowercase letters, digits, underscores, and hyphens, start
+    with a letter or digit, and contain at most 128 characters. Resource names
+    contain at most 128 Unicode characters.
+
     Main-branch import and overwrite perform Proxy source preflight before strict child validation.
     The effective delegator chosen for retained or new sources is reused for the corresponding
     operation-scoped dependency lookup. Nested child dependency errors keep their 400/403/502/503
@@ -1184,9 +1188,12 @@ components:
         id:
           description: ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Name.
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1226,6 +1233,7 @@ components:
         name:
           description: Name.
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1373,9 +1381,12 @@ components:
         id:
           description: ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1429,9 +1440,12 @@ components:
         id:
           description: Business knowledge network ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Business knowledge network name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1459,6 +1473,7 @@ components:
         name:
           description: Business knowledge network name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1490,6 +1505,7 @@ components:
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1545,9 +1561,12 @@ components:
         id:
           description: ID. Immutable after creation. May contain lowercase letters, digits, underscores, and hyphens, and cannot start with an underscore or hyphen.
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1573,9 +1592,13 @@ components:
         source_object_type_id:
           description: Source object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         target_object_type_id:
           description: Target object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         type:
           description: Relation type
           enum:
@@ -1603,6 +1626,7 @@ components:
         name:
           description: Name
           type: string
+          maxLength: 128
         tags:
           description: Tags used for business identification
           type: array
@@ -1628,9 +1652,13 @@ components:
         source_object_type_id:
           description: Source object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         target_object_type_id:
           description: Target object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         type:
           description: Relation type
           enum:
@@ -1661,9 +1689,12 @@ components:
         id:
           description: Action type ID
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Action type name
           type: string
+          maxLength: 128
         tags:
           description: Tags。
           type: array
@@ -1705,6 +1736,8 @@ components:
         object_type_id:
           description: Object type ID bound to the action type
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         condition:
           $ref: "#/components/schemas/ActionCondition"
           description: Action condition
@@ -1745,6 +1778,7 @@ components:
         name:
           description: Action type name
           type: string
+          maxLength: 128
         tags:
           description: Tags. May be empty.
           type: array
@@ -1785,6 +1819,8 @@ components:
         object_type_id:
           description: Object type ID bound to the action type
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         condition:
           $ref: "#/components/schemas/ActionCondition"
           description: Action condition
@@ -2196,9 +2232,12 @@ components:
         id:
           description: Business knowledge network ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Business knowledge network name
           type: string
+          maxLength: 128
         tags:
           description: Tags. May be empty.
           type: array

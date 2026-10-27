@@ -439,7 +439,7 @@ paths:
         schema:
           type: string
           minLength: 1
-          maxLength: 50
+          maxLength: 128
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
       - name: agent_id
@@ -480,7 +480,7 @@ paths:
         schema:
           type: string
           minLength: 1
-          maxLength: 50
+          maxLength: 128
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
       - name: agent_id
@@ -527,7 +527,7 @@ paths:
         schema:
           type: string
           minLength: 1
-          maxLength: 50
+          maxLength: 128
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
       - name: agent_id
@@ -578,7 +578,7 @@ paths:
         schema:
           type: string
           minLength: 1
-          maxLength: 50
+          maxLength: 128
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
       responses:
@@ -2284,7 +2284,7 @@ components:
       properties:
         kn_id:
           type: string
-          maxLength: 50
+          maxLength: 128
           minLength: 1
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
@@ -2482,7 +2482,7 @@ components:
           title: Scope
         object_type_id:
           type: string
-          maxLength: 100
+          maxLength: 128
           minLength: 1
           title: Object Type Id
       additionalProperties: false
@@ -2664,13 +2664,13 @@ components:
       properties:
         kn_id:
           type: string
-          maxLength: 50
+          maxLength: 128
           minLength: 1
           pattern: ^[0-9A-Za-z_.-]+$
           title: Kn Id
         owner_object_type_id:
           type: string
-          maxLength: 100
+          maxLength: 128
           minLength: 1
           title: Owner Object Type Id
         metric_type:
