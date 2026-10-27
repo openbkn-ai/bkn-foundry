@@ -10,7 +10,7 @@ import pytest
 
 from app import public_auth
 from app.core.agent_settings import instruction_block, merge
-from app.models import AgentLimits, AgentOut, AgentSetting
+from app.models import AgentLimits, AgentOut, AgentSetting, NetworkSettingRow
 from app.routers import executions
 from app.test.test_public_execution import AUTH, BODY, URL, environment, parse_sse
 
@@ -156,6 +156,31 @@ def test_network_setting_needs_modify_and_reading_needs_view(monkeypatch):
             assert config["network"]["setting"]["instruction"] == "Fiscal quarters"
             assert config["effective"]["limits"]["max_turns"] == 5
 
+    asyncio.run(run())
+
+
+def test_network_setting_accepts_maximum_length_network_id(monkeypatch):
+    async def run():
+        maximum = "n" * 128
+        network = f"/api/bkn-agent/v1/networks/{maximum}/agents/studio_smart_qa/setting"
+        config = f"/api/bkn-agent/v1/me/agents/studio_smart_qa/config?kn_id={maximum}"
+        async with environment(monkeypatch) as (client, _, _):
+            saved = await client.put(
+                network, json={"instruction": "Long network ID"}, headers=AUTH
+            )
+            assert saved.status_code == 200, saved.text
+            loaded = await client.get(config, headers=AUTH)
+            assert loaded.status_code == 200, loaded.text
+            assert loaded.json()["network"]["setting"]["instruction"] == "Long network ID"
+
+            overlength = maximum + "x"
+            response = await client.get(
+                f"/api/bkn-agent/v1/networks/{overlength}/agents/studio_smart_qa/setting",
+                headers=AUTH,
+            )
+            assert response.status_code == 400
+
+    assert NetworkSettingRow.__table__.c.f_kn_id.type.length == 128
     asyncio.run(run())
 
 

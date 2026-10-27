@@ -117,7 +117,7 @@ func normalizePage(page PageOptions) PageOptions {
 		page.ResourceType = ""
 	}
 	page.ResourceID = strings.TrimSpace(page.ResourceID)
-	if len(page.ResourceID) > 128 {
+	if len(page.ResourceID) > 257 {
 		page.ResourceID = ""
 	}
 	page.Status = strings.TrimSpace(page.Status)
@@ -355,13 +355,18 @@ func requestFingerprint(in CreateInput) string {
 }
 
 func validCreate(in *CreateInput) bool {
-	for _, field := range []*string{&in.RequesterID, &in.ResourceType, &in.ResourceID} {
+	for _, field := range []*string{&in.RequesterID, &in.ResourceType} {
 		v, ok := clean(*field, 128)
 		if !ok {
 			return false
 		}
 		*field = v
 	}
+	resourceID, ok := clean(in.ResourceID, 257)
+	if !ok {
+		return false
+	}
+	in.ResourceID = resourceID
 	if strings.ContainsAny(in.ResourceName, "\x00\r\n") {
 		return false
 	}

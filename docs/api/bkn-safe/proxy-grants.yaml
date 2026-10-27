@@ -371,7 +371,7 @@ components:
         resource_id:
           type: string
           minLength: 1
-          maxLength: 128
+          maxLength: 257
         operation:
           type: string
           enum: [view_detail, query_data, execute]
@@ -425,6 +425,8 @@ components:
           enum: [resource, tool_box, mcp, skill]
         resource_id:
           type: string
+          minLength: 1
+          maxLength: 257
         operation:
           type: string
           enum: [view_detail, query_data, execute]
@@ -501,7 +503,7 @@ components:
         resource_id:
           type: string
           minLength: 1
-          maxLength: 128
+          maxLength: 257
         operation:
           type: string
           enum: [view_detail, query_data, execute]

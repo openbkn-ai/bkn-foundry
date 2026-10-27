@@ -44,7 +44,7 @@ router = APIRouter()
 
 _ID = r"^[0-9A-Za-z_.-]+$"
 AgentId = Path(min_length=1, max_length=50, pattern=_ID)
-KnId = Path(min_length=1, max_length=50, pattern=_ID)
+KnId = Path(min_length=1, max_length=128, pattern=_ID)
 
 
 async def _public_agent(session: AsyncSession, agent_id: str) -> AgentOut:
@@ -192,7 +192,7 @@ def _tools(names: Optional[set[str]]) -> Optional[list[str]]:
 @router.get("/me/agents/{agent_id}/config", response_model=AgentConfigOut)
 async def get_agent_config(
     agent_id: str = AgentId,
-    kn_id: str = Query(min_length=1, max_length=50, pattern=_ID),
+    kn_id: str = Query(min_length=1, max_length=128, pattern=_ID),
     account: Account = Depends(get_public_account),
     session: AsyncSession = Depends(get_session),
 ):

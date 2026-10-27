@@ -12,7 +12,11 @@ BACKEND_MIGRATION = (
 )
 PROJECT_MIGRATION = (
     Path(__file__).resolve().parents[3]
-    / "migrations/bkn-project/mariadb/0.1.2/01-resource-id-limits.sql"
+    / "migrations/bkn-project/mariadb/0.1.2/02-resource-id-limits.sql"
+)
+AGENT_MIGRATION = (
+    Path(__file__).resolve().parents[3]
+    / "migrations/bkn-agent/mariadb/0.2.1/12-resource-id-limits.sql"
 )
 
 
@@ -27,3 +31,9 @@ def test_project_network_references_are_widened():
 
     assert "MODIFY COLUMN f_kn_id VARCHAR(128)" in migration
     assert "MODIFY COLUMN f_baseline_network_id VARCHAR(128)" in migration
+
+
+def test_agent_network_reference_is_widened():
+    migration = AGENT_MIGRATION.read_text(encoding="utf-8")
+
+    assert "MODIFY COLUMN f_kn_id VARCHAR(128)" in migration

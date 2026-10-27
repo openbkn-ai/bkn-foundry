@@ -11,7 +11,7 @@ USE openbkn;
 create table if not exists t_agent_network_setting
 (
     f_agent_id    varchar(50) not null,
-    f_kn_id       varchar(50) not null,
+    f_kn_id       varchar(128) not null,
     f_content     json        not null,
     f_version     int         not null default 1,
     f_update_user varchar(50) not null,

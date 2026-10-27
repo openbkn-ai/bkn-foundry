@@ -17,7 +17,7 @@ PROTOCOL = "metric-design-v1"
 class MetricDesignScope(BaseModel):
     model_config = {"extra": "forbid"}
 
-    kn_id: str = Field(min_length=1, max_length=50, pattern=r"^[0-9A-Za-z_.-]+$")
+    kn_id: str = Field(min_length=1, max_length=128, pattern=r"^[0-9A-Za-z_.-]+$")
     owner_object_type_id: str = Field(min_length=1, max_length=100)
     metric_type: Literal["atomic", "derived", "composite"]
     mode: Literal["create", "edit"]

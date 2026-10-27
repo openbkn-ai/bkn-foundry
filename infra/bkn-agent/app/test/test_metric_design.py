@@ -48,6 +48,23 @@ def proposal(field="name", after="Proposed"):
     }
 
 
+def test_metric_design_scope_accepts_maximum_length_network_id():
+    maximum = "n" * 128
+    assert request(scope={
+        "kn_id": maximum,
+        "owner_object_type_id": "order",
+        "metric_type": "atomic",
+        "mode": "create",
+    }).scope.kn_id == maximum
+    with pytest.raises(ValidationError):
+        request(scope={
+            "kn_id": maximum + "x",
+            "owner_object_type_id": "order",
+            "metric_type": "atomic",
+            "mode": "create",
+        })
+
+
 def test_proposal_uses_server_captured_before_value_and_revision():
     result = validate_proposal(proposal(), request())
     assert result["kind"] == "metric_design_proposal"

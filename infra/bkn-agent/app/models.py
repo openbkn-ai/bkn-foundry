@@ -60,7 +60,7 @@ class NetworkSettingRow(Base):
     __tablename__ = "t_agent_network_setting"
 
     f_agent_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    f_kn_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    f_kn_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     f_content: Mapped[dict] = mapped_column(JSON)
     f_version: Mapped[int] = mapped_column(Integer, default=1)
     f_update_user: Mapped[str] = mapped_column(String(50))
@@ -381,7 +381,7 @@ ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_
 
 class ExecutionScope(BaseModel):
     model_config = {"extra": "forbid"}
-    kn_id: str = Field(min_length=1, max_length=50, pattern=_ID_PATTERN)
+    kn_id: str = Field(min_length=1, max_length=128, pattern=_ID_PATTERN)
     # The graph explorer's canvas: snapshot, selection, canvas_id and revision.
     # Required by an Agent that mounts the graph_explorer builtin provider, which
     # validates it; other Agents must not receive it.

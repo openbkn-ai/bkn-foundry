@@ -7,6 +7,7 @@ package authz
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -79,6 +80,31 @@ func TestRoleGrantAndWildcard(t *testing.T) {
 		if got != c.want {
 			t.Errorf("Check(%s, %s:%s, %s) = %v, want %v — %s", c.sub, c.typ, c.id, c.op, got, c.want, c.why)
 		}
+	}
+}
+
+func TestMaximumLengthChildResourceGrantPersists(t *testing.T) {
+	e, db := newTestEnforcerDB(t)
+	resourceID := strings.Repeat("k", 128) + "/" + strings.Repeat("o", 128)
+	mustNoErr(t, e.GrantObjectPermission("reader", "object_type", resourceID, "view_detail"))
+
+	var grant model.AuthorizationGrant
+	if err := db.Where("accessor_id = ?", "reader").First(&grant).Error; err != nil {
+		t.Fatal(err)
+	}
+	if grant.Object != "object_type:"+resourceID {
+		t.Fatalf("authorization grant object = %q, want full child reference", grant.Object)
+	}
+	var object string
+	if err := db.Table("casbin_rule").Select("v1").Where("v0 = ?", "reader").Scan(&object).Error; err != nil {
+		t.Fatal(err)
+	}
+	if object != grant.Object {
+		t.Fatalf("casbin object = %q, want %q", object, grant.Object)
+	}
+	allowed, err := e.Check("reader", "object_type", resourceID, "view_detail")
+	if err != nil || !allowed {
+		t.Fatalf("maximum-length child grant allowed = %v, error = %v", allowed, err)
 	}
 }
 

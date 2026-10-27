@@ -7,6 +7,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -111,6 +112,27 @@ func TestResourceParentsUpsert(t *testing.T) {
 	items, total = getParents(t, r, "resource_type=resource&parent_id=cat-b")
 	if total != 1 || len(items) != 1 || items[0].ResourceID != "res-2" {
 		t.Errorf("filtered by cat-b = %v (total %d), want only res-2", items, total)
+	}
+}
+
+func TestResourceParentsPersistMaximumLengthChildReference(t *testing.T) {
+	r, _, db := newTestServer(t)
+	declareHierarchy(t, db)
+	resourceID := strings.Repeat("k", 128) + "/" + strings.Repeat("o", 128)
+	w := do(t, r, http.MethodPut, "/api/safe/v1/authz/resource-parents", map[string]any{
+		"resource_type": "resource",
+		"parent_type":   "catalog",
+		"items": []map[string]string{{
+			"resource_id": resourceID,
+			"parent_id":   "catalog-1",
+		}},
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("PUT maximum resource parent = %d body=%s", w.Code, w.Body.String())
+	}
+	items, total := getParents(t, r, "resource_type=resource")
+	if total != 1 || len(items) != 1 || items[0].ResourceID != resourceID {
+		t.Fatalf("stored resource parents = %#v (total %d), want full child reference", items, total)
 	}
 }
 

@@ -52,6 +52,18 @@ def parse_sse(text):
     ]
 
 
+def test_execution_scope_accepts_maximum_length_network_id():
+    maximum = "n" * 128
+    request = ExecutionRequest.model_validate(
+        {**BODY, "context": {"kn_id": maximum}}
+    )
+    assert request.context.kn_id == maximum
+    with pytest.raises(ValueError):
+        ExecutionRequest.model_validate(
+            {**BODY, "context": {"kn_id": maximum + "x"}}
+        )
+
+
 @asynccontextmanager
 async def environment(monkeypatch, *, stream=True):
     directory = tempfile.TemporaryDirectory(prefix="bkn-execution-test-")

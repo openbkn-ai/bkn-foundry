@@ -26,6 +26,7 @@ SEMANTIC_LANGUAGE = MIGRATIONS / "0.2.1/08-semantic-output-language.sql"
 GRAPH_EXPLORER = MIGRATIONS / "0.2.1/09-seed-graph-explorer.sql"
 CLAIM_LOCALES = MIGRATIONS / "0.2.1/10-claim-prompt-locales.sql"
 PROMPT_INDEX = MIGRATIONS / "0.2.1/11-agent-prompt-index.sql"
+RESOURCE_ID_LIMITS = MIGRATIONS / "0.2.1/12-resource-id-limits.sql"
 
 
 def statements(path):
@@ -402,6 +403,7 @@ def test_shared_migrator_selects_new_snapshot_and_all_upgrade_deltas():
                     str(GRAPH_EXPLORER),
                     str(CLAIM_LOCALES),
                     str(PROMPT_INDEX),
+                    str(RESOURCE_ID_LIMITS),
                 ],
             ],
         ],
