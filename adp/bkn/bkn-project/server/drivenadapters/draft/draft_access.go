@@ -68,7 +68,7 @@ func (da *draftAccess) GetDraft(ctx context.Context, projectID string) (*interfa
 }
 
 func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
-	staleBefore int64) (started bool, err error) {
+	staleBefore int64, discardDecisions bool) (started bool, err error) {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "StartDraft")
 	defer span.End()
 
@@ -89,16 +89,16 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
 	}()
 
 	// The row lock makes two starts of one project take turns: the second sees drafting.
-	sqlStr, vals, err := sq.Select("f_status", "f_update_time").From(DRAFT_TABLE_NAME).
+	sqlStr, vals, err := sq.Select("f_status", "f_update_time", "f_items").From(DRAFT_TABLE_NAME).
 		Where(sq.Eq{"f_project_id": draft.ProjectID}).Suffix("FOR UPDATE").
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
 		return false, err
 	}
-	var status string
+	var status, itemsRead string
 	var updateTime int64
-	switch err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status, &updateTime); {
+	switch err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status, &updateTime, &itemsRead); {
 	case errors.Is(err, sql.ErrNoRows):
 		sqlStr, vals, err = sq.Insert(DRAFT_TABLE_NAME).Columns(draftColumns...).Values(
 			draft.ProjectID, draft.Status, string(itemsJSON), draft.Error, draft.Drafter.ID, draft.Drafter.Type,
@@ -110,6 +110,9 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
 	case status == interfaces.DRAFT_STATUS_DRAFTING && updateTime >= staleBefore:
 		span.SetStatus(codes.Ok, "")
 		return false, nil
+	case !discardDecisions && hasDecisions(itemsRead):
+		span.SetStatus(codes.Ok, "")
+		return false, interfaces.ErrDraftHasDecisions
 	default:
 		sqlStr, vals, err = sq.Update(DRAFT_TABLE_NAME).
 			Set("f_status", draft.Status).Set("f_items", string(itemsJSON)).Set("f_error", draft.Error).
@@ -132,6 +135,42 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
 	}
 	span.SetStatus(codes.Ok, "")
 	return true, nil
+}
+
+func (da *draftAccess) UpdateDraft(ctx context.Context, draft *interfaces.Draft,
+	readUpdateTime int64) (bool, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "UpdateDraft")
+	defer span.End()
+
+	itemsJSON, err := json.Marshal(draft.Items)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal items failed")
+		return false, err
+	}
+	sqlStr, vals, err := sq.Update(DRAFT_TABLE_NAME).
+		Set("f_items", string(itemsJSON)).Set("f_update_time", draft.UpdateTime).
+		Where(sq.Eq{
+			"f_project_id":  draft.ProjectID,
+			"f_status":      interfaces.DRAFT_STATUS_READY,
+			"f_update_time": readUpdateTime,
+		}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+	result, err := da.db.ExecContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Update data failed")
+		return false, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Read affected rows failed")
+		return false, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return n > 0, nil
 }
 
 func (da *draftAccess) FinishDraft(ctx context.Context, draft *interfaces.Draft) error {
@@ -179,6 +218,15 @@ func (da *draftAccess) FailDrafting(ctx context.Context, reason string, updateTi
 	}
 	span.SetStatus(codes.Ok, "")
 	return result.RowsAffected()
+}
+
+// hasDecisions reports whether stored items record decisions; items that do not parse are
+// treated as having none, as drafting replaces them anyway.
+func hasDecisions(itemsJSON string) bool {
+	var items struct {
+		Decisions []json.RawMessage `json:"decisions"`
+	}
+	return json.Unmarshal([]byte(itemsJSON), &items) == nil && len(items.Decisions) > 0
 }
 
 // scanDraft reads one row selected with draftColumns.

@@ -87,16 +87,31 @@ func (mr *MockDraftAccessMockRecorder) GetDraft(ctx, projectID any) *gomock.Call
 }
 
 // StartDraft mocks base method.
-func (m *MockDraftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft, staleBefore int64) (bool, error) {
+func (m *MockDraftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft, staleBefore int64, discardDecisions bool) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StartDraft", ctx, draft, staleBefore)
+	ret := m.ctrl.Call(m, "StartDraft", ctx, draft, staleBefore, discardDecisions)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // StartDraft indicates an expected call of StartDraft.
-func (mr *MockDraftAccessMockRecorder) StartDraft(ctx, draft, staleBefore any) *gomock.Call {
+func (mr *MockDraftAccessMockRecorder) StartDraft(ctx, draft, staleBefore, discardDecisions any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartDraft", reflect.TypeOf((*MockDraftAccess)(nil).StartDraft), ctx, draft, staleBefore)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartDraft", reflect.TypeOf((*MockDraftAccess)(nil).StartDraft), ctx, draft, staleBefore, discardDecisions)
+}
+
+// UpdateDraft mocks base method.
+func (m *MockDraftAccess) UpdateDraft(ctx context.Context, draft *interfaces.Draft, readUpdateTime int64) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDraft", ctx, draft, readUpdateTime)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDraft indicates an expected call of UpdateDraft.
+func (mr *MockDraftAccessMockRecorder) UpdateDraft(ctx, draft, readUpdateTime any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDraft", reflect.TypeOf((*MockDraftAccess)(nil).UpdateDraft), ctx, draft, readUpdateTime)
 }

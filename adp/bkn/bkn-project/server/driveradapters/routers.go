@@ -95,9 +95,11 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/projects/:project_id", r.GetProjectByEx)
 	apiV1.POST("/projects/:project_id", r.ProjectActionByEx)
 
-	// Ontology drafts: drafting is a custom method, ontology/draft:generate.
+	// Ontology drafts: drafting is a custom method, ontology/draft:generate; people edit
+	// object, relation and value types item by item.
 	apiV1.GET("/projects/:project_id/ontology/draft", r.GetDraftByEx)
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
+	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
 
 	logger.Info("RestHandler RegisterPublic")
 }

@@ -47,8 +47,8 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("Generate starts drafting as the caller and records the draft when it is done\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, d *interfaces.Draft, staleBefore int64) (bool, error) {
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, staleBefore int64, _ bool) (bool, error) {
 					So(d.Status, ShouldEqual, interfaces.DRAFT_STATUS_DRAFTING)
 					So(d.Drafter, ShouldResemble, caller)
 					// Stale after the drafting timeout and a minute to record it.
@@ -76,7 +76,7 @@ func Test_DraftService(t *testing.T) {
 			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
 
-			draft, err := svc.GenerateDraft(ctx, token, "p1", caller)
+			draft, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
 
 			So(err, ShouldBeNil)
 			So(draft.Status, ShouldEqual, interfaces.DRAFT_STATUS_DRAFTING)
@@ -91,13 +91,13 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("A failure reading vega-backend fails the draft with its reason\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, errors.New("connection refused"))
 			var finished *interfaces.Draft
 			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
 
-			_, err := svc.GenerateDraft(ctx, token, "p1", caller)
+			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
 
 			So(err, ShouldBeNil)
 			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_FAILED)
@@ -107,7 +107,7 @@ func Test_DraftService(t *testing.T) {
 		Convey("Drafting that runs out of time fails as timed out\n", func() {
 			svc.setting.Timeout = time.Nanosecond
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").
 				DoAndReturn(func(ctx context.Context, _ interfaces.VegaAccount, _ string) ([]*interfaces.VegaTable, error) {
 					<-ctx.Done()
@@ -121,7 +121,7 @@ func Test_DraftService(t *testing.T) {
 					return nil
 				})
 
-			_, err := svc.GenerateDraft(ctx, token, "p1", caller)
+			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
 
 			So(err, ShouldBeNil)
 			So(finished.Error, ShouldEqual, FailureTimeout)
@@ -131,16 +131,16 @@ func Test_DraftService(t *testing.T) {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").
 				Return(&interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1"}}, nil)
 
-			_, err := svc.GenerateDraft(ctx, token, "p1", caller)
+			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
 
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_NoCatalogs)
 		})
 
 		Convey("A project that is drafting is not drafted twice\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(false, nil)
 
-			_, err := svc.GenerateDraft(ctx, token, "p1", caller)
+			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
 
 			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Draft_Drafting)
 		})
@@ -149,7 +149,7 @@ func Test_DraftService(t *testing.T) {
 			notFound := httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Project_NotFound)
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(nil, notFound).Times(2)
 
-			_, err := svc.GenerateDraft(ctx, token, "p1", caller)
+			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
 			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Project_NotFound)
 			_, err = svc.GetDraft(ctx, token, "p1")
 			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Project_NotFound)
