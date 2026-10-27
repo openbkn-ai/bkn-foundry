@@ -84,6 +84,31 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Draft_InvalidRequestBody)
 		})
 
+		Convey("An identity choice is handed to the service\n", func() {
+			drs.EXPECT().ChooseIdentity(gomock.Any(), "Bearer t", "p1", "order_lines",
+				interfaces.DraftIdentity{UpdateTime: 7, Properties: []string{"order_no", "line_no"}}, caller).
+				Return(&interfaces.Draft{ProjectID: "p1", UpdateTime: 8}, nil)
+
+			w := serveBody(handler, http.MethodPut, base+"/draft/object_types/order_lines/identity",
+				[]byte(`{"update_time":7,"properties":["order_no","line_no"]}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(serveBody(handler, http.MethodPut, base+"/draft/object_types/order_lines/identity", []byte(`[`)).
+				Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("draft:restore restores the excluded field the body names\n", func() {
+			drs.EXPECT().RestoreExcluded(gomock.Any(), "Bearer t", "p1",
+				interfaces.DraftRestore{UpdateTime: 7, ObjectType: "customers", Field: "Phone"}, caller).
+				Return(&interfaces.Draft{ProjectID: "p1", UpdateTime: 8}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/draft:restore",
+				[]byte(`{"update_time":7,"object_type":"customers","field":"Phone"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(serveBody(handler, http.MethodPost, base+"/draft:restore", nil).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("Any other ontology action is not found\n", func() {
 			So(serve(handler, http.MethodPost, base+"/draft:delete").Result().StatusCode, ShouldEqual, http.StatusNotFound)
 		})

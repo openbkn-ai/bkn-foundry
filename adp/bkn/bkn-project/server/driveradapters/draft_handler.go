@@ -21,10 +21,14 @@ import (
 // Ontology drafts of a project. They follow the project's visibility; drafting reads
 // vega-backend as the caller.
 
-const draftActionGenerate = "draft:generate"
+const (
+	draftActionGenerate = "draft:generate"
+	draftActionRestore  = "draft:restore"
+)
 
-func (r *restHandler) GetDraftByEx(c *gin.Context)      { r.withExVisitor(c, r.GetDraft) }
-func (r *restHandler) EditDraftItemByEx(c *gin.Context) { r.withExVisitor(c, r.EditDraftItem) }
+func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
+func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
+func (r *restHandler) ChooseIdentityByEx(c *gin.Context) { r.withExVisitor(c, r.ChooseIdentity) }
 
 // generateDraftRequest is the optional body of draft:generate.
 type generateDraftRequest struct {
@@ -32,13 +36,17 @@ type generateDraftRequest struct {
 	DiscardDecisions bool `json:"discard_decisions"`
 }
 
-// OntologyActionByEx serves POST /projects/{project_id}/ontology/draft:generate.
+// OntologyActionByEx serves POST /projects/{project_id}/ontology/draft:generate and
+// draft:restore.
 func (r *restHandler) OntologyActionByEx(c *gin.Context) {
-	if c.Param("action") != draftActionGenerate {
+	switch c.Param("action") {
+	case draftActionGenerate:
+		r.withExVisitor(c, r.GenerateDraft)
+	case draftActionRestore:
+		r.withExVisitor(c, r.RestoreExcluded)
+	default:
 		replyNotFound(c)
-		return
 	}
-	r.withExVisitor(c, r.GenerateDraft)
 }
 
 func (r *restHandler) GenerateDraft(c *gin.Context, visitor hydra.Visitor) {
@@ -98,6 +106,50 @@ func (r *restHandler) EditDraftItem(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 	draft, err := r.drs.EditDraftItem(ctx, visitor.TokenID, id, kind, itemID, edit, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+func (r *restHandler) ChooseIdentity(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id, itemID := c.Param("project_id"), c.Param("item_id")
+	span.SetAttributes(attr.Key("project_id").String(id), attr.Key("item_id").String(itemID))
+
+	var identity interfaces.DraftIdentity
+	if err := c.ShouldBindJSON(&identity); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	draft, err := r.drs.ChooseIdentity(ctx, visitor.TokenID, id, itemID, identity, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+func (r *restHandler) RestoreExcluded(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	var restore interfaces.DraftRestore
+	if err := c.ShouldBindJSON(&restore); err != nil {
+		replyError(c, span, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_InvalidRequestBody))
+		return
+	}
+	draft, err := r.drs.RestoreExcluded(ctx, visitor.TokenID, id, restore, visitorAccount(visitor))
 	if err != nil {
 		replyError(c, span, err)
 		return

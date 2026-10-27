@@ -41,6 +41,21 @@ func (m *MockDraftService) EXPECT() *MockDraftServiceMockRecorder {
 	return m.recorder
 }
 
+// ChooseIdentity mocks base method.
+func (m *MockDraftService) ChooseIdentity(ctx context.Context, token, projectID, itemID string, identity interfaces.DraftIdentity, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ChooseIdentity", ctx, token, projectID, itemID, identity, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ChooseIdentity indicates an expected call of ChooseIdentity.
+func (mr *MockDraftServiceMockRecorder) ChooseIdentity(ctx, token, projectID, itemID, identity, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChooseIdentity", reflect.TypeOf((*MockDraftService)(nil).ChooseIdentity), ctx, token, projectID, itemID, identity, caller)
+}
+
 // EditDraftItem mocks base method.
 func (m *MockDraftService) EditDraftItem(ctx context.Context, token, projectID, kind, itemID string, edit interfaces.DraftItemEdit, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
@@ -98,4 +113,19 @@ func (m *MockDraftService) GetDraft(ctx context.Context, token, projectID string
 func (mr *MockDraftServiceMockRecorder) GetDraft(ctx, token, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDraft", reflect.TypeOf((*MockDraftService)(nil).GetDraft), ctx, token, projectID)
+}
+
+// RestoreExcluded mocks base method.
+func (m *MockDraftService) RestoreExcluded(ctx context.Context, token, projectID string, restore interfaces.DraftRestore, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestoreExcluded", ctx, token, projectID, restore, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RestoreExcluded indicates an expected call of RestoreExcluded.
+func (mr *MockDraftServiceMockRecorder) RestoreExcluded(ctx, token, projectID, restore, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreExcluded", reflect.TypeOf((*MockDraftService)(nil).RestoreExcluded), ctx, token, projectID, restore, caller)
 }

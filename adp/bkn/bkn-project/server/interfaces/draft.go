@@ -33,6 +33,8 @@ const (
 	// whose full-table count shows it unique and non-null.
 	DRAFT_KEY_INFERRED = "inferred"
 	DRAFT_KEY_NONE     = "none"
+	// DRAFT_KEY_CHOSEN is a key a person chose; its counts, when computed, are kept as found.
+	DRAFT_KEY_CHOSEN = "chosen"
 )
 
 // Relation cardinalities.
@@ -47,6 +49,8 @@ const (
 	DRAFT_KIND_OBJECT_TYPES   = "object_types"
 	DRAFT_KIND_RELATION_TYPES = "relation_types"
 	DRAFT_KIND_VALUE_TYPES    = "value_types"
+	// DRAFT_KIND_EXCLUDED names decisions on excluded fields; their item is the object type.
+	DRAFT_KIND_EXCLUDED = "excluded"
 )
 
 // What a person decided about a draft item.
@@ -55,6 +59,8 @@ const (
 	DRAFT_DECISION_UNADOPT  = "unadopt"
 	DRAFT_DECISION_RENAME   = "rename"
 	DRAFT_DECISION_DESCRIBE = "describe"
+	DRAFT_DECISION_IDENTITY = "identity"
+	DRAFT_DECISION_RESTORE  = "restore"
 )
 
 // Limits of what people write into a draft, those of BKN definitions.
@@ -92,7 +98,8 @@ type DraftItems struct {
 }
 
 // DraftDecision records one change a person made to a draft item. Before and After are the
-// values the change replaced and wrote: a bool for adopt and unadopt, a string otherwise.
+// values the change replaced and wrote: a bool for adopt and unadopt, the property names for
+// identity, the excluded field and the property it became for restore, a string otherwise.
 type DraftDecision struct {
 	Kind   string      `json:"kind"`
 	ItemID string      `json:"item_id"`
@@ -101,6 +108,19 @@ type DraftDecision struct {
 	After  any         `json:"after"`
 	By     AccountInfo `json:"by"`
 	Time   int64       `json:"time"`
+}
+
+// DraftIdentity is a person's choice of the properties that identify an object type's records.
+type DraftIdentity struct {
+	UpdateTime int64    `json:"update_time"`
+	Properties []string `json:"properties"`
+}
+
+// DraftRestore puts a field the drafting excluded back as a property of its object type.
+type DraftRestore struct {
+	UpdateTime int64  `json:"update_time"`
+	ObjectType string `json:"object_type"`
+	Field      string `json:"field"`
 }
 
 // DraftItemEdit is a person's edit of one draft item; nil fields stay as they are.

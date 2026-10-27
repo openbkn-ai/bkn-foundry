@@ -54,6 +54,8 @@
 | POST | `/projects/{project_id}/ontology/draft:generate` | 后台根据项目数据目录的表起草本体：返回 202 和状态为 `drafting` 的草稿。可选请求体 `{"discard_decisions": true}` 表示同意丢弃当前草稿上已做的决定。400 `Draft.NoCatalogs`；409：正在起草时 `Draft.Drafting`，草稿已有决定且未同意丢弃时 `Draft.HasDecisions`，项目已归档时 `Draft.ProjectArchived` |
 | GET | `/projects/{project_id}/ontology/draft` | 草稿：`status`（`drafting`、`ready`，或 `failed` 并带 `error`：`interrupted`、`timeout` 或 vega-backend 的返回）和 `items`：`object_types`、`relation_types`、`value_types`、`excluded`、`unreadable`，每条带证据和是否默认采用；以及 `decisions`，即人做过的修改，按时间先后排列。还没有草稿时 404 `Draft.NotFound` |
 | PATCH | `/projects/{project_id}/ontology/draft/items/{kind}/{item_id}` | 修改已就绪草稿中的一项；`kind` 为 `object_types`、`relation_types` 或 `value_types`。请求体：修改所基于的草稿 `update_time`，以及 `adopted`、`name`（1–128 个字符）、`description`（最长 1000）中的任意几项。每处修改都记为一条决定，带被替换的值；不采用某个对象类时，连到它的关系类一并改为不采用。返回草稿。400 `Draft.EmptyEdit`、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.EndpointNotAdopted`（关系类两端的对象类没有都采用）；404 `Draft.ItemNotFound`；409 `Draft.Stale`（`update_time` 之后草稿已被修改，需重新加载）、`Draft.NotReady`、`Draft.ProjectArchived` |
+| PUT | `/projects/{project_id}/ontology/draft/object_types/{item_id}/identity` | 选定对象类的唯一标识属性。请求体：`update_time` 和 `properties`，即一个或多个不重复的属性，类型须为 `string`、`text`、`integer` 或 `unsigned integer`。单属性的标识会以调用者身份做全表计数，有重复或空值也照样接受，计数写入 `key`（`source` 为 `chosen`）；复合标识不计数。清除 `needs_identity`；是否采用仍需单独修改。400 `Draft.InvalidIdentity`；404 `Draft.ItemNotFound`；409 同修改草稿项 |
+| POST | `/projects/{project_id}/ontology/draft:restore` | 把被隐私规则排除的字段恢复为属性，字段信息以调用者身份从 vega-backend 重新读取。请求体：`update_time`、`object_type`、`field`。400 `Draft.NotRestorable`（因类型无法映射而排除）；404 `Draft.ItemNotFound`；409 `Draft.FieldNotFound`（字段已不在表中，或无权读取），以及同修改草稿项的情形 |
 
 ## 本地开发
 

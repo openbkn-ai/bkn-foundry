@@ -165,15 +165,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 		}
 		name := uniqueName(apiName(c.Name), names)
 		fields[c.Name] = name
-		objectType.Properties = append(objectType.Properties, &interfaces.DraftProperty{
-			Name:               name,
-			DisplayName:        propertyDisplayName(c),
-			Type:               bknType,
-			Description:        c.Description,
-			MappedField:        c.Name,
-			SourceOfRecord:     interfaces.SOURCE_OF_RECORD_TABLE,
-			MissingDescription: c.Description == "",
-		})
+		objectType.Properties = append(objectType.Properties, newProperty(c, name))
 	}
 
 	objectType.Key = interfaces.DraftKeyEvidence{Source: source}
@@ -201,6 +193,19 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 	d.objectTypes[table.ID] = objectType
 	d.fields[table.ID] = fields
 	d.items.ObjectTypes = append(d.items.ObjectTypes, objectType)
+}
+
+// newProperty maps a field of a BKN type to a property named name.
+func newProperty(c interfaces.VegaColumn, name string) *interfaces.DraftProperty {
+	return &interfaces.DraftProperty{
+		Name:               name,
+		DisplayName:        propertyDisplayName(c),
+		Type:               bknTypes[c.Type],
+		Description:        c.Description,
+		MappedField:        c.Name,
+		SourceOfRecord:     interfaces.SOURCE_OF_RECORD_TABLE,
+		MissingDescription: c.Description == "",
+	}
 }
 
 // propertyDisplayName is the business name semantic understanding gave the field, else the

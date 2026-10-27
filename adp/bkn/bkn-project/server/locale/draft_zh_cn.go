@@ -23,5 +23,8 @@ var draftZhCN = i18n.I18nMessages{
 		"BknProject.Draft.NotReady":           "草稿未就绪 只有起草完成的草稿才能修改。",
 		"BknProject.Draft.Stale":              "草稿已被修改 加载之后草稿已被他人修改，请重新加载后再试。",
 		"BknProject.Draft.HasDecisions":       "草稿已有决定 重新起草会丢弃草稿上已做的决定，确认丢弃后才能重新起草。",
+		"BknProject.Draft.InvalidIdentity":    "唯一标识不合法 请给出该对象类的一个或多个不重复的属性，类型须为 string、text、integer 或 unsigned integer。",
+		"BknProject.Draft.NotRestorable":      "字段无法恢复 该字段因类型无法映射到 BKN 而被排除。",
+		"BknProject.Draft.FieldNotFound":      "源字段不存在 该字段已不在它的表中，或你无权读取该表，请重新起草。",
 	},
 }
