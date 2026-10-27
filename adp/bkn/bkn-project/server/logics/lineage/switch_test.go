@@ -102,6 +102,90 @@ func Test_LineageService_Switch(t *testing.T) {
 			So(sw.Schedules, ShouldResemble, []interfaces.SwitchedSchedule{{FromID: "t1", ToID: "s1", Name: "nightly"}})
 		})
 
+		Convey("A rollback pairs same-named schedules by the switch that moved them, one counterpart each\n", func() {
+			a1, a2 := schedule("a1", "nightly", inactive), schedule("a2", "nightly", inactive)
+			a1.InstanceIdentities, a2.InstanceIdentities = []map[string]any{{"id": "p1"}}, []map[string]any{{"id": "p2"}}
+			c1, c2 := schedule("c1", "nightly", active), schedule("c2", "nightly", active)
+			c1.InstanceIdentities, c2.InstanceIdentities = a1.InstanceIdentities, a2.InstanceIdentities
+			ra.EXPECT().GetLatestSwitch(gomock.Any(), id).Return(&interfaces.Switch{FromNetworkID: id, ToNetworkID: v1,
+				Schedules: []interfaces.SwitchedSchedule{{FromID: "a1", ToID: "c1", Name: "nightly"}, {FromID: "a2", ToID: "c2", Name: "nightly"}}}, true, nil)
+			bba.EXPECT().ListSchedules(gomock.Any(), token, v1).Return([]*interfaces.ActionSchedule{c1, c2}, nil)
+			// Listed in the other order, so a first-match pairing would get them wrong.
+			bba.EXPECT().ListSchedules(gomock.Any(), token, id).Return([]*interfaces.ActionSchedule{a2, a1}, nil)
+			gomock.InOrder(
+				bba.EXPECT().SetScheduleStatus(gomock.Any(), token, v1, "c1", inactive).Return(nil),
+				bba.EXPECT().SetScheduleStatus(gomock.Any(), token, id, "a1", active).Return(nil),
+				bba.EXPECT().SetScheduleStatus(gomock.Any(), token, v1, "c2", inactive).Return(nil),
+				bba.EXPECT().SetScheduleStatus(gomock.Any(), token, id, "a2", active).Return(nil),
+			)
+			ra.EXPECT().RecordSwitch(gomock.Any(), gomock.Any()).Return(nil)
+
+			sw, err := svc.SwitchConsumers(ctx, token, id, interfaces.SwitchRequest{ToNetworkID: id}, operator)
+
+			So(err, ShouldBeNil)
+			So(sw.Schedules, ShouldResemble, []interfaces.SwitchedSchedule{
+				{FromID: "c1", ToID: "a1", Name: "nightly"}, {FromID: "c2", ToID: "a2", Name: "nightly"}})
+		})
+
+		Convey("Without a switch to go by, same-named schedules pair by what they run, one counterpart each\n", func() {
+			a1, a2 := schedule("a1", "nightly", active), schedule("a2", "nightly", active)
+			a1.InstanceIdentities, a2.InstanceIdentities = []map[string]any{{"id": "p1"}}, []map[string]any{{"id": "p2"}}
+			c1, c2 := schedule("c1", "nightly", inactive), schedule("c2", "nightly", inactive)
+			c1.InstanceIdentities, c2.InstanceIdentities = a1.InstanceIdentities, a2.InstanceIdentities
+			ra.EXPECT().GetLatestSwitch(gomock.Any(), id).Return(nil, false, nil)
+			bba.EXPECT().ListSchedules(gomock.Any(), token, id).Return([]*interfaces.ActionSchedule{a1, a2}, nil)
+			bba.EXPECT().ListSchedules(gomock.Any(), token, v1).Return([]*interfaces.ActionSchedule{c2, c1}, nil)
+			bba.EXPECT().SetScheduleStatus(gomock.Any(), token, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(4)
+			ra.EXPECT().RecordSwitch(gomock.Any(), gomock.Any()).Return(nil)
+
+			sw, err := svc.SwitchConsumers(ctx, token, id, interfaces.SwitchRequest{ToNetworkID: v1}, operator)
+
+			So(err, ShouldBeNil)
+			So(sw.Schedules, ShouldResemble, []interfaces.SwitchedSchedule{
+				{FromID: "a1", ToID: "c1", Name: "nightly"}, {FromID: "a2", ToID: "c2", Name: "nightly"}})
+		})
+
+		Convey("A schedule off on both networks leaves its counterpart to an active duplicate\n", func() {
+			ra.EXPECT().GetLatestSwitch(gomock.Any(), id).Return(nil, false, nil)
+			bba.EXPECT().ListSchedules(gomock.Any(), token, id).
+				Return([]*interfaces.ActionSchedule{schedule("s0", "nightly", inactive), schedule("s1", "nightly", active)}, nil)
+			bba.EXPECT().ListSchedules(gomock.Any(), token, v1).Return([]*interfaces.ActionSchedule{schedule("t1", "nightly", inactive)}, nil)
+			bba.EXPECT().SetScheduleStatus(gomock.Any(), token, id, "s1", inactive).Return(nil)
+			bba.EXPECT().SetScheduleStatus(gomock.Any(), token, v1, "t1", active).Return(nil)
+			ra.EXPECT().RecordSwitch(gomock.Any(), gomock.Any()).Return(nil)
+
+			sw, err := svc.SwitchConsumers(ctx, token, id, interfaces.SwitchRequest{ToNetworkID: v1}, operator)
+
+			So(err, ShouldBeNil)
+			So(sw.Schedules, ShouldResemble, []interfaces.SwitchedSchedule{{FromID: "s1", ToID: "t1", Name: "nightly"}})
+		})
+
+		Convey("Status changes outlive a cancelled request, and a schedule left off on both networks is named\n", func() {
+			cancelled, cancel := context.WithCancel(ctx)
+			ra.EXPECT().GetLatestSwitch(gomock.Any(), id).Return(nil, false, nil)
+			bba.EXPECT().ListSchedules(gomock.Any(), token, id).Return([]*interfaces.ActionSchedule{schedule("s1", "nightly", active)}, nil)
+			bba.EXPECT().ListSchedules(gomock.Any(), token, v1).Return([]*interfaces.ActionSchedule{schedule("t1", "nightly", inactive)}, nil)
+			gomock.InOrder(
+				bba.EXPECT().SetScheduleStatus(gomock.Any(), token, id, "s1", inactive).DoAndReturn(
+					func(context.Context, string, string, string, string) error {
+						cancel() // the caller goes away once the schedule is off
+						return nil
+					}),
+				bba.EXPECT().SetScheduleStatus(gomock.Any(), token, v1, "t1", active).DoAndReturn(
+					func(c context.Context, _, _, _, _ string) error {
+						So(c.Err(), ShouldBeNil)
+						return &interfaces.BknBackendError{HTTPCode: http.StatusInternalServerError}
+					}),
+				bba.EXPECT().SetScheduleStatus(gomock.Any(), token, id, "s1", active).
+					Return(&interfaces.BknBackendError{HTTPCode: http.StatusInternalServerError}),
+			)
+
+			_, err := svc.SwitchConsumers(cancelled, token, id, interfaces.SwitchRequest{ToNetworkID: v1}, operator)
+
+			So(errorDetails(err), ShouldContainKey, "schedules_off_on_both")
+			So(errorDetails(err).(map[string]any)["schedules_off_on_both"], ShouldResemble, []string{"nightly"})
+		})
+
 		Convey("A counterpart already running on the target is left on, never run twice\n", func() {
 			ra.EXPECT().GetLatestSwitch(gomock.Any(), id).Return(nil, false, nil)
 			bba.EXPECT().ListSchedules(gomock.Any(), token, id).Return([]*interfaces.ActionSchedule{schedule("s1", "nightly", active)}, nil)
