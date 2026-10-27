@@ -80,11 +80,6 @@ permissionRequest:
   disabled: false
   pathTemplate: "/studio/knowledge-network/workspace/{kn_id}/object-types/{ot_id}/detail?requestPermission={scope_code}"
 
-# MCP Apps presentation bundle built by bkn-studio in the same namespace.
-# Set to an empty string for Agent Retrieval installations without Studio.
-mcpApps:
-  metricAnalysisHtmlURL: "http://bkn-studio:80/studio/metric-analysis-mcp.html"
-
 depServices:
   rds:
     type: mysql

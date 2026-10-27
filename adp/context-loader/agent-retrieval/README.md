@@ -54,21 +54,12 @@ Object surfaces (`search_schema`, `get_kn_detail`, `get_object_types`, object in
 
 `list_resources`, `describe_resource`, and `run_sql` are a separate physical-resource surface. They use the caller's own Vega resource permissions, are not constrained by object-property levels, and can expose raw physical columns. Object-query implementations must never call this surface internally; use it only when the caller explicitly requests physical-resource analysis.
 
-## Object Metric MCP App
+## Object Metric MCP tools
 
-The full `/mcp/` profile can attach an optional MCP Apps view to `query_metric`.
-Build `bkn-studio`'s `metric-analysis-mcp.html` single-file bundle. The chart
-defaults `mcpApps.metricAnalysisHtmlURL` to the same-namespace Studio service
-at `http://bkn-studio:80/studio/metric-analysis-mcp.html`; override it when the
-service address differs. Agent Retrieval serves
-the bundle through the `ui://openbkn/object-metric-analysis` MCP resource. It
-does not store metric results or user credentials; the host delivers the
-existing `query_metric` result to the view, and pagination/participants use
-the caller's existing MCP connection. Hosts without MCP Apps support continue
-to receive normal text and structured results; numeric entries also expose an
-exact `display_value` string for presentation while keeping the original
-`value`. The compact profile remains text-only. Set the URL to an empty string
-if Studio is not installed.
+`query_metric` and `drill_through_metric` return published object metric data
+through the full and compact MCP profiles. Numeric entries include an exact
+`display_value` string for presentation while retaining the original `value`.
+Clients can render these results using their own capabilities.
 
 ## Technical Architecture
 

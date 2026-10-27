@@ -75,7 +75,7 @@ func (p mcpProfile) rewritesListing() bool {
 var fullProfile = mcpProfile{
 	endpointPath: endpointPath,
 	instructions: (*mcpLocaleBundle).ServerInstructions,
-	view:         fullToolView,
+	view:         modelContextToolView,
 }
 
 const compactEndpointPath = "/api/agent-retrieval/v1/mcp-compact"
