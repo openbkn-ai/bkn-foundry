@@ -25,12 +25,12 @@ import (
 // join collapses into an inner one, so a row whose only neighbours are hidden
 // would disappear along with them instead of coming back with nothing attached.
 func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
-	plan *Plan, schema *Schema) ([]string, error) {
+	plan *Plan, schema *Schema, expected map[string]string) ([]string, error) {
 	// A semi-join's earlier stage reads tables of its own, and the caller's
 	// row policy holds there exactly as it does here.
 	var subFiltered []string
 	for _, sub := range plan.subPlans() {
-		types, err := s.applyRowFilters(ctx, knID, sub, schema)
+		types, err := s.applyRowFilters(ctx, knID, sub, schema, expected)
 		if err != nil {
 			return nil, err
 		}
@@ -57,6 +57,13 @@ func (s *cypherQueryService) applyRowFilters(ctx context.Context, knID string,
 	}
 	byRef := make(map[string]interfaces.RowFilterPredicate, len(entries))
 	for _, entry := range entries {
+		if len(expected) > 0 {
+			for id, digest := range expected {
+				if entry.ObjectTypeRef == interfaces.KNChildResourceID(knID, id) && entry.EffectiveRowFilterDigest != digest {
+					return nil, fmt.Errorf("row policy changed while preparing statistics")
+				}
+			}
+		}
 		if _, duplicate := byRef[entry.ObjectTypeRef]; duplicate {
 			return nil, fmt.Errorf("duplicate row-filter decision for %q", entry.ObjectTypeRef)
 		}

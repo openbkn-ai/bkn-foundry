@@ -9,6 +9,10 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var objectTypeEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknBackend.ObjectType.InternalError.StatsQueryFailed":                                 "Failed to Count the Object Type's Instances",
+		"BknBackend.ObjectType.StatsQueryTimeout":                                              "Counting the Object Type's Instances Timed Out",
+		"BknBackend.ObjectType.StatsCountInProgress":                                           "The Object Type's Instances Are Still Being Counted",
+		"BknBackend.ObjectType.NoDataSource":                                                   "The Object Type Is Not Bound to a Data Resource",
 		"BknBackend.ObjectType.Duplicated.IDInFile":                                            "Same Object Type ID Existed. Please check whether the parameter is correct.",
 		"BknBackend.ObjectType.Duplicated.Name":                                                "Same Object Type Name Existed. Please check whether the parameter is correct.",
 		"BknBackend.ObjectType.InvalidParameter":                                               "Invalid Request Paramter. Please check whether the parameter is correct.",

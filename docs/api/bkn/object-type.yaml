@@ -1467,6 +1467,117 @@ paths:
             type: string
         in: path
         required: true
+  /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/stats:
+    get:
+      tags:
+        - ObjectType
+      summary: Get object type instance counts
+      operationId: getObjectTypeStats
+      description: |
+        Returns the instance count of every visible object type, or the types named by `ids`.
+        Counts use the following sources when no row policy narrows the caller's view:
+
+        - `catalog`: Vega's timestamped exact `row_count`, provided `row_count_time` is positive,
+          not in the future and younger than `server.objectTypeStatsCacheTTL` (default 600s).
+          `exact: true`; `as_of` is the actual Vega collection time. Caching does not extend that
+          measurement's freshness window. Discovery estimates (`estimated_row_count`) and legacy
+          counts without a timestamp are never reused.
+        - `index`: a dataset read counts its documents live (`exact: true`), or the object type's
+          available index supplies its document count (`exact: false`, since it can trail the source).
+        - `query`: all remaining types, and every type under a row policy, run an exact `COUNT(*)`
+          through Cypher as the caller, applying the same permission and row-filter rules.
+
+        `refresh=true` bypasses the BKN cache, persisted Vega measurements and approximate index
+        counts; a live dataset count can still answer directly. It does not create a Vega discovery
+        task or require `task_manage` permission.
+
+        The query stage waits at most `server.objectTypeStatsQueryTimeout` (default 30s) for the batch.
+        A slow scan continues unchanged in the background for at most
+        `server.objectTypeStatsBackgroundTimeout` (default 600s, capped at 3600s). The response row has
+        `count: null` and `error.code: BknBackend.ObjectType.StatsCountInProgress`; poll again to read
+        its cached result. Concurrent requests share each active count; polling during a refresh does
+        not return an older cached or metadata measurement. At most four scans run in
+        this process, including background scans. Rows that cannot obtain capacity before the wait
+        expires also report in-progress and are retried on a later poll; they do not enqueue scans.
+        The cache and concurrency limit are per process, so replicas can independently count the same type.
+
+        Authorization matches `run_cypher`: each object type needs `query_data`. An object type the caller
+        has no operation on at all is left out of a whole-network answer and, when listed in `ids`, is
+        reported as not found exactly like an ID that does not exist. One the caller can see but not query
+        is reported as forbidden. Neither carries a count.
+
+        Counts are cached on the server for `server.objectTypeStatsCacheTTL` seconds (default 600) per object
+        type, model version and effective row policy. `as_of` is when a count was taken, so a cached count
+        keeps its original time. A model or row-policy change during query preparation refuses the count
+        instead of caching it under an obsolete scope. A failure on one object type is
+        reported in that row's `error` and never fails the request.
+      security:
+        - OAuth2: []
+      parameters:
+        - name: kn_id
+          description: Business knowledge network ID
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: branch
+          description: Branch. Defaults to main.
+          schema:
+            type: string
+            default: main
+          in: query
+        - name: ids
+          description: Comma-separated object type IDs. Omit to count every object type the caller can see.
+          schema:
+            type: string
+          in: query
+        - name: refresh
+          description: Recompute every count instead of serving it from the cache.
+          schema:
+            type: boolean
+            default: false
+          in: query
+      responses:
+        '200':
+          description: ok
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObjectTypeStatsResult"
+              example:
+                entries:
+                  - id: src_orders
+                    count: 52310
+                    exact: true
+                    source: query
+                    as_of: 1790000000000
+                  - id: src_events
+                    count: null
+                    exact: false
+                    error:
+                      code: BknBackend.ObjectType.StatsCountInProgress
+                      message: The Object Type's Instances Are Still Being Counted
+                  - id: region
+                    count: null
+                    exact: false
+                    error:
+                      code: BknBackend.ObjectType.NoDataSource
+                      message: The Object Type Is Not Bound to a Data Resource
+                total: 3
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        '401':
+          description: Unauthorized
+        '404':
+          description: The knowledge network does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ot_ids}/sample-data:
     get:
       tags:
@@ -1695,6 +1806,62 @@ components:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
+    ObjectTypeStatsResult:
+      type: object
+      required:
+        - entries
+        - total
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectTypeStatsEntry"
+        total:
+          description: Number of entries
+          type: integer
+    ObjectTypeStatsEntry:
+      type: object
+      required:
+        - id
+        - count
+      properties:
+        id:
+          description: Object type ID
+          type: string
+        count:
+          description: Instance count. Null when error is set.
+          type: integer
+          format: int64
+          nullable: true
+        exact:
+          description: False for an estimate, which today means an index that may trail its source.
+          type: boolean
+        source:
+          description: Where the count came from. Absent when error is set.
+          type: string
+          enum:
+            - index
+            - catalog
+            - query
+        as_of:
+          description: When the count was taken, in Unix milliseconds. Absent when error is set.
+          type: integer
+          format: int64
+        error:
+          description: Why this object type has no count.
+          type: object
+          properties:
+            code:
+              description: >-
+                Error code, for example Public.Forbidden, BknBackend.ObjectType.ObjectTypeNotFound,
+                BknBackend.ObjectType.NoDataSource, BknBackend.ObjectType.StatsCountInProgress
+                (the count is running or waiting for capacity; request again shortly),
+                BknBackend.ObjectType.StatsQueryTimeout (the execution budget was exhausted), or
+                BknBackend.ObjectType.InternalError.StatsQueryFailed.
+              type: string
+            message:
+              description: Localized description
+              type: string
     BasicInfo:
       description: Basic resource information containing an ID and name
       required:

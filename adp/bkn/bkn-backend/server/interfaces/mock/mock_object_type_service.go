@@ -10,9 +10,9 @@
 package mock_interfaces
 
 import (
-	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	context "context"
 	sql "database/sql"
+	interfaces "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -175,6 +175,20 @@ func (m *MockObjectTypeService) GetObjectTypeIDsByKnID(ctx context.Context, knID
 func (mr *MockObjectTypeServiceMockRecorder) GetObjectTypeIDsByKnID(ctx, knID, branch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTypeIDsByKnID", reflect.TypeOf((*MockObjectTypeService)(nil).GetObjectTypeIDsByKnID), ctx, knID, branch)
+}
+
+// GetObjectTypeResources mocks base method.
+func (m *MockObjectTypeService) GetObjectTypeResources(ctx context.Context, objectTypes []*interfaces.ObjectType) map[string]*interfaces.VegaResource {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetObjectTypeResources", ctx, objectTypes)
+	ret0, _ := ret[0].(map[string]*interfaces.VegaResource)
+	return ret0
+}
+
+// GetObjectTypeResources indicates an expected call of GetObjectTypeResources.
+func (mr *MockObjectTypeServiceMockRecorder) GetObjectTypeResources(ctx, objectTypes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTypeResources", reflect.TypeOf((*MockObjectTypeService)(nil).GetObjectTypeResources), ctx, objectTypes)
 }
 
 // GetObjectTypeSampleData mocks base method.

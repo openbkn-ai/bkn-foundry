@@ -1192,3 +1192,92 @@ func Test_ObjectTypeRestHandler_DeleteObjectTypes_extraCases(t *testing.T) {
 		})
 	})
 }
+
+func Test_ObjectTypeRestHandler_GetObjectTypeStatsByIn(t *testing.T) {
+	Convey("Test ObjectTypeHandler GetObjectTypeStatsByIn\n", t, func() {
+		test := setGinMode()
+		defer test()
+		handler, mockCtrl, engine, _, _, _, kns := newObjectTypeTestHandler(t)
+		defer mockCtrl.Finish()
+		otss := bmock.NewMockObjectTypeStatsService(mockCtrl)
+		handler.otss = otss
+
+		knID := "kn1"
+		baseURL := "/api/bkn-backend/in/v1/knowledge-networks/" + knID + "/object-types/stats"
+		get := func(query string) *httptest.ResponseRecorder {
+			req := httptest.NewRequest(http.MethodGet, baseURL+query, nil)
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_ID, "user1")
+			req.Header.Set(interfaces.HTTP_HEADER_ACCOUNT_TYPE, "user")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			return w
+		}
+
+		Convey("Success routes to the stats service rather than an object type named stats\n", func() {
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
+			count := int64(3)
+			otss.EXPECT().ObjectTypeStats(gomock.Any(), interfaces.ObjectTypeStatsQuery{
+				KNID: knID, Branch: interfaces.MAIN_BRANCH, OTIDs: []string{"a", "b"}, Refresh: true,
+			}).Return(&interfaces.ObjectTypeStatsResult{Entries: []*interfaces.ObjectTypeStatsEntry{
+				{ID: "a", Count: &count, Exact: true, Source: interfaces.OBJECT_TYPE_COUNT_SOURCE_QUERY, AsOf: 1},
+				{ID: "b", Error: &interfaces.ObjectTypeStatsError{Code: "Public.Forbidden", Message: "forbidden"}},
+			}, Total: 2}, nil)
+
+			w := get("?ids=a,%20b,&refresh=true")
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			var body map[string]any
+			So(sonic.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
+			entries := body["entries"].([]any)
+			So(len(entries), ShouldEqual, 2)
+			So(entries[0].(map[string]any)["count"], ShouldEqual, 3)
+			So(entries[1].(map[string]any)["count"], ShouldBeNil)
+			So(entries[1].(map[string]any)["error"].(map[string]any)["code"], ShouldEqual, "Public.Forbidden")
+		})
+
+		Convey("Failed when refresh is not a boolean\n", func() {
+			So(get("?refresh=yes").Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Failed when the knowledge network does not exist\n", func() {
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return("", false, nil)
+			So(get("").Result().StatusCode, ShouldEqual, http.StatusNotFound)
+		})
+	})
+}
+
+func TestObjectTypeStatsExternalIdentityAndErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		serviceError error
+		want         int
+	}{
+		{"success", nil, http.StatusOK},
+		{"plain service failure", errors.New("dependency details"), http.StatusInternalServerError},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler, ctrl, engine, _, _, _, kns := newObjectTypeTestHandler(t)
+			stats := bmock.NewMockObjectTypeStatsService(ctrl)
+			handler.otss = stats
+			auth := handler.as.(*bmock.MockAuthService)
+			auth.EXPECT().VerifyToken(gomock.Any(), gomock.Any()).Return(hydra.Visitor{ID: "external-reader", Type: "user"}, nil)
+			kns.EXPECT().CheckKNExistByID(gomock.Any(), "kn1", "draft").Return("kn1", true, nil)
+			stats.EXPECT().ObjectTypeStats(gomock.Any(), interfaces.ObjectTypeStatsQuery{KNID: "kn1", Branch: "draft"}).DoAndReturn(func(ctx context.Context, _ interfaces.ObjectTypeStatsQuery) (*interfaces.ObjectTypeStatsResult, error) {
+				if got := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo); got.ID != "external-reader" || got.Type != "user" {
+					t.Errorf("identity=%+v", got)
+				}
+				return &interfaces.ObjectTypeStatsResult{Entries: []*interfaces.ObjectTypeStatsEntry{}}, tc.serviceError
+			})
+			req := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/knowledge-networks/kn1/object-types/stats?branch=draft", nil)
+			req.Header.Set("Authorization", "Bearer test")
+			w := httptest.NewRecorder()
+			engine.ServeHTTP(w, req)
+			if w.Code != tc.want {
+				t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+			}
+			if bytes.Contains(w.Body.Bytes(), []byte("dependency details")) {
+				t.Fatal("dependency details leaked")
+			}
+		})
+	}
+}

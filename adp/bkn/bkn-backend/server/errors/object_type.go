@@ -27,13 +27,21 @@ const (
 	BknBackend_ObjectType_ObjectTypeNameExisted             = "BknBackend.ObjectType.ObjectTypeNameExisted"
 	BknBackend_ObjectType_ObjectTypeBoundByActionType       = "BknBackend.ObjectType.ObjectTypeBoundByActionType"
 	BknBackend_ObjectType_ObjectTypeBoundByRelationType     = "BknBackend.ObjectType.ObjectTypeBoundByRelationType"
+	BknBackend_ObjectType_NoDataSource                      = "BknBackend.ObjectType.NoDataSource"
 
 	// 404
 	BknBackend_ObjectType_ObjectTypeNotFound = "BknBackend.ObjectType.ObjectTypeNotFound"
 	BknBackend_ObjectType_SmallModelNotFound = "BknBackend.ObjectType.SmallModelNotFound"
 
+	// 202
+	BknBackend_ObjectType_StatsCountInProgress = "BknBackend.ObjectType.StatsCountInProgress"
+
+	// 504
+	BknBackend_ObjectType_StatsQueryTimeout = "BknBackend.ObjectType.StatsQueryTimeout"
+
 	// 500
 	BknBackend_ObjectType_InternalError                                  = "BknBackend.ObjectType.InternalError"
+	BknBackend_ObjectType_InternalError_StatsQueryFailed                 = "BknBackend.ObjectType.InternalError.StatsQueryFailed"
 	BknBackend_ObjectType_InternalError_MissingTransaction               = "BknBackend.ObjectType.InternalError.MissingTransaction"
 	BknBackend_ObjectType_InternalError_BeginTransactionFailed           = "BknBackend.ObjectType.InternalError.BeginTransactionFailed"
 	BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed     = "BknBackend.ObjectType.InternalError.CheckObjectTypeIfExistFailed"
@@ -67,13 +75,21 @@ var (
 		BknBackend_ObjectType_ObjectTypeNameExisted,
 		BknBackend_ObjectType_ObjectTypeBoundByActionType,
 		BknBackend_ObjectType_ObjectTypeBoundByRelationType,
+		BknBackend_ObjectType_NoDataSource,
 
 		// 404
 		BknBackend_ObjectType_ObjectTypeNotFound,
 		BknBackend_ObjectType_SmallModelNotFound,
 
+		// 202
+		BknBackend_ObjectType_StatsCountInProgress,
+
+		// 504
+		BknBackend_ObjectType_StatsQueryTimeout,
+
 		// 500
 		BknBackend_ObjectType_InternalError,
+		BknBackend_ObjectType_InternalError_StatsQueryFailed,
 		BknBackend_ObjectType_InternalError_MissingTransaction,
 		BknBackend_ObjectType_InternalError_BeginTransactionFailed,
 		BknBackend_ObjectType_InternalError_CheckObjectTypeIfExistFailed,

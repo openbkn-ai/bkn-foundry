@@ -215,7 +215,7 @@ func (s *cypherQueryService) querySQL(ctx context.Context, query interfaces.Cyph
 			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
 			Limit: compiled.rowLimit,
 		},
-		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
+		QueryTimeoutSec: executionTimeoutSeconds(query),
 	})
 	if unsupportedSource(err) && afterBindJoin {
 		return nil, outsideSQLTooLarge(ctx)
@@ -252,7 +252,7 @@ func (s *cypherQueryService) queryGraph(ctx context.Context, query interfaces.Cy
 			Mode:  interfaces.VEGA_PAGING_MODE_SINGLE,
 			Limit: read.rowLimit,
 		},
-		QueryTimeoutSec: interfaces.CYPHER_DEFAULT_TIMEOUT_SEC,
+		QueryTimeoutSec: executionTimeoutSeconds(query),
 	})
 	if unsupportedSource(err) {
 		return s.queryOutsideSQL(ctx, query, compiled)
@@ -360,6 +360,12 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Cypher_Unsupported).
 			WithErrorDetails(localizedText)
 	}
+	for id, version := range query.ExpectedObjectTypeVersions {
+		objectType := schema.objectTypesByID[id]
+		if objectType == nil || objectType.UpdateTime != version {
+			return nil, fmt.Errorf("object type changed while preparing statistics")
+		}
+	}
 	// The semantic descriptor records the caller's query, not policy internals.
 	// In particular, a filter-only policy property may be invisible to the
 	// caller and must not enter their trace/evidence payload merely because it
@@ -377,7 +383,7 @@ func (s *cypherQueryService) compile(ctx context.Context, query interfaces.Cyphe
 	if err != nil {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Cypher_InternalError)
 	}
-	rowFilteredObjectTypes, err := s.applyRowFilters(ctx, query.KNID, plan, schema)
+	rowFilteredObjectTypes, err := s.applyRowFilters(ctx, query.KNID, plan, schema, query.ExpectedRowFilterDigests)
 	if err != nil {
 		var httpErr *httperrors.HTTPError
 		if errors.As(err, &httpErr) {
@@ -723,7 +729,10 @@ func (s *cypherQueryService) queryBindJoin(ctx context.Context, query interfaces
 func (s *cypherQueryService) runBindJoin(ctx context.Context, query interfaces.CypherQuery,
 	compiled *compiledQuery, plan *Plan) ([]interfaces.RawQueryColumn, []map[string]any, error) {
 	span := trace.SpanFromContext(ctx)
-	timeout := s.bindJoinTimeout
+	timeout := query.ExecutionTimeout
+	if timeout <= 0 {
+		timeout = s.bindJoinTimeout
+	}
 	if timeout <= 0 {
 		timeout = interfaces.CYPHER_DEFAULT_TIMEOUT_SEC * time.Second
 	}
@@ -1186,4 +1195,13 @@ func (s *cypherQueryService) queryUnion(ctx context.Context, query interfaces.Cy
 		}
 	}
 	return result, nil
+}
+
+// executionTimeoutSeconds preserves the public default while allowing internal
+// batch statistics to complete the original query after its HTTP wait expires.
+func executionTimeoutSeconds(query interfaces.CypherQuery) int {
+	if query.ExecutionTimeout <= 0 {
+		return interfaces.CYPHER_DEFAULT_TIMEOUT_SEC
+	}
+	return min(3600, max(1, int((query.ExecutionTimeout+time.Second-1)/time.Second)))
 }

@@ -2367,6 +2367,27 @@ func proxyBindingKey(binding interfaces.KNProxyBinding) string {
 	return strings.Join([]string{binding.ChildType, binding.ChildID, binding.TargetType, binding.TargetID, binding.Operation}, "\x00")
 }
 
+// GetObjectTypeResources returns the vega resource read for each object type, keyed by object type
+// ID. It shares fetchObjectTypeResources with enrichment, so a resource refused to the caller is read
+// through the knowledge network's proxy under the same rules.
+func (ots *objectTypeService) GetObjectTypeResources(ctx context.Context,
+	objectTypes []*interfaces.ObjectType) map[string]*interfaces.VegaResource {
+	resources := ots.fetchObjectTypeResources(ctx, objectTypes)
+	byObjectType := make(map[string]*interfaces.VegaResource, len(objectTypes))
+	for _, objectType := range objectTypes {
+		if objectType == nil || objectType.DataSource == nil || objectType.DataSource.ID == "" ||
+			objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+			continue
+		}
+		res, err := resources[objectType.DataSource.ID].resourceFor(objectType)
+		if err != nil || res == nil {
+			continue
+		}
+		byObjectType[objectType.OTID] = res
+	}
+	return byObjectType
+}
+
 // enrichObjectTypes fills in the resource-derived details of every object type, reading each bound
 // resource once.
 //

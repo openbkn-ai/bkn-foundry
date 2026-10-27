@@ -1182,6 +1182,97 @@ func (r *restHandler) GetObjectTypeSampleData(c *gin.Context, visitor hydra.Visi
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
+func (r *restHandler) GetObjectTypeStatsByIn(c *gin.Context) {
+	logger.Debug("Handler GetObjectTypeStatsByIn Start")
+	visitor := visitor.GenerateVisitor(c)
+	r.GetObjectTypeStats(c, visitor)
+}
+
+func (r *restHandler) GetObjectTypeStatsByEx(c *gin.Context) {
+	logger.Debug("Handler GetObjectTypeStatsByEx Start")
+	visitor, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.GetObjectTypeStats(c, visitor)
+}
+
+// GetObjectTypeStats returns the instance count of each object type in a knowledge network, or of
+// the object types named by ids. A failure on one object type is reported on its own row.
+func (r *restHandler) GetObjectTypeStats(c *gin.Context, visitor hydra.Visitor) {
+	logger.Debug("Handler GetObjectTypeStats Start")
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	accountInfo := interfaces.AccountInfo{
+		ID:   visitor.ID,
+		Type: string(visitor.Type),
+	}
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	knID := c.Param("kn_id")
+	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
+	var otIDs []string
+	for _, id := range strings.Split(c.Query("ids"), ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			otIDs = append(otIDs, id)
+		}
+	}
+	refresh, err := strconv.ParseBool(c.DefaultQuery("refresh", "false"))
+	if err != nil {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
+			WithErrorDetails("refresh must be true or false")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	span.SetAttributes(
+		attr.Key("kn_id").String(knID),
+		attr.Key("branch").String(branch),
+		attr.Key("ot_count").Int(len(otIDs)),
+		attr.Key("refresh").Bool(refresh),
+	)
+
+	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
+	if err != nil {
+		httpErr, ok := err.(*httperrors.HTTPError)
+		if !ok {
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_StatsQueryFailed)
+		}
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if !exist {
+		httpErr := httperrors.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_KnowledgeNetwork_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	result, err := r.otss.ObjectTypeStats(ctx, interfaces.ObjectTypeStatsQuery{
+		KNID:    knID,
+		Branch:  branch,
+		OTIDs:   otIDs,
+		Refresh: refresh,
+	})
+	if err != nil {
+		httpErr, ok := err.(*httperrors.HTTPError)
+		if !ok {
+			httpErr = httperrors.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError_StatsQueryFailed)
+		}
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	logger.Debug("Handler GetObjectTypeStats Success")
+	rest.ReplyOK(c, http.StatusOK, result)
+}
+
 // Search object types (external).
 func (r *restHandler) SearchObjectTypesByIn(c *gin.Context) {
 	logger.Debug("Handler SearchObjectTypesByIn Start")

@@ -400,3 +400,29 @@ func TestInsertDatasetDataNeverIndexesTheMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGetObjectTypeResources(t *testing.T) {
+	t.Run("batch maps shared resources to object types", func(t *testing.T) {
+		service, vbs, _ := newProxyEnrichmentService(t)
+		count, asOf := int64(21), int64(1790000000000)
+		res := &interfaces.VegaResource{ID: "r1", RowCount: &count, RowCountTime: &asOf}
+		vbs.EXPECT().GetResourcesByIDs(gomock.Any(), []string{"r1", "missing"}).Return([]*interfaces.VegaResource{res}, nil)
+		got := service.GetObjectTypeResources(readerContext(), []*interfaces.ObjectType{
+			nil, boundObjectType("a", "r1", "main"), boundObjectType("b", "r1", "main"), boundObjectType("c", "missing", "main"), boundObjectType("unbound", "", "main"),
+		})
+		if len(got) != 2 || got["a"] != res || got["b"] != res {
+			t.Fatalf("incorrect resource mapping: %+v", got)
+		}
+	})
+	t.Run("proxy totals stay within published bindings", func(t *testing.T) {
+		service, vbs, resolver := newProxyEnrichmentService(t)
+		expectCallerRefused(vbs, []string{"r1"})
+		resolver.EXPECT().ResolveKNProxyBindings(gomock.Any(), "kn1", []interfaces.KNProxyBinding{schemaBinding("a", "r1"), schemaBinding("b", "r1")}).Return(readyProxy(), []interfaces.KNProxyBinding{schemaBinding("a", "r1")}, nil)
+		res := vegaResource("r1")
+		vbs.EXPECT().GetResourcesByIDsAs(gomock.Any(), proxyAccount, []string{"r1"}).Return([]*interfaces.VegaResource{res}, nil)
+		got := service.GetObjectTypeResources(readerContext(), []*interfaces.ObjectType{boundObjectType("a", "r1", "main"), boundObjectType("b", "r1", "main")})
+		if len(got) != 1 || got["a"] != res {
+			t.Fatalf("unpublished binding received proxy totals: %+v", got)
+		}
+	})
+}

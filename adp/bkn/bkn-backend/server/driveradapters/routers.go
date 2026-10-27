@@ -38,6 +38,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_data_stats"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/object_type_stats"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/relation_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/risk_type"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/value_type"
@@ -69,6 +70,7 @@ type restHandler struct {
 	projectionGrantVerifier *bkntrace.ProjectionGrantVerifier
 	cqs                     interfaces.CypherQueryService
 	odss                    interfaces.ObjectDataStatsService
+	otss                    interfaces.ObjectTypeStatsService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, recorder operationAuditRecorder) RestHandler {
@@ -108,6 +110,7 @@ func NewRestHandler(appSetting *common.AppSetting, recorder operationAuditRecord
 		projectionGrantVerifier: projectionVerifier,
 		cqs:                     cypher.NewCypherQueryService(appSetting),
 		odss:                    object_data_stats.NewObjectDataStatsService(appSetting),
+		otss:                    object_type_stats.NewObjectTypeStatsService(appSetting),
 	}
 	return r
 }
@@ -163,6 +166,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.UpdateObjectTypeByEx)
 	apiV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id/data_properties/:property_names", r.verifyJsonContentType(), r.UpdateDataProperties)
 	apiV1.GET("/knowledge-networks/:kn_id/object-types", r.ListObjectTypesByEx) // The path uses the plural parameter name but accepts one ID only.
+	apiV1.GET("/knowledge-networks/:kn_id/object-types/stats", r.GetObjectTypeStatsByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids/sample-data", r.GetObjectTypeSampleDataByEx)
 	apiV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids", r.GetObjectTypesByEx) // The path uses the plural parameter name but accepts one ID only.
 
@@ -267,6 +271,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiInV1.POST("/knowledge-networks/:kn_id/object-types/validation", r.verifyJsonContentType(), r.ValidateObjectTypesByIn)
 	apiInV1.PUT("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.UpdateObjectTypeByIn)
 	apiInV1.GET("/knowledge-networks/:kn_id/object-types", r.ListObjectTypesByIn)
+	apiInV1.GET("/knowledge-networks/:kn_id/object-types/stats", r.GetObjectTypeStatsByIn)
 	apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids/sample-data", r.GetObjectTypeSampleDataByIn)
 	apiInV1.GET("/knowledge-networks/:kn_id/object-types/:ot_ids", r.GetObjectTypesByIn) // The path uses the plural parameter name but accepts one ID only.
 

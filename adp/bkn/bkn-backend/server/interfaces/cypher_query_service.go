@@ -9,6 +9,7 @@ package interfaces
 import (
 	"context"
 	"encoding/json"
+	"time"
 )
 
 const (
@@ -35,9 +36,14 @@ const (
 
 // CypherQuery is one read-only query against a knowledge network.
 type CypherQuery struct {
-	KNID   string
-	Branch string
-	Query  string
+	// Internal statistics callers can extend the execution budget and pin the
+	// cache scope. HTTP and MCP handlers never populate these fields.
+	ExecutionTimeout           time.Duration     `json:"-"`
+	ExpectedRowFilterDigests   map[string]string `json:"-"`
+	ExpectedObjectTypeVersions map[string]int64  `json:"-"`
+	KNID                       string
+	Branch                     string
+	Query                      string
 	// Parameters supply the values the query refers to as $name. They are
 	// values only: a parameter can change which rows come back, never which
 	// resource or column is read.
