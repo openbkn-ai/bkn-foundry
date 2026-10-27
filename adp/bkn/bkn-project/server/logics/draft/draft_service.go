@@ -70,12 +70,26 @@ func internalError(ctx context.Context, operation string, err error) error {
 		WithErrorDetails(err.Error())
 }
 
+// unarchivedProject returns the project the caller can see, refusing an archived one: its
+// draft no longer changes.
+func (s *draftService) unarchivedProject(ctx context.Context, token string,
+	projectID string) (*interfaces.ProjectEntry, error) {
+	entry, err := s.ps.GetProject(ctx, token, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if entry.Archived {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_ProjectArchived)
+	}
+	return entry, nil
+}
+
 func (s *draftService) GenerateDraft(ctx context.Context, token string, projectID string,
-	caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	caller interfaces.AccountInfo, discardDecisions bool) (*interfaces.Draft, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GenerateDraft")
 	defer span.End()
 
-	entry, err := s.ps.GetProject(ctx, token, projectID)
+	entry, err := s.unarchivedProject(ctx, token, projectID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get project failed")
 		return nil, err
@@ -97,7 +111,11 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	// A draft still drafting after the drafting timeout, with a minute to record it, has ended
 	// without being recorded, e.g. on a database error; it no longer holds the project.
 	staleBefore := now - (s.setting.Timeout + time.Minute).Milliseconds()
-	started, err := s.da.StartDraft(ctx, draft, staleBefore)
+	started, err := s.da.StartDraft(ctx, draft, staleBefore, discardDecisions)
+	if errors.Is(err, interfaces.ErrDraftHasDecisions) {
+		span.SetStatus(codes.Error, "Draft has decisions")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_HasDecisions)
+	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Start draft failed")
 		return nil, internalError(ctx, "Start draft failed", err)

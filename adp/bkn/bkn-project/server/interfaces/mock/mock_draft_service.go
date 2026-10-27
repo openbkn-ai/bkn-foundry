@@ -41,6 +41,21 @@ func (m *MockDraftService) EXPECT() *MockDraftServiceMockRecorder {
 	return m.recorder
 }
 
+// EditDraftItem mocks base method.
+func (m *MockDraftService) EditDraftItem(ctx context.Context, token, projectID, kind, itemID string, edit interfaces.DraftItemEdit, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EditDraftItem", ctx, token, projectID, kind, itemID, edit, caller)
+	ret0, _ := ret[0].(*interfaces.Draft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// EditDraftItem indicates an expected call of EditDraftItem.
+func (mr *MockDraftServiceMockRecorder) EditDraftItem(ctx, token, projectID, kind, itemID, edit, caller any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EditDraftItem", reflect.TypeOf((*MockDraftService)(nil).EditDraftItem), ctx, token, projectID, kind, itemID, edit, caller)
+}
+
 // FailInterrupted mocks base method.
 func (m *MockDraftService) FailInterrupted(ctx context.Context) error {
 	m.ctrl.T.Helper()
@@ -56,18 +71,18 @@ func (mr *MockDraftServiceMockRecorder) FailInterrupted(ctx any) *gomock.Call {
 }
 
 // GenerateDraft mocks base method.
-func (m *MockDraftService) GenerateDraft(ctx context.Context, token, projectID string, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+func (m *MockDraftService) GenerateDraft(ctx context.Context, token, projectID string, caller interfaces.AccountInfo, discardDecisions bool) (*interfaces.Draft, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GenerateDraft", ctx, token, projectID, caller)
+	ret := m.ctrl.Call(m, "GenerateDraft", ctx, token, projectID, caller, discardDecisions)
 	ret0, _ := ret[0].(*interfaces.Draft)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GenerateDraft indicates an expected call of GenerateDraft.
-func (mr *MockDraftServiceMockRecorder) GenerateDraft(ctx, token, projectID, caller any) *gomock.Call {
+func (mr *MockDraftServiceMockRecorder) GenerateDraft(ctx, token, projectID, caller, discardDecisions any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateDraft", reflect.TypeOf((*MockDraftService)(nil).GenerateDraft), ctx, token, projectID, caller)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateDraft", reflect.TypeOf((*MockDraftService)(nil).GenerateDraft), ctx, token, projectID, caller, discardDecisions)
 }
 
 // GetDraft mocks base method.

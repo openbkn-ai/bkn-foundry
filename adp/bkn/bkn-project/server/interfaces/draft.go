@@ -4,6 +4,8 @@
 
 package interfaces
 
+import "errors"
+
 // An ontology draft holds what drafting from the table structure of a project's data
 // catalogs proposes: object types, relation types, enum value types, excluded fields
 // and tables that could not be read. Every item carries its evidence and whether it is
@@ -40,6 +42,31 @@ const (
 	DRAFT_CARDINALITY_MANY_TO_MANY = "many_to_many"
 )
 
+// Kinds of draft items people edit, as they appear in item paths.
+const (
+	DRAFT_KIND_OBJECT_TYPES   = "object_types"
+	DRAFT_KIND_RELATION_TYPES = "relation_types"
+	DRAFT_KIND_VALUE_TYPES    = "value_types"
+)
+
+// What a person decided about a draft item.
+const (
+	DRAFT_DECISION_ADOPT    = "adopt"
+	DRAFT_DECISION_UNADOPT  = "unadopt"
+	DRAFT_DECISION_RENAME   = "rename"
+	DRAFT_DECISION_DESCRIBE = "describe"
+)
+
+// Limits of what people write into a draft, those of BKN definitions.
+const (
+	DRAFT_NAME_MAX_LENGTH        = 128
+	DRAFT_DESCRIPTION_MAX_LENGTH = 1000
+)
+
+// ErrDraftHasDecisions is returned by StartDraft when drafting again would discard the
+// decisions people made on the draft and the caller did not agree to discard them.
+var ErrDraftHasDecisions = errors.New("draft has decisions")
+
 // SOURCE_OF_RECORD_TABLE marks a property whose value comes from its mapped table field.
 const SOURCE_OF_RECORD_TABLE = "table"
 
@@ -59,6 +86,30 @@ type DraftItems struct {
 	ValueTypes    []*DraftValueType     `json:"value_types"`
 	Excluded      []*DraftExcludedField `json:"excluded"`
 	Unreadable    []*DraftTable         `json:"unreadable"`
+	// Decisions people made on the items, oldest first. They are kept with the items so a
+	// draft and its decisions are read and written together.
+	Decisions []*DraftDecision `json:"decisions"`
+}
+
+// DraftDecision records one change a person made to a draft item. Before and After are the
+// values the change replaced and wrote: a bool for adopt and unadopt, a string otherwise.
+type DraftDecision struct {
+	Kind   string      `json:"kind"`
+	ItemID string      `json:"item_id"`
+	Action string      `json:"action"`
+	Before any         `json:"before"`
+	After  any         `json:"after"`
+	By     AccountInfo `json:"by"`
+	Time   int64       `json:"time"`
+}
+
+// DraftItemEdit is a person's edit of one draft item; nil fields stay as they are.
+// UpdateTime is the update time of the draft the edit was made on.
+type DraftItemEdit struct {
+	UpdateTime  int64   `json:"update_time"`
+	Adopted     *bool   `json:"adopted"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
 }
 
 // DraftTable names a table of a data catalog.
@@ -112,6 +163,7 @@ type DraftKeyEvidence struct {
 type DraftRelationType struct {
 	ID          string              `json:"id"`
 	Name        string              `json:"name"`
+	Description string              `json:"description"`
 	Source      string              `json:"source"`
 	Target      string              `json:"target"`
 	Origin      string              `json:"origin"`
@@ -150,13 +202,14 @@ type DraftJoinEvidence struct {
 // DraftValueType is an enum drafted from a code table; the properties that reference the
 // code table take it as their value type.
 type DraftValueType struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	BaseType  string             `json:"base_type"`
-	Values    []DraftEnumValue   `json:"values"`
-	CodeTable DraftTable         `json:"code_table"`
-	UsedBy    []DraftPropertyRef `json:"used_by"`
-	Adopted   bool               `json:"adopted"`
+	ID          string             `json:"id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	BaseType    string             `json:"base_type"`
+	Values      []DraftEnumValue   `json:"values"`
+	CodeTable   DraftTable         `json:"code_table"`
+	UsedBy      []DraftPropertyRef `json:"used_by"`
+	Adopted     bool               `json:"adopted"`
 }
 
 type DraftEnumValue struct {
