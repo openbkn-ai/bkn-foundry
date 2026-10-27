@@ -7,6 +7,7 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -51,6 +52,15 @@ func newFixture(ctrl *gomock.Controller) *fixture {
 	}
 	f.svc = &projectService{pa: f.pa, ra: f.ra, bba: f.bba, ls: f.ls}
 	return f
+}
+
+// catalogIDs returns n distinct valid ids, so only their number can be refused.
+func catalogIDs(n int) []string {
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("c%d", i)
+	}
+	return ids
 }
 
 func Test_ProjectService_CreateProject(t *testing.T) {
@@ -184,7 +194,7 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 					perrors.BknProject_Project_InvalidCatalogIDs},
 				{interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders", CatalogIDs: []string{strings.Repeat("c", 41)}},
 					perrors.BknProject_Project_InvalidCatalogIDs},
-				{interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders", CatalogIDs: make([]string, maxCatalogIDs+1)},
+				{interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders", CatalogIDs: catalogIDs(maxCatalogIDs + 1)},
 					perrors.BknProject_Project_InvalidCatalogIDs},
 			} {
 				_, err := f.svc.CreateProject(ctx, token, c.req, owner, author)
@@ -441,6 +451,55 @@ func Test_ProjectService_GetAndArchive(t *testing.T) {
 			_, err := f.svc.SetProjectArchived(ctx, token, "p1", true, interfaces.AccountInfo{ID: "u2", Type: "user"})
 
 			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
+		})
+
+		Convey("The owner replaces the catalogs, de-duplicated, keeping the draft as it is\n", func() {
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.pa.EXPECT().SetProjectCatalogs(gomock.Any(), "p1", []string{"c2", "c3"}, gomock.Any()).Return(nil)
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{"orders": 1}, nil)
+
+			entry, err := f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c2", "c3", "c2"}, owner)
+
+			So(err, ShouldBeNil)
+			So(entry.CatalogIDs, ShouldResemble, []string{"c2", "c3"})
+			So(entry.UpdateTime, ShouldBeGreaterThan, 1)
+		})
+
+		Convey("The same catalogs change nothing\n", func() {
+			same := stored()
+			same.CatalogIDs = []string{"c1"}
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(same, true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.pa.EXPECT().CountUnarchivedProjects(gomock.Any(), gomock.Any()).Return(map[string]int64{}, nil)
+
+			entry, err := f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c1"}, owner)
+
+			So(err, ShouldBeNil)
+			So(entry.UpdateTime, ShouldEqual, 1)
+		})
+
+		Convey("Only the owner may replace the catalogs, and invalid ids are refused before any call\n", func() {
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+
+			_, err := f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c2"}, interfaces.AccountInfo{ID: "u2", Type: "user"})
+			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
+
+			for _, ids := range [][]string{{""}, {strings.Repeat("c", 41)}, catalogIDs(maxCatalogIDs + 1)} {
+				_, err = f.svc.SetProjectCatalogs(ctx, token, "p1", ids, owner)
+				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_InvalidCatalogIDs)
+			}
+		})
+
+		Convey("A catalogs write failure is an internal error\n", func() {
+			f.pa.EXPECT().GetProject(gomock.Any(), "p1").Return(stored(), true, nil)
+			f.bba.EXPECT().GetKN(gomock.Any(), token, "orders").Return(&interfaces.KnowledgeNetwork{}, nil)
+			f.pa.EXPECT().SetProjectCatalogs(gomock.Any(), "p1", []string{"c2"}, gomock.Any()).Return(errors.New("db down"))
+
+			_, err := f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c2"}, owner)
+
+			shouldBeHTTPError(err, http.StatusInternalServerError, perrors.BknProject_Project_InternalError)
 		})
 
 		Convey("An archive write failure is an internal error\n", func() {

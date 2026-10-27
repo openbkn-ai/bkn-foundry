@@ -21,4 +21,5 @@ type ProjectAccess interface {
 	CountUnarchivedProjects(ctx context.Context, knIDs []string) (map[string]int64, error)
 	// SetProjectArchived archives or unarchives the project.
 	SetProjectArchived(ctx context.Context, id string, archived bool, updateTime int64) error
+	SetProjectCatalogs(ctx context.Context, id string, catalogIDs []string, updateTime int64) error
 }
