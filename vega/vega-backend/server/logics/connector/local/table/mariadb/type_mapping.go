@@ -17,6 +17,8 @@ import (
 var TypeMapping = map[string]string{
 	// Signed integer types.
 	"tinyint":   interfaces.DataType_Integer,
+	"boolean":   interfaces.DataType_Integer,
+	"bool":      interfaces.DataType_Integer,
 	"smallint":  interfaces.DataType_Integer,
 	"mediumint": interfaces.DataType_Integer,
 	"int":       interfaces.DataType_Integer,
@@ -70,12 +72,9 @@ var TypeMapping = map[string]string{
 	"timestamp": interfaces.DataType_Timestamp,
 	"time":      interfaces.DataType_Time,
 
-	// Boolean types.
-	"boolean": interfaces.DataType_Boolean,
-	"bool":    interfaces.DataType_Boolean,
-	"bit":     interfaces.DataType_Boolean,
-
+	// BIT 保留位串语义；BOOL/BOOLEAN 按其 TINYINT 别名保留整数语义。
 	// Binary types.
+	"bit":        interfaces.DataType_Binary,
 	"binary":     interfaces.DataType_Binary,
 	"varbinary":  interfaces.DataType_Binary,
 	"tinyblob":   interfaces.DataType_Binary,
