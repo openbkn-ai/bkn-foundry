@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commons.i18n import localized_message
 from app.commons.locale import get_effective_locale
+from app.errors import err
 from app.models import (
     AgentOut,
     AgentRow,
@@ -713,14 +714,15 @@ async def list_prompts(session: AsyncSession, page: int, size: int):
 async def publish_prompt_version(
     session: AsyncSession, prompt_id: str, content: str, vars_schema: Optional[dict], account_id: str,
     commit: bool = True,
-    *, preserve_vars_schema: bool = False,
+    *, preserve_vars_schema: bool = False, version: int | None = None,
 ):
     locked_agent_ids = None
-    if not commit:
+    lock = not commit or version is not None
+    if lock:
         # Imports reach this function without already owning an Agent lock.
         locked_agent_ids = await lock_prompt_agents(session, prompt_id)
     head = await session.get(
-        PromptRow, prompt_id, **({"populate_existing": True, "with_for_update": True} if not commit else {})
+        PromptRow, prompt_id, **({"populate_existing": True, "with_for_update": True} if lock else {})
     )
     if not head:
         return None
@@ -735,9 +737,11 @@ async def publish_prompt_version(
     latest_query = (select(PromptVersionRow.f_version)
                     .where(PromptVersionRow.f_prompt_id == prompt_id)
                     .order_by(PromptVersionRow.f_version.desc()).limit(1))
-    if not commit:
+    if lock:
         latest_query = latest_query.with_for_update()
     latest = (await session.execute(latest_query)).scalar_one()
+    if version is not None and version != latest + 1:
+        raise err(409, "BknAgent.Prompt.VersionConflict", version=version, next_version=latest + 1)
     now = _now_ms()
     session.add(
         PromptVersionRow(
@@ -758,6 +762,13 @@ async def publish_prompt_version(
         await session.flush()
     await _record_for_prompt(session, prompt_id, account_id, commit, agent_ids=locked_agent_ids)
     return await _prompt_out(session, head)
+
+
+async def next_prompt_version(session: AsyncSession, prompt_id: str) -> int:
+    latest = (await session.execute(
+        select(func.max(PromptVersionRow.f_version)).where(PromptVersionRow.f_prompt_id == prompt_id)
+    )).scalar_one()
+    return (latest or 0) + 1
 
 
 async def list_prompt_versions(session: AsyncSession, prompt_id: str):

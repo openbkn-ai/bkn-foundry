@@ -495,6 +495,10 @@ class PromptPublish(BaseModel):
     vars_schema: Optional[dict[str, Any]] = None
 
 
+class PromptVersionPublish(PromptPublish):
+    version: int = Field(ge=1, le=2147483647, strict=True)
+
+
 class PromptRollback(BaseModel):
     version: int = Field(ge=1)
 

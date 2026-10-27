@@ -153,6 +153,13 @@ error_messages = {
         "detail": "目标版本不存在",
         "solution": "",
     },
+    "BknAgent.Prompt.VersionConflict": {
+        "code": "BknAgent.Prompt.VersionConflict",
+        "description": "请求的提示词版本已存在或版本号不连续。",
+        "detail_template": "请求版本 {version}，下一个可用版本 {next_version}。",
+        "detail": "本次发布与当前版本历史冲突。",
+        "solution": "请刷新版本历史并核对发布结果，再决定是否重新发布。",
+    },
     "BknAgent.Prompt.Conflict": {
         "code": "BknAgent.ParamError.Conflict",
         "description": "提示词名称或 id 已存在",
