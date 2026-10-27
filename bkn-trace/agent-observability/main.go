@@ -26,7 +26,10 @@ import (
 
 // @title Agent Observability API
 // @version 1.0
-// @description APIs for querying agent traces from OpenSearch.
+// @description Community Core APIs for managed Conversation/Interaction facts, recorded Operations, and technical Trace reads. Standard record authorization applies.
+// @description Enterprise business-provenance routes require an assembled EE image and runtime enterprise entitlement; they are not part of this Core specification.
+// @description A plain 404 on an enterprise route does not identify its cause: an absent Community route, the EE availability gate, or an undisclosed record can return 404. A successful Core read does not establish access to an EE route.
+// @description Explanation reads are separate from explicit EE generation requests. See the module README for the Community/EE read boundary.
 // @BasePath /api/agent-observability/v1
 // @securityDefinitions.apikey BearerAuth
 // @in header

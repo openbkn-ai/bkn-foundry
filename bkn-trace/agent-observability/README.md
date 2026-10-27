@@ -6,17 +6,62 @@
 - 类型化 Trace 列表接口：`GET /api/agent-observability/v1/traces`
 - 单 Trace 技术详情接口：`GET /api/agent-observability/v1/traces/{trace_id}`
 - Evidence 事件接收接口：`POST /api/agent-observability/v1/evidence/events`
-- 企业 Evidence Chain 查询接口：`GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain`
-- 企业 Request Evidence Chain 查询接口：`GET /api/agent-observability/v1/business-provenance/requests/{request_id}/evidence-chain`
-- 企业 Business Graph 查询接口：`GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/business-graph`
-- 企业 Request Business Graph 查询接口：`GET /api/agent-observability/v1/business-provenance/requests/{request_id}/business-graph`
-- Evidence Node 查询接口（企业业务溯源）：`GET /api/agent-observability/v1/business-provenance/evidence-nodes/{node_id}?trace_id=...`
+- 受管 Interaction 读取：`GET /api/agent-observability/v1/interactions/{interaction_id}`
+- 已记录 Operations 读取：`GET /api/agent-observability/v1/interactions/{interaction_id}/operations`
+- Core 业务语义组装修订：`GET /api/agent-observability/v1/interactions/{interaction_id}/business-graph`
 - OpenSearch 查询客户端
 - 阶段二 Evidence ingestion 校验、归一化和可替换存储接口，支持内存 store 与 OpenSearch evidence index store
 - Swagger 文档生成
 - Docker 镜像构建
 - Helm Deployment Chart
 - GitHub Actions 构建与发布流水线
+
+## Community 与 EE 读取边界（#2517）
+
+以下路径均以 `/api/agent-observability/v1` 为前缀，描述当前主线实现。
+Community 0.2.0（`81d57528`）已有同样的企业路由装配边界；升级 Community
+镜像不会自动获得 EE 原生业务溯源接口。公开 Core OpenAPI 不包含 EE 路由。
+
+| 读取入口 | 制品与含义 |
+| --- | --- |
+| `GET /interactions/{interaction_id}` | Core：受管 Interaction 生命周期及已记录事实 |
+| `GET /interactions/{interaction_id}/operations` | Core：已记录调用的输入、输出/错误等事实 |
+| `GET /interactions/{interaction_id}/business-graph` | Core：已记录业务语义组装修订的授权投影；不是 EE 原生解析详情或解释结果 |
+| `GET /traces`、`GET /traces/{trace_id}` | Core：技术执行列表与详情，继续受当前读取授权和展示范围约束 |
+| `GET /business-provenance/conversations`、`GET /business-provenance/interactions` | EE：业务会话/交互检索，Community 不挂载 |
+| `GET /business-provenance/interactions/{interaction_id}` | EE：当前交互的企业业务解析详情，Community 不挂载 |
+| `GET /business-provenance/interactions/{interaction_id}/explanations` | EE：只读查询当前授权作用域的解释；不存在已生成结果时为 `not_generated`，存在时为 `ready` |
+
+EE 实例必须实际包含并装配企业实现，通过运行时企业许可门，再经过 Core 的当前身份
+与记录范围授权。安装其他 EE 服务或拥有企业证书，不会让 Community Trace 二进制
+装配不存在的实现。管理员角色也不能替代许可或记录授权。
+
+### 如何解释 404
+
+- Community 的企业路由没有注册，普通 `404 page not found` 符合实现边界，不说明
+  Interaction 丢失，也不是单凭这一响应就能判定的网关故障。
+- 当前 EE 许可门未通过时也刻意返回相同的普通 404；企业详情中的未披露记录也可能
+  返回 404。因此状态、Content-Type 或响应体不能独立区分缺路由、未许可和未披露。
+- 标准 Core 读取在缺少有效身份时返回 401；`resource_not_disclosed` 是该读取合同的
+  结构化 404，表示请求的记录在当前授权范围中不可披露，不能证明记录不存在。
+- 标准 Interaction/Operations 返回 200，仅证明这些基础事实可读，不证明 EE 原生详情
+  或解释已安装、获许可或获得授权。排查时分别核对目标 Trace 镜像/装配、运行时许可和
+  当前记录授权，不根据一次 404 自动选择“缺许可证”等单一原因。
+
+解释 GET 不触发生成。只有显式生成动作才调用独立的 EE
+`POST /business-provenance/interactions/{interaction_id}/explanations`，仍需当前许可与授权；
+打开面板或探测可用性不能代替用户发起生成。`completed`、Operations 非空或 Core 图可读，
+都不意味着已有 `ready` 解释，也不代表解释或事实完整。
+
+外部客户端可继续显示已授权的 Core/本地事实，将企业原生视图标为不可用或未披露；
+不能把基础图转换成伪造的 EE 节点、关系或解释。企业功能的非空验收应使用获授权 EE
+环境中已有的真实记录，分别保留详情和解释读取结果。没有现成解释时保留 `not_generated`，
+不为验收制造生成请求。本说明不把其他部署的成功结果反向记为原 Community 环境通过。
+
+旧的 `/business-provenance/traces/.../evidence-chain`、
+`/business-provenance/requests/.../business-graph` 和
+`/business-provenance/evidence-nodes/...` 等 trace/request/node 读取示例不属于当前挂载合同，
+不能将内部 Evidence Store 模型或旧响应 envelope 当成当前可调用的 HTTP 接口。
 
 ## Span display and browsing (#2158)
 
@@ -289,7 +334,7 @@ python3 scripts/bkn_trace_e2e_lite_probe.py \
 
 本地自签 HTTPS 网关可以加 `--insecure`。写入模式仍只写最小诊断 span、claim、evidence ref 和 business ref，不包含 prompt、完整 SQL、行级数据、token 或裸对象存储 URL。由于 collector 到 OpenSearch 可能存在短暂可见性延迟，查询类 endpoint 默认重试 3 次，可用 `--retries` 和 `--retry-delay` 调整。
 
-阶段二 evidence ingestion 接口接受 `bkn.trace.schema.version=2.0.0` 的事件批次，包含 `trace` 与 `events`。当前版本先完成 contract 校验、敏感 payload 拒绝、归一化计数、最小 Evidence Chain 查询、Business Graph 查询和 Evidence Node 查询；默认使用内存 repository，生产或共享测试环境可切换到 OpenSearch evidence index store。
+历史 Evidence Store 模型包含 `trace`、`events`、Claim、evidence ref 和 business ref，并保留内存与 OpenSearch 存储实现。内部存储模型不决定当前公开路由；受管证据写入采用下文 BKN Trace 3.0 合同，读取范围见前述 Community/EE 边界。
 
 ### BKN Trace 3.0 Interaction 业务语义图
 
@@ -390,14 +435,9 @@ OPENSEARCH_EVIDENCE_INDEX=bkn-trace-evidence-v1
 
 Evidence 与 Artifact 存储在首次读写时由运行时 `EnsureIndex` 创建或更新 mapping；Chart 不再渲染独立的索引初始化 Hook。启用 OpenSearch Evidence Store 的服务身份须具备目标索引的创建及 mapping 更新权限。
 
-Evidence Chain 与 Business Graph 查询支持可选 `limit` 参数，限制本次读取的 evidence trace 批次数：
-
-```http
-GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain?limit=100
-GET /api/agent-observability/v1/business-provenance/requests/{request_id}/business-graph?limit=100
-```
-
-`limit` 取值范围为 `1..1000`，默认 `1000`。命中上限时响应会返回 `partial=true`、`partial_reason=["evidence_query_truncated"]`，并设置 `page.truncated=true`，调用方不得把该结果展示为完整证据链。
+Evidence Store 的内部查询预算不构成公开 HTTP 合同。当前读取入口及 Core/EE
+差异见[读取边界](#community-与-ee-读取边界2517)，不要向未挂载的旧 trace/request
+企业路径发送查询或沿用其 `limit`、`page`、`partial_reason` 响应假设。
 
 单 Trace 技术详情包含归一化 OTel Span 图与 Operation 调用事实：
 
@@ -572,120 +612,20 @@ Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须�
 
 升级存量环境时，如果部署 values 覆盖了 `ingress.paths`，Helm 不会合并 chart 新增路径，必须显式补充 `/api/observability/v1`。扩容到多副本前也必须先配置共享的 `observability.cursorSigning.existingSecret`，否则不同 Pod 签发的游标不能互相验证。
 
-查询仍依据事件生产方或 resolver 声明的 `visibility` 做节点级响应过滤，并区分 `redacted`、`hidden`、`omitted`、`unresolved`、`unauthorized` 统计。`unauthorized` 引用只进入汇总和 `partial_reason[]`，不会展开 `ref_id`、`policy_decision_ref` 或其他节点详情。更细粒度的对象/属性级实时策略裁决仍属于后续阶段。
+Core 业务语义图的当前读取合同见前述“BKN Trace 3.0 Interaction 业务语义图”；
+企业原生详情与解释见[读取边界](#community-与-ee-读取边界2517)。内部证据模型不代表
+同名 HTTP 路由已挂载，旧 Evidence Chain / Evidence Node envelope 不再作为当前调用示例。
 
-当前查询侧尚未接入受权 Resolver/display 服务，业务图节点因此只投影注册引用字段，不信任或返回事件中的 `label` 等显示信息；存在可见业务引用时返回 `partial=true` 与 `resolver_unresolved`。受权业务名称和详情补全由后续独立任务实现。
+### 历史 Evidence Store 模型（非当前 HTTP 合同）
 
-Evidence Chain 查询返回稳定 envelope：
+以下 2.0/2.1 聚合模型说明保留的旧存储实现，不是当前 `/evidence/events` 的 BKN Trace 3.0 写入合同，也不声明旧查询路由可用。
 
-```json
-{
-  "trace_id": "9c0d...",
-  "bkn.request.id": "req_handler_001",
-  "partial": false,
-  "partial_reason": [],
-  "visibility_summary": {
-    "authorized_ref_count": 2,
-    "redacted_ref_count": 0,
-    "hidden_ref_count": 0,
-    "omitted_ref_count": 0,
-    "unresolved_ref_count": 0,
-    "unauthorized_ref_count": 0
-  },
-  "page": {
-    "next_cursor": null,
-    "node_count": 3,
-    "edge_count": 2,
-    "truncated": false
-  },
-  "data": {
-    "claims": [],
-    "evidence_refs": [],
-    "business_refs": []
-  }
-}
-```
+旧 Evidence ingestion 模型写入 `2.1.0`，读取兼容 `2.0.0`。2.1 事件执行精确 payload/ref allowlist、类型、枚举、hash、敏感值、trace/span/time join 校验。一般事实允许先于其父事件异步到达：首次查询返回 `causality_missing`，父事件补到后自动恢复完整；claim 的 `source_event_ids` 缺失仍返回 `source_event_missing`，Action 前态乱序继续原子拒绝。混合 2.0/2.1 历史按每个 event 的版本保留 `causality_missing`。
 
-Business Graph 查询返回从 `business.refs.resolved` 派生的业务语义图：
+该旧 OpenSearch 模型使用“单 trace 聚合文档 + OCC”保障 Action 状态和事件冲突原子性。为避免文档无限增长，单 trace 硬限制为 10,000 个事件且聚合 JSON 不超过 8 MiB，超限返回 `BKN_TRACE_CAPACITY_EXCEEDED`。该限制不是最终扩展方案；后续需要迁移为事件文档加状态投影，并使用 PIT 分页。旧索引中缺少 account/application principal 必要归属的 2.0 聚合文档默认不可查询、不可继续追加；缺失归属必须通过离线受控迁移补齐，不能由请求方认领。
 
-```json
-{
-  "trace_id": "9c0d...",
-  "bkn.request.id": "req_handler_002",
-  "partial": false,
-  "partial_reason": [],
-  "visibility_summary": {
-    "authorized_ref_count": 0,
-    "redacted_ref_count": 0,
-    "hidden_ref_count": 0,
-    "omitted_ref_count": 0,
-    "unresolved_ref_count": 0
-  },
-  "page": {
-    "next_cursor": null,
-    "node_count": 2,
-    "edge_count": 1,
-    "truncated": false
-  },
-  "data": {
-    "nodes": [
-      {
-        "id": "claim:claim_handler_business",
-        "node_type": "claim",
-        "claim_id": "claim_handler_business"
-      },
-      {
-        "id": "business:object:kn_demo:customer",
-        "node_type": "object",
-        "display": {
-          "name": "客户",
-          "business_path": ["客户"],
-          "resolution_status": "resolved",
-          "source_version": "main"
-        }
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge:1",
-        "source_id": "claim:claim_handler_business",
-        "target_id": "business:object:kn_demo:customer",
-        "edge_type": "claim_to_object"
-      }
-    ]
-  }
-}
-```
-
-Business Graph 只消费已进入 BKN Trace 的 `business_refs`，并复用当前用户身份调用 BKN / Vega resolver 做实时授权投影。`unresolved` 与 `unauthorized` 不会生成业务节点或边；resolver 不可用会明确标记披露降级。没有安全实例级授权接口的对象实例、行动实例和函数引用保持 fail-closed，不能仅凭父类型权限披露。
-
-Evidence Node 查询用于打开单个可见节点详情：
-
-```http
-GET /api/agent-observability/v1/business-provenance/evidence-nodes/claim%3Aclaim_handler?trace_id=9c0d...
-GET /api/agent-observability/v1/business-provenance/evidence-nodes/business_ref%3Aobject%3Acustomer?request_id=req_handler_002
-```
-
-首版 node id 格式：
-
-```text
-claim:{claim_id}
-evidence_ref:{ref_id}
-business_ref:{ref_id}
-```
-
-查询必须提供且只能提供一个 scope：`trace_id` 或 `request_id`。当前阶段只返回 `visibility=visible` 的节点；`hidden`、`redacted`、`omitted`、`unresolved`、`unauthorized` 节点不会通过详情接口展开。
-
-Evidence ingestion 默认写入 `2.1.0`，读取兼容 `2.0.0`。2.1 事件执行精确 payload/ref allowlist、类型、枚举、hash、敏感值、trace/span/time join 校验。一般事实允许先于其父事件异步到达：首次查询返回 `causality_missing`，父事件补到后自动恢复完整；claim 的 `source_event_ids` 缺失仍返回 `source_event_missing`，Action 前态乱序继续原子拒绝。混合 2.0/2.1 历史按每个 event 的版本保留 `causality_missing`。
-
-OpenSearch 当前仍使用“单 trace 聚合文档 + OCC”保障 Action 状态和事件冲突原子性。为避免文档无限增长，单 trace 硬限制为 10,000 个事件且聚合 JSON 不超过 8 MiB，超限返回 `BKN_TRACE_CAPACITY_EXCEEDED`。该限制不是最终扩展方案；后续需要迁移为事件文档加状态投影，并使用 PIT 分页。旧索引中缺少 account/application principal 必要归属的 2.0 聚合文档默认不可查询、不可继续追加；缺失归属必须通过离线受控迁移补齐，不能由请求方认领。
-
-持久化 evidence 可通过企业业务溯源接口回查：
-
-```text
-GET /api/agent-observability/v1/business-provenance/traces/{trace_id}/evidence-chain
-GET /api/agent-observability/v1/business-provenance/requests/{request_id}/evidence-chain
-```
+已记录的 Interaction、Operations 和业务语义组装修订通过前述 Core 读取入口查询；
+EE 原生详情/解释需要实际装配的企业接口及相应许可、授权。两类响应不能互相替代。
 
 生成 Swagger 文档：
 
