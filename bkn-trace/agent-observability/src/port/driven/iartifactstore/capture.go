@@ -13,6 +13,10 @@ import (
 )
 
 var ErrCaptureReadBudget = errors.New("BKN_TRACE_CAPTURE_READ_BUDGET_EXCEEDED")
+
+// ErrCaptureContentReadBudget marks an oversized successful content response.
+// Error response bodies retain only ErrCaptureReadBudget and may be transient.
+var ErrCaptureContentReadBudget = errors.New("capture artifact content read budget exceeded")
 var ErrCaptureIdentityMismatch = errors.New("capture artifact identity mismatch")
 var ErrInvalidCaptureBudget = errors.New("BKN_TRACE_INVALID_CAPTURE_READ_BUDGET")
 

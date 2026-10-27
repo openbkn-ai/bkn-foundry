@@ -48,6 +48,11 @@ func (c *Client) GetDocumentBounded(ctx context.Context, index, documentID strin
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	readBytes := int64(len(body))
 	if readBytes > maxResponseBytes {
+		// A large error body is still an upstream failure, not proof that
+		// immutable artifact content exceeds the inspection budget.
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return Document{}, readBytes, errors.Join(ErrResponseReadBudget, &StatusError{Operation: "bounded get", StatusCode: resp.StatusCode})
+		}
 		return Document{}, readBytes, ErrResponseReadBudget
 	}
 	if err != nil {

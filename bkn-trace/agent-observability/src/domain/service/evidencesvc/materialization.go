@@ -12,6 +12,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
@@ -149,6 +150,9 @@ func (s *Service) materializeClaimedRecordIntegrity(ctx context.Context, candida
 	// Each interaction retains the strict 128-read/32MiB inspection limits.
 	checkContext := context.WithValue(ctx, recordIntegrityBudgetKey{}, &recordIntegrityReadBudget{})
 	report, applicable, version, err := s.inspectAuthorizedLiveRecordIntegrity(checkContext, interaction.ID, interaction.ConversationID, owner, scope)
+	if errors.Is(err, errRecordIntegrityInspectionBudget) || errors.Is(err, iartifactstore.ErrCaptureContentReadBudget) {
+		return nil, isessionstore.RecordIntegrityBudgetExceeded
+	}
 	if err != nil || (applicable && report == nil) {
 		return nil, "inspection_failed"
 	}

@@ -8,14 +8,20 @@ package evidencesvc
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/httpaccess/opensearchevidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	memorystore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
@@ -692,5 +698,78 @@ func TestMaterializationCancelledInspectionPersistsAttemptWithoutVerdict(t *test
 	report, applicable, err := service.inspectRecordIntegrityWithScope(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
 	if err != nil || !applicable || report != nil {
 		t.Fatalf("cancelled attempt fabricated verdict: %+v %v %v", report, applicable, err)
+	}
+}
+
+// A fixed byte limit cannot recover by retrying the same source generation.
+// Keep its verdict unknown, but retain a useful reason and inspect it only once.
+func TestMaterializationBudgetFailureStopsWithoutCertifyingOrRetrying(t *testing.T) {
+	snapshot, owner, clock := integrityFixture()
+	service := integrityServiceForSnapshot(t, snapshot)
+	store := service.sessionStore.(*integritySnapshotStore)
+	alignIntegrityFixtureVersions(t, store)
+	store.clock = func() time.Time { return clock }
+	originalOutput := store.snapshot.CallFacts[0].Output
+	store.snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:oversized"}
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.Method != http.MethodGet {
+			t.Errorf("inspection wrote to artifact store: %s", r.Method)
+		}
+		_, _ = w.Write([]byte(strings.Repeat("x", (8<<20)+1)))
+	}))
+	defer server.Close()
+	service.artifactStore = opensearchevidencestore.New(opensearch.NewWithHTTPClient(server.URL, opensearch.AuthConfig{}, server.Client()), "evidence")
+	if _, err := service.PersistRecordIntegrityBatch(context.Background(), "", 10); !errors.Is(err, ErrRecordIntegrityInspectionDeferred) {
+		t.Fatalf("missing failure phase: %v", err)
+	}
+	state := materializationRetryState(t, store, "int")
+	if state.Status != isessionstore.RecordIntegrityExhausted || state.Attempts != 1 || state.Reason != "inspection_budget_exceeded" || state.LastFailureReason != "inspection_budget_exceeded" {
+		t.Fatalf("fixed budget was treated as transient: %+v", state)
+	}
+	reads := store.reads
+	clock = clock.Add(24 * time.Hour)
+	if _, err := service.PersistRecordIntegrityBatch(context.Background(), "", 10); err != nil || store.reads != reads || requests.Load() != 1 {
+		t.Fatalf("budget failure retried: reads=%d requests=%d err=%v", store.reads, requests.Load(), err)
+	}
+	report, applicable, err := service.inspectRecordIntegrityWithScope(context.Background(), "int", evidencevo.QueryScope{AccountID: "user", AccountType: "user"})
+	if err != nil || report != nil || !applicable {
+		t.Fatalf("budget failure certified a verdict: %+v %v %v", report, applicable, err)
+	}
+	if err := store.InvalidateRecordIntegrity(context.Background(), "int", owner); err != nil {
+		t.Fatal(err)
+	}
+	alignIntegrityFixtureVersions(t, store)
+	store.snapshot.CallFacts[0].Output = originalOutput
+	if _, err := service.PersistRecordIntegrityBatch(context.Background(), "", 10); err != nil {
+		t.Fatal(err)
+	}
+	if next := materializationRetryState(t, store, "int"); next.Status != isessionstore.RecordIntegritySucceeded || next.Attempts != 1 {
+		t.Fatalf("new generation did not recover: %+v", next)
+	}
+}
+
+// The response byte counter also caps error bodies. An oversized 503 must keep
+// ordinary dependency backoff instead of being stopped as fixed content size.
+func TestMaterializationOversizedHTTPFailureRemainsRetryable(t *testing.T) {
+	snapshot, _, clock := integrityFixture()
+	snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:oversized"}
+	service := integrityServiceForSnapshot(t, snapshot)
+	store := service.sessionStore.(*integritySnapshotStore)
+	alignIntegrityFixtureVersions(t, store)
+	store.clock = func() time.Time { return clock }
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(strings.Repeat("private", (8<<20)/7+1)))
+	}))
+	defer server.Close()
+	service.artifactStore = opensearchevidencestore.New(opensearch.NewWithHTTPClient(server.URL, opensearch.AuthConfig{}, server.Client()), "evidence")
+	if _, err := service.PersistRecordIntegrityBatch(context.Background(), "", 10); !errors.Is(err, ErrRecordIntegrityInspectionDeferred) {
+		t.Fatalf("failure missing: %v", err)
+	}
+	state := materializationRetryState(t, store, "int")
+	if state.Status != isessionstore.RecordIntegrityRetryWait || state.LastFailureReason != "inspection_failed" || state.Attempts != 1 {
+		t.Fatalf("upstream failure incorrectly stopped: %+v", state)
 	}
 }

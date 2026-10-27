@@ -36,7 +36,11 @@ func (s *Store) ReadArtifactForCapture(ctx context.Context, artifactID string, s
 		return result, nil
 	}
 	if errors.Is(err, opensearch.ErrResponseReadBudget) {
-		return result, iartifactstore.ErrCaptureReadBudget
+		var status *opensearch.StatusError
+		if errors.As(err, &status) {
+			return result, iartifactstore.ErrCaptureReadBudget
+		}
+		return result, errors.Join(iartifactstore.ErrCaptureReadBudget, iartifactstore.ErrCaptureContentReadBudget)
 	}
 	if err != nil {
 		return result, err

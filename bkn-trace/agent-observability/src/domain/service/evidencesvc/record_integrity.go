@@ -23,6 +23,9 @@ import (
 
 const functionResultIntegrityContract = sessionvo.FunctionResultContract
 
+// Fixed inspection limits cannot recover by retrying an unchanged generation.
+var errRecordIntegrityInspectionBudget = errors.New("record integrity inspection budget exceeded")
+
 type recordIntegrityBudgetKey struct{}
 type recordIntegrityReadBudget struct {
 	reads int
@@ -284,7 +287,7 @@ func evaluateRecordIntegrity(snapshot sessionvo.EvidenceSnapshot, owner sessionv
 			last--
 		}
 		if last > 10000 {
-			return nil, errors.New("integrity attempt budget exceeded")
+			return nil, errRecordIntegrityInspectionBudget
 		}
 		for attempt := uint32(1); attempt <= last; attempt++ {
 			if _, found := facts[key{op.ID, attempt}]; !found {
@@ -491,7 +494,7 @@ func (s *Service) inspectAuthorizedLiveRecordIntegrity(ctx context.Context, id, 
 			return nil, errors.New("authoritative bounded artifact source unavailable")
 		}
 		if budget.reads >= 128 || budget.bytes >= 32<<20 {
-			return nil, errors.New("integrity artifact read budget exceeded")
+			return nil, errRecordIntegrityInspectionBudget
 		}
 		budget.reads++
 		result, err := reader.ReadArtifactForCapture(ctx, id, scope, min(8<<20, (32<<20)-budget.bytes))
@@ -516,6 +519,9 @@ func (s *Service) inspectAuthorizedLiveRecordIntegrity(ctx context.Context, id, 
 			return nil, errors.New("external artifact content is not available to integrity verifier")
 		}
 		content := evidencevo.CaptureArtifactContent(artifact, 8<<20)
+		if content.State == evidencevo.ArtifactContentOverBudget {
+			return nil, errRecordIntegrityInspectionBudget
+		}
 		if content.State != evidencevo.ArtifactContentCaptured {
 			return nil, fmt.Errorf("call artifact content verification failed: %s", content.Reason)
 		}

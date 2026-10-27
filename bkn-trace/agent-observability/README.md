@@ -842,3 +842,15 @@ Kafka Ledger 事件的 `envelope` 是生产者原始内容，Core 在 OpenSearch
 启动。该历史索引仍不能存储与既有 envelope 类型不兼容的新文档。新索引的
 object 边界也不承诺支持任意 scalar envelope。已有子对象显式 `dynamic:true`
 覆盖父级的情况不会被递归重写；这些历史映射仍需单独评估。
+
+### 完整性检查的预算停止
+
+检查保留每个 Artifact HTTP 响应 8 MiB、每轮交互累计 32 MiB / 128 次读取的
+既有上限。超过固定预算时，该源版本立即停止自动重试，诊断状态为
+`exhausted`，`reason` 和 `last_failure_reason` 为
+`inspection_budget_exceeded`。这表示尚未完成核验，不证明采集丢失，也不产生
+`complete` 或 `missing` 判定。网络、超时等故障仍沿用现有退避重试。
+
+新的真实源版本可重新检查；升级不会自动重置已耗尽的旧任务，也不会修改其
+历史失败原因。不要为恢复检查而删除重试记录、伪造源版本或提高预算。
+这些诊断仅由既有授权诊断接口读取，不增加普通日志页的内部服务状态。

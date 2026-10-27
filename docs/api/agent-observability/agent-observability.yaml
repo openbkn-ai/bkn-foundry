@@ -3215,11 +3215,14 @@ paths:
         missing interactions both return 404. Never performs live inspection, claims
         work, or requeues a retry. No query parameters are accepted. At most 8 attempts
         over 30 minutes with backoff from 30 seconds to 5 minutes; a new source version
-        schedules a new generation while retaining old retry history. A succeeded
-        job means a verdict was saved, not that records or business conclusions are
-        complete. Reason may describe exhaustion or source replacement; last_failure_reason
-        retains the last actual failure. Zero timestamps mean no attempt/lease has
-        been recorded.
+        schedules a new generation while retaining old retry history. Fixed inspection
+        limits stop the current generation immediately with exhausted/inspection_budget_exceeded
+        (8 MiB per artifact response, 32 MiB or 128 reads per interaction); this is
+        an unknown verdict, not evidence loss. Existing exhausted generations are
+        not requeued or rewritten on upgrade. A succeeded job means a verdict was
+        saved, not that records or business conclusions are complete. Reason may describe
+        exhaustion or source replacement; last_failure_reason retains the last actual
+        failure. Zero timestamps mean no attempt/lease has been recorded.
       parameters:
       - description: Canonical interaction ID
         in: path

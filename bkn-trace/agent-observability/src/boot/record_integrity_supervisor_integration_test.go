@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	sqlstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
@@ -28,12 +29,16 @@ import (
 // persisted history, source invalidation and verdict CAS use real MariaDB.
 type retryInspectionProbe struct {
 	*sqlstore.Store
-	fail  bool
-	reads int
+	failure error
+	fail    bool
+	reads   int
 }
 
 func (p *retryInspectionProbe) ReadEvidenceSnapshot(ctx context.Context, id string) (sessionvo.EvidenceSnapshot, bool, error) {
 	p.reads++
+	if p.failure != nil {
+		return sessionvo.EvidenceSnapshot{}, false, p.failure
+	}
 	if p.fail {
 		return sessionvo.EvidenceSnapshot{}, false, errors.New("synthetic inspection dependency unavailable")
 	}
@@ -139,5 +144,38 @@ func TestRecordIntegritySupervisorDurableState(t *testing.T) {
 	if err != nil || readErr != nil || !found || old.Status != isessionstore.RecordIntegritySucceeded || old.Attempts != 2 || current.Status != isessionstore.RecordIntegritySucceeded || current.Attempts != 1 {
 		t.Fatalf("generation history: old=%+v new=%+v err=%v/%v", old, current, err, readErr)
 	}
+	// Fixed inspection budgets stop once; a restarted worker must not requeue
+	// that generation or turn the unknown result into a saved verdict.
+	if err = store.InvalidateRecordIntegrity(ctx, id, owner); err != nil {
+		t.Fatal(err)
+	}
+	restarted.failure = fmt.Errorf("bounded artifact read: %w", iartifactstore.ErrCaptureContentReadBudget)
+	if err = run(restarted); !errors.Is(err, evidencesvc.ErrRecordIntegrityInspectionDeferred) {
+		t.Fatalf("budget inspection error: %v", err)
+	}
+	budgetVersion := version + 2
+	state, found, err = store.GetRecordIntegrityRetry(ctx, id, budgetVersion)
+	if err != nil || !found || state.Status != isessionstore.RecordIntegrityExhausted || state.Attempts != 1 || state.Reason != isessionstore.RecordIntegrityBudgetExceeded || state.LastFailureReason != isessionstore.RecordIntegrityBudgetExceeded {
+		t.Fatalf("budget state=%+v err=%v", state, err)
+	}
+	if err = store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error { recovered, found = tx.PeekInteraction(id); return nil }); err != nil || !found || recovered.StoredRecordIntegrity != nil {
+		t.Fatalf("budget verdict must remain unknown: %+v %v", recovered.StoredRecordIntegrity, err)
+	}
+	afterBudget := &retryInspectionProbe{Store: sqlstore.New(db), failure: iartifactstore.ErrCaptureContentReadBudget}
+	if err = run(afterBudget); err != nil || afterBudget.reads != 0 {
+		t.Fatalf("restart retried fixed budget: reads=%d err=%v", afterBudget.reads, err)
+	}
+	if err = store.InvalidateRecordIntegrity(ctx, id, owner); err != nil {
+		t.Fatal(err)
+	}
+	afterBudget.failure = nil
+	if err = run(afterBudget); err != nil || afterBudget.reads != 1 {
+		t.Fatalf("new generation did not resume: reads=%d err=%v", afterBudget.reads, err)
+	}
+	current, found, err = store.GetRecordIntegrityRetry(ctx, id, budgetVersion+1)
+	if err != nil || !found || current.Status != isessionstore.RecordIntegritySucceeded || current.Attempts != 1 {
+		t.Fatalf("budget recovery=%+v err=%v", current, err)
+	}
+
 	t.Log("supervisor → MariaDB: failure persisted; restart made 0 premature inspections; retry succeeded; source requeue retained old generation")
 }

@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Stop fixed record-integrity inspection budget failures after the first attempt with `inspection_budget_exceeded`, preserving an unknown verdict and existing byte/read limits. Transient failures still back off; source changes start a fresh generation. Previously exhausted history is not rewritten or automatically requeued.
+
 - Seal existing structured Function results as fixed result-snapshot Claims and EvidenceRefs without requiring tool-side declarations in the existing SQL Ledger transaction with their actual assembly revision, exact receipt and result hash. Evidence gaps stay partial; no sample-specific business rules, new tables, queues or list/detail read-time inference. (#1332)
 
 - Pure lifecycle ownership reads retain full owner checks without taking the conversation writer lock, avoiding contention between status/detail reads and operation registration. (#2425)
