@@ -41,6 +41,21 @@ func (m *MockBknBackendAccess) EXPECT() *MockBknBackendAccessMockRecorder {
 	return m.recorder
 }
 
+// CreateSchedule mocks base method.
+func (m *MockBknBackendAccess) CreateSchedule(ctx context.Context, token, knID string, schedule *interfaces.ActionSchedule) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSchedule", ctx, token, knID, schedule)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateSchedule indicates an expected call of CreateSchedule.
+func (mr *MockBknBackendAccessMockRecorder) CreateSchedule(ctx, token, knID, schedule any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSchedule", reflect.TypeOf((*MockBknBackendAccess)(nil).CreateSchedule), ctx, token, knID, schedule)
+}
+
 // ExportBKN mocks base method.
 func (m *MockBknBackendAccess) ExportBKN(ctx context.Context, token, knID string) (map[string][]byte, error) {
 	m.ctrl.T.Helper()
@@ -69,4 +84,33 @@ func (m *MockBknBackendAccess) ImportBKN(ctx context.Context, token string, file
 func (mr *MockBknBackendAccessMockRecorder) ImportBKN(ctx, token, files any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImportBKN", reflect.TypeOf((*MockBknBackendAccess)(nil).ImportBKN), ctx, token, files)
+}
+
+// ListSchedules mocks base method.
+func (m *MockBknBackendAccess) ListSchedules(ctx context.Context, token, knID string) ([]*interfaces.ActionSchedule, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSchedules", ctx, token, knID)
+	ret0, _ := ret[0].([]*interfaces.ActionSchedule)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSchedules indicates an expected call of ListSchedules.
+func (mr *MockBknBackendAccessMockRecorder) ListSchedules(ctx, token, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSchedules", reflect.TypeOf((*MockBknBackendAccess)(nil).ListSchedules), ctx, token, knID)
+}
+
+// SetScheduleStatus mocks base method.
+func (m *MockBknBackendAccess) SetScheduleStatus(ctx context.Context, token, knID, scheduleID, status string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetScheduleStatus", ctx, token, knID, scheduleID, status)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetScheduleStatus indicates an expected call of SetScheduleStatus.
+func (mr *MockBknBackendAccessMockRecorder) SetScheduleStatus(ctx, token, knID, scheduleID, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetScheduleStatus", reflect.TypeOf((*MockBknBackendAccess)(nil).SetScheduleStatus), ctx, token, knID, scheduleID, status)
 }

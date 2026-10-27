@@ -38,6 +38,26 @@ type BKNImportResult struct {
 	Capabilities *CapabilityImportReport `json:"capabilities"`
 }
 
+// Schedule statuses (bkn-backend interfaces.ScheduleStatusActive and ScheduleStatusInactive).
+const (
+	SCHEDULE_STATUS_ACTIVE   = "active"
+	SCHEDULE_STATUS_INACTIVE = "inactive"
+)
+
+// ActionSchedule is a schedule that runs an action type of a network
+// (bkn-backend interfaces.ActionSchedule), with the fields a switch carries
+// over to another network. Action type ids are the same in every network of a
+// lineage, so a schedule copies as it is.
+type ActionSchedule struct {
+	ID                 string           `json:"id,omitempty"`
+	Name               string           `json:"name"`
+	ActionTypeID       string           `json:"action_type_id"`
+	CronExpression     string           `json:"cron_expression"`
+	InstanceIdentities []map[string]any `json:"_instance_identities"`
+	DynamicParams      map[string]any   `json:"dynamic_params,omitempty"`
+	Status             string           `json:"status,omitempty"`
+}
+
 // BknBackendError is a non-2xx reply from bkn-backend, kept whole so the
 // caller can tell a refused permission from an unreachable service.
 type BknBackendError struct {
@@ -59,4 +79,11 @@ type BknBackendAccess interface {
 	ExportBKN(ctx context.Context, token string, knID string) (map[string][]byte, error)
 	// ImportBKN imports files into the main branch with import_mode=overwrite.
 	ImportBKN(ctx context.Context, token string, files map[string][]byte) (*BKNImportResult, error)
+	// ListSchedules returns every schedule of the network's main branch, all statuses.
+	ListSchedules(ctx context.Context, token string, knID string) ([]*ActionSchedule, error)
+	// CreateSchedule creates the schedule on the network's main branch, in its Status, and
+	// returns the new id. bkn-backend runs it as the caller.
+	CreateSchedule(ctx context.Context, token string, knID string, schedule *ActionSchedule) (string, error)
+	// SetScheduleStatus turns a schedule of the network on or off.
+	SetScheduleStatus(ctx context.Context, token string, knID string, scheduleID string, status string) error
 }
