@@ -145,6 +145,13 @@ error_messages = {
         "detail": "The target version does not exist.",
         "solution": "",
     },
+    "BknAgent.Prompt.VersionConflict": {
+        "code": "BknAgent.Prompt.VersionConflict",
+        "description": "The requested Prompt version already exists or is out of sequence.",
+        "detail_template": "Requested version {version}; next available version {next_version}.",
+        "detail": "The publication conflicts with the current version history.",
+        "solution": "Refresh the version history and check the publication result before publishing again.",
+    },
     "BknAgent.Prompt.Conflict": {
         "code": "BknAgent.ParamError.Conflict",
         "description": "The prompt name or id already exists.",

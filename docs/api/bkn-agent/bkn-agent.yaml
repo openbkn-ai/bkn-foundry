@@ -936,6 +936,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+  /api/bkn-agent/v1/admin/agents/{agent_id}/prompt/versions:
+    post:
+      tags:
+      - BknAgentExecution
+      summary: Publish Shared Prompt Version
+      description: 'Publish exactly the required target Prompt version.
+
+
+        Use next_version from the shared Prompt read response and retain it across
+
+        retries. An existing or out-of-sequence target returns 409 without creating
+
+        another Prompt or Agent version. After rollback, next_version still follows
+
+        the maximum historical version. Omit vars_schema to retain the active schema;
+
+        an object replaces it and explicit null clears it.'
+      operationId: publish_shared_prompt_version_api_bkn_agent_v1_admin_agents__agent_id__prompt_versions_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[0-9A-Za-z_.-]+$
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptVersionPublish'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SharedPromptOut'
+        4XX:
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/bkn-agent/v1/invoke/{agent_id}:
     post:
       tags:
@@ -2896,6 +2947,28 @@ components:
       - create_user
       - create_time
       title: PromptVersionOut
+    PromptVersionPublish:
+      properties:
+        content:
+          type: string
+          minLength: 1
+          title: Content
+        vars_schema:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Vars Schema
+        version:
+          type: integer
+          maximum: 2147483647.0
+          minimum: 1.0
+          title: Version
+      type: object
+      required:
+      - content
+      - version
+      title: PromptVersionPublish
     RunRequest:
       properties:
         agent_id:
@@ -3045,9 +3118,13 @@ components:
       properties:
         prompt:
           $ref: '#/components/schemas/PromptOut'
+        next_version:
+          type: integer
+          title: Next Version
       type: object
       required:
       - prompt
+      - next_version
       title: SharedPromptOut
     TaskOut:
       properties:
