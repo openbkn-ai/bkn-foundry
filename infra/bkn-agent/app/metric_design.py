@@ -6,6 +6,7 @@
 
 import copy
 import json
+import math
 import re
 from typing import Any, Literal
 
@@ -13,13 +14,19 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, model_validator
 
 from app.commons.i18n.metric_design import (
+    COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_ZH,
+    COMPOSITE_FORMULA_CLARIFICATION_ZH,
+    COMPOSITE_FORMULA_MISSING_SUMMARY_ZH,
     DESCRIPTION_SUPPLIED_ZH,
+    DESCRIPTION_UNCHANGED_EN,
     DESCRIPTION_UNCHANGED_ZH,
     EXPLICIT_NAME_ZH,
+    METRIC_CORE_MISSING_QUESTION_ZH,
+    METRIC_CORE_MISSING_SUMMARY_ZH,
     NAME_EXPLANATION_ZH,
     NAME_ONLY_ZH,
 )
-from app.core.structured import _extract_json
+from app.core.structured import _extract_json, structured_extract_with_path
 
 
 AGENT_ID = "object_metric_designer"
@@ -139,6 +146,7 @@ EDITABLE_FIELDS = frozenset(
         "derived.time_window_length", "derived.time_window_unit",
         "composite.dependencies", "composite.expression",
         "result.no_data_policy", "result.physical_type", "result.semantic_type",
+        "result.precision", "result.scale", "result.rounding_mode",
         "result.unit_code", "result.unit_system", "result.quantity_kind",
         "query.analysis_dimensions", "query.group_by_dimensions",
         "query.time_dimensions", "query.time_granularity",
@@ -157,6 +165,9 @@ FIELD_TO_FORM = {
     "result.no_data_policy": "noDataPolicy",
     "result.physical_type": "physicalType",
     "result.semantic_type": "semanticType",
+    "result.precision": "precision",
+    "result.scale": "scale",
+    "result.rounding_mode": "roundingMode",
     "result.unit_code": "unitCode",
     "result.unit_system": "unitSystem",
     "result.quantity_kind": "quantityKind",
@@ -176,6 +187,7 @@ ENUM_VALUES = {
     "result.semantic_type": {"measure", "count", "amount", "ratio", "percentage", "score", "rank", "timestamp", "duration", "date", "category", "boolean"},
     "result.unit_system": {"UCUM", "ISO_4217", "registered"},
     "result.quantity_kind": {"dimensionless", "count", "currency", "duration", "data_size", "rate", "weight", "length", "custom"},
+    "result.rounding_mode": {"half_up", "half_even", "floor", "ceiling", "truncate"},
     "query.time_granularity": {"minute", "hour", "day", "week", "month", "quarter", "year"},
 }
 
@@ -192,6 +204,7 @@ _ZERO_OPERAND_COMPARISONS = {"is_empty", "is_not_empty", "is_null", "is_not_null
 _TWO_OPERAND_COMPARISONS = {"between", "not_between"}
 _MANY_OPERAND_COMPARISONS = {"in", "not_in"}
 _BINARY_OPERATORS = {"add", "subtract", "multiply", "divide", "modulo"}
+_PHYSICAL_TYPES = ENUM_VALUES["result.physical_type"]
 _FUNCTIONS = {
     "to_number", "abs", "ceil", "floor", "round", "coalesce", "greatest", "least",
     "duration_between", "date_diff", "date_part", "lower", "upper", "length",
@@ -217,7 +230,7 @@ _PROPERTY_OPERAND_SCHEMA = _object_schema(
     ["source", "property_ref"],
 )
 _LITERAL_OPERAND_SCHEMA = _object_schema(
-    {"source": {"const": "literal"}, "value_type": {"type": "string"}, "value": {}},
+    {"source": {"const": "literal"}, "value_type": {"enum": sorted(_PHYSICAL_TYPES)}, "value": {}},
     ["source", "value_type", "value"],
 )
 _OPERAND_SCHEMA = {"oneOf": [_PROPERTY_OPERAND_SCHEMA, _LITERAL_OPERAND_SCHEMA]}
@@ -248,7 +261,7 @@ _EXPRESSION_SCHEMA = {
                         "value_type": {"type": "string"}}, ["node_type", "property_ref"]),
         _object_schema({"node_type": {"const": "dependency"}, "dependency_alias": {"type": "string"}},
                        ["node_type", "dependency_alias"]),
-        _object_schema({"node_type": {"const": "literal"}, "value_type": {"type": "string"}, "value": {}},
+        _object_schema({"node_type": {"const": "literal"}, "value_type": {"enum": sorted(_PHYSICAL_TYPES)}, "value": {}},
                        ["node_type", "value_type", "value"]),
         _object_schema({"node_type": {"const": "unary"}, "operator": {"const": "negate"},
                         "left": {"type": "object"}}, ["node_type", "operator", "left"]),
@@ -310,6 +323,10 @@ def proposal_schema(req: MetricDesignRequest) -> dict:
             value_schema = {"type": "integer", "minimum": 1}
         elif field == "derived.time_window_length":
             value_schema = {"type": "integer", "minimum": 1}
+        elif field == "result.precision":
+            value_schema = {"type": "integer", "minimum": 1, "maximum": 38}
+        elif field == "result.scale":
+            value_schema = {"type": "integer", "minimum": 0, "maximum": 38}
         elif field in DIMENSION_FIELDS:
             value_schema = {"type": "array", "items": {"type": "string"}, "maxItems": 200}
         elif field == "composite.dependencies":
@@ -356,6 +373,156 @@ def _check_property_ref(ref: Any, req: MetricDesignRequest, path: str) -> None:
         raise MetricProposalError("property reference is not available on this object type", field=path)
 
 
+def _is_finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, int) and not isinstance(value, bool)
+    ) or (
+        isinstance(value, float) and math.isfinite(value)
+    )
+
+
+def _normalize_literal_types(value: Any) -> Any:
+    """Canonicalize the one common alias without changing a literal's value."""
+    if isinstance(value, list):
+        return [_normalize_literal_types(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    normalized = {key: _normalize_literal_types(item) for key, item in value.items()}
+    if (
+        (normalized.get("source") == "literal" or normalized.get("node_type") == "literal")
+        and normalized.get("value_type") == "integer"
+        and _is_finite_number(normalized.get("value"))
+        and (
+            isinstance(normalized["value"], int)
+            or normalized["value"].is_integer()
+        )
+    ):
+        normalized["value_type"] = "int64"
+    return normalized
+
+
+def _check_literal(value_type: str, value: Any, path: str) -> None:
+    if value_type == "int64":
+        valid = _is_finite_number(value) and (
+            isinstance(value, int) or value.is_integer()
+        )
+    elif value_type in {"decimal", "duration"}:
+        valid = _is_finite_number(value)
+    elif value_type == "boolean":
+        valid = isinstance(value, bool)
+    else:
+        valid = value_type in {"string", "date", "datetime"} and isinstance(value, str)
+    if not valid:
+        raise MetricProposalError("literal value does not match its physical type", field=path)
+
+
+def _candidate_physical_type(req: MetricDesignRequest, property_name: str) -> str | None:
+    candidate = next((item for item in req.candidates.properties if item.name == property_name), None)
+    if candidate is None or not candidate.type:
+        return None
+    value_type = candidate.type.lower()
+    return {
+        "integer": "int64", "int": "int64", "int32": "int64", "long": "int64",
+        "float": "decimal", "double": "decimal", "number": "decimal",
+    }.get(value_type, value_type)
+
+
+def _expression_physical_type(node: dict, req: MetricDesignRequest, path: str) -> str | None:
+    """Check locally knowable backend expression types before showing an applicable proposal."""
+    kind = node["node_type"]
+    if kind == "property":
+        return _candidate_physical_type(req, node["property_ref"]["property_name"])
+    if kind == "literal":
+        return node["value_type"]
+    if kind == "dependency":
+        return None  # Candidate metadata does not expose a dependency's result type.
+    if kind == "unary":
+        return _expression_physical_type(node["left"], req, path + ".left")
+    if kind == "binary":
+        left = _expression_physical_type(node["left"], req, path + ".left")
+        right = _expression_physical_type(node["right"], req, path + ".right")
+        if node["operator"] == "divide":
+            return "decimal"
+        if left in {"int64", "decimal"} and right in {"int64", "decimal"}:
+            return "decimal" if "decimal" in {left, right} else "int64"
+        return None
+    if kind != "call":
+        return None
+    arguments = [
+        _expression_physical_type(item, req, f"{path}.arguments[{index}]")
+        for index, item in enumerate(node["arguments"])
+    ]
+    function = node["function"]
+    if function in {"coalesce", "greatest", "least"}:
+        known = {item for item in arguments if item is not None}
+        if len(known) > 1:
+            raise MetricProposalError(
+                f"{function} arguments must have the same physical type", field=path,
+            )
+        return arguments[0]
+    if function in {"date_diff", "duration_between"}:
+        if any(item is not None and item not in {"date", "datetime"} for item in arguments[:2]):
+            raise MetricProposalError(
+                f"{function} expects date or datetime as its first two arguments", field=path,
+            )
+        if function == "date_diff" and len(arguments) == 3 and arguments[2] != "string":
+            raise MetricProposalError("date_diff expects a string unit as its third argument", field=path)
+        return "duration"
+    if function == "round" and len(arguments) == 2 and arguments[1] != "int64":
+        raise MetricProposalError("round precision must be an int64 literal", field=path)
+    if function in {"abs", "ceil", "floor", "round"}:
+        return arguments[0]
+    return {"to_number": "decimal", "date_part": "int64", "length": "int64",
+            "lower": "string", "upper": "string"}.get(function)
+
+
+def _normalize_function_numeric_literals(node: Any, req: MetricDesignRequest) -> None:
+    """Match harmless integer constants to a known decimal function operand."""
+    if isinstance(node, list):
+        for child in node:
+            _normalize_function_numeric_literals(child, req)
+        return
+    if not isinstance(node, dict):
+        return
+    for child in node.values():
+        if isinstance(child, (dict, list)):
+            _normalize_function_numeric_literals(child, req)
+    if node.get("node_type") != "call" or node.get("function") not in {"coalesce", "greatest", "least"}:
+        return
+    arguments = node.get("arguments", [])
+    types = [_expression_physical_type(item, req, "expression") for item in arguments]
+    if "decimal" not in types or any(item not in {None, "int64", "decimal"} for item in types):
+        return
+    for argument, value_type in zip(arguments, types):
+        if argument.get("node_type") == "literal" and value_type == "int64":
+            argument["value_type"] = "decimal"
+
+
+def _expression_dependency_aliases(node: Any) -> set[str]:
+    if isinstance(node, list):
+        return set().union(*(_expression_dependency_aliases(child) for child in node))
+    if not isinstance(node, dict):
+        return set()
+    if node.get("node_type") == "dependency":
+        alias = node.get("dependency_alias")
+        return {alias} if isinstance(alias, str) else set()
+    return set().union(*(
+        _expression_dependency_aliases(child)
+        for child in node.values() if isinstance(child, (dict, list))
+    ))
+
+
+def _asks_to_confirm_composite_formula(questions: list[str]) -> bool:
+    """Recognize questions that leave the dependency roles or formula direction open."""
+    english = re.compile(
+        r"which\s+(?:metric\s+|dependency\s+)?is\s+(?:the\s+)?(?:numerator|denominator)"
+        r"|(?:confirm|clarify).{0,40}(?:dependency roles|formula direction)",
+        re.IGNORECASE,
+    )
+    return any(COMPOSITE_FORMULA_CLARIFICATION_ZH.search(question) or english.search(question)
+               for question in questions)
+
+
 def _check_condition(node: Any, req: MetricDesignRequest, path: str, depth: int = 0) -> None:
     from jsonschema import ValidationError, validate
 
@@ -368,11 +535,18 @@ def _check_condition(node: Any, req: MetricDesignRequest, path: str, depth: int 
     if node["node_type"] == "group":
         if node["boolean_operator"] == "not" and len(node["children"]) != 1:
             raise MetricProposalError("not group must have exactly one child", field=path)
+        if node["boolean_operator"] in {"and", "or"} and len(node["children"]) < 2:
+            raise MetricProposalError("and/or group needs at least two children", field=path)
         for index, child in enumerate(node["children"]):
             _check_condition(child, req, f"{path}.children[{index}]", depth + 1)
         return
     _check_property_ref(node["left"]["property_ref"], req, path + ".left.property_ref")
+    left_type = _candidate_physical_type(req, node["left"]["property_ref"]["property_name"])
     operator = node["comparison_operator"]
+    if left_type in {"date", "datetime"} and operator in {"gt", "gte", "lt", "lte"}:
+        raise MetricProposalError(
+            "date and datetime comparisons require before/after operators", field=path + ".comparison_operator",
+        )
     operands = node.get("right", [])
     count = len(operands)
     expected = (
@@ -385,6 +559,14 @@ def _check_condition(node: Any, req: MetricDesignRequest, path: str, depth: int 
     for index, operand in enumerate(operands):
         if operand["source"] == "property":
             _check_property_ref(operand["property_ref"], req, f"{path}.right[{index}].property_ref")
+        else:
+            _check_literal(operand["value_type"], operand["value"], f"{path}.right[{index}]")
+            expected_type = left_type
+            literal_type = operand["value_type"]
+            if expected_type in _PHYSICAL_TYPES and expected_type != literal_type and not (
+                expected_type in {"int64", "decimal"} and literal_type in {"int64", "decimal"}
+            ):
+                raise MetricProposalError("filter literal type does not match the property", field=f"{path}.right[{index}]")
 
 
 def _check_expression(
@@ -407,6 +589,8 @@ def _check_expression(
             raise MetricProposalError("dependency expression requires a composite metric", field=path)
         if node["dependency_alias"] not in aliases:
             raise MetricProposalError("expression references an unavailable dependency alias", field=path)
+    elif kind == "literal":
+        _check_literal(node["value_type"], node["value"], path)
     elif kind == "unary":
         _check_expression(node["left"], req, path + ".left", aliases, depth + 1)
     elif kind == "binary":
@@ -424,6 +608,7 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
     """Fail closed on model output; before values come from the form, not the model."""
     from jsonschema import validate, ValidationError
 
+    value = _normalize_literal_types(value)
     try:
         validate(value, proposal_schema(req))
     except ValidationError as exc:
@@ -443,6 +628,20 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
         else:
             reason = "proposal value does not match the field contract"
         raise MetricProposalError(reason, field=field, stage="schema") from exc
+    if (
+        req.scope.metric_type == "composite"
+        and _asks_to_confirm_composite_formula(value["questions"])
+        and value["changes"]
+    ):
+        # A syntactically valid formula can still reverse the business meaning.
+        # Do not offer any partial field changes before the core roles are settled.
+        return {
+            "kind": "metric_design_proposal",
+            "base_form_revision": req.base_form_revision,
+            "summary": COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_ZH,
+            "questions": value["questions"],
+            "changes": [],
+        }
     properties = {item.name for item in req.candidates.properties}
     metrics = {(item.id, item.version) for item in req.candidates.published_metrics}
     proposed_dependencies = next(
@@ -477,6 +676,18 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
             _check_condition(after, req, field)
         if field in {"atomic.expression", "composite.expression"}:
             _check_expression(after, req, field, dependency_aliases)
+            _normalize_function_numeric_literals(after, req)
+            expression_type = _expression_physical_type(after, req, field)
+            if field == "atomic.expression" and expression_type == "duration":
+                aggregation = next(
+                    (change["after"] for change in value["changes"] if change["field"] == "atomic.aggregation"),
+                    req.form_snapshot.get("aggregation"),
+                )
+                if aggregation in {"sum", "avg"}:
+                    raise MetricProposalError(
+                        "sum and avg cannot aggregate duration expressions; explain the limitation",
+                        field="atomic.expression",
+                    )
         if field == "derived.time_window_length" and (isinstance(after, bool) or not isinstance(after, int) or after < 1):
             raise MetricProposalError("proposal time window length must be positive", field=field)
         if field in {"atomic.property_name", "derived.event_time"} and (not isinstance(after, str) or after not in properties):
@@ -515,6 +726,14 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
         before = req.form_snapshot.get(field, req.form_snapshot.get(FIELD_TO_FORM.get(field, field)))
         changes.append({"field": field, "operation": "replace", "before": before, "after": after, "reason": item["reason"]})
     proposed = {item["field"]: item["after"] for item in changes}
+    if req.scope.metric_type == "composite" and "composite.dependencies" in proposed:
+        expression = proposed.get("composite.expression", req.form_snapshot.get("composite.expression"))
+        aliases = {item["alias"] for item in proposed["composite.dependencies"]}
+        if isinstance(expression, dict) and aliases != _expression_dependency_aliases(expression):
+            raise MetricProposalError(
+                "the expression must reference exactly the selected dependency aliases",
+                field="composite.expression",
+            )
     if any(field.startswith("result.") for field in proposed):
         def effective(field: str) -> Any:
             return proposed.get(field, req.form_snapshot.get(field, req.form_snapshot.get(FIELD_TO_FORM[field])))
@@ -522,6 +741,14 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
         unit_system = effective("result.unit_system")
         unit_code = effective("result.unit_code")
         quantity_kind = effective("result.quantity_kind")
+        precision = effective("result.precision")
+        scale = effective("result.scale")
+        physical_type = effective("result.physical_type")
+        if any(field in proposed for field in ("result.precision", "result.scale", "result.rounding_mode")):
+            if physical_type is not None and physical_type != "decimal":
+                raise MetricProposalError("decimal format requires a decimal result", field="result.physical_type")
+            if isinstance(precision, int) and isinstance(scale, int) and scale > precision:
+                raise MetricProposalError("decimal scale cannot exceed precision", field="result.scale")
         if unit_system == "ISO_4217" or quantity_kind == "currency":
             if unit_system not in {"ISO_4217", "registered"} or quantity_kind != "currency":
                 raise MetricProposalError(
@@ -538,9 +765,9 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
     name_only_request = bool(
         NAME_ONLY_ZH.search(req.message)
         or NAME_EXPLANATION_ZH.search(req.message)
-        or re.search(
-            r"\bonly\s+(?:(?:change|edit|rename|update)\s+)?"
-            r"(?:the\s+)?(?:metric\s+)?name\b|\bwhy\b.{0,60}\bname\b",
+        or re.fullmatch(
+            r"\s*(?:only\s+(?:(?:change|edit|rename|update)\s+)?"
+            r"(?:the\s+)?(?:metric\s+)?name|why\b.{0,60}\bname)\s*[?.!]?\s*",
             req.message, re.IGNORECASE,
         )
     )
@@ -566,7 +793,10 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
     ):
         raise MetricProposalError("creation proposal omitted a name suggestion", field="name")
     description_was_supplied = bool(DESCRIPTION_SUPPLIED_ZH.search(req.message))
-    description_must_stay = bool(DESCRIPTION_UNCHANGED_ZH.search(req.message))
+    description_must_stay = bool(
+        DESCRIPTION_UNCHANGED_ZH.search(req.message)
+        or DESCRIPTION_UNCHANGED_EN.search(req.message)
+    )
     has_design_changes = any(field not in {"name", "description"} for field in proposed)
     if (
         req.scope.mode == "create"
@@ -579,8 +809,8 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
             field="description",
         )
     if "derived.base_metric_id" in proposed or "derived.base_metric_version" in proposed:
-        metric_id = proposed.get("derived.base_metric_id")
-        version = proposed.get("derived.base_metric_version")
+        metric_id = proposed.get("derived.base_metric_id", req.form_snapshot.get("derived.base_metric_id"))
+        version = proposed.get("derived.base_metric_version", req.form_snapshot.get("derived.base_metric_version"))
         if (
             not isinstance(metric_id, str) or isinstance(version, bool)
             or not isinstance(version, int)
@@ -592,6 +822,16 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
             )
         ):
             raise MetricProposalError("derived base must be a published atomic metric on this object type", field="derived.base_metric_id")
+    if req.scope.metric_type == "derived" and req.scope.mode == "create" and any(
+        field.startswith("derived.") for field in proposed
+    ):
+        base_id = proposed.get("derived.base_metric_id", req.form_snapshot.get("derived.base_metric_id"))
+        base_version = proposed.get("derived.base_metric_version", req.form_snapshot.get("derived.base_metric_version"))
+        if not base_id or not base_version:
+            raise MetricProposalError(
+                "a new derived metric needs both published atomic base ID and version",
+                field="derived.base_metric_id",
+            )
     return {
         "kind": "metric_design_proposal",
         "base_form_revision": req.base_form_revision,
@@ -646,7 +886,37 @@ def proposal_instructions(req: MetricDesignRequest) -> str:
         "When the user only asks "
         "about the name, limit changes to name. Preserve the existing name, "
         "description, filters, dimensions, dependencies, and result contract "
-        "unless the user requests a change to them. For a specified rolling "
+        "unless the user requests a change to them. "
+        "Distinguish a calculation event time from an exposed query time dimension: "
+        "only add query.time_dimensions when the user asks to query or analyze by that time, "
+        "and never clear an existing time dimension unless requested. Preserve the "
+        "current precision, scale, and rounding mode unless the user requests a format "
+        "change; when requested, use the explicit values and keep scale <= precision. "
+        "If the requested core calculation is unsupported, explain the limitation "
+        "and return changes=[]; do not apply dimensions or formatting to a metric "
+        "whose requested measure cannot be configured. Literal value_type must use the "
+        "physical types int64, decimal, boolean, string, date, datetime, or duration; "
+        "use int64 for integer literals, not integer. "
+        "For date/datetime filter comparisons use before/after (and their inclusive forms), "
+        "not lt/gt. In coalesce, greatest, and least every argument must have the same "
+        "physical type; use a decimal literal for a decimal amount or ratio, including zero. "
+        "A unit-bearing count difference cannot be clamped with greatest(diff, 0): "
+        "the zero literal has no unit and the backend rejects that comparison. "
+        "If no equivalent integer, unit-preserving expression is available, explain the "
+        "limitation and return changes=[] rather than submitting an invalid clamp. "
+        "date_diff(date_or_datetime_start, date_or_datetime_end, string_unit) returns "
+        "duration, and sum/avg cannot aggregate that duration in the current backend; "
+        "explain that limitation instead of proposing an invalid numeric average. "
+        "A composite metric can depend on any published compatible metric, including "
+        "derived metrics; the atomic-only restriction applies to derived.base_metric_id. "
+        "When creating a derived metric, include both the published atomic base metric ID "
+        "and its version if the current form has no base, even when the request emphasizes filters. "
+        "When adding composite dependencies, also provide an expression that references "
+        "exactly those aliases. If a question asks to confirm which dependency is the "
+        "numerator, denominator, or base, or whether the formula direction is correct, "
+        "return changes=[] until the core meaning is confirmed. Questions about an "
+        "optional unsupported behavior may accompany an otherwise complete formula. "
+        "For a specified rolling "
         "window, provide mode=rolling plus length and unit; for a current "
         "calendar period use the matching current_week/month/quarter/year "
         "mode and do not ask which enum to use. When changing a metric from "
@@ -671,23 +941,67 @@ def proposal_instructions(req: MetricDesignRequest) -> str:
 
 
 async def repair_proposal(model, value: Any, req: MetricDesignRequest, error: MetricProposalError) -> dict:
-    """Give an invalid but structured suggestion one bounded correction call."""
+    """Correct a rejected proposal, retrying structured extraction only for malformed JSON."""
+    if (
+        str(error) == "the expression must reference exactly the selected dependency aliases"
+        and isinstance(value, dict) and value.get("questions")
+    ):
+        # The model has already identified missing business meaning. Applying
+        # dependencies without a usable expression leaves an invalid draft, and
+        # a further model call cannot resolve a question that needs the user.
+        return validate_proposal({
+            "summary": (COMPOSITE_FORMULA_MISSING_SUMMARY_ZH + value.get("summary", ""))[:1000],
+            "questions": value["questions"],
+            "changes": [],
+        }, req)
     rejected = json.dumps(value, ensure_ascii=False)[:8000]
+    repair_message = (
+        model_message(req) + "\nThe previous proposal was rejected at "
+        + error.field + ": " + str(error) + ". Correct it once without "
+        "silently dropping the requested core calculation. If the core calculation "
+        "cannot be corrected, return no changes and explain the limitation or ask "
+        "the needed clarification; do not leave only incidental dimensions. "
+        "Previous proposal: " + rejected
+    )
     response = await model.ainvoke([
         SystemMessage(content=proposal_instructions(req)),
-        HumanMessage(content=(
-            model_message(req) + "\nThe previous proposal was rejected at "
-            + error.field + ": " + str(error) + ". Correct it once without "
-            "silently dropping requested changes. Previous proposal: " + rejected
-        )),
+        HumanMessage(content=repair_message),
     ])
-    if not isinstance(response.content, str) or len(response.content) > 24000:
-        raise MetricProposalError("corrected proposal is not a bounded JSON object", stage="repair")
     try:
+        if not isinstance(response.content, str) or len(response.content) > 24000:
+            raise ValueError("corrected proposal is not a bounded JSON object")
         corrected = _extract_json(response.content)
     except (ValueError, TypeError) as exc:
-        raise MetricProposalError("corrected proposal is not valid JSON", stage="repair") from exc
+        # A plain model reply may truncate a large AST even after schema extraction
+        # succeeded on the first turn. Retry through the structured-output path,
+        # which validates the entire proposal before returning it.
+        try:
+            corrected, _ = await structured_extract_with_path(
+                model, [HumanMessage(content=repair_message), response],
+                proposal_schema(req), proposal_instructions(req),
+            )
+        except Exception as structured_error:
+            raise MetricProposalError("corrected proposal is not valid JSON", stage="repair") from structured_error
     try:
+        essential = {
+            "atomic.expression", "derived.filters", "derived.base_metric_id",
+            "derived.base_metric_version", "composite.dependencies", "composite.expression",
+        }
+        requested_core = {
+            item.get("field") for item in value.get("changes", [])
+            if isinstance(item, dict) and isinstance(item.get("field"), str)
+            and item["field"].startswith(req.scope.metric_type + ".")
+        } & essential if isinstance(value, dict) else set()
+        corrected_fields = {
+            item.get("field") for item in corrected.get("changes", []) if isinstance(item, dict)
+        } if isinstance(corrected, dict) else set()
+        if requested_core - corrected_fields and corrected_fields:
+            corrected = {
+                **corrected,
+                "summary": (METRIC_CORE_MISSING_SUMMARY_ZH + corrected.get("summary", ""))[:1000],
+                "questions": corrected.get("questions") or [METRIC_CORE_MISSING_QUESTION_ZH],
+                "changes": [],
+            }
         return validate_proposal(corrected, req)
     except MetricProposalError as exc:
         raise MetricProposalError(str(exc), field=exc.field, stage="repair") from exc

@@ -219,6 +219,39 @@ def test_one_correction_call_validates_repaired_name_without_other_type_fields()
     assert exc.value.field == "composite.expression"
 
 
+def test_malformed_plain_repair_uses_bounded_structured_output():
+    current = request(scope={
+        "kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "derived", "mode": "create",
+    }, form_snapshot={"name": ""}, message="为什么没有生成对象指标名称？")
+
+    class Model:
+        plain_calls = 0
+        structured_calls = 0
+
+        async def ainvoke(self, messages):
+            self.plain_calls += 1
+            return AIMessage(content='{"summary": "truncated", "changes": [')
+
+        def with_structured_output(self, schema):
+            parent = self
+
+            class Native:
+                async def ainvoke(self, messages):
+                    parent.structured_calls += 1
+                    return proposal("name", "分维度订单总金额")
+
+            return Native()
+
+    model = Model()
+    result = asyncio.run(repair_proposal(
+        model, proposal("composite.expression", {}), current,
+        MetricProposalError("proposal field does not match metric type", field="composite.expression"),
+    ))
+    assert [item["field"] for item in result["changes"]] == ["name"]
+    assert model.plain_calls == 1
+    assert model.structured_calls == 1
+
+
 def test_creation_requires_an_explicitly_supplied_business_description():
     current = request(
         form_snapshot={"name": "", "description": ""},
@@ -335,6 +368,51 @@ def test_editing_filter_while_preserving_name_is_not_a_name_only_request():
         "right": [{"source": "literal", "value_type": "string", "value": "in_transit"}],
     })
     assert [item["field"] for item in validate_proposal(changed_filter, current)["changes"]] == ["derived.filters"]
+
+
+@pytest.mark.parametrize("message", [
+    "为什么试算没有数据？请改成按客户名称分组，并补充业务定义：按客户名称统计订单。",
+    "Why is the trial empty? Group by customer name instead; keep the metric name unchanged.",
+])
+def test_name_explanation_in_a_multi_intent_request_does_not_block_grouping(message):
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "atomic", "mode": "create"},
+        form_snapshot={"name": "", "description": ""},
+        candidates={"properties": [{"name": "customer_name", "label": "Customer name"}], "published_metrics": []},
+        message=message,
+    )
+    value = proposal("name", "Customer orders")
+    value["changes"].extend([
+        {"field": "description", "after": "Count orders by customer name", "reason": "requested business definition"},
+        {"field": "query.group_by_dimensions", "after": ["customer_name"], "reason": "requested grouping"},
+    ])
+    assert {change["field"] for change in validate_proposal(value, current)["changes"]} == {
+        "name", "description", "query.group_by_dimensions",
+    }
+
+
+@pytest.mark.parametrize("message", [
+    "为什么没有生成对象指标名称？",
+    "Why did you omit the metric name?",
+])
+def test_name_only_followup_still_rejects_unrelated_changes(message):
+    current = request(message=message)
+    value = proposal("query.group_by_dimensions", ["amount"])
+    with pytest.raises(MetricProposalError, match="name-only"):
+        validate_proposal(value, current)
+
+
+@pytest.mark.parametrize("message", [
+    "Keep the description unchanged while adding the amount dimension.",
+    "Leave the description empty and add the amount dimension.",
+    "The description should remain as is; add the amount dimension.",
+    "Do not change the description; add the amount dimension.",
+])
+def test_english_description_preservation_allows_creation_without_new_description(message):
+    current = request(form_snapshot={"name": "Amount", "description": ""}, message=message)
+    assert [change["field"] for change in validate_proposal(
+        proposal("query.analysis_dimensions", ["amount"]), current,
+    )["changes"]] == ["query.analysis_dimensions"]
 
 
 def test_replays_the_incident_through_native_and_fallback_model_stubs():
@@ -462,12 +540,64 @@ def test_v3_filter_contract_accepts_real_nodes_and_rejects_alternate_dsl():
         {"node_type": "group", "boolean_operator": "not", "children": [
             predicate("order_status", "eq", "cancelled"), predicate("actual_amount", "gt", 1000),
         ]},
+        {"node_type": "group", "boolean_operator": "and", "children": [
+            predicate("order_status", "eq", "cancelled"),
+        ]},
+        {"node_type": "group", "boolean_operator": "or", "children": [
+            predicate("order_status", "eq", "cancelled"),
+        ]},
+        {**predicate("order_status", "eq", "cancelled"), "right": [
+            {"source": "literal", "value_type": "object", "value": "cancelled"},
+        ]},
         predicate("order_status", "eq"),
         predicate("unknown", "eq", "cancelled"),
     ):
         with pytest.raises(MetricProposalError) as exc:
             validate_proposal(proposal("derived.filters", invalid), current)
         assert exc.value.field.startswith("derived.filters")
+
+
+def test_filter_integer_alias_is_canonicalized_and_incompatible_literals_are_rejected():
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "derived", "mode": "edit",
+               "metric_id": "draft-1", "draft_version": 1},
+        candidates={"properties": [{"name": "warehouse_id", "label": "Warehouse", "type": "int64"}],
+                    "published_metrics": []},
+    )
+    condition = {
+        "node_type": "predicate",
+        "left": {"source": "property", "property_ref": {"object_type_id": "order", "property_name": "warehouse_id"}},
+        "comparison_operator": "in",
+        "right": [{"source": "literal", "value_type": "integer", "value": 1},
+                  {"source": "literal", "value_type": "integer", "value": 6}],
+    }
+    result = validate_proposal(proposal("derived.filters", condition), current)
+    assert [item["value_type"] for item in result["changes"][0]["after"]["right"]] == ["int64", "int64"]
+    assert condition["right"][0]["value_type"] == "integer"
+    condition["right"][0] = {"source": "literal", "value_type": "string", "value": "1"}
+    with pytest.raises(MetricProposalError, match="does not match the property"):
+        validate_proposal(proposal("derived.filters", condition), current)
+    condition["right"][0] = {"source": "literal", "value_type": "int64", "value": "1"}
+    with pytest.raises(MetricProposalError, match="does not match its physical type"):
+        validate_proposal(proposal("derived.filters", condition), current)
+
+
+def test_decimal_format_changes_require_valid_bounds_and_preserve_existing_metadata():
+    current = request(form_snapshot={
+        "name": "Current", "physicalType": "decimal", "precision": 18,
+        "scale": 6, "roundingMode": "half_even", "semanticType": "amount",
+    })
+    change = proposal("result.scale", 4)
+    result = validate_proposal(change, current)
+    assert result["changes"][0]["before"] == 6
+    assert result["changes"][0]["after"] == 4
+    assert "result.scale" in proposal_schema(current)["properties"]["changes"]["items"]["properties"]["field"]["enum"]
+    for invalid in (True, -1, 39, 19):
+        with pytest.raises(MetricProposalError):
+            validate_proposal(proposal("result.scale", invalid), current)
+    with pytest.raises(MetricProposalError, match="requires a decimal result"):
+        validate_proposal(proposal("result.scale", 2), request(form_snapshot={"physicalType": "int64"}))
+    assert len(validate_proposal(proposal("result.rounding_mode", "half_up"), current)["changes"]) == 1
 
 
 def test_v3_expression_contract_preserves_nested_formula_and_rejects_fake_nodes():
@@ -495,6 +625,244 @@ def test_v3_expression_contract_preserves_nested_formula_and_rejects_fake_nodes(
         with pytest.raises(MetricProposalError) as exc:
             validate_proposal(proposal("atomic.expression", invalid), current)
         assert exc.value.field.startswith("atomic.expression")
+
+
+def test_datetime_filter_requires_temporal_operator():
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "derived", "mode": "edit",
+               "metric_id": "draft-1", "draft_version": 1},
+        candidates={"properties": [
+            {"name": "created_at", "label": "Created", "type": "datetime"},
+            {"name": "shipped_at", "label": "Shipped", "type": "datetime"},
+        ], "published_metrics": []},
+    )
+    condition = {"node_type": "predicate", "left": {"source": "property", "property_ref": {
+        "object_type_id": "order", "property_name": "created_at",
+    }}, "comparison_operator": "lt", "right": [{"source": "property", "property_ref": {
+        "object_type_id": "order", "property_name": "shipped_at",
+    }}]}
+    with pytest.raises(MetricProposalError, match="before/after"):
+        validate_proposal(proposal("derived.filters", condition), current)
+    condition["comparison_operator"] = "before"
+    assert validate_proposal(proposal("derived.filters", condition), current)["changes"][0]["after"] == condition
+
+
+def test_new_derived_design_cannot_omit_published_atomic_base():
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "derived", "mode": "create"},
+        form_snapshot={"name": "Current", "timeWindowMode": "unbounded"},
+        candidates={"properties": [], "published_metrics": [{
+            "id": "count-1", "version": 1, "name": "Count", "type": "atomic",
+            "scope": "object_set", "object_type_id": "order",
+        }]},
+    )
+    value = proposal("derived.time_window_mode", "rolling")
+    with pytest.raises(MetricProposalError, match="needs both published atomic base ID and version"):
+        validate_proposal(value, current)
+    value["changes"].extend([
+        {"field": "derived.base_metric_id", "after": "count-1", "reason": "specified base"},
+        {"field": "derived.base_metric_version", "after": 1, "reason": "fixed version"},
+    ])
+    assert len(validate_proposal(value, current)["changes"]) == 3
+
+
+def test_backend_function_types_are_checked_before_proposal_is_applied():
+    current = request(candidates={"properties": [
+        {"name": "amount", "label": "Amount", "type": "decimal"},
+        {"name": "date_start", "label": "Start", "type": "date"},
+        {"name": "date_end", "label": "End", "type": "date"},
+    ], "published_metrics": []}, form_snapshot={"name": "Current", "aggregation": "sum"})
+    amount = {"node_type": "property", "property_ref": {"object_type_id": "order", "property_name": "amount"}}
+    coalesce = {"node_type": "call", "function": "coalesce", "arguments": [
+        amount, {"node_type": "literal", "value_type": "int64", "value": 0},
+    ]}
+    normalized = validate_proposal(proposal("atomic.expression", coalesce), current)
+    assert normalized["changes"][0]["after"]["arguments"][1]["value_type"] == "decimal"
+    assert coalesce["arguments"][1]["value_type"] == "int64"
+    coalesce["arguments"][1]["value_type"] = "decimal"
+    validate_proposal(proposal("atomic.expression", coalesce), current)
+
+    date_diff = {"node_type": "call", "function": "date_diff", "arguments": [
+        {"node_type": "literal", "value_type": "string", "value": "day"},
+        {"node_type": "property", "property_ref": {"object_type_id": "order", "property_name": "date_start"}},
+        {"node_type": "property", "property_ref": {"object_type_id": "order", "property_name": "date_end"}},
+    ]}
+    with pytest.raises(MetricProposalError, match="first two arguments"):
+        validate_proposal(proposal("atomic.expression", date_diff), current)
+    date_diff["arguments"] = date_diff["arguments"][1:] + date_diff["arguments"][:1]
+    with pytest.raises(MetricProposalError, match="cannot aggregate duration"):
+        validate_proposal(proposal("atomic.expression", date_diff), current)
+
+
+def test_malformed_function_argument_is_a_repairable_proposal_error():
+    current = request()
+    malformed = {"node_type": "call", "function": "coalesce", "arguments": [
+        {}, {"node_type": "literal", "value_type": "int64", "value": 0},
+    ]}
+    with pytest.raises(MetricProposalError, match="expression node") as exc:
+        validate_proposal(proposal("atomic.expression", malformed), current)
+    assert exc.value.field == "atomic.expression.arguments[0]"
+
+
+def test_selected_composite_dependencies_must_be_used_by_current_expression():
+    dependencies = [
+        {"alias": "paid", "metric_id": "paid-1", "version": 1},
+        {"alias": "gmv", "metric_id": "gmv-1", "version": 1},
+    ]
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "composite", "mode": "create"},
+        candidates={"properties": [], "published_metrics": [
+            {"id": item["metric_id"], "version": 1, "name": item["alias"], "type": "derived",
+             "scope": "object_set", "object_type_id": "order"} for item in dependencies
+        ]},
+        form_snapshot={"name": "Current", "composite.expression": {
+            "node_type": "literal", "value_type": "decimal", "value": 0,
+        }},
+    )
+    value = proposal("composite.dependencies", dependencies)
+    with pytest.raises(MetricProposalError, match="reference exactly the selected dependency"):
+        validate_proposal(value, current)
+    value["changes"].append({"field": "composite.expression", "after": {
+        "node_type": "binary", "operator": "divide",
+        "left": {"node_type": "dependency", "dependency_alias": "paid"},
+        "right": {"node_type": "dependency", "dependency_alias": "gmv"},
+    }, "reason": "requested"})
+    assert len(validate_proposal(value, current)["changes"]) == 2
+
+
+def test_unconfirmed_composite_roles_do_not_offer_an_applicable_formula():
+    dependencies = [
+        {"alias": "base", "metric_id": "base-1", "version": 1},
+        {"alias": "used", "metric_id": "used-1", "version": 1},
+    ]
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "composite", "mode": "create"},
+        form_snapshot={"name": "Coupon rate", "description": "Coupon usage rate"},
+        candidates={"properties": [{"name": "status", "label": "Status"}],
+                    "published_metrics": [
+                        {"id": item["metric_id"], "version": 1, "name": item["alias"],
+                         "type": "atomic", "scope": "object_set", "object_type_id": "order"}
+                        for item in dependencies
+                    ]},
+    )
+    value = proposal("composite.dependencies", dependencies)
+    value["changes"].extend([
+        {"field": "composite.expression", "after": {
+            "node_type": "binary", "operator": "divide",
+            "left": {"node_type": "dependency", "dependency_alias": "used"},
+            "right": {"node_type": "dependency", "dependency_alias": "base"},
+        }, "reason": "requested"},
+        {"field": "query.analysis_dimensions", "after": ["status"], "reason": "requested"},
+    ])
+    for question in (
+        "请确认依赖角色分配：base 是基础总量、used 是已用量吗？",
+        "若分子分母方向相反，请指出，我再调整表达式。",
+        "Which dependency is the denominator?",
+    ):
+        value["questions"] = [question]
+        result = validate_proposal(value, current)
+        assert result["changes"] == []
+        assert result["questions"] == [question]
+        assert "未提供可应用的配置变更" in result["summary"]
+    value["changes"] = [{"field": "query.analysis_dimensions", "after": ["status"], "reason": "requested"}]
+    assert validate_proposal(value, current)["changes"] == []
+
+    value["changes"] = proposal("composite.dependencies", dependencies)["changes"] + [
+        {"field": "composite.expression", "after": {
+            "node_type": "binary", "operator": "divide",
+            "left": {"node_type": "dependency", "dependency_alias": "used"},
+            "right": {"node_type": "dependency", "dependency_alias": "base"},
+        }, "reason": "requested"},
+        {"field": "query.analysis_dimensions", "after": ["status"], "reason": "requested"},
+    ]
+    value["questions"] = ["除零返回 null 当前无法配置，请确认是否接受默认行为。"]
+    assert len(validate_proposal(value, current)["changes"]) == 3
+    value["questions"] = ["Please confirm the denominator zero behavior."]
+    assert len(validate_proposal(value, current)["changes"]) == 3
+
+
+def test_replacing_dependencies_rejects_stale_expression_aliases():
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "composite", "mode": "edit",
+               "metric_id": "draft-1", "draft_version": 1},
+        form_snapshot={"composite.expression": {
+            "node_type": "binary", "operator": "add",
+            "left": {"node_type": "dependency", "dependency_alias": "base"},
+            "right": {"node_type": "dependency", "dependency_alias": "removed"},
+        }},
+        candidates={"properties": [], "published_metrics": [{
+            "id": "base-1", "version": 1, "name": "Base", "type": "atomic",
+            "scope": "object_set", "object_type_id": "order",
+        }]},
+    )
+    value = proposal("composite.dependencies", [{"alias": "base", "metric_id": "base-1", "version": 1}])
+    with pytest.raises(MetricProposalError, match="reference exactly the selected dependency"):
+        validate_proposal(value, current)
+    current.form_snapshot.pop("composite.expression")
+    assert len(validate_proposal(value, current)["changes"]) == 1
+    current.form_snapshot["composite.expression"] = {"node_type": "dependency"}
+    with pytest.raises(MetricProposalError, match="reference exactly the selected dependency"):
+        validate_proposal(value, current)
+
+
+def test_decimal_clamp_literal_is_normalized_without_changing_value():
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "composite", "mode": "edit",
+               "metric_id": "draft-1", "draft_version": 1},
+        form_snapshot={"name": "Current", "composite.dependencies": [
+            {"alias": "paid", "metric_id": "paid-1", "version": 1},
+            {"alias": "gmv", "metric_id": "gmv-1", "version": 1},
+        ]},
+    )
+    expression = {"node_type": "call", "function": "least", "arguments": [
+        {"node_type": "binary", "operator": "divide",
+         "left": {"node_type": "dependency", "dependency_alias": "paid"},
+         "right": {"node_type": "dependency", "dependency_alias": "gmv"}},
+        {"node_type": "literal", "value_type": "int64", "value": 100},
+    ]}
+    after = validate_proposal(proposal("composite.expression", expression), current)["changes"][0]["after"]
+    assert after["arguments"][1] == {"node_type": "literal", "value_type": "decimal", "value": 100}
+
+
+def test_repair_does_not_apply_only_dimensions_after_dropping_formula():
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "composite", "mode": "create"},
+        form_snapshot={"name": "Current"},
+        candidates={"properties": [{"name": "channel_id", "label": "Channel", "type": "int64"}],
+                    "published_metrics": []},
+    )
+    original = proposal("composite.expression", {"node_type": "literal", "value_type": "decimal", "value": 0})
+
+    class Model:
+        async def ainvoke(self, messages):
+            corrected = proposal("query.analysis_dimensions", ["channel_id"])
+            corrected["questions"] = ["Please clarify the formula"]
+            return AIMessage(content=json.dumps(corrected))
+
+    output = asyncio.run(repair_proposal(
+        Model(), original, current, MetricProposalError("formula invalid", field="composite.expression"),
+    ))
+    assert output["changes"] == []
+    assert "未应用部分字段" in output["summary"]
+
+
+def test_ambiguous_composite_formula_returns_questions_without_model_retry():
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "composite", "mode": "create"},
+    )
+    original = proposal("composite.dependencies", [])
+    original["questions"] = ["Which metric is the denominator?"]
+
+    class Model:
+        async def ainvoke(self, messages):
+            raise AssertionError("clarification must not start another model call")
+
+    output = asyncio.run(repair_proposal(
+        Model(), original, current,
+        MetricProposalError("the expression must reference exactly the selected dependency aliases", field="composite.expression"),
+    ))
+    assert output["changes"] == []
+    assert output["questions"] == original["questions"]
 
 
 def test_currency_result_requires_a_matching_explicit_unit_code():
@@ -532,6 +900,23 @@ def test_derived_base_rejects_non_atomic_and_other_object_candidates():
         value["changes"].append({"field": "derived.base_metric_version", "after": 1, "reason": "fixed"})
         with pytest.raises(MetricProposalError, match="published atomic metric"):
             validate_proposal(value, current)
+
+
+def test_derived_edit_may_keep_the_existing_base_id_or_version():
+    current = request(
+        scope={"kn_id": "network-1", "owner_object_type_id": "order", "metric_type": "derived", "mode": "edit",
+               "metric_id": "draft-1", "draft_version": 1},
+        form_snapshot={"derived.base_metric_id": "base-1", "derived.base_metric_version": 1},
+        candidates={"properties": [], "published_metrics": [
+            {"id": metric_id, "version": version, "name": "Base", "type": "atomic",
+             "scope": "object_set", "object_type_id": "order"}
+            for metric_id, version in (("base-1", 1), ("base-1", 2), ("base-2", 1))
+        ]},
+    )
+    assert validate_proposal(proposal("derived.base_metric_id", "base-2"), current)["changes"][0]["after"] == "base-2"
+    assert validate_proposal(proposal("derived.base_metric_version", 2), current)["changes"][0]["after"] == 2
+    with pytest.raises(MetricProposalError, match="published atomic metric"):
+        validate_proposal(proposal("derived.base_metric_version", 3), current)
 
 
 def test_composite_formula_uses_only_selected_dependency_aliases():
