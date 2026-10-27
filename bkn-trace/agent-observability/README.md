@@ -869,7 +869,9 @@ go run ./cmd/record-integrity-recheck --ids-file /secure/interaction-ids.json --
 
 必需环境变量为 `BKN_TRACE_CORE_MARIADB_DSN`、`OPENSEARCH_ENDPOINT`、
 `OPENSEARCH_EVIDENCE_INDEX`；启用认证时使用既有
-`OPENSEARCH_AUTH_ENABLED` / `OPENSEARCH_USERNAME` / `OPENSEARCH_PASSWORD`。
+`OPENSEARCH_AUTH_ENABLED` / `OPENSEARCH_AUTH_USERNAME` / `OPENSEARCH_AUTH_PASSWORD`。
+启用认证而缺少任一凭据时，命令在访问数据库前退出并指出所需配置项；
+OpenSearch返回401/403时，该条输出`opensearch_auth_failed`，不输出凭据或上游响应正文。
 命令不初始化数据库或索引，不改许可、业务事实、源版本、尝试次数或原失败原因。
 `--apply`只在重新计算后保存判定并原子完成该代诊断任务；不是把原状态直接改成成功。
 

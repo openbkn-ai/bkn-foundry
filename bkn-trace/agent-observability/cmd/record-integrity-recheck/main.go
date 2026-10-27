@@ -16,11 +16,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
@@ -32,7 +34,11 @@ import (
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "historical record integrity recheck failed")
+		if errors.Is(err, errOpenSearchAuthConfig) {
+			fmt.Fprintln(os.Stderr, errOpenSearchAuthConfig)
+		} else {
+			fmt.Fprintln(os.Stderr, "historical record integrity recheck failed")
+		}
 		os.Exit(1)
 	}
 }
@@ -60,6 +66,10 @@ func run(args []string, out io.Writer) error {
 	if dsn == "" || endpoint == "" {
 		return errors.New("database and OpenSearch configuration required")
 	}
+	auth, err := recheckOpenSearchAuth()
+	if err != nil {
+		return err
+	}
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return err
@@ -67,7 +77,7 @@ func run(args []string, out io.Writer) error {
 	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(2)
 	store := sessionstore.New(db)
-	artifacts := opensearchevidencestore.New(opensearch.New(endpoint, opensearch.AuthConfig{Enabled: os.Getenv("OPENSEARCH_AUTH_ENABLED") == "true", Username: os.Getenv("OPENSEARCH_USERNAME"), Password: os.Getenv("OPENSEARCH_PASSWORD")}, 25*time.Second), os.Getenv("OPENSEARCH_EVIDENCE_INDEX"))
+	artifacts := opensearchevidencestore.New(opensearch.New(endpoint, auth, 25*time.Second), os.Getenv("OPENSEARCH_EVIDENCE_INDEX"))
 	if os.Getenv("OPENSEARCH_EVIDENCE_INDEX") == "" {
 		return errors.New("explicit evidence index required")
 	}
@@ -120,7 +130,7 @@ func run(args []string, out io.Writer) error {
 		reason := ""
 		if err != nil {
 			failed = true
-			reason = "recheck_failed"
+			reason = recheckFailureReason(err)
 		}
 		if e := json.NewEncoder(out).Encode(map[string]any{"interaction_id": id, "source_version": interaction.IntegritySourceVersion, "verdict": stored, "applied": applied, "error": reason, "seconds": time.Since(start).Seconds()}); e != nil {
 			return e
@@ -155,4 +165,22 @@ func readIDs(reader io.Reader) ([]string, error) {
 		seen[id] = true
 	}
 	return ids, nil
+}
+
+var errOpenSearchAuthConfig = errors.New("OPENSEARCH_AUTH_USERNAME and OPENSEARCH_AUTH_PASSWORD are required when OPENSEARCH_AUTH_ENABLED=true")
+
+func recheckOpenSearchAuth() (opensearch.AuthConfig, error) {
+	configured := conf.NewOpenSearchConfig().Auth
+	if configured.Enabled && (configured.Username == "" || configured.Password == "") {
+		return opensearch.AuthConfig{}, errOpenSearchAuthConfig
+	}
+	return opensearch.AuthConfig{Enabled: configured.Enabled, Username: configured.Username, Password: configured.Password}, nil
+}
+
+func recheckFailureReason(err error) string {
+	var upstream *opensearch.StatusError
+	if errors.As(err, &upstream) && (upstream.StatusCode == http.StatusUnauthorized || upstream.StatusCode == http.StatusForbidden) {
+		return "opensearch_auth_failed"
+	}
+	return "recheck_failed"
 }
