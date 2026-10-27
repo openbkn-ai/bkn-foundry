@@ -694,6 +694,29 @@ def test_backend_function_types_are_checked_before_proposal_is_applied():
         validate_proposal(proposal("atomic.expression", date_diff), current)
 
 
+def test_property_types_match_the_backend_v1_physical_type_mapping():
+    current = request(
+        candidates={"properties": [
+            {"name": "created_at", "label": "Created", "type": "timestamp"},
+            {"name": "finished_at", "label": "Finished", "type": "timestamp"},
+            {"name": "coupon_count", "label": "Count", "type": "unsigned integer"},
+        ], "published_metrics": []},
+        form_snapshot={"name": "Current", "aggregation": "identity"},
+    )
+    date_diff = {"node_type": "call", "function": "date_diff", "arguments": [
+        {"node_type": "property", "property_ref": {"object_type_id": "order", "property_name": "created_at"}},
+        {"node_type": "property", "property_ref": {"object_type_id": "order", "property_name": "finished_at"}},
+        {"node_type": "literal", "value_type": "string", "value": "day"},
+    ]}
+    assert validate_proposal(proposal("atomic.expression", date_diff), current)["changes"][0]["after"] == date_diff
+    coalesce = {"node_type": "call", "function": "coalesce", "arguments": [
+        {"node_type": "property", "property_ref": {"object_type_id": "order", "property_name": "coupon_count"}},
+        {"node_type": "literal", "value_type": "int64", "value": 0},
+    ]}
+    with pytest.raises(MetricProposalError, match="same physical type"):
+        validate_proposal(proposal("atomic.expression", coalesce), current)
+
+
 def test_malformed_function_argument_is_a_repairable_proposal_error():
     current = request()
     malformed = {"node_type": "call", "function": "coalesce", "arguments": [
@@ -760,10 +783,17 @@ def test_unconfirmed_composite_roles_do_not_offer_an_applicable_formula():
         "Which dependency is the denominator?",
     ):
         value["questions"] = [question]
-        result = validate_proposal(value, current)
+        localized_request = current.model_copy(update={
+            "message": "请确认优惠券指标的口径" if question != "Which dependency is the denominator?"
+            else "Configure the coupon rate",
+        })
+        result = validate_proposal(value, localized_request)
         assert result["changes"] == []
         assert result["questions"] == [question]
-        assert "未提供可应用的配置变更" in result["summary"]
+        if question == "Which dependency is the denominator?":
+            assert result["summary"] == "The dependency roles or formula direction need confirmation; no applicable changes were proposed."
+        else:
+            assert "未提供可应用的配置变更" in result["summary"]
     value["changes"] = [{"field": "query.analysis_dimensions", "after": ["status"], "reason": "requested"}]
     assert validate_proposal(value, current)["changes"] == []
 
@@ -836,14 +866,15 @@ def test_repair_does_not_apply_only_dimensions_after_dropping_formula():
     class Model:
         async def ainvoke(self, messages):
             corrected = proposal("query.analysis_dimensions", ["channel_id"])
-            corrected["questions"] = ["Please clarify the formula"]
+            corrected["questions"] = []
             return AIMessage(content=json.dumps(corrected))
 
     output = asyncio.run(repair_proposal(
         Model(), original, current, MetricProposalError("formula invalid", field="composite.expression"),
     ))
     assert output["changes"] == []
-    assert "未应用部分字段" in output["summary"]
+    assert "no partial changes were applied" in output["summary"]
+    assert output["questions"] == ["Please confirm the missing calculation rule before generating the complete configuration again."]
 
 
 def test_ambiguous_composite_formula_returns_questions_without_model_retry():
@@ -863,6 +894,7 @@ def test_ambiguous_composite_formula_returns_questions_without_model_retry():
     ))
     assert output["changes"] == []
     assert output["questions"] == original["questions"]
+    assert output["summary"].startswith("The formula is not yet clear")
 
 
 def test_currency_result_requires_a_matching_explicit_unit_code():

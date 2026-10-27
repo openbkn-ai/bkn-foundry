@@ -33,6 +33,10 @@ COMPOSITE_FORMULA_CLARIFICATION_ZH = re.compile(
     r"依赖.{0,12}角色|角色.{0,12}分配|分子.{0,12}分母.{0,12}(?:方向|相反)"
 )
 COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_ZH = "依赖的业务角色或公式方向仍需确认，本轮未提供可应用的配置变更。"
+COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_EN = "The dependency roles or formula direction need confirmation; no applicable changes were proposed."
 COMPOSITE_FORMULA_MISSING_SUMMARY_ZH = "公式尚未明确，本轮不应用部分配置。"
+COMPOSITE_FORMULA_MISSING_SUMMARY_EN = "The formula is not yet clear, so no partial configuration was applied. "
 METRIC_CORE_MISSING_SUMMARY_ZH = "核心计算配置未能完整校验，因此本轮未应用部分字段。"
+METRIC_CORE_MISSING_SUMMARY_EN = "The core calculation could not be fully validated, so no partial changes were applied. "
 METRIC_CORE_MISSING_QUESTION_ZH = "请确认缺失的计算口径后重新生成完整配置。"
+METRIC_CORE_MISSING_QUESTION_EN = "Please confirm the missing calculation rule before generating the complete configuration again."

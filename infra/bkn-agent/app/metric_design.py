@@ -14,14 +14,18 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, model_validator
 
 from app.commons.i18n.metric_design import (
+    COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_EN,
     COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_ZH,
     COMPOSITE_FORMULA_CLARIFICATION_ZH,
+    COMPOSITE_FORMULA_MISSING_SUMMARY_EN,
     COMPOSITE_FORMULA_MISSING_SUMMARY_ZH,
     DESCRIPTION_SUPPLIED_ZH,
     DESCRIPTION_UNCHANGED_EN,
     DESCRIPTION_UNCHANGED_ZH,
     EXPLICIT_NAME_ZH,
+    METRIC_CORE_MISSING_QUESTION_EN,
     METRIC_CORE_MISSING_QUESTION_ZH,
+    METRIC_CORE_MISSING_SUMMARY_EN,
     METRIC_CORE_MISSING_SUMMARY_ZH,
     NAME_EXPLANATION_ZH,
     NAME_ONLY_ZH,
@@ -420,11 +424,12 @@ def _candidate_physical_type(req: MetricDesignRequest, property_name: str) -> st
     candidate = next((item for item in req.candidates.properties if item.name == property_name), None)
     if candidate is None or not candidate.type:
         return None
-    value_type = candidate.type.lower()
+    value_type = candidate.type.strip().lower()
     return {
         "integer": "int64", "int": "int64", "int32": "int64", "long": "int64",
         "float": "decimal", "double": "decimal", "number": "decimal",
-    }.get(value_type, value_type)
+        "bool": "boolean", "timestamp": "datetime",
+    }.get(value_type, value_type if value_type in _PHYSICAL_TYPES else "string")
 
 
 def _expression_physical_type(node: dict, req: MetricDesignRequest, path: str) -> str | None:
@@ -521,6 +526,10 @@ def _asks_to_confirm_composite_formula(questions: list[str]) -> bool:
     )
     return any(COMPOSITE_FORMULA_CLARIFICATION_ZH.search(question) or english.search(question)
                for question in questions)
+
+
+def _localized(req: MetricDesignRequest, zh: str, en: str) -> str:
+    return zh if re.search(r"[\u3400-\u9fff]", req.message) else en
 
 
 def _check_condition(node: Any, req: MetricDesignRequest, path: str, depth: int = 0) -> None:
@@ -638,7 +647,10 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
         return {
             "kind": "metric_design_proposal",
             "base_form_revision": req.base_form_revision,
-            "summary": COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_ZH,
+            "summary": _localized(
+                req, COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_ZH,
+                COMPOSITE_FORMULA_CLARIFICATION_SUMMARY_EN,
+            ),
             "questions": value["questions"],
             "changes": [],
         }
@@ -950,7 +962,10 @@ async def repair_proposal(model, value: Any, req: MetricDesignRequest, error: Me
         # dependencies without a usable expression leaves an invalid draft, and
         # a further model call cannot resolve a question that needs the user.
         return validate_proposal({
-            "summary": (COMPOSITE_FORMULA_MISSING_SUMMARY_ZH + value.get("summary", ""))[:1000],
+            "summary": (_localized(
+                req, COMPOSITE_FORMULA_MISSING_SUMMARY_ZH,
+                COMPOSITE_FORMULA_MISSING_SUMMARY_EN,
+            ) + value.get("summary", ""))[:1000],
             "questions": value["questions"],
             "changes": [],
         }, req)
@@ -998,8 +1013,12 @@ async def repair_proposal(model, value: Any, req: MetricDesignRequest, error: Me
         if requested_core - corrected_fields and corrected_fields:
             corrected = {
                 **corrected,
-                "summary": (METRIC_CORE_MISSING_SUMMARY_ZH + corrected.get("summary", ""))[:1000],
-                "questions": corrected.get("questions") or [METRIC_CORE_MISSING_QUESTION_ZH],
+                "summary": (_localized(
+                    req, METRIC_CORE_MISSING_SUMMARY_ZH, METRIC_CORE_MISSING_SUMMARY_EN,
+                ) + corrected.get("summary", ""))[:1000],
+                "questions": corrected.get("questions") or [
+                    _localized(req, METRIC_CORE_MISSING_QUESTION_ZH, METRIC_CORE_MISSING_QUESTION_EN)
+                ],
                 "changes": [],
             }
         return validate_proposal(corrected, req)
