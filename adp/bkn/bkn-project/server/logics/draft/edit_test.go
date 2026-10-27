@@ -134,6 +134,17 @@ func Test_EditDraftItem(t *testing.T) {
 			So(decisions[1].Before, ShouldEqual, "Sales orders")
 		})
 
+		Convey("An object type without an identity cannot be adopted\n", func() {
+			draft.Items.ObjectTypes[2].NeedsIdentity = true
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
+			e := edit()
+			e.Adopted = boolPtr(true)
+
+			_, err := svc.EditDraftItem(ctx, token, "p1", interfaces.DRAFT_KIND_OBJECT_TYPES, "regions", e, caller)
+
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
+		})
+
 		Convey("Value types can be renamed and not adopted\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil)
 			expectWrite()
@@ -168,6 +179,8 @@ func Test_EditDraftItem(t *testing.T) {
 				code string
 			}{
 				{edit(), perrors.BknProject_Draft_EmptyEdit},
+				// Without the draft's update time, reloading would never make the edit pass.
+				{interfaces.DraftItemEdit{Adopted: boolPtr(true)}, perrors.BknProject_Draft_MissingUpdateTime},
 				{interfaces.DraftItemEdit{UpdateTime: readTime, Name: strPtr("  ")}, perrors.BknProject_Draft_InvalidName},
 				{interfaces.DraftItemEdit{UpdateTime: readTime, Name: strPtr(strings.Repeat("\u540d", 129))}, perrors.BknProject_Draft_InvalidName},
 				{interfaces.DraftItemEdit{UpdateTime: readTime, Description: strPtr(strings.Repeat("\u8ff0", 1001))}, perrors.BknProject_Draft_InvalidDescription},

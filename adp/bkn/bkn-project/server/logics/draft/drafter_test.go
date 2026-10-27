@@ -312,6 +312,19 @@ func Test_Drafter(t *testing.T) {
 			So(r.Adopted, ShouldBeTrue)
 		})
 
+		Convey("A relation of an object type that is not adopted is not adopted either\n", func() {
+			c := sampleCounter()
+			c.keys["r_orders"] = [3]int64{800, 790, 0}
+			items := run(c)
+
+			So(objectType(items, "orders").Adopted, ShouldBeFalse)
+			// The counts stay; only adopting waits for the object type.
+			fk := relation(items, "orders", "customers")
+			So(fk.Evidence.HitRate, ShouldEqual, 0.995)
+			So(fk.Adopted, ShouldBeFalse)
+			So(relation(items, "orders", "tags").Adopted, ShouldBeFalse)
+		})
+
 		Convey("A PostgreSQL foreign key names its table with the schema\n", func() {
 			customers := table("r_c", "c1", "customers", 0, []string{"id"}, col("id", "string", ""))
 			customers.SourceSchema = "public"

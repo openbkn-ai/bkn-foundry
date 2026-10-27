@@ -14,6 +14,8 @@ const (
 	BknProject_Draft_EndpointNotAdopted = "BknProject.Draft.EndpointNotAdopted"
 	BknProject_Draft_InvalidIdentity    = "BknProject.Draft.InvalidIdentity"
 	BknProject_Draft_NotRestorable      = "BknProject.Draft.NotRestorable"
+	BknProject_Draft_MissingUpdateTime  = "BknProject.Draft.MissingUpdateTime"
+	BknProject_Draft_NeedsIdentity      = "BknProject.Draft.NeedsIdentity"
 
 	// 404
 	BknProject_Draft_NotFound     = "BknProject.Draft.NotFound"
@@ -37,6 +39,8 @@ var (
 		BknProject_Draft_NotFound,
 		BknProject_Draft_Drafting,
 		BknProject_Draft_InternalError,
+		BknProject_Draft_MissingUpdateTime,
+		BknProject_Draft_NeedsIdentity,
 		BknProject_Draft_InvalidIdentity,
 		BknProject_Draft_NotRestorable,
 		BknProject_Draft_FieldNotFound,

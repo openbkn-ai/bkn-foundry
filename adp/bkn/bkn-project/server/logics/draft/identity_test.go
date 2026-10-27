@@ -144,6 +144,14 @@ func Test_ChooseIdentity(t *testing.T) {
 			}
 		})
 
+		Convey("A choice without the draft's update time is refused before the draft is read\n", func() {
+			_, err := svc.ChooseIdentity(ctx, token, "p1", "order_lines", interfaces.DraftIdentity{Properties: []string{"order_no"}}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_MissingUpdateTime)
+
+			_, err = svc.RestoreExcluded(ctx, token, "p1", interfaces.DraftRestore{ObjectType: "customers", Field: "Phone"}, caller)
+			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_MissingUpdateTime)
+		})
+
 		Convey("An unknown object type is not found and a stale choice is refused\n", func() {
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(draft, true, nil).Times(2)
 			_, err := svc.ChooseIdentity(ctx, token, "p1", "missing", choose("id"), caller)

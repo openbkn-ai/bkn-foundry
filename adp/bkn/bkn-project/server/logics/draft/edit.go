@@ -87,15 +87,21 @@ func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
 	return nil
 }
 
-// applyEdit changes the item and returns the decisions it made. Not adopting an object type
-// stops adopting the relation types that connect it; a relation type is adopted only when
-// both its object types are. Value types not adopted leave their properties to their base
+// applyEdit changes the item and returns the decisions it made. An object type is adopted only
+// once it has an identity. Not adopting an object type stops adopting the relation types that
+// connect it; a relation type is adopted only when both its object types are. Value types not adopted leave their properties to their base
 // type when the draft is compiled.
 func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, id string,
 	edit interfaces.DraftItemEdit) ([]*interfaces.DraftDecision, error) {
 	item, ok := findItem(items, kind, id)
 	if !ok {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
+	}
+	if edit.Adopted != nil && *edit.Adopted && !*item.adopted && kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		// BKN object types need a primary key: one without an identity cannot be compiled.
+		if findObjectType(items, id).NeedsIdentity {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
+		}
 	}
 	if edit.Adopted != nil && *edit.Adopted && !*item.adopted && kind == interfaces.DRAFT_KIND_RELATION_TYPES {
 		for _, r := range items.RelationTypes {
@@ -142,6 +148,10 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 // the draft is ready, and it is the draft the edit was made on.
 func (s *draftService) readyDraft(ctx context.Context, token string, projectID string,
 	updateTime int64) (*interfaces.Draft, error) {
+	if updateTime <= 0 {
+		// Reloading would not help a change made on no draft, so it is not reported as stale.
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_MissingUpdateTime)
+	}
 	if _, err := s.unarchivedProject(ctx, token, projectID); err != nil {
 		return nil, err
 	}
