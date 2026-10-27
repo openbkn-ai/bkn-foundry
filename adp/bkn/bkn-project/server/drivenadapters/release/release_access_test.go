@@ -18,7 +18,7 @@ import (
 )
 
 func releaseRow(id, networkID string, createTime int64) []driver.Value {
-	return []driver.Value{id, "orders", networkID, "1.0.0", "0.9.0", "p1", "u1", "user", "first", "live", createTime, createTime}
+	return []driver.Value{id, "orders", networkID, "1.0.0", "0.9.0", "p1", "u1", "user", "first", createTime, createTime}
 }
 
 func Test_ReleaseAccess(t *testing.T) {
@@ -31,7 +31,7 @@ func Test_ReleaseAccess(t *testing.T) {
 
 		Convey("ListReleases reads the first page newest first\n", func() {
 			smock.ExpectQuery(regexp.QuoteMeta(
-				"SELECT f_id, f_lineage_id, f_network_id, f_version, f_base_version, f_project_id, f_publisher, f_publisher_type, f_notes, f_state, f_create_time, f_update_time " +
+				"SELECT f_id, f_lineage_id, f_network_id, f_version, f_base_version, f_project_id, f_publisher, f_publisher_type, f_notes, f_create_time, f_update_time " +
 					"FROM t_bkn_project_release WHERE f_lineage_id = ? ORDER BY f_create_time DESC, f_id DESC LIMIT 3")).
 				WithArgs("orders").
 				WillReturnRows(sqlmock.NewRows(releaseColumns).AddRow(releaseRow("r2", "orders_1-0-0", 2)...))
@@ -42,7 +42,7 @@ func Test_ReleaseAccess(t *testing.T) {
 			So(releases, ShouldHaveLength, 1)
 			So(releases[0].NetworkID, ShouldEqual, "orders_1-0-0")
 			So(releases[0].Publisher, ShouldResemble, interfaces.AccountInfo{ID: "u1", Type: "user"})
-			So(releases[0].State, ShouldEqual, interfaces.RELEASE_STATE_LIVE)
+			So(releases[0].State, ShouldBeEmpty)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
@@ -115,13 +115,13 @@ func Test_ReleaseAccess(t *testing.T) {
 		Convey("CreateRelease inserts every column\n", func() {
 			release := &interfaces.Release{
 				ID: "r1", LineageID: "orders", NetworkID: "orders_v1_0_0", Version: "1.0.0", BaseVersion: "", ProjectID: "p1",
-				Publisher: interfaces.AccountInfo{ID: "u1", Type: "user"}, Notes: "first", State: interfaces.RELEASE_STATE_LIVE,
+				Publisher: interfaces.AccountInfo{ID: "u1", Type: "user"}, Notes: "first",
 				CreateTime: 7, UpdateTime: 7,
 			}
 			smock.ExpectExec(regexp.QuoteMeta(
 				"INSERT INTO t_bkn_project_release (f_id,f_lineage_id,f_network_id,f_version,f_base_version,f_project_id,"+
-					"f_publisher,f_publisher_type,f_notes,f_state,f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")).
-				WithArgs("r1", "orders", "orders_v1_0_0", "1.0.0", "", "p1", "u1", "user", "first", "live", int64(7), int64(7)).
+					"f_publisher,f_publisher_type,f_notes,f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?)")).
+				WithArgs("r1", "orders", "orders_v1_0_0", "1.0.0", "", "p1", "u1", "user", "first", int64(7), int64(7)).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 
 			err := ra.CreateRelease(ctx, release)
@@ -168,19 +168,11 @@ func Test_ReleaseAccess(t *testing.T) {
 			So(sw, ShouldBeNil)
 		})
 
-		Convey("RecordSwitch inserts the switch and moves the live state in one transaction\n", func() {
-			smock.ExpectBegin()
+		Convey("RecordSwitch inserts the switch and leaves the releases alone\n", func() {
 			smock.ExpectExec(regexp.QuoteMeta(
 				"INSERT INTO t_bkn_project_switch (f_id,f_lineage_id,f_from_network_id,f_to_network_id,f_operator,f_operator_type,f_schedules,f_create_time) VALUES (?,?,?,?,?,?,?,?)")).
 				WithArgs("s1", "orders", "orders_v1_0_0", "orders_v1_1_0", "u1", "user", "[]", int64(5)).
 				WillReturnResult(sqlmock.NewResult(1, 1))
-			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_release SET f_state = ?, f_update_time = ? WHERE f_network_id = ?")).
-				WithArgs("archived", int64(5), "orders_v1_0_0").
-				WillReturnResult(sqlmock.NewResult(0, 1))
-			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_release SET f_state = ?, f_update_time = ? WHERE f_network_id = ?")).
-				WithArgs("live", int64(5), "orders_v1_1_0").
-				WillReturnResult(sqlmock.NewResult(0, 1))
-			smock.ExpectCommit()
 
 			err := ra.RecordSwitch(ctx, &interfaces.Switch{
 				ID: "s1", LineageID: "orders", FromNetworkID: "orders_v1_0_0", ToNetworkID: "orders_v1_1_0",
@@ -191,11 +183,8 @@ func Test_ReleaseAccess(t *testing.T) {
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
-		Convey("RecordSwitch rolls back when a state update fails\n", func() {
-			smock.ExpectBegin()
-			smock.ExpectExec("INSERT INTO t_bkn_project_switch").WillReturnResult(sqlmock.NewResult(1, 1))
-			smock.ExpectExec("UPDATE t_bkn_project_release").WillReturnError(errors.New("lock wait timeout"))
-			smock.ExpectRollback()
+		Convey("RecordSwitch returns the insert error\n", func() {
+			smock.ExpectExec("INSERT INTO t_bkn_project_switch").WillReturnError(errors.New("lock wait timeout"))
 
 			err := ra.RecordSwitch(ctx, &interfaces.Switch{ID: "s1", LineageID: "orders", FromNetworkID: "a", ToNetworkID: "b"})
 

@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | GET | `/health` | 服务信息 |
 | GET | `/ready` | 数据库可达时返回 200，否则返回 503 |
-| GET | `/lineages/{lineage_id}/releases?limit=&cursor=` | 谱系下的发布记录，按时间倒序，游标分页 |
+| GET | `/lineages/{lineage_id}/releases?limit=&cursor=` | 谱系下的发布记录，按时间倒序，游标分页。最新一次发布的 `state` 为 `live`，更早的为 `archived`；切换使用方不改变状态 |
 | GET | `/releases/{network_id}` | 产生该网络的发布记录 |
 | POST | `/lineages/{lineage_id}/releases` | 请求体 `{"branch","version","project_id","notes"}`。发布该分支：返回 201 `{"release","network_id","tag","commit"}`。409 `BranchBehind`（请先同步分支）、`Drift`（路径见 `error_details`，请提交漂移并同步）、`VersionExists`，或 `CapabilitiesSkipped`（网络已导入但未记录发布；从同一分支头以同一版本重新发布会覆盖该网络） |
 | POST | `/lineages` | 请求体 `{"kn_id"}`。导出线上网络并在 `main` 上创建谱系；返回 201 `{"lineage_id","commit"}`，已存在返回 409 |
