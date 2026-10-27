@@ -281,7 +281,7 @@ func Test_BknBackendAccess_Networks(t *testing.T) {
 		ctx := context.Background()
 		const networksPath = "/api/bkn-backend/v1/knowledge-networks"
 
-		Convey("CreateKN posts the id and name and returns the id bkn-backend gave\n", func() {
+		Convey("CreateKN posts the id, name and main branch and returns the id bkn-backend gave\n", func() {
 			status, respBody = http.StatusCreated, `{"id":"01a1-generated"}`
 
 			id, err := bba.CreateKN(ctx, token, "", "Orders")
@@ -291,7 +291,7 @@ func Test_BknBackendAccess_Networks(t *testing.T) {
 			So(got[0].method, ShouldEqual, http.MethodPost)
 			So(got[0].path, ShouldEqual, networksPath)
 			So(got[0].auth, ShouldEqual, token)
-			So(got[0].body, ShouldResemble, map[string]any{"id": "", "name": "Orders"})
+			So(got[0].body, ShouldResemble, map[string]any{"id": "", "name": "Orders", "branch": "main"})
 		})
 
 		Convey("CreateKN without an id in the reply fails\n", func() {

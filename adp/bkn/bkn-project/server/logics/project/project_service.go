@@ -71,9 +71,9 @@ func (s *projectService) CreateProject(ctx context.Context, token string, req in
 			span.SetStatus(codes.Error, "Create network failed")
 			return nil, backendHTTPError(ctx, "Create network failed", err)
 		}
-	} else if _, err = s.bba.GetKN(ctx, token, knID); err != nil {
+	} else if knID, err = s.lineageOf(ctx, token, knID); err != nil {
 		span.SetStatus(codes.Error, "Get network failed")
-		return nil, backendHTTPError(ctx, "Get network failed", err)
+		return nil, err
 	}
 
 	// Every project of a network shares the network's lineage.
@@ -261,6 +261,26 @@ func (s *projectService) visibleProject(ctx context.Context, token string, id st
 		return nil, backendHTTPError(ctx, "Get network failed", err)
 	}
 	return project, nil
+}
+
+// lineageOf returns the lineage a visible network belongs to: the base network
+// of the release that published it, or the network itself. The caller must be
+// able to see that base network too, as every later read of the project checks it.
+func (s *projectService) lineageOf(ctx context.Context, token string, knID string) (string, error) {
+	if _, err := s.bba.GetKN(ctx, token, knID); err != nil {
+		return "", backendHTTPError(ctx, "Get network failed", err)
+	}
+	release, exist, err := s.ra.GetReleaseByNetworkID(ctx, knID)
+	if err != nil {
+		return "", internalError(ctx, "Get release failed", err)
+	}
+	if !exist {
+		return knID, nil
+	}
+	if _, err = s.bba.GetKN(ctx, token, release.LineageID); err != nil {
+		return "", backendHTTPError(ctx, "Get base network failed", err)
+	}
+	return release.LineageID, nil
 }
 
 // liveNetworkID is the network of the lineage's newest release, or the network

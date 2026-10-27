@@ -40,7 +40,7 @@
 | POST | `/lineages/{lineage_id}/drift?commit=` | 请求体 `{"kn_id"}`。比较线上网络与 `main`；返回 `{"lineage_id","kn_id","added","changed","removed","commit"}`。`commit=true` 时把线上定义提交到 `main` |
 | GET | `/lineages/{lineage_id}/switch-plan?to=` | 把谱系的使用方切换到网络 `to` 会做什么：返回 `{"lineage_id","from_network_id","to_network_id","schedules"}`，即当前所用网络上正在运行的调度。智能体、MCP、workshop、eval 及 `to` 上的权限由各自负责人切换。400 `InvalidSwitchTarget`（不是该谱系的网络），409 `AlreadyInUse` |
 | POST | `/lineages/{lineage_id}/switches` | 请求体 `{"to_network_id"}`。在目标网络上启用每个运行中的调度（以切换人身份执行），在当前网络上停用，然后记录这次切换：返回 201 和切换记录。回退就是切回之前的网络，上次停用的对应调度会重新启用 |
-| POST | `/projects` | 请求体 `{"name","kn_id"\|"new_kn":{"name","id"},"catalog_ids"}`，`kn_id`（调用方可见的已有网络）和 `new_kn`（新建网络）必须且只能给一个。网络没有谱系时先创建谱系，再创建分支 `project/<id>`；返回 201 和项目。调用方为负责人 |
+| POST | `/projects` | 请求体 `{"name","kn_id"\|"new_kn":{"name","id"},"catalog_ids"}`，`kn_id`（调用方可见的已有网络）和 `new_kn`（新建网络）必须且只能给一个。传入某次发布产生的网络时，项目并入其原网络的谱系。网络没有谱系时先创建谱系，再创建分支 `project/<id>`；返回 201 和项目。调用方为负责人 |
 | GET | `/projects?archived=&name=&limit=&cursor=` | 调用方可见网络下的项目，按时间倒序，游标分页。`archived` 为 `false`（默认）、`true` 或 `all`；`name` 按包含匹配。每条带 `other_projects`：同一网络下其他未归档项目的数量 |
 | GET | `/projects/{project_id}` | 项目详情；调用方看不到其网络时同样返回 404 |
 | POST | `/projects/{project_id}:archive`、`:unarchive` | 归档（默认列表不显示）或取消归档，只有负责人可以操作（否则 403），不影响已发布版本 |

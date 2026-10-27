@@ -190,7 +190,7 @@ func (bba *bknBackendAccess) CreateSchedule(ctx context.Context, token string, k
 	return created.ID, nil
 }
 
-// CreateKN calls POST /knowledge-networks with {"id", "name"}.
+// CreateKN calls POST /knowledge-networks with {"id", "name", "branch": "main"}.
 func (bba *bknBackendAccess) CreateKN(ctx context.Context, token string, id string, name string) (string, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateKN")
 	defer span.End()
@@ -200,7 +200,8 @@ func (bba *bknBackendAccess) CreateKN(ctx context.Context, token string, id stri
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
 
 	headers := map[string]string{"Authorization": token, rest.ContentTypeKey: rest.ContentTypeJson}
-	body := interfaces.KnowledgeNetwork{ID: id, Name: name}
+	// bkn-backend validates the branch before it would default it.
+	body := map[string]string{"id": id, "name": name, "branch": interfaces.GIT_MAIN_BRANCH}
 	respCode, respBody, err := bba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, body)
 	logger.Debugf("CreateKN finished, kn_id is [%s], response code is [%d]", id, respCode)
 	if err != nil {
