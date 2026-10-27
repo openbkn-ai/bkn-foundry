@@ -1284,3 +1284,36 @@ func (rta *relationTypeAccess) GetAllRelationTypesByKnID(ctx context.Context, kn
 	span.SetStatus(codes.Ok, "")
 	return relationTypes, nil
 }
+
+func (rta *relationTypeAccess) ListDeprecatedOrFallbackRelationTypeIDs(ctx context.Context, knID string, branch string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListDeprecatedOrFallbackRelationTypeIDs")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_id").From(RT_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.Or{
+			sq.Eq{"f_lifecycle_status": interfaces.LIFECYCLE_DEPRECATED},
+			sq.NotEq{"f_fallback_for": nil},
+		}).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := rta.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "Query deprecated or fallback relation types failed", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []string
+	for rows.Next() {
+		var rtID string
+		if err = rows.Scan(&rtID); err != nil {
+			return nil, err
+		}
+		result = append(result, rtID)
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, rows.Err()
+}

@@ -480,6 +480,11 @@ paths:
       responses:
         "204":
           description: Deletion succeeded
+        "409":
+          description: |
+            BknBackend.ActionType.StillReferenced: an action type to delete is still the lifecycle replaced_by of a deprecated action type
+            that this request does not delete. `details.references` lists each reference; change or remove them
+            first, or delete the referring definitions in the same request.
       summary: Delete an action type
     parameters:
       - name: kn_id

@@ -19,6 +19,8 @@ type ObjectTypeAccess interface {
 		otIDs, otNames []string) ([]*ObjectType, error)
 	// ListAliasedObjectTypes lists the ID, name and aliases of every object type of the branch that has aliases.
 	ListAliasedObjectTypes(ctx context.Context, knID string, branch string) ([]*ObjectType, error)
+	// ListDeprecatedObjectTypes lists the ID, name and lifecycle of every deprecated object type of the branch.
+	ListDeprecatedObjectTypes(ctx context.Context, knID string, branch string) ([]*ObjectType, error)
 
 	CreateObjectType(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error
 	CreateObjectTypeStatus(ctx context.Context, tx *sql.Tx, objectType *ObjectType) error

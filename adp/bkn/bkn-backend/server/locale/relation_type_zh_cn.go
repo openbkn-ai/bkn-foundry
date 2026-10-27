@@ -11,6 +11,7 @@ var relationTypeZhCN = i18n.I18nMessages{
 	Messages: map[string]string{
 		"BknBackend.RelationType.InvalidParameter.Declarations":                                     "关系类声明不合法。按错误详情修正 reverse_name、aliases、cardinality、constraints、lifecycle、importance、fallback_for、verification 或关系属性后重试。",
 		"BknBackend.RelationType.DeclarationsWouldBeCleared":                                        "本次覆盖会清掉关系类已有的声明。错误详情列出了将被清掉的声明。确认要清掉时，带上 confirm_clear_declarations=true 重新提交；不想清掉时，在文件中保留这些声明。",
+		"BknBackend.RelationType.StillReferenced":                                                   "该关系类仍被其他定义的 lifecycle replaced_by 或 fallback_for 引用。错误详情列出了引用方。先修改或去掉这些引用再删除。",
 		"BknBackend.RelationType.Duplicated.IDInFile":                                               "存在重复的关系类ID。请检查参数是否正确。",
 		"BknBackend.RelationType.InvalidParameter":                                                  "请求参数不合法。请检查参数是否正确。",
 		"BknBackend.RelationType.InvalidParameter.ConceptCondition":                                 "关系类概念条件请求参数不合法。请检查参数是否正确。",

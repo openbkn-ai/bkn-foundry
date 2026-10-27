@@ -62,26 +62,33 @@ func (kns *knowledgeNetworkService) persistNormalizedImportPlan(ctx context.Cont
 	if err != nil {
 		return err
 	}
+	// The definitions the import writes are checked together once every kind is written: kind by
+	// kind, the network would mix new definitions of one kind with the stored ones of the next.
+	defCtx, written := logics.WithDeferredNetworkRelations(ctx)
 	if len(plan.ObjectTypes) > 0 {
-		if _, err = kns.ots.CreateObjectTypes(ctx, tx, plan.ObjectTypes, mode, false, strictMode); err != nil {
+		if _, err = kns.ots.CreateObjectTypes(defCtx, tx, plan.ObjectTypes, mode, false, strictMode); err != nil {
 			logger.Errorf("CreateObjectTypes error: %s", err.Error())
 			return logics.PreserveHTTPError(ctx, err,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_CreateObjectTypesFailed)
 		}
 	}
 	if len(plan.RelationTypes) > 0 {
-		if _, err = kns.rts.CreateRelationTypes(ctx, tx, plan.RelationTypes, mode, strictMode); err != nil {
+		if _, err = kns.rts.CreateRelationTypes(defCtx, tx, plan.RelationTypes, mode, strictMode); err != nil {
 			logger.Errorf("CreateRelationTypes error: %s", err.Error())
 			return logics.PreserveHTTPError(ctx, err,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_CreateRelationTypesFailed)
 		}
 	}
 	if len(plan.ActionTypes) > 0 {
-		if _, err = kns.ats.CreateActionTypes(ctx, tx, plan.ActionTypes, mode, strictMode); err != nil {
+		if _, err = kns.ats.CreateActionTypes(defCtx, tx, plan.ActionTypes, mode, strictMode); err != nil {
 			logger.Errorf("CreateActionTypes error: %s", err.Error())
 			return logics.PreserveHTTPError(ctx, err,
 				berrors.BknBackend_KnowledgeNetwork_InternalError_CreateActionTypesFailed)
 		}
+	}
+	if err = kns.nr.CheckRefusal(ctx, plan.KNID, plan.Branch, *written,
+		berrors.BknBackend_KnowledgeNetwork_InvalidParameter, berrors.BknBackend_KnowledgeNetwork_InternalError); err != nil {
+		return err
 	}
 	if len(plan.RiskTypes) > 0 {
 		if _, err = kns.riskTypeS.CreateRiskTypes(ctx, tx, plan.RiskTypes, mode); err != nil {
