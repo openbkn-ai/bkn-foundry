@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"net/http"
+	"regexp"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
@@ -98,4 +99,12 @@ func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 	header[string(interfaces.HeaderXAccountID)] = authContext.AccountID
 	header[string(interfaces.HeaderXAccountType)] = string(authContext.AccountType)
 	return
+}
+
+var executionCorrelationID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
+// IsValidExecutionCorrelationID permits opaque identifiers in public diagnostics,
+// excluding URLs, whitespace, and unbounded dependency strings.
+func IsValidExecutionCorrelationID(id string) bool {
+	return executionCorrelationID.MatchString(id)
 }

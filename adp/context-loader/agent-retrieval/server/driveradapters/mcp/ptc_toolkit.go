@@ -37,7 +37,8 @@ type PTCToolkit struct {
 	Version string `json:"version"`
 	// Digest is a list of function signatures shown to the model and is used as a tool description for run_code.
 	Digest string `json:"digest"`
-	// A stub is a sandboxed Python implementation that is inlined into the script with each execution.
+	// Stub is the Python implementation retained for legacy toolkit clients.
+	// Server-side run_code imports the matching implementation preinstalled in the sandbox image.
 	Stub string `json:"stub"`
 	// SandboxMCPURL is the address the sandbox uses to call back into this service. The sandbox is inside the cluster
 	// and cannot use the browser-side gateway address; only the server knows the in-cluster address.

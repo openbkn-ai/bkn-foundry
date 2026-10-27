@@ -9,6 +9,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"Public.UnprocessableEntity":                                                     "执行输入校验失败，请修正输入后重试。",
 		"AgentOperatorIntegration.BadGateway.OSSGatewayFailed":                           "对象存储服务不可用，请检查 OSS 网关配置或重新上传 Skill 包请联系管理员",
 		"AgentOperatorIntegration.BadRequest.CategoryNameEmpty":                          "算子分类名称不能为空请联系管理员",
 		"AgentOperatorIntegration.BadRequest.CategoryNameExist":                          "算子分类名称已存在请联系管理员",

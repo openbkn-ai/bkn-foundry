@@ -1356,6 +1356,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "422":
+          description: "执行输入校验失败。代码超限按 Unicode 字符数计量；仅返回安全诊断，不回显源码、事件或下游原始响应。修正输入后重试。"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error_code: "Public.UnprocessableEntity"
+                description: "执行输入校验失败"
+                error_details:
+                  reason: "code_too_long"
+                  stage: "validation"
+                  actual: 102401
+                  max: 102400
+                  unit: "unicode_characters"
+                  session_id: "sess-1"
+        "504":
+          description: "函数执行超过配置时间。error_details 保留既有超时说明，metadata 提供安全分类、秒数及可用的执行/会话 ID。请减少执行工作量或调整超时配置后重试。"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error_code: "Public.GatewayTimeout"
+                error_details: "function execution timed out after 2 seconds"
+                metadata:
+                  reason: "execution_timeout"
+                  stage: "execution"
+                  timeout_seconds: 2
+                  session_id: "sess-1"
+                  execution_id: "exec-1"
         "500":
           description: "Internal Server Error"
           content:

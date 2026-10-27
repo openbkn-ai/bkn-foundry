@@ -35,3 +35,18 @@ func TestDistinguishableErrorCodes(t *testing.T) {
 		}
 	}
 }
+
+func TestExecutionFailureStatusCodes(t *testing.T) {
+	input := ExecutionInputValidationError(context.Background(), "safe detail")
+	timeout := DefaultHTTPError(context.Background(), http.StatusGatewayTimeout, "safe detail")
+	existing := DefaultHTTPError(context.Background(), http.StatusUnprocessableEntity, "existing metric rejection")
+	if input.HTTPCode != 422 || input.ErrorCode != "Public.UnprocessableEntity" {
+		t.Fatalf("execution input error = %v", input)
+	}
+	if timeout.HTTPCode != 504 || timeout.ErrorCode != "Public.GatewayTimeout" {
+		t.Fatalf("execution timeout error = %v", timeout)
+	}
+	if existing.HTTPCode != 422 || existing.ErrorCode != "Public.BadRequest" {
+		t.Fatalf("existing 422 contract changed: %v", existing)
+	}
+}

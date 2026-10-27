@@ -5,6 +5,8 @@
  * See the LICENSE file in the project root for details.
  */
 {
+  "code_too_long": "The code parameter contains %d Unicode characters; the maximum is %d.",
+  "toolkit_unavailable": "Cannot load sandbox toolkit version.",
   "code_required": "The code parameter is required.",
   "command_required": "The command parameter is required.",
   "unsupported_tool_wrap": "Unsupported PTC tool wrapper: %s."

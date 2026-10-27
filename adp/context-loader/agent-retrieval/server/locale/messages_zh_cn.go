@@ -9,6 +9,11 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
+		"Public.UnprocessableEntity":                                     "执行输入校验失败，请修正输入后重试。",
+		"agentRetrieval.Detail.FunctionCodeTooLong":                      "代码实际为 {{.Actual}} 个 Unicode 字符，最多允许 {{.Max}} 个。请缩短代码后重试。",
+		"agentRetrieval.Detail.FunctionExecutionTimeout":                 "函数执行超过配置的 {{.Timeout}} 秒超时限制，请减少工作量或调整超时配置。",
+		"agentRetrieval.Detail.FunctionExecutionTimeoutUnknown":          "函数执行超时，请减少工作量或调整超时配置。",
+		"agentRetrieval.Detail.FunctionExecutionInputInvalid":            "执行输入未通过校验，请修正输入后重试。",
 		"agentRetrieval.BadGateway.CommonExternalServerError":            "调用依赖服务异常，请检查依赖服务。",
 		"agentRetrieval.BadRequest.CommonAddForbidden":                   "权限不足，您暂无新建该资源的权限，请联系管理员申请授权请联系管理员",
 		"agentRetrieval.BadRequest.CommonAnonymousUserNotAllowed":        "匿名用户不允许访问请联系管理员",

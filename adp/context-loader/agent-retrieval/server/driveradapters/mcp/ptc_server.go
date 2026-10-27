@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"maps"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -50,6 +52,8 @@ const (
 	defaultPTCServicePort = 30780
 	// ptcMaxTimeout aligns with the execution-factory sandbox timeout.
 	ptcMaxTimeout = 600
+	// User source is measured before internal bootstrap code is added.
+	ptcMaxCodeCharacters = 102400
 )
 
 // The tools below are what an agent gets when it asks this service to run code.
@@ -122,6 +126,14 @@ func handlePTCExecuteForLocale(
 			}
 		}
 
+		if tool.Wrap == ptcWrapHandler {
+			if count := utf8.RuneCountInString(getStringArg(req, "code", "")); count > ptcMaxCodeCharacters {
+				failure := infraerrors.ExecutionInputValidationError(ctx, locale.PTCError("code_too_long", count, ptcMaxCodeCharacters))
+				failure.Metadata = map[string]any{"reason": "code_too_long", "stage": "validation", "actual": count, "max": ptcMaxCodeCharacters, "unit": "unicode_characters"}
+				return mcp.NewToolResultError(failure.Error()), nil
+			}
+		}
+
 		code, apiErr := buildPTCCode(locale, toolkit, tool, req, businessContext)
 		if apiErr != "" {
 			return mcp.NewToolResultError(apiErr), nil
@@ -136,6 +148,7 @@ func handlePTCExecuteForLocale(
 			event["mcp"] = toolkit.SandboxMCPURL
 			event["token"] = token
 			event["locale"] = common.GetLanguageFromCtx(ctx)
+			event["_ptc_source"] = getStringArg(req, "code", "")
 		}
 
 		resp, err := executor.ExecuteFunction(ctx, &interfaces.ExecuteFunctionRequest{
@@ -172,20 +185,20 @@ func buildPTCCode(
 ) (string, string) {
 	switch tool.Wrap {
 	case ptcWrapHandler:
-		code := strings.TrimRight(getStringArg(req, "code", ""), "\n")
+		code := getStringArg(req, "code", "")
 		if strings.TrimSpace(code) == "" {
 			return "", locale.PTCError("code_required")
 		}
-		var body strings.Builder
-		for _, line := range strings.Split(code, "\n") {
-			if strings.TrimSpace(line) == "" {
-				body.WriteString("\n")
-				continue
-			}
-			body.WriteString("    " + line + "\n")
+		if count := utf8.RuneCountInString(code); count > ptcMaxCodeCharacters {
+			return "", locale.PTCError("code_too_long", count, ptcMaxCodeCharacters)
 		}
-		// The sandbox follows the Lambda convention: handler(event).
-		return fmt.Sprintf("%s\n\ndef handler(event):\n    _configure(event)\n%s", toolkit.Stub, body.String()), ""
+		version, err := ImageToolkitVersion()
+		if err != nil {
+			return "", locale.PTCError("toolkit_unavailable")
+		}
+		// Keep user source in event: neither generated tool stubs nor indentation
+		// should consume its character budget or change multiline string values.
+		return fmt.Sprintf(ptcPythonBootstrap, version), ""
 	case ptcWrapCdWorkdir:
 		command := strings.TrimSpace(getStringArg(req, "command", ""))
 		if command == "" {
@@ -199,6 +212,33 @@ func buildPTCCode(
 		return "", locale.PTCError("unsupported_tool_wrap", tool.Wrap)
 	}
 }
+
+// Parse source unchanged, then place its statements in a function AST so top-level
+// return remains supported without adding spaces inside multiline literals.
+const ptcPythonBootstrap = `import ast as _ast
+import json as _json
+import os as _os
+from sandbox_sdk import _bkn_tools as _tools
+
+_EXPECTED_TOOLKIT_VERSION = %q
+
+def handler(event):
+    user_source = event.pop("_ptc_source")
+    if "EVENT_JSON" in _os.environ:
+        _os.environ["EVENT_JSON"] = _json.dumps(event, ensure_ascii=False)
+    actual = getattr(_tools, "__toolkit_version__", None)
+    if actual != _EXPECTED_TOOLKIT_VERSION:
+        raise RuntimeError("sandbox toolkit version mismatch: expected " + _EXPECTED_TOOLKIT_VERSION + ", actual " + str(actual) + "; rebuild the sandbox image")
+    _tools._configure(event)
+    source = _ast.parse(user_source, filename="<run_code>", mode="exec")
+    function = _ast.parse("def handler(event):\n    pass\n").body[0]
+    function.body = source.body or [_ast.Pass()]
+    module = _ast.fix_missing_locations(_ast.Module(body=[function], type_ignores=[]))
+    namespace = globals().copy()
+    namespace.update({name: value for name, value in vars(_tools).items() if not name.startswith("__")})
+    exec(compile(module, "<run_code>", "exec"), namespace)
+    return namespace["handler"](event)
+`
 
 // ptcWorkdir returns the sandbox work directory for this conversation.
 //

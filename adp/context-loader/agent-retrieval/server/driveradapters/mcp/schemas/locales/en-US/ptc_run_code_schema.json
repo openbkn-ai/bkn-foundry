@@ -4,4 +4,4 @@
  * Licensed under the Apache License, Version 2.0.
  * See the LICENSE file in the project root for details.
  */
-{"type":"object","properties":{"code":{"type":"string","description":"Python code to execute. Only output written with print is returned."},"timeout":{"type":"integer","default":60,"description":"Execution timeout in seconds."}},"required":["code"]}
+{"type":"object","properties":{"code":{"type":"string","maxLength":102400,"description":"Python code to execute. Maximum 102400 Unicode characters; internal wrappers and tool stubs do not consume this budget. Only output written with print is returned."},"timeout":{"type":"integer","default":60,"description":"Execution timeout in seconds."}},"required":["code"]}

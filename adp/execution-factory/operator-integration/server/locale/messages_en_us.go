@@ -10,6 +10,7 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"Public.UnprocessableEntity":                                                     "Invalid execution input. Correct the input before retrying.",
 		"AgentOperatorIntegration.BadGateway.OSSGatewayFailed":                           "Object storage is unavailable. Check the OSS gateway configuration or re-upload the Skill package Contact administrator",
 		"AgentOperatorIntegration.BadRequest.CategoryNameEmpty":                          "Category name cannot be empty Contact administrator",
 		"AgentOperatorIntegration.BadRequest.CategoryNameExist":                          "Category name already exists Contact administrator",

@@ -19,6 +19,7 @@ from typing import List, Tuple
 from executor.domain.entities import Execution
 from executor.domain.value_objects import ExecutionResult, ExecutionStatus, ExecutionMetrics
 from executor.infrastructure.config import settings
+from executor.infrastructure.isolation.python_stdin import PYTHON_STDIN_BOOTSTRAP
 from executor.infrastructure.isolation.code_wrapper import defines_handler, normalize_shell_code, uses_tool_decorator
 
 # After timeout, send SIGTERM first; send SIGKILL if the process still has not exited after this period.
@@ -77,6 +78,10 @@ class SubprocessRunner:
         try:
             # Build language-specific command and environment
             cmd, env_args = self._build_command(execution)
+            source = None
+            if execution.language.lower() in ("python", "python3"):
+                source = cmd[-1].encode("utf-8")
+                cmd[-1] = PYTHON_STDIN_BOOTSTRAP
             cwd_path = execution.context.resolve_working_directory_path()
 
             # start_new_session puts the child in its own process group, so a
@@ -86,6 +91,7 @@ class SubprocessRunner:
                 *cmd,
                 cwd=str(cwd_path),
                 env=env_args,
+                stdin=asyncio.subprocess.PIPE if source is not None else None,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 start_new_session=True,
@@ -93,7 +99,7 @@ class SubprocessRunner:
 
             timeout_seconds = execution.timeout_seconds or settings.default_timeout
             stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
+                process.communicate(input=source),
                 timeout=timeout_seconds,
             )
 
@@ -194,6 +200,8 @@ class SubprocessRunner:
             # Cancellation also makes awaiting unreliable here, so the last resort
             # is a synchronous SIGKILL rather than the graceful sequence.
             self._kill_process_group_now(process, execution.execution_id)
+            if process is not None and process.returncode is None:
+                await process.wait()
 
     def _kill_process_group_now(self, process, execution_id: str) -> None:
         """

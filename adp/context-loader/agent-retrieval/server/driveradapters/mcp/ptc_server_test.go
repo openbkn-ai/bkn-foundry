@@ -8,6 +8,8 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 // fakeExecutor records the last sandbox execution request.
@@ -137,11 +140,13 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	if executor.last.Language != "python" {
 		t.Fatalf("language 应为 python: %s", executor.last.Language)
 	}
-	// The sandbox is executed according to Lambda specifications. The entry must be a single-parameter handler, and the model code must be indented.
 	if !strings.Contains(executor.last.Code, "def handler(event):") ||
-		!strings.Contains(executor.last.Code, "    print(1)") ||
-		!strings.Contains(executor.last.Code, "    print(2)") {
-		t.Fatalf("代码未正确包成 handler:\n%s", executor.last.Code)
+		!strings.Contains(executor.last.Code, "from sandbox_sdk import _bkn_tools") ||
+		strings.Contains(executor.last.Code, "print(1)") {
+		t.Fatalf("run_code must use the fixed installed-toolkit bootstrap: %s", executor.last.Code)
+	}
+	if executor.last.Event["_ptc_source"] != "print(1)\n\nprint(2)" {
+		t.Fatalf("user source changed: %v", executor.last.Event["_ptc_source"])
 	}
 	if !strings.Contains(executor.last.Code, "_configure(event)") {
 		t.Fatal("未调用 _configure，工作目录与凭据都不会注入")
@@ -350,5 +355,178 @@ func TestPTCToolkitSchemaStaysContextFree(t *testing.T) {
 		if strings.Contains(string(tool.InputSchema), "bkn_context") {
 			t.Fatalf("%s 的工具包 schema 不应含 bkn_context: %s", tool.Name, tool.InputSchema)
 		}
+	}
+}
+
+func TestPTCRunCodeCharacterBudget(t *testing.T) {
+	for _, character := range []string{"x", "中", "😀"} {
+		for _, count := range []int{ptcMaxCodeCharacters - 1, ptcMaxCodeCharacters, ptcMaxCodeCharacters + 1} {
+			t.Run(fmt.Sprintf("%s/%d", character, count), func(t *testing.T) {
+				executor := &fakeExecutor{}
+				handler := handlePTCExecuteForLocale(executor, ptcTestToolkit(t), ptcToolByName(t, "run_code"), loadMCPLocaleBundle("en-US"))
+				source := strings.Repeat(character, count)
+				result, err := handler(context.Background(), ptcCallRequest("run_code", map[string]any{"code": source}))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count > ptcMaxCodeCharacters {
+					if !result.IsError || executor.last != nil {
+						t.Fatal("over-limit source reached executor")
+					}
+					encoded, _ := json.Marshal(result)
+					if !strings.Contains(string(encoded), "102401") || !strings.Contains(string(encoded), "102400") || !strings.Contains(string(encoded), "Public.UnprocessableEntity") || !strings.Contains(string(encoded), "code_too_long") || !strings.Contains(string(encoded), "unicode_characters") {
+						t.Fatalf("missing actual/max character counts: %s", encoded)
+					}
+				} else {
+					if result.IsError || executor.last == nil || executor.last.Event["_ptc_source"] != source {
+						t.Fatal("valid source rejected or modified")
+					}
+					if len(executor.last.Code) > 4096 {
+						t.Fatalf("internal bootstrap is not bounded: %d", len(executor.last.Code))
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestPTCPythonBootstrapPreservesSourceSemantics(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 unavailable")
+	}
+	version, err := ImageToolkitVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runPython := func(program string) ([]byte, error) {
+		command := exec.Command(python, "-")
+		command.Stdin = strings.NewReader(program)
+		return command.CombinedOutput()
+	}
+	// Only toolkit side effects are replaced; Python really compiles the user AST.
+	setup := fmt.Sprintf(`import sys, types, json, io, contextlib, inspect
+package = types.ModuleType("sandbox_sdk")
+tools = types.ModuleType("sandbox_sdk._bkn_tools")
+tools.__toolkit_version__ = %q
+configured = []
+tools._configure = lambda event: configured.append(event)
+def query(value: str = "default"):
+    """Example tool help."""
+    return value
+tools.query = query
+package._bkn_tools = tools
+sys.modules["sandbox_sdk"] = package
+`, version)
+	cases := []struct{ name, source, want string }{
+		{"return", "return 42", "42"},
+		{"comment_only", "# comment", "None"},
+		{"multiline", "text = '''first\nsecond\n  third'''\nreturn text", "first\nsecond\n  third"},
+		{"unicode", "return '中文😀'", "中文😀"},
+		{"empty_lines", "\n\nreturn 9\n\n", "9"},
+		{"tool_signature", "import inspect\nreturn str(inspect.signature(query))", "(value: str = 'default')"},
+		{"help", "return query.__doc__", "Example tool help."},
+		{"global_tool_call", "global custom\ncustom = 'value'\nreturn query(custom)", "value"},
+		{"module_identity", "return __name__", "__main__"},
+	}
+	for _, length := range []int{51254, 58554} {
+		for _, lines := range []int{1, 113} {
+			source := "return query('snapshot')" + strings.Repeat("\n#", lines-1)
+			source += " #" + strings.Repeat("x", length-len(source)-2)
+			cases = append(cases, struct{ name, source, want string }{fmt.Sprintf("reported_length_%d_lines_%d", length, lines), source, "snapshot"})
+		}
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			body, _ := json.Marshal(test.source)
+			program := setup + fmt.Sprintf(ptcPythonBootstrap, version) + "\nresult = handler({'_ptc_source': " + string(body) + ", 'token': 'caller'})\nassert configured[0]['token'] == 'caller'\nprint(result, end='')\n"
+			output, err := runPython(program)
+			if err != nil || string(output) != test.want {
+				t.Fatalf("got %q, err %v, want %q", output, err, test.want)
+			}
+		})
+	}
+	program := setup + fmt.Sprintf(ptcPythonBootstrap, version) + `
+import os, subprocess
+source = "import subprocess,sys,os\nassert '_ptc_source' not in event\nassert '_ptc_source' not in os.environ['EVENT_JSON']\nsubprocess.run([sys.executable, '-c', 'print(123)'], check=True)\n#" + "中" * 90000
+event = {'_ptc_source': source, 'token': 'caller'}
+os.environ['EVENT_JSON'] = json.dumps(event)
+handler(event)
+`
+	output, err := runPython(program)
+	if err != nil || string(output) != "123\n" {
+		t.Fatalf("source leaked into child environment: %s %v", output, err)
+	}
+	program = setup + fmt.Sprintf(ptcPythonBootstrap, version) + `
+try:
+    handler({'_ptc_source': "\ninvalid =\n"})
+except SyntaxError as error:
+    assert error.lineno == 2
+    assert error.filename == '<run_code>'
+else:
+    raise AssertionError('invalid syntax accepted')
+stdout, stderr = io.StringIO(), io.StringIO()
+with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+    handler({'_ptc_source': "import sys\nprint('out')\nprint('err', file=sys.stderr)\n"})
+assert stdout.getvalue() == 'out\n'
+assert stderr.getvalue() == 'err\n'
+`
+	output, err = runPython(program)
+	if err != nil {
+		t.Fatalf("source diagnostics or output streams changed: %s %v", output, err)
+	}
+	program = setup + fmt.Sprintf(ptcPythonBootstrap, "stale-version") + "\nhandler({'_ptc_source': 'raise Exception(123)'})\n"
+	output, err = runPython(program)
+	if err == nil || !strings.Contains(string(output), "sandbox toolkit version mismatch") || strings.Contains(string(output), "Exception: 123") {
+		t.Fatalf("stale toolkit must fail before user source: %s %v", output, err)
+	}
+}
+
+func TestPTCExecutePreservesPublicFailureClassification(t *testing.T) {
+	for _, test := range []struct {
+		status   int
+		code     string
+		metadata map[string]any
+	}{
+		{422, "Public.UnprocessableEntity", map[string]any{"reason": "code_too_long", "stage": "sandbox_validation", "actual": 102401, "max": 102400, "unit": "unicode_characters"}},
+		{504, "Public.GatewayTimeout", map[string]any{"reason": "execution_timeout", "stage": "sandbox_execution", "timeout_seconds": 60}},
+	} {
+		t.Run(test.code, func(t *testing.T) {
+			failure := httperrors.NewHTTPError(context.Background(), test.status, test.code).WithErrorDetails("safe execution failure").WithMetadata(test.metadata)
+			executor := &fakeExecutor{err: failure}
+			result, err := handlePTCExecute(executor, ptcTestToolkit(t), ptcToolByName(t, "run_code"))(context.Background(), ptcCallRequest("run_code", map[string]any{"code": "return 1"}))
+			if err != nil || !result.IsError {
+				t.Fatalf("failure not surfaced: %v %v", result, err)
+			}
+			if len(result.Content) != 1 {
+				t.Fatalf("unexpected error contents: %v", result.Content)
+			}
+			content, ok := result.Content[0].(mcp.TextContent)
+			if !ok {
+				t.Fatalf("error is not textual: %v", result.Content)
+			}
+			var got httperrors.BaseError
+			if err := json.Unmarshal([]byte(content.Text), &got); err != nil {
+				t.Fatal(err)
+			}
+			wantJSON := []byte(failure.Error())
+			var want httperrors.BaseError
+			if err := json.Unmarshal(wantJSON, &want); err != nil {
+				t.Fatal(err)
+			}
+			gotJSON, _ := json.Marshal(got)
+			if !reflect.DeepEqual(want, got) {
+				t.Fatalf("public classification changed: %s != %s", wantJSON, gotJSON)
+			}
+		})
+	}
+}
+
+func TestPTCExecuteMarksProcessLaunchFailure(t *testing.T) {
+	executor := &fakeExecutor{resp: &interfaces.ExecuteFunctionResponse{ExitCode: -1, Stderr: "Argument list too long"}}
+	result, err := handlePTCExecute(executor, ptcTestToolkit(t), ptcToolByName(t, "run_code"))(context.Background(), ptcCallRequest("run_code", map[string]any{"code": "return 1"}))
+	encoded, _ := json.Marshal(result)
+	if err != nil || !result.IsError || !strings.Contains(string(encoded), "Argument list too long") || !strings.Contains(string(encoded), "-1") {
+		t.Fatalf("process failure lost: %s %v", encoded, err)
 	}
 }
