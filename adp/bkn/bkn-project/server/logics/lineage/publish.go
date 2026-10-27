@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -23,8 +24,10 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"gopkg.in/yaml.v3"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/capability"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/drift"
 )
 
@@ -163,9 +166,14 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 	if err != nil {
 		return nil, err
 	}
-	if diff := drift.DiffFiles(stored, live); !diff.Empty() {
+	// So would edits made to the functions and Skills the last release recorded.
+	previous, tracked, capabilityDiff, err := drift.CheckCapabilities(ctx, gs, s.efa, token, lineageID, mainHead)
+	if err != nil {
+		return nil, err
+	}
+	if diff := drift.DiffFiles(stored, live); !diff.Empty() || !capabilityDiff.Empty() {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Release_Drift).
-			WithErrorDetails(&interfaces.DriftReport{LineageID: lineageID, KNID: liveID, PathDiff: diff})
+			WithErrorDetails(&interfaces.DriftReport{LineageID: lineageID, KNID: liveID, PathDiff: diff, Capabilities: capabilityDiff})
 	}
 
 	// The import runs in overwrite mode, so a network that already has this id and that no
@@ -195,10 +203,22 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
 			WithErrorDetails(err.Error())
 	}
+	// Functions and Skills follow the network. What to reuse or copy, and whether
+	// the package's references can move to the copies, is settled before the tag
+	// too; the copies are made after it, before the import, so the new network
+	// is created pointing at them.
+	steps, err := s.planCapabilities(ctx, token, pkg, previous, tracked, liveID, networkID)
+	if err != nil {
+		return nil, err
+	}
 	if !retry {
 		if err := gs.Tag(ctx, lineageID, tag, branchHead); err != nil {
 			return nil, err
 		}
+	}
+	pkg, released, err := s.applyCapabilities(ctx, token, pkg, steps, liveID, networkID)
+	if err != nil {
+		return nil, err
 	}
 
 	imported, err := s.bba.ImportBKN(ctx, token, pkg)
@@ -246,8 +266,118 @@ func (s *lineageService) publish(ctx context.Context, gs interfaces.GitStore, to
 		fmt.Sprintf("sync live definitions after release %s", tag), author); err != nil {
 		return nil, err
 	}
+	// release.yaml is what the next release compares against; a lineage that
+	// never used a function or Skill gets none.
+	if len(released) > 0 || !previous.Empty() {
+		manifest, err := capability.NextManifest(previous, released, networkID).Marshal()
+		if err != nil {
+			return nil, err
+		}
+		recorded := capability.Files(released)
+		recorded[interfaces.GIT_MANIFEST_FILE] = manifest
+		if commit, err = gs.CommitCapabilities(ctx, lineageID, interfaces.GIT_MAIN_BRANCH, recorded,
+			fmt.Sprintf("record functions and Skills of release %s", tag), author); err != nil {
+			return nil, err
+		}
+	}
 
 	return &interfaces.PublishReleaseResult{Release: release, NetworkID: networkID, Tag: tag, Commit: commit}, nil
+}
+
+// planCapabilities decides for each toolbox and Skill the package references
+// whether it is reused or copied (see capability.Plan), and checks that the
+// package's references can move to the copies, without making any. tracked
+// are the live items the previous release recorded, already exported.
+func (s *lineageService) planCapabilities(ctx context.Context, token string, pkg map[string][]byte,
+	previous *capability.Manifest, tracked []*capability.Item, oldNetworkID string,
+	networkID string) ([]*capability.Step, error) {
+	network, err := loadNetwork(pkg)
+	if err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(err.Error())
+	}
+	boxIDs, skillIDs := capability.References(network)
+	known := map[string]*capability.Item{}
+	for _, it := range tracked {
+		known[it.Dir()] = it
+	}
+	items := []*capability.Item{}
+	var newBoxes, newSkills []string
+	for _, id := range boxIDs {
+		if it, ok := known[(&capability.Item{Kind: capability.KIND_FUNCTION, ID: id}).Dir()]; ok {
+			items = append(items, it)
+		} else {
+			newBoxes = append(newBoxes, id)
+		}
+	}
+	for _, id := range skillIDs {
+		if it, ok := known[(&capability.Item{Kind: capability.KIND_SKILL, ID: id}).Dir()]; ok {
+			items = append(items, it)
+		} else {
+			newSkills = append(newSkills, id)
+		}
+	}
+	exported, err := capability.Export(ctx, s.efa, token, newBoxes, newSkills)
+	if err != nil {
+		return nil, err
+	}
+	items = append(items, exported...)
+
+	steps := capability.Plan(previous, items, oldNetworkID)
+	copies, err := capability.Preview(steps, oldNetworkID, networkID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := rewriteToCopies(pkg, oldNetworkID, networkID, copies); err != nil {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(err.Error())
+	}
+	return steps, nil
+}
+
+// applyCapabilities makes the copies the steps call for and points the package
+// at them. It returns the package and the items the new network uses, as git
+// keeps them.
+func (s *lineageService) applyCapabilities(ctx context.Context, token string, pkg map[string][]byte,
+	steps []*capability.Step, oldNetworkID string, networkID string) (map[string][]byte, []*capability.Item, error) {
+	copies, released, err := capability.Apply(ctx, s.efa, token, steps, oldNetworkID, networkID)
+	if err != nil {
+		return nil, nil, err
+	}
+	rewritten, err := rewriteToCopies(pkg, oldNetworkID, networkID, copies)
+	if err != nil {
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+			WithErrorDetails(err.Error())
+	}
+	return rewritten, released, nil
+}
+
+// rewriteToCopies points the package at the copies and checks that no
+// reference the rewrite did not reach would leave the new network on an original.
+func rewriteToCopies(pkg map[string][]byte, oldNetworkID string, networkID string,
+	copies []*capability.Copy) (map[string][]byte, error) {
+	rewritten, err := capability.RewritePackage(pkg, oldNetworkID, networkID, copies)
+	if err != nil {
+		return nil, err
+	}
+	network, err := loadNetwork(rewritten)
+	if err != nil {
+		return nil, err
+	}
+	boxIDs, skillIDs := capability.References(network)
+	for _, c := range copies {
+		if slices.Contains(boxIDs, c.OldID) || slices.Contains(skillIDs, c.OldID) {
+			return nil, fmt.Errorf("%s %s was copied to %s, but the definitions still reference it", c.Kind, c.OldID, c.NewID)
+		}
+	}
+	return rewritten, nil
+}
+
+// loadNetwork reads a definition set the way bkn-backend import does.
+func loadNetwork(files map[string][]byte) (*bkn.BknNetwork, error) {
+	fsys := bkn.NewMemoryFileSystem()
+	fsys.AddFiles(files)
+	return bkn.LoadNetworkWithFS(fsys, ".")
 }
 
 // tagRef names a tag in full, so a branch of the same name never shadows it.
@@ -302,9 +432,7 @@ func buildPackage(files map[string][]byte, networkID string, version string) (ma
 	}
 	pkg[bkn.RootFileName] = []byte(rewritten)
 
-	fsys := bkn.NewMemoryFileSystem()
-	fsys.AddFiles(pkg)
-	network, err := bkn.LoadNetworkWithFS(fsys, ".")
+	network, err := loadNetwork(pkg)
 	if err != nil {
 		return nil, err
 	}
@@ -320,55 +448,16 @@ func buildPackage(files map[string][]byte, networkID string, version string) (ma
 // instead would rebuild the whole file: the SDK serializer writes 2.x
 // frontmatter and needs every definition loaded to write the overview tables.
 func setNetworkHeader(text string, id string, name string) (string, error) {
-	const delimiter = "---"
-	bom := ""
-	if strings.HasPrefix(text, "\ufeff") {
-		bom, text = "\ufeff", strings.TrimPrefix(text, "\ufeff")
-	}
-	open := strings.Index(text, "\n")
-	if !strings.HasPrefix(text, delimiter) || open < 0 {
-		return "", fmt.Errorf("%s has no frontmatter", bkn.RootFileName)
-	}
-	end := strings.Index(text[open:], "\n"+delimiter)
-	if end < 0 {
-		return "", fmt.Errorf("%s has no frontmatter end", bkn.RootFileName)
-	}
-	frontmatter := text[open+1 : open+end+1]
-
-	var doc yaml.Node
-	if err := yaml.Unmarshal([]byte(frontmatter), &doc); err != nil {
-		return "", fmt.Errorf("parse %s frontmatter: %w", bkn.RootFileName, err)
-	}
-	if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
-		return "", fmt.Errorf("%s frontmatter is not a mapping", bkn.RootFileName)
-	}
-	values := map[string]string{"id": id, "name": name}
-	lines := strings.Split(frontmatter, "\n")
-	pairs := doc.Content[0].Content
-	for i := 0; i+1 < len(pairs); i += 2 {
-		key, value := pairs[i], pairs[i+1]
-		replacement, ok := values[key.Value]
-		if !ok {
-			continue
+	return common.EditFrontmatter(text, bkn.RootFileName, func(root *yaml.Node, set common.FrontmatterSetter) error {
+		for key, replacement := range map[string]string{"id": id, "name": name} {
+			k, v := common.MappingValue(root, key)
+			if k == nil {
+				return fmt.Errorf("%s frontmatter has no id or name", bkn.RootFileName)
+			}
+			if err := set(k, v, replacement); err != nil {
+				return err
+			}
 		}
-		// Only a value on the key's own line can be swapped line for line.
-		if value.Kind != yaml.ScalarNode || value.Line != key.Line ||
-			value.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
-			return "", fmt.Errorf("%s frontmatter %s is not a one-line value", bkn.RootFileName, key.Value)
-		}
-		encoded, err := yaml.Marshal(map[string]string{key.Value: replacement})
-		if err != nil {
-			return "", err
-		}
-		line := strings.TrimSuffix(string(encoded), "\n")
-		if strings.HasSuffix(lines[key.Line-1], "\r") {
-			line += "\r"
-		}
-		lines[key.Line-1] = line
-		delete(values, key.Value)
-	}
-	if len(values) > 0 {
-		return "", fmt.Errorf("%s frontmatter has no id or name", bkn.RootFileName)
-	}
-	return bom + text[:open+1] + strings.Join(lines, "\n") + text[open+end+1:], nil
+		return nil
+	})
 }

@@ -50,6 +50,11 @@ type AppSetting struct {
 	// {scheme}://{host}:{port}/api/bkn-backend/v1. BKN import and export
 	// (/bkns) are only served under this prefix.
 	BknBackendUrl string
+
+	// ExecutionFactoryUrl is the agent-operator-integration public API base, e.g.
+	// {scheme}://{host}:{port}/api/agent-operator-integration/v1. Toolbox impex
+	// and Skill registration are only served under this prefix, with the caller's token.
+	ExecutionFactoryUrl string
 }
 
 const (
@@ -58,9 +63,10 @@ const (
 	configName string = "bkn-project-config"
 	configType string = "yaml"
 
-	rdsServiceName        string = "rds"
-	hydraAdminServiceName string = "hydra-admin"
-	bknBackendServiceName string = "bkn-backend"
+	rdsServiceName           string = "rds"
+	hydraAdminServiceName    string = "hydra-admin"
+	bknBackendServiceName    string = "bkn-backend"
+	agentOperatorServiceName string = "agent-operator-integration"
 
 	// DefaultGitStoreRootDir is the git store root when the configuration does not name one.
 	DefaultGitStoreRootDir string = "/data/git"
@@ -124,6 +130,8 @@ func loadSetting(vp *viper.Viper) {
 
 	SetBknBackendSetting()
 
+	SetExecutionFactorySetting()
+
 	appSetting.OtelSetting.ServiceName = version.ServerName
 	appSetting.OtelSetting.ServiceVersion = version.ServerVersion
 	logger.Infof("ServerName: %s, ServerVersion: %s, Language: %s, GoVersion: %s, GoArch: %s",
@@ -171,4 +179,17 @@ func SetBknBackendSetting() {
 	port := setting["port"].(int)
 
 	appSetting.BknBackendUrl = fmt.Sprintf("%s://%s:%d/api/bkn-backend/v1", protocol, host, port)
+}
+
+func SetExecutionFactorySetting() {
+	setting, ok := appSetting.DepServices[agentOperatorServiceName]
+	if !ok {
+		logger.Fatalf("service %s not found in depServices", agentOperatorServiceName)
+	}
+
+	protocol := setting["protocol"].(string)
+	host := setting["host"].(string)
+	port := setting["port"].(int)
+
+	appSetting.ExecutionFactoryUrl = fmt.Sprintf("%s://%s:%d/api/agent-operator-integration/v1", protocol, host, port)
 }

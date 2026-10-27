@@ -7,14 +7,16 @@
 // network id. Every commit has this layout:
 //
 //	bkn/          the files of the bkn-backend export tar, paths kept as in the tar
-//	functions/    reserved: exported functions
-//	skills/       reserved: Skill packages
+//	functions/    the toolboxes the network uses, one directory per box id
+//	skills/       the released Skills the network uses, one directory per skill id
 //	project/      reserved: project metadata
-//	release.yaml  reserved: manifest with the id and content digest of each function and Skill
+//	release.yaml  manifest with the id, name, content digest and networks of each function and Skill
 //
-// Only bkn/ is written for now; CommitFiles replaces it and keeps every other
-// top-level entry as it is. A bare repository has no worktree, so commits are
-// built directly from blob, tree and commit objects.
+// CommitFiles replaces bkn/ and CommitCapabilities replaces functions/, skills/
+// and release.yaml; each keeps every other top-level entry as it is. Only main
+// carries the capability entries forward: a merge into a project branch takes
+// them from main. A bare repository has no worktree, so commits are built
+// directly from blob, tree and commit objects.
 package gitstore
 
 import (
@@ -340,29 +342,151 @@ func (gs *gitStore) ReadTree(ctx context.Context, lineageID string, ref string) 
 		return nil, err
 	}
 	files := map[string][]byte{}
-	if tree == nil {
-		span.SetStatus(codes.Ok, "")
-		return files, nil
-	}
-	err = tree.Files().ForEach(func(f *object.File) error {
-		r, err := f.Reader()
-		if err != nil {
-			return err
-		}
-		defer func() { _ = r.Close() }()
-		data, err := io.ReadAll(r)
-		if err != nil {
-			return err
-		}
-		files[f.Name] = data
-		return nil
-	})
-	if err != nil {
+	if err := readFiles(tree, "", files); err != nil {
 		span.SetStatus(codes.Error, "Read files failed")
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
 	return files, nil
+}
+
+func (gs *gitStore) ReadCapabilities(ctx context.Context, lineageID string, ref string) (map[string][]byte, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "ReadCapabilities")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return nil, err
+	}
+	l := gs.lock(lineageID)
+	l.RLock()
+	defer l.RUnlock()
+
+	commit, err := commitAt(repo, ref)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve ref failed")
+		return nil, err
+	}
+	root, err := commit.Tree()
+	if err != nil {
+		span.SetStatus(codes.Error, "Read tree failed")
+		return nil, err
+	}
+	files := map[string][]byte{}
+	for _, e := range root.Entries {
+		if !isCapabilityEntry(e.Name) {
+			continue
+		}
+		switch {
+		case e.Mode == filemode.Dir:
+			tree, err := repo.TreeObject(e.Hash)
+			if err == nil {
+				err = readFiles(tree, e.Name+"/", files)
+			}
+			if err != nil {
+				span.SetStatus(codes.Error, "Read files failed")
+				return nil, err
+			}
+		case e.Mode.IsFile():
+			data, err := readBlob(repo, e.Hash)
+			if err != nil {
+				span.SetStatus(codes.Error, "Read files failed")
+				return nil, err
+			}
+			files[e.Name] = data
+		}
+	}
+	span.SetStatus(codes.Ok, "")
+	return files, nil
+}
+
+func (gs *gitStore) CommitCapabilities(ctx context.Context, lineageID string, branch string, files map[string][]byte,
+	message string, author interfaces.GitAuthor) (string, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "CommitCapabilities")
+	defer span.End()
+
+	repo, err := gs.open(lineageID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Open repository failed")
+		return "", err
+	}
+	l := gs.lock(lineageID)
+	l.Lock()
+	defer l.Unlock()
+
+	dirs := map[string]map[string][]byte{interfaces.GIT_FUNCTIONS_DIR: {}, interfaces.GIT_SKILLS_DIR: {}}
+	manifest, hasManifest := files[interfaces.GIT_MANIFEST_FILE]
+	for p, data := range files {
+		dir, rest, nested := strings.Cut(p, "/")
+		if p == interfaces.GIT_MANIFEST_FILE {
+			continue
+		}
+		if _, ok := dirs[dir]; !ok || !nested {
+			span.SetStatus(codes.Error, "Invalid path")
+			return "", fmt.Errorf("path %q is not under %s/ or %s/", p, interfaces.GIT_FUNCTIONS_DIR, interfaces.GIT_SKILLS_DIR)
+		}
+		dirs[dir][rest] = data
+	}
+
+	branchRef := plumbing.NewBranchReferenceName(branch)
+	head, err := branchHead(repo, branchRef)
+	if err != nil {
+		span.SetStatus(codes.Error, "Read branch failed")
+		return "", fmt.Errorf("read branch %s of lineage %s: %w", branch, lineageID, err)
+	}
+	root, err := head.Tree()
+	if err != nil {
+		span.SetStatus(codes.Error, "Read tree failed")
+		return "", err
+	}
+	replaced := map[string]bool{interfaces.GIT_FUNCTIONS_DIR: true, interfaces.GIT_SKILLS_DIR: true}
+	entries := []object.TreeEntry{}
+	if hasManifest {
+		replaced[interfaces.GIT_MANIFEST_FILE] = true
+		hash, err := writeBlob(repo, manifest)
+		if err != nil {
+			span.SetStatus(codes.Error, "Write blob failed")
+			return "", err
+		}
+		entries = append(entries, object.TreeEntry{Name: interfaces.GIT_MANIFEST_FILE, Mode: filemode.Regular, Hash: hash})
+	}
+	for _, e := range root.Entries {
+		if !replaced[e.Name] {
+			entries = append(entries, e)
+		}
+	}
+	for dir, dirFiles := range dirs {
+		if len(dirFiles) == 0 {
+			continue
+		}
+		hash, err := writeTree(repo, dirFiles)
+		if err != nil {
+			span.SetStatus(codes.Error, "Write tree failed")
+			return "", err
+		}
+		entries = append(entries, object.TreeEntry{Name: dir, Mode: filemode.Dir, Hash: hash})
+	}
+	rootHash, err := encodeTree(repo, entries)
+	if err != nil {
+		span.SetStatus(codes.Error, "Write tree failed")
+		return "", err
+	}
+	if rootHash == head.TreeHash {
+		span.SetStatus(codes.Ok, "")
+		return head.Hash.String(), nil
+	}
+	hash, err := writeCommit(repo, rootHash, []plumbing.Hash{head.Hash}, message, author)
+	if err != nil {
+		span.SetStatus(codes.Error, "Commit failed")
+		return "", err
+	}
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(branchRef, hash)); err != nil {
+		span.SetStatus(codes.Error, "Set reference failed")
+		return "", err
+	}
+	span.SetStatus(codes.Ok, "")
+	return hash.String(), nil
 }
 
 func (gs *gitStore) Diff(ctx context.Context, lineageID string, refA string, refB string) (*interfaces.PathDiff, error) {
@@ -529,17 +653,17 @@ func (gs *gitStore) CommitMerge(ctx context.Context, lineageID string, branch st
 		span.SetStatus(codes.Error, "Read branch failed")
 		return "", fmt.Errorf("read branch %s of lineage %s: %w", branch, lineageID, err)
 	}
-	otherHash, err := resolveCommit(repo, other)
+	otherCommit, err := commitAt(repo, other)
 	if err != nil {
 		span.SetStatus(codes.Error, "Resolve ref failed")
 		return "", err
 	}
-	rootHash, err := rootTreeWithBkn(repo, head, files)
+	rootHash, err := mergeRootTree(repo, head, otherCommit, files)
 	if err != nil {
 		span.SetStatus(codes.Error, "Write tree failed")
 		return "", err
 	}
-	hash, err := writeCommit(repo, rootHash, []plumbing.Hash{head.Hash, otherHash}, message, author)
+	hash, err := writeCommit(repo, rootHash, []plumbing.Hash{head.Hash, otherCommit.Hash}, message, author)
 	if err != nil {
 		span.SetStatus(codes.Error, "Commit failed")
 		return "", err
@@ -678,6 +802,78 @@ func rootTreeWithBkn(repo *git.Repository, parent *object.Commit, files map[stri
 		entries = append(entries, object.TreeEntry{Name: BKN_DIR, Mode: filemode.Dir, Hash: bknHash})
 	}
 	return encodeTree(repo, entries)
+}
+
+// mergeRootTree writes the root tree of a merge into a project branch: bkn/ holds
+// files, the capability entries come from other (main, the only branch that writes
+// them) and every other top-level entry from head.
+func mergeRootTree(repo *git.Repository, head *object.Commit, other *object.Commit,
+	files map[string][]byte) (plumbing.Hash, error) {
+	headRoot, err := head.Tree()
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	otherRoot, err := other.Tree()
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+	entries := []object.TreeEntry{}
+	for _, e := range headRoot.Entries {
+		if e.Name != BKN_DIR && !isCapabilityEntry(e.Name) {
+			entries = append(entries, e)
+		}
+	}
+	for _, e := range otherRoot.Entries {
+		if isCapabilityEntry(e.Name) {
+			entries = append(entries, e)
+		}
+	}
+	if len(files) > 0 {
+		bknHash, err := writeTree(repo, files)
+		if err != nil {
+			return plumbing.ZeroHash, err
+		}
+		entries = append(entries, object.TreeEntry{Name: BKN_DIR, Mode: filemode.Dir, Hash: bknHash})
+	}
+	return encodeTree(repo, entries)
+}
+
+// isCapabilityEntry tells the top-level entries that hold functions and Skills.
+func isCapabilityEntry(name string) bool {
+	return name == interfaces.GIT_FUNCTIONS_DIR || name == interfaces.GIT_SKILLS_DIR || name == interfaces.GIT_MANIFEST_FILE
+}
+
+// readFiles adds the files of tree, recursively, to files under prefix.
+func readFiles(tree *object.Tree, prefix string, files map[string][]byte) error {
+	if tree == nil {
+		return nil
+	}
+	return tree.Files().ForEach(func(f *object.File) error {
+		r, err := f.Reader()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = r.Close() }()
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return err
+		}
+		files[prefix+f.Name] = data
+		return nil
+	})
+}
+
+func readBlob(repo *git.Repository, hash plumbing.Hash) ([]byte, error) {
+	blob, err := repo.BlobObject(hash)
+	if err != nil {
+		return nil, err
+	}
+	r, err := blob.Reader()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = r.Close() }()
+	return io.ReadAll(r)
 }
 
 // writeTree writes files as nested trees and returns the hash of the top one.

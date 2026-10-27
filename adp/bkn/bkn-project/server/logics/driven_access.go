@@ -16,6 +16,7 @@ var (
 	RA  interfaces.ReleaseAccess
 	GS  interfaces.GitStore
 	BBA interfaces.BknBackendAccess
+	EFA interfaces.ExecutionFactoryAccess
 )
 
 func SetDB(db *sql.DB) {
@@ -36,4 +37,8 @@ func SetGitStore(gs interfaces.GitStore) {
 
 func SetBknBackendAccess(bba interfaces.BknBackendAccess) {
 	BBA = bba
+}
+
+func SetExecutionFactoryAccess(efa interfaces.ExecutionFactoryAccess) {
+	EFA = efa
 }

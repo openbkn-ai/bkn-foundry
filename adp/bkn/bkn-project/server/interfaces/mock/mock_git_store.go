@@ -41,6 +41,21 @@ func (m *MockGitStore) EXPECT() *MockGitStoreMockRecorder {
 	return m.recorder
 }
 
+// CommitCapabilities mocks base method.
+func (m *MockGitStore) CommitCapabilities(ctx context.Context, lineageID, branch string, files map[string][]byte, message string, author interfaces.GitAuthor) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CommitCapabilities", ctx, lineageID, branch, files, message, author)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CommitCapabilities indicates an expected call of CommitCapabilities.
+func (mr *MockGitStoreMockRecorder) CommitCapabilities(ctx, lineageID, branch, files, message, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitCapabilities", reflect.TypeOf((*MockGitStore)(nil).CommitCapabilities), ctx, lineageID, branch, files, message, author)
+}
+
 // CommitFiles mocks base method.
 func (m *MockGitStore) CommitFiles(ctx context.Context, lineageID, branch string, files map[string][]byte, message string, author interfaces.GitAuthor) (string, error) {
 	m.ctrl.T.Helper()
@@ -143,6 +158,21 @@ func (m *MockGitStore) MergeBase(ctx context.Context, lineageID, refA, refB stri
 func (mr *MockGitStoreMockRecorder) MergeBase(ctx, lineageID, refA, refB any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeBase", reflect.TypeOf((*MockGitStore)(nil).MergeBase), ctx, lineageID, refA, refB)
+}
+
+// ReadCapabilities mocks base method.
+func (m *MockGitStore) ReadCapabilities(ctx context.Context, lineageID, ref string) (map[string][]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadCapabilities", ctx, lineageID, ref)
+	ret0, _ := ret[0].(map[string][]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadCapabilities indicates an expected call of ReadCapabilities.
+func (mr *MockGitStoreMockRecorder) ReadCapabilities(ctx, lineageID, ref any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadCapabilities", reflect.TypeOf((*MockGitStore)(nil).ReadCapabilities), ctx, lineageID, ref)
 }
 
 // ReadTree mocks base method.

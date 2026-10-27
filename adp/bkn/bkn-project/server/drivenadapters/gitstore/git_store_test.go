@@ -256,6 +256,57 @@ func Test_GitStore(t *testing.T) {
 			})
 		})
 
+		Convey("CommitCapabilities replaces functions/ and skills/, and release.yaml only when given\n", func() {
+			capabilities := map[string][]byte{
+				"functions/box1/toolbox.json": []byte("box1"),
+				"skills/s1/SKILL.md":          []byte("skill"),
+				"skills/s1/refs/spec.md":      []byte("spec"),
+				"release.yaml":                []byte("functions: []\n"),
+			}
+			head, err := gs.CommitCapabilities(ctx, "orders", "main", capabilities, "record", author)
+			So(err, ShouldBeNil)
+			So(head, ShouldNotEqual, first)
+			got, err := gs.ReadCapabilities(ctx, "orders", "main")
+			So(err, ShouldBeNil)
+			So(got, ShouldResemble, capabilities)
+			// bkn/ is untouched, and ReadTree still sees only bkn/.
+			defs, _ := gs.ReadTree(ctx, "orders", "main")
+			So(defs, ShouldResemble, base)
+
+			// The same files make no commit.
+			again, err := gs.CommitCapabilities(ctx, "orders", "main", capabilities, "record", author)
+			So(err, ShouldBeNil)
+			So(again, ShouldEqual, head)
+
+			// Without release.yaml the manifest is kept and the directories replaced.
+			next, err := gs.CommitCapabilities(ctx, "orders", "main",
+				map[string][]byte{"functions/box1/toolbox.json": []byte("box1 edited")}, "drift", author)
+			So(err, ShouldBeNil)
+			got, _ = gs.ReadCapabilities(ctx, "orders", "main")
+			So(got, ShouldResemble, map[string][]byte{
+				"functions/box1/toolbox.json": []byte("box1 edited"),
+				"release.yaml":                []byte("functions: []\n"),
+			})
+			So(next, ShouldNotEqual, head)
+
+			_, err = gs.CommitCapabilities(ctx, "orders", "main", map[string][]byte{"bkn/network.bkn": []byte("x")}, "bad", author)
+			So(err, ShouldNotBeNil)
+			_, err = gs.CommitCapabilities(ctx, "orders", "main", map[string][]byte{"functions": []byte("x")}, "bad", author)
+			So(err, ShouldNotBeNil)
+
+			Convey("and a merge into a project branch takes them from main\n", func() {
+				So(gs.CreateBranch(ctx, "orders", "project/p1", first), ShouldBeNil)
+				_, err := gs.CommitFiles(ctx, "orders", "project/p1", map[string][]byte{"network.bkn": []byte("network v2")}, "edit", author)
+				So(err, ShouldBeNil)
+				_, err = gs.CommitMerge(ctx, "orders", "project/p1", "main", map[string][]byte{"network.bkn": []byte("network v2")}, "merge", author)
+				So(err, ShouldBeNil)
+				onBranch, err := gs.ReadCapabilities(ctx, "orders", "project/p1")
+				So(err, ShouldBeNil)
+				onMain, _ := gs.ReadCapabilities(ctx, "orders", "main")
+				So(onBranch, ShouldResemble, onMain)
+			})
+		})
+
 		Convey("WithLineageLock runs fn under the lineage lock with a store that does not relock\n", func() {
 			var head string
 			err := gs.WithLineageLock(ctx, "orders", func(store interfaces.GitStore) error {
