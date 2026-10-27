@@ -352,10 +352,10 @@ func TestNetworkRelationIssues_ListsEveryIssueWithItsDefinitions(t *testing.T) {
 func TestValidateDeclarations_ReferencesAreIDs(t *testing.T) {
 	rt := &BknRelationType{
 		BknRelationTypeFrontmatter: BknRelationTypeFrontmatter{ID: "fallback", Importance: ImportanceSecondary,
-			FallbackFor: strings.Repeat("p", 41)},
+			FallbackFor: strings.Repeat("p", 129)},
 		Endpoint: Endpoint{Source: "a", Target: "b", Type: RELATION_MAPPING_TYPE_DIRECT},
 	}
-	assert.ErrorContains(t, ValidateRelationTypeDeclarations(rt), "fallback_for \""+strings.Repeat("p", 41)+"\" is not a relation type id")
+	assert.ErrorContains(t, ValidateRelationTypeDeclarations(rt), "fallback_for \""+strings.Repeat("p", 129)+"\" is not a relation type id")
 	rt.FallbackFor = " primary"
 	assert.ErrorContains(t, ValidateRelationTypeDeclarations(rt), "is not a relation type id")
 	rt.FallbackFor = "primary"

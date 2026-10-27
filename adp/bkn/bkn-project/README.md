@@ -16,7 +16,7 @@ history is kept as a lineage. See issue #2520 and epic #2519.
   semantic three-way merge.
 - Drift check between the live network and `main`.
 - Publishing a project branch as a new network `<lineage_id>_v<major>_<minor>_<patch>`
-  named `<base name> · <version>` (ids cut to 40 characters, names to 40
+  named `<base name> · <version>` (ids cut to 128 characters, names to 128
   characters), tagged `v<version>` in git.
 - Projects (`t_bkn_project_project`): each changes one network on its own
   branch `project/<id>` of the network's lineage; projects of one network

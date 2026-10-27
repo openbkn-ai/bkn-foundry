@@ -71,7 +71,7 @@ var errorcodeZhCN = i18n.I18nMessages{
 		"BknBackend.Validation.Detail.RequestedResourcesNotFound":        "请求的资源不存在：{{.resources}}。",
 		"BknBackend.Validation.Detail.MetricNameAlreadyExists":           "指标名称 {{.name}} 已存在。",
 		"BknBackend.Validation.Detail.NameLengthExceeded":                "{{.objectType}} {{.objectName}} 的长度不能超过 {{.limit}}。",
-		"BknBackend.Validation.Detail.IdentifierInvalid":                 "id 只能包含小写字母、数字、下划线和连字符，不能以下划线开头且长度不能超过 40 个字符（当前为 {{.id}}）。",
+		"BknBackend.Validation.Detail.IdentifierInvalid":                 "id 只能包含小写字母、数字、下划线和连字符，不能以下划线开头且长度不能超过 128 个字符（当前为 {{.id}}）。",
 		"BknBackend.Validation.Detail.RequestBindingFailed":              "请求参数绑定失败。",
 		"BknBackend.Validation.Detail.KnowledgeNetworkModuleTypeInvalid": "模块类型必须为 knowledge_network。",
 		"BknBackend.Validation.Detail.ConceptGroupModuleTypeInvalid":     "模块类型必须为 concept_group。",

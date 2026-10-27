@@ -9,6 +9,10 @@ info:
     use `modify` and `delete`. Lists and searches are filtered before total and
     pagination. See `../knowledge-network-authorization.md`.
 
+    Resource IDs use lowercase letters, digits, underscores, and hyphens, start
+    with a letter or digit, and contain at most 128 characters. Resource names
+    contain at most 128 Unicode characters.
+
     With `strict_mode=true`, resource-backed object types read only the Vega schema under
     `view_detail`. Main-branch publication reuses the effective delegator selected by Proxy
     preflight instead of requiring the current editor to repeat the downstream permission.
@@ -2101,9 +2105,12 @@ components:
         id:
           description: ID. It cannot be changed after creation and may contain only lowercase English letters, digits, underscores, and hyphens. It cannot start with an underscore or hyphen.
           type: string
+          maxLength: 128
+          pattern: "^$|^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Name
           type: string
+          maxLength: 128
         aliases:
           description: |
             Other names of the object type (BKN spec 3.0), for concept search and understanding; not its own name or another object type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
@@ -2182,6 +2189,7 @@ components:
         name:
           description: Name
           type: string
+          maxLength: 128
         aliases:
           description: |
             Other names of the object type (BKN spec 3.0), for concept search and understanding; not its own name or another object type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.
@@ -2329,9 +2337,12 @@ components:
         id:
           description: Object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Object type name
           type: string
+          maxLength: 128
         tags:
           description: Tags. May be empty.
           type: array
@@ -2352,6 +2363,8 @@ components:
         kn_id:
           description: Business knowledge network ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         data_source:
           $ref: "#/components/schemas/DataSource"
         creator:
@@ -2400,9 +2413,12 @@ components:
         id:
           description: Object type ID
           type: string
+          maxLength: 128
+          pattern: "^[a-z0-9][a-z0-9_-]{0,127}$"
         name:
           description: Object type name
           type: string
+          maxLength: 128
         aliases:
           description: |
             Other names of the object type (BKN spec 3.0), for concept search and understanding; not its own name or another object type's name. An update that leaves the field out keeps the stored aliases; null or [] clears them.

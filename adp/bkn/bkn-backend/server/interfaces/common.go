@@ -33,6 +33,9 @@ const (
 	// declarations.
 	CONFIRM_CLEAR_DECLARATIONS_KEY contextKey = "x-confirm-clear-declarations"
 
+	// RESOURCE_NAME_MAX_LENGTH is the maximum number of Unicode characters in a BKN resource name.
+	RESOURCE_NAME_MAX_LENGTH = 128
+	// OBJECT_NAME_MAX_LENGTH remains the limit for tags and property display names.
 	OBJECT_NAME_MAX_LENGTH = 40
 	DEFAULT_NAME_PATTERN   = ""
 	DEFAULT_OFFEST         = "0"
@@ -80,8 +83,9 @@ const (
 	DATA_SOURCE_TYPE_RESOURCE = "resource"
 
 	// Object ID validation.
-	RegexPattern_Builtin_ID    = "^[a-z0-9_][a-z0-9_-]{0,39}$"
-	RegexPattern_NonBuiltin_ID = "^[a-z0-9][a-z0-9_-]{0,39}$"
+	RESOURCE_ID_MAX_LENGTH     = 128
+	RegexPattern_Builtin_ID    = "^[a-z0-9_][a-z0-9_-]{0,127}$"
+	RegexPattern_NonBuiltin_ID = "^[a-z0-9][a-z0-9_-]{0,127}$"
 
 	// Property name constraints.
 	RegexPattern_Property_Name = "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$"

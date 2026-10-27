@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -57,6 +58,13 @@ func Test_GitStore(t *testing.T) {
 			_, err := gs.InitLineage(ctx, "orders", base, "again", author)
 			So(err, ShouldNotBeNil)
 			_, err = gs.InitLineage(ctx, "../escape", base, "init", author)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("InitLineage accepts 128-character IDs and rejects 129-character IDs\n", func() {
+			_, err := gs.InitLineage(ctx, strings.Repeat("a", 128), base, "init", author)
+			So(err, ShouldBeNil)
+			_, err = gs.InitLineage(ctx, strings.Repeat("a", 129), base, "init", author)
 			So(err, ShouldNotBeNil)
 		})
 

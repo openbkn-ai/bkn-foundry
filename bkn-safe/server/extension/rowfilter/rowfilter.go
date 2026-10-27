@@ -35,10 +35,10 @@ const (
 	// matches the existing property-level object batch bound so one ontology
 	// query can obtain both decisions without introducing another fan-out shape.
 	MaxObjectTypesPerRequest = 100
-	maxObjectIDLength        = 40
+	maxObjectIDLength        = 128
 )
 
-var objectTypeRefPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$`)
+var objectTypeRefPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,127}/[a-z0-9][a-z0-9_-]{0,127}$`)
 var propertyNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,39}$`)
 
 // ErrInvalidPlan means an extension returned a plan outside the deliberately

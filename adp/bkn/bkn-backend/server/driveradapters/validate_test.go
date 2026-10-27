@@ -9,6 +9,8 @@ package driveradapters
 import (
 	"context"
 	"net/http"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
@@ -51,6 +53,15 @@ func Test_validateImportMode(t *testing.T) {
 func Test_validateObjectName(t *testing.T) {
 	Convey("Test validateObjectName\n", t, func() {
 		ctx := context.Background()
+		resourceTypes := []string{
+			interfaces.MODULE_TYPE_KN,
+			interfaces.MODULE_TYPE_OBJECT_TYPE,
+			interfaces.MODULE_TYPE_RELATION_TYPE,
+			interfaces.MODULE_TYPE_ACTION_TYPE,
+			interfaces.MODULE_TYPE_CONCEPT_GROUP,
+			interfaces.MODULE_TYPE_RISK_TYPE,
+			interfaces.MODULE_TYPE_VALUE_TYPE,
+		}
 
 		Convey("Success with valid name\n", func() {
 			err := validateObjectName(ctx, "test_name", interfaces.MODULE_TYPE_OBJECT_TYPE)
@@ -65,17 +76,22 @@ func Test_validateObjectName(t *testing.T) {
 			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_NullParameter_Name)
 		})
 
-		Convey("Failed with name too long\n", func() {
-			longName := ""
-			for i := 0; i < interfaces.OBJECT_NAME_MAX_LENGTH+1; i++ {
-				longName += "a"
+		Convey("Accepts 128-character resource names for every shared resource type\n", func() {
+			name := strings.Repeat("名", interfaces.RESOURCE_NAME_MAX_LENGTH)
+			for _, resourceType := range resourceTypes {
+				So(validateObjectName(ctx, name, resourceType), ShouldBeNil)
 			}
-			err := validateObjectName(ctx, longName, interfaces.MODULE_TYPE_OBJECT_TYPE)
-			So(err, ShouldNotBeNil)
-			httpErr, ok := err.(*httperrors.HTTPError)
-			So(ok, ShouldBeTrue)
-			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
-			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_ObjectType_LengthExceeded_Name)
+		})
+
+		Convey("Rejects 129-character resource names for every shared resource type\n", func() {
+			name := strings.Repeat("名", interfaces.RESOURCE_NAME_MAX_LENGTH+1)
+			for _, resourceType := range resourceTypes {
+				err := validateObjectName(ctx, name, resourceType)
+				So(err, ShouldNotBeNil)
+				httpErr, ok := err.(*httperrors.HTTPError)
+				So(ok, ShouldBeTrue)
+				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+			}
 		})
 	})
 }
@@ -238,14 +254,23 @@ func Test_validateID(t *testing.T) {
 		})
 
 		Convey("Failed with ID too long\n", func() {
-			longID := ""
-			for i := 0; i < 41; i++ {
-				longID += "a"
-			}
+			longID := strings.Repeat("a", interfaces.RESOURCE_ID_MAX_LENGTH+1)
 			err := validateID(ctx, longID)
 			So(err, ShouldNotBeNil)
 			httpErr := err.(*httperrors.HTTPError)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
+		})
+
+		Convey("Success with a 128-character ID\n", func() {
+			err := validateID(ctx, strings.Repeat("a", interfaces.RESOURCE_ID_MAX_LENGTH))
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Built-in IDs retain their underscore exception and 128-character limit\n", func() {
+			pattern := regexp.MustCompile(interfaces.RegexPattern_Builtin_ID)
+			So(pattern.MatchString("_"+strings.Repeat("a", interfaces.RESOURCE_ID_MAX_LENGTH-1)), ShouldBeTrue)
+			So(pattern.MatchString("_"+strings.Repeat("a", interfaces.RESOURCE_ID_MAX_LENGTH)), ShouldBeFalse)
+			So(pattern.MatchString("Builtin"), ShouldBeFalse)
 		})
 	})
 }

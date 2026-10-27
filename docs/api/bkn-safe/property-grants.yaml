@@ -116,7 +116,8 @@ components:
       description: Canonical `<knowledge-network-id>/<object-type-id>` reference
       schema:
         type: string
-        pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+        maxLength: 257
+        pattern: '^[a-z0-9][a-z0-9_-]{0,127}/[a-z0-9][a-z0-9_-]{0,127}$'
   schemas:
     Subject:
       type: object
@@ -200,7 +201,8 @@ components:
           $ref: '#/components/schemas/Subject'
         object_type_ref:
           type: string
-          pattern: '^[a-z0-9][a-z0-9_-]{0,39}/[a-z0-9][a-z0-9_-]{0,39}$'
+          maxLength: 257
+          pattern: '^[a-z0-9][a-z0-9_-]{0,127}/[a-z0-9][a-z0-9_-]{0,127}$'
         reason:
           type: string
           minLength: 1

@@ -9,8 +9,8 @@ USE openbkn;
 -- network; the lineage id is the base network id.
 CREATE TABLE IF NOT EXISTS t_bkn_project_release (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Release ID',
-  f_lineage_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Lineage ID: the base knowledge network ID',
-  f_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID this release was imported as',
+  f_lineage_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Lineage ID: the base knowledge network ID',
+  f_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID this release was imported as',
   f_version VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Release version',
   f_base_version VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Version this release was based on; empty for the first release',
   f_project_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Project ID',
@@ -33,9 +33,9 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_release (
 
 CREATE TABLE IF NOT EXISTS t_bkn_project_switch (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Switch ID',
-  f_lineage_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Lineage ID',
-  f_from_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched away from',
-  f_to_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched to',
+  f_lineage_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Lineage ID',
+  f_from_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched away from',
+  f_to_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID switched to',
   f_operator VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Operator ID',
   f_operator_type VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'Operator type',
   f_schedules TEXT NOT NULL COMMENT 'Schedules moved, JSON: from_id, to_id, name',
@@ -51,9 +51,9 @@ CREATE TABLE IF NOT EXISTS t_bkn_project_switch (
 CREATE TABLE IF NOT EXISTS t_bkn_project_project (
   f_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Project ID',
   f_name VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Project name',
-  f_kn_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID: the lineage ID',
+  f_kn_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Knowledge network ID: the lineage ID',
   f_branch VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Git branch of the lineage',
-  f_baseline_network_id VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Live knowledge network when the project started',
+  f_baseline_network_id VARCHAR(128) NOT NULL DEFAULT '' COMMENT 'Live knowledge network when the project started',
   f_catalog_ids TEXT NOT NULL COMMENT 'Data catalog IDs the project uses, JSON array',
   f_archived TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived: hidden from the default list',
   f_owner VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'Owner ID: the creator',

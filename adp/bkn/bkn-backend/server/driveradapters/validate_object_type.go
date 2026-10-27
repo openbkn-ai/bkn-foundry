@@ -463,7 +463,7 @@ func ValidatePropertyName(ctx context.Context, name string) error {
 	if name == "" {
 		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_NullParameter_PropertyName)
 	}
-	// IDs contain letters, digits, underscores, and hyphens; they cannot start with an underscore and are limited to 40 characters.
+	// Property names contain letters, digits, underscores, and hyphens; they cannot start with an underscore and are limited to 40 characters.
 	re := regexp2.MustCompile(interfaces.RegexPattern_Property_Name, regexp2.RE2)
 	match, err := re.MatchString(name)
 	if err != nil || !match {
