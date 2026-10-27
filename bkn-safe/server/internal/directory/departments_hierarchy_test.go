@@ -88,7 +88,7 @@ func TestOrdinaryDepartmentUpdatesDoNotReadTheWholeHierarchy(t *testing.T) {
 	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
 		if tx.Statement.Table == "departments" {
 			if _, scoped := tx.Statement.Clauses["WHERE"]; !scoped {
-				tx.AddError(errors.New("ordinary department update read the entire hierarchy"))
+				_ = tx.AddError(errors.New("ordinary department update read the entire hierarchy"))
 			}
 		}
 	}); err != nil {
