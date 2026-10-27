@@ -408,6 +408,58 @@ func TestPublishKNCapabilityMutationRequiresExecuteOnANewlyMountedSkill(t *testi
 	})
 }
 
+// A knowledge base the editor cannot read is refused at mount time, like a Skill they cannot run
+// (#2576): a mount the proxy could never read would only advertise something unusable.
+func TestPublishKNCapabilityMutationRequiresQueryDataOnANewlyMountedKnowledgeBase(t *testing.T) {
+	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "editor-1"})
+	newKB := &interfaces.CapabilityBinding{
+		ID: "binding-kb-7", KNID: "kn-1", Branch: interfaces.MAIN_BRANCH,
+		CapabilityType: interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, CapabilityID: "7",
+	}
+	mutate := func(context.Context, *sql.Tx) (*interfaces.KNCapabilityMutationResult, error) {
+		return &interfaces.KNCapabilityMutationResult{Bindings: []*interfaces.CapabilityBinding{newKB}}, nil
+	}
+	fixture := newSkillProjectionFixture()
+	fixture.bindings = nil
+	kpa := &proxyAccessStub{mapping: &interfaces.KNProxyAccount{KNID: "kn-1", ProxyAccountID: "proxy-1",
+		LifecycleStatus: interfaces.KNProxyLifecycleActive}}
+	safe := &skillAwareSafeStub{managedProxyAccessStub: &managedProxyAccessStub{
+		allowed: true, deniedResources: map[string]bool{"7": true},
+	}}
+	service := newProjectionService(t, fixture, kpa, safe)
+	db, sqlMock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		sqlMock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Errorf("close mock database: %v", err)
+		}
+	}()
+	sqlMock.ExpectBegin()
+	sqlMock.ExpectRollback()
+	service.db = db
+
+	_, err = service.PublishKNCapabilityMutation(ctx, "kn-1", interfaces.MAIN_BRANCH, nil, mutate)
+	var httpErr *httperrors.HTTPError
+	if !errors.As(err, &httpErr) || httpErr.ErrorCode != berrors.BknBackend_KnowledgeNetwork_ProxyPermissionMissing {
+		t.Fatalf("mount error = %v, want ProxyPermissionMissing", err)
+	}
+	details, _ := httpErr.ErrorDetails.(missingProxyPermissionDetails)
+	if len(details.MissingPermissions) != 1 ||
+		details.MissingPermissions[0].ResourceType != interfaces.KNProxyTargetTypeKnowledgeBase ||
+		details.MissingPermissions[0].Operation != interfaces.OPERATION_TYPE_QUERY_DATA {
+		t.Fatalf("missing permissions = %#v", httpErr.ErrorDetails)
+	}
+	if kpa.pendingCount != 0 || safe.syncCalls != 0 {
+		t.Fatal("a refused mount marked the proxy pending or synchronized it")
+	}
+	if err := sqlMock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPublishKNCapabilityMutationMountsASkillWhileSafePredatesSkillSources(t *testing.T) {
 	ctx := context.WithValue(t.Context(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "editor-1"})
 	fixture := newSkillProjectionFixture()

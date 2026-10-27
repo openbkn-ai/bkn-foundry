@@ -582,7 +582,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 			rollback()
 			return nil, preflightErr
 		}
-		if err := refuseNewlyMountedSkillsWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
+		if err := refuseNewlyMountedCapabilitiesWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
 			rollback()
 			return nil, err
 		}
@@ -612,7 +612,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 				rollback()
 				return nil, preflightErr
 			}
-			if err := refuseNewlyMountedSkillsWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
+			if err := refuseNewlyMountedCapabilitiesWithoutGrant(ctx, selection, currentBindings, result.Bindings); err != nil {
 				rollback()
 				return nil, err
 			}
@@ -633,7 +633,7 @@ func (kns *knowledgeNetworkService) PublishKNCapabilityMutation(ctx context.Cont
 			// Mounting a Skill is where its grant is vouched for, so the mounter must
 			// hold execute on it, as for a tool. Everywhere else a Skill grant is best
 			// effort; this is the one write that asks for it by name.
-			if err := refuseNewlyMountedSkillsWithoutGrant(ctx, grants, currentBindings, result.Bindings); err != nil {
+			if err := refuseNewlyMountedCapabilitiesWithoutGrant(ctx, grants, currentBindings, result.Bindings); err != nil {
 				rollback()
 				return nil, err
 			}
