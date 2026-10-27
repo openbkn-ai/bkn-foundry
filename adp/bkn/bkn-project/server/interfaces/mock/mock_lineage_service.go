@@ -101,6 +101,21 @@ func (mr *MockLineageServiceMockRecorder) CreateLineage(ctx, token, knID, author
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLineage", reflect.TypeOf((*MockLineageService)(nil).CreateLineage), ctx, token, knID, author)
 }
 
+// PlanSwitch mocks base method.
+func (m *MockLineageService) PlanSwitch(ctx context.Context, token, lineageID, toNetworkID string) (*interfaces.SwitchPlan, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PlanSwitch", ctx, token, lineageID, toNetworkID)
+	ret0, _ := ret[0].(*interfaces.SwitchPlan)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PlanSwitch indicates an expected call of PlanSwitch.
+func (mr *MockLineageServiceMockRecorder) PlanSwitch(ctx, token, lineageID, toNetworkID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlanSwitch", reflect.TypeOf((*MockLineageService)(nil).PlanSwitch), ctx, token, lineageID, toNetworkID)
+}
+
 // PublishRelease mocks base method.
 func (m *MockLineageService) PublishRelease(ctx context.Context, token, lineageID string, req interfaces.PublishReleaseRequest, publisher interfaces.AccountInfo, author interfaces.GitAuthor) (*interfaces.PublishReleaseResult, error) {
 	m.ctrl.T.Helper()
@@ -114,6 +129,21 @@ func (m *MockLineageService) PublishRelease(ctx context.Context, token, lineageI
 func (mr *MockLineageServiceMockRecorder) PublishRelease(ctx, token, lineageID, req, publisher, author any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishRelease", reflect.TypeOf((*MockLineageService)(nil).PublishRelease), ctx, token, lineageID, req, publisher, author)
+}
+
+// SwitchConsumers mocks base method.
+func (m *MockLineageService) SwitchConsumers(ctx context.Context, token, lineageID string, req interfaces.SwitchRequest, operator interfaces.AccountInfo) (*interfaces.Switch, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SwitchConsumers", ctx, token, lineageID, req, operator)
+	ret0, _ := ret[0].(*interfaces.Switch)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SwitchConsumers indicates an expected call of SwitchConsumers.
+func (mr *MockLineageServiceMockRecorder) SwitchConsumers(ctx, token, lineageID, req, operator any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SwitchConsumers", reflect.TypeOf((*MockLineageService)(nil).SwitchConsumers), ctx, token, lineageID, req, operator)
 }
 
 // SyncBranch mocks base method.

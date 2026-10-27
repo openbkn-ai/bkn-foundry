@@ -37,6 +37,8 @@ const (
 func (r *restHandler) CreateLineageByEx(c *gin.Context) { r.withExVisitor(c, r.CreateLineage) }
 func (r *restHandler) CreateBranchByEx(c *gin.Context)  { r.withExVisitor(c, r.CreateBranch) }
 func (r *restHandler) CheckDriftByEx(c *gin.Context)    { r.withExVisitor(c, r.CheckDrift) }
+func (r *restHandler) PlanSwitchByEx(c *gin.Context)    { r.withExVisitor(c, r.PlanSwitch) }
+func (r *restHandler) SwitchByEx(c *gin.Context)        { r.withExVisitor(c, r.SwitchConsumers) }
 
 // CommitDefinitionsByEx serves PUT .../branches/{branch}/definitions. A branch
 // name may hold "/", so the route catches the rest of the path and the action is
@@ -190,4 +192,48 @@ func (r *restHandler) CheckDrift(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, result)
+}
+
+// PlanSwitch serves GET /lineages/{lineage_id}/switch-plan?to={network_id}.
+func (r *restHandler) PlanSwitch(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	lineageID, to := c.Param("lineage_id"), c.Query("to")
+	span.SetAttributes(attr.Key("lineage_id").String(lineageID), attr.Key("to_network_id").String(to))
+
+	plan, err := r.ls.PlanSwitch(ctx, visitor.TokenID, lineageID, to)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, plan)
+}
+
+// SwitchConsumers serves POST /lineages/{lineage_id}/switches with {"to_network_id"}.
+func (r *restHandler) SwitchConsumers(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	lineageID := c.Param("lineage_id")
+	span.SetAttributes(attr.Key("lineage_id").String(lineageID))
+
+	req := interfaces.SwitchRequest{}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		replyError(c, span, invalidBody(ctx))
+		return
+	}
+	span.SetAttributes(attr.Key("to_network_id").String(req.ToNetworkID))
+
+	operator := interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)}
+	sw, err := r.ls.SwitchConsumers(ctx, visitor.TokenID, lineageID, req, operator)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusCreated)
+	rest.ReplyOK(c, http.StatusCreated, sw)
 }
