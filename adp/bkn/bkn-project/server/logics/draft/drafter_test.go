@@ -34,11 +34,14 @@ type fakeCounter struct {
 	failed map[string]bool // table id or table.field whose queries fail
 }
 
-func (f *fakeCounter) keyStats(_ context.Context, table *interfaces.VegaTable, _ string) (int64, int64, int64, error) {
-	if f.failed[table.ID] {
+func (f *fakeCounter) keyStats(_ context.Context, table *interfaces.VegaTable, field string) (int64, int64, int64, error) {
+	if f.failed[table.ID] || f.failed[table.ID+"."+field] {
 		return 0, 0, 0, errors.New("timeout")
 	}
-	s, ok := f.keys[table.ID]
+	s, ok := f.keys[table.ID+"."+field]
+	if !ok {
+		s, ok = f.keys[table.ID]
+	}
 	if !ok {
 		s = [3]int64{10, 10, 0}
 	}

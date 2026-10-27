@@ -51,6 +51,22 @@ func Test_DraftingFloor(t *testing.T) {
 			So(o.Adopted, ShouldBeFalse)
 		})
 
+		Convey("A candidate whose count fails keeps no counts of an earlier candidate\n", func() {
+			// Candidates in order: id, then the first field billno.
+			po := table("r_po", "c1", "erp_purchase_order", 0, nil, col("billno", "string", ""), col("id", "integer", ""))
+			c := sampleCounter()
+			c.keys["r_po.id"] = [3]int64{300, 290, 0}
+			c.failed["r_po.billno"] = true
+
+			o := objectType(draftOf(c, po), "erp_purchase_order")
+
+			So(o.NeedsIdentity, ShouldBeTrue)
+			So(o.Key.Field, ShouldEqual, "billno")
+			So(o.Key.Computed, ShouldBeFalse)
+			So(o.Key.Distinct, ShouldEqual, 0)
+			So(o.Key.Reason, ShouldStartWith, reasonQueryFailed)
+		})
+
 		Convey("A role-prefixed field refers to the table whose key it ends with\n", func() {
 			lots := table("r_lots", "c1", "lots", 0, []string{"lot_id"}, col("lot_id", "string", ""))
 			links := table("r_links", "c1", "lot_links", 0, []string{"link_id"},

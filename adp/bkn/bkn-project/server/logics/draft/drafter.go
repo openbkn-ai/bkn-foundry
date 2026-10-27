@@ -277,7 +277,10 @@ func (d *drafter) inferKey(ctx context.Context, table *interfaces.VegaTable, obj
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			objectType.Key.Field, objectType.Key.Reason = field, fmt.Sprintf("%s: %v", reasonQueryFailed, err)
+			// The evidence is this candidate's alone, not an earlier one's counts.
+			objectType.Key = interfaces.DraftKeyEvidence{
+				Source: interfaces.DRAFT_KEY_INFERRED, Field: field, Reason: fmt.Sprintf("%s: %v", reasonQueryFailed, err),
+			}
 			continue
 		}
 		objectType.Key = interfaces.DraftKeyEvidence{
