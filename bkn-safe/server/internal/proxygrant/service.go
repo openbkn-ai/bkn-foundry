@@ -1416,13 +1416,16 @@ func normalizeSpec(spec SourceSpec) (SourceSpec, error) {
 	// A Skill mounted on a network is read as the network's proxy. The
 	// execution factory accepts execute as a read grant on a Skill, and Context
 	// Loader only reads as the proxy; view is not accepted because a delegator
-	// allowed to run a built-in Skill often lacks it.
+	// allowed to run a built-in Skill often lacks it. A knowledge base bound to a
+	// network is read through kb-api's read API, which checks query_data only;
+	// its required view_detail is derived like any other requirement (#2576).
 	allowed := map[string]map[string]bool{
-		"resource": {"view_detail": true, "query_data": true},
-		"tool_box": {"execute": true},
-		"function": {"execute": true},
-		"mcp":      {"execute": true},
-		"skill":    {"execute": true},
+		"resource":       {"view_detail": true, "query_data": true},
+		"tool_box":       {"execute": true},
+		"function":       {"execute": true},
+		"mcp":            {"execute": true},
+		"skill":          {"execute": true},
+		"knowledge_base": {"query_data": true},
 	}
 	if !allowed[spec.ResourceType][spec.Operation] {
 		return SourceSpec{}, ErrInvalidRequest
