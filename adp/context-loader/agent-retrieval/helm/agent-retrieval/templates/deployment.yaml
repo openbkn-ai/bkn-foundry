@@ -73,10 +73,6 @@ spec:
               - name: EXECUTE_SKILL_ENABLED
                 value: {{ .Values.skill.executeEnabled | default false | quote }}
             {{- end}}
-            {{- with .Values.mcpApps.metricAnalysisHtmlURL }}
-              - name: MCP_METRIC_APP_HTML_URL
-                value: {{ . | quote }}
-            {{- end }}
             {{- if .Values.depServices.rds.type}}
               - name: DB_TYPE
                 value: {{ .Values.depServices.rds.type | quote }}

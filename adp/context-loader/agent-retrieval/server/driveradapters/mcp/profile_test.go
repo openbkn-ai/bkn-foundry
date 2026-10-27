@@ -92,6 +92,45 @@ func TestCompactProfilePublishesExactlyItsToolList(t *testing.T) {
 	}
 }
 
+func TestMetricToolsDoNotAdvertiseAnApp(t *testing.T) {
+	// A leftover deployment setting must not turn the metric result into an
+	// interactive MCP resource after the app integration is removed.
+	t.Setenv("MCP_METRIC_APP_HTML_URL", "http://example.test/metric-analysis-mcp.html")
+	for name, makeServer := range map[string]func() *server.MCPServer{
+		"full": func() *server.MCPServer {
+			srv, _ := newMCPServerForLocale(nil, "en-US")
+			return srv
+		},
+		"compact": func() *server.MCPServer { return compactServer(t, "en-US") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := makeServer()
+			names := listedToolNames(t, srv)
+			for _, tool := range []string{"query_metric", "drill_through_metric"} {
+				if !slices.Contains(names, tool) {
+					t.Fatalf("%s missing from tools/list: %v", tool, names)
+				}
+			}
+			listed, err := json.Marshal(rpc(t, srv, "tools/list", map[string]any{}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(listed), "resourceUri") || strings.Contains(string(listed), "ui://openbkn/object-metric-analysis") {
+				t.Fatalf("metric tool still advertises an MCP App: %s", listed)
+			}
+			if response, ok := rpc(t, srv, "resources/list", map[string]any{}).(mcpsdk.JSONRPCResponse); ok {
+				resources, err := json.Marshal(response.Result)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(resources), "ui://openbkn/object-metric-analysis") {
+					t.Fatalf("metric MCP App resource is still listed: %s", resources)
+				}
+			}
+		})
+	}
+}
+
 func TestCompactProfileRefusesUnpublishedToolsLikeUnknownOnes(t *testing.T) {
 	srv := compactServer(t, "zh-CN")
 	unknown := rpc(t, srv, "tools/call", map[string]any{"name": "no_such_tool", "arguments": map[string]any{}})

@@ -262,9 +262,6 @@ func newMCPServerForProfile(
 		server.WithToolCapabilities(true),
 		server.WithInstructions(profile.instructions(localeBundle)),
 	}
-	if profile.endpointPath == endpointPath && metricAppHTMLURL() != "" {
-		options = append(options, server.WithResourceCapabilities(false, false))
-	}
 	if profile.textResults {
 		// Outermost of all, so it projects the result the guard completed.
 		options = append(options, server.WithToolHandlerMiddleware(compactResultMiddleware()))
@@ -315,9 +312,6 @@ func newMCPServerForProfile(
 	mcpServer = server.NewMCPServer(serverName, serverVersion, options...)
 	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 	b.attach(mcpServer)
-	if profile.endpointPath == endpointPath {
-		registerMetricAppResource(mcpServer)
-	}
 	if profile.gateway {
 		registerGatewayTools(mcpServer, b, lifecycleClient)
 	}
