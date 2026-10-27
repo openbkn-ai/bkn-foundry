@@ -241,6 +241,37 @@ func Test_LineageRestHandler(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 			So(w.Body.String(), ShouldContainSubstring, perrors.BknProject_Lineage_InvalidRequestBody)
 		})
+
+		Convey("A switch plan reads the target from the query\n", func() {
+			ls.EXPECT().PlanSwitch(gomock.Any(), "Bearer t1", "orders", "orders_v1_1_0").Return(&interfaces.SwitchPlan{
+				LineageID: "orders", FromNetworkID: "orders_v1_0_0", ToNetworkID: "orders_v1_1_0",
+				Schedules: []*interfaces.ActionSchedule{{ID: "s1", Name: "nightly", ActionTypeID: "restock", Status: "active"}},
+			}, nil)
+
+			w := serveBody(handler, http.MethodGet, "/api/bkn-project/v1/lineages/orders/switch-plan?to=orders_v1_1_0", nil)
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			var body map[string]any
+			So(json.Unmarshal(w.Body.Bytes(), &body), ShouldBeNil)
+			So(body["from_network_id"], ShouldEqual, "orders_v1_0_0")
+			So(body["schedules"].([]any)[0].(map[string]any)["name"], ShouldEqual, "nightly")
+		})
+
+		Convey("A switch records the caller as operator and replies 201\n", func() {
+			operator := interfaces.AccountInfo{ID: "u1", Type: string(hydra.VisitorType_User)}
+			ls.EXPECT().SwitchConsumers(gomock.Any(), "Bearer t1", "orders", interfaces.SwitchRequest{ToNetworkID: "orders"}, operator).
+				Return(&interfaces.Switch{ID: "w1", FromNetworkID: "orders_v1_0_0", ToNetworkID: "orders",
+					Schedules: []interfaces.SwitchedSchedule{}}, nil)
+
+			w := serveBody(handler, http.MethodPost, "/api/bkn-project/v1/lineages/orders/switches", []byte(`{"to_network_id":"orders"}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusCreated)
+			So(w.Body.String(), ShouldContainSubstring, `"to_network_id":"orders"`)
+
+			w = serveBody(handler, http.MethodPost, "/api/bkn-project/v1/lineages/orders/switches", []byte(`not json`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
 	})
 
 	Convey("Lineage routes need a valid token\n", t, func() {

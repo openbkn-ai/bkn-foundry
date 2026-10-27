@@ -78,6 +78,24 @@ type PublishReleaseResult struct {
 	Commit string `json:"commit"`
 }
 
+// SwitchRequest is the body of POST /lineages/{lineage_id}/switches.
+type SwitchRequest struct {
+	// ToNetworkID is a network of the lineage: one a release created, or the base network.
+	ToNetworkID string `json:"to_network_id"`
+}
+
+// SwitchPlan is what switching the lineage to ToNetworkID would do to the
+// schedules. Agents, MCP configurations, workshop, eval and permissions on the
+// target are switched by their owners and are not listed.
+type SwitchPlan struct {
+	LineageID     string `json:"lineage_id"`
+	FromNetworkID string `json:"from_network_id"`
+	ToNetworkID   string `json:"to_network_id"`
+	// Schedules are the active schedules of the network in use. A switch turns
+	// each on on the target, where it runs as whoever switches, and off here.
+	Schedules []*ActionSchedule `json:"schedules"`
+}
+
 // LineageService sets up release lineages, keeps project branches in step with
 // main and publishes them. Errors are *httperrors.HTTPError.
 //
@@ -97,4 +115,10 @@ type LineageService interface {
 	// PublishRelease imports a project branch with token as a new knowledge network and records the release.
 	PublishRelease(ctx context.Context, token string, lineageID string, req PublishReleaseRequest,
 		publisher AccountInfo, author GitAuthor) (*PublishReleaseResult, error)
+	// PlanSwitch reports what switching the lineage to toNetworkID would do, without doing it.
+	PlanSwitch(ctx context.Context, token string, lineageID string, toNetworkID string) (*SwitchPlan, error)
+	// SwitchConsumers moves the lineage's schedules to req.ToNetworkID and records the switch. A
+	// rollback is a switch back to an earlier network.
+	SwitchConsumers(ctx context.Context, token string, lineageID string, req SwitchRequest,
+		operator AccountInfo) (*Switch, error)
 }

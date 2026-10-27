@@ -79,6 +79,8 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.PUT("/lineages/:lineage_id/branches/*branch", r.CommitDefinitionsByEx)
 	apiV1.POST("/lineages/:lineage_id/branches/*branch", r.SyncBranchByEx)
 	apiV1.POST("/lineages/:lineage_id/drift", r.CheckDriftByEx)
+	apiV1.GET("/lineages/:lineage_id/switch-plan", r.PlanSwitchByEx)
+	apiV1.POST("/lineages/:lineage_id/switches", r.SwitchByEx)
 
 	logger.Info("RestHandler RegisterPublic")
 }

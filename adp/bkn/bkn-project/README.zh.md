@@ -35,6 +35,8 @@
 | PUT | `/lineages/{lineage_id}/branches/{branch}/definitions?message=` | 请求体为 bkn-backend 导出格式的 BKN tar 包（`application/octet-stream`，最大 64 MiB），替换分支上的定义；返回 `{"commit","changed":{"added","changed","removed"}}`。对 `main` 返回 403 |
 | POST | `/lineages/{lineage_id}/branches/{branch}/sync` | 把 `main` 同步进分支；返回 `{"result":"up_to_date"\|"fast_forward"\|"merged","commit","summary"}`，有冲突时返回 409，冲突列表在 `error_details` 中 |
 | POST | `/lineages/{lineage_id}/drift?commit=` | 请求体 `{"kn_id"}`。比较线上网络与 `main`；返回 `{"lineage_id","kn_id","added","changed","removed","commit"}`。`commit=true` 时把线上定义提交到 `main` |
+| GET | `/lineages/{lineage_id}/switch-plan?to=` | 把谱系的使用方切换到网络 `to` 会做什么：返回 `{"lineage_id","from_network_id","to_network_id","schedules"}`，即当前所用网络上正在运行的调度。智能体、MCP、workshop、eval 及 `to` 上的权限由各自负责人切换。400 `InvalidSwitchTarget`（不是该谱系的网络），409 `AlreadyInUse` |
+| POST | `/lineages/{lineage_id}/switches` | 请求体 `{"to_network_id"}`。在目标网络上启用每个运行中的调度（以切换人身份执行），在当前网络上停用，然后记录这次切换：返回 201 和切换记录。回退就是切回之前的网络，上次停用的对应调度会重新启用 |
 
 ## 本地开发
 
