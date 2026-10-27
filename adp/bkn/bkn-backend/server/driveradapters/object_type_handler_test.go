@@ -1217,13 +1217,13 @@ func Test_ObjectTypeRestHandler_GetObjectTypeStatsByIn(t *testing.T) {
 			kns.EXPECT().CheckKNExistByID(gomock.Any(), knID, interfaces.MAIN_BRANCH).Return(knID, true, nil)
 			count := int64(3)
 			otss.EXPECT().ObjectTypeStats(gomock.Any(), interfaces.ObjectTypeStatsQuery{
-				KNID: knID, Branch: interfaces.MAIN_BRANCH, OTIDs: []string{"a", "b"}, Refresh: true,
+				KNID: knID, Branch: interfaces.MAIN_BRANCH, OTIDs: []string{"a", "b"},
 			}).Return(&interfaces.ObjectTypeStatsResult{Entries: []*interfaces.ObjectTypeStatsEntry{
-				{ID: "a", Count: &count, Exact: true, Source: interfaces.OBJECT_TYPE_COUNT_SOURCE_QUERY, AsOf: 1},
+				{ID: "a", Count: &count, Exact: true, Source: "query", AsOf: 1},
 				{ID: "b", Error: &interfaces.ObjectTypeStatsError{Code: "Public.Forbidden", Message: "forbidden"}},
 			}, Total: 2}, nil)
 
-			w := get("?ids=a,%20b,&refresh=true")
+			w := get("?ids=a,%20b,")
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 			var body map[string]any
@@ -1233,10 +1233,6 @@ func Test_ObjectTypeRestHandler_GetObjectTypeStatsByIn(t *testing.T) {
 			So(entries[0].(map[string]any)["count"], ShouldEqual, 3)
 			So(entries[1].(map[string]any)["count"], ShouldBeNil)
 			So(entries[1].(map[string]any)["error"].(map[string]any)["code"], ShouldEqual, "Public.Forbidden")
-		})
-
-		Convey("Failed when refresh is not a boolean\n", func() {
-			So(get("?refresh=yes").Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
 		Convey("Failed when the knowledge network does not exist\n", func() {

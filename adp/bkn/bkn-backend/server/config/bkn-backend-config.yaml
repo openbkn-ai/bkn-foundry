@@ -14,10 +14,6 @@ server:
   proxySyncLeaseSeconds: 60
   proxySyncMaxAttempts: 12
   proxyOutboxCleanupInterval: 3600
-  # Instance counts: measurement/cache freshness, response wait and scan lifetime, in seconds.
-  objectTypeStatsCacheTTL: 600
-  objectTypeStatsQueryTimeout: 30
-  objectTypeStatsBackgroundTimeout: 600
 log:
   logLevel: debug
   developMode: false

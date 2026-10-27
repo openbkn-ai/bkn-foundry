@@ -33,12 +33,6 @@ const (
 	BknBackend_ObjectType_ObjectTypeNotFound = "BknBackend.ObjectType.ObjectTypeNotFound"
 	BknBackend_ObjectType_SmallModelNotFound = "BknBackend.ObjectType.SmallModelNotFound"
 
-	// 202
-	BknBackend_ObjectType_StatsCountInProgress = "BknBackend.ObjectType.StatsCountInProgress"
-
-	// 504
-	BknBackend_ObjectType_StatsQueryTimeout = "BknBackend.ObjectType.StatsQueryTimeout"
-
 	// 500
 	BknBackend_ObjectType_InternalError                                  = "BknBackend.ObjectType.InternalError"
 	BknBackend_ObjectType_InternalError_StatsQueryFailed                 = "BknBackend.ObjectType.InternalError.StatsQueryFailed"
@@ -80,12 +74,6 @@ var (
 		// 404
 		BknBackend_ObjectType_ObjectTypeNotFound,
 		BknBackend_ObjectType_SmallModelNotFound,
-
-		// 202
-		BknBackend_ObjectType_StatsCountInProgress,
-
-		// 504
-		BknBackend_ObjectType_StatsQueryTimeout,
 
 		// 500
 		BknBackend_ObjectType_InternalError,

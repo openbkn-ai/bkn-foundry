@@ -47,11 +47,6 @@ type ServerSetting struct {
 	// through the resource data API and joins in memory. BKN_CYPHER_EXECUTOR
 	// overrides the file.
 	CypherExecutor string `mapstructure:"cypherExecutor"`
-	// Object type statistics settings
-	ObjectTypeStatsCacheTTL     int `mapstructure:"objectTypeStatsCacheTTL"`     // in seconds, default 600 (10 min)
-	ObjectTypeStatsQueryTimeout int `mapstructure:"objectTypeStatsQueryTimeout"` // in seconds, default 30
-	// Bounds a count that carries on in the background after its caller was answered.
-	ObjectTypeStatsBackgroundTimeout int `mapstructure:"objectTypeStatsBackgroundTimeout"` // in seconds, default 600
 }
 
 // The Cypher executors CypherExecutor selects between.

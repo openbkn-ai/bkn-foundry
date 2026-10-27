@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.opentelemetry.io/otel"
@@ -1175,41 +1174,3 @@ func TestQueryRowFilterGroupsListParameterCondition(t *testing.T) {
 // A row filter is ANDed onto the caller's condition, so a caller's OR must stay
 // grouped: without the parentheses the filter would bind to one branch only and
 // the other would read rows the filter hides.
-
-func TestQueryStatisticsPinsAndExecutionBudget(t *testing.T) {
-	for _, tc := range []struct {
-		name, digest string
-		version      int64
-		timeout      time.Duration
-		wantTimeout  int
-		wantError    bool
-	}{
-		{"public defaults", "", 0, 0, 30, false},
-		{"pinned statistics", "test-digest", 0, 10 * time.Minute, 600, false},
-		{"changed policy", "different-digest", 0, time.Minute, 0, true},
-		{"changed model", "test-digest", 1, time.Minute, 0, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			vega := &recordingVega{response: &interfaces.RawQueryResponse{Entries: []map[string]any{{"n": 1}}}}
-			service := testService(t, vega, &stubPermission{})
-			query := interfaces.CypherQuery{KNID: "kn_1", Branch: "main", Query: "MATCH (o:Order) RETURN count(*) AS n", ExecutionTimeout: tc.timeout}
-			if tc.digest != "" {
-				query.ExpectedRowFilterDigests = map[string]string{"ot_order": tc.digest}
-				query.ExpectedObjectTypeVersions = map[string]int64{"ot_order": tc.version}
-			}
-			_, err := service.Query(context.Background(), query)
-			if tc.wantError {
-				if err == nil || vega.request != nil {
-					t.Fatalf("scope mismatch executed: err=%v request=%+v", err, vega.request)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if vega.request.QueryTimeoutSec != tc.wantTimeout {
-				t.Fatalf("timeout=%d want=%d", vega.request.QueryTimeoutSec, tc.wantTimeout)
-			}
-		})
-	}
-}

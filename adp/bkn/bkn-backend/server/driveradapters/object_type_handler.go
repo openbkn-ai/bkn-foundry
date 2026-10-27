@@ -1219,20 +1219,11 @@ func (r *restHandler) GetObjectTypeStats(c *gin.Context, visitor hydra.Visitor) 
 			otIDs = append(otIDs, id)
 		}
 	}
-	refresh, err := strconv.ParseBool(c.DefaultQuery("refresh", "false"))
-	if err != nil {
-		httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails("refresh must be true or false")
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
 
 	span.SetAttributes(
 		attr.Key("kn_id").String(knID),
 		attr.Key("branch").String(branch),
 		attr.Key("ot_count").Int(len(otIDs)),
-		attr.Key("refresh").Bool(refresh),
 	)
 
 	_, exist, err := r.kns.CheckKNExistByID(ctx, knID, branch)
@@ -1253,10 +1244,9 @@ func (r *restHandler) GetObjectTypeStats(c *gin.Context, visitor hydra.Visitor) 
 	}
 
 	result, err := r.otss.ObjectTypeStats(ctx, interfaces.ObjectTypeStatsQuery{
-		KNID:    knID,
-		Branch:  branch,
-		OTIDs:   otIDs,
-		Refresh: refresh,
+		KNID:   knID,
+		Branch: branch,
+		OTIDs:  otIDs,
 	})
 	if err != nil {
 		httpErr, ok := err.(*httperrors.HTTPError)

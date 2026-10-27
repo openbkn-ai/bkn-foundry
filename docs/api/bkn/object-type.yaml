@@ -1474,43 +1474,24 @@ paths:
       summary: Get object type instance counts
       operationId: getObjectTypeStats
       description: |
-        Returns the instance count of every visible object type, or the types named by `ids`.
-        Counts use the following sources when no row policy narrows the caller's view:
+        Returns counts for all visible object types, or those selected by `ids`.
+        Each object type requires `query_data`, matching the existing Cypher endpoint.
+        Hidden object types are omitted from a network listing; explicit hidden/missing IDs
+        return a not-found row. Visible types without query permission return a forbidden row.
 
-        - `catalog`: Vega's timestamped exact `row_count`, provided `row_count_time` is positive,
-          not in the future and younger than `server.objectTypeStatsCacheTTL` (default 600s).
-          `exact: true`; `as_of` is the actual Vega collection time. Caching does not extend that
-          measurement's freshness window. Discovery estimates (`estimated_row_count`) and legacy
-          counts without a timestamp are never reused.
-        - `index`: a dataset read counts its documents live (`exact: true`), or the object type's
-          available index supplies its document count (`exact: false`, since it can trail the source).
-        - `query`: all remaining types, and every type under a row policy, run an exact `COUNT(*)`
-          through Cypher as the caller, applying the same permission and row-filter rules.
+        Without a row-permission filter, this endpoint only reads the bound Vega resource's
+        `row_count` and `row_count_time`. A dataset is counted live by Vega (`source: index`);
+        other resources return their latest collected exact count (`source: catalog`).
+        `as_of` preserves the actual collection time. There is no BKN freshness cutoff.
+        Missing counts or timestamps return `count: null` without an error or a fallback scan.
+        Discovery estimates and object-index estimates are not used. Count collection/refresh
+        remains a Vega responsibility; this endpoint has no cache, refresh or background job.
 
-        `refresh=true` bypasses the BKN cache, persisted Vega measurements and approximate index
-        counts; a live dataset count can still answer directly. It does not create a Vega discovery
-        task or require `task_manage` permission.
-
-        The query stage waits at most `server.objectTypeStatsQueryTimeout` (default 30s) for the batch.
-        A slow scan continues unchanged in the background for at most
-        `server.objectTypeStatsBackgroundTimeout` (default 600s, capped at 3600s). The response row has
-        `count: null` and `error.code: BknBackend.ObjectType.StatsCountInProgress`; poll again to read
-        its cached result. Concurrent requests share each active count; polling during a refresh does
-        not return an older cached or metadata measurement. At most four scans run in
-        this process, including background scans. Rows that cannot obtain capacity before the wait
-        expires also report in-progress and are retried on a later poll; they do not enqueue scans.
-        The cache and concurrency limit are per process, so replicas can independently count the same type.
-
-        Authorization matches `run_cypher`: each object type needs `query_data`. An object type the caller
-        has no operation on at all is left out of a whole-network answer and, when listed in `ids`, is
-        reported as not found exactly like an ID that does not exist. One the caller can see but not query
-        is reported as forbidden. Neither carries a count.
-
-        Counts are cached on the server for `server.objectTypeStatsCacheTTL` seconds (default 600) per object
-        type, model version and effective row policy. `as_of` is when a count was taken, so a cached count
-        keeps its original time. A model or row-policy change during query preparation refuses the count
-        instead of caching it under an obsolete scope. A failure on one object type is
-        reported in that row's `error` and never fails the request.
+        Object types narrowed by row-permission filters are counted through the existing Cypher
+        service under the caller's identity (`source: query`, `exact: true`). Its ordinary execution
+        timeout and request cancellation apply. At most four filtered counts run per request.
+        Application-level filter expressions should use the existing Cypher endpoint directly.
+        A failed object type has an error on its own row; other rows are still returned.
       security:
         - OAuth2: []
       parameters:
@@ -1531,12 +1512,6 @@ paths:
           schema:
             type: string
           in: query
-        - name: refresh
-          description: Recompute every count instead of serving it from the cache.
-          schema:
-            type: boolean
-            default: false
-          in: query
       responses:
         '200':
           description: ok
@@ -1554,9 +1529,6 @@ paths:
                   - id: src_events
                     count: null
                     exact: false
-                    error:
-                      code: BknBackend.ObjectType.StatsCountInProgress
-                      message: The Object Type's Instances Are Still Being Counted
                   - id: region
                     count: null
                     exact: false
@@ -1829,22 +1801,22 @@ components:
           description: Object type ID
           type: string
         count:
-          description: Instance count. Null when error is set.
+          description: Exact instance count. Null when the Vega measurement is unavailable or error is set.
           type: integer
           format: int64
           nullable: true
         exact:
-          description: False for an estimate, which today means an index that may trail its source.
+          description: True when count is available.
           type: boolean
         source:
-          description: Where the count came from. Absent when error is set.
+          description: catalog for collected Vega counts, index for live dataset counts, query for row-filtered counts. Absent when count is null.
           type: string
           enum:
             - index
             - catalog
             - query
         as_of:
-          description: When the count was taken, in Unix milliseconds. Absent when error is set.
+          description: When the count was taken, in Unix milliseconds. Absent when count is null.
           type: integer
           format: int64
         error:
@@ -1854,10 +1826,7 @@ components:
             code:
               description: >-
                 Error code, for example Public.Forbidden, BknBackend.ObjectType.ObjectTypeNotFound,
-                BknBackend.ObjectType.NoDataSource, BknBackend.ObjectType.StatsCountInProgress
-                (the count is running or waiting for capacity; request again shortly),
-                BknBackend.ObjectType.StatsQueryTimeout (the execution budget was exhausted), or
-                BknBackend.ObjectType.InternalError.StatsQueryFailed.
+                BknBackend.ObjectType.NoDataSource or BknBackend.ObjectType.InternalError.StatsQueryFailed.
               type: string
             message:
               description: Localized description
