@@ -22,6 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/version"
 )
@@ -44,6 +45,7 @@ type restHandler struct {
 	as         interfaces.AuthService
 	rs         interfaces.ReleaseService
 	ls         interfaces.LineageService
+	ps         interfaces.ProjectService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
@@ -53,6 +55,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		as:         auth.NewAuthService(),
 		rs:         release.NewReleaseService(),
 		ls:         lineage.NewLineageService(),
+		ps:         project.NewProjectService(),
 	}
 }
 
@@ -81,6 +84,13 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.POST("/lineages/:lineage_id/drift", r.CheckDriftByEx)
 	apiV1.GET("/lineages/:lineage_id/switch-plan", r.PlanSwitchByEx)
 	apiV1.POST("/lineages/:lineage_id/switches", r.SwitchByEx)
+
+	// Projects. Actions on a project are custom methods, {project_id}:archive
+	// and {project_id}:unarchive, so the POST route reads them from the id.
+	apiV1.POST("/projects", r.CreateProjectByEx)
+	apiV1.GET("/projects", r.ListProjectsByEx)
+	apiV1.GET("/projects/:project_id", r.GetProjectByEx)
+	apiV1.POST("/projects/:project_id", r.ProjectActionByEx)
 
 	logger.Info("RestHandler RegisterPublic")
 }

@@ -45,7 +45,7 @@ func (r *restHandler) ListReleases(c *gin.Context, visitor hydra.Visitor) {
 	lineageID := c.Param("lineage_id")
 	span.SetAttributes(attr.Key("lineage_id").String(lineageID))
 
-	limit, err := parseLimit(ctx, c.Query("limit"))
+	limit, err := parseLimit(ctx, c.Query("limit"), interfaces.DEFAULT_RELEASE_LIMIT, interfaces.MAX_RELEASE_LIMIT)
 	if err != nil {
 		replyError(c, span, err)
 		return
@@ -103,17 +103,17 @@ func (r *restHandler) PublishRelease(c *gin.Context, visitor hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusCreated, result)
 }
 
-// parseLimit reads the page size; an absent limit takes the default.
-func parseLimit(ctx context.Context, value string) (int, error) {
+// parseLimit reads the page size, from 1 to max; an absent limit takes the default.
+func parseLimit(ctx context.Context, value string, defaultLimit int, max int) (int, error) {
 	if value == "" {
-		return interfaces.DEFAULT_RELEASE_LIMIT, nil
+		return defaultLimit, nil
 	}
 	limit, err := strconv.Atoi(value)
-	if err == nil && limit >= 1 && limit <= interfaces.MAX_RELEASE_LIMIT {
+	if err == nil && limit >= 1 && limit <= max {
 		return limit, nil
 	}
 	localizedText, renderErr := i18n.Render(i18n.GetLanguageByCtx(ctx), "BknProject.Validation.Detail.LimitOutOfRange",
-		map[string]any{"max": interfaces.MAX_RELEASE_LIMIT})
+		map[string]any{"max": max})
 	if renderErr != nil {
 		logger.Errorf("localized message rendering failed: %v", renderErr)
 	}

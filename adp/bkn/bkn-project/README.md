@@ -18,6 +18,9 @@ history is kept as a lineage. See issue #2520 and epic #2519.
 - Publishing a project branch as a new network `<lineage_id>_v<major>_<minor>_<patch>`
   named `<base name> · <version>` (ids cut to 40 characters, names to 40
   characters), tagged `v<version>` in git.
+- Projects (`t_bkn_project_project`): each changes one network on its own
+  branch `project/<id>` of the network's lineage; projects of one network
+  share its lineage. A project is visible to callers who can see its network.
 - Health and readiness endpoints.
 
 ## API
@@ -40,6 +43,10 @@ from bkn-backend run with the caller's token, so its permissions apply.
 | POST | `/lineages/{lineage_id}/drift?commit=` | Body `{"kn_id"}`. Compares the live network with `main`; `{"lineage_id","kn_id","added","changed","removed","commit"}`. With `commit=true` the live definitions are committed to `main` |
 | GET | `/lineages/{lineage_id}/switch-plan?to=` | What switching the lineage's consumers to network `to` would do: `{"lineage_id","from_network_id","to_network_id","schedules"}`, the active schedules of the network in use. Agents, MCP, workshop, eval and permissions on `to` are switched by their owners. 400 `InvalidSwitchTarget` (not a network of the lineage), 409 `AlreadyInUse` |
 | POST | `/lineages/{lineage_id}/switches` | Body `{"to_network_id"}`. Turns each active schedule on on the target, where it runs as the caller, and off on the network in use, then records the switch: 201 with the switch. A rollback is a switch back to an earlier network; the counterparts it left off are turned back on |
+| POST | `/projects` | Body `{"name","kn_id"\|"new_kn":{"name","id"},"catalog_ids"}`, exactly one of `kn_id` (an existing network the caller can see) and `new_kn` (a network to create). A released network joins the lineage of its base network. Starts the lineage unless it has one and creates the branch `project/<id>`; 201 with the project. The caller owns it |
+| GET | `/projects?archived=&name=&limit=&cursor=` | Projects of the networks the caller can see, newest first; cursor paging. `archived` is `false` (default), `true` or `all`; `name` matches names containing it. Each entry has `other_projects`, the other unarchived projects of its network |
+| GET | `/projects/{project_id}` | The project; 404 also when the caller cannot see its network |
+| POST | `/projects/{project_id}:archive`, `:unarchive` | Hides the project from the default list, or shows it again; only its owner may (403). Releases are not affected |
 
 ## Local Development
 

@@ -41,6 +41,21 @@ func (m *MockBknBackendAccess) EXPECT() *MockBknBackendAccessMockRecorder {
 	return m.recorder
 }
 
+// CreateKN mocks base method.
+func (m *MockBknBackendAccess) CreateKN(ctx context.Context, token, id, name string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateKN", ctx, token, id, name)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateKN indicates an expected call of CreateKN.
+func (mr *MockBknBackendAccessMockRecorder) CreateKN(ctx, token, id, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateKN", reflect.TypeOf((*MockBknBackendAccess)(nil).CreateKN), ctx, token, id, name)
+}
+
 // CreateSchedule mocks base method.
 func (m *MockBknBackendAccess) CreateSchedule(ctx context.Context, token, knID string, schedule *interfaces.ActionSchedule) (string, error) {
 	m.ctrl.T.Helper()
@@ -71,6 +86,21 @@ func (mr *MockBknBackendAccessMockRecorder) ExportBKN(ctx, token, knID any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportBKN", reflect.TypeOf((*MockBknBackendAccess)(nil).ExportBKN), ctx, token, knID)
 }
 
+// GetKN mocks base method.
+func (m *MockBknBackendAccess) GetKN(ctx context.Context, token, knID string) (*interfaces.KnowledgeNetwork, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetKN", ctx, token, knID)
+	ret0, _ := ret[0].(*interfaces.KnowledgeNetwork)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetKN indicates an expected call of GetKN.
+func (mr *MockBknBackendAccessMockRecorder) GetKN(ctx, token, knID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKN", reflect.TypeOf((*MockBknBackendAccess)(nil).GetKN), ctx, token, knID)
+}
+
 // ImportBKN mocks base method.
 func (m *MockBknBackendAccess) ImportBKN(ctx context.Context, token string, files map[string][]byte) (*interfaces.BKNImportResult, error) {
 	m.ctrl.T.Helper()
@@ -84,6 +114,21 @@ func (m *MockBknBackendAccess) ImportBKN(ctx context.Context, token string, file
 func (mr *MockBknBackendAccessMockRecorder) ImportBKN(ctx, token, files any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImportBKN", reflect.TypeOf((*MockBknBackendAccess)(nil).ImportBKN), ctx, token, files)
+}
+
+// ListKNIDs mocks base method.
+func (m *MockBknBackendAccess) ListKNIDs(ctx context.Context, token string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListKNIDs", ctx, token)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListKNIDs indicates an expected call of ListKNIDs.
+func (mr *MockBknBackendAccessMockRecorder) ListKNIDs(ctx, token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKNIDs", reflect.TypeOf((*MockBknBackendAccess)(nil).ListKNIDs), ctx, token)
 }
 
 // ListSchedules mocks base method.
