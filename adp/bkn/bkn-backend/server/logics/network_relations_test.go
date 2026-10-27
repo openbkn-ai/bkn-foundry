@@ -322,6 +322,20 @@ func TestNetworkRelationsDeferredSaveRecordsOncePerID(t *testing.T) {
 	}
 }
 
+// Definitions without an ID yet are recorded each on its own.
+func TestNetworkRelationsDeferredSaveKeepsDefinitionsWithoutID(t *testing.T) {
+	ctx, written := WithDeferredNetworkRelations(context.Background())
+	nr, _ := supplyNetwork().checker()
+	saved := SavedDefinitions{RelationTypes: []*interfaces.RelationType{
+		relationType("", "order", "warehouse", interfaces.RelationDeclarations{}),
+		relationType("", "order", "warehouse", interfaces.RelationDeclarations{}),
+	}}
+	_, _ = nr.CheckSave(ctx, "kn1", "main", saved)
+	if len(written.RelationTypes) != 2 {
+		t.Fatalf("recorded relation types = %d, want 2", len(written.RelationTypes))
+	}
+}
+
 func TestNetworkRelationsDeleteReferrers(t *testing.T) {
 	cases := []struct {
 		name string

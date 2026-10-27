@@ -49,7 +49,8 @@ func (s *SavedDefinitions) empty() bool {
 
 // add records more, one entry per ID: a write may pass the same definition more than once, as a
 // concept group update validates its nested definitions before writing them, and the later entry
-// replaces the earlier one.
+// replaces the earlier one. A definition without an ID yet, as in a validation of new ones, is
+// always its own entry.
 func (s *SavedDefinitions) add(more SavedDefinitions) {
 	s.ObjectTypes = upsertByID(s.ObjectTypes, more.ObjectTypes, func(ot *interfaces.ObjectType) string { return ot.OTID })
 	s.RelationTypes = upsertByID(s.RelationTypes, more.RelationTypes, func(rt *interfaces.RelationType) string { return rt.RTID })
@@ -58,7 +59,7 @@ func (s *SavedDefinitions) add(more SavedDefinitions) {
 
 func upsertByID[T any](have, more []T, id func(T) string) []T {
 	for _, def := range more {
-		if i := slices.IndexFunc(have, func(h T) bool { return id(h) == id(def) }); i >= 0 {
+		if i := slices.IndexFunc(have, func(h T) bool { return id(def) != "" && id(h) == id(def) }); i >= 0 {
 			have[i] = def
 			continue
 		}
