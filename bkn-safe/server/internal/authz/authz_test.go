@@ -108,6 +108,24 @@ func TestMaximumLengthChildResourceGrantPersists(t *testing.T) {
 	}
 }
 
+func TestCasbinRuleObjectColumnWidth(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	statement := &gorm.Statement{DB: db}
+	if err := statement.Parse(&casbinRule{}); err != nil {
+		t.Fatal(err)
+	}
+	field := statement.Schema.LookUpField("V1")
+	if field == nil {
+		t.Fatal("casbinRule.V1 field is missing")
+	}
+	if field.Size != 322 {
+		t.Fatalf("casbinRule.V1 size = %d, want 322", field.Size)
+	}
+}
+
 func TestImplicitRolesForAccessorDoesNotSilentlyTruncateDeepClosure(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "u-deep"
