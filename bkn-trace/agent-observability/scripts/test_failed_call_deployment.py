@@ -95,7 +95,7 @@ def main():
         ("validation failure", "query_object_instance", {}, "input_validation", None),
         ("empty SQL", "run_sql", {"sql": ""}, "input_validation", None),
         ("missing SQL resource", "run_sql", {"sql": "SELECT 1"}, "input_validation", None),
-        ("SQL backend failure", "run_sql", {"sql": "SELECT * FROM {{.inventory}}"},
+        ("SQL backend failure", "run_sql", {"sql": "SELECT * FROM {{inventory}}"},
          "vega_query", "resource:inventory"),
         ("SQL policy without target", "run_sql", {"sql": "DELETE FROM inventory"},
          "sql_guard", None),

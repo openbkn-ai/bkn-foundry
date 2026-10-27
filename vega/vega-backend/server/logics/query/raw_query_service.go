@@ -1037,6 +1037,7 @@ func (rqs *rawQueryService) resourceForQuery(ctx context.Context, resourceID str
 // replacePlaceholderInSQLCode preserves comments and quoted literals. They
 // are not resource bindings and must remain semantically unchanged.
 func replacePlaceholderInSQLCode(sql, placeholder, replacement, inputDialect string) string {
+	resourceID := placeholder[2 : len(placeholder)-2]
 	var output strings.Builder
 	output.Grow(len(sql))
 	for index := 0; index < len(sql); {
@@ -1084,10 +1085,17 @@ func replacePlaceholderInSQLCode(sql, placeholder, replacement, inputDialect str
 			index = end
 			continue
 		}
-		if strings.HasPrefix(sql[index:], placeholder) {
-			output.WriteString(replacement)
-			index += len(placeholder)
-			continue
+		if strings.HasPrefix(sql[index:], "{{") {
+			// 与 MySQL RESOURCE token 一致，仅允许占位符两侧的 ASCII 空白。
+			remaining := strings.TrimLeft(sql[index+2:], " \t\r\n")
+			if strings.HasPrefix(remaining, resourceID) {
+				suffix := strings.TrimLeft(remaining[len(resourceID):], " \t\r\n")
+				if strings.HasPrefix(suffix, "}}") {
+					output.WriteString(replacement)
+					index = len(sql) - len(suffix) + 2
+					continue
+				}
+			}
 		}
 		output.WriteByte(sql[index])
 		index++

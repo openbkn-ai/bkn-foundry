@@ -41,19 +41,6 @@ GROUP_ORDER = ["discovery", "query", "action", "resource"]
 # 代码模式下返回值先经脚本处理，需要的是可下标访问的结构，故覆盖为 json。
 DEFAULT_OVERRIDES = {"response_format": "json"}
 
-# 少数工具存在「不看完整 docstring 必写错」的调用约定。完整规则留在 docstring
-# 里（第二级），这里只把最小可用示例提到签名清单（第一级）——实测中模型不会先
-# help() 就动手，一条示例换一次首次成功。新增条目的依据应是实测失败，不是臆测。
-HINTS = {
-    "run_sql": (
-        "表名必须写成 {{.<resource_id>}} 占位符，id 取自 search_schema 的\n"
-        "    #   data_source.id 或 list_resources 的 resource_id；不可原样写\n"
-        "    #   'resource_id' 字面量。列名用物理列名。仅单条 SELECT，无 CTE/UNION。\n"
-        '    #   run_sql(sql="SELECT team_name, COUNT(*) c '
-        'FROM {{.d8sl8edr563s73afv2kg}} GROUP BY team_name")'
-    ),
-}
-
 RUNTIME_PREAMBLE = '''"""BKN 能力的沙箱侧 stub —— 由 gen_sandbox_tools.py 生成，请勿手工编辑。
 
 每个函数对应一个 MCP 工具。只用标准库：MCP streamable HTTP 就是 JSON-RPC over
@@ -230,6 +217,9 @@ def render_tools_py(tools: list[dict]) -> str:
 
 
 def render_digest(tools: list[dict]) -> str:
+    # 与 Go stub 生成器复用提示资源；去掉文件开头的许可证注释后读取 JSON。
+    hints_text = (SCHEMA_DIR / "locales/zh-CN/ptc_hints.json").read_text(encoding="utf-8")
+    hints = json.loads(hints_text.split("*/", 1)[-1])
     lines = [
         "<!-- 由 gen_sandbox_tools.py 生成，请勿手工编辑 -->",
         "",
@@ -257,8 +247,8 @@ def render_digest(tools: list[dict]) -> str:
         sig = signature(tool)[: -len(" -> dict")]
         lines.append(f"{sig} -> {return_keys(tool)}")
         lines.append(f"    # {meta.get('title', '')}")
-        if tool["name"] in HINTS:
-            lines.append(f"    #   {HINTS[tool['name']]}")
+        if tool["name"] == "run_sql":
+            lines.extend(f"    #   {hint}" for hint in hints["run_sql"])
     lines += ["```", ""]
     lines += [
         "## 调用顺序",

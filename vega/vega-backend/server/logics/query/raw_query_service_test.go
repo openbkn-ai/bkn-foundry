@@ -527,6 +527,66 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+		want  string
+	}{
+		{
+			name:  "binds spaced MySQL placeholders for PostgreSQL",
+			query: "SELECT '{{ resource-1 }}' FROM {{ \tresource-1\r\n }} a JOIN {{resource-1}} b ON a.id = b.id /* {{ resource-1 }} */ -- {{ resource-1 }}\n",
+			want:  "SELECT '{{ resource-1 }}' FROM __vega_resource_0 a JOIN __vega_resource_0 b ON a.id = b.id /* {{ resource-1 }} */ -- {{ resource-1 }}\n",
+		},
+		{
+			name:  "binds spaced MySQL placeholders on parser fallback for PostgreSQL",
+			query: "WITH r AS (SELECT * FROM {{ \tresource-1\r\n }}) SELECT * FROM r",
+			want:  "WITH r AS (SELECT * FROM __vega_resource_0) SELECT * FROM r",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockCS := vmock.NewMockCatalogService(ctrl)
+			mockRS := vmock.NewMockResourceService(ctrl)
+			resource := &interfaces.Resource{
+				ID: "resource-1", Enabled: true, CatalogID: "catalog-1",
+				SourceIdentifier: `"public"."orders"`, Status: interfaces.ResourceStatusActive,
+				SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+			}
+			expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
+			mockRS.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(resource, nil)
+			mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
+				ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypePostgreSQL,
+			}, nil)
+
+			policy := &recordingPolicy{}
+			previousPolicy := rawQueryPolicy
+			rawQueryPolicy = policy
+			t.Cleanup(func() { rawQueryPolicy = previousPolicy })
+			patches := gomonkey.ApplyFunc(sqlglot.TranspileSQL,
+				func(_ context.Context, sql, inputDialect, targetDialect string) (*sqlglot.SQLParseResult, error) {
+					assert.Equal(t, tc.want, sql)
+					assert.Equal(t, "mysql", inputDialect)
+					assert.Equal(t, "postgres", targetDialect)
+					return &sqlglot.SQLParseResult{SQL: "SELECT * FROM __vega_resource_0"}, nil
+				})
+			defer patches.Reset()
+			patches.ApplyFunc(sqlglot.BindTableReferences, func(_ context.Context, sql, dialect string, bindings map[string]string) (*sqlglot.SQLParseResult, error) {
+				assert.Equal(t, "SELECT * FROM __vega_resource_0", sql)
+				assert.Equal(t, "postgres", dialect)
+				assert.Equal(t, map[string]string{"__vega_resource_0": `"public"."orders"`}, bindings)
+				return &sqlglot.SQLParseResult{SQL: `SELECT * FROM "public"."orders"`}, nil
+			})
+
+			prepared, err := (&rawQueryService{cs: mockCS, rs: mockRS}).prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
+				Query: tc.query, QueryFormat: interfaces.QueryFormatSQL, InputDialect: "mysql",
+			})
+			require.NoError(t, err)
+			assert.Equal(t, `SELECT * FROM "public"."orders"`, prepared.sql)
+			assert.Equal(t, []string{"resource-1"}, prepared.resourceIDs)
+			assert.Equal(t, []string{"mysql"}, policy.dialects)
+			assert.Equal(t, []string{"postgres"}, policy.derivedDialects)
+		})
+	}
 
 	t.Run("preserves ASCII TSQL without recompilation", func(t *testing.T) {
 		requireRawQuerySQLGlotRuntime(t)
@@ -700,6 +760,14 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 }
 
 func TestReplacePlaceholderInSQLCode(t *testing.T) {
+	t.Run("accepts ASCII whitespace and preserves nonmatching placeholders", func(t *testing.T) {
+		got := replacePlaceholderInSQLCode(
+			"SELECT * FROM {{ \t\r\nresource-1 \t}} JOIN {{resource-10}} JOIN {{resource -1}} JOIN {{\u00a0resource-1}} JOIN {{resource-1",
+			"{{resource-1}}", "public.orders", "mysql",
+		)
+		assert.Equal(t, "SELECT * FROM public.orders JOIN {{resource-10}} JOIN {{resource -1}} JOIN {{\u00a0resource-1}} JOIN {{resource-1", got)
+	})
+
 	t.Run("preserves comments and literals", func(t *testing.T) {
 		got := replacePlaceholderInSQLCode(
 			"SELECT '{{resource-1}}' FROM {{resource-1}} /* {{resource-1}} */ -- {{resource-1}}\n",
