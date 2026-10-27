@@ -37,13 +37,6 @@ type ObjectTypeService interface {
 	// Get basic object-type information without translation-dependent resources.
 	GetObjectTypesMapByIDs(ctx context.Context, knID string, branch string, otIDs []string, needPropMap bool) (map[string]*ObjectType, error)
 
-	// GetObjectTypeResources reads the vega resource bound to each resource-bound object type, keyed
-	// by object type ID, the same way object type details are enriched: as the caller, and for a
-	// resource vega refuses to the caller, as the knowledge network's proxy for current published
-	// bindings. An object type whose resource cannot be read is absent. Callers must pass only
-	// object types the caller is already authorized to read.
-	GetObjectTypeResources(ctx context.Context, objectTypes []*ObjectType) map[string]*VegaResource
-
 	// Write object types to the index.
 	InsertDatasetData(ctx context.Context, objectTypes []*ObjectType) error
 

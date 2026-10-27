@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -2367,27 +2368,6 @@ func proxyBindingKey(binding interfaces.KNProxyBinding) string {
 	return strings.Join([]string{binding.ChildType, binding.ChildID, binding.TargetType, binding.TargetID, binding.Operation}, "\x00")
 }
 
-// GetObjectTypeResources returns the vega resource read for each object type, keyed by object type
-// ID. It shares fetchObjectTypeResources with enrichment, so a resource refused to the caller is read
-// through the knowledge network's proxy under the same rules.
-func (ots *objectTypeService) GetObjectTypeResources(ctx context.Context,
-	objectTypes []*interfaces.ObjectType) map[string]*interfaces.VegaResource {
-	resources := ots.fetchObjectTypeResources(ctx, objectTypes)
-	byObjectType := make(map[string]*interfaces.VegaResource, len(objectTypes))
-	for _, objectType := range objectTypes {
-		if objectType == nil || objectType.DataSource == nil || objectType.DataSource.ID == "" ||
-			objectType.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
-			continue
-		}
-		res, err := resources[objectType.DataSource.ID].resourceFor(objectType)
-		if err != nil || res == nil {
-			continue
-		}
-		byObjectType[objectType.OTID] = res
-	}
-	return byObjectType
-}
-
 // enrichObjectTypes fills in the resource-derived details of every object type, reading each bound
 // resource once.
 //
@@ -2400,7 +2380,54 @@ func (ots *objectTypeService) enrichObjectTypes(ctx context.Context, objectTypes
 			return err
 		}
 	}
+	ots.enrichObjectTypeRowCounts(ctx, objectTypes, resources)
 	return nil
+}
+
+// enrichObjectTypeRowCounts reuses the resource batch already read for the response.
+// Missing measurements or policy decisions never trigger a count query or fail the model read.
+func (ots *objectTypeService) enrichObjectTypeRowCounts(ctx context.Context,
+	objectTypes []*interfaces.ObjectType, resources map[string]vegaResourceLookup) {
+	candidates := make(map[string]*interfaces.ObjectType)
+	var refs []string
+	for _, ot := range objectTypes {
+		if ot == nil {
+			continue
+		}
+		ot.RowCount, ot.RowCountTime = nil, nil
+		if ot.DataSource == nil || ot.DataSource.Type != interfaces.DATA_SOURCE_TYPE_RESOURCE {
+			continue
+		}
+		resource, err := resources[ot.DataSource.ID].resourceFor(ot)
+		if err != nil || resource == nil || resource.RowCount == nil || *resource.RowCount < 0 ||
+			resource.RowCountTime == nil || *resource.RowCountTime <= 0 {
+			continue
+		}
+		ref := interfaces.KNChildResourceID(ot.KNID, ot.OTID)
+		candidates[ref] = ot
+		refs = append(refs, ref)
+	}
+	if len(refs) == 0 {
+		return
+	}
+	operations, err := permission.FilterKNChildResourceIDsWithAnyOperation(ctx, ots.ps,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE, refs)
+	if err != nil {
+		return
+	}
+	decisions, err := ots.ps.ResolveRowFilters(ctx, refs)
+	if err != nil {
+		return
+	}
+	for _, decision := range decisions {
+		ot := candidates[decision.ObjectTypeRef]
+		if ot == nil || decision.Predicate.Kind != "true" ||
+			!slices.Contains(operations[decision.ObjectTypeRef].Operations, interfaces.OPERATION_TYPE_QUERY_DATA) {
+			continue
+		}
+		resource, _ := resources[ot.DataSource.ID].resourceFor(ot)
+		ot.RowCount, ot.RowCountTime = resource.RowCount, resource.RowCountTime
+	}
 }
 
 // enrichObjectTypeIndexStatuses projects only the response-time index state required by summary
@@ -2414,6 +2441,7 @@ func (ots *objectTypeService) enrichObjectTypeIndexStatuses(ctx context.Context,
 			ots.projectObjectTypeIndexStatus(ctx, objectType, resources)
 		}
 	}
+	ots.enrichObjectTypeRowCounts(ctx, objectTypes, resources)
 }
 
 // projectObjectTypeIndexStatus applies the shared index-state semantics and returns the readable

@@ -115,6 +115,10 @@ type ObjectType struct {
 	// finishes rebuilding an index.
 	IndexStatus *ObjectTypeIndexStatus `json:"index_status,omitempty" mapstructure:"-"`
 
+	// RowCount is Vega's exact measurement, exposed only with query_data permission and no row filter.
+	RowCount     *int64 `json:"row_count" mapstructure:"-"`
+	RowCountTime *int64 `json:"row_count_time,omitempty" mapstructure:"-"`
+
 	Creator    AccountInfo `json:"creator" mapstructure:"creator"`
 	CreateTime int64       `json:"create_time" mapstructure:"create_time"`
 	Updater    AccountInfo `json:"updater" mapstructure:"updater"`

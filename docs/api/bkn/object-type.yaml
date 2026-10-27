@@ -1467,89 +1467,6 @@ paths:
             type: string
         in: path
         required: true
-  /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/stats:
-    get:
-      tags:
-        - ObjectType
-      summary: Get object type instance counts
-      operationId: getObjectTypeStats
-      description: |
-        Returns counts for all visible object types, or those selected by `ids`.
-        Each object type requires `query_data`, matching the existing Cypher endpoint.
-        Hidden object types are omitted from a network listing; explicit hidden/missing IDs
-        return a not-found row. Visible types without query permission return a forbidden row.
-
-        Without a row-permission filter, this endpoint only reads the bound Vega resource's
-        `row_count` and `row_count_time`. A dataset is counted live by Vega (`source: index`);
-        other resources return their latest collected exact count (`source: catalog`).
-        `as_of` preserves the actual collection time. There is no BKN freshness cutoff.
-        Missing counts or timestamps return `count: null` without an error or a fallback scan.
-        Discovery estimates and object-index estimates are not used. Count collection/refresh
-        remains a Vega responsibility; this endpoint has no cache, refresh or background job.
-
-        Object types narrowed by row-permission filters are counted through the existing Cypher
-        service under the caller's identity (`source: query`, `exact: true`). Its ordinary execution
-        timeout and request cancellation apply. At most four filtered counts run per request.
-        Application-level filter expressions should use the existing Cypher endpoint directly.
-        A failed object type has an error on its own row; other rows are still returned.
-      security:
-        - OAuth2: []
-      parameters:
-        - name: kn_id
-          description: Business knowledge network ID
-          schema:
-            type: string
-          in: path
-          required: true
-        - name: branch
-          description: Branch. Defaults to main.
-          schema:
-            type: string
-            default: main
-          in: query
-        - name: ids
-          description: Comma-separated object type IDs. Omit to count every object type the caller can see.
-          schema:
-            type: string
-          in: query
-      responses:
-        '200':
-          description: ok
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ObjectTypeStatsResult"
-              example:
-                entries:
-                  - id: src_orders
-                    count: 52310
-                    exact: true
-                    source: query
-                    as_of: 1790000000000
-                  - id: src_events
-                    count: null
-                    exact: false
-                  - id: region
-                    count: null
-                    exact: false
-                    error:
-                      code: BknBackend.ObjectType.NoDataSource
-                      message: The Object Type Is Not Bound to a Data Resource
-                total: 3
-        '400':
-          description: Invalid request parameters
-          content:
-            application/json:
-              schema:
-                $ref: "../_shared/errors.yaml#/components/schemas/Error"
-        '401':
-          description: Unauthorized
-        '404':
-          description: The knowledge network does not exist
-          content:
-            application/json:
-              schema:
-                $ref: "../_shared/errors.yaml#/components/schemas/Error"
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/object-types/{ot_ids}/sample-data:
     get:
       tags:
@@ -1778,59 +1695,6 @@ components:
     OAuth2:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
   schemas:
-    ObjectTypeStatsResult:
-      type: object
-      required:
-        - entries
-        - total
-      properties:
-        entries:
-          type: array
-          items:
-            $ref: "#/components/schemas/ObjectTypeStatsEntry"
-        total:
-          description: Number of entries
-          type: integer
-    ObjectTypeStatsEntry:
-      type: object
-      required:
-        - id
-        - count
-      properties:
-        id:
-          description: Object type ID
-          type: string
-        count:
-          description: Exact instance count. Null when the Vega measurement is unavailable or error is set.
-          type: integer
-          format: int64
-          nullable: true
-        exact:
-          description: True when count is available.
-          type: boolean
-        source:
-          description: catalog for collected Vega counts, index for live dataset counts, query for row-filtered counts. Absent when count is null.
-          type: string
-          enum:
-            - index
-            - catalog
-            - query
-        as_of:
-          description: When the count was taken, in Unix milliseconds. Absent when count is null.
-          type: integer
-          format: int64
-        error:
-          description: Why this object type has no count.
-          type: object
-          properties:
-            code:
-              description: >-
-                Error code, for example Public.Forbidden, BknBackend.ObjectType.ObjectTypeNotFound,
-                BknBackend.ObjectType.NoDataSource or BknBackend.ObjectType.InternalError.StatsQueryFailed.
-              type: string
-            message:
-              description: Localized description
-              type: string
     BasicInfo:
       description: Basic resource information containing an ID and name
       required:
@@ -2490,6 +2354,21 @@ components:
           type: string
         data_source:
           $ref: "#/components/schemas/DataSource"
+        row_count:
+          description: >-
+            Exact count from the bound Vega resource, reused in object type list, detail and search
+            responses. Dataset counts are live; other counts reflect the collection time below.
+            Null when the measurement is missing, query_data is denied, or a row filter applies.
+            Filtered counts use the existing Cypher endpoint; model reads never issue COUNT queries.
+          type: integer
+          format: int64
+          nullable: true
+          readOnly: true
+        row_count_time:
+          description: Vega collection time in Unix milliseconds. Omitted when row_count is null.
+          type: integer
+          format: int64
+          readOnly: true
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
@@ -2628,6 +2507,21 @@ components:
           type: array
           items:
             type: string
+        row_count:
+          description: >-
+            Exact count from the bound Vega resource, reused in object type list, detail and search
+            responses. Dataset counts are live; other counts reflect the collection time below.
+            Null when the measurement is missing, query_data is denied, or a row filter applies.
+            Filtered counts use the existing Cypher endpoint; model reads never issue COUNT queries.
+          type: integer
+          format: int64
+          nullable: true
+          readOnly: true
+        row_count_time:
+          description: Vega collection time in Unix milliseconds. Omitted when row_count is null.
+          type: integer
+          format: int64
+          readOnly: true
         data_source_metadata_unavailable:
           description: |
             Present and true only when the bound resource could not be read while this response

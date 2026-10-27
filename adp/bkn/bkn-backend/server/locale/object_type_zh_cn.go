@@ -9,8 +9,6 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var objectTypeZhCN = i18n.I18nMessages{
 	Locale: i18n.SimplifiedChinese,
 	Messages: map[string]string{
-		"BknBackend.ObjectType.InternalError.StatsQueryFailed":                                 "统计对象类实例数失败",
-		"BknBackend.ObjectType.NoDataSource":                                                   "对象类未绑定数据资源",
 		"BknBackend.ObjectType.Duplicated.IDInFile":                                            "存在重复的对象类ID。请检查参数是否正确。",
 		"BknBackend.ObjectType.Duplicated.Name":                                                "存在重复的对象类名称。请检查参数是否正确。",
 		"BknBackend.ObjectType.InvalidParameter":                                               "请求参数不合法。请检查参数是否正确。",
