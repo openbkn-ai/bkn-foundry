@@ -7,7 +7,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.commons.errors import UnauthorizedError, HydraServiceError
+from app.commons.errors import UnauthorizedError, HydraServiceError, AccountStateUnavailableError
 from app.commons.locale import (
     DEFAULT_LOCALE,
     LocaleResponseMiddleware,
@@ -28,6 +28,7 @@ from app.utils.model_monitor import vllm_monitor_task, delete_monitor_data_task,
 from app.utils.observability.observability import init_observability, shutdown_observability
 from app.utils.operation_audit import operation_audit_middleware, set_audit_publisher
 from app.utils.kafka_audit_publisher import publisher_from_environment
+from app.utils.permission_manager import permission_manager
 
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
@@ -139,6 +140,12 @@ async def auth_middleware(request: Request, call_next):
                         client_id = result.get("client_id", "")
                         role = "user" if client_id != user_id else "app"
                     if activate and user_id and user_id.lower() not in {"anonymous", "anonymous-user"}:
+                        try:
+                            account_active = await permission_manager.is_active_account(user_id)
+                        except Exception:
+                            return JSONResponse(status_code=503, content=AccountStateUnavailableError)
+                        if not account_active:
+                            return JSONResponse(status_code=401, content=UnauthorizedError)
                         _set_trusted_identity(request, user_id, role)
                     else:
                         return JSONResponse(

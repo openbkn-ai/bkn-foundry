@@ -14,12 +14,8 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// verifierCacheTTL bounds how long a successful token->subject introspection is
-// reused before hydra is asked again. It is deliberately short: a token revoked
-// (or expired) upstream still verifies for up to this long (revocation lag). The
-// window only has to be wide enough to absorb the login burst — the frontend
-// fires /me and /me/permissions in parallel right after login and re-pulls them
-// on refresh / re-nav — so a few seconds buys the whole win.
+// verifierCacheTTL is used by cache behavior tests. Production /me routes use
+// zero TTL to observe revocation on every subsequent request.
 const verifierCacheTTL = 10 * time.Second
 
 // verifierIntrospectTimeout bounds the shared upstream introspection performed
@@ -42,9 +38,8 @@ const verifierIntrospectTimeout = 10 * time.Second
 // a revoked token is re-checked on the very next request after the cache lapses.
 // The cache keys on a sha256 of the token, never the raw bearer string.
 //
-// Caching only the SUBJECT (identity) is safe: authorization is re-evaluated
-// live by the casbin enforcer on every request, so a permission change takes
-// effect immediately regardless of this cache.
+// Authorization is evaluated independently. A positive TTL still delays token
+// revocation, so session-sensitive callers must use zero TTL.
 type cachingVerifier struct {
 	inner TokenVerifier
 	ttl   time.Duration

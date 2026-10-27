@@ -39,6 +39,9 @@ type Deps struct {
 	DB       *gorm.DB
 	Provider *auth.Provider
 	Hydra    *auth.HydraAdmin
+	// SessionRevoker terminates all OAuth sessions on account disable/enable.
+	// Production defaults to Hydra; tests can inject a recorder.
+	SessionRevoker UserSessionRevoker
 	// HydraBrowserPublicURL is the canonical external Hydra origin. Redirects
 	// back to it are emitted as relative URLs so alternate ingress hosts work.
 	HydraBrowserPublicURL string
@@ -161,17 +164,12 @@ func New(deps Deps) *gin.Engine {
 	if verifier == nil && deps.Hydra != nil {
 		verifier = deps.Hydra
 	}
-	// The introspection cache is scoped to /me ONLY. The frontend fires /me and
-	// /me/permissions in parallel at login, so a short-TTL, singleflight-
-	// deduplicated cache collapses that pair into one upstream introspection and
-	// absorbs repeat pulls. It is NOT applied to /admin: that surface keeps the
-	// raw verifier so a revoked/logged-out token stops working on mutating admin
-	// operations immediately, rather than up to a TTL later — the revocation-lag
-	// trade-off stays confined to read-only self-service. Authorization (casbin)
-	// is realtime on both regardless; only the token->subject step is cached.
+	// Coalesce concurrent self-service introspections without retaining results.
+	// A positive TTL would let a revoked token work again after re-enabling its
+	// account. Administration keeps the raw verifier as before.
 	meVerifier := verifier
 	if meVerifier != nil {
-		meVerifier = newCachingVerifier(meVerifier, verifierCacheTTL)
+		meVerifier = newCachingVerifier(meVerifier, 0)
 	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
 		authzExplain := r.Group("/api/safe/v1/authz", rest.PrivateNoCacheMiddleware(),
@@ -189,7 +187,11 @@ func New(deps Deps) *gin.Engine {
 		if recorder != nil {
 			admin.Use(auditMiddleware(recorder, deps.Directory, deps.DB))
 		}
-		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
+		sessionRevoker := deps.SessionRevoker
+		if sessionRevoker == nil && deps.Hydra != nil {
+			sessionRevoker = deps.Hydra
+		}
+		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory, sessionRevoker)
 		registerAdminReads(admin, deps.Directory, deps.Enforcer)
 		// Directory reads an object owner needs to name a grantee. Same prefix,
 		// weaker door: RequireAdminOrResourceOwner in place of RequireAdmin. Kept
@@ -327,16 +329,15 @@ func New(deps Deps) *gin.Engine {
 	// authn only), gateway-exposed. The caller reads its own permission list.
 	if deps.Enforcer != nil && verifier != nil && deps.Directory != nil {
 		// Read-only /me (GET "" + GET /permissions): the login burst fires these
-		// two in parallel, so they get the cached, singleflight-deduplicated
-		// verifier.
-		meReads := r.Group("/api/safe/v1/me", rest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
+		// two in parallel, so they share in-flight introspection only.
+		meReads := r.Group("/api/safe/v1/me", rest.PrivateNoCacheMiddleware(), RequireUser(meVerifier), requireActiveSession(deps.DB))
 		registerMeReads(meReads, deps.Enforcer, deps.DB, deps.Directory)
 		registerMeAuthorizationRegistry(meReads, deps.Enforcer.Registry())
 
 		// What this deployment can do, for the frontend's menu. Authn only:
 		// it describes the cluster, not the caller. Enforcement stays at each
 		// gated call site (open-core-gating §2.5).
-		caps := r.Group("/api/safe/v1", rest.PrivateNoCacheMiddleware(), RequireUser(meVerifier))
+		caps := r.Group("/api/safe/v1", rest.PrivateNoCacheMiddleware(), RequireUser(meVerifier), requireActiveSession(deps.DB))
 		registerCapabilities(caps, deps.License)
 
 		// Voluntary logout only records an access fact before the browser clears

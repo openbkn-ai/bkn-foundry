@@ -103,6 +103,38 @@ func (s *passwordRecorder) SetPassword(_ context.Context, _ string, password str
 	return nil
 }
 
+func TestDisabledLoginMessageRequiresCorrectPassword(t *testing.T) {
+	_, _, _, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(), &model.User{
+		ID: "disabled-login", Account: "disabled-login", Enabled: false,
+	}, "correct-password"); err != nil {
+		t.Fatal(err)
+	}
+	provider := auth.NewProvider(users, nil, users)
+	router := gin.New()
+	router.Use(sharedrest.LanguageMiddleware())
+	router.POST("/login", func(c *gin.Context) { doLogin(c, provider, nil) })
+	for _, tc := range []struct{ locale, password, want string }{
+		{"zh-CN", "correct-password", "账号已停用，请联系管理员"},
+		{"en-US", "correct-password", "Your account has been disabled."},
+		{"zh-CN", "wrong-password", "账号或密码错误"},
+		{"en-US", "wrong-password", "The account or password is incorrect."},
+	} {
+		form := url.Values{"login_challenge": {"challenge"}, "account": {"disabled-login"}, "password": {tc.password}}
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept-Language", tc.locale)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, req)
+		if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), tc.want) {
+			t.Fatalf("%s password=%s: %d %s", tc.locale, tc.password, response.Code, response.Body.String())
+		}
+		if tc.password != "correct-password" && strings.Contains(response.Body.String(), "账号已停用") {
+			t.Fatal("wrong password must not reveal disabled status")
+		}
+	}
+}
+
 func TestChangePasswordExpiredChallengeShowsTerminalSuccessPage(t *testing.T) {
 	hydra := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

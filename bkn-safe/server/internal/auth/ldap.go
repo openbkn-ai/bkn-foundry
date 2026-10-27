@@ -99,6 +99,9 @@ func (a *LDAPAuthenticator) provision(ctx context.Context, account, name, email 
 	var u model.User
 	err := a.db.WithContext(ctx).First(&u, "account = ?", account).Error
 	if err == nil {
+		if !u.Enabled {
+			return nil, ErrUserDisabled
+		}
 		return &u, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -142,8 +145,11 @@ func (c *Chain) Verify(ctx context.Context, account, password string) (*model.Us
 		if errors.Is(err, ErrManagedLoginDisabled) {
 			return nil, err
 		}
+		if errors.Is(err, ErrUserDisabled) {
+			return nil, err
+		}
 		// Fall through on credential failures; surface infra errors immediately.
-		if errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrUserDisabled) {
+		if errors.Is(err, ErrInvalidCredentials) {
 			lastErr = err
 			continue
 		}

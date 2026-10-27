@@ -29,6 +29,23 @@ class PermissionManager:
         if self.session and not self.session.closed:
             await self.session.close()
 
+    async def is_active_account(self, user_id: str) -> bool:
+        """Read current account state; never cache an authorization decision."""
+        session = await self.get_session()
+        async with session.post(
+                f"{self.bkn_safe_url}/api/safe/v1/directory/users-detail",
+                json={"user_ids": [user_id]},
+                timeout=aiohttp.ClientTimeout(total=3),
+                headers=internal_request_headers({'Content-Type': 'application/json'})) as response:
+            if response.status != 200:
+                raise RuntimeError("bkn-safe account lookup failed")
+            data = await response.json()
+            users = data.get("users") if isinstance(data, dict) else None
+            if not isinstance(users, list):
+                raise RuntimeError("bkn-safe account lookup returned an invalid response")
+            return any(isinstance(user, dict) and user.get("id") == user_id
+                       and user.get("enabled") is True for user in users)
+
     async def check_single_permission(self, user_id: str, resource_id: str, operations: str,
                                       resource_type: str, role: str) -> bool:
         try:
