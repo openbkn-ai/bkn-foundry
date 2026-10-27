@@ -1117,6 +1117,7 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 			span.SetStatus(codes.Error, "Serialize action type index failed")
 			return err
 		}
+		interfaces.IndexLifecycleStatus(document.Document)
 		if parameters, exists := document.Document["parameters"]; exists {
 			encoded, err := sonic.Marshal(parameters)
 			if err != nil {

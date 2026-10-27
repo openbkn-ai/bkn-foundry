@@ -566,6 +566,7 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 			return err
 		}
 
+		interfaces.IndexLifecycleStatus(doc)
 		if err := interfaces.EncodeIndexedConstraints(doc); err != nil {
 			logger.Errorf("Failed to encode data_properties constraints: %s", err.Error())
 			return err
@@ -652,6 +653,7 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 			logger.Errorf("Failed to unmarshal ActionType: %s", err.Error())
 			return err
 		}
+		interfaces.IndexLifecycleStatus(doc)
 
 		// Serialize parameters to JSON string
 		if params, exists := doc["parameters"]; exists {
@@ -742,6 +744,7 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 			logger.Errorf("Failed to unmarshal RelationType: %s", err.Error())
 			return err
 		}
+		interfaces.IndexLifecycleStatus(doc)
 		if err := interfaces.EncodeIndexedConstraints(doc); err != nil {
 			logger.Errorf("Failed to encode relation property constraints: %s", err.Error())
 			return err

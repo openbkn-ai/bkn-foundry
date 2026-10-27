@@ -346,6 +346,10 @@ type AuthorizationResourcesQuery struct {
 type ConceptsQuery struct {
 	ConceptGroups []string       `json:"concept_groups,omitempty"`
 	Condition     map[string]any `json:"condition,omitempty"`
+	// ExcludeDeprecated leaves deprecated object types, relation types and action types out, as
+	// concept recall does; a query by ID still returns them. A backend before it ignores the field
+	// and returns them, so a newer caller degrades to no filtering instead of failing.
+	ExcludeDeprecated bool `json:"exclude_deprecated,omitempty"`
 	// Pagination information.
 	NeedTotal bool          `json:"need_total"`
 	Limit     int           `json:"limit"`

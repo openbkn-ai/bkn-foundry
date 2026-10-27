@@ -1832,6 +1832,7 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 			return err
 		}
 		delete(document.Document, "data_source_metadata_unavailable")
+		interfaces.IndexLifecycleStatus(document.Document)
 		if err := interfaces.EncodeIndexedConstraints(document.Document); err != nil {
 			return err
 		}

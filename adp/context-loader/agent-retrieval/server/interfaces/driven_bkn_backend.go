@@ -226,6 +226,9 @@ type QueryConceptsReq struct {
 	Sort          []*KnSortParams `json:"sort"`
 	Limit         int             `json:"limit"`      // Return count, default 10. Range 1-10000
 	NeedTotal     bool            `json:"need_total"` // Whether total count is needed, default false
+	// ExcludeDeprecated asks bkn-backend to leave deprecated concepts out. A bkn-backend before
+	// the field ignores it and returns them.
+	ExcludeDeprecated bool `json:"exclude_deprecated,omitempty"`
 }
 
 // Concepts Retrieved concepts list

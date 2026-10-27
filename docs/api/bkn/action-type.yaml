@@ -968,6 +968,11 @@ components:
         need_total:
           description: Whether total count is required. Defaults to false.
           type: boolean
+        exclude_deprecated:
+          description: |-
+            Whether to leave out definitions whose lifecycle status is deprecated, as concept
+            recall does. Defaults to false. Querying by ID still returns them.
+          type: boolean
     PageTurnQueryWithCursor:
       description: Subsequent paginated query request
       required:
@@ -994,6 +999,11 @@ components:
           type: integer
         need_total:
           description: Whether total count is required. Defaults to false.
+          type: boolean
+        exclude_deprecated:
+          description: |-
+            Whether to leave out definitions whose lifecycle status is deprecated, as concept
+            recall does. Defaults to false. Querying by ID still returns them.
           type: boolean
         cursor:
           description: next_cursor returned by the previous response.
