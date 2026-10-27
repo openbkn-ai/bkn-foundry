@@ -363,10 +363,14 @@ func (bs *bknService) exportCapabilities(ctx context.Context, knID, branch strin
 				MCPName:  binding.OwnerName,
 				ToolName: binding.CapabilityID,
 			})
+		case interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE:
+			capabilities.KnowledgeBases = append(capabilities.KnowledgeBases, &bknsdk.BknCapabilityKnowledgeBase{
+				ID:   binding.CapabilityID,
+				Name: binding.Name,
+			})
 		}
 	}
-	if len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0 &&
-		len(capabilities.MCPTools) == 0 {
+	if capabilities.IsEmpty() {
 		return nil, nil
 	}
 	return capabilities, nil

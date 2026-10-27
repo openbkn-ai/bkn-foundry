@@ -19,13 +19,14 @@ import (
 // matches depends on the environment, not on how it is written.
 
 // capabilityCategories are the categories of capabilities, in the order they are written.
-var capabilityCategories = []string{"skills", "functions", "mcp_tools"}
+var capabilityCategories = []string{"skills", "functions", "mcp_tools", "knowledge_bases"}
 
 // capabilityFields are the fields of an entry of each category.
 var capabilityFields = map[string][]string{
-	"skills":    {"id", "name"},
-	"functions": {"box_id", "tool_id", "box_name", "tool_name"},
-	"mcp_tools": {"mcp_id", "mcp_name", "tool_name"},
+	"skills":          {"id", "name"},
+	"functions":       {"box_id", "tool_id", "box_name", "tool_name"},
+	"mcp_tools":       {"mcp_id", "mcp_name", "tool_name"},
+	"knowledge_bases": {"id", "name"},
 }
 
 // parseCapabilitiesV3 reads the capabilities section of a 3.0 network.bkn. Values are read as
@@ -58,7 +59,7 @@ func parseCapabilitiesV3(node *yaml.Node) (*BknCapabilities, error) {
 			}
 		}
 	}
-	if len(capabilities.Skills) == 0 && len(capabilities.Functions) == 0 && len(capabilities.MCPTools) == 0 {
+	if capabilities.IsEmpty() {
 		return nil, nil
 	}
 	return capabilities, nil
@@ -109,6 +110,11 @@ func addCapabilityEntry(capabilities *BknCapabilities, where, category string, e
 		capabilities.MCPTools = append(capabilities.MCPTools, &BknCapabilityMCPTool{
 			MCPID: e["mcp_id"], MCPName: e["mcp_name"], ToolName: e["tool_name"],
 		})
+	case "knowledge_bases":
+		if e["id"] == "" && e["name"] == "" {
+			return specErrorf("%s has neither id nor name, so it matches no knowledge base", where)
+		}
+		capabilities.KnowledgeBases = append(capabilities.KnowledgeBases, &BknCapabilityKnowledgeBase{ID: e["id"], Name: e["name"]})
 	}
 	return nil
 }

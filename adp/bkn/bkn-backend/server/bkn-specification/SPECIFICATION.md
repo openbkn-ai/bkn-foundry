@@ -31,7 +31,7 @@ BKN（Business Knowledge Network）是基于 Markdown 的声明式建模语言�
 | 概念分组（concept_group） | 把相关对象类组织在一起 |
 | 对象指标（object metric V1） | 归属于对象类、带版本的指标定义，以 JSON 归档 |
 | 资源（resource） | Vega 中的数据资源；对象类和间接关系通过资源 ID 读取数据 |
-| 能力依赖（capabilities） | 网络挂载的 Skill、工具箱工具与 MCP 工具的声明 |
+| 能力依赖（capabilities） | 网络挂载的 Skill、工具箱工具、MCP 工具与知识库的声明 |
 | 定义 | 上述任一类型的单个实例，即一个 `.bkn` 文件或一个指标 JSON 文件 |
 
 ### 1.2 规范版本
@@ -309,6 +309,7 @@ capabilities:         # 可选，见 §13
   skills: []
   functions: []
   mcp_tools: []
+  knowledge_bases: []
 ---
 ```
 
@@ -1155,8 +1156,8 @@ SKILL.md  sha256:...
 
 ## 13. 能力依赖（capabilities）
 
-`network.bkn` frontmatter 中的 `capabilities` 声明网络挂载了哪些 Skill、工具箱工具和 MCP 工具。
-它只是声明，不携带能力本身：Skill 包、工具箱、MCP 服务通过各自的导入导出渠道迁移，
+`network.bkn` frontmatter 中的 `capabilities` 声明网络挂载了哪些 Skill、工具箱工具、MCP 工具和知识库。
+它只是声明，不携带能力本身：Skill 包、工具箱、MCP 服务、知识库通过各自的渠道迁移，
 类似 package.json 只列依赖、不打包依赖。
 
 行动类与逻辑属性引用的工具（§6.7、§8.6）不必写入 `capabilities`：引用由模型文件本身给出，
@@ -1177,6 +1178,9 @@ capabilities:
     - mcp_id: mcp_erp
       mcp_name: ERP 查询
       tool_name: query_po
+  knowledge_bases:
+    - id: "7"
+      name: 合同库
 ```
 
 | 类别 | 字段 | 说明 |
@@ -1184,6 +1188,7 @@ capabilities:
 | `skills` | `id`、`name` | Skill |
 | `functions` | `box_id`、`tool_id`、`box_name`、`tool_name` | 工具箱中的工具，包括函数工具和 OpenAPI 工具 |
 | `mcp_tools` | `mcp_id`、`mcp_name`、`tool_name` | MCP 工具；工具本身按名称寻址 |
+| `knowledge_bases` | `id`、`name` | 专业版知识库；挂载后网络的托管代理账号可读取整个知识库。目标环境没有知识库服务时列为跳过项（`not_supported`） |
 
 **为什么同时写 ID 和名称：** ID 由各环境自行生成，跨环境不保留；名称是跨环境导入时唯一能匹配的依据。
 
@@ -1193,7 +1198,7 @@ capabilities:
 - 匹配不到的条目不会让导入失败，而是在导入结果中列为跳过项并说明原因。
 - 上传时 `binding_policy=detach` 会忽略整段声明。
 - 2.x：这一段格式错误时被整体忽略，网络仍可导入；写错的类别或字段被静默丢弃。
-- **（3.0）** 格式写错时拒绝并指出位置（类别、条目序号与字段）：`capabilities` 不是映射；出现 `skills`、`functions`、`mcp_tools` 以外的类别，或上表以外的字段；值的类型不对（类别不是列表、条目不是映射、字段不是单个值）；条目缺少匹配所需的字段，在任何环境都无法匹配：`skills` 的 `id`、`name` 都没写，`functions` 的 `box_id` + `tool_id` 与 `box_name` + `tool_name` 两组都不齐全，`mcp_tools` 没写 `tool_name`，或 `mcp_id`、`mcp_name` 都没写。匹配不到的条目与 2.x 相同，列为跳过项，不让导入失败：能否匹配取决于目标环境，不是写法错误。
+- **（3.0）** 格式写错时拒绝并指出位置（类别、条目序号与字段）：`capabilities` 不是映射；出现 `skills`、`functions`、`mcp_tools`、`knowledge_bases` 以外的类别，或上表以外的字段；值的类型不对（类别不是列表、条目不是映射、字段不是单个值）；条目缺少匹配所需的字段，在任何环境都无法匹配：`skills` 的 `id`、`name` 都没写，`functions` 的 `box_id` + `tool_id` 与 `box_name` + `tool_name` 两组都不齐全，`mcp_tools` 没写 `tool_name`，或 `mcp_id`、`mcp_name` 都没写，`knowledge_bases` 的 `id`、`name` 都没写。匹配不到的条目与 2.x 相同，列为跳过项，不让导入失败：能否匹配取决于目标环境，不是写法错误。
 
 ### 13.1 跨环境迁移（现状）
 
@@ -1210,6 +1215,7 @@ BKN 包只携带对工具的**引用**，不携带工具的实现：
 | 工具箱（OpenAPI 工具、函数工具） | 执行工厂 `GET /impex/export/toolbox/{box_id}` 导出，`POST /impex/import/toolbox` 导入；导出内容包含 OpenAPI 元数据、函数代码与服务地址 | 保留 `box_id`、`tool_id` |
 | MCP 服务 | 执行工厂 `GET /impex/export/mcp/{mcp_id}` 导出，`POST /impex/import/mcp` 导入；包含服务配置、工具列表及依赖的工具箱 | 保留 `mcp_id` |
 | Skill | 下载 zip 包后在目标环境注册 | **不保留**，注册时生成新 ID，只能靠 `capabilities` 中的名称匹配 |
+| 知识库（专业版） | 在目标环境的知识库中新建并接入来源 | **不保留**，只能靠 `capabilities` 中的名称匹配；ID 是各环境自增的整数，只有 ID 对应的知识库名称与声明一致时才按 ID 采用；同名多个时不猜，列为跳过项 |
 
 按「先导入工具箱与 MCP，再导入 BKN 包」的顺序，行动与逻辑属性的 ID 引用可以直接对上。注意：
 

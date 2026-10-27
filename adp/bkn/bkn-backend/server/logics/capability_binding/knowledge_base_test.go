@@ -13,6 +13,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	bknsdk "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/bkn-specification/bkn"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
 )
@@ -145,5 +146,108 @@ func TestBackfillKnowledgeBases(t *testing.T) {
 
 		So(result.available, ShouldBeTrue)
 		So(binding.Status, ShouldEqual, interfaces.CAPABILITY_STATUS_MISSING)
+	})
+}
+
+func kbDecl(id, name string) *bknsdk.BknCapabilities {
+	return &bknsdk.BknCapabilities{KnowledgeBases: []*bknsdk.BknCapabilityKnowledgeBase{{ID: id, Name: name}}}
+}
+
+// TestImportKnowledgeBase resolves a declared knowledge base by id, then by exact name, like a
+// skill, and reports instead of failing when it cannot.
+func TestImportKnowledgeBase(t *testing.T) {
+	Convey("导入知识库依赖", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		service, cba, _ := newTestServiceWithFactory(t, ctrl)
+		kba := bmock.NewMockKnowledgeBaseAccess(ctrl)
+		service.kba = kba
+
+		Convey("id 落空后按名字找回并挂载", func() {
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(nil, nil)
+			kba.EXPECT().FindKnowledgeBasesByName(gomock.Any(), "合同库").
+				Return([]*interfaces.KnowledgeBaseBrief{{ID: "21", Name: "合同库"}}, nil)
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "21").Return(&interfaces.KnowledgeBaseBrief{ID: "21", Name: "合同库"}, nil)
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), "kn1", "main",
+				interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, "", "21").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", "合同库"))
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 1)
+			So(report.Skipped, ShouldBeEmpty)
+		})
+
+		Convey("id 命中但名字不同：不采用该 id，按名字找", func() {
+			// Another environment's 7 is a different knowledge base; mounting it would expose
+			// the wrong data through the proxy.
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(&interfaces.KnowledgeBaseBrief{ID: "7", Name: "员工档案"}, nil)
+			kba.EXPECT().FindKnowledgeBasesByName(gomock.Any(), "合同库").
+				Return([]*interfaces.KnowledgeBaseBrief{{ID: "12", Name: "合同库"}}, nil)
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "12").Return(&interfaces.KnowledgeBaseBrief{ID: "12", Name: "合同库"}, nil)
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), "kn1", "main",
+				interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, "", "12").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", "合同库"))
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 1)
+		})
+
+		Convey("id 命中但名字不同且名字找不到：跳过，不挂 id 指向的库", func() {
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(&interfaces.KnowledgeBaseBrief{ID: "7", Name: "员工档案"}, nil)
+			kba.EXPECT().FindKnowledgeBasesByName(gomock.Any(), "合同库").Return(nil, nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", "合同库"))
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 0)
+			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipNotFound)
+		})
+
+		Convey("只写了 id 时按 id 采用", func() {
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(&interfaces.KnowledgeBaseBrief{ID: "7", Name: "员工档案"}, nil).Times(2)
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), "kn1", "main",
+				interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, "", "7").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", ""))
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 1)
+		})
+
+		Convey("同名多个不猜，跳过并说明", func() {
+			kba.EXPECT().FindKnowledgeBasesByName(gomock.Any(), "合同库").
+				Return([]*interfaces.KnowledgeBaseBrief{{ID: "21"}, {ID: "22"}}, nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("", "合同库"))
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 0)
+			So(len(report.Skipped), ShouldEqual, 1)
+			So(report.Skipped[0].CapabilityType, ShouldEqual, interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE)
+			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipAmbiguous)
+		})
+
+		Convey("没有部署 kb-api 时跳过为 not_supported，导入照常", func() {
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(nil, interfaces.ErrKnowledgeBaseUnavailable)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", "合同库"))
+
+			So(err, ShouldBeNil)
+			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipNotSupported)
+		})
+
+		Convey("kb-api 不可达时跳过并说明", func() {
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(nil, errors.New("connection refused"))
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", "合同库"))
+
+			So(err, ShouldBeNil)
+			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipKnowledgeBaseUnreachable)
+		})
 	})
 }
