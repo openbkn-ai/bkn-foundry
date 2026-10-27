@@ -40,6 +40,11 @@ async def remove_llm(request: Request, model_ids: dict = Body(...)):
 @llm_route.post("/llm/test")
 async def test_llm_(request: Request, model_config: dict = Body(...)):
     userId, language, role = await get_user_info(request)
+    model_id = model_config.get("model_id")
+    if not await permission_manager.check_single_permission(
+            user_id=userId, resource_id=model_id if model_id and model_id != "-" else "*",
+            operations="execute", resource_type="large_model", role=role):
+        return JSONResponse(status_code=403, content=NotPermissionError)
     return await test_model(model_config, userId, language)
 
 

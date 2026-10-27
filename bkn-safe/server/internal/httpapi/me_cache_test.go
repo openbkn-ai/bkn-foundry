@@ -35,13 +35,9 @@ func (v *revocableVerifier) VerifyToken(_ context.Context, token string) (string
 	return token, nil
 }
 
-// TestMeMutatingEndpointsBypassCache proves the introspection cache is scoped to
-// the READ-ONLY /me endpoints. After a token is revoked, GET /me/permissions may
-// still succeed within the cache TTL, but mutating requests (POST /me/api-keys,
-// PUT /me) must fail immediately because they run on the uncached verifier —
-// otherwise a revoked token could mint a long-lived API key inside the cache
-// window.
-func TestMeMutatingEndpointsBypassCache(t *testing.T) {
+// Every /me request must observe revocation, including reads. Only concurrent
+// introspections share a result; positive results are no longer retained.
+func TestMeEndpointsObserveRevocation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
@@ -92,9 +88,9 @@ func TestMeMutatingEndpointsBypassCache(t *testing.T) {
 	// Revoke the token.
 	v.revoked.Store(true)
 
-	// Read-only endpoint is still served from the cache within its TTL.
-	if code := call(http.MethodGet, "/api/safe/v1/me/permissions", ""); code != http.StatusOK {
-		t.Fatalf("cached read after revoke: want 200, got %d", code)
+	// Read-only endpoints must not reuse the successful introspection.
+	if code := call(http.MethodGet, "/api/safe/v1/me/permissions", ""); code != http.StatusUnauthorized {
+		t.Fatalf("read after revoke: want 401, got %d", code)
 	}
 
 	// Mutating endpoints must reject immediately — they run on the uncached

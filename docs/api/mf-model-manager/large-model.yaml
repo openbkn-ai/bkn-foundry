@@ -24,6 +24,9 @@ paths:
       description: |
         Tests whether the submitted large model configuration can reach the
         upstream model service.
+        Requires an enabled account and large_model execute authorization before
+        loading configuration or contacting the provider. New configurations use
+        the type-wide resource; saved configurations use their model ID.
 
         For `model_series=openai`, the service sends a real Azure OpenAI chat
         completions request to the configured deployment. Invalid `api_url`,
@@ -81,12 +84,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/FastApiError'
         '401':
-          description: Authentication failed
+          description: Missing/invalid token, or a disabled/deleted account.
           headers:
             Content-Language:
               $ref: '#/components/headers/ContentLanguage'
             Cache-Control:
               $ref: '#/components/headers/PrivateNoCache'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '403':
+          description: The caller lacks execute authorization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
+        '503':
+          description: Current account state could not be verified; the provider is not contacted.
           content:
             application/json:
               schema:

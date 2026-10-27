@@ -35,6 +35,7 @@ error_messages = {
     "ModelFactory.HTTP.MethodNotAllowed": {"description": "请求方法不受支持。", "detail": "该资源不支持当前 HTTP 请求方法。", "solution": "请检查请求方法后重试。"},
     "Unauthorized": {"description": "认证失败。", "detail": "访问令牌无效或已过期。", "solution": "请获取有效令牌后重试。"},
     "HydraServiceError": {"description": "认证服务暂不可用。", "detail": "当前无法验证访问令牌。", "solution": "请稍后重试或联系管理员。"},
+    "ModelFactory.AccountStateUnavailable": {"description": "账号验证暂不可用。", "detail": "当前无法确认账号是否启用。", "solution": "请稍后重试或联系管理员。"},
     "UserManagementServiceError": {"description": "用户服务暂不可用。", "detail": "当前无法获取用户信息。", "solution": "请稍后重试或联系管理员。"},
     "NotPermission": {"description": "权限不足。", "detail": "当前身份无法执行此操作。", "solution": "请联系管理员授予所需权限。"},
     "DeletePermissionResuorceError": {"description": "权限资源清理失败。", "detail": "无法删除对应的权限资源。", "solution": "请稍后重试或联系管理员。"},

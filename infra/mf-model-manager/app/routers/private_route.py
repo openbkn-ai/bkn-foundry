@@ -308,4 +308,4 @@ async def get_info(request: Request, model_name):
 
 @private_route.get("/small-model/get_default")
 async def get_default(request: Request, model_type: str = Query(default="embedding")):
-    return await small_model_controller.get_default_model(model_type)
+    return await small_model_controller.get_default_model(model_type, trusted_internal=True)

@@ -16,7 +16,10 @@ import (
 )
 
 func TestMeAuthGate(t *testing.T) {
-	r, _, _, _ := newAdminServer(t)
+	r, _, db, _ := newAdminServer(t)
+	if err := db.Create(&model.User{ID: "nobody", Account: "nobody", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 	const path = "/api/safe/v1/me/permissions"
 
 	// no token -> 401
@@ -27,7 +30,7 @@ func TestMeAuthGate(t *testing.T) {
 	if w := tokReq(t, r, http.MethodGet, path, nil, "bad"); w.Code != http.StatusUnauthorized {
 		t.Errorf("bad token: want 401, got %d", w.Code)
 	}
-	// any authenticated subject -> 200, even with zero grants
+	// An enabled account -> 200, even with zero grants.
 	if w := tokReq(t, r, http.MethodGet, path, nil, "nobody"); w.Code != http.StatusOK {
 		t.Errorf("plain user: want 200, got %d (%s)", w.Code, w.Body.String())
 	}
@@ -95,12 +98,12 @@ func TestMeIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// no token -> 401; subject without a user row -> 404
+	// No token or a subject without an account -> 401.
 	if w := tokReq(t, r, http.MethodGet, path, nil, ""); w.Code != http.StatusUnauthorized {
 		t.Errorf("no token: want 401, got %d", w.Code)
 	}
-	if w := tokReq(t, r, http.MethodGet, path, nil, "ghost"); w.Code != http.StatusNotFound {
-		t.Errorf("ghost subject: want 404, got %d", w.Code)
+	if w := tokReq(t, r, http.MethodGet, path, nil, "ghost"); w.Code != http.StatusUnauthorized {
+		t.Errorf("ghost subject: want 401, got %d", w.Code)
 	}
 
 	w := tokReq(t, r, http.MethodGet, path, nil, "u-me")
@@ -217,7 +220,10 @@ func TestMeUpdateProfile(t *testing.T) {
 }
 
 func TestMePermissions(t *testing.T) {
-	r, e, _, _ := newAdminServer(t)
+	r, e, db, _ := newAdminServer(t)
+	if err := db.Create(&model.User{ID: "u1", Account: "u1", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 	const path = "/api/safe/v1/me/permissions"
 
 	// u1: one role grant (type-wide), one direct per-object grant, and the same
@@ -294,7 +300,10 @@ func TestMePermissions(t *testing.T) {
 }
 
 func TestMeKnowledgeNetworkGrantsReturnsDirectInstancesWithoutRoleWildcard(t *testing.T) {
-	r, e, _, _ := newAdminServer(t)
+	r, e, db, _ := newAdminServer(t)
+	if err := db.Create(&model.User{ID: "builder-1", Account: "builder-1", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 	const path = "/api/safe/v1/me/knowledge-network-grants"
 
 	// The role-wide grant intentionally covers the direct grant. The normal
@@ -370,7 +379,10 @@ func decodeInstanceOps(t *testing.T, w *httptest.ResponseRecorder) map[string][]
 
 // TestMePermissionsScope covers the scope filters and their validation.
 func TestMePermissionsScope(t *testing.T) {
-	r, e, _, _ := newAdminServer(t)
+	r, e, db, _ := newAdminServer(t)
+	if err := db.Create(&model.User{ID: "u1", Account: "u1", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 	const path = "/api/safe/v1/me/permissions"
 
 	// u1: type-wide large_model:* [display,execute] via role, plus two instance

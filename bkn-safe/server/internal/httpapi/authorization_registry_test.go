@@ -96,6 +96,9 @@ func TestAuthorizationRegistryReturnsPersistedContract(t *testing.T) {
 
 func TestMeAuthorizationRegistryRequiresToken(t *testing.T) {
 	r, e, db, _ := newAdminServer(t)
+	if err := db.Create(&model.User{ID: "catalog-reader", Account: "catalog-reader", Enabled: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Create(&model.ResourceType{ID: "catalog", Name: "Catalog"}).Error; err != nil {
 		t.Fatal(err)
 	}

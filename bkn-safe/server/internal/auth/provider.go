@@ -143,6 +143,9 @@ func (p *Provider) Consent(ctx context.Context, challenge, loginIP, clientType s
 	if err != nil {
 		return "", err
 	}
+	if !u.Enabled {
+		return "", ErrUserDisabled
+	}
 	ext := ExtClaims(u, loginIP, clientType)
 	return p.hydra.AcceptConsent(ctx, cr, ext, remember)
 }

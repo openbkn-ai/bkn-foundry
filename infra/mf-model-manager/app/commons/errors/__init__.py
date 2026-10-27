@@ -203,6 +203,7 @@ _ERROR_CODES = {
     "IdValueIsEmpty": "IdValueIsEmpty ",
     "UnauthorizedError": "Unauthorized",
     "HydraServiceError": "HydraServiceError",
+    "AccountStateUnavailableError": "ModelFactory.AccountStateUnavailable",
     "UserManagementError": "UserManagementServiceError",
     "NotPermissionError": "NotPermission",
     "DeletePermissionResuorceError": "DeletePermissionResuorceError",

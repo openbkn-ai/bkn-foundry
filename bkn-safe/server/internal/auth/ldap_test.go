@@ -9,8 +9,8 @@ import (
 	"errors"
 	"testing"
 
-	ldapv3 "github.com/go-ldap/ldap/v3"
 	"github.com/glebarez/sqlite"
+	ldapv3 "github.com/go-ldap/ldap/v3"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/config"
@@ -108,5 +108,37 @@ func TestChainFallsThrough(t *testing.T) {
 	}
 	if u.Source != model.SourceLDAP {
 		t.Errorf("expected LDAP user, got source %s", u.Source)
+	}
+}
+
+func TestLDAPDisabledAccountCannotLogin(t *testing.T) {
+	a, db := newLDAP(t)
+	u, err := a.Verify(t.Context(), "alice", "correct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.User{}).Where("id = ?", u.ID).Update("enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Verify(t.Context(), "alice", "correct"); !errors.Is(err, ErrUserDisabled) {
+		t.Fatalf("LDAP login = %v, want disabled", err)
+	}
+	if _, err := a.Verify(t.Context(), "alice", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("wrong password = %v, want invalid credentials", err)
+	}
+}
+
+func TestChainDoesNotFallbackAfterDisabledLocalLogin(t *testing.T) {
+	a, _ := newLDAP(t)
+	local := NewUserStore(a.db)
+	if err := local.CreateLocalUser(t.Context(), &model.User{ID: "disabled-local", Account: "alice", Enabled: false}, "correct"); err != nil {
+		t.Fatal(err)
+	}
+	a.dial = func(string) (ldapConn, error) {
+		t.Error("disabled local login must not fall back to LDAP")
+		return &fakeConn{userDN: "uid=alice,dc=x"}, nil
+	}
+	if _, err := NewChain(local, a).Verify(t.Context(), "alice", "correct"); !errors.Is(err, ErrUserDisabled) {
+		t.Fatalf("chain login = %v, want disabled", err)
 	}
 }

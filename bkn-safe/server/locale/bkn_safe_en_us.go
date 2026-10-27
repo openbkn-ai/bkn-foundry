@@ -53,6 +53,7 @@ var bknSafeEnUS = i18n.I18nMessages{
 		"BknSafe.Auth.ChineseLanguageLabel":                  "中文",
 		"BknSafe.Auth.EnglishLanguageLabel":                  "English",
 		"BknSafe.Auth.InvalidCredentials":                    "The account or password is incorrect.",
+		"BknSafe.Auth.UserDisabled":                          "Your account has been disabled. Please contact an administrator.",
 		"BknSafe.Auth.LoginRequestExpired":                   "The sign-in request has expired. Return to the application and sign in again.",
 		"BknSafe.Auth.PasswordMismatch":                      "The new passwords do not match or are empty.",
 		"BknSafe.Auth.PasswordReuse":                         "The new password must differ from the current password.",

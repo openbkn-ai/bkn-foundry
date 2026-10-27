@@ -407,6 +407,9 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore accesslog.Recorder) {
 			data := loginAuthPageData(c, challenge)
 			data.Account = account
 			data.Error = localizedAuthMessage(c, "InvalidCredentials")
+			if errors.Is(err, auth.ErrUserDisabled) {
+				data.Error = localizedAuthMessage(c, "UserDisabled")
+			}
 			renderHTMLStatus(c, http.StatusUnauthorized, loginPage, data)
 			return
 		}
@@ -469,7 +472,11 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore accesslog.Re
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) || errors.Is(err, auth.ErrUserDisabled) {
 			recordLogin(c, p, accessStore, nil, account, "failure", loginFailureCode(err))
-			reRender("CurrentPasswordInvalid")
+			if errors.Is(err, auth.ErrUserDisabled) {
+				reRender("UserDisabled")
+			} else {
+				reRender("CurrentPasswordInvalid")
+			}
 			return
 		}
 		slog.Error("change-password: failed", "err", err)
@@ -550,6 +557,10 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 	if firstPartyClients[cr.ClientID] {
 		redirectTo, err := p.Consent(c.Request.Context(), challenge, c.ClientIP(), auth.ClientTypeWeb, false)
 		if err != nil {
+			if errors.Is(err, auth.ErrUserDisabled) {
+				replyLocalizedAuthText(c, http.StatusUnauthorized, authMessagePrefix+"UserDisabled")
+				return
+			}
 			slog.Error("consent: first-party auto-accept failed", "err", err)
 			replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError")
 			return
@@ -585,6 +596,10 @@ func doConsent(c *gin.Context, p *auth.Provider) {
 		redirectTo, err = p.Consent(ctx, challenge, c.ClientIP(), auth.ClientTypeWeb, false)
 	}
 	if err != nil {
+		if errors.Is(err, auth.ErrUserDisabled) {
+			replyLocalizedAuthText(c, http.StatusUnauthorized, authMessagePrefix+"UserDisabled")
+			return
+		}
 		slog.Error("consent: decision failed", "err", err)
 		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError")
 		return
