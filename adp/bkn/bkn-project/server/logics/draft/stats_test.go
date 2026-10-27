@@ -48,15 +48,16 @@ func Test_VegaCounter(t *testing.T) {
 		})
 
 		Convey("joinStats joins the distinct target keys so duplicates do not multiply rows\n", func() {
-			vega.rows = []map[string]any{{"total": float64(800), "nulls": float64(0), "orphans": float64(4)}}
+			vega.rows = []map[string]any{{"total": float64(800), "nulls": float64(0), "orphans": float64(4), "distinct_values": float64(60)}}
 
-			rows, nulls, orphans, err := c.joinStats(ctx, orders, "customer_id", customers, "customer_id")
+			rows, nulls, orphans, distinct, err := c.joinStats(ctx, orders, "customer_id", customers, "customer_id")
 
 			So(err, ShouldBeNil)
-			So([]int64{rows, nulls, orphans}, ShouldResemble, []int64{800, 0, 4})
+			So([]int64{rows, nulls, orphans, distinct}, ShouldResemble, []int64{800, 0, 4, 60})
 			So(vega.sql[0], ShouldEqual, "SELECT COUNT(*) AS total, "+
 				"SUM(CASE WHEN s.`customer_id` IS NULL THEN 1 ELSE 0 END) AS nulls, "+
-				"SUM(CASE WHEN s.`customer_id` IS NOT NULL AND t.`customer_id` IS NULL THEN 1 ELSE 0 END) AS orphans "+
+				"SUM(CASE WHEN s.`customer_id` IS NOT NULL AND t.`customer_id` IS NULL THEN 1 ELSE 0 END) AS orphans, "+
+				"COUNT(DISTINCT s.`customer_id`) AS distinct_values "+
 				"FROM {{r_orders}} s LEFT JOIN (SELECT DISTINCT `customer_id` FROM {{r_customers}}) t ON s.`customer_id` = t.`customer_id`")
 		})
 

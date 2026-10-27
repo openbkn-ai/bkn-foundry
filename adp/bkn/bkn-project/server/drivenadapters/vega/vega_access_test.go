@@ -79,12 +79,30 @@ func Test_VegaAccess(t *testing.T) {
 				ID: "r1", CatalogID: "c1", Name: "orders", Description: "Sales orders",
 				SourceName: "orders", SourceSchema: "erp", Rows: 800, RowsCounted: true,
 				Columns: []interfaces.VegaColumn{
-					{Name: "order_id", Type: "string", Description: "Order number"},
+					{Name: "order_id", Type: "string", Description: "Order number", Comment: "Order number"},
 					{Name: "customer_id", Type: "integer", Nullable: true},
 				},
 				PrimaryKeys: []string{"order_id"},
 				Indices:     []interfaces.VegaIndex{{Columns: []string{"order_id"}, Unique: true, Primary: true}},
 				ForeignKeys: []interfaces.VegaForeignKey{{Columns: []string{"customer_id"}, RefTable: "customers", RefColumns: []string{"id"}}},
+			})
+		})
+
+		Convey("GetTables takes the names and descriptions semantic understanding wrote back\n", func() {
+			respBody = `{"entries":[{"id":"r1","name":"erp_material",
+				"schema_definition":[
+					{"name":"matnr","display_name":"Material code","type":"string","description":"Unique material code","original_name":"matnr"},
+					{"name":"maktx","display_name":"maktx","type":"string","description":"","original_name":"maktx"}],
+				"source_metadata":{"name":"erp_material","columns":[
+					{"name":"matnr","type":"varchar(18)","description":"MATNR"},
+					{"name":"maktx","type":"varchar(40)","description":"Short text"}]}}]}`
+
+			tables, err := va.GetTables(ctx, account, []string{"r1"})
+
+			So(err, ShouldBeNil)
+			So(tables[0].Columns, ShouldResemble, []interfaces.VegaColumn{
+				{Name: "matnr", DisplayName: "Material code", Type: "string", Description: "Unique material code", Comment: "MATNR"},
+				{Name: "maktx", Type: "string", Description: "Short text", Comment: "Short text"},
 			})
 		})
 

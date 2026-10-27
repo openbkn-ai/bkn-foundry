@@ -27,7 +27,10 @@ const (
 const (
 	DRAFT_KEY_PRIMARY_KEY  = "primary_key"
 	DRAFT_KEY_UNIQUE_INDEX = "unique_index"
-	DRAFT_KEY_NONE         = "none"
+	// DRAFT_KEY_INFERRED is a key no constraint declares, taken from an identity-like field
+	// whose full-table count shows it unique and non-null.
+	DRAFT_KEY_INFERRED = "inferred"
+	DRAFT_KEY_NONE     = "none"
 )
 
 // Relation cardinalities.
@@ -95,7 +98,9 @@ type DraftProperty struct {
 
 // DraftKeyEvidence records how the key was found and the full-table counts that check it.
 type DraftKeyEvidence struct {
-	Source   string `json:"source"`
+	Source string `json:"source"`
+	// Field is the field an inferred identity counted; it stays when none qualified.
+	Field    string `json:"field,omitempty"`
 	Computed bool   `json:"computed"`
 	Rows     int64  `json:"rows"`
 	Distinct int64  `json:"distinct"`
@@ -136,7 +141,10 @@ type DraftJoinEvidence struct {
 	Hits     int64   `json:"hits"`
 	Orphans  int64   `json:"orphans"`
 	HitRate  float64 `json:"hit_rate"`
-	Reason   string  `json:"reason,omitempty"`
+	// SourceDistinct counts the distinct values of the referring field: a field of a few
+	// values hits any key by chance.
+	SourceDistinct int64  `json:"source_distinct"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 // DraftValueType is an enum drafted from a code table; the properties that reference the

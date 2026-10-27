@@ -25,9 +25,14 @@ history is kept as a lineage. See issue #2520 and epic #2519.
   table structure of its data catalogs, by rules. Entity tables become object
   types with their keys checked by full-table counts; code tables become enums;
   link tables become many-to-many relations; declared foreign keys, and fields
-  named for another table's key, become relations checked by a full-table hit
-  rate. Personal fields are excluded. Only counts and code-table values leave
-  vega-backend, which is read as the caller.
+  named for another table's key (also with a role in front, such as
+  parent_lot_id), become relations checked by a full-table hit rate. A table
+  without a declared key takes an identity-like field that counts unique and
+  non-null. Inferred relations that cannot be counted are proposed unverified;
+  ones over a field of few values are proposed, not adopted. Personal fields
+  (privacy keywords matched as whole words) are excluded. Names and descriptions
+  from the catalog's semantic understanding come first. Only counts and
+  code-table values leave vega-backend, which is read as the caller.
 - Health and readiness endpoints.
 
 ## API

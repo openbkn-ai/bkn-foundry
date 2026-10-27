@@ -26,10 +26,18 @@ type VegaTable struct {
 
 type VegaColumn struct {
 	Name string
+	// DisplayName is the business name the catalog's semantic understanding gave the field,
+	// empty when it gave none.
+	DisplayName string
 	// Type is vega's type, close to BKN's data types.
-	Type        string
+	Type string
+	// Description is the field's description from the catalog's semantic understanding, else
+	// the database comment.
 	Description string
-	Nullable    bool
+	// Comment is the database comment; privacy rules read it even when semantic understanding
+	// gave a description.
+	Comment  string
+	Nullable bool
 }
 
 type VegaIndex struct {

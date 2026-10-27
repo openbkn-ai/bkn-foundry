@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
@@ -102,14 +103,95 @@ func displayName(comment string, name string) string {
 	return clause
 }
 
-// privacyKeyword returns the keyword a field's name or comment matches, or "".
+// words splits a name into lowercase words at non-alphanumerics and camelCase boundaries:
+// contactEmail and contact_email both give [contact email].
+func words(name string) []string {
+	out := []string{}
+	var word []rune
+	flush := func() {
+		if len(word) > 0 {
+			out = append(out, strings.ToLower(string(word)))
+			word = word[:0]
+		}
+	}
+	var prev rune
+	for _, r := range name {
+		switch {
+		case !unicode.IsLetter(r) && !unicode.IsDigit(r):
+			flush()
+		case unicode.IsUpper(r) && unicode.IsLower(prev):
+			flush()
+			word = append(word, r)
+		default:
+			word = append(word, r)
+		}
+		prev = r
+	}
+	flush()
+	return out
+}
+
+// isASCII reports whether a keyword is written in Latin letters, which form words.
+func isASCII(s string) bool {
+	for _, r := range s {
+		if r > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
+
+// wordMatches reports whether keyword words kw occur in a field's words: consecutive, the
+// inner ones whole, the first allowed to end a longer word (cellphone) and the last to begin
+// one (birthday, phone2). A one-word keyword may sit anywhere in a word that way, but a
+// longer keyword never starts inside a word: id_number does not match materialplanid_number.
+func wordMatches(have []string, kw []string) bool {
+	n := len(kw)
+	if n == 0 {
+		return false
+	}
+	for i := 0; i+n <= len(have); i++ {
+		match := true
+		for j, k := range kw {
+			w := have[i+j]
+			switch {
+			case n == 1:
+				match = strings.HasPrefix(w, k) || strings.HasSuffix(w, k)
+			case j == 0:
+				match = w == k
+			case j == n-1:
+				match = strings.HasPrefix(w, k)
+			default:
+				match = w == k
+			}
+			if !match {
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+// privacyKeyword returns the keyword a field's name, description or database comment matches,
+// or "". Latin keywords match by words (see wordMatches); Chinese ones, which have no word
+// breaks, match as substrings.
 func privacyKeyword(column interfaces.VegaColumn, keywords []string) string {
-	name := strings.ToLower(column.Name)
-	comment := strings.ToLower(column.Description)
+	texts := []string{column.Name, column.Description, column.Comment}
 	for _, keyword := range keywords {
-		k := strings.ToLower(keyword)
-		if k != "" && (strings.Contains(name, k) || strings.Contains(comment, k)) {
-			return keyword
+		if keyword == "" {
+			continue
+		}
+		for _, text := range texts {
+			if isASCII(keyword) {
+				if wordMatches(words(text), words(keyword)) {
+					return keyword
+				}
+			} else if strings.Contains(strings.ToLower(text), strings.ToLower(keyword)) {
+				return keyword
+			}
 		}
 	}
 	return ""
@@ -166,6 +248,53 @@ func column(table *interfaces.VegaTable, name string) (interfaces.VegaColumn, bo
 	return interfaces.VegaColumn{}, false
 }
 
+// codeWords end the names of codes and of the tables that list them.
+var codeWords = map[string]bool{
+	"code": true, "codes": true, "type": true, "types": true, "status": true, "statuses": true,
+	"level": true, "levels": true, "category": true, "categories": true, "kind": true, "kinds": true,
+	"class": true, "classes": true, "dict": true, "dictionary": true,
+}
+
+func lastWord(w []string) string {
+	if len(w) == 0 {
+		return ""
+	}
+	return w[len(w)-1]
+}
+
+func looksLikeCode(name string) bool {
+	return codeWords[lastWord(words(name))]
+}
+
+// identityCandidates are fields, in order, that a table without a declared key is likely
+// identified by: id, <table>_id, then a first field named like an identity.
+func identityCandidates(table *interfaces.VegaTable) []string {
+	candidates := []string{}
+	seen := map[string]bool{}
+	add := func(field string) {
+		c, ok := column(table, field)
+		if ok && !seen[field] && keyTypes[bknTypes[c.Type]] {
+			seen[field] = true
+			candidates = append(candidates, field)
+		}
+	}
+	tableID := apiName(table.Name) + "_id"
+	for _, c := range table.Columns {
+		if f := apiName(c.Name); f == "id" || f == tableID {
+			add(c.Name)
+		}
+	}
+	if len(table.Columns) > 0 {
+		first := table.Columns[0].Name
+		w := words(first)
+		if last := lastWord(w); last == "id" || last == "code" || last == "no" ||
+			strings.EqualFold(first, "billno") || strings.EqualFold(first, "bill_no") {
+			add(first)
+		}
+	}
+	return candidates
+}
+
 // codeTableName returns the field holding the names of a code table, or "" when the table is
 // not one: a single-field key, a known row count up to the limit, a few other fields and one
 // of them a name. A table with a personal field is never one, so drafting never reads people's
@@ -173,6 +302,11 @@ func column(table *interfaces.VegaTable, name string) (interfaces.VegaColumn, bo
 func codeTableName(table *interfaces.VegaTable, setting common.DraftSetting) string {
 	key, _ := tableKey(table)
 	if len(key) != 1 || table.Rows <= 0 || table.Rows > setting.CodeTableMaxRows {
+		return ""
+	}
+	// A dictionary is keyed by a code, or named for one: organizations(organization_id, name,
+	// role, role_code) is a small entity, not a dictionary.
+	if !looksLikeCode(key[0]) && !looksLikeCode(table.Name) {
 		return ""
 	}
 	for _, c := range table.Columns {
