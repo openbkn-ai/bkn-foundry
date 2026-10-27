@@ -50,6 +50,7 @@ type objectTypeService struct {
 	aoa        interfaces.AgentOperatorAccess
 	cga        interfaces.ConceptGroupAccess
 	mfs        interfaces.ModelFactoryService
+	nr         *logics.NetworkRelations
 	ota        interfaces.ObjectTypeAccess
 	ps         interfaces.PermissionService
 	vta        interfaces.ValueTypeAccess
@@ -92,6 +93,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			aoa:        logics.AOA,
 			cga:        logics.CGA,
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
+			nr:         logics.NewNetworkRelations(),
 			ota:        logics.OTA,
 			vta:        logics.VTA,
 			ps:         permission.NewPermissionService(appSetting),
@@ -319,6 +321,11 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 		append(append([]*interfaces.ObjectType{}, createObjectTypes...), updateObjectTypes...)); err != nil {
 		return []string{}, err
 	}
+	if err = ots.nr.SaveRefusal(ctx, objectTypes[0].KNID, objectTypes[0].Branch,
+		logics.SavedDefinitions{ObjectTypes: append(append([]*interfaces.ObjectType{}, createObjectTypes...), updateObjectTypes...)},
+		berrors.BknBackend_ObjectType_InvalidParameter_Declarations, berrors.BknBackend_ObjectType_InternalError); err != nil {
+		return []string{}, err
+	}
 
 	// Create.
 	otIDs := make([]string, 0, len(createObjectTypes))
@@ -539,6 +546,12 @@ func (ots *objectTypeService) ValidateObjectTypes(ctx context.Context, knID stri
 				}
 			}
 		}
+	}
+
+	if err = ots.nr.SaveRefusal(ctx, knID, branch,
+		logics.SavedDefinitions{ObjectTypes: append(append([]*interfaces.ObjectType{}, creates...), updates...)},
+		berrors.BknBackend_ObjectType_InvalidParameter_Declarations, berrors.BknBackend_ObjectType_InternalError); err != nil {
+		return err
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -1202,6 +1215,14 @@ func (ots *objectTypeService) updateObjectType(ctx context.Context, tx *sql.Tx,
 	if err := ots.checkAliasNames(ctx, objectType.KNID, objectType.Branch, []*interfaces.ObjectType{objectType}); err != nil {
 		return err
 	}
+	// An overwrite import checks in CreateObjectTypes, with the rest of its save.
+	if keepStoredDeclarations {
+		if err := ots.nr.SaveRefusal(ctx, objectType.KNID, objectType.Branch,
+			logics.SavedDefinitions{ObjectTypes: []*interfaces.ObjectType{objectType}},
+			berrors.BknBackend_ObjectType_InvalidParameter_Declarations, berrors.BknBackend_ObjectType_InternalError); err != nil {
+			return err
+		}
+	}
 	if strictMode {
 		if err := ots.validateObjectTypeStrictExternalDeps(ctx, objectType); err != nil {
 			return err
@@ -1431,6 +1452,11 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 			interfaces.RESOURCE_TYPE_OBJECT_TYPE, knID, otIDs, interfaces.OPERATION_TYPE_DELETE); err != nil {
 			return err
 		}
+	}
+	// A definition another one still refers to stays: deleting it would leave the reference dangling.
+	if err := ots.nr.DeleteRefusal(ctx, knID, branch, interfaces.RESOURCE_TYPE_OBJECT_TYPE, otIDs,
+		berrors.BknBackend_ObjectType_StillReferenced, berrors.BknBackend_ObjectType_InternalError); err != nil {
+		return err
 	}
 	if tx == nil {
 		// 0. Begin the transaction.

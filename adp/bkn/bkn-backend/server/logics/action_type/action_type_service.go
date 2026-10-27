@@ -48,6 +48,7 @@ type actionTypeService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
 	aoa        interfaces.AgentOperatorAccess
+	nr         *logics.NetworkRelations
 	ata        interfaces.ActionTypeAccess
 	cga        interfaces.ConceptGroupAccess
 	mfs        interfaces.ModelFactoryService
@@ -62,6 +63,7 @@ func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeSe
 		atService = &actionTypeService{
 			appSetting: appSetting,
 			db:         logics.DB,
+			nr:         logics.NewNetworkRelations(),
 			ata:        logics.ATA,
 			aoa:        logics.AOA,
 			cga:        logics.CGA,
@@ -309,6 +311,11 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 		append(append([]*interfaces.ActionType{}, createActionTypes...), updateActionTypes...)); err != nil {
 		return []string{}, err
 	}
+	if err = ats.nr.SaveRefusal(ctx, actionTypes[0].KNID, actionTypes[0].Branch,
+		logics.SavedDefinitions{ActionTypes: append(append([]*interfaces.ActionType{}, createActionTypes...), updateActionTypes...)},
+		berrors.BknBackend_ActionType_InvalidParameter_Declarations, berrors.BknBackend_ActionType_InternalError); err != nil {
+		return []string{}, err
+	}
 
 	// Create.
 	atIDs := make([]string, 0, len(createActionTypes))
@@ -473,6 +480,12 @@ func (ats *actionTypeService) ValidateActionTypes(ctx context.Context, knID stri
 				return err
 			}
 		}
+	}
+
+	if err = ats.nr.SaveRefusal(ctx, knID, branch,
+		logics.SavedDefinitions{ActionTypes: append(append([]*interfaces.ActionType{}, creates...), updates...)},
+		berrors.BknBackend_ActionType_InvalidParameter_Declarations, berrors.BknBackend_ActionType_InternalError); err != nil {
+		return err
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -679,6 +692,14 @@ func (ats *actionTypeService) updateActionType(ctx context.Context, tx *sql.Tx, 
 	if err = ats.checkAliasNames(ctx, actionType.KNID, actionType.Branch, []*interfaces.ActionType{actionType}); err != nil {
 		return err
 	}
+	// An overwrite import checks in CreateActionTypes, with the rest of its save.
+	if keepStoredDeclarations {
+		if err = ats.nr.SaveRefusal(ctx, actionType.KNID, actionType.Branch,
+			logics.SavedDefinitions{ActionTypes: []*interfaces.ActionType{actionType}},
+			berrors.BknBackend_ActionType_InvalidParameter_Declarations, berrors.BknBackend_ActionType_InternalError); err != nil {
+			return err
+		}
+	}
 
 	if strictMode {
 		if actionType.ObjectTypeID != "" {
@@ -810,6 +831,11 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 			interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs, interfaces.OPERATION_TYPE_DELETE); err != nil {
 			return err
 		}
+	}
+	// A definition another one still refers to stays: deleting it would leave the reference dangling.
+	if err := ats.nr.DeleteRefusal(ctx, knID, branch, interfaces.RESOURCE_TYPE_ACTION_TYPE, atIDs,
+		berrors.BknBackend_ActionType_StillReferenced, berrors.BknBackend_ActionType_InternalError); err != nil {
+		return err
 	}
 	if tx == nil {
 		// 0. Begin the transaction.

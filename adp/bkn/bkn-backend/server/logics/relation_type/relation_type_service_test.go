@@ -25,6 +25,7 @@ import (
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/logics/batchindex"
 )
 
@@ -1169,6 +1170,28 @@ func Test_relationTypeService_DeleteRelationTypesByIDs(t *testing.T) {
 
 			err := service.DeleteRelationTypesByIDs(ctx, nil, knID, branch, rtIDs)
 			So(err, ShouldBeNil)
+		})
+
+		Convey("Refused while a fallback path stands in for the relation type\n", func() {
+			service.nr = &logics.NetworkRelations{RTA: rta}
+			fallback := &interfaces.RelationType{
+				RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{RTID: "rt1_via_site"},
+				RelationDeclarations:     interfaces.RelationDeclarations{FallbackFor: "rt1"},
+			}
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rta.EXPECT().ListDeprecatedOrFallbackRelationTypeIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return([]string{"rt1_via_site"}, nil)
+			rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"rt1_via_site"}).
+				Return([]*interfaces.RelationType{fallback}, nil)
+
+			err := service.DeleteRelationTypesByIDs(ctx, nil, "kn1", interfaces.MAIN_BRANCH, []string{"rt1"})
+			So(err, ShouldNotBeNil)
+			httpErr := err.(*httperrors.HTTPError)
+			So(httpErr.HTTPCode, ShouldEqual, http.StatusConflict)
+			So(httpErr.ErrorCode, ShouldEqual, berrors.BknBackend_RelationType_StillReferenced)
+			So(httpErr.ErrorDetails, ShouldResemble, map[string]any{
+				"references": []string{`relation type "rt1" is the fallback_for of relation type "rt1_via_site"`},
+			})
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
 		Convey("Failed when permission check fails\n", func() {

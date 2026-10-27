@@ -2011,3 +2011,35 @@ func (ota *objectTypeAccess) ListAliasedObjectTypes(ctx context.Context, knID st
 	span.SetStatus(codes.Ok, "")
 	return result, rows.Err()
 }
+
+func (ota *objectTypeAccess) ListDeprecatedObjectTypes(ctx context.Context, knID string, branch string) ([]*interfaces.ObjectType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListDeprecatedObjectTypes")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_id", "f_name", "f_lifecycle_status", "f_deprecation").From(OT_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.Eq{"f_lifecycle_status": interfaces.LIFECYCLE_DEPRECATED}).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := ota.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "Query deprecated object types failed", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []*interfaces.ObjectType
+	for rows.Next() {
+		objectType := &interfaces.ObjectType{ModuleType: interfaces.MODULE_TYPE_OBJECT_TYPE}
+		var status, deprecation []byte
+		if err = rows.Scan(&objectType.OTID, &objectType.OTName, &status, &deprecation); err != nil {
+			return nil, err
+		}
+		objectType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, status, deprecation))
+		result = append(result, objectType)
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, rows.Err()
+}

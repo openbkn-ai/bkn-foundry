@@ -48,6 +48,7 @@ type conceptGroupService struct {
 	ata        interfaces.ActionTypeAccess
 	ats        interfaces.ActionTypeService
 	cga        interfaces.ConceptGroupAccess
+	nr         *logics.NetworkRelations
 	kna        interfaces.KNAccess
 	mfs        interfaces.ModelFactoryService
 	ota        interfaces.ObjectTypeAccess
@@ -133,6 +134,7 @@ func (cgs *conceptGroupService) withConceptGroupIdentityCache(ctx context.Contex
 func NewConceptGroupService(appSetting *common.AppSetting) interfaces.ConceptGroupService {
 	cgServiceOnce.Do(func() {
 		cgService = &conceptGroupService{
+			nr:         logics.NewNetworkRelations(),
 			appSetting: appSetting,
 			ata:        logics.ATA,
 			ats:        action_type.NewActionTypeService(appSetting),
@@ -200,13 +202,20 @@ func (cgs *conceptGroupService) CreateConceptGroups(ctx context.Context, tx *sql
 		}
 	}
 	if useStandalonePath {
+		// The nested definitions of every group are checked together once all are written.
+		defCtx, written, owner := logics.DeferNetworkRelations(ctx)
 		ids = make([]string, 0, len(conceptGroups))
 		for _, conceptGroup := range conceptGroups {
-			id, createErr := cgs.CreateConceptGroup(ctx, tx, conceptGroup, mode, strictMode)
+			id, createErr := cgs.CreateConceptGroup(defCtx, tx, conceptGroup, mode, strictMode)
 			if createErr != nil {
 				return nil, createErr
 			}
 			ids = append(ids, id)
+		}
+		if owner {
+			if err = cgs.checkNestedDefinitions(ctx, conceptGroups[0].KNID, conceptGroups[0].Branch, *written); err != nil {
+				return nil, err
+			}
 		}
 		return ids, nil
 	}
@@ -421,6 +430,10 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			_ = policyTracker.Cleanup(ctx, cgs.ps)
 		}
 	}()
+	// The nested object types, relation types and action types are written one kind after another;
+	// they are checked together once all are written.
+	checkCtx := ctx
+	ctx, written, checkOwner := logics.DeferNetworkRelations(ctx)
 
 	if !permission.KNImportPermissionPrechecked(ctx) {
 		err = cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -621,6 +634,12 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 		}
 	}
 
+	if checkOwner {
+		if err = cgs.checkNestedDefinitions(checkCtx, conceptGroup.KNID, conceptGroup.Branch, *written); err != nil {
+			return "", err
+		}
+	}
+
 	if isCreate || isUpdate {
 		err = cgs.InsertDatasetData(ctx, conceptGroup)
 		if err != nil {
@@ -674,6 +693,14 @@ func (cgs *conceptGroupService) ValidateConceptGroups(ctx context.Context, knID 
 	return cgs.validateConceptGroupDependencies(ctx, knID, branch, conceptGroups, strictMode, parentBatch, mode)
 }
 
+// checkNestedDefinitions checks the cross-definition declarations of the nested definitions a
+// concept group write recorded under logics.DeferNetworkRelations.
+func (cgs *conceptGroupService) checkNestedDefinitions(ctx context.Context, knID, branch string,
+	written logics.SavedDefinitions) error {
+	return cgs.nr.CheckRefusal(ctx, knID, branch, written,
+		berrors.BknBackend_ConceptGroup_InvalidParameter, berrors.BknBackend_ConceptGroup_InternalError)
+}
+
 // validateConceptGroupDependencies is the authorization-free dependency check
 // used after the enclosing write path has authorized its canonical target.
 func (cgs *conceptGroupService) validateConceptGroupDependencies(ctx context.Context, knID string, branch string,
@@ -684,6 +711,8 @@ func (cgs *conceptGroupService) validateConceptGroupDependencies(ctx context.Con
 
 	var err error
 	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
+	checkCtx := ctx
+	ctx, written, checkOwner := logics.DeferNetworkRelations(ctx)
 
 	effectiveBatch := parentBatch
 	if effectiveBatch == nil {
@@ -719,6 +748,11 @@ func (cgs *conceptGroupService) validateConceptGroupDependencies(ctx context.Con
 					return err
 				}
 			}
+		}
+	}
+	if checkOwner {
+		if err := cgs.checkNestedDefinitions(checkCtx, knID, branch, *written); err != nil {
+			return err
 		}
 	}
 

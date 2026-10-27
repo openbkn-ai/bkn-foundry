@@ -23,6 +23,9 @@ type RelationTypeAccess interface {
 	GetRelationTypesTotal(ctx context.Context, query RelationTypesQueryParams) (int, error)
 	GetRelationTypeByID(ctx context.Context, knID string, branch string, rtID string) (*RelationType, error)
 	GetRelationTypesByIDs(ctx context.Context, knID string, branch string, rtIDs []string) ([]*RelationType, error)
+	// ListDeprecatedOrFallbackRelationTypeIDs lists the IDs of the relation types of the branch that
+	// are deprecated or are a fallback path.
+	ListDeprecatedOrFallbackRelationTypeIDs(ctx context.Context, knID string, branch string) ([]string, error)
 	UpdateRelationType(ctx context.Context, tx *sql.Tx, relationType *RelationType) error
 	UpdateRelationTypes(ctx context.Context, tx *sql.Tx, relationTypes []*RelationType) error
 	DeleteRelationTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, rtIDs []string) (int64, error)

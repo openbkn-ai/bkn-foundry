@@ -1532,3 +1532,18 @@ func Test_ActionTypeAccess_ListAliasedActionTypes(t *testing.T) {
 		So(smock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
+
+func Test_ActionTypeAccess_ListDeprecatedActionTypes(t *testing.T) {
+	Convey("ListDeprecatedActionTypes reads only deprecated action types, with their lifecycle\n", t, func() {
+		ata, smock := MockNewActionTypeAccess(&common.AppSetting{})
+		smock.ExpectQuery("SELECT f_id, f_name, f_lifecycle_status, f_deprecation FROM t_action_type WHERE f_kn_id = ? AND f_branch = ? AND f_lifecycle_status = ?").
+			WithArgs("kn1", "main", "deprecated").
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name", "f_lifecycle_status", "f_deprecation"}).
+				AddRow("old_ship", "旧发货", "deprecated", `{"reason":"split"}`))
+		list, err := ata.ListDeprecatedActionTypes(testCtx, "kn1", "main")
+		So(err, ShouldBeNil)
+		So(len(list), ShouldEqual, 1)
+		So(list[0].Lifecycle, ShouldResemble, &interfaces.Lifecycle{Status: "deprecated", Reason: "split"})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}
