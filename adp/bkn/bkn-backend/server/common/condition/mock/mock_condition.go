@@ -10,8 +10,8 @@
 package mock_condition
 
 import (
-	condition "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 	context "context"
+	condition "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common/condition"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"

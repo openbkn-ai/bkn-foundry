@@ -46,6 +46,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/capability_binding"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/concept_group"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/kn_proxy"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/knowledge_base"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/knowledge_network"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/model_factory"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/drivenadapters/object_type"
@@ -345,6 +346,12 @@ func Boot(_ Options) *Application {
 	logics.SetActionScheduleAccess(action_schedule.NewActionScheduleAccess(appSetting))
 	logics.SetActionExecutionAccess(action_execution.NewActionExecutionAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))
+	// Optional: only Enterprise deployments run kb-api. Without it, mounting a knowledge base is refused.
+	kbAPIURL, err := common.NormalizeKBAPIURL(os.Getenv("KB_API_URL"))
+	if err != nil {
+		logger.Fatalf("Invalid kb-api configuration: %v", err)
+	}
+	logics.SetKnowledgeBaseAccess(knowledge_base.NewKnowledgeBaseAccess(kbAPIURL))
 	logics.SetActionTypeAccess(action_type.NewActionTypeAccess(appSetting))
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))

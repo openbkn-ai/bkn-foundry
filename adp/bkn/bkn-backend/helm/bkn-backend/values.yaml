@@ -10,6 +10,11 @@ env:
 bknSafe:
   url: "http://bkn-safe:3000"
 
+# Enterprise knowledge base (kb-api) base URL, e.g. http://kb-api.openbkn:8001. Empty where
+# kb-api is not deployed: a knowledge network then cannot mount a knowledge base.
+knowledgeBase:
+  url: ""
+
 replicaCount: 1
 
 # Node selector.
