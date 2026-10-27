@@ -58,6 +58,8 @@ type VegaAccount = AccountInfo
 
 //go:generate mockgen -source ../interfaces/vega_access.go -destination ../interfaces/mock/mock_vega_access.go
 type VegaAccess interface {
+	// CatalogVisible reports whether the catalog exists and the account can see it.
+	CatalogVisible(ctx context.Context, account VegaAccount, catalogID string) (bool, error)
 	// ListTables returns the table resources of the catalog that the account can see.
 	ListTables(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaTable, error)
 	// GetTables returns the tables with their structure; ids the account cannot see are left out.

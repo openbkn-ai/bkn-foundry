@@ -58,6 +58,30 @@ func Test_VegaAccess(t *testing.T) {
 			So(tables[0].ID, ShouldEqual, "r1")
 		})
 
+		Convey("CatalogVisible reads the catalog as the account; gone or hidden is not visible\n", func() {
+			respBody = `{"entries":[{"id":"c 1"}]}`
+			visible, err := va.CatalogVisible(ctx, account, "c 1")
+			So(err, ShouldBeNil)
+			So(visible, ShouldBeTrue)
+			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/catalogs/c 1")
+			So(got[0].accountID, ShouldEqual, "u1")
+
+			// vega-backend answers 404 for a catalog that is gone or that the account cannot
+			// see, and 403 for a built-in catalog.
+			for _, code := range []int{http.StatusNotFound, http.StatusForbidden} {
+				status, respBody = code, `{"error_code":"VegaBackend.Catalog.NotFound"}`
+				visible, err = va.CatalogVisible(ctx, account, "c1")
+				So(err, ShouldBeNil)
+				So(visible, ShouldBeFalse)
+			}
+
+			status = http.StatusInternalServerError
+			_, err = va.CatalogVisible(ctx, account, "c1")
+			var vegaErr *VegaError
+			So(errors.As(err, &vegaErr), ShouldBeTrue)
+			So(vegaErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
 		Convey("GetTables reads the structure, with vega's types and the exact row count\n", func() {
 			respBody = `{"entries":[{"id":"r1","catalog_id":"c1","name":"orders","row_count":800,
 				"estimated_row_count":790,
