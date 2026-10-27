@@ -227,16 +227,28 @@ func (g *Guard) Finish(
 	finishContext, cancel := TraceIOContext(WithTraceAvailability(context.WithoutCancel(ctx)), "post")
 	defer cancel()
 
+	// Freeze the complete envelope once, including referenced/omitted payload
+	// mode and artifact refs. A retry must not re-upload a large result and
+	// accidentally change a committed terminal transition after ACK loss.
+	action := "complete"
+	if failed {
+		action = "fail"
+	}
+	prepareContext, releasePrepare := LifecycleAttemptContext(finishContext)
+	prepared, prepareErr := g.client.prepareFinishAttempt(prepareContext, input, action, input.EvidenceDurability)
+	releasePrepare()
+	if prepareErr != nil {
+		return state.Result, nil, prepareErr
+	}
+
 	lastResult := state.Result
 	for attempt := 0; attempt < finishRetryAttempts; attempt++ {
 		var result OperationResult
 		var apiErr *APIError
 		var err error
-		if failed {
-			result, apiErr, err = g.client.FailAttempt(finishContext, input)
-		} else {
-			result, apiErr, err = g.client.CompleteAttempt(finishContext, input)
-		}
+		attemptContext, releaseAttempt := LifecycleAttemptContext(finishContext)
+		result, apiErr, err = g.client.submitFinishAttempt(attemptContext, prepared)
+		releaseAttempt()
 		if err == nil && apiErr == nil {
 			g.emitFinalizedOutcome(ctx, failed)
 			return result, nil, nil
@@ -249,7 +261,9 @@ func (g *Guard) Finish(
 			return OperationResult{}, apiErr, nil
 		}
 
-		receipt, receiptErr, pollErr := g.client.GetReceipt(finishContext, input.ReceiptID)
+		pollContext, releasePoll := LifecycleAttemptContext(finishContext)
+		receipt, receiptErr, pollErr := g.client.GetReceipt(pollContext, input.ReceiptID)
+		releasePoll()
 		logLifecycleIOFailure(ctx, state, "receipt_read", attempt, receiptErr, pollErr)
 		if pollErr == nil && receiptErr == nil {
 			lastResult.Receipt = receipt

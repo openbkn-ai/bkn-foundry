@@ -50,6 +50,7 @@ type relationTypeService struct {
 	mfs        interfaces.ModelFactoryService
 	ots        interfaces.ObjectTypeService
 	ps         interfaces.PermissionService
+	nr         *logics.NetworkRelations
 	rta        interfaces.RelationTypeAccess
 	ums        interfaces.UserMgmtService
 	vbs        interfaces.VegaBackendService
@@ -64,6 +65,7 @@ func NewRelationTypeService(appSetting *common.AppSetting) interfaces.RelationTy
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ots:        object_type.NewObjectTypeService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
+			nr:         logics.NewNetworkRelations(),
 			rta:        logics.RTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
@@ -190,6 +192,11 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 	if err = rts.checkOverwriteKeepsDeclarations(ctx, updateRelationTypes, false); err != nil {
 		return []string{}, err
 	}
+	if err = rts.nr.SaveRefusal(ctx, relationTypes[0].KNID, relationTypes[0].Branch,
+		logics.SavedDefinitions{RelationTypes: append(append([]*interfaces.RelationType{}, createRelationTypes...), updateRelationTypes...)},
+		berrors.BknBackend_RelationType_InvalidParameter_Declarations, berrors.BknBackend_RelationType_InternalError); err != nil {
+		return []string{}, err
+	}
 
 	// 1. Create the model.
 	rtIDs := make([]string, 0, len(createRelationTypes))
@@ -284,7 +291,7 @@ func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID 
 		}
 	}
 	ctx = permission.WithDependencyValidationPermissionPrechecked(ctx)
-	_, updates, err := rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
+	creates, updates, err := rts.handleRelationTypeImportMode(ctx, mode, relationTypes)
 	if err != nil {
 		return err
 	}
@@ -302,6 +309,12 @@ func (rts *relationTypeService) ValidateRelationTypes(ctx context.Context, knID 
 		if err = validateDeclarations(ctx, relationType); err != nil {
 			return err
 		}
+	}
+
+	if err = rts.nr.SaveRefusal(ctx, knID, branch,
+		logics.SavedDefinitions{RelationTypes: append(append([]*interfaces.RelationType{}, creates...), updates...)},
+		berrors.BknBackend_RelationType_InvalidParameter_Declarations, berrors.BknBackend_RelationType_InternalError); err != nil {
+		return err
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -633,6 +646,14 @@ func (rts *relationTypeService) updateRelationType(ctx context.Context, tx *sql.
 	if err = validateDeclarations(ctx, relationType); err != nil {
 		return err
 	}
+	// An overwrite import checks in CreateRelationTypes, with the rest of its save.
+	if keepStoredDeclarations {
+		if err = rts.nr.SaveRefusal(ctx, relationType.KNID, relationType.Branch,
+			logics.SavedDefinitions{RelationTypes: []*interfaces.RelationType{relationType}},
+			berrors.BknBackend_RelationType_InvalidParameter_Declarations, berrors.BknBackend_RelationType_InternalError); err != nil {
+			return err
+		}
+	}
 
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
@@ -750,6 +771,11 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 			interfaces.RESOURCE_TYPE_RELATION_TYPE, knID, rtIDs, interfaces.OPERATION_TYPE_DELETE); err != nil {
 			return err
 		}
+	}
+	// A definition another one still refers to stays: deleting it would leave the reference dangling.
+	if err := rts.nr.DeleteRefusal(ctx, knID, branch, interfaces.RESOURCE_TYPE_RELATION_TYPE, rtIDs,
+		berrors.BknBackend_RelationType_StillReferenced, berrors.BknBackend_RelationType_InternalError); err != nil {
+		return err
 	}
 	if tx == nil {
 		// 0. Begin the transaction.

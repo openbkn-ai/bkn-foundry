@@ -35,6 +35,7 @@ error_messages = {
     "ModelFactory.HTTP.MethodNotAllowed": {"description": "Method not allowed.", "detail": "The requested resource does not support this HTTP method.", "solution": "Check the request method and try again."},
     "Unauthorized": {"description": "Authentication failed.", "detail": "The access token is invalid or has expired.", "solution": "Obtain a valid access token and try again."},
     "HydraServiceError": {"description": "Authentication service is unavailable.", "detail": "The access token could not be validated.", "solution": "Retry later or contact an administrator."},
+    "ModelFactory.AccountStateUnavailable": {"description": "Account verification is unavailable.", "detail": "The current account state could not be verified.", "solution": "Retry later or contact an administrator."},
     "UserManagementServiceError": {"description": "User service is unavailable.", "detail": "User information could not be retrieved.", "solution": "Retry later or contact an administrator."},
     "NotPermission": {"description": "Permission denied.", "detail": "The current identity cannot perform this operation.", "solution": "Ask an administrator to grant the required permission."},
     "DeletePermissionResuorceError": {"description": "Permission cleanup failed.", "detail": "The permission resource could not be removed.", "solution": "Retry later or contact an administrator."},

@@ -94,7 +94,8 @@ class TestAuthMiddlewareIdentity(unittest.IsolatedAsyncioTestCase):
             return "ok"
 
         session_cm = self._hydra_session('{"active": true, "sub": "real-sub-123", "client_id": "cli"}')
-        with mock.patch("app.utils.app_utils.aiohttp.ClientSession", return_value=session_cm):
+        with mock.patch("app.utils.app_utils.aiohttp.ClientSession", return_value=session_cm), \
+                mock.patch("app.utils.app_utils.permission_manager.is_active_account", new=mock.AsyncMock(return_value=True)):
             result = await auth_middleware(request, call_next)
 
         self.assertEqual(result, "ok")

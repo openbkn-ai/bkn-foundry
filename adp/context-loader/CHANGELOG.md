@@ -4,6 +4,8 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 
 ## Unreleased
 
+- Reserve acknowledgement-recovery time inside existing lifecycle budgets, replay start with its original idempotency key, and freeze terminal payload/artifact envelopes across retries without re-executing business tools. (#2539)
+
 ### Features & Improvements
 
 - Platform Functions reuse governed Evidence capture to record existing structured result snapshots and actual execution identity without tool-side evidence declarations for Core Claim assembly. Snapshots omitted before publication preserve existing receipt completeness. Once a snapshot event is declared, delivery/confirmation failure can still make evidence partial. Runtime capture failures emit sanitized diagnostics; managed finish still rejects caller-owned claims. (#1332)

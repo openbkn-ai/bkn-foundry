@@ -63,6 +63,7 @@ type knowledgeNetworkService struct {
 	cga        interfaces.ConceptGroupAccess
 	cgs        interfaces.ConceptGroupService
 	kna        interfaces.KNAccess
+	nr         *logics.NetworkRelations
 	kpa        interfaces.KNProxyAccess
 	kpoa       interfaces.KNProxyOutboxAccess
 	mpa        interfaces.ManagedProxyAccess
@@ -92,6 +93,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNServiceWithProxyMu
 			cgs:        concept_group.NewConceptGroupService(appSetting),
 			db:         logics.DB,
 			kna:        logics.KNA,
+			nr:         logics.NewNetworkRelations(),
 			kpa:        logics.KPA,
 			kpoa:       logics.KPOA,
 			mpa:        logics.MPA,
@@ -452,20 +454,26 @@ func (kns *knowledgeNetworkService) ValidateKN(ctx context.Context, kn *interfac
 			return err
 		}
 	}
+	// The definitions the import would write are checked together once every kind is validated.
+	validateCtx, written := logics.WithDeferredNetworkRelations(ctx)
 	if len(plan.ObjectTypes) > 0 {
-		if err := kns.ots.ValidateObjectTypes(ctx, knID, branch, plan.ObjectTypes, strictMode, batch, mode); err != nil {
+		if err := kns.ots.ValidateObjectTypes(validateCtx, knID, branch, plan.ObjectTypes, strictMode, batch, mode); err != nil {
 			return err
 		}
 	}
 	if len(plan.RelationTypes) > 0 {
-		if err := kns.rts.ValidateRelationTypes(ctx, knID, branch, plan.RelationTypes, strictMode, batch, mode); err != nil {
+		if err := kns.rts.ValidateRelationTypes(validateCtx, knID, branch, plan.RelationTypes, strictMode, batch, mode); err != nil {
 			return err
 		}
 	}
 	if len(plan.ActionTypes) > 0 {
-		if err := kns.ats.ValidateActionTypes(ctx, knID, branch, plan.ActionTypes, strictMode, batch, mode); err != nil {
+		if err := kns.ats.ValidateActionTypes(validateCtx, knID, branch, plan.ActionTypes, strictMode, batch, mode); err != nil {
 			return err
 		}
+	}
+	if err := kns.nr.CheckRefusal(ctx, knID, branch, *written,
+		berrors.BknBackend_KnowledgeNetwork_InvalidParameter, berrors.BknBackend_KnowledgeNetwork_InternalError); err != nil {
+		return err
 	}
 	span.SetStatus(codes.Ok, "")
 	return nil

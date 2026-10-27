@@ -628,7 +628,7 @@ func TestRecordIntegrityArtifactBudgetIsSharedAcrossRounds(t *testing.T) {
 		t.Fatalf("last permitted content read must succeed: %+v %v", first, err)
 	}
 	second, err := service.inspectLiveRecordIntegrity(ctx, "int", scope)
-	if err == nil || second != nil {
+	if !errors.Is(err, errRecordIntegrityInspectionBudget) || second != nil {
 		t.Fatalf("exhausted request budget must retain facts without verdict: %+v %v", second, err)
 	}
 	if reads := ctx.Value(recordIntegrityBudgetKey{}).(*recordIntegrityReadBudget).reads; reads != 128 {

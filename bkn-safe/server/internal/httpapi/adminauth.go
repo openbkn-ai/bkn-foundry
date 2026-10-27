@@ -84,6 +84,23 @@ func RequireActiveAccount(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// Read sessions must reject disabled subjects even on a warm introspection
+// cache. A 401 lets browser clients discard their session and sign in again.
+func requireActiveSession(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		active, err := activeAccount(c, db, c.GetString(ctxAccessorID))
+		if err != nil {
+			abortPublicError(c, http.StatusServiceUnavailable)
+			return
+		}
+		if !active {
+			abortGate(c, http.StatusUnauthorized, gateInactive)
+			return
+		}
+		c.Next()
+	}
+}
+
 // RequirePermission guards one concrete admin operation after RequireAdmin has
 // authenticated the caller and stored ctxAccessorID. safe_admin:console:manage
 // only opens the admin surface; this middleware enforces the endpoint's real

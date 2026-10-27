@@ -2109,3 +2109,19 @@ func Test_objectTypeAccess_ListAliasedObjectTypes(t *testing.T) {
 		So(smock.ExpectationsWereMet(), ShouldBeNil)
 	})
 }
+
+func Test_objectTypeAccess_ListDeprecatedObjectTypes(t *testing.T) {
+	Convey("ListDeprecatedObjectTypes reads only deprecated object types, with their lifecycle\n", t, func() {
+		ota, smock := MockNewObjectTypeAccess(&common.AppSetting{})
+		smock.ExpectQuery("SELECT f_id, f_name, f_lifecycle_status, f_deprecation FROM t_object_type WHERE f_kn_id = ? AND f_branch = ? AND f_lifecycle_status = ?").
+			WithArgs("kn1", "main", "deprecated").
+			WillReturnRows(sqlmock.NewRows([]string{"f_id", "f_name", "f_lifecycle_status", "f_deprecation"}).
+				AddRow("old_order", "旧订单", "deprecated", `{"reason":"merged","replaced_by":"order"}`))
+		list, err := ota.ListDeprecatedObjectTypes(testCtx, "kn1", "main")
+		So(err, ShouldBeNil)
+		So(len(list), ShouldEqual, 1)
+		So(list[0].OTID, ShouldEqual, "old_order")
+		So(list[0].Lifecycle, ShouldResemble, &interfaces.Lifecycle{Status: "deprecated", Reason: "merged", ReplacedBy: "order"})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}

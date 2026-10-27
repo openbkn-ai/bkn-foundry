@@ -26,11 +26,9 @@ import (
 // Frontends call these once after login to drive menu/button visibility; the
 // backend still enforces every request via /authz/checks.
 //
-// These two are the endpoints the login burst hits in parallel, so the caller
-// mounts them behind the introspection cache. Mutating /me endpoints (profile
-// PUT, API-key issue/revoke) are registered separately on an UNCACHED verifier
-// (see registerMeProfile / registerMeAPIKeys) so a revoked token cannot mutate
-// within the read cache's TTL window.
+// Concurrent reads share in-flight introspection but never retain its result,
+// so a revoked session is rejected on the next request. Mutating /me endpoints
+// use the raw verifier (see registerMeProfile / registerMeAPIKeys).
 func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *directory.Service) {
 	// GET "" -> the caller's identity and roles:
 	// { id, account, name, email, telephone, account_type, enabled,

@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Header, Query, Request, Body
+from fastapi.responses import JSONResponse
+from app.commons.errors import NotPermissionError
 from app.interfaces import logics
 from app.controller import small_model_controller
 from app.utils.operation_audit import operation_audit_request
@@ -39,7 +41,8 @@ async def get_info(request: Request, model_id):
 
 @small_model_router.get("/small-model/get_default")
 async def get_default(request: Request, model_type: str = Query(default="embedding")):
-    return await small_model_controller.get_default_model(model_type)
+    userId, language, role = await get_user_info(request)
+    return await small_model_controller.get_default_model(model_type, userId, role)
 
 
 @small_model_router.post("/small-model/set-default")
@@ -87,4 +90,8 @@ async def model_used(request: logics.UsedEmbedding, head_request: Request):
 @small_model_router.post("/small-model/test")
 async def model_used(request: logics.TestSmallModel, head_request: Request):
     userId, language, role = await get_user_info(head_request)
+    if not await permission_manager.check_single_permission(
+            user_id=userId, resource_id=request.model_id or "*", operations="execute",
+            resource_type="small_model", role=role):
+        return JSONResponse(status_code=403, content=NotPermissionError)
     return await small_model_controller.test_model(request, userId, language, role)

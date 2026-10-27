@@ -402,6 +402,29 @@ func (h *HydraAdmin) RevokeConnectedClient(ctx context.Context, subject, clientI
 	return cl.GetClientName(), nil
 }
 
+// RevokeUserSessions revokes every client's consent and the subject's remembered
+// login sessions. Both calls are attempted, even if one fails, and may be retried.
+func (h *HydraAdmin) RevokeUserSessions(ctx context.Context, subject string) error {
+	if strings.TrimSpace(subject) == "" {
+		return errors.New("revoke user sessions: empty subject")
+	}
+	// Finish revocation even if the administrator disconnects after disabling
+	// the account. Each request has its own bound so one cannot starve the other.
+	revoke := func(login bool) error {
+		callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if login {
+			_, err := h.api.OAuth2API.RevokeOAuth2LoginSessions(callCtx).Subject(subject).Execute()
+			return err
+		}
+		_, err := h.api.OAuth2API.RevokeOAuth2ConsentSessions(callCtx).Subject(subject).All(true).Execute()
+		return err
+	}
+	loginErr := revoke(true)
+	consentErr := revoke(false)
+	return errors.Join(consentErr, loginErr)
+}
+
 // ListDynamicClients returns every self-registered client, newest first.
 func (h *HydraAdmin) ListDynamicClients(ctx context.Context) ([]ConnectedClient, error) {
 	var out []ConnectedClient

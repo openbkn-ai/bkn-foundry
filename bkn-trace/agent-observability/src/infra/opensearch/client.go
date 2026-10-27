@@ -25,6 +25,7 @@ var (
 )
 
 type Document struct {
+	Version     int64
 	Source      []byte
 	SeqNo       int64
 	PrimaryTerm int64

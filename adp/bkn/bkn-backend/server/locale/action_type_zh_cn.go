@@ -11,6 +11,7 @@ var actionTypeZhCN = i18n.I18nMessages{
 	Messages: map[string]string{
 		"BknBackend.ActionType.InvalidParameter.Declarations":                                   "行动类声明不合法。按错误详情修正 aliases 或 lifecycle 后重试。",
 		"BknBackend.ActionType.DeclarationsWouldBeCleared":                                      "本次覆盖会清掉行动类已有的声明。错误详情列出了将被清掉的声明。确认要清掉时，带上 confirm_clear_declarations=true 重新提交；不想清掉时，在文件中保留这些声明。",
+		"BknBackend.ActionType.StillReferenced":                                                 "该行动类仍被同类其他定义的 lifecycle replaced_by 引用。错误详情列出了引用方。先修改或去掉这些引用再删除。",
 		"BknBackend.ActionType.Duplicated.IDInFile":                                             "存在重复的行动类ID。请检查参数是否正确。",
 		"BknBackend.ActionType.Duplicated.Name":                                                 "存在重复的行动类名称。请检查参数是否正确。",
 		"BknBackend.ActionType.InvalidParameter":                                                "请求参数不合法。请检查参数是否正确。",

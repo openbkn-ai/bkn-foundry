@@ -8,6 +8,8 @@ package httphandler
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
@@ -206,5 +208,30 @@ func TestEnterpriseCaptureRequiresAuthorizedInteraction(t *testing.T) {
 		if err != nil || ok != found || (calls == 1) != found {
 			t.Fatal("scope bypass")
 		}
+	}
+}
+
+func TestEnterpriseInteractionReaderPreservesSafeFailureStage(t *testing.T) {
+	scope := evidencevo.QueryScope{AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical}
+	secret := errors.New("password=private SELECT business_content")
+	for _, stage := range []string{"summary", "operation_facts"} {
+		t.Run(stage, func(t *testing.T) {
+			summaries := fakeInteractionSummarySource{found: true}
+			operations := fakeInteractionOperationSource{expectedScope: scope}
+			if stage == "summary" {
+				summaries.err = secret
+			} else {
+				operations.err = secret
+			}
+			reader := NewEnterpriseInteractionFactsReader(summaries, operations)
+			_, _, err := reader.ReadInteraction(context.WithValue(context.Background(), trustedQueryScopeContextKey{}, scope), "int-1")
+			var staged interface{ ReadStage() string }
+			if !errors.Is(err, secret) || !errors.As(err, &staged) || staged.ReadStage() != stage {
+				t.Fatalf("failure lost stage/cause: %T", err)
+			}
+			if strings.Contains(err.Error(), "private") || strings.Contains(err.Error(), "SELECT") {
+				t.Fatal("stage error exposes source details")
+			}
+		})
 	}
 }

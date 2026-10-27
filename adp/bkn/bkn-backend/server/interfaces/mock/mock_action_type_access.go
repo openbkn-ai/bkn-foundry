@@ -252,6 +252,21 @@ func (mr *MockActionTypeAccessMockRecorder) ListAliasedActionTypes(ctx, knID, br
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAliasedActionTypes", reflect.TypeOf((*MockActionTypeAccess)(nil).ListAliasedActionTypes), ctx, knID, branch)
 }
 
+// ListDeprecatedActionTypes mocks base method.
+func (m *MockActionTypeAccess) ListDeprecatedActionTypes(ctx context.Context, knID, branch string) ([]*interfaces.ActionType, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDeprecatedActionTypes", ctx, knID, branch)
+	ret0, _ := ret[0].([]*interfaces.ActionType)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDeprecatedActionTypes indicates an expected call of ListDeprecatedActionTypes.
+func (mr *MockActionTypeAccessMockRecorder) ListDeprecatedActionTypes(ctx, knID, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDeprecatedActionTypes", reflect.TypeOf((*MockActionTypeAccess)(nil).ListDeprecatedActionTypes), ctx, knID, branch)
+}
+
 // UpdateActionType mocks base method.
 func (m *MockActionTypeAccess) UpdateActionType(ctx context.Context, tx *sql.Tx, actionType *interfaces.ActionType) error {
 	m.ctrl.T.Helper()

@@ -1145,3 +1145,16 @@ func Test_relationTypeAccess_ProcessQueryCondition(t *testing.T) {
 		})
 	})
 }
+
+func Test_relationTypeAccess_ListDeprecatedOrFallbackRelationTypeIDs(t *testing.T) {
+	Convey("ListDeprecatedOrFallbackRelationTypeIDs reads the deprecated relation types and the fallback paths\n", t, func() {
+		rta, smock := MockNewRelationTypeAccess(&common.AppSetting{})
+		smock.ExpectQuery("SELECT f_id FROM t_relation_type WHERE f_kn_id = ? AND f_branch = ? AND (f_lifecycle_status = ? OR f_fallback_for IS NOT NULL)").
+			WithArgs("kn1", "main", "deprecated").
+			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("old_rel").AddRow("via_site"))
+		ids, err := rta.ListDeprecatedOrFallbackRelationTypeIDs(testCtx, "kn1", "main")
+		So(err, ShouldBeNil)
+		So(ids, ShouldResemble, []string{"old_rel", "via_site"})
+		So(smock.ExpectationsWereMet(), ShouldBeNil)
+	})
+}

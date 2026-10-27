@@ -26,6 +26,10 @@ import (
 
 const adminPathPrefix = "/api/safe/v1/admin/"
 
+// A committed directory change can be followed by failed external cleanup.
+// Preserve its business fact independently of the cleanup's HTTP response.
+const ctxAuditCommittedStatus = "audit_committed_status"
+
 // maxAuditBody caps how much of the request body the audit middleware buffers
 // for the Detail snapshot — enough for any normal admin payload, bounded so a
 // huge body can't blow up memory or the column.
@@ -107,9 +111,11 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		if !isAuditedManagementOperation(c.Request.Method, c.FullPath()) {
 			return
 		}
-		// A rejected or failed request did not commit a business operation. Its
-		// HTTP outcome belongs to the caller, not to the business audit stream.
-		if status := c.Writer.Status(); status < http.StatusOK || status >= http.StatusMultipleChoices {
+		status := c.Writer.Status()
+		if committed := c.GetInt(ctxAuditCommittedStatus); committed != 0 {
+			status = committed
+		}
+		if status < http.StatusOK || status >= http.StatusMultipleChoices {
 			return
 		}
 		if requestOperation.Handled() {
@@ -135,7 +141,7 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 		targetName := beforeName
 		if explicitOperation && explicitTargetName != "" {
 			targetName = explicitTargetName
-		} else if snapshotErr == nil && c.Writer.Status() < http.StatusBadRequest {
+		} else if snapshotErr == nil && status < http.StatusBadRequest {
 			if name := auditTargetName(c.Request.Context(), dir, db, resource, targetID, detail); name != "" {
 				targetName = name
 			}
@@ -171,7 +177,7 @@ func auditMiddleware(store auditBatchRecorder, dir *directory.Service, db *gorm.
 			Action:            action,
 			TargetID:          targetID,
 			TargetName:        targetName,
-			Status:            c.Writer.Status(),
+			Status:            status,
 			ClientIP:          c.ClientIP(),
 		}
 		baseEntry.Detail = withAuditGate(withAuditOutcome(detail, c), c)

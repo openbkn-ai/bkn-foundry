@@ -1537,3 +1537,35 @@ func (ata *actionTypeAccess) ListAliasedActionTypes(ctx context.Context, knID st
 	span.SetStatus(codes.Ok, "")
 	return result, rows.Err()
 }
+
+func (ata *actionTypeAccess) ListDeprecatedActionTypes(ctx context.Context, knID string, branch string) ([]*interfaces.ActionType, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListDeprecatedActionTypes")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select("f_id", "f_name", "f_lifecycle_status", "f_deprecation").From(AT_TABLE_NAME).
+		Where(sq.Eq{"f_kn_id": knID}).
+		Where(sq.Eq{"f_branch": branch}).
+		Where(sq.Eq{"f_lifecycle_status": interfaces.LIFECYCLE_DEPRECATED}).
+		ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := ata.db.Query(sqlStr, vals...)
+	if err != nil {
+		common.LogSafeError(ctx, "Query deprecated action types failed", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var result []*interfaces.ActionType
+	for rows.Next() {
+		actionType := &interfaces.ActionType{ModuleType: interfaces.MODULE_TYPE_ACTION_TYPE}
+		var status, deprecation []byte
+		if err = rows.Scan(&actionType.ATID, &actionType.ATName, &status, &deprecation); err != nil {
+			return nil, err
+		}
+		actionType.Lifecycle = interfaces.LifecycleOf(common.DecodeStoredLifecycle(ctx, status, deprecation))
+		result = append(result, actionType)
+	}
+	span.SetStatus(codes.Ok, "")
+	return result, rows.Err()
+}

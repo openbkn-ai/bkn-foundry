@@ -80,12 +80,12 @@ func (c *collectedDecisions) Snapshot() []decisionlog.Entry {
 // newAdminServer builds a full server with the admin API mounted: a stub token
 // verifier (token==subject) and adminSub seeded as super-admin (wildcard grant)
 // so RequireAdmin passes for Bearer adminSub.
-func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth.UserStore) {
-	r, e, db, users, _ := newAdminServerWithDecisions(t)
+func newAdminServer(t *testing.T, sessions ...UserSessionRevoker) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth.UserStore) {
+	r, e, db, users, _ := newAdminServerWithDecisions(t, sessions...)
 	return r, e, db, users
 }
 
-func newAdminServerWithDecisions(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth.UserStore, *collectedDecisions) {
+func newAdminServerWithDecisions(t *testing.T, sessions ...UserSessionRevoker) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth.UserStore, *collectedDecisions) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -119,12 +119,17 @@ func newAdminServerWithDecisions(t *testing.T) (*gin.Engine, *authz.Enforcer, *g
 	adminwrite.RegisterMounter(licverify.EditionProfessional, adminwrite.Routes)
 	finegrained.Register(licverify.EditionProfessional)
 	decisions := &collectedDecisions{}
+	var sessionRevoker UserSessionRevoker = sessionRevokerFunc(func(context.Context, string) error { return nil })
+	if len(sessions) > 0 {
+		sessionRevoker = sessions[0]
+	}
 	r := New(Deps{
 		Enforcer: e, DB: db, Directory: directory.New(db), Users: users,
 		Audit:                  audit.New(db),
 		AccessLog:              discardAccessRecorder{},
 		Decisions:              decisions,
 		TokenVerifier:          stubVerifier{},
+		SessionRevoker:         sessionRevoker,
 		AuthorizationResources: testAuthorizationResourceCatalog{},
 	})
 	return r, e, db, users, decisions

@@ -11,6 +11,7 @@ var relationTypeEnUS = i18n.I18nMessages{
 	Messages: map[string]string{
 		"BknBackend.RelationType.InvalidParameter.Declarations":                                     "Invalid relation type declarations. Fix reverse_name, aliases, cardinality, constraints, lifecycle, importance, fallback_for, verification or the relation properties as the error details say and try again.",
 		"BknBackend.RelationType.DeclarationsWouldBeCleared":                                        "This overwrite would clear existing relation type declarations. The error details list the declarations it would clear. Submit again with confirm_clear_declarations=true to clear them, or keep them in the file.",
+		"BknBackend.RelationType.StillReferenced":                                                   "The relation type is still referenced by another definition's lifecycle replaced_by or fallback_for. The error details list the references. Change or remove them first, then delete it.",
 		"BknBackend.RelationType.Duplicated.IDInFile":                                               "Same Relation Type ID Existed. Please check whether the parameter is correct.",
 		"BknBackend.RelationType.InvalidParameter":                                                  "Invalid Request Paramter. Please check whether the parameter is correct.",
 		"BknBackend.RelationType.InvalidParameter.ConceptCondition":                                 "Invalid Concept Condition Request Paramter. Please check whether the parameter is correct.",

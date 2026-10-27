@@ -53,6 +53,7 @@ var bknSafeZhCN = i18n.I18nMessages{
 		"BknSafe.Auth.ChineseLanguageLabel":                  "中文",
 		"BknSafe.Auth.EnglishLanguageLabel":                  "English",
 		"BknSafe.Auth.InvalidCredentials":                    "账号或密码错误",
+		"BknSafe.Auth.UserDisabled":                          "账号已停用，请联系管理员",
 		"BknSafe.Auth.LoginRequestExpired":                   "登录请求已过期，请返回应用重新登录",
 		"BknSafe.Auth.PasswordMismatch":                      "两次输入的新密码不一致或为空",
 		"BknSafe.Auth.PasswordReuse":                         "新密码不能与当前密码相同",

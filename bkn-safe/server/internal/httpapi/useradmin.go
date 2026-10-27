@@ -5,7 +5,9 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -20,6 +22,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/seed"
 )
 
+// UserSessionRevoker removes a subject's OAuth grants and login sessions.
+type UserSessionRevoker interface {
+	RevokeUserSessions(context.Context, string) error
+}
+
 // registerUserAdmin mounts the user-write surface bkn-safe needs to own
 // identities: create/update/delete a local user and set a password. Role
 // assignment is the authz role-binding endpoint; department membership can be
@@ -27,7 +34,7 @@ import (
 // enforcer is used to purge an accessor's casbin bindings/grants on delete; the
 // directory service applies department_ids. Mounted under the admin group
 // (RequireAdmin) — these are privileged, token-gated operations.
-func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enforcer, dir *directory.Service) {
+func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enforcer, dir *directory.Service, sessions UserSessionRevoker) {
 	// POST /users — create a local (password) user, optionally placing it in
 	// departments (department_ids). -> { id }
 	g.POST("/users", RequirePermission(e, "admin-user", "create"), func(c *gin.Context) {
@@ -196,6 +203,26 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 				return
 			}
 		}
+		if req.Enabled != nil {
+			user, err := users.ByID(ctx, id)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				replyPublicError(c, http.StatusNotFound)
+				return
+			}
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			if user.Enabled == *req.Enabled && len(fields) == 1 && req.DepartmentIDs == nil {
+				// A cleanup retry does not create a second account-state fact.
+				suppressAuditOperation(c)
+			}
+			// A failed earlier disable may have left tokens upstream. Do not
+			// re-enable the account until those sessions have been removed.
+			if *req.Enabled && !user.Enabled && !revokeUserSessions(c, sessions, id) {
+				return
+			}
+		}
 		if len(fields) > 0 {
 			err := users.UpdateUser(ctx, id, fields)
 			if errors.Is(err, managedproxy.ErrManagedAccount) {
@@ -219,6 +246,14 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 			}
 			if err != nil {
 				serverError(c, err)
+				return
+			}
+		}
+		if req.Enabled != nil && !*req.Enabled {
+			// The directory change is committed even if upstream cleanup fails.
+			// Retrying enabled=false retries cleanup without restoring access.
+			c.Set(ctxAuditCommittedStatus, http.StatusNoContent)
+			if !revokeUserSessions(c, sessions, id) {
 				return
 			}
 		}
@@ -256,6 +291,23 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		}
 		c.Status(http.StatusNoContent)
 	})
+}
+
+func revokeUserSessions(c *gin.Context, sessions UserSessionRevoker, id string) bool {
+	var err error
+	if sessions == nil {
+		err = errors.New("user session revoker is not configured")
+	} else {
+		err = sessions.RevokeUserSessions(c.Request.Context(), id)
+	}
+	if err != nil {
+		slog.Error("user session revocation failed", "user_id", id, "error", err)
+		replyPublicErrorDetails(c, http.StatusServiceUnavailable, gin.H{
+			"reason": "session_revocation_failed", "account_enabled": false,
+		})
+		return false
+	}
+	return true
 }
 
 // registerSelfServiceAuth mounts the self-service (no-admin) credential

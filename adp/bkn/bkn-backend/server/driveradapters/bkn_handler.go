@@ -7,6 +7,7 @@
 package driveradapters
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -182,7 +183,9 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	}
 	for _, rawMetric := range bknNetwork.ObjectMetrics {
 		var metric interfaces.ObjectMetricRecordV1
-		if err := json.Unmarshal(rawMetric, &metric); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(rawMetric))
+		decoder.UseNumber()
+		if err := decoder.Decode(&metric); err != nil {
 			httpErr := httperrors.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_KnowledgeNetwork_InvalidParameter).
 				WithErrorDetails(err.Error())
 			rest.ReplyError(c, httpErr)

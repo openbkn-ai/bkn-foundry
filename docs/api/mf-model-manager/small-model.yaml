@@ -278,7 +278,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FastApiError'
         '401':
-          description: Missing, invalid or expired Bearer access token.
+          description: Missing, invalid or expired Bearer token, or a disabled/deleted account.
           content:
             application/json:
               schema:
@@ -295,14 +295,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
+        '503':
+          description: Current account state could not be verified; no business operation is performed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
         '500':
           description: Internal model service failure.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
-      description: Current route signature. Successful results are returned by the controller without
-        a FastAPI response_model; no fixed response object is enforced at this route.
+      description: |
+        Requires an enabled account and small_model display authorization.
+        Authorized callers receive an empty object when no default is configured.
+        Successful results use an open JSON schema.
+
       x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
   /small-model/set-default:
     post:
@@ -485,7 +494,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FastApiError'
         '401':
-          description: Missing, invalid or expired Bearer access token.
+          description: Missing, invalid or expired Bearer token, or a disabled/deleted account.
           content:
             application/json:
               schema:
@@ -502,14 +511,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
+        '503':
+          description: Current account state could not be verified; no business operation is performed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FastApiError'
         '500':
           description: Internal model service failure.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FastApiError'
-      description: Current route signature. Successful results are returned by the controller without
-        a FastAPI response_model; no fixed response object is enforced at this route.
+      description: |
+        Requires an enabled account and small_model execute authorization.
+        New configurations use the type-wide resource; saved configurations use their model ID. Authorization precedes configuration loading and provider calls.
+        Successful results use an open JSON schema.
+
       x-implementation: infra/mf-model-manager/app/routers/small_model_router.py
 components:
   schemas:

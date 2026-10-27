@@ -164,12 +164,15 @@ func (r enterpriseInteractionFactsReader) ReadInteraction(
 	}
 	scope.View = evidencevo.AccessViewTechnical
 	summary, found, err := r.summaries.GetInteractionSummary(ctx, interactionID, scope)
-	if err != nil || !found {
-		return enterpriseroute.InteractionFacts{}, found, err
+	if err != nil {
+		return enterpriseroute.InteractionFacts{}, found, &interactionReadError{stage: "summary", cause: err}
+	}
+	if !found {
+		return enterpriseroute.InteractionFacts{}, false, nil
 	}
 	operations, err := r.operations.ListOperationExecutionsByInteractionIDScoped(ctx, scope, interactionID)
 	if err != nil {
-		return enterpriseroute.InteractionFacts{}, false, err
+		return enterpriseroute.InteractionFacts{}, false, &interactionReadError{stage: "operation_facts", cause: err}
 	}
 	sourceRead := enterpriseroute.SourceReadContext{
 		Authorization: scope.Authorization,
@@ -243,3 +246,15 @@ func (r enterpriseInteractionFactsReader) summaryForAuthorization(ctx context.Co
 	}
 	return r.summaries.GetInteractionSummary(ctx, id, scope)
 }
+
+// interactionReadError exposes only a fixed phase name while retaining the
+// original cause for errors.Is/As. EE consumes ReadStage structurally, so its
+// pinned Core dependency need not change to diagnose newer Core readers.
+type interactionReadError struct {
+	stage string
+	cause error
+}
+
+func (e *interactionReadError) Error() string     { return "interaction facts read failed" }
+func (e *interactionReadError) Unwrap() error     { return e.cause }
+func (e *interactionReadError) ReadStage() string { return e.stage }

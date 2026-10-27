@@ -203,7 +203,7 @@ func (oma *ontologyManagerAccess) GetObjectMetricExecutionContext(ctx context.Co
 		return nil, fmt.Errorf("object metric execution context response is empty")
 	}
 	var executionContext interfaces.ObjectMetricExecutionContextV1
-	if err := sonic.Unmarshal(result, &executionContext); err != nil {
+	if err := common.UnmarshalPreciseJSON(result, &executionContext); err != nil {
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal execution context failed")
 		return nil, err
 	}

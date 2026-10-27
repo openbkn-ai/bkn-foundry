@@ -212,11 +212,6 @@ async def test_model(request, userId, language, role):
             adapter_code = request.adapter_code
             embedding_dim = request.embedding_dim
         try:
-            # permission = await permission_manager.check_single_permission(user_id=userId, resource_id=resource_id,
-            #                                                               operations="execute",
-            #                                                               resource_type="small_model")
-            # if not permission:
-            #     return JSONResponse(status_code=403, content=NotPermissionError)
             client = InnerClient(url=config_info.get("api_url", ""), model_name=api_model,
                                  api_key=config_info.get("api_key", ""),
                                  adapter=adapter, adapter_code=adapter_code,
@@ -460,19 +455,27 @@ async def get_info_by_name(model_name):
         return JSONResponse(status_code=400, content=error_dict)
 
 
-async def get_default_model(model_type):
+async def get_default_model(model_type, user_id=None, role=None, *, trusted_internal=False):
     """Return the system default embedding or reranker model.
 
-    This internal endpoint returns HTTP 200 with an empty object when no
+    Authorized callers receive HTTP 200 with an empty object when no
     default is configured, allowing callers to treat the model type as disabled.
     """
     if not model_type:
         return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
     try:
+        if not trusted_internal and not await permission_manager.check_single_permission(
+                user_id=user_id, resource_id="*", operations="display",
+                resource_type="small_model", role=role):
+            return JSONResponse(status_code=403, content=NotPermissionError)
         original_res = small_model_dao.get_default_by_type(model_type)
         if len(original_res) == 0:
             return JSONResponse(status_code=200, content={})
         item = original_res[0]
+        if not trusted_internal and not await permission_manager.check_single_permission(
+                user_id=user_id, resource_id=item["f_model_id"], operations="display",
+                resource_type="small_model", role=role):
+            return JSONResponse(status_code=403, content=NotPermissionError)
         res = {
             "model_id": item["f_model_id"],
             "model_name": item["f_model_name"],

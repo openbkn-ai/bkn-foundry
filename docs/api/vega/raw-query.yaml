@@ -33,6 +33,10 @@ info:
     `VegaBackend.Query.InvalidParameter`，`error_details` 为
     `raw query rejected by read-only policy`；请改写为单条顶层 `SELECT`。
 
+    MySQL/MariaDB 映射为 binary 的结果列（BIT、BINARY、VARBINARY 和各类 BLOB）
+    以原始字节的 base64 字符串返回，空字节串返回空字符串，NULL 保持 null。
+    BIT（包括 BIT(1)）不解释为 boolean；TINYINT 保留整数值，文本列仍返回文本。
+
     调用方仍应受 RBAC 与限流约束，底层账号必须保持只读。
   version: 0.1.0
 servers:

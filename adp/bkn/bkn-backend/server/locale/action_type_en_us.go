@@ -11,6 +11,7 @@ var actionTypeEnUS = i18n.I18nMessages{
 	Messages: map[string]string{
 		"BknBackend.ActionType.InvalidParameter.Declarations":                                   "Invalid action type declarations. Fix aliases or lifecycle as the error details say and try again.",
 		"BknBackend.ActionType.DeclarationsWouldBeCleared":                                      "This overwrite would clear existing action type declarations. The error details list the declarations it would clear. Submit again with confirm_clear_declarations=true to clear them, or keep them in the file.",
+		"BknBackend.ActionType.StillReferenced":                                                 "The action type is still referenced by the lifecycle replaced_by of another definition of its kind. The error details list the references. Change or remove them first, then delete it.",
 		"BknBackend.ActionType.Duplicated.IDInFile":                                             "Same Action Type ID Existed. Please check whether the parameter is correct.",
 		"BknBackend.ActionType.Duplicated.Name":                                                 "Same Action Type Name Existed. Please check whether the parameter is correct.",
 		"BknBackend.ActionType.InvalidParameter":                                                "Invalid Request Paramter. Please check whether the parameter is correct.",

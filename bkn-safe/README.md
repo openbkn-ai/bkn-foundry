@@ -128,6 +128,23 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
   `GET /groups/:id/members`、`POST /search-org`、`POST /users`、`PUT /users/:id/password`
 - 健康：`GET /health/ready`、`/health/alive`
 
+### 账号停用与会话失效
+
+`PUT /api/safe/v1/admin/users/:id` 设置 `enabled=false` 后，先保存停用状态，
+再调用 Hydra Admin API 撤销该 subject 的所有授权会话（`all=true`，不限定 client）
+和登录会话。成功返回 `204`；清理失败返回 `503`，错误详情包含
+`reason=session_revocation_failed` 和 `account_enabled=false`。账号保持停用，
+可重试相同请求。重新启用停用账号前也必须完成会话清理，避免恢复旧会话。
+
+`/me` 和 capabilities 读取每次检查账号状态，禁用或不存在的账号返回 `401`；
+认证只合并并发请求，不保留成功结果。浏览器在刷新失败或刷新后仍收到 `401`
+时清除本地登录状态，下一次访问显示登录页。普通权限不足的 `403` 不触发退出。
+账号密码正确但账号停用时，登录页显示“账号已停用，请联系管理员”。
+
+Hydra 撤销对 token 的覆盖范围取决于部署版本和发放流程；发布验收需要使用实际
+版本验证 Studio、CLI、SDK 的旧 access token 和 refresh token，不能仅以撤销接口
+返回成功作为凭证全部失效的证据。业务服务仍须检查实时账号状态。
+
 ### `POST /api/safe/v1/authz/resource-filter`（列表页批量判定）
 
 一次请求判完一页资源。它有两种明确模式：纯筛选只回答**哪些可见**；完整投影回答
