@@ -896,7 +896,12 @@ paths:
       tags:
       - BknAgentExecution
       summary: Publish Shared Prompt
-      description: Publish new shared Prompt content; it becomes a new Agent version.
+      description: 'Publish new shared Prompt content; it becomes a new Agent version.
+
+
+        Omit vars_schema to retain the currently active Prompt''s variable schema;
+
+        supply an object to replace it, or explicit null to clear it.'
       operationId: publish_shared_prompt_api_bkn_agent_v1_admin_agents__agent_id__prompt_put
       security:
       - HTTPBearer: []

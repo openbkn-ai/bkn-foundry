@@ -6,6 +6,8 @@
 
 import asyncio
 
+import pytest
+
 from app import public_auth
 from app.core.agent_settings import instruction_block, merge
 from app.models import AgentLimits, AgentOut, AgentSetting
@@ -219,6 +221,106 @@ def test_execution_applies_network_and_user_layers(monkeypatch):
 
 
 ADMIN = "/api/bkn-agent/v1/admin/agents/studio_smart_qa"
+
+
+@pytest.mark.parametrize(
+    ("original", "fields", "expected"),
+    [
+        ({"type": "object", "required": ["question"]}, {}, {"type": "object", "required": ["question"]}),
+        ({"type": "object"}, {"vars_schema": {"type": "string"}}, {"type": "string"}),
+        ({"type": "object"}, {"vars_schema": None}, None),
+        ({"type": "object"}, {"vars_schema": {}}, {}),
+        ({}, {}, {}),
+        (None, {}, None),
+    ],
+    ids=["omitted", "replaced", "cleared", "empty-replacement", "empty-preserved", "absent"],
+)
+def test_shared_prompt_publish_preserves_only_omitted_schema(monkeypatch, original, fields, expected):
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            seeded = await client.put(
+                f"{ADMIN}/prompt",
+                json={"content": "Original body", "vars_schema": original},
+                headers=AUTH,
+            )
+            assert seeded.status_code == 200, seeded.text
+            published = await client.put(
+                f"{ADMIN}/prompt",
+                json={"content": "Edited body", **fields},
+                headers=AUTH,
+            )
+            assert published.status_code == 200, published.text
+            assert published.json()["prompt"]["vars_schema"] == expected
+            current = (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()["prompt"]
+            assert current["content"] == "Edited body"
+            assert current["vars_schema"] == expected
+            assert current["current_version"] == 3
+
+            # Publishing must not mutate either historical Prompt version.
+            from app import dao
+
+            async with factory() as session:
+                history = await dao.list_prompt_versions(session, "qa-prompt")
+            assert [(v.version, v.vars_schema) for v in history] == [(3, expected), (2, original), (1, None)]
+
+    asyncio.run(run())
+
+
+def test_shared_prompt_publish_inherits_active_schema_after_version_switch(monkeypatch):
+    async def run():
+        async with environment(monkeypatch) as (client, _, _):
+            schema = {"type": "object", "properties": {"question": {"type": "string"}}}
+            for content, value in (("With schema", schema), ("Cleared schema", None)):
+                response = await client.put(
+                    f"{ADMIN}/prompt", json={"content": content, "vars_schema": value}, headers=AUTH
+                )
+                assert response.status_code == 200, response.text
+            versions = (await client.get(f"{ADMIN}/versions", headers=AUTH)).json()
+            active = next(v["version"] for v in versions if v["prompt_version"] == 2)
+            switched = await client.post(f"{ADMIN}/versions/{active}/activate", headers=AUTH)
+            assert switched.status_code == 200, switched.text
+            assert (await client.get(f"{ADMIN}/prompt", headers=AUTH)).json()["prompt"]["vars_schema"] == schema
+
+            published = await client.put(
+                f"{ADMIN}/prompt", json={"content": "Edit the restored body"}, headers=AUTH
+            )
+            assert published.status_code == 200, published.text
+            assert published.json()["prompt"]["current_version"] == 4
+            assert published.json()["prompt"]["vars_schema"] == schema
+
+    asyncio.run(run())
+
+
+def test_body_only_prompt_publish_keeps_runtime_variable_validation(monkeypatch):
+    from fastapi import HTTPException
+
+    from app import dao
+    from app.core.prompt import resolve_prompt
+
+    async def run():
+        async with environment(monkeypatch) as (client, factory, _):
+            seeded = await client.put(
+                f"{ADMIN}/prompt",
+                json={"content": "Answer {question}", "vars_schema": {"required": ["question"]}},
+                headers=AUTH,
+            )
+            assert seeded.status_code == 200, seeded.text
+            edited = await client.put(
+                f"{ADMIN}/prompt", json={"content": "Explain {question}"}, headers=AUTH
+            )
+            assert edited.status_code == 200, edited.text
+            async with factory() as session:
+                current_agent = await dao.get_agent(session, "studio_smart_qa")
+                with pytest.raises(HTTPException) as missing:
+                    await resolve_prompt(session, current_agent, "user-1", None, {}, shared_only=True)
+                assert missing.value.status_code == 400
+                assert missing.value.detail["code"] == "BknAgent.ParamError.PromptVars"
+                resolved = await resolve_prompt(
+                    session, current_agent, "user-1", None, {"question": "orders"}, shared_only=True
+                )
+                assert resolved == ("Explain orders", "default", 3)
+
+    asyncio.run(run())
 
 
 def _deny_agent_admin(monkeypatch):

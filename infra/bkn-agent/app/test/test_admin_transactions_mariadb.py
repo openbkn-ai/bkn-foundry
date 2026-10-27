@@ -313,6 +313,22 @@ async def main(monkeypatch):
                 await s.rollback()
         finally:
             monkeypatch.setattr(dao, 'lock_prompt_agents', original_lock)
+        # A body-only publisher can have an older repeatable-read snapshot
+        # while waiting for another publisher to replace the active schema.
+        schema = {'type': 'object', 'properties': {'question': {'type': 'string'}}}
+        async with factory() as writer, factory() as follower:
+            before = await dao.get_prompt(follower, other_prompt)
+            assert before.vars_schema is None
+            await dao.publish_prompt_version(writer, other_prompt,
+                'schema writer', schema, 'admin', commit=False)
+            pending = asyncio.create_task(routes.publish_shared_prompt(
+                PromptPublish(content='body-only follower'), AGENT, Account('admin', 'user'), follower))
+            await asyncio.sleep(0.15)
+            check('body-only-publisher-waits-for-schema-writer', not pending.done())
+            await writer.commit()
+            result = await asyncio.wait_for(pending, 3)
+            check('body-only-publisher-inherits-current-schema-after-wait',
+                result.prompt.vars_schema == schema and result.prompt.content == 'body-only follower')
     finally:
         await engine.dispose()
         with db.cursor() as c:
