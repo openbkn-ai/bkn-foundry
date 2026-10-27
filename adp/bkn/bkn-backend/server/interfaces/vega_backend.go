@@ -79,6 +79,10 @@ type VegaResource struct {
 	LocalIndexName string `json:"index_name,omitempty"`
 	// LocalIndexStatus is the source of truth for whether the managed local index can serve index capabilities.
 	LocalIndexStatus string `json:"local_status"`
+	// RowCount is the most recently collected exact count, or a live dataset count.
+	// A missing timestamp must not be treated as a fresh measurement.
+	RowCount     *int64 `json:"row_count,omitempty"`
+	RowCountTime *int64 `json:"row_count_time,omitempty"`
 }
 
 // VegaResourceIndexConfig mirrors vega-backend's resource-level index configuration.

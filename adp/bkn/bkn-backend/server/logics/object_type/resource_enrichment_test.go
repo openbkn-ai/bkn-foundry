@@ -384,3 +384,146 @@ func TestProcessObjectTypeDetailsMarksMissingResourceWithoutMetadataFailure(t *t
 		t.Fatal("a missing resource is a known answer, not unavailable metadata")
 	}
 }
+
+// Issue #1755: reuse Vega counts without exposing totals to restricted readers.
+func TestObjectTypeRowCounts(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind                               string
+		count, stamp                             int64
+		query, missing, policyError, proxyDenied bool
+		want                                     bool
+	}{
+		{name: "exact", kind: "true", count: 9007199254740993, stamp: 100, query: true, want: true},
+		{name: "zero", kind: "true", stamp: 100, query: true, want: true},
+		{name: "missing", missing: true},
+		{name: "untimestamped", count: 8},
+		{name: "negative", count: -1, stamp: 100},
+		{name: "view only", kind: "true", count: 8, stamp: 100},
+		{name: "filtered", kind: "in", count: 8, stamp: 100, query: true},
+		{name: "denied rows", kind: "false", count: 8, stamp: 100, query: true},
+		{name: "missing policy", count: 8, stamp: 100, query: true},
+		{name: "policy failure", count: 8, stamp: 100, query: true, policyError: true},
+		{name: "proxy binding denied", count: 8, stamp: 100, query: true, proxyDenied: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps := bmock.NewMockPermissionService(ctrl)
+			svc := &objectTypeService{ps: ps}
+			ot := boundObjectType("ot1", "r1", "main")
+			ot.RowCount, ot.RowCountTime = &tc.count, &tc.stamp
+			resource := vegaResource("r1")
+			if !tc.missing {
+				resource.RowCount, resource.RowCountTime = &tc.count, &tc.stamp
+			}
+			lookup := vegaResourceLookup{resource: resource}
+			if tc.proxyDenied {
+				lookup.proxyChildren = map[string]struct{}{}
+				lookup.err = errors.New("binding denied")
+			}
+			if !tc.missing && tc.count >= 0 && tc.stamp > 0 && !tc.proxyDenied {
+				ops := []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}
+				if tc.query {
+					ops = append(ops, interfaces.OPERATION_TYPE_QUERY_DATA)
+				}
+				ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{"kn1/ot1"}, gomock.Nil()).Return(map[string]interfaces.PermissionResourceOps{"kn1/ot1": {ResourceID: "kn1/ot1", Operations: ops}}, nil)
+				var decisions []interfaces.RowFilterDecisionEntry
+				if tc.kind != "" {
+					decisions = append(decisions, interfaces.RowFilterDecisionEntry{ObjectTypeRef: "kn1/ot1", Predicate: interfaces.RowFilterPredicate{Kind: tc.kind}})
+				}
+				var err error
+				if tc.policyError {
+					err = errors.New("policy unavailable")
+				}
+				ps.EXPECT().ResolveRowFilters(gomock.Any(), []string{"kn1/ot1"}).Return(decisions, err)
+			}
+			svc.enrichObjectTypeRowCounts(readerContext(), []*interfaces.ObjectType{nil, ot}, map[string]vegaResourceLookup{"r1": lookup})
+			if tc.want {
+				if ot.RowCount == nil || *ot.RowCount != tc.count || ot.RowCountTime == nil || *ot.RowCountTime != tc.stamp {
+					t.Fatalf("count/time = %v/%v", ot.RowCount, ot.RowCountTime)
+				}
+			} else if ot.RowCount != nil || ot.RowCountTime != nil {
+				t.Fatalf("restricted or missing count exposed: %#v", ot)
+			}
+		})
+	}
+}
+
+func TestObjectTypeListAndSearchReuseCountResourceBatch(t *testing.T) {
+	for _, summary := range []bool{false, true} {
+		t.Run(fmt.Sprint("summary=", summary), func(t *testing.T) {
+			var svc *objectTypeService
+			var vbs *bmock.MockVegaBackendService
+			if summary {
+				ctrl := gomock.NewController(t)
+				vbs = bmock.NewMockVegaBackendService(ctrl)
+				svc = &objectTypeService{vbs: vbs, ps: bmock.NewMockPermissionService(ctrl)}
+			} else {
+				svc, vbs = newResourceSearchService(t, []string{"ot1"}, []map[string]any{resourceSearchEntry("ot1", "r1")})
+			}
+			resource := vegaResource("r1")
+			count, stamp := int64(0), int64(100)
+			resource.RowCount, resource.RowCountTime = &count, &stamp
+			vbs.EXPECT().GetResourcesByIDs(gomock.Any(), []string{"r1"}).Return([]*interfaces.VegaResource{resource}, nil).Times(1)
+			ps := svc.ps.(*bmock.MockPermissionService)
+			ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{"kn1/ot1"}, gomock.Nil()).Return(map[string]interfaces.PermissionResourceOps{"kn1/ot1": {ResourceID: "kn1/ot1", Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA}}}, nil)
+			ps.EXPECT().ResolveRowFilters(gomock.Any(), []string{"kn1/ot1"}).Return([]interfaces.RowFilterDecisionEntry{{ObjectTypeRef: "kn1/ot1", Predicate: interfaces.RowFilterPredicate{Kind: "true"}}}, nil)
+			var ot *interfaces.ObjectType
+			if summary {
+				ot = boundObjectType("ot1", "r1", "main")
+				svc.enrichObjectTypeIndexStatuses(readerContext(), []*interfaces.ObjectType{ot})
+			} else {
+				result, err := svc.SearchObjectTypes(readerContext(), searchQuery())
+				if err != nil {
+					t.Fatal(err)
+				}
+				ot = result.Entries[0]
+			}
+			encoded, err := json.Marshal(ot)
+			if err != nil || !strings.Contains(string(encoded), `"row_count":0`) || !strings.Contains(string(encoded), `"row_count_time":100`) {
+				t.Fatalf("response = %s, %v", encoded, err)
+			}
+		})
+	}
+}
+
+func TestObjectTypeRowCountsBatchesPolicies(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	svc := &objectTypeService{ps: ps}
+	var objects []*interfaces.ObjectType
+	resources := map[string]vegaResourceLookup{}
+	count, stamp := int64(1), int64(100)
+	for i := range 101 {
+		id := fmt.Sprint(i)
+		objects = append(objects, boundObjectType(id, id, "main"))
+		resources[id] = vegaResourceLookup{resource: &interfaces.VegaResource{RowCount: &count, RowCountTime: &stamp}}
+	}
+	ps.EXPECT().FilterVisibleResourcesWithOperations(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Nil()).DoAndReturn(func(_ context.Context, _ string, refs []string, _ []string) (map[string]interfaces.PermissionResourceOps, error) {
+		ops := map[string]interfaces.PermissionResourceOps{}
+		for _, ref := range refs {
+			ops[ref] = interfaces.PermissionResourceOps{ResourceID: ref, Operations: []string{interfaces.OPERATION_TYPE_QUERY_DATA}}
+		}
+		return ops, nil
+	}).AnyTimes()
+	calls := 0
+	ps.EXPECT().ResolveRowFilters(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, refs []string) ([]interfaces.RowFilterDecisionEntry, error) {
+		calls++
+		if len(refs) > 100 {
+			return nil, errors.New("policy batch too large")
+		}
+		var entries []interfaces.RowFilterDecisionEntry
+		for _, ref := range refs {
+			entries = append(entries, interfaces.RowFilterDecisionEntry{ObjectTypeRef: ref, Predicate: interfaces.RowFilterPredicate{Kind: "true"}})
+		}
+		return entries, nil
+	}).AnyTimes()
+	svc.enrichObjectTypeRowCounts(readerContext(), objects, resources)
+	if calls != 2 {
+		t.Fatalf("policy calls = %d, want 2", calls)
+	}
+	for _, ot := range objects {
+		if ot.RowCount == nil || *ot.RowCount != count {
+			t.Fatalf("missing count for %s", ot.OTID)
+		}
+	}
+}

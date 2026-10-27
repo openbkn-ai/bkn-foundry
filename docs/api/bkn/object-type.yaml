@@ -2354,6 +2354,21 @@ components:
           type: string
         data_source:
           $ref: "#/components/schemas/DataSource"
+        row_count:
+          description: >-
+            Exact count from the bound Vega resource, reused in object type list, detail and search
+            responses. Dataset counts are live; other counts reflect the collection time below.
+            Null when the measurement is missing, query_data is denied, or a row filter applies.
+            Filtered counts use the existing Cypher endpoint; model reads never issue COUNT queries.
+          type: integer
+          format: int64
+          nullable: true
+          readOnly: true
+        row_count_time:
+          description: Vega collection time in Unix milliseconds. Omitted when row_count is null.
+          type: integer
+          format: int64
+          readOnly: true
         creator:
           $ref: '../_shared/common.yaml#/components/schemas/AccountInfo'
         create_time:
@@ -2492,6 +2507,21 @@ components:
           type: array
           items:
             type: string
+        row_count:
+          description: >-
+            Exact count from the bound Vega resource, reused in object type list, detail and search
+            responses. Dataset counts are live; other counts reflect the collection time below.
+            Null when the measurement is missing, query_data is denied, or a row filter applies.
+            Filtered counts use the existing Cypher endpoint; model reads never issue COUNT queries.
+          type: integer
+          format: int64
+          nullable: true
+          readOnly: true
+        row_count_time:
+          description: Vega collection time in Unix milliseconds. Omitted when row_count is null.
+          type: integer
+          format: int64
+          readOnly: true
         data_source_metadata_unavailable:
           description: |
             Present and true only when the bound resource could not be read while this response

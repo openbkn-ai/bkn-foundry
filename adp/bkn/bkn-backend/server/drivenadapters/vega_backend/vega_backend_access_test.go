@@ -98,7 +98,7 @@ func TestGetResourcesByIDsReadsBatchToleratingMissing(t *testing.T) {
 		DoAndReturn(func(_ context.Context, _ string, params url.Values, headers map[string]string) (int, []byte, error) {
 			gotHeaders = headers
 			assert.Equal(t, "true", params.Get("ignore_missing"))
-			return http.StatusOK, []byte(`{"entries":[{"id":"r/1","name":"orders"},{"id":"r3","name":"items"}]}`), nil
+			return http.StatusOK, []byte(`{"entries":[{"id":"r/1","name":"orders","row_count":9007199254740993,"row_count_time":1790000000000},{"id":"r3","name":"items"}]}`), nil
 		})
 
 	access := &vegaBackendAccess{httpClient: mockHTTPClient, baseUrl: "http://vega"}
@@ -110,6 +110,10 @@ func TestGetResourcesByIDsReadsBatchToleratingMissing(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resources, 2)
 	assert.Equal(t, "orders", resources[0].Name)
+	require.NotNil(t, resources[0].RowCount)
+	require.NotNil(t, resources[0].RowCountTime)
+	assert.Equal(t, int64(9007199254740993), *resources[0].RowCount)
+	assert.Equal(t, int64(1790000000000), *resources[0].RowCountTime)
 	assert.Equal(t, "items", resources[1].Name)
 	assert.Equal(t, "user-1", gotHeaders[interfaces.HTTP_HEADER_ACCOUNT_ID])
 }
