@@ -32,8 +32,14 @@ func validateDeclarations(ctx context.Context, objectType *interfaces.ObjectType
 		if p == nil {
 			continue
 		}
-		if p.Declares(interfaces.DECLARATION_REQUIRED) && !p.Required && slices.Contains(objectType.PrimaryKeys, p.Name) {
-			return invalidDeclarations(ctx, fmt.Sprintf("data property %q: a primary key is required by definition; leave required out instead of writing false", p.Name))
+		if slices.Contains(objectType.PrimaryKeys, p.Name) {
+			if p.Declares(interfaces.DECLARATION_REQUIRED) && !p.Required {
+				return invalidDeclarations(ctx, fmt.Sprintf("data property %q: a primary key is required by definition; leave required out instead of writing false", p.Name))
+			}
+			// A primary key is required by definition, so required on it says nothing. It is not
+			// stored, as the 3.0 export already leaves it out; a value stored before is dropped on
+			// the next save.
+			p.DropImpliedRequired()
 		}
 		if p.Constraints.IsEmpty() {
 			p.Constraints = nil
