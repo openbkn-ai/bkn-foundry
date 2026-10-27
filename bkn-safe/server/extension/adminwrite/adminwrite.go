@@ -73,6 +73,20 @@ var (
 	ErrAdminConsolePermission = fmt.Errorf("%w: admin console permission", ErrForbidden)
 )
 
+// UnregisteredPermissionError identifies invalid registry input without exposing
+// backend diagnostics.
+type UnregisteredPermissionError struct {
+	ResourceType        string
+	Operation           string
+	UnknownResourceType bool
+}
+
+func (e *UnregisteredPermissionError) Error() string {
+	return fmt.Sprintf("%s: unregistered permission %s/%s", ErrInvalid, e.ResourceType, e.Operation)
+}
+
+func (e *UnregisteredPermissionError) Unwrap() error { return ErrInvalid }
+
 // RoleSpec creates a custom role. Source is always forced to "custom" by the
 // implementation; the API cannot mint system or business roles.
 type RoleSpec struct {

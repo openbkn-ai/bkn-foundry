@@ -59,6 +59,7 @@ func TestRoleNameKeyUniqueIndexRejectsConcurrentWriterEquivalent(t *testing.T) {
 
 func TestAdminWriteRejectsTypeWideActionExecute(t *testing.T) {
 	_, e, db := newTestServer(t)
+	seedCatalogOps(t, db, "action_type", "execute")
 	const roleID = "custom-action-role"
 	if err := db.Create(&model.Role{ID: roleID, Name: roleID, Source: model.RoleSourceCustom}).Error; err != nil {
 		t.Fatalf("create custom role: %v", err)
