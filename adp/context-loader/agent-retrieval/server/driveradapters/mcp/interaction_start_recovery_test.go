@@ -15,41 +15,44 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 )
 
 func TestStartInteractionRecoversCommittedAcknowledgementDeadline(t *testing.T) {
-	calls := 0
-	original := ""
-	client := bkntrace.NewLifecycleClient("http://start.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
-		calls++
-		raw, _ := io.ReadAll(r.Body)
-		if calls == 1 {
-			original = string(raw)
-			<-r.Context().Done()
-			return nil, r.Context().Err()
+	synctest.Test(t, func(t *testing.T) {
+		calls := 0
+		original := ""
+		client := bkntrace.NewLifecycleClient("http://start.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			calls++
+			raw, _ := io.ReadAll(r.Body)
+			if calls == 1 {
+				original = string(raw)
+				<-r.Context().Done()
+				return nil, r.Context().Err()
+			}
+			if string(raw) != original {
+				t.Fatal("retry changed start identity or payload")
+			}
+			return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.Interaction{InteractionID: "int-committed", ConversationID: "conv-committed", ExecutionStatus: "active", LeaseToken: "lease-committed", LeaseEpoch: 1}), nil
+		})})
+		ctx, cancel := context.WithTimeout(startArtifactTestContext(), time.Second)
+		defer cancel()
+		started := time.Now()
+		result, err := handleLifecycleTool(client, "bkn_start_interaction")(ctx, startArtifactTestRequest())
+		if err != nil || result == nil || result.IsError || calls != 2 {
+			t.Fatalf("committed interaction hidden after timeout: result=%#v err=%v calls=%d", result, err, calls)
 		}
-		if string(raw) != original {
-			t.Fatal("retry changed start identity or payload")
+		value, ok := result.StructuredContent.(map[string]any)
+		if !ok || value["interaction_id"] != "int-committed" || value["conversation_id"] != "conv-committed" {
+			t.Fatalf("lost authoritative identity: %#v", result.StructuredContent)
 		}
-		return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.Interaction{InteractionID: "int-committed", ConversationID: "conv-committed", ExecutionStatus: "active", LeaseToken: "lease-committed", LeaseEpoch: 1}), nil
-	})})
-	ctx, cancel := context.WithTimeout(startArtifactTestContext(), time.Second)
-	defer cancel()
-	started := time.Now()
-	result, err := handleLifecycleTool(client, "bkn_start_interaction")(ctx, startArtifactTestRequest())
-	if err != nil || result == nil || result.IsError || calls != 2 {
-		t.Fatalf("committed interaction hidden after timeout: result=%#v err=%v calls=%d", result, err, calls)
-	}
-	value, ok := result.StructuredContent.(map[string]any)
-	if !ok || value["interaction_id"] != "int-committed" || value["conversation_id"] != "conv-committed" {
-		t.Fatalf("lost authoritative identity: %#v", result.StructuredContent)
-	}
-	if time.Since(started) > 1300*time.Millisecond {
-		t.Fatal("start recovery extended caller budget")
-	}
+		if time.Since(started) > time.Second {
+			t.Fatal("start recovery extended caller budget")
+		}
+	})
 }
 
 // Exercise the real HTTP client: Core commits once, the first response never
@@ -80,7 +83,12 @@ func TestStartInteractionLostHTTPResponseCreatesOnlyOneInteraction(t *testing.T)
 			t.Error("missing start key")
 		}
 		if requests.Add(1) == 1 {
-			<-r.Context().Done()
+			connection, _, err := w.(http.Hijacker).Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			_ = connection.Close()
 			return
 		}
 		_ = json.NewEncoder(w).Encode(bkntrace.Interaction{InteractionID: "int-committed", ConversationID: "conv-committed", ExecutionStatus: "active", LeaseToken: "lease-committed", LeaseEpoch: 1})
@@ -92,4 +100,39 @@ func TestStartInteractionLostHTTPResponseCreatesOnlyOneInteraction(t *testing.T)
 	if err != nil || result == nil || result.IsError || commits.Load() != 1 || requests.Load() != 2 {
 		t.Fatalf("lost HTTP ACK duplicated or hid committed interaction: result=%#v err=%v commits=%d requests=%d", result, err, commits.Load(), requests.Load())
 	}
+}
+
+func TestStartInteractionAcceptsCanonicalConversationWithoutReplay(t *testing.T) {
+	calls := 0
+	client := bkntrace.NewLifecycleClient("http://start.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return lifecycleAdapterJSONResponse(http.StatusOK, bkntrace.Interaction{InteractionID: "int-existing", ConversationID: "conv-existing"}), nil
+	})})
+	ctx, cancel := context.WithTimeout(startArtifactTestContext(), time.Second)
+	defer cancel()
+	var target bkntrace.Interaction
+	apiErr, err := callInteractionStart(ctx, client, "/start", "conv-existing ", map[string]any{"idempotency_key": "same-key"}, &target)
+	if err != nil || apiErr != nil || calls != 1 || target.ConversationID != "conv-existing" {
+		t.Fatalf("canonical committed ID was hidden: api=%v err=%v calls=%d target=%#v", apiErr, err, calls, target)
+	}
+}
+
+func TestStartInteractionBacksOffQuickInfrastructureFailures(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var times []time.Time
+		client := bkntrace.NewLifecycleClient("http://start.test", &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			times = append(times, time.Now())
+			return lifecycleAdapterJSONResponse(http.StatusServiceUnavailable, map[string]any{"error": map[string]any{"code": "trace_core_unavailable"}}), nil
+		})})
+		ctx, cancel := context.WithTimeout(startArtifactTestContext(), time.Second)
+		defer cancel()
+		var target bkntrace.Interaction
+		apiErr, err := callInteractionStart(ctx, client, "/start", "conv-existing", map[string]any{"idempotency_key": "same-key"}, &target)
+		if err != nil || apiErr == nil || len(times) != 3 {
+			t.Fatalf("api=%v err=%v calls=%d", apiErr, err, len(times))
+		}
+		if times[1].Sub(times[0]) != 20*time.Millisecond || times[2].Sub(times[1]) != 40*time.Millisecond {
+			t.Fatalf("retry intervals=%v/%v", times[1].Sub(times[0]), times[2].Sub(times[1]))
+		}
+	})
 }

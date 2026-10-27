@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 )
@@ -31,7 +33,7 @@ func callInteractionStart(ctx context.Context, client *bkntrace.LifecycleClient,
 		*target = bkntrace.Interaction{}
 		apiErr, err = client.Call(attemptContext, http.MethodPost, path, json.RawMessage(raw), target)
 		cancel()
-		if apiErr == nil && err == nil && (target.InteractionID == "" || target.ConversationID != conversationID) {
+		if apiErr == nil && err == nil && (target.InteractionID == "" || target.ConversationID != strings.TrimSpace(conversationID)) {
 			err = bkntrace.ErrInvalidLifecycleResponse
 		}
 		if apiErr == nil && err == nil {
@@ -42,6 +44,15 @@ func callInteractionStart(ctx context.Context, client *bkntrace.LifecycleClient,
 		}
 		if !errors.Is(err, bkntrace.ErrInvalidLifecycleResponse) && !bkntrace.IsTraceInfrastructureFailure(apiErr, err) {
 			return apiErr, err
+		}
+		if attempt < 2 {
+			timer := time.NewTimer(20 * time.Millisecond * time.Duration(1<<attempt))
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	return apiErr, err
