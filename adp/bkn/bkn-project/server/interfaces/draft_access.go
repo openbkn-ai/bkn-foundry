@@ -11,8 +11,9 @@ type DraftAccess interface {
 	// GetDraft returns the project's draft, and false when it has none.
 	GetDraft(ctx context.Context, projectID string) (*Draft, bool, error)
 	// StartDraft writes draft, in the drafting state, as the project's draft unless the project
-	// is drafting already; it reports whether it did.
-	StartDraft(ctx context.Context, draft *Draft) (bool, error)
+	// is drafting already; it reports whether it did. A draft drafting since before staleBefore
+	// is taken over: its drafting has ended without being recorded.
+	StartDraft(ctx context.Context, draft *Draft, staleBefore int64) (bool, error)
 	// FinishDraft records how drafting ended: ready with its items, or failed with the reason.
 	FinishDraft(ctx context.Context, draft *Draft) error
 	// FailDrafting marks every draft still drafting as failed with reason; drafting runs in the

@@ -168,11 +168,17 @@ func column(table *interfaces.VegaTable, name string) (interfaces.VegaColumn, bo
 
 // codeTableName returns the field holding the names of a code table, or "" when the table is
 // not one: a single-field key, a known row count up to the limit, a few other fields and one
-// of them a name.
+// of them a name. A table with a personal field is never one, so drafting never reads people's
+// names as enum values.
 func codeTableName(table *interfaces.VegaTable, setting common.DraftSetting) string {
 	key, _ := tableKey(table)
 	if len(key) != 1 || table.Rows <= 0 || table.Rows > setting.CodeTableMaxRows {
 		return ""
+	}
+	for _, c := range table.Columns {
+		if privacyKeyword(c, setting.PrivacyKeywords) != "" {
+			return ""
+		}
 	}
 	others := []interfaces.VegaColumn{}
 	for _, c := range table.Columns {

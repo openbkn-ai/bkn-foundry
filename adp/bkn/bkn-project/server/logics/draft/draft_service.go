@@ -94,7 +94,10 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 		CreateTime: now,
 		UpdateTime: now,
 	}
-	started, err := s.da.StartDraft(ctx, draft)
+	// A draft still drafting after the drafting timeout, with a minute to record it, has ended
+	// without being recorded, e.g. on a database error; it no longer holds the project.
+	staleBefore := now - (s.setting.Timeout + time.Minute).Milliseconds()
+	started, err := s.da.StartDraft(ctx, draft, staleBefore)
 	if err != nil {
 		span.SetStatus(codes.Error, "Start draft failed")
 		return nil, internalError(ctx, "Start draft failed", err)

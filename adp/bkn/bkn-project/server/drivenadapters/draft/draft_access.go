@@ -67,7 +67,8 @@ func (da *draftAccess) GetDraft(ctx context.Context, projectID string) (*interfa
 	return draft, true, nil
 }
 
-func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft) (started bool, err error) {
+func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
+	staleBefore int64) (started bool, err error) {
 	_, span := oteltrace.StartNamedClientSpan(ctx, "StartDraft")
 	defer span.End()
 
@@ -88,7 +89,7 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft) 
 	}()
 
 	// The row lock makes two starts of one project take turns: the second sees drafting.
-	sqlStr, vals, err := sq.Select("f_status").From(DRAFT_TABLE_NAME).
+	sqlStr, vals, err := sq.Select("f_status", "f_update_time").From(DRAFT_TABLE_NAME).
 		Where(sq.Eq{"f_project_id": draft.ProjectID}).Suffix("FOR UPDATE").
 		ToSql()
 	if err != nil {
@@ -96,7 +97,8 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft) 
 		return false, err
 	}
 	var status string
-	switch err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status); {
+	var updateTime int64
+	switch err = tx.QueryRowContext(ctx, sqlStr, vals...).Scan(&status, &updateTime); {
 	case errors.Is(err, sql.ErrNoRows):
 		sqlStr, vals, err = sq.Insert(DRAFT_TABLE_NAME).Columns(draftColumns...).Values(
 			draft.ProjectID, draft.Status, string(itemsJSON), draft.Error, draft.Drafter.ID, draft.Drafter.Type,
@@ -105,7 +107,7 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft) 
 	case err != nil:
 		span.SetStatus(codes.Error, "Query data failed")
 		return false, err
-	case status == interfaces.DRAFT_STATUS_DRAFTING:
+	case status == interfaces.DRAFT_STATUS_DRAFTING && updateTime >= staleBefore:
 		span.SetStatus(codes.Ok, "")
 		return false, nil
 	default:

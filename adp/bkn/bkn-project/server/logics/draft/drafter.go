@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
@@ -30,7 +31,7 @@ type drafter struct {
 	objectTypes  map[string]*interfaces.DraftObjectType // by table id
 	fields       map[string]map[string]string           // table id -> field -> property name
 	valueTypes   map[string]*interfaces.DraftValueType  // by code table id
-	bySourceName map[string]*interfaces.VegaTable       // schema.name -> table
+	bySourceName map[string]*interfaces.VegaTable       // catalog|schema.name -> table
 	items        interfaces.DraftItems
 }
 
@@ -53,8 +54,9 @@ func newDrafter(setting common.DraftSetting, c counter) *drafter {
 	}
 }
 
-func sourceName(schema string, name string) string {
-	return schema + "." + name
+// sourceName keys a physical table within its catalog: two catalogs may both have erp.customers.
+func sourceName(catalogID string, schema string, name string) string {
+	return catalogID + "|" + schema + "." + name
 }
 
 func draftTable(table *interfaces.VegaTable) interfaces.DraftTable {
@@ -70,7 +72,7 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
 	for _, table := range tables {
 		d.kinds[table.ID] = classify(table, d.setting)
-		d.bySourceName[sourceName(table.SourceSchema, table.SourceName)] = table
+		d.bySourceName[sourceName(table.CatalogID, table.SourceSchema, table.SourceName)] = table
 	}
 
 	typeIDs := map[string]bool{}
@@ -259,9 +261,14 @@ func (d *drafter) addValueType(ctx context.Context, table *interfaces.VegaTable,
 	return nil
 }
 
-// target finds the table a foreign key refers to, in the same schema as the referring table.
+// target finds the table a foreign key refers to, in the referring table's catalog. Connectors
+// that know schemas (PostgreSQL) write the referenced table as schema.table; the others write
+// the bare name, in the referring table's schema.
 func (d *drafter) target(source *interfaces.VegaTable, fk interfaces.VegaForeignKey) *interfaces.VegaTable {
-	return d.bySourceName[sourceName(source.SourceSchema, fk.RefTable)]
+	if schema, name, ok := strings.Cut(fk.RefTable, "."); ok {
+		return d.bySourceName[sourceName(source.CatalogID, schema, name)]
+	}
+	return d.bySourceName[sourceName(source.CatalogID, source.SourceSchema, fk.RefTable)]
 }
 
 func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable, tables []*interfaces.VegaTable,

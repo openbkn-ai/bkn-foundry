@@ -273,12 +273,13 @@ func Test_Drafter(t *testing.T) {
 			So(findProperty(objectType(items, "orders"), "code").ValueTypeID, ShouldBeEmpty)
 		})
 
-		Convey("A foreign key to another catalog cannot be counted and is not adopted\n", func() {
-			r := relation(run(sampleCounter()), "invoices", "customers")
+		Convey("A table of another catalog is neither a foreign key target nor an uncounted inference\n", func() {
+			items := run(sampleCounter())
 
-			So(r.Evidence.Computed, ShouldBeFalse)
-			So(r.Evidence.Reason, ShouldEqual, reasonCrossCatalog)
-			So(r.Adopted, ShouldBeFalse)
+			// invoices (c2) declares a foreign key to customers and names a field for its key, but
+			// customers is in c1: the key resolves only within c2, and vega-backend cannot count
+			// across catalogs, so the inference has no evidence and is not proposed.
+			So(relation(items, "invoices", "customers"), ShouldBeNil)
 		})
 
 		Convey("A failed count is recorded on its item and drafting goes on\n", func() {
@@ -302,6 +303,51 @@ func Test_Drafter(t *testing.T) {
 			So(r.LinkTable.ResourceID, ShouldEqual, "r_order_tags")
 			So(r.SourceMapping, ShouldResemble, []interfaces.DraftFieldMapping{{SourceProperty: "order_id", TargetProperty: "order_id"}})
 			So(r.TargetMapping, ShouldResemble, []interfaces.DraftFieldMapping{{SourceProperty: "tag_id", TargetProperty: "tag_id"}})
+			So(r.Adopted, ShouldBeTrue)
+		})
+
+		Convey("A PostgreSQL foreign key names its table with the schema\n", func() {
+			customers := table("r_c", "c1", "customers", 0, []string{"id"}, col("id", "string", ""))
+			customers.SourceSchema = "public"
+			orders := table("r_o", "c1", "orders", 0, []string{"order_id"}, col("order_id", "string", ""), col("customer_ref", "string", ""))
+			orders.SourceSchema = "public"
+			orders.ForeignKeys = []interfaces.VegaForeignKey{fk("customer_ref", "public.customers", "id")}
+			c := sampleCounter()
+			c.joins[joinKey{"r_o", "customer_ref"}] = [3]int64{10, 0, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{customers, orders}, nil)
+
+			So(err, ShouldBeNil)
+			So(relation(items, "orders", "customers"), ShouldNotBeNil)
+		})
+
+		Convey("A small table of people is not a code table, so no names are read as enum values\n", func() {
+			staff := table("r_staff", "c1", "staff", 30, []string{"id"}, col("id", "string", ""), col("full_name", "string", ""))
+			c := sampleCounter()
+			c.codes["r_staff"] = []interfaces.DraftEnumValue{{Value: "1", Display: "Alice"}}
+
+			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{staff}, nil)
+
+			So(err, ShouldBeNil)
+			So(items.ValueTypes, ShouldBeEmpty)
+			So(objectType(items, "staff"), ShouldNotBeNil)
+		})
+
+		Convey("A foreign key resolves in its own catalog when another has a table of the same name\n", func() {
+			customers1 := table("r_c1", "c1", "customers", 0, []string{"id"}, col("id", "string", ""))
+			orders1 := table("r_o1", "c1", "orders", 0, []string{"order_id"}, col("order_id", "string", ""), col("cust", "string", ""))
+			orders1.ForeignKeys = []interfaces.VegaForeignKey{fk("cust", "customers", "id")}
+			customers2 := table("r_c2", "c2", "customers", 0, []string{"id"}, col("id", "string", ""))
+			c := sampleCounter()
+			c.joins[joinKey{"r_o1", "cust"}] = [3]int64{10, 0, 0}
+
+			items, err := newDrafter(testSetting, c).draft(ctx,
+				[]*interfaces.VegaTable{customers1, orders1, customers2}, nil)
+
+			So(err, ShouldBeNil)
+			r := relation(items, "orders", "customers")
+			So(r, ShouldNotBeNil)
+			So(r.Evidence.Computed, ShouldBeTrue)
 			So(r.Adopted, ShouldBeTrue)
 		})
 

@@ -29,18 +29,19 @@ func Test_DraftAccess(t *testing.T) {
 			ProjectID: "p1", Status: interfaces.DRAFT_STATUS_DRAFTING,
 			Drafter: interfaces.AccountInfo{ID: "u1", Type: "user"}, CreateTime: 5, UpdateTime: 5,
 		}
-		lockRow := regexp.QuoteMeta("SELECT f_status FROM t_bkn_project_draft WHERE f_project_id = ? FOR UPDATE")
+		lockRow := regexp.QuoteMeta("SELECT f_status, f_update_time FROM t_bkn_project_draft WHERE f_project_id = ? FOR UPDATE")
+		lockCols := []string{"f_status", "f_update_time"}
 
 		Convey("StartDraft inserts the first draft of a project\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows([]string{"f_status"}))
+			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols))
 			smock.ExpectExec(regexp.QuoteMeta(
 				"INSERT INTO t_bkn_project_draft (f_project_id,f_status,f_items,f_error,f_drafter,f_drafter_type,f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?)")).
 				WithArgs("p1", "drafting", emptyItems, "", "u1", "user", int64(5), int64(5)).
 				WillReturnResult(sqlmock.NewResult(1, 1))
 			smock.ExpectCommit()
 
-			started, err := da.StartDraft(ctx, drafting)
+			started, err := da.StartDraft(ctx, drafting, 3)
 
 			So(err, ShouldBeNil)
 			So(started, ShouldBeTrue)
@@ -49,12 +50,12 @@ func Test_DraftAccess(t *testing.T) {
 
 		Convey("StartDraft replaces a finished draft\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows([]string{"f_status"}).AddRow("ready"))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(1)))
 			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?, f_items = ?, f_error = ?")).
 				WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
-			started, err := da.StartDraft(ctx, drafting)
+			started, err := da.StartDraft(ctx, drafting, 3)
 
 			So(err, ShouldBeNil)
 			So(started, ShouldBeTrue)
@@ -63,23 +64,37 @@ func Test_DraftAccess(t *testing.T) {
 
 		Convey("StartDraft leaves a project that is drafting alone\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows([]string{"f_status"}).AddRow("drafting"))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(4)))
 			smock.ExpectRollback()
 
-			started, err := da.StartDraft(ctx, drafting)
+			started, err := da.StartDraft(ctx, drafting, 3)
 
 			So(err, ShouldBeNil)
 			So(started, ShouldBeFalse)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
+		Convey("StartDraft takes over a draft left drafting since before the stale time\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(2)))
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?")).
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+
+			started, err := da.StartDraft(ctx, drafting, 3)
+
+			So(err, ShouldBeNil)
+			So(started, ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("StartDraft rolls back when the write fails\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows([]string{"f_status"}))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols))
 			smock.ExpectExec("INSERT INTO t_bkn_project_draft").WillReturnError(errors.New("lock wait timeout"))
 			smock.ExpectRollback()
 
-			_, err := da.StartDraft(ctx, drafting)
+			_, err := da.StartDraft(ctx, drafting, 3)
 
 			So(err, ShouldNotBeNil)
 			So(smock.ExpectationsWereMet(), ShouldBeNil)

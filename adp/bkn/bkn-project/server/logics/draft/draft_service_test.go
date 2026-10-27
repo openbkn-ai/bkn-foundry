@@ -47,10 +47,12 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("Generate starts drafting as the caller and records the draft when it is done\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, d *interfaces.Draft) (bool, error) {
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, staleBefore int64) (bool, error) {
 					So(d.Status, ShouldEqual, interfaces.DRAFT_STATUS_DRAFTING)
 					So(d.Drafter, ShouldResemble, caller)
+					// Stale after the drafting timeout and a minute to record it.
+					So(d.CreateTime-staleBefore, ShouldEqual, (2 * time.Minute).Milliseconds())
 					return true, nil
 				})
 			levels := table("r_levels", "c1", "levels", 3, []string{"code"}, col("code", "string", ""), col("name", "string", ""))
@@ -89,7 +91,7 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("A failure reading vega-backend fails the draft with its reason\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any()).Return(true, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, errors.New("connection refused"))
 			var finished *interfaces.Draft
 			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
@@ -105,7 +107,7 @@ func Test_DraftService(t *testing.T) {
 		Convey("Drafting that runs out of time fails as timed out\n", func() {
 			svc.setting.Timeout = time.Nanosecond
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any()).Return(true, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").
 				DoAndReturn(func(ctx context.Context, _ interfaces.VegaAccount, _ string) ([]*interfaces.VegaTable, error) {
 					<-ctx.Done()
@@ -136,7 +138,7 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("A project that is drafting is not drafted twice\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			da.EXPECT().StartDraft(gomock.Any(), gomock.Any()).Return(false, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
 
 			_, err := svc.GenerateDraft(ctx, token, "p1", caller)
 
