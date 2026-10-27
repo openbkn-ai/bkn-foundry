@@ -9,6 +9,8 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var bknSafeEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"BknSafe.Department.Cycle":                           "The parent department cannot be this department, one of its descendants, or part of a department cycle. Choose another parent department.",
+		"BknSafe.Department.ParentNotFound":                  "The parent department or one of its ancestors does not exist. Refresh the department list and choose an existing parent department.",
 		"BknSafe.InvalidRequest":                             "The request parameters are invalid. Check the request parameters.",
 		"BknSafe.Unauthorized":                               "Authentication failed. Provide valid authentication credentials.",
 		"BknSafe.Forbidden":                                  "You are not permitted to perform this operation. Contact an administrator to obtain the required permission.",
