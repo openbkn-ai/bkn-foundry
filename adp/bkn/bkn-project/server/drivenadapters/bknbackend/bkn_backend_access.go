@@ -29,6 +29,8 @@ import (
 const (
 	importMode    = "overwrite"
 	importArchive = "bkn.tar"
+	// noLimit turns off paging of a bkn-backend list (interfaces.NO_LIMIT).
+	noLimit = "-1"
 )
 
 var (
@@ -115,6 +117,106 @@ func (bba *bknBackendAccess) ImportBKN(ctx context.Context, token string, files 
 	}
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return result, nil
+}
+
+// ListSchedules calls GET /knowledge-networks/{kn_id}/action-schedules?branch=main&limit=-1.
+func (bba *bknBackendAccess) ListSchedules(ctx context.Context, token string, knID string) ([]*interfaces.ActionSchedule, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ListSchedules")
+	defer span.End()
+	span.SetAttributes(attr.Key("kn_id").String(knID))
+
+	httpUrl := bba.schedulesUrl(knID)
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
+
+	query := url.Values{"branch": []string{interfaces.GIT_MAIN_BRANCH}, "limit": []string{noLimit}}
+	respCode, respBody, err := bba.httpClient.GetNoUnmarshal(ctx, httpUrl, query, map[string]string{"Authorization": token})
+	logger.Debugf("ListSchedules finished, kn_id is [%s], response code is [%d]", knID, respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http list schedules failed")
+		return nil, fmt.Errorf("list schedules of %s: %w", knID, err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return nil, backendError(respCode, respBody)
+	}
+
+	list := &struct {
+		Entries []*interfaces.ActionSchedule `json:"entries"`
+	}{}
+	if err := json.Unmarshal(respBody, list); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal schedules failed")
+		return nil, fmt.Errorf("unmarshal schedules of %s: %w", knID, err)
+	}
+	if list.Entries == nil {
+		list.Entries = []*interfaces.ActionSchedule{}
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return list.Entries, nil
+}
+
+// CreateSchedule calls POST /knowledge-networks/{kn_id}/action-schedules?branch=main.
+func (bba *bknBackendAccess) CreateSchedule(ctx context.Context, token string, knID string,
+	schedule *interfaces.ActionSchedule) (string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CreateSchedule")
+	defer span.End()
+	span.SetAttributes(attr.Key("kn_id").String(knID))
+
+	query := url.Values{"branch": []string{interfaces.GIT_MAIN_BRANCH}}
+	httpUrl := fmt.Sprintf("%s?%s", bba.schedulesUrl(knID), query.Encode())
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPost})
+
+	body := *schedule
+	body.ID = ""
+	headers := map[string]string{"Authorization": token, rest.ContentTypeKey: rest.ContentTypeJson}
+	respCode, respBody, err := bba.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, body)
+	logger.Debugf("CreateSchedule finished, kn_id is [%s], response code is [%d]", knID, respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http create schedule failed")
+		return "", fmt.Errorf("create schedule %s on %s: %w", schedule.Name, knID, err)
+	}
+	if respCode != http.StatusCreated {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 201")
+		return "", backendError(respCode, respBody)
+	}
+
+	created := &struct {
+		ID string `json:"id"`
+	}{}
+	if err := json.Unmarshal(respBody, created); err != nil || created.ID == "" {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "No id in the reply")
+		return "", fmt.Errorf("create schedule %s on %s: no id in the reply: %s", schedule.Name, knID, respBody)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return created.ID, nil
+}
+
+// SetScheduleStatus calls PUT /knowledge-networks/{kn_id}/action-schedules/{schedule_id}/status.
+func (bba *bknBackendAccess) SetScheduleStatus(ctx context.Context, token string, knID string,
+	scheduleID string, status string) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "SetScheduleStatus")
+	defer span.End()
+	span.SetAttributes(attr.Key("kn_id").String(knID), attr.Key("schedule_id").String(scheduleID))
+
+	httpUrl := fmt.Sprintf("%s/%s/status", bba.schedulesUrl(knID), url.PathEscape(scheduleID))
+	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodPut})
+
+	headers := map[string]string{"Authorization": token, rest.ContentTypeKey: rest.ContentTypeJson}
+	respCode, respBody, err := bba.httpClient.PutNoUnmarshal(ctx, httpUrl, headers, map[string]string{"status": status})
+	logger.Debugf("SetScheduleStatus finished, schedule_id is [%s], response code is [%d]", scheduleID, respCode)
+	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http set schedule status failed")
+		return fmt.Errorf("set schedule %s of %s %s: %w", scheduleID, knID, status, err)
+	}
+	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+		return backendError(respCode, respBody)
+	}
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return nil
+}
+
+func (bba *bknBackendAccess) schedulesUrl(knID string) string {
+	return fmt.Sprintf("%s/knowledge-networks/%s/action-schedules", bba.baseUrl, url.PathEscape(knID))
 }
 
 func backendError(respCode int, respBody []byte) error {

@@ -7,7 +7,9 @@ package release
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -21,6 +23,7 @@ import (
 
 const (
 	RELEASE_TABLE_NAME = "t_bkn_project_release"
+	SWITCH_TABLE_NAME  = "t_bkn_project_switch"
 )
 
 var (
@@ -31,6 +34,11 @@ var (
 var releaseColumns = []string{
 	"f_id", "f_lineage_id", "f_network_id", "f_version", "f_base_version", "f_project_id",
 	"f_publisher", "f_publisher_type", "f_notes", "f_state", "f_create_time", "f_update_time",
+}
+
+var switchColumns = []string{
+	"f_id", "f_lineage_id", "f_from_network_id", "f_to_network_id",
+	"f_operator", "f_operator_type", "f_schedules", "f_create_time",
 }
 
 type releaseAccess struct {
@@ -148,6 +156,96 @@ func (ra *releaseAccess) CreateRelease(ctx context.Context, release *interfaces.
 	}
 	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
 		span.SetStatus(codes.Error, "Insert data failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
+func (ra *releaseAccess) GetLatestSwitch(ctx context.Context, lineageID string) (*interfaces.Switch, bool, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "GetLatestSwitch")
+	defer span.End()
+
+	sqlStr, vals, err := sq.Select(switchColumns...).From(SWITCH_TABLE_NAME).
+		Where(sq.Eq{"f_lineage_id": lineageID}).
+		OrderBy("f_create_time DESC", "f_id DESC").
+		Limit(1).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, false, err
+	}
+	sw := &interfaces.Switch{}
+	var schedules string
+	err = ra.db.QueryRowContext(ctx, sqlStr, vals...).Scan(
+		&sw.ID, &sw.LineageID, &sw.FromNetworkID, &sw.ToNetworkID,
+		&sw.Operator.ID, &sw.Operator.Type, &schedules, &sw.CreateTime,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		span.SetStatus(codes.Ok, "")
+		return nil, false, nil
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Query data failed")
+		return nil, false, err
+	}
+	if err := json.Unmarshal([]byte(schedules), &sw.Schedules); err != nil {
+		span.SetStatus(codes.Error, "Unmarshal schedules failed")
+		return nil, false, fmt.Errorf("unmarshal schedules of switch %s: %w", sw.ID, err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return sw, true, nil
+}
+
+func (ra *releaseAccess) RecordSwitch(ctx context.Context, sw *interfaces.Switch) (err error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "RecordSwitch")
+	defer span.End()
+
+	schedules := sw.Schedules
+	if schedules == nil {
+		schedules = []interfaces.SwitchedSchedule{}
+	}
+	scheduleJSON, err := json.Marshal(schedules)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal schedules failed")
+		return err
+	}
+	statements := []sq.Sqlizer{
+		sq.Insert(SWITCH_TABLE_NAME).Columns(switchColumns...).Values(
+			sw.ID, sw.LineageID, sw.FromNetworkID, sw.ToNetworkID,
+			sw.Operator.ID, sw.Operator.Type, string(scheduleJSON), sw.CreateTime,
+		),
+		sq.Update(RELEASE_TABLE_NAME).
+			Set("f_state", interfaces.RELEASE_STATE_ARCHIVED).Set("f_update_time", sw.CreateTime).
+			Where(sq.Eq{"f_network_id": sw.FromNetworkID}),
+		sq.Update(RELEASE_TABLE_NAME).
+			Set("f_state", interfaces.RELEASE_STATE_LIVE).Set("f_update_time", sw.CreateTime).
+			Where(sq.Eq{"f_network_id": sw.ToNetworkID}),
+	}
+
+	tx, err := ra.db.BeginTx(ctx, nil)
+	if err != nil {
+		span.SetStatus(codes.Error, "Begin transaction failed")
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	for _, statement := range statements {
+		sqlStr, vals, buildErr := statement.ToSql()
+		if buildErr != nil {
+			span.SetStatus(codes.Error, "Build sql failed")
+			return buildErr
+		}
+		if _, err = tx.ExecContext(ctx, sqlStr, vals...); err != nil {
+			span.SetStatus(codes.Error, "Write switch failed")
+			return err
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		span.SetStatus(codes.Error, "Commit transaction failed")
 		return err
 	}
 	span.SetStatus(codes.Ok, "")

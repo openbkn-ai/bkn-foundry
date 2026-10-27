@@ -8,6 +8,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -168,6 +169,91 @@ func Test_BknBackendAccess_ImportBKN(t *testing.T) {
 			So(result.Capabilities.Skipped, ShouldResemble, []*interfaces.CapabilitySkip{{
 				CapabilityType: "skill", Name: "refund", DeclaredID: "s1", Reason: "not_usable", Detail: "no execute",
 			}})
+		})
+	})
+}
+
+func Test_BknBackendAccess_Schedules(t *testing.T) {
+	Convey("Test bknBackendAccess schedule calls\n", t, func() {
+		type request struct {
+			method, path, query, auth, contentType string
+			body                                   map[string]any
+		}
+		var got []request
+		status, respBody := http.StatusOK, ""
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			req := request{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery,
+				auth: r.Header.Get("Authorization"), contentType: r.Header.Get("Content-Type")}
+			if data, _ := io.ReadAll(r.Body); len(data) > 0 {
+				_ = json.Unmarshal(data, &req.body)
+			}
+			got = append(got, req)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(respBody))
+		}))
+		defer server.Close()
+		bba := &bknBackendAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/bkn-backend/v1"}
+		ctx := context.Background()
+		const schedulesPath = "/api/bkn-backend/v1/knowledge-networks/orders_v1_0_0/action-schedules"
+
+		Convey("ListSchedules reads every schedule of main in one page\n", func() {
+			respBody = `{"entries":[{"id":"s1","name":"nightly","kn_id":"orders_v1_0_0","action_type_id":"restock",` +
+				`"cron_expression":"0 2 * * *","_instance_identities":[{"id":"p1"}],"status":"active"}],"total_count":1}`
+
+			schedules, err := bba.ListSchedules(ctx, token, "orders_v1_0_0")
+
+			So(err, ShouldBeNil)
+			So(got[0].method, ShouldEqual, http.MethodGet)
+			So(got[0].path, ShouldEqual, schedulesPath)
+			So(got[0].query, ShouldEqual, "branch=main&limit=-1")
+			So(got[0].auth, ShouldEqual, token)
+			So(schedules, ShouldResemble, []*interfaces.ActionSchedule{{
+				ID: "s1", Name: "nightly", ActionTypeID: "restock", CronExpression: "0 2 * * *",
+				InstanceIdentities: []map[string]any{{"id": "p1"}}, Status: "active",
+			}})
+		})
+
+		Convey("CreateSchedule posts the schedule without its id and returns the new one\n", func() {
+			status, respBody = http.StatusCreated, `{"id":"s9"}`
+
+			id, err := bba.CreateSchedule(ctx, token, "orders_v1_0_0", &interfaces.ActionSchedule{
+				ID: "s1", Name: "nightly", ActionTypeID: "restock", CronExpression: "0 2 * * *",
+				InstanceIdentities: []map[string]any{{"id": "p1"}}, DynamicParams: map[string]any{"qty": float64(3)},
+				Status: interfaces.SCHEDULE_STATUS_ACTIVE,
+			})
+
+			So(err, ShouldBeNil)
+			So(id, ShouldEqual, "s9")
+			So(got[0].method, ShouldEqual, http.MethodPost)
+			So(got[0].path, ShouldEqual, schedulesPath)
+			So(got[0].query, ShouldEqual, "branch=main")
+			So(got[0].contentType, ShouldEqual, "application/json")
+			So(got[0].body, ShouldResemble, map[string]any{
+				"name": "nightly", "action_type_id": "restock", "cron_expression": "0 2 * * *",
+				"_instance_identities": []any{map[string]any{"id": "p1"}}, "dynamic_params": map[string]any{"qty": float64(3)},
+				"status": "active",
+			})
+		})
+
+		Convey("SetScheduleStatus puts the status\n", func() {
+			err := bba.SetScheduleStatus(ctx, token, "orders_v1_0_0", "s1", interfaces.SCHEDULE_STATUS_INACTIVE)
+
+			So(err, ShouldBeNil)
+			So(got[0].method, ShouldEqual, http.MethodPut)
+			So(got[0].path, ShouldEqual, schedulesPath+"/s1/status")
+			So(got[0].body, ShouldResemble, map[string]any{"status": "inactive"})
+		})
+
+		Convey("A bkn-backend error keeps its status and error code\n", func() {
+			status, respBody = http.StatusForbidden, `{"error_code":"BknBackend.ActionSchedule.Forbidden"}`
+
+			_, err := bba.CreateSchedule(ctx, token, "orders_v1_0_0", &interfaces.ActionSchedule{Name: "nightly"})
+
+			var backendErr *interfaces.BknBackendError
+			So(errors.As(err, &backendErr), ShouldBeTrue)
+			So(backendErr.HTTPCode, ShouldEqual, http.StatusForbidden)
+			So(backendErr.ErrorCode, ShouldEqual, "BknBackend.ActionSchedule.Forbidden")
 		})
 	})
 }

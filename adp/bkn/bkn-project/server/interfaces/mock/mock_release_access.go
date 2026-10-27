@@ -70,6 +70,22 @@ func (mr *MockReleaseAccessMockRecorder) CreateRelease(ctx, release any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRelease", reflect.TypeOf((*MockReleaseAccess)(nil).CreateRelease), ctx, release)
 }
 
+// GetLatestSwitch mocks base method.
+func (m *MockReleaseAccess) GetLatestSwitch(ctx context.Context, lineageID string) (*interfaces.Switch, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLatestSwitch", ctx, lineageID)
+	ret0, _ := ret[0].(*interfaces.Switch)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetLatestSwitch indicates an expected call of GetLatestSwitch.
+func (mr *MockReleaseAccessMockRecorder) GetLatestSwitch(ctx, lineageID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLatestSwitch", reflect.TypeOf((*MockReleaseAccess)(nil).GetLatestSwitch), ctx, lineageID)
+}
+
 // GetReleaseByNetworkID mocks base method.
 func (m *MockReleaseAccess) GetReleaseByNetworkID(ctx context.Context, networkID string) (*interfaces.Release, bool, error) {
 	m.ctrl.T.Helper()
@@ -99,4 +115,18 @@ func (m *MockReleaseAccess) ListReleases(ctx context.Context, query interfaces.R
 func (mr *MockReleaseAccessMockRecorder) ListReleases(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListReleases", reflect.TypeOf((*MockReleaseAccess)(nil).ListReleases), ctx, query)
+}
+
+// RecordSwitch mocks base method.
+func (m *MockReleaseAccess) RecordSwitch(ctx context.Context, sw *interfaces.Switch) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordSwitch", ctx, sw)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordSwitch indicates an expected call of RecordSwitch.
+func (mr *MockReleaseAccessMockRecorder) RecordSwitch(ctx, sw any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordSwitch", reflect.TypeOf((*MockReleaseAccess)(nil).RecordSwitch), ctx, sw)
 }
