@@ -88,6 +88,10 @@ spec:
             value: {{ .Values.bknSafe.url | quote }}
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
+          {{- with (.Values.knowledgeBase | default dict).url }}
+          - name: KB_API_URL
+            value: {{ . | quote }}
+          {{- end }}
           {{- if .Values.auditPublisher.enabled }}
           - name: BKN_AUDIT_KAFKA_ENABLED
             value: "true"

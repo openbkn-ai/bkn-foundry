@@ -21,6 +21,7 @@ var (
 	ATA            interfaces.ActionTypeAccess
 	CBA            interfaces.CapabilityBindingAccess
 	CGA            interfaces.ConceptGroupAccess
+	KBA            interfaces.KnowledgeBaseAccess
 	KNA            interfaces.KNAccess
 	KPA            interfaces.KNProxyAccess
 	KPOA           interfaces.KNProxyOutboxAccess
@@ -111,6 +112,12 @@ func SetRiskTypeAccess(rta interfaces.RiskTypeAccess) {
 
 func SetAgentOperatorAccess(aoa interfaces.AgentOperatorAccess) {
 	AOA = aoa
+}
+
+// SetKnowledgeBaseAccess sets the kb-api identity reader that knowledge_base capability
+// bindings use; it answers ErrKnowledgeBaseUnavailable where kb-api is not deployed.
+func SetKnowledgeBaseAccess(kba interfaces.KnowledgeBaseAccess) {
+	KBA = kba
 }
 
 func SetUserMgmtAccess(uma interfaces.UserMgmtAccess) {
