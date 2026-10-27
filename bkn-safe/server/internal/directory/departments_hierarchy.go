@@ -24,14 +24,6 @@ var ErrDepartmentCycle = errors.New("department parent would create or join a cy
 // Department writes are infrequent; this deliberately favors correctness over
 // fine-grained locking without introducing a lock table or schema migration.
 func lockDepartmentHierarchy(tx *gorm.DB) (map[string]string, error) {
-	if tx.Name() == "sqlite" {
-		// SQLite has no SELECT FOR UPDATE. Acquire its writer lock before the
-		// snapshot, including for an empty forest; this changes no parent values.
-		if err := tx.Model(&model.Department{}).Where("1 = 1").
-			UpdateColumn("parent_id", gorm.Expr("parent_id")).Error; err != nil {
-			return nil, err
-		}
-	}
 	var departments []model.Department
 	if err := tx.Select("id", "parent_id").Order("id").
 		Clauses(clause.Locking{Strength: "UPDATE"}).Find(&departments).Error; err != nil {

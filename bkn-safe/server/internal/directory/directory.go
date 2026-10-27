@@ -387,9 +387,44 @@ func (s *Service) CreateDepartment(ctx context.Context, d *model.Department) err
 // UpdateDepartment patches the given mutable fields (name/parent_id/type) of a
 // department. A no-op update may report zero affected rows on MySQL, so it is
 // still successful when the department exists. Returns gorm.ErrRecordNotFound
-// only when no row matches.
+// only when no row matches. Ordinary edits, including an unchanged parent,
+// access only the target department; actual parent changes lock the hierarchy.
 func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[string]any) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	db := s.db.WithContext(ctx)
+	if _, hasParent := fields["parent_id"]; !hasParent {
+		res := db.Model(&model.Department{}).Where("id = ?", id).Updates(fields)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return s.requireDepartment(ctx, id)
+		}
+		return nil
+	}
+	if parentID, ok := fields["parent_id"].(string); ok {
+		// Editors may submit the current parent along with ordinary fields.
+		// Check and update under the target row's lock so concurrent moves
+		// cannot turn an ordinary edit into an unchecked hierarchy write.
+		unchangedParent := false
+		err := db.Transaction(func(tx *gorm.DB) error {
+			var current model.Department
+			if err := tx.Select("id", "parent_id").Clauses(clause.Locking{Strength: "UPDATE"}).
+				First(&current, "id = ?", id).Error; err != nil {
+				return err
+			}
+			if current.ParentID != parentID {
+				return nil
+			}
+			unchangedParent = true
+			return tx.Model(&model.Department{}).Where("id = ?", id).Updates(fields).Error
+		})
+		if err != nil || unchangedParent {
+			return err
+		}
+		// Release the target lock before acquiring hierarchy locks. Moves lock
+		// the forest consistently and revalidate its current state below.
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
 		parents, err := lockDepartmentHierarchy(tx)
 		if err != nil {
 			return err

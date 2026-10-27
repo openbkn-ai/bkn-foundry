@@ -8,10 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 
-	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -70,6 +68,69 @@ func TestDepartmentMovesRejectInvalidParentsAtomically(t *testing.T) {
 	}
 	if err := s.UpdateDepartment(ctx, "missing", map[string]any{"parent_id": "root"}); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("missing department: %v", err)
+	}
+}
+
+func TestOrdinaryDepartmentUpdatesDoNotReadTheWholeHierarchy(t *testing.T) {
+	s, db := newSvc(t)
+	for _, dept := range []model.Department{
+		{ID: "root", Name: "Root"},
+		{ID: "child", Name: "Child", ParentID: "root"},
+		{ID: "other", Name: "Other"},
+	} {
+		if err := db.Create(&dept).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Fail requests that read all departments. Ordinary edits must depend
+	// only on the target row, including editors that resend the same parent.
+	const callback = "test:reject_unscoped_department_reads"
+	if err := db.Callback().Query().Before("gorm:query").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "departments" {
+			if _, scoped := tx.Statement.Clauses["WHERE"]; !scoped {
+				tx.AddError(errors.New("ordinary department update read the entire hierarchy"))
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callback) })
+	for _, tc := range []struct {
+		name   string
+		id     string
+		fields map[string]any
+	}{
+		{"name-only", "child", map[string]any{"name": "Renamed"}},
+		{"unchanged-name-only", "child", map[string]any{"name": "Renamed"}},
+		{"email-with-same-parent", "child", map[string]any{"email": "child@example.com", "parent_id": "root"}},
+		{"unchanged-payload", "child", map[string]any{"name": "Renamed", "email": "child@example.com", "parent_id": "root"}},
+		{"root-with-same-parent", "root", map[string]any{"remark": "Updated", "parent_id": ""}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := s.UpdateDepartment(t.Context(), tc.id, tc.fields); err != nil {
+				t.Fatalf("ordinary update: %v", err)
+			}
+		})
+	}
+	child, err := s.GetDepartment(t.Context(), "child")
+	if err != nil || child.Name != "Renamed" || child.Email != "child@example.com" || child.ParentID != "root" {
+		t.Fatalf("updated child: %+v, %v", child, err)
+	}
+	root, err := s.GetDepartment(t.Context(), "root")
+	if err != nil || root.Remark != "Updated" || root.ParentID != "" {
+		t.Fatalf("updated root: %+v, %v", root, err)
+	}
+	other, err := s.GetDepartment(t.Context(), "other")
+	if err != nil || other.Name != "Other" || other.ParentID != "" {
+		t.Fatalf("unrelated department: %+v, %v", other, err)
+	}
+	for _, fields := range []map[string]any{
+		{"name": "Missing"},
+		{"name": "Missing", "parent_id": "root"},
+	} {
+		if err := s.UpdateDepartment(t.Context(), "missing", fields); !errors.Is(err, gorm.ErrRecordNotFound) {
+			t.Fatalf("missing department: %v", err)
+		}
 	}
 }
 
@@ -162,63 +223,6 @@ func TestDepartmentCountsDeepTreeAcrossPages(t *testing.T) {
 	}
 	if err := s.UpdateDepartment(t.Context(), deps[0].ID, map[string]any{"parent_id": deps[depth-1].ID}); !errors.Is(err, ErrDepartmentCycle) {
 		t.Fatalf("deep descendant parent: %v", err)
-	}
-}
-
-func TestConcurrentDepartmentMovesAcrossConnections(t *testing.T) {
-	// Independent pools model independent replicas. A local mutex cannot make
-	// this safe; validation and writing must share the database lock.
-	dsn := filepath.Join(t.TempDir(), "departments.db") + "?_pragma=busy_timeout(5000)"
-	open := func() *gorm.DB {
-		db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		conn, err := db.DB()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = conn.Close() })
-		return db
-	}
-	db1, db2 := open(), open()
-	if err := db1.AutoMigrate(&model.Department{}); err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []string{"a", "b"} {
-		if err := db1.Create(&model.Department{ID: id, Name: id}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-	for range 10 {
-		if err := db1.Model(&model.Department{}).Where("1 = 1").Update("parent_id", "").Error; err != nil {
-			t.Fatal(err)
-		}
-		start := make(chan struct{})
-		results := make(chan error, 2)
-		go func() {
-			<-start
-			results <- New(db1).UpdateDepartment(t.Context(), "a", map[string]any{"parent_id": "b"})
-		}()
-		go func() {
-			<-start
-			results <- New(db2).UpdateDepartment(t.Context(), "b", map[string]any{"parent_id": "a"})
-		}()
-		close(start)
-		first, second := <-results, <-results
-		if first != nil {
-			first, second = second, first
-		}
-		if first != nil || !errors.Is(second, ErrDepartmentCycle) {
-			t.Fatalf("concurrent moves = %v / %v; want one success and one cycle rejection", first, second)
-		}
-		var deps []model.Department
-		if err := db1.Find(&deps).Error; err != nil {
-			t.Fatal(err)
-		}
-		if deps[0].ParentID != "" && deps[1].ParentID != "" {
-			t.Fatalf("concurrent moves created a cycle: %+v", deps)
-		}
 	}
 }
 

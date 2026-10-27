@@ -63,8 +63,10 @@ paths:
       description: |
         Requires admin-dept edit permission. Existing partial-update behavior is
         preserved: omitted fields are unchanged. An empty parent_id makes a root.
-        The parent must exist and cannot be the department itself, any descendant,
-        or a node whose ancestor chain already contains a cycle or missing node.
+        Ordinary edits, including a resubmitted unchanged parent_id, access only
+        the target department. Changes to parent_id lock and validate the hierarchy:
+        the new parent must exist and cannot be the department itself, any
+        descendant, or a node whose ancestor chain contains a cycle or missing node.
         Concurrent moves cannot both commit when their combined result is a cycle.
       parameters:
         - name: id
