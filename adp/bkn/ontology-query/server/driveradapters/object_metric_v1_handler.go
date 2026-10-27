@@ -56,6 +56,10 @@ func RegisterObjectMetricRoutes(
 	internal.POST("/knowledge-networks/:kn_id/object-metrics/:metric_id/data/drill-through", handler.verifyJsonContentType(), handler.PostObjectMetricDrillThroughV1ByIn)
 }
 
+func bindObjectMetricRequestV1(c *gin.Context, target any) error {
+	return common.BindPreciseJSON(c.Request.Body, target)
+}
+
 func (r *restHandler) PostObjectMetricDrillThroughV1ByEx(c *gin.Context) {
 	visitorInfo, err := r.verifyOAuth(i18n.GetLanguageCtx(c), c)
 	if err == nil {
@@ -90,7 +94,7 @@ func (r *restHandler) postObjectMetricDrillThroughV1(c *gin.Context, visitorInfo
 		return
 	}
 	var body interfaces.ObjectMetricDrillThroughRequestV1
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindObjectMetricRequestV1(c, &body); err != nil {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("bind json: "+err.Error()))
 		return
@@ -119,7 +123,7 @@ func (r *restHandler) postObjectMetricTrialDrillThroughV1(c *gin.Context, visito
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitorInfo.ID, Type: string(visitorInfo.Type)})
 	knID, branch := c.Param("kn_id"), c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	var body interfaces.ObjectMetricTrialDrillThroughRequestV1
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindObjectMetricRequestV1(c, &body); err != nil {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("bind json: "+err.Error()))
 		return
@@ -184,7 +188,7 @@ func (r *restHandler) postObjectMetricTrialV1(c *gin.Context, visitorInfo hydra.
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	var body interfaces.ObjectMetricTrialRequestV1
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindObjectMetricRequestV1(c, &body); err != nil {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("bind json: "+err.Error()))
 		return
@@ -220,7 +224,7 @@ func (r *restHandler) postObjectMetricDataV1(c *gin.Context, visitorInfo hydra.V
 		return
 	}
 	var body interfaces.ObjectMetricQueryRequestV1
-	if err := c.ShouldBindJSON(&body); err != nil {
+	if err := bindObjectMetricRequestV1(c, &body); err != nil {
 		rest.ReplyError(c, httperrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 			WithErrorDetails("bind json: "+err.Error()))
 		return

@@ -38,6 +38,23 @@ func TestListRelationTypesPreservesForbiddenError(t *testing.T) {
 	assertOntologyManagerHTTPStatus(t, err, http.StatusForbidden)
 }
 
+func TestGetObjectMetricExecutionContextPreservesExactLiteral(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	client := rmock.NewMockHTTPClient(ctrl)
+	access := newTestOntologyManagerAccess(&common.AppSetting{BKNBackendUrl: "http://test-om"}, client)
+	client.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(
+		http.StatusOK, []byte(`{"root":{"definition":{"id":"metric","version":1,"specification":{"measure":{"expression":{"node_type":"literal","value_type":"decimal","value":0.1234567890123456789012345}}}}}}`), nil,
+	)
+	result, err := access.GetObjectMetricExecutionContext(context.Background(), "kn", "main", "metric", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := result.Root.Definition.Specification.Measure.Expression.Value
+	if got, ok := value.(json.Number); !ok || got.String() != "0.1234567890123456789012345" {
+		t.Fatalf("literal = %#v, want exact json.Number", value)
+	}
+}
+
 func TestGetRiskTypesByIDsPreservesForbiddenError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := rmock.NewMockHTTPClient(ctrl)

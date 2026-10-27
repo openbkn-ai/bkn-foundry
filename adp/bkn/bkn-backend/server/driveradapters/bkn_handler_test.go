@@ -72,7 +72,7 @@ func newObjectMetricBKNTar(t *testing.T) []byte {
 	net := &bknsdk.BknNetwork{
 		BknNetworkFrontmatter: bknsdk.BknNetworkFrontmatter{Type: "network", ID: "test-net", Name: "Test Network"},
 		ObjectTypes:           []*bknsdk.BknObjectType{{BknObjectTypeFrontmatter: bknsdk.BknObjectTypeFrontmatter{Type: "object_type", ID: "draft-object", Name: "Draft Object"}}},
-		ObjectMetrics:         []json.RawMessage{json.RawMessage(`{"definition":{"id":"metric-1","version":2,"code":"metric_one","name":"Metric One","owner_object_type_id":"draft-object","metric_type":"atomic","lifecycle":{"status":"draft"}},"kn_id":"source","branch":"old"}`)},
+		ObjectMetrics:         []json.RawMessage{json.RawMessage(`{"definition":{"id":"metric-1","version":2,"code":"metric_one","name":"Metric One","owner_object_type_id":"draft-object","metric_type":"atomic","specification":{"measure":{"expression":{"node_type":"literal","value_type":"decimal","value":0.1234567890123456789012345}}},"lifecycle":{"status":"draft"}},"kn_id":"source","branch":"old"}`)},
 	}
 	var buf bytes.Buffer
 	if err := bknsdk.WriteNetworkToTar(net, &buf); err != nil {
@@ -288,6 +288,10 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 					if len(kn.ObjectMetrics) != 1 || kn.ObjectMetrics[0].Definition.Version != 2 ||
 						kn.ObjectMetrics[0].KNID != "test-net" || kn.ObjectMetrics[0].Branch != interfaces.MAIN_BRANCH {
 						t.Fatalf("unexpected object metric import: %#v", kn.ObjectMetrics)
+					}
+					value := kn.ObjectMetrics[0].Definition.Specification.Measure.Expression.Value
+					if got, ok := value.(json.Number); !ok || got.String() != "0.1234567890123456789012345" {
+						t.Fatalf("imported literal = %#v, want exact json.Number", value)
 					}
 					return "kn1", nil
 				})
