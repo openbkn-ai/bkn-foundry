@@ -12,6 +12,13 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, model_validator
 
+from app.commons.i18n.metric_design import (
+    DESCRIPTION_SUPPLIED_ZH,
+    DESCRIPTION_UNCHANGED_ZH,
+    EXPLICIT_NAME_ZH,
+    NAME_EXPLANATION_ZH,
+    NAME_ONLY_ZH,
+)
 from app.core.structured import _extract_json
 
 
@@ -529,13 +536,8 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
                     field="result.unit_code",
                 )
     name_only_request = bool(
-        re.search(
-            r"(?:只|仅)\s*(?:(?:把|将|修改|调整|更改|改)\s*)?"
-            r"(?:(?:对象)?指标\s*)?(?:的\s*)?(?:名称|名字)\s*"
-            r"(?:改|调整|更改|重命名|为|是|叫|$)",
-            req.message,
-        )
-        or re.search(r"(?:为什么|为何).*?(?:名称|名字)", req.message)
+        NAME_ONLY_ZH.search(req.message)
+        or NAME_EXPLANATION_ZH.search(req.message)
         or re.search(
             r"\bonly\s+(?:(?:change|edit|rename|update)\s+)?"
             r"(?:the\s+)?(?:metric\s+)?name\b|\bwhy\b.{0,60}\bname\b",
@@ -547,7 +549,7 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
         if unrelated:
             raise MetricProposalError("a name-only request must not change other fields", field=unrelated)
     explicit_name = bool(
-        re.search(r"(?:名称|名字)\s*(?:为|是|叫|[:：])\s*\S", req.message)
+        EXPLICIT_NAME_ZH.search(req.message)
         or re.search(r"\b(?:named|name)\s*(?:is|as|[:=])\s*\S", req.message, re.IGNORECASE)
     )
     missing_requested_name = (
@@ -563,15 +565,8 @@ def validate_proposal(value: Any, req: MetricDesignRequest) -> dict:
         and missing_requested_name
     ):
         raise MetricProposalError("creation proposal omitted a name suggestion", field="name")
-    description_was_supplied = bool(re.search(
-        r"(?:业务定义|业务描述|描述|description)\s*[:：]\s*\S",
-        req.message, re.IGNORECASE,
-    ))
-    description_must_stay = bool(re.search(
-        r"(?:描述|业务定义|description).{0,12}(?:保持原样|不变|不改)"
-        r"|(?:不(?:要|需|用)?|无需).{0,12}(?:补全|改写|修改|更改).{0,12}(?:描述|业务定义|description)",
-        req.message, re.IGNORECASE,
-    ))
+    description_was_supplied = bool(DESCRIPTION_SUPPLIED_ZH.search(req.message))
+    description_must_stay = bool(DESCRIPTION_UNCHANGED_ZH.search(req.message))
     has_design_changes = any(field not in {"name", "description"} for field in proposed)
     if (
         req.scope.mode == "create"
