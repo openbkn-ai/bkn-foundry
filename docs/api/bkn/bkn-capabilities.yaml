@@ -17,10 +17,18 @@ info:
     |---|---|---|
     | `skill` | empty | `skill_id` |
     | `function` | `box_id` | `tool_id` |
+    | `knowledge_base` | empty | knowledge base id |
 
     `box_id` is required for a function because a tool id is scoped to its box in the execution
     factory, and it is the same name the execution factory, Context Loader and Studio already
-    use. A skill has no container and omits it.
+    use. A skill has no container and omits it, and so does a knowledge base.
+
+    A `knowledge_base` is an Enterprise knowledge base served by kb-api. Mounting one checks
+    with kb-api that it exists (400 `KnowledgeBaseNotSupported` where kb-api is not deployed)
+    and that the editor holds `query_data` on it. Publishing then lets the network's managed
+    proxy read the whole knowledge base through kb-api's read API. Like a Skill, the grant is
+    best effort: if the editor later loses access, only that knowledge base becomes unreadable
+    through the proxy.
 
     The stored column behind it is type-neutral (`f_owner_id`) so a later capability type can
     bring a different kind of container without a migration; that name does not appear on the
@@ -186,6 +194,7 @@ paths:
               - skill
               - function
               - mcp_tool
+              - knowledge_base
             type: string
           in: query
         - name: box_id
@@ -306,7 +315,7 @@ paths:
         '400':
           description: >-
             Empty capability list, unsupported capability_type, missing capability_id, a
-            function without box_id, or a value longer than its column: box_id and
+            function without box_id, a knowledge_base on a deployment without kb-api, or a value longer than its column: box_id and
             capability_id are limited to 64 characters and comment to 255. Over-long values are
             rejected here rather than reaching the database, where they would surface as a 500
             under strict SQL mode or be silently truncated into a binding pointing at a
@@ -316,8 +325,9 @@ paths:
             names a box with no tool to mount (`BknBackend.CapabilityBinding.EmptyToolBox`).
         '502':
           description: >-
-            The execution factory is unreachable, so the targets could not be validated
-            (`BknBackend.CapabilityBinding.ExecutionFactoryUnavailable`). Nothing is written —
+            The execution factory or, for a knowledge_base, kb-api is unreachable, so the
+            targets could not be validated (`BknBackend.CapabilityBinding.ExecutionFactoryUnavailable`
+            or `BknBackend.CapabilityBinding.KnowledgeBaseServiceUnavailable`). Nothing is written —
             a retry is safe.
         '403':
           description: The caller cannot modify this knowledge network
@@ -399,6 +409,7 @@ paths:
               - skill
               - function
               - mcp_tool
+              - knowledge_base
             type: string
           in: query
       responses:
@@ -448,6 +459,7 @@ components:
             - skill
             - function
             - mcp_tool
+            - knowledge_base
           type: string
         box_id:
           description: Owning tool box ID. Present for functions, absent for skills.
@@ -614,14 +626,15 @@ components:
             - skill
             - function
             - mcp_tool
+            - knowledge_base
           type: string
         box_id:
           description: >-
             Tool box ID for a function reference, or MCP Server ID for an mcp_tool. Absent for a
-            skill.
+            skill or a knowledge_base.
           type: string
         capability_id:
-          description: skill_id for a skill, tool_id for a function, or tool name for an mcp_tool
+          description: skill_id for a skill, tool_id for a function, tool name for an mcp_tool, or the knowledge base id for a knowledge_base
           type: string
     AttachCapabilitiesRequest:
       description: Mount request
@@ -646,13 +659,14 @@ components:
             - skill
             - function
             - mcp_tool
+            - knowledge_base
           type: string
         box_id:
-          description: Tool box ID for a function, or MCP Server ID for an mcp_tool. Ignored for a skill.
+          description: Tool box ID for a function, or MCP Server ID for an mcp_tool. Ignored for a skill or a knowledge_base.
           type: string
         capability_id:
           description: >-
-            skill_id for a skill, tool_id for a function, or tool name for an mcp_tool. Omitted when all_tools is set.
+            skill_id for a skill, tool_id for a function, tool name for an mcp_tool, or the knowledge base id for a knowledge_base. Omitted when all_tools is set.
           type: string
         all_tools:
           description: >-

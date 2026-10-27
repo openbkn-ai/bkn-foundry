@@ -568,6 +568,44 @@ func TestBuildProxyGrantSourcesSkipsIncompleteSkillMount(t *testing.T) {
 	}
 }
 
+// A mounted knowledge base gives the proxy query_data on it (#2576). Like a Skill it is best
+// effort and stays out of the planning digest, and an incomplete row is skipped.
+func TestBuildProxyGrantSourcesIncludesMountedKnowledgeBase(t *testing.T) {
+	kn, capabilities := proxyVersionFixture()
+	_, before, err := buildProxyGrantSourcesWithCapabilities(kn, capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mounted := append(capabilities, &interfaces.CapabilityBinding{
+		ID: "cap-kb-7", KNID: kn.KNID, Branch: interfaces.MAIN_BRANCH,
+		CapabilityType: interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, CapabilityID: "7",
+	}, &interfaces.CapabilityBinding{
+		ID: "cap-kb-incomplete", KNID: kn.KNID, Branch: interfaces.MAIN_BRANCH,
+		CapabilityType: interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE,
+	})
+	sources, after, err := buildProxyGrantSourcesWithCapabilities(kn, mounted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("mounting a knowledge base changed the model version: %s != %s", after, before)
+	}
+	var found []interfaces.ProxyGrantSourceSpec
+	for _, source := range sources {
+		if source.ResourceType == interfaces.KNProxyTargetTypeKnowledgeBase {
+			found = append(found, source)
+		}
+	}
+	if len(found) != 1 || found[0].ResourceID != "7" || found[0].Operation != interfaces.OPERATION_TYPE_QUERY_DATA ||
+		found[0].BindingType != interfaces.KNProxyBindingTypeCapability || found[0].BindingID != "cap-kb-7" ||
+		found[0].SourceType != interfaces.ProxyGrantSourceTypeKNBinding || found[0].KNID != kn.KNID {
+		t.Fatalf("knowledge base sources = %#v, want one query_data source for binding cap-kb-7", found)
+	}
+	if !interfaces.IsBestEffortProxyGrantSource(found[0]) {
+		t.Fatal("a knowledge base source is not best effort")
+	}
+}
+
 func TestProxyGrantSnapshotVersionIsCanonicalAndCoversAuthorizationFields(t *testing.T) {
 	first := interfaces.ProxyGrantSourceSpec{
 		SourceType: interfaces.ProxyGrantSourceTypeKNBinding, SourceID: "source-a", KNID: "kn-1",

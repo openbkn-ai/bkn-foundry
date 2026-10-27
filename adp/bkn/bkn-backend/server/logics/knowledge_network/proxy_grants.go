@@ -114,8 +114,9 @@ func (s *proxyGrantSelection) skippedGrants() []skippedProxyGrant {
 	return out
 }
 
-// logSkipped writes one line per network naming every Skill grant left out, so
-// an operator can see why a mounted Skill is not readable through the proxy.
+// logSkipped writes one line per network naming every best-effort grant left
+// out, so an operator can see why a mounted Skill or knowledge base is not
+// readable through the proxy.
 func (s *proxyGrantSelection) logSkipped(ctx context.Context, knID string) {
 	skipped := s.skippedGrants()
 	if len(skipped) == 0 {
@@ -126,8 +127,8 @@ func (s *proxyGrantSelection) logSkipped(ctx context.Context, knID string) {
 		parts = append(parts, grant.source.ResourceType+":"+grant.source.ResourceID+
 			" binding="+grant.source.BindingID+" reason="+grant.reason)
 	}
-	logger.Warnf("[KNProxy] kn_id=%s skipped %d best-effort skill grant(s); the network stays ready "+
-		"and these skills are not readable through its proxy: %s", knID, len(skipped), strings.Join(parts, "; "))
+	logger.Warnf("[KNProxy] kn_id=%s skipped %d best-effort capability grant(s); the network stays ready "+
+		"and these capabilities are not readable through its proxy: %s", knID, len(skipped), strings.Join(parts, "; "))
 }
 
 // splitBestEffortProxySources separates the sources a publication requires
@@ -151,11 +152,11 @@ func isManagedProxyRequestRejected(err error) bool {
 	return errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusBadRequest
 }
 
-// refuseNewlyMountedSkillsWithoutGrant refuses a mount whose new Skill the
-// mounter cannot vouch for. Only Skills added by this request count: a Skill
-// already mounted keeps the best-effort rule, and a Skill skipped because
-// bkn-safe predates Skill sources is not the mounter's to fix.
-func refuseNewlyMountedSkillsWithoutGrant(ctx context.Context, selection *proxyGrantSelection,
+// refuseNewlyMountedCapabilitiesWithoutGrant refuses a mount whose new Skill or
+// knowledge base the mounter cannot vouch for. Only capabilities added by this
+// request count: one already mounted keeps the best-effort rule, and one skipped
+// because bkn-safe predates its sources is not the mounter's to fix.
+func refuseNewlyMountedCapabilitiesWithoutGrant(ctx context.Context, selection *proxyGrantSelection,
 	current, attached []*interfaces.CapabilityBinding) error {
 	existing := make(map[string]struct{}, len(current))
 	for _, binding := range current {
@@ -165,7 +166,8 @@ func refuseNewlyMountedSkillsWithoutGrant(ctx context.Context, selection *proxyG
 	}
 	added := make(map[string]struct{}, len(attached))
 	for _, binding := range attached {
-		if binding == nil || binding.CapabilityType != interfaces.CAPABILITY_TYPE_SKILL {
+		if binding == nil || (binding.CapabilityType != interfaces.CAPABILITY_TYPE_SKILL &&
+			binding.CapabilityType != interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE) {
 			continue
 		}
 		if _, ok := existing[binding.ID]; !ok {
