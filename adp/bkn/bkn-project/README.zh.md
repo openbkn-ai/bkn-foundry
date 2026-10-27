@@ -18,6 +18,10 @@
 - 项目（`t_bkn_project_project`）：每个项目在所属网络谱系的分支
   `project/<id>` 上修改该网络；同一网络的项目共用一个谱系。能看到该网络的
   调用方才能看到项目。
+- 本体草稿（`t_bkn_project_draft`）：按规则根据项目数据目录的表结构起草本体。
+  实体表起草为对象类，主键用全表统计核对；代码表起草为枚举；关联表起草为多对多
+  关系；声明的外键、以及按对方主键命名的字段起草为关系，用全表命中率核对。个人
+  信息字段排除。以调用方身份读取 vega-backend，只取回计数和代码表取值。
 - 健康检查与就绪检查接口。
 
 ## API
@@ -44,6 +48,8 @@
 | GET | `/projects?archived=&name=&limit=&cursor=` | 调用方可见网络下的项目，按时间倒序，游标分页。`archived` 为 `false`（默认）、`true` 或 `all`；`name` 按包含匹配。每条带 `other_projects`：同一网络下其他未归档项目的数量 |
 | GET | `/projects/{project_id}` | 项目详情；调用方看不到其网络时同样返回 404 |
 | POST | `/projects/{project_id}:archive`、`:unarchive` | 归档（默认列表不显示）或取消归档，只有负责人可以操作（否则 403），不影响已发布版本 |
+| POST | `/projects/{project_id}/ontology/draft:generate` | 后台根据项目数据目录的表起草本体：返回 202 和状态为 `drafting` 的草稿。400 `Draft.NoCatalogs`；正在起草时 409 `Draft.Drafting` |
+| GET | `/projects/{project_id}/ontology/draft` | 草稿：`status`（`drafting`、`ready`，或 `failed` 并带 `error`：`interrupted`、`timeout` 或 vega-backend 的返回）和 `items`：`object_types`、`relation_types`、`value_types`、`excluded`、`unreadable`，每条带证据和是否默认采用。还没有草稿时 404 `Draft.NotFound` |
 
 ## 本地开发
 
@@ -56,5 +62,11 @@ I18N_MODE_UT=true go test ./...
 
 配置文件：`server/config/bkn-project-config.yaml`。表结构由 data-migrator
 根据 `migrations/bkn-project/` 创建。
+
+起草规则在 `draft` 下（括号内为默认值）：`codeTableMaxRows`（500）和
+`codeTableMaxColumns`（3）界定代码表；`adoptHitRate`（0.95）和 `suggestHitRate`
+（0.8）按命中率给关系分档；`privacyKeywords` 按字段名或注释匹配个人信息；
+`queryTimeout`（60 秒）限制每条计数查询，`timeout`（10 分钟）限制整次起草。起草在
+服务进程内运行：重启时仍在起草中的草稿置为失败，原因为 `interrupted`。
 
 使用 `make generate-mock` 重新生成 mock（需要 `go.uber.org/mock` 的 `mockgen`）。

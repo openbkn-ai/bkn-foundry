@@ -15,6 +15,8 @@ var (
 	AA  interfaces.AuthAccess
 	RA  interfaces.ReleaseAccess
 	PA  interfaces.ProjectAccess
+	DA  interfaces.DraftAccess
+	VA  interfaces.VegaAccess
 	GS  interfaces.GitStore
 	BBA interfaces.BknBackendAccess
 	EFA interfaces.ExecutionFactoryAccess
@@ -34,6 +36,14 @@ func SetReleaseAccess(ra interfaces.ReleaseAccess) {
 
 func SetProjectAccess(pa interfaces.ProjectAccess) {
 	PA = pa
+}
+
+func SetDraftAccess(da interfaces.DraftAccess) {
+	DA = da
+}
+
+func SetVegaAccess(va interfaces.VegaAccess) {
+	VA = va
 }
 
 func SetGitStore(gs interfaces.GitStore) {
