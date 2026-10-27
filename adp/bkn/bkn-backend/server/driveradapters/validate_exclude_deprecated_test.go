@@ -30,7 +30,8 @@ func recallQuery(exclude bool) *interfaces.ConceptsQuery {
 
 func isNotDeprecated(cfg *cond.CondCfg) bool {
 	return cfg != nil && cfg.Field == interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS &&
-		cfg.Operation == cond.OperationNotEq && cfg.Value == interfaces.LIFECYCLE_DEPRECATED
+		cfg.Operation == cond.OperationNotEq && cfg.ValueFrom == cond.ValueFrom_Const &&
+		cfg.Value == interfaces.LIFECYCLE_DEPRECATED
 }
 
 // exclude_deprecated filters the whole query and each knn, so deprecated concepts take none of

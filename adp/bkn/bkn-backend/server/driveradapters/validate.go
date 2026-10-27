@@ -278,10 +278,8 @@ func notDeprecatedFilter() *cond.CondCfg {
 	return &cond.CondCfg{
 		Field:     interfaces.CONCEPT_FIELD_LIFECYCLE_STATUS,
 		Operation: cond.OperationNotEq,
-		ValueOptCfg: cond.ValueOptCfg{
-			ValueFrom: cond.ValueFrom_Const,
-			Value:     interfaces.LIFECYCLE_DEPRECATED,
-		},
+		ValueFrom: cond.ValueFrom_Const,
+		Value:     interfaces.LIFECYCLE_DEPRECATED,
 	}
 }
 
