@@ -36,6 +36,8 @@ const (
 	AdminWriteWildcardGrantForbidden          = "BknSafe.AdminWrite.WildcardGrantForbidden"
 	AdminWriteAdminConsolePermissionForbidden = "BknSafe.AdminWrite.AdminConsolePermissionForbidden"
 	ResourceExisted                           = "RESOURCE_EXISTED"
+	DepartmentCycle                           = "BknSafe.Department.Cycle"
+	DepartmentParentNotFound                  = "BknSafe.Department.ParentNotFound"
 )
 
 var (
@@ -57,6 +59,8 @@ var (
 		AdminWriteWildcardGrantForbidden,
 		AdminWriteAdminConsolePermissionForbidden,
 		ResourceExisted,
+		DepartmentCycle,
+		DepartmentParentNotFound,
 	}
 )
 
