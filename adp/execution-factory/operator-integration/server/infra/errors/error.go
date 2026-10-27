@@ -12,6 +12,7 @@ import (
 )
 
 var errCodeMap = map[int]string{
+	422: "UnprocessableEntity",
 	400: "BadRequest",
 	401: "Unauthorized",
 	403: "Forbidden",

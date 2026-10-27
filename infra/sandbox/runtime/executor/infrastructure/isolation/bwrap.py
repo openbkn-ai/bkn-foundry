@@ -8,11 +8,13 @@ Implements secure code execution using Bubblewrap for process isolation.
 import asyncio
 import json
 import os
+import signal
+import tempfile
 import subprocess
 import time
 import shutil
 from pathlib import Path
-from typing import List, Optional
+from typing import BinaryIO, List, Optional
 import structlog
 
 from executor.domain.entities import Execution
@@ -23,6 +25,7 @@ from executor.infrastructure.isolation.code_wrapper import (
     uses_tool_decorator,
 )
 from executor.infrastructure.config import settings
+from executor.infrastructure.isolation.python_stdin import PYTHON_STDIN_BOOTSTRAP
 from executor.infrastructure.isolation.result_parser import remove_markers_from_output
 
 
@@ -167,19 +170,43 @@ class BubblewrapRunner:
             language=execution.language,
         )
 
+        process = None
+        completed = False
+        process_info = None
         try:
             # Build language-specific command and environment
             cmd, env_args = self._build_command(execution)
+            source = None
+            if execution.language.lower() == "python":
+                # Keep events off argv and the inherited environment: run_code
+                # events can themselves contain the full source, and a large env
+                # would make user-created subprocesses fail with E2BIG as well.
+                event_json = env_args.pop("EVENT_JSON", "{}")
+                wrapper = self._generate_wrapper_code(execution.code, event_json)
+                if "EVENT_JSON" in execution.context.env_vars:
+                    # Preserve an explicitly requested user environment value.
+                    wrapper = f"import os\nos.environ['EVENT_JSON'] = {event_json!r}\n" + wrapper
+                source = wrapper.encode("utf-8")
+                cmd[-1] = PYTHON_STDIN_BOOTSTRAP
             if env_args:
                 cmd = self._inject_env_args(cmd, env_args)
+            # bwrap reports the host PID of its namespace init. Killing that
+            # child lets the outer bwrap supervisor reap it before exiting.
+            process_info = tempfile.TemporaryFile()
+            cmd[1:1] = ["--info-fd", str(process_info.fileno())]
 
             # Prepare environment with event data
             env = os.environ.copy()
+            if source is not None:
+                env.pop("EVENT_JSON", None)
             env["PYTHONPATH"] = self._build_pythonpath(env.get("PYTHONPATH"))
 
             # Execute with asyncio subprocess (non-blocking)
             process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE if source is not None else None,
+                start_new_session=True,
+                pass_fds=(process_info.fileno(),),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(self.workspace_path),
@@ -187,7 +214,11 @@ class BubblewrapRunner:
             )
 
             # Wait for process to complete and capture output
-            stdout_bytes, stderr_bytes = await process.communicate()
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                process.communicate(input=source),
+                timeout=execution.timeout_seconds or settings.default_timeout,
+            )
+            completed = True
 
             # Convert bytes to string
             stdout = stdout_bytes.decode('utf-8')
@@ -237,14 +268,6 @@ class BubblewrapRunner:
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.warning("Bwrap execution timeout", execution_id=execution.execution_id)
 
-            # Clean up: terminate the subprocess if still running
-            if 'process' in locals() and process.returncode is None:
-                try:
-                    process.kill()
-                    await process.wait()
-                except Exception:
-                    pass
-
             return ExecutionResult(
                 status=ExecutionStatus.TIMEOUT,
                 stdout="",
@@ -271,12 +294,49 @@ class BubblewrapRunner:
                 metrics=ExecutionMetrics(duration_ms=round(duration_ms, 2), cpu_time_ms=0),
             )
 
-    def _generate_wrapper_code(self, user_code: str) -> str:
+        finally:
+            try:
+                if process is not None and not completed:
+                    self._kill_sandbox(process, process_info)
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=3)
+                    except asyncio.TimeoutError:
+                        self._kill_process_group(process)
+                        await process.wait()
+            finally:
+                if process_info is not None:
+                    process_info.close()
+
+    @staticmethod
+    def _kill_process_group(process: asyncio.subprocess.Process) -> None:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    def _kill_sandbox(self, process: asyncio.subprocess.Process, process_info: BinaryIO) -> None:
+        # Cancellation must signal synchronously, before the first cleanup await.
+        # Killing only the outer supervisor or its group leaves the namespace's
+        # bwrap reaper orphaned when the container PID 1 does not reap zombies.
+        try:
+            process_info.seek(0)
+            child_pid = json.load(process_info)["child-pid"]
+            if not isinstance(child_pid, int) or child_pid <= 1:
+                raise ValueError("Invalid bwrap child PID")
+            os.kill(child_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except (OSError, ValueError, KeyError, TypeError):
+            # Startup may fail or be cancelled before bwrap writes its metadata.
+            self._kill_process_group(process)
+
+    def _generate_wrapper_code(self, user_code: str, event_json: str | None = None) -> str:
         """
         Generate wrapper code for Lambda-style handler execution.
 
         Args:
             user_code: User's Python code
+            event_json: Event transported with source; None keeps the legacy helper behavior.
 
         Returns:
             Complete wrapper script
@@ -289,6 +349,9 @@ class BubblewrapRunner:
         else:
             preamble = "import sandbox_sdk"
             invoke = "sandbox_sdk.dispatch(event)"
+        event_source = (
+            'os.environ.get("EVENT_JSON", "{}")' if event_json is None else repr(event_json)
+        )
         return f"""
 import json
 import sys
@@ -298,9 +361,9 @@ import os
 # User code
 {user_code}
 
-# Read event from environment variable
+# Decode the event supplied with this wrapper (or legacy helper environment).
 try:
-    event_json = os.environ.get("EVENT_JSON", "{{}}")
+    event_json = {event_source}
     event = json.loads(event_json) if event_json.strip() else {{}}
 except json.JSONDecodeError as e:
     print(f"Error parsing event JSON: {{e}}", file=sys.stderr)

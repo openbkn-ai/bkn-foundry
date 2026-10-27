@@ -185,13 +185,12 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 	}
 	err = sonic.Unmarshal(respBody, &respData)
 	if err != nil {
-		c.logger.Error(err.Error())
+		c.logger.Error("Dependency response is not valid JSON")
 		respData = string(respBody)
 	}
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		respStr := utils.ObjectToJSON(respData)
-		c.logger.Errorf("Exception(http do error, method: %s, url: %s, headers: %v, reqParam: %v, respCode: %d, error: %s)",
-			mtehod, url, utils.ObjectToJSON(headers), utils.ObjectToJSON(reqParam), respCode, respStr)
+		c.logger.Errorf("Dependency request failed, method: %s, status: %d", mtehod, respCode)
 		// Exception when calling external service.
 		httpErr := infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
 			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", mtehod, url, respCode, respStr))
@@ -227,8 +226,7 @@ func (c *httpClient) httpDoBytes(ctx context.Context, method, url string, header
 	}
 	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
 		respStr := string(respBody)
-		c.logger.Errorf("Exception(http do error, method: %s, url: %s, headers: %v, reqParam: %v, respCode: %d, error: %s)",
-			method, url, utils.ObjectToJSON(headers), utils.ObjectToJSON(reqParam), respCode, respStr)
+		c.logger.Errorf("Dependency request failed, method: %s, status: %d", method, respCode)
 		// Exception when calling external service.
 		httpErr := infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
 			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", method, url, respCode, respStr))

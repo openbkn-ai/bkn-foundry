@@ -166,3 +166,63 @@ func TestExecutionFactoryErrorReadsSharedAndLegacyEnvelopes(t *testing.T) {
 		}
 	}
 }
+
+func TestExecuteFunction_ExecutionFailuresKeepSafeClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, wantCode, reason, contains string
+		status                                 int
+	}{
+		{"canonical code too long", `{"error_code":"Public.UnprocessableEntity","description":"secret-token http://internal","error_details":{"reason":"code_too_long","stage":"validation","actual":102401,"max":102400,"unit":"unicode_characters","input":"secret-token"}}`, "Public.UnprocessableEntity", "code_too_long", "102401", 422},
+		{"canonical execution timeout", `{"error_code":"Public.GatewayTimeout","error_details":"function execution timed out after 2 seconds","metadata":{"reason":"execution_timeout","stage":"execution","timeout_seconds":2,"session_id":"sess-1","execution_id":"exec-1"}}`, "Public.GatewayTimeout", "execution_timeout", "2", 504},
+		{"code too long", `{"code":"Public.UnprocessableEntity","description":"secret-token http://internal","details":{"reason":"code_too_long","stage":"validation","actual":102401,"max":102400,"unit":"unicode_characters","input":"secret-token"}}`, "Public.UnprocessableEntity", "code_too_long", "102401", 422},
+		{"unknown validation", `{"code":"Public.UnprocessableEntity","description":"secret-token","details":{"reason":"other","input":"secret-token"}}`, "Public.UnprocessableEntity", "invalid_execution_input", "", 422},
+		{"execution timeout", `{"code":"Public.GatewayTimeout","details":"secret-token http://internal","metadata":{"reason":"execution_timeout","stage":"execution","timeout_seconds":2,"session_id":"sess-1","execution_id":"exec-1","input":"secret-token"}}`, "Public.GatewayTimeout", "execution_timeout", "2", 504},
+		{"legacy timeout unknown duration", `{"code":"Public.GatewayTimeout","details":"function execution timed out"}`, "Public.GatewayTimeout", "execution_timeout", "", 504},
+		{"timeout unknown duration", `{"code":"Public.GatewayTimeout","metadata":{"reason":"execution_timeout","stage":"execution"}}`, "Public.GatewayTimeout", "execution_timeout", "", 504},
+		{"legacy timeout", `{"code":"Public.GatewayTimeout","details":"function execution timed out after 2 seconds"}`, "Public.GatewayTimeout", "execution_timeout", "2", 504},
+		{"unknown gateway", `{"code":"Public.GatewayTimeout","details":"secret-token http://internal"}`, "Public.BadGateway", "", "", 504},
+		{"wrong timeout code", `{"code":"Other.GatewayTimeout","metadata":{"reason":"execution_timeout","stage":"execution","timeout_seconds":2}}`, "Public.BadGateway", "", "", 504},
+		{"invalid numeric detail", `{"code":"Public.UnprocessableEntity","details":{"reason":"code_too_long","stage":"validation","actual":-1,"max":102400,"unit":"unicode_characters","input":"secret-token"}}`, "Public.UnprocessableEntity", "invalid_execution_input", "", 422},
+		{"invalid correlation", `{"code":"Public.GatewayTimeout","metadata":{"reason":"execution_timeout","stage":"execution","timeout_seconds":2,"session_id":"http://internal","execution_id":"secret-token http://internal"}}`, "Public.GatewayTimeout", "execution_timeout", "2", 504},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, internalURL := functionExecuteServer(t, tc.status, tc.body)
+			he := asHTTPError(t, executeDateScript(t, client))
+			if he.ErrorCode != tc.wantCode {
+				t.Fatalf("error=%v, want %s", he, tc.wantCode)
+			}
+			if tc.reason != "" && he.Metadata["reason"] != tc.reason {
+				t.Fatalf("metadata=%v, want reason %s", he.Metadata, tc.reason)
+			}
+			if !strings.Contains(he.Error(), tc.contains) {
+				t.Fatalf("error=%v, want %s", he, tc.contains)
+			}
+			for _, leak := range []string{"secret-token", "http://internal", internalURL} {
+				if strings.Contains(he.Error(), leak) {
+					t.Fatalf("error leaks %s: %v", leak, he)
+				}
+			}
+			if tc.name == "execution timeout" && (he.Metadata["session_id"] != "sess-1" || he.Metadata["execution_id"] != "exec-1") {
+				t.Fatalf("correlation lost: %v", he.Metadata)
+			}
+		})
+	}
+}
+
+func TestExecuteFunction_StartupFailurePreservesExitAndStderr(t *testing.T) {
+	client, _ := functionExecuteServer(t, http.StatusOK, `{"stdout":"","stderr":"[Errno 7] Argument list too long","exit_code":-1}`)
+	ctx := common.SetRawTokenToCtx(context.Background(), "caller-token")
+	resp, err := client.ExecuteFunction(ctx, &interfaces.ExecuteFunctionRequest{Code: "print(1)", Language: "python"})
+	if err != nil || resp.ExitCode != -1 || !strings.Contains(resp.Stderr, "Argument list too long") {
+		t.Fatalf("startup result=%+v, error=%v", resp, err)
+	}
+}
+
+func TestFunctionExecutionErrorPreservesRequestCorrelation(t *testing.T) {
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{RequestID: "req_12345678"})
+	cause := &infraErr.DependencyError{Body: []byte(`{"code":"Public.UnprocessableEntity","details":{"reason":"code_too_long","stage":"validation","actual":102401,"max":102400,"unit":"unicode_characters","session_id":"sess-1"}}`)}
+	he := asHTTPError(t, classifyFunctionExecuteError(ctx, http.StatusUnprocessableEntity, cause))
+	if he.Metadata["request_id"] != "req_12345678" || he.Metadata["session_id"] != "sess-1" {
+		t.Fatalf("correlation lost: %v", he.Metadata)
+	}
+}

@@ -315,8 +315,18 @@ func replyFunctionExecutionResult(c *gin.Context, resp *interfaces.ExecuteCodeRe
 		if timeout > 0 {
 			detail = fmt.Sprintf("%s after %d seconds", detail, timeout)
 		}
-		rest.ReplyError(c, errors.DefaultHTTPError(c.Request.Context(), http.StatusGatewayTimeout,
-			detail))
+		executionErr := errors.DefaultHTTPError(c.Request.Context(), http.StatusGatewayTimeout, detail)
+		executionErr.Metadata = map[string]any{"reason": "execution_timeout", "stage": "execution"}
+		if timeout > 0 {
+			executionErr.Metadata["timeout_seconds"] = timeout
+		}
+		if common.IsValidExecutionCorrelationID(resp.ID) {
+			executionErr.Metadata["execution_id"] = resp.ID
+		}
+		if common.IsValidExecutionCorrelationID(resp.SessionID) {
+			executionErr.Metadata["session_id"] = resp.SessionID
+		}
+		rest.ReplyError(c, executionErr)
 		return
 	}
 	rest.ReplyOK(c, http.StatusOK, newFunctionExecuteResp(resp))

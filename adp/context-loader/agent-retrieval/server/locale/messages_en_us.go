@@ -10,6 +10,11 @@ import "github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 var ErrorMessagesEnUS = i18n.I18nMessages{
 	Locale: i18n.AmericanEnglish,
 	Messages: map[string]string{
+		"Public.UnprocessableEntity":                                     "Invalid execution input. Correct the input before retrying.",
+		"agentRetrieval.Detail.FunctionCodeTooLong":                      "Code contains {{.Actual}} Unicode characters; the maximum is {{.Max}}. Shorten the code before retrying.",
+		"agentRetrieval.Detail.FunctionExecutionTimeout":                 "Function execution timed out after {{.Timeout}} seconds. Reduce the work or adjust the timeout.",
+		"agentRetrieval.Detail.FunctionExecutionTimeoutUnknown":          "Function execution timed out. Reduce the work or adjust the timeout.",
+		"agentRetrieval.Detail.FunctionExecutionInputInvalid":            "Execution input failed validation. Correct the input before retrying.",
 		"agentRetrieval.BadGateway.CommonExternalServerError":            "External service call exception Please check the service",
 		"agentRetrieval.BadRequest.CommonAddForbidden":                   "Permission denied: You do not have permission to create current operation, please contact the administrator to open relevant permissions Contact administrator",
 		"agentRetrieval.BadRequest.CommonAnonymousUserNotAllowed":        "Anonymous user not allowed Contact administrator",

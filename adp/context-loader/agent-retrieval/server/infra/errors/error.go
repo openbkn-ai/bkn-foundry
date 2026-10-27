@@ -66,3 +66,9 @@ func IsAuthorizationError(err error) bool {
 	status, ok := HTTPStatus(err)
 	return ok && (status == http.StatusUnauthorized || status == http.StatusForbidden || status == http.StatusServiceUnavailable)
 }
+
+// ExecutionInputValidationError distinguishes sandbox input corrections without
+// changing the existing 422 classification of unrelated query/metric endpoints.
+func ExecutionInputValidationError(ctx context.Context, details any) *httperrors.HTTPError {
+	return httperrors.NewHTTPError(ctx, http.StatusUnprocessableEntity, "Public.UnprocessableEntity").WithErrorDetails(details)
+}

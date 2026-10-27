@@ -5,6 +5,8 @@
  * See the LICENSE file in the project root for details.
  */
 {
+  "code_too_long": "code 参数包含 %d 个 Unicode 字符，超过上限 %d。",
+  "toolkit_unavailable": "无法加载沙箱工具版本。",
   "code_required": "缺少 code 参数。",
   "command_required": "缺少 command 参数。",
   "unsupported_tool_wrap": "不支持的 PTC 工具封装方式：%s。"
