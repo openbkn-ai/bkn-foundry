@@ -84,6 +84,17 @@ func WithDeferredNetworkRelations(ctx context.Context) (context.Context, *SavedD
 	return context.WithValue(ctx, deferredSaveKey{}, saved), saved
 }
 
+// DeferNetworkRelations is WithDeferredNetworkRelations for a write that may run inside another
+// deferred one, such as the nested definitions of a concept group in an import. Inside one it
+// records into the enclosing collector and owner is false: only the outermost write checks.
+func DeferNetworkRelations(ctx context.Context) (deferredCtx context.Context, saved *SavedDefinitions, owner bool) {
+	if enclosing, ok := ctx.Value(deferredSaveKey{}).(*SavedDefinitions); ok {
+		return ctx, enclosing, false
+	}
+	deferredCtx, saved = WithDeferredNetworkRelations(ctx)
+	return deferredCtx, saved, true
+}
+
 // CheckSave lists the issues the save leaves in the network it would produce that involve a
 // definition it writes; one between two stored definitions is not this save's doing. Under
 // WithDeferredNetworkRelations it records the definitions and lists nothing.

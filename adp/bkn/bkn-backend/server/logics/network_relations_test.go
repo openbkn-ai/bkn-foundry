@@ -282,6 +282,26 @@ func TestNetworkRelationsDeferredSave(t *testing.T) {
 	}
 }
 
+// A write inside a deferred one records into the enclosing collector and leaves the check to it.
+func TestDeferNetworkRelationsNests(t *testing.T) {
+	outer, written, owner := DeferNetworkRelations(context.Background())
+	if !owner {
+		t.Fatal("DeferNetworkRelations() outside a deferred write: owner = false, want true")
+	}
+	inner, nested, owner := DeferNetworkRelations(outer)
+	if owner || nested != written || inner != outer {
+		t.Fatalf("DeferNetworkRelations() inside a deferred write = owner %v, same collector %v; want false, true", owner, nested == written)
+	}
+	nr, _ := supplyNetwork().checker()
+	saved := SavedDefinitions{ObjectTypes: []*interfaces.ObjectType{objectType("warehouse", deprecated(""))}}
+	if got, err := nr.CheckSave(inner, "kn1", "main", saved); err != nil || len(got) != 0 {
+		t.Fatalf("CheckSave() = %q, %v; want it recorded, not checked", got, err)
+	}
+	if len(written.ObjectTypes) != 1 {
+		t.Fatalf("enclosing collector holds %d object types, want 1", len(written.ObjectTypes))
+	}
+}
+
 func TestNetworkRelationsDeleteReferrers(t *testing.T) {
 	cases := []struct {
 		name string

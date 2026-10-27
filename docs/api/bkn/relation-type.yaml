@@ -452,8 +452,12 @@ paths:
         "409":
           description: |
             BknBackend.RelationType.StillReferenced: a relation type to delete is still the lifecycle replaced_by of a deprecated relation type, or the fallback_for of a relation type
-            that this request does not delete. `details.references` lists each reference; change or remove them
+            that this request does not delete. `error_details.references` lists each reference; change or remove them
             first, or delete the referring definitions in the same request.
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
       summary: Delete relation types
     parameters:
       - name: kn_id
