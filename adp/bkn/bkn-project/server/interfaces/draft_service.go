@@ -21,6 +21,14 @@ type DraftService interface {
 	// decisions and returns the draft.
 	EditDraftItem(ctx context.Context, token string, projectID string, kind string, itemID string,
 		edit DraftItemEdit, caller AccountInfo) (*Draft, error)
+	// ChooseIdentity sets the properties that identify an object type's records, counting a
+	// single-field key over the full table as the caller, and records it as a decision.
+	ChooseIdentity(ctx context.Context, token string, projectID string, itemID string,
+		identity DraftIdentity, caller AccountInfo) (*Draft, error)
+	// RestoreExcluded maps a field the privacy rules excluded back to a property, reading the
+	// field from vega-backend as the caller, and records it as a decision.
+	RestoreExcluded(ctx context.Context, token string, projectID string, restore DraftRestore,
+		caller AccountInfo) (*Draft, error)
 	// FailInterrupted fails the drafts a previous run of the service left drafting.
 	FailInterrupted(ctx context.Context) error
 }

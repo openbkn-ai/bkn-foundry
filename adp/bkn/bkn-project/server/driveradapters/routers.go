@@ -95,11 +95,13 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	apiV1.GET("/projects/:project_id", r.GetProjectByEx)
 	apiV1.POST("/projects/:project_id", r.ProjectActionByEx)
 
-	// Ontology drafts: drafting is a custom method, ontology/draft:generate; people edit
-	// object, relation and value types item by item.
+	// Ontology drafts: drafting and restoring an excluded field are custom methods,
+	// ontology/draft:generate and draft:restore; people edit items one by one and choose
+	// object types' identities.
 	apiV1.GET("/projects/:project_id/ontology/draft", r.GetDraftByEx)
 	apiV1.POST("/projects/:project_id/ontology/:action", r.OntologyActionByEx)
 	apiV1.PATCH("/projects/:project_id/ontology/draft/items/:kind/:item_id", r.EditDraftItemByEx)
+	apiV1.PUT("/projects/:project_id/ontology/draft/object_types/:item_id/identity", r.ChooseIdentityByEx)
 
 	logger.Info("RestHandler RegisterPublic")
 }

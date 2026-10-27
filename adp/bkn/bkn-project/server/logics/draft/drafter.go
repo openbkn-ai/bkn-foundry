@@ -123,6 +123,14 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 	for _, valueType := range d.valueTypes {
 		valueType.Adopted = len(valueType.UsedBy) > 0
 	}
+	// A relation type is adopted only when both its object types are, as people's edits keep it.
+	adopted := map[string]bool{}
+	for _, objectType := range d.items.ObjectTypes {
+		adopted[objectType.ID] = objectType.Adopted
+	}
+	for _, relation := range d.items.RelationTypes {
+		relation.Adopted = relation.Adopted && adopted[relation.Source] && adopted[relation.Target]
+	}
 	return d.items, nil
 }
 
@@ -165,15 +173,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 		}
 		name := uniqueName(apiName(c.Name), names)
 		fields[c.Name] = name
-		objectType.Properties = append(objectType.Properties, &interfaces.DraftProperty{
-			Name:               name,
-			DisplayName:        propertyDisplayName(c),
-			Type:               bknType,
-			Description:        c.Description,
-			MappedField:        c.Name,
-			SourceOfRecord:     interfaces.SOURCE_OF_RECORD_TABLE,
-			MissingDescription: c.Description == "",
-		})
+		objectType.Properties = append(objectType.Properties, newProperty(c, name))
 	}
 
 	objectType.Key = interfaces.DraftKeyEvidence{Source: source}
@@ -201,6 +201,19 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 	d.objectTypes[table.ID] = objectType
 	d.fields[table.ID] = fields
 	d.items.ObjectTypes = append(d.items.ObjectTypes, objectType)
+}
+
+// newProperty maps a field of a BKN type to a property named name.
+func newProperty(c interfaces.VegaColumn, name string) *interfaces.DraftProperty {
+	return &interfaces.DraftProperty{
+		Name:               name,
+		DisplayName:        propertyDisplayName(c),
+		Type:               bknTypes[c.Type],
+		Description:        c.Description,
+		MappedField:        c.Name,
+		SourceOfRecord:     interfaces.SOURCE_OF_RECORD_TABLE,
+		MissingDescription: c.Description == "",
+	}
 }
 
 // propertyDisplayName is the business name semantic understanding gave the field, else the

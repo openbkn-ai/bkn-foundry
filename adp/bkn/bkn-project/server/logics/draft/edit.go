@@ -87,15 +87,21 @@ func checkEdit(ctx context.Context, edit *interfaces.DraftItemEdit) error {
 	return nil
 }
 
-// applyEdit changes the item and returns the decisions it made. Not adopting an object type
-// stops adopting the relation types that connect it; a relation type is adopted only when
-// both its object types are. Value types not adopted leave their properties to their base
+// applyEdit changes the item and returns the decisions it made. An object type is adopted only
+// once it has an identity. Not adopting an object type stops adopting the relation types that
+// connect it; a relation type is adopted only when both its object types are. Value types not adopted leave their properties to their base
 // type when the draft is compiled.
 func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, id string,
 	edit interfaces.DraftItemEdit) ([]*interfaces.DraftDecision, error) {
 	item, ok := findItem(items, kind, id)
 	if !ok {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_ItemNotFound)
+	}
+	if edit.Adopted != nil && *edit.Adopted && !*item.adopted && kind == interfaces.DRAFT_KIND_OBJECT_TYPES {
+		// BKN object types need a primary key: one without an identity cannot be compiled.
+		if findObjectType(items, id).NeedsIdentity {
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NeedsIdentity)
+		}
 	}
 	if edit.Adopted != nil && *edit.Adopted && !*item.adopted && kind == interfaces.DRAFT_KIND_RELATION_TYPES {
 		for _, r := range items.RelationTypes {
@@ -138,45 +144,39 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 	return decisions, nil
 }
 
-func (s *draftService) EditDraftItem(ctx context.Context, token string, projectID string, kind string,
-	itemID string, edit interfaces.DraftItemEdit, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "EditDraftItem")
-	defer span.End()
-
-	if _, err := s.unarchivedProject(ctx, token, projectID); err != nil {
-		span.SetStatus(codes.Error, "Get project failed")
-		return nil, err
+// readyDraft returns the project's draft if it can be edited: the project is not archived,
+// the draft is ready, and it is the draft the edit was made on.
+func (s *draftService) readyDraft(ctx context.Context, token string, projectID string,
+	updateTime int64) (*interfaces.Draft, error) {
+	if updateTime <= 0 {
+		// Reloading would not help a change made on no draft, so it is not reported as stale.
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_MissingUpdateTime)
 	}
-	if err := checkEdit(ctx, &edit); err != nil {
-		span.SetStatus(codes.Error, "Invalid edit")
+	if _, err := s.unarchivedProject(ctx, token, projectID); err != nil {
 		return nil, err
 	}
 	draft, exist, err := s.da.GetDraft(ctx, projectID)
 	if err != nil {
-		span.SetStatus(codes.Error, "Get draft failed")
 		return nil, internalError(ctx, "Get draft failed", err)
 	}
 	if !exist {
-		span.SetStatus(codes.Error, "Draft not found")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
 	if draft.Status != interfaces.DRAFT_STATUS_READY {
-		span.SetStatus(codes.Error, "Draft not ready")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_NotReady)
 	}
-	if draft.UpdateTime != edit.UpdateTime {
-		span.SetStatus(codes.Error, "Draft changed")
+	if draft.UpdateTime != updateTime {
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Stale)
 	}
+	return draft, nil
+}
 
-	decisions, err := applyEdit(ctx, &draft.Items, kind, itemID, edit)
-	if err != nil {
-		span.SetStatus(codes.Error, "Edit refused")
-		return nil, err
-	}
+// commit records the decisions on the draft and writes it, unless no one changed it since it
+// was read. No decisions leave the draft as it is.
+func (s *draftService) commit(ctx context.Context, draft *interfaces.Draft,
+	decisions []*interfaces.DraftDecision, caller interfaces.AccountInfo) error {
 	if len(decisions) == 0 {
-		span.SetStatus(codes.Ok, "")
-		return draft, nil
+		return nil
 	}
 	readUpdateTime := draft.UpdateTime
 	// The update time always moves on, so an edit made on the draft just read is refused.
@@ -187,12 +187,36 @@ func (s *draftService) EditDraftItem(ctx context.Context, token string, projectI
 	draft.Items.Decisions = append(draft.Items.Decisions, decisions...)
 	written, err := s.da.UpdateDraft(ctx, draft, readUpdateTime)
 	if err != nil {
-		span.SetStatus(codes.Error, "Update draft failed")
-		return nil, internalError(ctx, "Update draft failed", err)
+		return internalError(ctx, "Update draft failed", err)
 	}
 	if !written {
-		span.SetStatus(codes.Error, "Draft changed")
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Stale)
+		return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Stale)
+	}
+	return nil
+}
+
+func (s *draftService) EditDraftItem(ctx context.Context, token string, projectID string, kind string,
+	itemID string, edit interfaces.DraftItemEdit, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "EditDraftItem")
+	defer span.End()
+
+	if err := checkEdit(ctx, &edit); err != nil {
+		span.SetStatus(codes.Error, "Invalid edit")
+		return nil, err
+	}
+	draft, err := s.readyDraft(ctx, token, projectID, edit.UpdateTime)
+	if err != nil {
+		span.SetStatus(codes.Error, "Draft not editable")
+		return nil, err
+	}
+	decisions, err := applyEdit(ctx, &draft.Items, kind, itemID, edit)
+	if err != nil {
+		span.SetStatus(codes.Error, "Edit refused")
+		return nil, err
+	}
+	if err := s.commit(ctx, draft, decisions, caller); err != nil {
+		span.SetStatus(codes.Error, "Write draft failed")
+		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
