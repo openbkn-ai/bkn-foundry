@@ -89,6 +89,18 @@ func CopyFunction(item *Item, oldNetworkID string, newNetworkID string) ([]byte,
 		id, _ := t["tool_id"].(string)
 		c.ToolIDs[id] = copyID(id, newNetworkID)
 		t["tool_id"] = c.ToolIDs[id]
+		// The metadata version and the source_id naming it are the original's. A
+		// first import gives the copy fresh ones, but an upsert, the import of a
+		// retried release, inserts them as given, and the original still holds
+		// them. The copy gets its own, the same on every attempt.
+		if metadata, ok := t["metadata"].(map[string]any); ok {
+			if version, _ := metadata["version"].(string); version != "" {
+				metadata["version"] = copyID(version, newNetworkID)
+				if t["source_id"] == version {
+					t["source_id"] = metadata["version"]
+				}
+			}
+		}
 	}
 	delete(doc, "operator")
 	data, err := encodeJSON(doc)

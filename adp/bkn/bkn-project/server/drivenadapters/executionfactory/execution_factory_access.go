@@ -32,9 +32,8 @@ const (
 	skillMD = "SKILL.md"
 	// skillListPageSize is the largest page the Skill list serves.
 	skillListPageSize = "100"
-	// Draft statuses of a Skill: never published, and published then edited.
+	// skillStatusUnpublished is a Skill never published.
 	skillStatusUnpublished = "unpublish"
-	skillStatusEditing     = "editing"
 )
 
 var (
@@ -120,11 +119,26 @@ func (efa *executionFactoryAccess) GetReleasedSkill(ctx context.Context, token s
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetReleasedSkill")
 	defer span.End()
 	span.SetAttributes(attr.Key("skill_id").String(skillID))
+	return efa.readSkill(ctx, span, token, skillID, "")
+}
 
-	skillUrl := fmt.Sprintf("%s/skills/%s", efa.baseUrl, url.PathEscape(skillID))
+// GetDraftSkill reads the current version the same way through
+// /skills/{skill_id}/management/content and .../management/files/read.
+func (efa *executionFactoryAccess) GetDraftSkill(ctx context.Context, token string, skillID string) (map[string][]byte, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetDraftSkill")
+	defer span.End()
+	span.SetAttributes(attr.Key("skill_id").String(skillID))
+	return efa.readSkill(ctx, span, token, skillID, "/management")
+}
+
+// readSkill reads the files of a Skill through the content and files/read
+// endpoints under prefix: "" for the release, "/management" for the draft.
+func (efa *executionFactoryAccess) readSkill(ctx context.Context, span trace.Span, token string, skillID string,
+	prefix string) (map[string][]byte, error) {
+	skillUrl := fmt.Sprintf("%s/skills/%s%s", efa.baseUrl, url.PathEscape(skillID), prefix)
 	respBody, err := efa.do(ctx, span, http.MethodGet, skillUrl+"/content", token, nil, "")
 	if err != nil {
-		return nil, fmt.Errorf("read released skill %s: %w", skillID, err)
+		return nil, fmt.Errorf("read skill %s: %w", skillID, err)
 	}
 	content := &skillContent{}
 	if err := json.Unmarshal(respBody, content); err != nil {
@@ -155,7 +169,7 @@ func (efa *executionFactoryAccess) GetReleasedSkill(ctx context.Context, token s
 			return nil, fmt.Errorf("download %s of skill %s: %w", f.RelPath, skillID, err)
 		}
 	}
-	logger.Debugf("GetReleasedSkill finished, skill_id is [%s], %d files", skillID, len(files))
+	logger.Debugf("Read skill %s%s finished, %d files", skillID, prefix, len(files))
 	return files, nil
 }
 
@@ -181,7 +195,7 @@ func (efa *executionFactoryAccess) FindSkill(ctx context.Context, token string, 
 		case s.Name != name:
 		case s.Status == interfaces.SKILL_STATUS_PUBLISHED:
 			return s.SkillID, s.Status, nil
-		case draftID == "" && (s.Status == skillStatusUnpublished || s.Status == skillStatusEditing):
+		case draftID == "" && (s.Status == skillStatusUnpublished || s.Status == interfaces.SKILL_STATUS_EDITING):
 			draftID, draftStatus = s.SkillID, s.Status
 		}
 	}

@@ -125,6 +125,25 @@ func Test_ExecutionFactoryAccess(t *testing.T) {
 			So(requests[3].auth, ShouldBeEmpty)
 		})
 
+		Convey("GetDraftSkill reads the same way through the management endpoints\n", func() {
+			handlers["GET "+prefix+"/skills/s2/management/content"] = func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"skill_id": "s2", "status": "unpublish", "url": server.URL + "/oss/draft-md",
+					"files": []map[string]string{{"rel_path": "SKILL.md"}, {"rel_path": "refs/spec.md"}},
+				})
+			}
+			handlers["POST "+prefix+"/skills/s2/management/files/read"] = func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]string{"url": server.URL + "/oss/draft-spec"})
+			}
+			handlers["GET /oss/draft-md"] = func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("---\nname: d\n---\n")) }
+			handlers["GET /oss/draft-spec"] = func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("draft spec")) }
+
+			files, err := efa.GetDraftSkill(ctx, token, "s2")
+
+			So(err, ShouldBeNil)
+			So(files, ShouldResemble, map[string][]byte{"SKILL.md": []byte("---\nname: d\n---\n"), "refs/spec.md": []byte("draft spec")})
+		})
+
 		Convey("An unpublished Skill fails the read\n", func() {
 			_, err := efa.GetReleasedSkill(ctx, token, "s2")
 

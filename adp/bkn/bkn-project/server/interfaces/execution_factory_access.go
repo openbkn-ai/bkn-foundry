@@ -11,8 +11,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
-// SKILL_STATUS_PUBLISHED is the status of a published Skill.
-const SKILL_STATUS_PUBLISHED = "published"
+// Skill statuses: published, and published with unpublished edits.
+const (
+	SKILL_STATUS_PUBLISHED = "published"
+	SKILL_STATUS_EDITING   = "editing"
+)
 
 // Import modes of the execution-factory impex API.
 const (
@@ -49,6 +52,9 @@ type ExecutionFactoryAccess interface {
 	// GetReleasedSkill returns the files of the published release of a Skill,
 	// keyed by their path in the Skill package; SKILL.md is always among them.
 	GetReleasedSkill(ctx context.Context, token string, skillID string) (map[string][]byte, error)
+	// GetDraftSkill returns the files of the current, possibly unpublished,
+	// version of a Skill, keyed like GetReleasedSkill's.
+	GetDraftSkill(ctx context.Context, token string, skillID string) (map[string][]byte, error)
 	// FindSkill returns the id and status of the Skill named exactly name and
 	// visible to the caller: a published one if there is, else a draft
 	// (unpublish or editing); "" when there is neither.

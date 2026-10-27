@@ -227,13 +227,14 @@ func copySkill(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token
 		return nil, nil, err
 	}
 	// A Skill under the copy's name is taken only when it holds the copy: one a
-	// failed attempt published, or registered and left a draft.
+	// failed attempt published, or registered and left a draft. Its content is
+	// checked before anything is published.
 	id, status, err := efa.FindSkill(ctx, token, c.NewName)
 	if err != nil {
 		return nil, nil, err
 	}
-	switch {
-	case id == "":
+	switch status {
+	case "":
 		archive, err := SkillArchive(files)
 		if err != nil {
 			return nil, nil, err
@@ -244,18 +245,25 @@ func copySkill(ctx context.Context, efa interfaces.ExecutionFactoryAccess, token
 		if err := efa.PublishSkill(ctx, token, id); err != nil {
 			return nil, nil, err
 		}
-	case status != interfaces.SKILL_STATUS_PUBLISHED:
-		if err := efa.PublishSkill(ctx, token, id); err != nil {
-			return nil, nil, err
-		}
-		fallthrough
-	default:
+	case interfaces.SKILL_STATUS_PUBLISHED, interfaces.SKILL_STATUS_EDITING:
+		// A Skill being edited still serves the version it last published.
 		released, err := efa.GetReleasedSkill(ctx, token, id)
 		if err != nil {
 			return nil, nil, err
 		}
 		if !sameSkill(files, released) {
 			return nil, nil, fmt.Errorf("skill %s is already named %s and holds other content", id, c.NewName)
+		}
+	default:
+		draft, err := efa.GetDraftSkill(ctx, token, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !sameSkill(files, draft) {
+			return nil, nil, fmt.Errorf("draft skill %s is already named %s and holds other content", id, c.NewName)
+		}
+		if err := efa.PublishSkill(ctx, token, id); err != nil {
+			return nil, nil, err
 		}
 	}
 	c.NewID = id

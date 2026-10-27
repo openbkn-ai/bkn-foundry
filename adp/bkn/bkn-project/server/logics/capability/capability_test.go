@@ -183,6 +183,26 @@ func Test_CopyFunction(t *testing.T) {
 			So(again, ShouldResemble, c)
 		})
 
+		Convey("Each tool's metadata version is the copy's own, the same on a retry\n", func() {
+			export := []byte(fmt.Sprintf(`{"toolbox":{"configs":[{"box_id":%q,"box_name":"supply_tools","metadata_type":"function",`+
+				`"tools":[{"tool_id":%q,"name":"expand_bom","source_id":"m-1","metadata":{"version":"m-1","summary":"s"},"code":"x"}]}]}}`,
+				boxID, toolID))
+			it, err := NewFunction(export)
+			So(err, ShouldBeNil)
+
+			payload, _, err := CopyFunction(it, oldNet, newNet)
+			So(err, ShouldBeNil)
+			again, _, _ := CopyFunction(it, oldNet, newNet)
+
+			doc := map[string]any{}
+			So(json.Unmarshal(payload, &doc), ShouldBeNil)
+			tool := doc["toolbox"].(map[string]any)["configs"].([]any)[0].(map[string]any)["tools"].([]any)[0].(map[string]any)
+			version := tool["metadata"].(map[string]any)["version"]
+			So(version, ShouldNotEqual, "m-1")
+			So(tool["source_id"], ShouldEqual, version)
+			So(string(again), ShouldEqual, string(payload))
+		})
+
 		Convey("The name of an earlier copy loses its suffix and fits 50 characters\n", func() {
 			So(copyName("tools_supply", "box1", "supply", "supply_v1_1_0", 50), ShouldEqual, "tools_supply_v1_1_0")
 			So(copyName("tools_supply_x", "box1", "supply-x", "supply-x_v1_1_0", 50), ShouldEqual, "tools_supply_x_v1_1_0")
@@ -424,16 +444,41 @@ func Test_Apply(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "someone-else")
 		})
 
-		Convey("A Skill copy a failed attempt registered but did not publish is published, not registered again\n", func() {
+		Convey("A Skill copy a failed attempt registered but did not publish is checked, then published\n", func() {
 			skill := mustSkill("Network supply_kn.\n")
 			efa.EXPECT().FindSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").Return("draft-copy", "unpublish", nil)
-			efa.EXPECT().PublishSkill(gomock.Any(), token, "draft-copy").Return(nil)
-			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "draft-copy").Return(skillFiles("Network supply_kn_v1_1_0.\n"), nil).Times(2)
+			gomock.InOrder(
+				efa.EXPECT().GetDraftSkill(gomock.Any(), token, "draft-copy").Return(skillFiles("Network supply_kn_v1_1_0.\n"), nil),
+				efa.EXPECT().PublishSkill(gomock.Any(), token, "draft-copy").Return(nil),
+				efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "draft-copy").Return(skillFiles("Network supply_kn_v1_1_0.\n"), nil),
+			)
 
 			copies, _, err := Apply(ctx, efa, token, []*Step{{Item: skill, Copy: true}}, oldNet, newNet)
 
 			So(err, ShouldBeNil)
 			So(copies[0].NewID, ShouldEqual, "draft-copy")
+		})
+
+		Convey("A draft under the copy's name with other content is refused and never published\n", func() {
+			skill := mustSkill("Network supply_kn.\n")
+			efa.EXPECT().FindSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").Return("stale-draft", "unpublish", nil)
+			efa.EXPECT().GetDraftSkill(gomock.Any(), token, "stale-draft").Return(skillFiles("An older body.\n"), nil)
+
+			_, _, err := Apply(ctx, efa, token, []*Step{{Item: skill, Copy: true}}, oldNet, newNet)
+
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "stale-draft")
+		})
+
+		Convey("A copy being edited is judged by its published version and not published again\n", func() {
+			skill := mustSkill("Network supply_kn.\n")
+			efa.EXPECT().FindSkill(gomock.Any(), token, "plan-supply_supply_kn_v1_1_0").Return("edited-copy", "editing", nil)
+			efa.EXPECT().GetReleasedSkill(gomock.Any(), token, "edited-copy").Return(skillFiles("Network supply_kn_v1_1_0.\n"), nil).Times(2)
+
+			copies, _, err := Apply(ctx, efa, token, []*Step{{Item: skill, Copy: true}}, oldNet, newNet)
+
+			So(err, ShouldBeNil)
+			So(copies[0].NewID, ShouldEqual, "edited-copy")
 		})
 
 		Convey("A refused copy names the item\n", func() {

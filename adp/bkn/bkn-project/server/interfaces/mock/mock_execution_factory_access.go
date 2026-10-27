@@ -71,6 +71,21 @@ func (mr *MockExecutionFactoryAccessMockRecorder) FindSkill(ctx, token, name any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindSkill", reflect.TypeOf((*MockExecutionFactoryAccess)(nil).FindSkill), ctx, token, name)
 }
 
+// GetDraftSkill mocks base method.
+func (m *MockExecutionFactoryAccess) GetDraftSkill(ctx context.Context, token, skillID string) (map[string][]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDraftSkill", ctx, token, skillID)
+	ret0, _ := ret[0].(map[string][]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDraftSkill indicates an expected call of GetDraftSkill.
+func (mr *MockExecutionFactoryAccessMockRecorder) GetDraftSkill(ctx, token, skillID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDraftSkill", reflect.TypeOf((*MockExecutionFactoryAccess)(nil).GetDraftSkill), ctx, token, skillID)
+}
+
 // GetReleasedSkill mocks base method.
 func (m *MockExecutionFactoryAccess) GetReleasedSkill(ctx context.Context, token, skillID string) (map[string][]byte, error) {
 	m.ctrl.T.Helper()
