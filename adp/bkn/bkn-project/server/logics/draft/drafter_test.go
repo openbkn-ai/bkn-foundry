@@ -20,7 +20,8 @@ var testSetting = common.DraftSetting{
 	CodeTableMaxColumns: 3,
 	AdoptHitRate:        0.95,
 	SuggestHitRate:      0.8,
-	PrivacyKeywords:     common.DefaultPrivacyKeywords,
+	PrivacyKeywords:     append([]string{"手机"}, common.DefaultPrivacyKeywords...),
+	NameFieldKeywords:   append([]string{"名称"}, common.DefaultNameFieldKeywords...),
 }
 
 type joinKey struct{ source, field string }
@@ -347,7 +348,7 @@ func Test_Rules(t *testing.T) {
 		})
 
 		Convey("privacyKeyword matches names and comments, in either language\n", func() {
-			keywords := common.DefaultPrivacyKeywords
+			keywords := testSetting.PrivacyKeywords
 			So(privacyKeyword(col("mobile", "string", ""), keywords), ShouldEqual, "mobile")
 			So(privacyKeyword(col("c3", "string", "联系人手机"), keywords), ShouldEqual, "手机")
 			So(privacyKeyword(col("amount", "decimal", "金额"), keywords), ShouldBeEmpty)

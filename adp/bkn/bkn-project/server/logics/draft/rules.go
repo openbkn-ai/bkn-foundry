@@ -53,10 +53,11 @@ var bknTypes = map[string]string{
 // keyTypes are the BKN data types a primary key may have.
 var keyTypes = map[string]bool{"string": true, "text": true, "integer": true, "unsigned integer": true}
 
-// nameFields are field names, or the end of them, that hold a record's name.
-var nameFields = []string{"name", "label", "title", "名称", "名字"}
-
 var nonIDChars = regexp.MustCompile(`[^a-z0-9_]+`)
+
+// clauseEnds end the first clause of a comment: ASCII . ; , : and newline, and the CJK full
+// stop, semicolon, comma and colon (U+3002, U+FF1B, U+FF0C, U+FF1A), which comments in Chinese use.
+const clauseEnds = ".;,:\n\u3002\uff1b\uff0c\uff1a"
 
 // apiName turns a table or field name into a BKN id: lowercase letters, digits and
 // underscores, not starting with an underscore or digit, at most 40 characters.
@@ -92,7 +93,7 @@ func uniqueName(name string, taken map[string]bool) string {
 // displayName is the first clause of a comment when it is short enough, else the name.
 func displayName(comment string, name string) string {
 	clause := strings.TrimSpace(comment)
-	if i := strings.IndexAny(clause, "。.;；,，:：\n"); i >= 0 {
+	if i := strings.IndexAny(clause, clauseEnds); i >= 0 {
 		clause = strings.TrimSpace(clause[:i])
 	}
 	if clause == "" || utf8.RuneCountInString(clause) > maxDisplayNameRunes {
@@ -114,10 +115,11 @@ func privacyKeyword(column interfaces.VegaColumn, keywords []string) string {
 	return ""
 }
 
-func isNameField(column interfaces.VegaColumn) bool {
+// isNameField reports whether a field holds a record's name: its name is, or ends with, a keyword.
+func isNameField(column interfaces.VegaColumn, keywords []string) bool {
 	name := strings.ToLower(column.Name)
-	for _, field := range nameFields {
-		if name == field || strings.HasSuffix(name, "_"+field) || strings.HasSuffix(name, field) {
+	for _, keyword := range keywords {
+		if k := strings.ToLower(keyword); k != "" && strings.HasSuffix(name, k) {
 			return true
 		}
 	}
@@ -182,7 +184,7 @@ func codeTableName(table *interfaces.VegaTable, setting common.DraftSetting) str
 		return ""
 	}
 	for _, c := range others {
-		if isNameField(c) && bknTypes[c.Type] != "" {
+		if isNameField(c, setting.NameFieldKeywords) && bknTypes[c.Type] != "" {
 			return c.Name
 		}
 	}

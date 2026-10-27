@@ -43,6 +43,8 @@ type DraftSetting struct {
 	SuggestHitRate float64 `mapstructure:"suggestHitRate"`
 	// PrivacyKeywords match field names and comments, case-insensitively; matching fields are excluded.
 	PrivacyKeywords []string `mapstructure:"privacyKeywords"`
+	// NameFieldKeywords name the fields that hold a record's name, matched as a field name or its end.
+	NameFieldKeywords []string `mapstructure:"nameFieldKeywords"`
 	// QueryTimeout bounds each count query in seconds; Timeout bounds the whole drafting.
 	QueryTimeout int           `mapstructure:"queryTimeout"`
 	Timeout      time.Duration `mapstructure:"timeout"`
@@ -125,6 +127,7 @@ func initSetting(vp *viper.Viper) {
 	vp.SetDefault("draft.adoptHitRate", 0.95)
 	vp.SetDefault("draft.suggestHitRate", 0.8)
 	vp.SetDefault("draft.privacyKeywords", DefaultPrivacyKeywords)
+	vp.SetDefault("draft.nameFieldKeywords", DefaultNameFieldKeywords)
 	vp.SetDefault("draft.queryTimeout", 60)
 	vp.SetDefault("draft.timeout", 10*time.Minute)
 
@@ -240,9 +243,12 @@ func SetVegaBackendSetting() {
 	appSetting.VegaBackendUrl = fmt.Sprintf("%s://%s:%d/api/vega-backend/in/v1", protocol, host, port)
 }
 
-// DefaultPrivacyKeywords name fields that hold personal data, in Chinese and English.
+// DefaultPrivacyKeywords and DefaultNameFieldKeywords are the fallbacks when the configuration
+// gives none. They are business vocabulary, so the shipped configuration carries the full
+// lists, Chinese included; the code keeps only the English ones.
 var DefaultPrivacyKeywords = []string{
-	"姓名", "手机", "电话", "身份证", "证件", "邮箱", "住址", "地址", "银行卡", "出生",
 	"full_name", "first_name", "last_name", "phone", "mobile", "telephone",
 	"id_card", "id_number", "passport", "email", "address", "bank_card", "card_number", "birth",
 }
+
+var DefaultNameFieldKeywords = []string{"name", "label", "title"}

@@ -179,7 +179,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 	}
 	objectType.NeedsIdentity = len(objectType.PrimaryKeys) == 0
 	objectType.Adopted = !objectType.NeedsIdentity
-	objectType.DisplayKey = displayKey(table, fields, objectType.PrimaryKeys)
+	objectType.DisplayKey = displayKey(table, fields, objectType.PrimaryKeys, d.setting.NameFieldKeywords)
 
 	d.objectTypes[table.ID] = objectType
 	d.fields[table.ID] = fields
@@ -187,9 +187,10 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 }
 
 // displayKey is the first mapped name field, else the first key property.
-func displayKey(table *interfaces.VegaTable, fields map[string]string, primaryKeys []string) string {
+func displayKey(table *interfaces.VegaTable, fields map[string]string, primaryKeys []string,
+	nameKeywords []string) string {
 	for _, c := range table.Columns {
-		if name, ok := fields[c.Name]; ok && isNameField(c) {
+		if name, ok := fields[c.Name]; ok && isNameField(c, nameKeywords) {
 			return name
 		}
 	}
