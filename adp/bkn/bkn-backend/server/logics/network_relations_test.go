@@ -302,6 +302,26 @@ func TestDeferNetworkRelationsNests(t *testing.T) {
 	}
 }
 
+// A definition recorded twice, as a concept group update validates and then writes it, is one
+// definition: a fallback path recorded twice is not a second fallback path of its primary relation.
+func TestNetworkRelationsDeferredSaveRecordsOncePerID(t *testing.T) {
+	nr, _ := supplyNetwork().checker()
+	ctx, written := WithDeferredNetworkRelations(context.Background())
+	fallback := func(reason string) SavedDefinitions {
+		rt := relationType("ships_via_site", "order", "warehouse", interfaces.RelationDeclarations{Importance: "secondary", FallbackFor: "ships_from"})
+		rt.Comment = reason
+		return SavedDefinitions{RelationTypes: []*interfaces.RelationType{rt}}
+	}
+	_, _ = nr.CheckSave(ctx, "kn1", "main", fallback("validated"))
+	_, _ = nr.CheckSave(ctx, "kn1", "main", fallback("written"))
+	if len(written.RelationTypes) != 1 || written.RelationTypes[0].Comment != "written" {
+		t.Fatalf("recorded relation types = %d, want the later one only", len(written.RelationTypes))
+	}
+	if got, err := nr.Check(ctx, "kn1", "main", *written); err != nil || len(got) != 0 {
+		t.Fatalf("Check() = %q, %v; want no issue", got, err)
+	}
+}
+
 func TestNetworkRelationsDeleteReferrers(t *testing.T) {
 	cases := []struct {
 		name string

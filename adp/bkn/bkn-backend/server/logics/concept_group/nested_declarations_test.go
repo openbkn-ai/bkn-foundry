@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	berrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 	bmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces/mock"
@@ -99,5 +101,74 @@ func TestValidateConceptGroupDependenciesChecksNestedDefinitionsTogether(t *test
 				t.Fatalf("validateConceptGroupDependencies() error = %v, want 400 %s", err, tc.wantCode)
 			}
 		})
+	}
+}
+
+// Overwriting a stored concept group validates its nested definitions before writing them; the
+// fallback path it carries is one fallback path, not two.
+func TestCreateConceptGroupOverwriteKeepsFallbackPath(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	cga := bmock.NewMockConceptGroupAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	rts := bmock.NewMockRelationTypeService(ctrl)
+	ota := bmock.NewMockObjectTypeAccess(ctrl)
+	rta := bmock.NewMockRelationTypeAccess(ctrl)
+	ata := bmock.NewMockActionTypeAccess(ctrl)
+	db, smock, _ := sqlmock.New()
+	nr := &rootlogics.NetworkRelations{OTA: ota, RTA: rta, ATA: ata}
+	service := &conceptGroupService{
+		appSetting: &common.AppSetting{}, cga: cga, ps: ps, vbs: vbs, db: db, rts: rts, nr: nr,
+	}
+
+	relation := func(id string, decl interfaces.RelationDeclarations) *interfaces.RelationType {
+		return &interfaces.RelationType{
+			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
+				RTID: id, RTName: id, SourceObjectTypeID: "order", TargetObjectTypeID: "warehouse", Type: "direct",
+			},
+			RelationDeclarations: decl,
+		}
+	}
+	primary := relation("ships_from", interfaces.RelationDeclarations{Cardinality: "many_to_one"})
+	fallback := relation("ships_via_site", interfaces.RelationDeclarations{Importance: "secondary", FallbackFor: "ships_from"})
+
+	ota.EXPECT().ListDeprecatedObjectTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, nil).AnyTimes()
+	ata.EXPECT().ListDeprecatedActionTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, nil).AnyTimes()
+	rta.EXPECT().ListDeprecatedOrFallbackRelationTypeIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
+		Return([]string{"ships_via_site"}, nil).AnyTimes()
+	rta.EXPECT().GetRelationTypesByIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"ships_from"}).
+		Return([]*interfaces.RelationType{primary}, nil).AnyTimes()
+
+	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	ps.EXPECT().UpsertResourceParents(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil).AnyTimes()
+	cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil).AnyTimes()
+	cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{}, nil).AnyTimes()
+	cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	vbs.EXPECT().WriteDatasetDocument(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	smock.ExpectBegin()
+	smock.ExpectCommit()
+
+	// Validation and the write each pass the relation types to the check, as the relation type
+	// service does.
+	check := func(ctx context.Context, rts []*interfaces.RelationType) error {
+		return nr.SaveRefusal(ctx, "kn1", interfaces.MAIN_BRANCH, rootlogics.SavedDefinitions{RelationTypes: rts},
+			berrors.BknBackend_RelationType_InvalidParameter, berrors.BknBackend_RelationType_InternalError)
+	}
+	rts.EXPECT().ValidateRelationTypes(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, gomock.Any(), true, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _, _ string, rts []*interfaces.RelationType, _ bool, _ *interfaces.BatchIDIndex, _ string) error {
+			return check(ctx, rts)
+		})
+	rts.EXPECT().CreateRelationTypes(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.ImportMode_Overwrite, true).
+		DoAndReturn(func(ctx context.Context, _ any, rts []*interfaces.RelationType, _ string, _ bool) ([]string, error) {
+			return []string{"ships_via_site"}, check(ctx, rts)
+		})
+
+	group := &interfaces.ConceptGroup{
+		CGID: "cg1", CGName: "cg1", KNID: "kn1", Branch: interfaces.MAIN_BRANCH,
+		RelationTypes: []*interfaces.RelationType{fallback},
+	}
+	if _, err := service.CreateConceptGroup(context.Background(), nil, group, interfaces.ImportMode_Overwrite, true); err != nil {
+		t.Fatalf("CreateConceptGroup() error = %v, want nil", err)
 	}
 }

@@ -47,10 +47,24 @@ func (s *SavedDefinitions) empty() bool {
 	return len(s.ObjectTypes) == 0 && len(s.RelationTypes) == 0 && len(s.ActionTypes) == 0
 }
 
+// add records more, one entry per ID: a write may pass the same definition more than once, as a
+// concept group update validates its nested definitions before writing them, and the later entry
+// replaces the earlier one.
 func (s *SavedDefinitions) add(more SavedDefinitions) {
-	s.ObjectTypes = append(s.ObjectTypes, more.ObjectTypes...)
-	s.RelationTypes = append(s.RelationTypes, more.RelationTypes...)
-	s.ActionTypes = append(s.ActionTypes, more.ActionTypes...)
+	s.ObjectTypes = upsertByID(s.ObjectTypes, more.ObjectTypes, func(ot *interfaces.ObjectType) string { return ot.OTID })
+	s.RelationTypes = upsertByID(s.RelationTypes, more.RelationTypes, func(rt *interfaces.RelationType) string { return rt.RTID })
+	s.ActionTypes = upsertByID(s.ActionTypes, more.ActionTypes, func(at *interfaces.ActionType) string { return at.ATID })
+}
+
+func upsertByID[T any](have, more []T, id func(T) string) []T {
+	for _, def := range more {
+		if i := slices.IndexFunc(have, func(h T) bool { return id(h) == id(def) }); i >= 0 {
+			have[i] = def
+			continue
+		}
+		have = append(have, def)
+	}
+	return have
 }
 
 // involvedIn reports whether the issue concerns a definition of the save.
