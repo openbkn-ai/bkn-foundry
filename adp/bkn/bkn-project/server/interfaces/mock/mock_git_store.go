@@ -56,6 +56,21 @@ func (mr *MockGitStoreMockRecorder) CommitFiles(ctx, lineageID, branch, files, m
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitFiles", reflect.TypeOf((*MockGitStore)(nil).CommitFiles), ctx, lineageID, branch, files, message, author)
 }
 
+// CommitMerge mocks base method.
+func (m *MockGitStore) CommitMerge(ctx context.Context, lineageID, branch, other string, files map[string][]byte, message string, author interfaces.GitAuthor) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CommitMerge", ctx, lineageID, branch, other, files, message, author)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CommitMerge indicates an expected call of CommitMerge.
+func (mr *MockGitStoreMockRecorder) CommitMerge(ctx, lineageID, branch, other, files, message, author any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitMerge", reflect.TypeOf((*MockGitStore)(nil).CommitMerge), ctx, lineageID, branch, other, files, message, author)
+}
+
 // CreateBranch mocks base method.
 func (m *MockGitStore) CreateBranch(ctx context.Context, lineageID, branch, from string) error {
 	m.ctrl.T.Helper()
@@ -83,6 +98,21 @@ func (m *MockGitStore) Diff(ctx context.Context, lineageID, refA, refB string) (
 func (mr *MockGitStoreMockRecorder) Diff(ctx, lineageID, refA, refB any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Diff", reflect.TypeOf((*MockGitStore)(nil).Diff), ctx, lineageID, refA, refB)
+}
+
+// FastForward mocks base method.
+func (m *MockGitStore) FastForward(ctx context.Context, lineageID, branch, to string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FastForward", ctx, lineageID, branch, to)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FastForward indicates an expected call of FastForward.
+func (mr *MockGitStoreMockRecorder) FastForward(ctx, lineageID, branch, to any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FastForward", reflect.TypeOf((*MockGitStore)(nil).FastForward), ctx, lineageID, branch, to)
 }
 
 // InitLineage mocks base method.
@@ -130,6 +160,21 @@ func (mr *MockGitStoreMockRecorder) ReadTree(ctx, lineageID, ref any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadTree", reflect.TypeOf((*MockGitStore)(nil).ReadTree), ctx, lineageID, ref)
 }
 
+// ResolveRef mocks base method.
+func (m *MockGitStore) ResolveRef(ctx context.Context, lineageID, ref string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveRef", ctx, lineageID, ref)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveRef indicates an expected call of ResolveRef.
+func (mr *MockGitStoreMockRecorder) ResolveRef(ctx, lineageID, ref any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRef", reflect.TypeOf((*MockGitStore)(nil).ResolveRef), ctx, lineageID, ref)
+}
+
 // Tag mocks base method.
 func (m *MockGitStore) Tag(ctx context.Context, lineageID, name, ref string) error {
 	m.ctrl.T.Helper()
@@ -142,4 +187,18 @@ func (m *MockGitStore) Tag(ctx context.Context, lineageID, name, ref string) err
 func (mr *MockGitStoreMockRecorder) Tag(ctx, lineageID, name, ref any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tag", reflect.TypeOf((*MockGitStore)(nil).Tag), ctx, lineageID, name, ref)
+}
+
+// WithLineageLock mocks base method.
+func (m *MockGitStore) WithLineageLock(ctx context.Context, lineageID string, fn func(interfaces.GitStore) error) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithLineageLock", ctx, lineageID, fn)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WithLineageLock indicates an expected call of WithLineageLock.
+func (mr *MockGitStoreMockRecorder) WithLineageLock(ctx, lineageID, fn any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithLineageLock", reflect.TypeOf((*MockGitStore)(nil).WithLineageLock), ctx, lineageID, fn)
 }

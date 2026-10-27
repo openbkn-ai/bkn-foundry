@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/auth"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/release"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/version"
 )
@@ -42,6 +43,7 @@ type restHandler struct {
 	db         pinger
 	as         interfaces.AuthService
 	rs         interfaces.ReleaseService
+	ls         interfaces.LineageService
 }
 
 func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
@@ -50,6 +52,7 @@ func NewRestHandler(appSetting *common.AppSetting, db pinger) RestHandler {
 		db:         db,
 		as:         auth.NewAuthService(),
 		rs:         release.NewReleaseService(),
+		ls:         lineage.NewLineageService(),
 	}
 }
 
@@ -67,6 +70,14 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	// Release lineage (read-only).
 	apiV1.GET("/lineages/:lineage_id/releases", r.ListReleasesByEx)
 	apiV1.GET("/releases/:network_id", r.GetReleaseByEx)
+
+	// Lineages and project branches. A branch name may contain "/", so the
+	// branch routes catch the rest of the path: {branch}/definitions and {branch}/sync.
+	apiV1.POST("/lineages", r.CreateLineageByEx)
+	apiV1.POST("/lineages/:lineage_id/branches", r.CreateBranchByEx)
+	apiV1.PUT("/lineages/:lineage_id/branches/*branch", r.CommitDefinitionsByEx)
+	apiV1.POST("/lineages/:lineage_id/branches/*branch", r.SyncBranchByEx)
+	apiV1.POST("/lineages/:lineage_id/drift", r.CheckDriftByEx)
 
 	logger.Info("RestHandler RegisterPublic")
 }
