@@ -46,16 +46,16 @@ type KnSearchConceptRetrievalConfig struct {
 	// ObjectTypes / ExcludeObjectTypes scope recall to (or away from) the given object type ids.
 	// Both are applied to the candidate pool *before* relevance ranking and the TopK cut: filtering
 	// afterwards would silently drop a pinned object type that happened to rank below TopK.
-	ObjectTypes            []string `json:"object_types,omitempty"`
-	ExcludeObjectTypes     []string `json:"exclude_object_types,omitempty"`
-	TopK                   int      `json:"top_k" default:"10"`
-	IncludeSampleData      *bool    `json:"include_sample_data" default:"false"`
-	SchemaBrief            *bool    `json:"schema_brief" default:"false"`
-	CoarseObjectLimit      int      `json:"coarse_object_limit" default:"2000"`
-	CoarseRelationLimit    int      `json:"coarse_relation_limit" default:"300"`
-	EnablePropertyBrief    *bool    `json:"enable_property_brief" default:"true"`
-	PerObjectPropertyTopK  int      `json:"per_object_property_top_k" default:"8"`
-	GlobalPropertyTopK     int      `json:"global_property_top_k" default:"30"`
+	ObjectTypes           []string `json:"object_types,omitempty"`
+	ExcludeObjectTypes    []string `json:"exclude_object_types,omitempty"`
+	TopK                  int      `json:"top_k" default:"10"`
+	IncludeSampleData     *bool    `json:"include_sample_data" default:"false"`
+	SchemaBrief           *bool    `json:"schema_brief" default:"false"`
+	CoarseObjectLimit     int      `json:"coarse_object_limit" default:"2000"`
+	CoarseRelationLimit   int      `json:"coarse_relation_limit" default:"300"`
+	EnablePropertyBrief   *bool    `json:"enable_property_brief" default:"true"`
+	PerObjectPropertyTopK int      `json:"per_object_property_top_k" default:"8"`
+	GlobalPropertyTopK    int      `json:"global_property_top_k" default:"30"`
 	// ObjectRerankCandidateLimit caps how many object types the concept rerank call carries, best
 	// coarse score first. It bounds one model call, not the response: everything below the cut keeps
 	// its place in the schema, it just cannot outrank a reranked object type. 0 turns object
@@ -211,6 +211,14 @@ type KnSearchDataProperty struct {
 	// Indexed says this property supports the operators its object type publishes as
 	// index_operations. It stands in for repeating that list on every indexed property.
 	Indexed bool `json:"indexed,omitempty"`
+	// BKN spec 3.0 property declarations (SPECIFICATION.md §6.8). Each is omitted when the
+	// property does not declare it; brief mode keeps only semantic. unit, crs and timezone come
+	// from the property's constraints.
+	Semantic string `json:"semantic,omitempty"`
+	Required bool   `json:"required,omitempty"`
+	Unit     string `json:"unit,omitempty"`
+	CRS      string `json:"crs,omitempty"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // KnSearchLogicProperty logic property (local response shape)

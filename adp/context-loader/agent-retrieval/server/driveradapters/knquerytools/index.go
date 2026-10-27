@@ -355,6 +355,8 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		}
 	}
 
+	// Property declarations are search_schema's to surface (#2260).
+	interfaces.OmitPropertyDeclarations(matched)
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "object", knID, req.IDs, len(matched))
 	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched,
 		TotalCount: totalCount, NextOffset: nextOffset, Notice: notice})

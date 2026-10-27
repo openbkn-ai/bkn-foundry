@@ -111,7 +111,7 @@
                 "type": "object",
                 "additionalProperties": true
               },
-              "description": "数据属性 [{name, type, indexed}]；indexed=true 表示该属性支持所在对象类 index_operations 里的算子（match / knn 等）；能力与对象类不同的属性自带 condition_operations；两者都没有的属性没建索引，不能用 match / knn 过滤。"
+              "description": "数据属性 [{name, type, indexed}]；indexed=true 表示该属性支持所在对象类 index_operations 里的算子（match / knn 等）；能力与对象类不同的属性自带 condition_operations；两者都没有的属性没建索引，不能用 match / knn 过滤。属性声明了时另带 semantic（业务语义，如 event_time / status / location）；非精简模式还带 required、unit、crs、timezone，未声明的不出现。"
             },
             "index_operations": {
               "type": "array",

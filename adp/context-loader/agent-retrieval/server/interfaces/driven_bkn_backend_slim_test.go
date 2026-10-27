@@ -24,6 +24,9 @@ func newDetailFixture() *KnowledgeNetworkDetail {
 			Comment:             "订单金额",
 			MappedField:         map[string]any{"column": "amt"},
 			ConditionOperations: []KnOperationType{"gt", "lt"},
+			Semantic:            "status",
+			Required:            true,
+			Constraints:         &PropertyConstraints{Unit: "元"},
 		}},
 		LogicProperties: []*LogicPropertyDef{{
 			Name:        "gmv",
@@ -74,6 +77,9 @@ func TestSlim_Summary(t *testing.T) {
 		convey.So(dp.Comment, convey.ShouldEqual, "")
 		convey.So(dp.MappedField, convey.ShouldBeNil)
 		convey.So(dp.ConditionOperations, convey.ShouldBeNil)
+		convey.So(dp.Semantic, convey.ShouldEqual, "")
+		convey.So(dp.Required, convey.ShouldBeFalse)
+		convey.So(dp.Constraints, convey.ShouldBeNil)
 
 		lp := d.ObjectTypes[0].LogicProperties[0]
 		convey.So(lp.Name, convey.ShouldEqual, "gmv")
@@ -104,7 +110,7 @@ func TestSlim_Summary(t *testing.T) {
 }
 
 func TestSlim_Full_KeepsPropertiesButStillDedups(t *testing.T) {
-	convey.Convey("full keeps heavy property fields but still dedups concept_groups", t, func() {
+	convey.Convey("full keeps heavy property fields but still dedups concept_groups and omits property declarations", t, func() {
 		d := newDetailFixture()
 		d.Slim(DetailLevelFull)
 
@@ -112,6 +118,10 @@ func TestSlim_Full_KeepsPropertiesButStillDedups(t *testing.T) {
 		convey.So(dp.MappedField, convey.ShouldNotBeNil)
 		convey.So(dp.ConditionOperations, convey.ShouldNotBeNil)
 		convey.So(d.RelationTypes[0].MappingRules, convey.ShouldNotBeNil)
+		// Property declarations are search_schema's alone, at every level (#2260).
+		convey.So(dp.Semantic, convey.ShouldEqual, "")
+		convey.So(dp.Required, convey.ShouldBeFalse)
+		convey.So(dp.Constraints, convey.ShouldBeNil)
 
 		g := d.ConceptGroups[0]
 		convey.So(g.ObjectTypeIDs, convey.ShouldResemble, []string{"ot_order"})

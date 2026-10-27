@@ -70,6 +70,37 @@ type DataProperty struct {
 	Comment             string            `json:"comment,omitempty"`              // Comment
 	MappedField         any               `json:"mapped_field,omitempty"`         // View field info
 	ConditionOperations []KnOperationType `json:"condition_operations,omitempty"` // List of query condition operators supported by this data property
+
+	// BKN spec 3.0 property declarations (SPECIFICATION.md §6.8), stored and returned by
+	// bkn-backend. A property without declarations carries none of them.
+	Semantic    string               `json:"semantic,omitempty"`
+	Required    bool                 `json:"required,omitempty"` // Absent means false; bkn-backend omits false
+	Constraints *PropertyConstraints `json:"constraints,omitempty"`
+}
+
+// PropertyConstraints is a data property's entry in ### Property Constraints (SPECIFICATION.md
+// §6.8), mirroring bkn-backend. An empty field is not declared.
+type PropertyConstraints struct {
+	ValueType string       `json:"value_type,omitempty"`
+	Range     *ValueRange  `json:"range,omitempty"`
+	Length    *LengthRange `json:"length,omitempty"`
+	Pattern   string       `json:"pattern,omitempty"`
+	Unit      string       `json:"unit,omitempty"`
+	Unique    bool         `json:"unique,omitempty"`
+	CRS       string       `json:"crs,omitempty"`
+	Timezone  string       `json:"timezone,omitempty"`
+}
+
+// ValueRange is a closed interval; either bound may be absent.
+type ValueRange struct {
+	Min any `json:"min,omitempty"`
+	Max any `json:"max,omitempty"`
+}
+
+// LengthRange is a closed interval on the number of characters.
+type LengthRange struct {
+	Min *int `json:"min,omitempty"`
+	Max *int `json:"max,omitempty"`
 }
 
 // LogicPropertyDef Logic property definition (extracted from object type definition)
@@ -488,6 +519,8 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 			a.Score = 0
 		}
 	}
+	// Property declarations are search_schema's to surface; no level of this answer carries them.
+	OmitPropertyDeclarations(d.ObjectTypes)
 	if level == DetailLevelFull {
 		return
 	}
@@ -910,3 +943,22 @@ const (
 	// executed through the MCP proxy rather than the toolbox proxy.
 	CapabilityTypeMCPTool = "mcp_tool"
 )
+
+// OmitPropertyDeclarations clears the BKN spec 3.0 property declarations from the given object
+// types. Only search_schema surfaces them; get_kn_detail and get_object_types answer as they did
+// before declarations existed, which keeps their size where it was.
+func OmitPropertyDeclarations(objectTypes []*ObjectType) {
+	for _, o := range objectTypes {
+		if o == nil {
+			continue
+		}
+		for _, p := range o.DataProperties {
+			if p == nil {
+				continue
+			}
+			p.Semantic = ""
+			p.Required = false
+			p.Constraints = nil
+		}
+	}
+}
