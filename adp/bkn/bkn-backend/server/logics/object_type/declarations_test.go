@@ -81,6 +81,12 @@ func TestValidateDeclarations(t *testing.T) {
 	assert.Contains(t, err.(*httperrors.HTTPError).ErrorDetails, `data property "id": a primary key is required by definition`)
 
 	ot = declaredObjectType()
+	ot.DataProperties[0] = decodeProperty(t, `{"name":"id","type":"string","required":true}`)
+	require.NoError(t, validateDeclarations(ctx, ot))
+	assert.False(t, ot.DataProperties[0].Required, "required on a primary key is not stored")
+	assert.True(t, ot.DataProperties[1].Required, "required on another property is kept")
+
+	ot = declaredObjectType()
 	ot.DataProperties[2] = decodeProperty(t, `{"name":"amount","type":"decimal","constraints":{}}`)
 	require.NoError(t, validateDeclarations(ctx, ot))
 	assert.Nil(t, ot.DataProperties[2].Constraints, "{} is stored as no constraints")
@@ -201,6 +207,7 @@ func TestUpdateObjectTypeKeepsStoredDeclarations(t *testing.T) {
 	require.NotNil(t, saved)
 	assert.Equal(t, "下单时间", saved.DataProperties[1].DisplayName)
 	assert.Equal(t, "event_time", saved.DataProperties[1].Semantic, "left out, so kept")
+	assert.False(t, saved.DataProperties[0].Required, "required stored on a primary key is dropped on save")
 	assert.True(t, saved.DataProperties[1].Required, "left out, so kept")
 	assert.Nil(t, saved.DataProperties[2].Constraints, "null clears")
 }
