@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Add an explicit, read-only-by-default historical integrity recheck command. It streams exact-version output artifacts through bounded token/hash verification and applies the existing integrity rules; optional source-version CAS completion preserves exhausted retry history and records real gaps instead of certifying them as complete. No schema, queue, producer or page-read changes.
+
 - Stop fixed record-integrity inspection budget failures after the first attempt with `inspection_budget_exceeded`, preserving an unknown verdict and existing byte/read limits. Transient failures still back off; source changes start a fresh generation. Previously exhausted history is not rewritten or automatically requeued.
 
 - Seal existing structured Function results as fixed result-snapshot Claims and EvidenceRefs without requiring tool-side declarations in the existing SQL Ledger transaction with their actual assembly revision, exact receipt and result hash. Evidence gaps stay partial; no sample-specific business rules, new tables, queues or list/detail read-time inference. (#1332)

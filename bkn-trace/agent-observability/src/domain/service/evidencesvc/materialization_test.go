@@ -773,3 +773,48 @@ func TestMaterializationOversizedHTTPFailureRemainsRetryable(t *testing.T) {
 		t.Fatalf("upstream failure incorrectly stopped: %+v", state)
 	}
 }
+
+type historicalIntegrityArtifacts struct {
+	iartifactstore.ArtifactStorePort
+	result iartifactstore.IntegrityReadResult
+	calls  int
+}
+
+func (a *historicalIntegrityArtifacts) VerifyArtifactForIntegrity(context.Context, string, evidencevo.QueryScope) (iartifactstore.IntegrityReadResult, error) {
+	a.calls++
+	return a.result, nil
+}
+func TestHistoricalRecheckUsesVerifiedBodiesWithoutChangingPageOrSource(t *testing.T) {
+	snapshot, _, _ := integrityFixture()
+	snapshot.CallFacts[0].Output = &sessionvo.PayloadEnvelope{Mode: sessionvo.PayloadReferenced, Ref: "artifact:a", ByteLength: 20}
+	snapshot.Receipts[0].ArtifactRefs = []string{"artifact:a"}
+	service := integrityServiceForSnapshot(t, snapshot)
+	store := service.sessionStore.(*integritySnapshotStore)
+	alignIntegrityFixtureVersions(t, store)
+	reader := &historicalIntegrityArtifacts{result: iartifactstore.IntegrityReadResult{Found: true, Exists: true, CanonicalLength: 20, HTMLEscapedLength: 20, Artifact: evidencevo.EvidenceArtifact{ArtifactID: "a", ArtifactType: evidencevo.ArtifactTypeDataResult, InteractionID: "int", OperationID: "op", RequestID: "req", TraceID: "trace"}}}
+	service.artifactStore = reader
+	scope := evidencevo.QueryScope{AccountID: "user", AccountType: "user"}
+	report, err := service.RecheckHistoricalRecordIntegrity(context.Background(), "int", scope)
+	if err != nil || report == nil || report.Report == nil || report.Report.Status != "complete" || reader.calls != 1 {
+		t.Fatalf("recheck=%+v calls=%d err=%v", report, reader.calls, err)
+	}
+	stored, applicable, err := service.inspectRecordIntegrityWithScope(context.Background(), "int", scope)
+	if err != nil || stored != nil || !applicable || reader.calls != 1 {
+		t.Fatalf("maintenance read saved a verdict or page inspected: %+v %v", stored, err)
+	}
+	reader.result.CanonicalLength = 21
+	reader.result.HTMLEscapedLength = 21
+	if report, err = service.RecheckHistoricalRecordIntegrity(context.Background(), "int", scope); err == nil || report != nil {
+		t.Fatal("length mismatch certified")
+	}
+	reader.result.CanonicalLength = 20
+	reader.result.HTMLEscapedLength = 20
+	reader.result.Artifact.RequestID = "foreign"
+	if report, err = service.RecheckHistoricalRecordIntegrity(context.Background(), "int", scope); err == nil || report != nil {
+		t.Fatal("foreign source certified")
+	}
+	calls := reader.calls
+	if report, err = service.RecheckHistoricalRecordIntegrity(context.Background(), "int", evidencevo.QueryScope{AccountID: "foreign", AccountType: "user"}); err == nil || report != nil || reader.calls != calls {
+		t.Fatal("unauthorized recheck read an artifact")
+	}
+}

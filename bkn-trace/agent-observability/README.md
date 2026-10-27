@@ -854,3 +854,34 @@ object 边界也不承诺支持任意 scalar envelope。已有子对象显式 `d
 新的真实源版本可重新检查；升级不会自动重置已耗尽的旧任务，也不会修改其
 历史失败原因。不要为恢复检查而删除重试记录、伪造源版本或提高预算。
 这些诊断仅由既有授权诊断接口读取，不增加普通日志页的内部服务状态。
+
+### 显式重核超大历史记录
+
+已耗尽的历史检查可使用 `cmd/record-integrity-recheck`，默认只读。输入为最多
+100个显式Interaction ID的JSON数组，不扫描或重置全部历史任务：
+
+```sh
+# 使用现有数据库与证据配置；凭据通过环境变量传入，不写命令行。
+go run ./cmd/record-integrity-recheck --ids-file /secure/interaction-ids.json
+# 每条重新核验后，仅对仍为原源版本且已耗尽、尚无判定的记录原子保存。
+go run ./cmd/record-integrity-recheck --ids-file /secure/interaction-ids.json --apply
+```
+
+必需环境变量为 `BKN_TRACE_CORE_MARIADB_DSN`、`OPENSEARCH_ENDPOINT`、
+`OPENSEARCH_EVIDENCE_INDEX`；启用认证时使用既有
+`OPENSEARCH_AUTH_ENABLED` / `OPENSEARCH_USERNAME` / `OPENSEARCH_PASSWORD`。
+命令不初始化数据库或索引，不改许可、业务事实、源版本、尝试次数或原失败原因。
+`--apply`只在重新计算后保存判定并原子完成该代诊断任务；不是把原状态直接改成成功。
+
+该路径串行处理一个Interaction、一个Artifact。先做有界元数据和所有者检查，
+再用OpenSearch文档版本条件读取内容，逐字段规范化、验证完整内容SHA-256和长度，
+最后执行原有完整性规则。正文不整体保留，也不使用脚本反复解析源对象。
+每个对象最多读取32MiB（含元数据、转义和响应包裹），流缓冲32KiB，单字段
+最多8MiB、嵌套128层；每对象25秒、每Interaction5分钟、最多512个唯一证据对象。
+普通自动检查和Capture的原8MiB整包响应限制不变。
+
+存储内容必须保持既有生产者`encoding/json`的键排序；非规范键顺序、重复键、
+版本冲突、截断、哈希/长度/来源不符或资源超限均拒绝保存判定。输入/错误引用
+仍使用原有有界读取路径。该维护工具不把未知或真实缺口当成完整，也不补造
+历史调用结束结果；SQL快照仍复用既有实现，命令应在具备数据库维护权限的
+受控环境中串行运行。报告可能含内部记录ID，应按现场诊断文件保护。

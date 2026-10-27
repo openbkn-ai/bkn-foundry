@@ -195,3 +195,34 @@ func (s *Service) GetRecordIntegrityRetryStatus(ctx context.Context, id string, 
 	state.Token = ""
 	return state, true, nil
 }
+
+// RecheckHistoricalRecordIntegrity is an explicit maintenance read, never a page
+// read or an automatic retry. It streams output artifacts one bounded object at
+// a time and returns a verdict only after every existing integrity rule passes.
+// The caller must save with a source-version CAS; this method writes nothing.
+func (s *Service) RecheckHistoricalRecordIntegrity(ctx context.Context, id string, scope evidencevo.QueryScope) (*sessionvo.StoredRecordIntegrity, error) {
+	if !s.currentRecordIntegrity {
+		return nil, errors.New("record integrity is disabled")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	ctx = context.WithValue(ctx, historicalIntegrityRecheckKey{}, true)
+	report, applicable, version, err := s.inspectLiveRecordIntegrityWithScope(ctx, id, scope)
+	if err != nil {
+		return nil, err
+	}
+	if applicable && report == nil {
+		return nil, errors.New("historical integrity recheck incomplete")
+	}
+	// Missing/unauthorized identities must never produce a non-applicable CAS.
+	if report == nil && !applicable {
+		interaction, _, authorized, err := s.authorizeRecordIntegrityInteraction(ctx, id, scope)
+		if err != nil {
+			return nil, err
+		}
+		if !authorized || interaction.ExecutionStatus == sessionvo.InteractionActive {
+			return nil, errors.New("historical integrity recheck unavailable")
+		}
+	}
+	return &sessionvo.StoredRecordIntegrity{SourceVersion: version, Applicable: applicable, Report: report}, nil
+}

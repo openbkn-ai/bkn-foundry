@@ -27,6 +27,7 @@ const functionResultIntegrityContract = sessionvo.FunctionResultContract
 var errRecordIntegrityInspectionBudget = errors.New("record integrity inspection budget exceeded")
 
 type recordIntegrityBudgetKey struct{}
+type historicalIntegrityRecheckKey struct{}
 type recordIntegrityReadBudget struct {
 	reads int
 	bytes int64
@@ -487,6 +488,35 @@ func (s *Service) inspectAuthorizedLiveRecordIntegrity(ctx context.Context, id, 
 				return nil, err
 			}
 			// These fields only consume non-nil presence in evaluateRecordIntegrity.
+			return json.RawMessage("null"), nil
+		}
+
+		if recheck, _ := ctx.Value(historicalIntegrityRecheckKey{}).(bool); recheck && (field == "output" || field == "artifact") {
+			reader, ok := s.artifactStore.(iartifactstore.IntegrityReader)
+			if !ok {
+				return nil, errors.New("bounded integrity verifier unavailable")
+			}
+			if len(verified) >= 512 {
+				return nil, errRecordIntegrityInspectionBudget
+			}
+			result, err := reader.VerifyArtifactForIntegrity(ctx, id, scope)
+			if err != nil {
+				return nil, err
+			}
+			if !result.Found {
+				if result.Exists {
+					return nil, errors.New("referenced artifact inaccessible; integrity recheck incomplete")
+				}
+				return nil, nil
+			}
+			if err := checkSource(id, result.Artifact, f, field); err != nil {
+				return nil, err
+			}
+			metadata := verifiedArtifact{source: evidencevo.EvidenceArtifact{ArtifactID: result.Artifact.ArtifactID, ArtifactType: result.Artifact.ArtifactType, InteractionID: result.Artifact.InteractionID, OperationID: result.Artifact.OperationID, RequestID: result.Artifact.RequestID, TraceID: result.Artifact.TraceID}, canonicalLength: result.CanonicalLength, htmlEscapedLength: result.HTMLEscapedLength}
+			if err := checkLength(p, metadata); err != nil {
+				return nil, err
+			}
+			verified[id] = metadata
 			return json.RawMessage("null"), nil
 		}
 		reader, ok := s.artifactStore.(iartifactstore.CaptureReader)

@@ -177,5 +177,50 @@ func TestRecordIntegritySupervisorDurableState(t *testing.T) {
 		t.Fatalf("budget recovery=%+v err=%v", current, err)
 	}
 
+	// Explicit recovery saves a genuinely rechecked verdict, with a CAS, without
+	// deleting the exhausted generation or changing business source versions.
+	if err = store.InvalidateRecordIntegrity(ctx, id, owner); err != nil {
+		t.Fatal(err)
+	}
+	recheckVersion := budgetVersion + 2
+	claim, won, err := store.ClaimRecordIntegrityRetry(ctx, id, recheckVersion)
+	if err != nil || !won {
+		t.Fatalf("recheck fixture claim: %v", err)
+	}
+	if ok, err := store.FinishRecordIntegrityRetry(ctx, claim, nil, isessionstore.RecordIntegrityBudgetExceeded); err != nil || !ok {
+		t.Fatalf("recheck fixture exhaustion: %v", err)
+	}
+	verdict := sessionvo.StoredRecordIntegrity{SourceVersion: recheckVersion, Applicable: false}
+	stale := verdict
+	stale.SourceVersion--
+	if ok, err := store.SaveRecheckedRecordIntegrity(ctx, id, stale); err != nil || ok {
+		t.Fatalf("stale maintenance CAS accepted: %v", err)
+	}
+
+	// If diagnostic completion fails, the verdict must roll back with it.
+	trigger := fmt.Sprintf("CREATE TRIGGER integrity_recheck_failure BEFORE UPDATE ON bkn_trace_record_integrity_retries FOR EACH ROW BEGIN IF OLD.interaction_id='%s' AND NEW.retry_status='succeeded' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic completion failure'; END IF; END", id)
+	if _, err = db.ExecContext(ctx, trigger); err != nil {
+		t.Fatal(err)
+	}
+	ok, recheckErr := store.SaveRecheckedRecordIntegrity(ctx, id, verdict)
+	_, dropErr := db.ExecContext(ctx, "DROP TRIGGER integrity_recheck_failure")
+	if recheckErr == nil || ok || dropErr != nil {
+		t.Fatalf("completion failure not atomic: ok=%v err=%v drop=%v", ok, recheckErr, dropErr)
+	}
+	var partial int
+	if err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM bkn_trace_interactions WHERE interaction_id=? AND record_integrity_json IS NOT NULL", id).Scan(&partial); err != nil || partial != 0 {
+		t.Fatalf("partial verdict leaked: %d %v", partial, err)
+	}
+	if ok, err := store.SaveRecheckedRecordIntegrity(ctx, id, verdict); err != nil || !ok {
+		t.Fatalf("maintenance verdict not saved: %v", err)
+	}
+	state, found, err = store.GetRecordIntegrityRetry(ctx, id, recheckVersion)
+	if err != nil || !found || state.Status != isessionstore.RecordIntegritySucceeded || state.Attempts != 1 || state.LastFailureReason != isessionstore.RecordIntegrityBudgetExceeded {
+		t.Fatalf("recovery lost history: %+v %v", state, err)
+	}
+	if ok, err := store.SaveRecheckedRecordIntegrity(ctx, id, verdict); err != nil || ok {
+		t.Fatalf("maintenance overwrote existing verdict: %v", err)
+	}
+
 	t.Log("supervisor → MariaDB: failure persisted; restart made 0 premature inspections; retry succeeded; source requeue retained old generation")
 }

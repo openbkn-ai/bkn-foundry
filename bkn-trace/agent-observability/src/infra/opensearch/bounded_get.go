@@ -23,11 +23,14 @@ var ErrInvalidReadBudget = errors.New("opensearch read budget must be positive a
 // GetDocumentBounded reads at most maxResponseBytes plus one probe byte, including
 // non-success responses. ReadBytes counts decoded HTTP body bytes, not wire bytes
 // or peak allocations. It neither creates an index nor drains an oversized body.
-func (c *Client) GetDocumentBounded(ctx context.Context, index, documentID string, maxResponseBytes int64) (Document, int64, error) {
+func (c *Client) GetDocumentBounded(ctx context.Context, index, documentID string, maxResponseBytes int64, sourceExcludes ...string) (Document, int64, error) {
 	if maxResponseBytes <= 0 || maxResponseBytes == math.MaxInt64 {
 		return Document{}, 0, ErrInvalidReadBudget
 	}
 	requestURL := fmt.Sprintf("%s/%s/_doc/%s", c.baseURL, strings.TrimLeft(index, "/"), url.PathEscape(documentID))
+	if len(sourceExcludes) > 0 {
+		requestURL += "?" + url.Values{"_source_excludes": []string{strings.Join(sourceExcludes, ",")}}.Encode()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return Document{}, 0, fmt.Errorf("create bounded opensearch get request: %w", err)
@@ -67,11 +70,12 @@ func (c *Client) GetDocumentBounded(ctx context.Context, index, documentID strin
 	}
 	var response struct {
 		Source      json.RawMessage `json:"_source"`
+		Version     int64           `json:"_version"`
 		SeqNo       int64           `json:"_seq_no"`
 		PrimaryTerm int64           `json:"_primary_term"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return Document{}, readBytes, fmt.Errorf("decode bounded opensearch get response: %w", err)
 	}
-	return Document{Source: response.Source, SeqNo: response.SeqNo, PrimaryTerm: response.PrimaryTerm}, readBytes, nil
+	return Document{Version: response.Version, Source: response.Source, SeqNo: response.SeqNo, PrimaryTerm: response.PrimaryTerm}, readBytes, nil
 }
