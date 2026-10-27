@@ -347,7 +347,11 @@ func Boot(_ Options) *Application {
 	logics.SetActionExecutionAccess(action_execution.NewActionExecutionAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))
 	// Optional: only Enterprise deployments run kb-api. Without it, mounting a knowledge base is refused.
-	logics.SetKnowledgeBaseAccess(knowledge_base.NewKnowledgeBaseAccess(os.Getenv("KB_API_URL")))
+	kbAPIURL, err := common.NormalizeKBAPIURL(os.Getenv("KB_API_URL"))
+	if err != nil {
+		logger.Fatalf("Invalid kb-api configuration: %v", err)
+	}
+	logics.SetKnowledgeBaseAccess(knowledge_base.NewKnowledgeBaseAccess(kbAPIURL))
 	logics.SetActionTypeAccess(action_type.NewActionTypeAccess(appSetting))
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))

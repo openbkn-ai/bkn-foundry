@@ -133,3 +133,22 @@ func TestKBAPIFailuresAreErrors(t *testing.T) {
 		t.Fatalf("FindKnowledgeBasesByName on 503 = %+v, %v; want an error", found, err)
 	}
 }
+
+// A name matched by more than namePages*pageSize knowledge bases is an error, never a silently
+// truncated answer: an import must not mount whichever exact match happened to come first.
+func TestFindKnowledgeBasesByNameRefusesBeyondThePageCap(t *testing.T) {
+	names := map[string]string{}
+	for i := 1; i <= namePages*pageSize+1; i++ {
+		names[strconv.Itoa(i)] = fmt.Sprintf("合同库-%d", i)
+	}
+	server, requests := fakeKBAPI(t, names, http.StatusOK)
+	access := NewKnowledgeBaseAccess(server.URL)
+
+	found, err := access.FindKnowledgeBasesByName(t.Context(), "合同库")
+	if err == nil || found != nil {
+		t.Fatalf("FindKnowledgeBasesByName over the cap = %+v, %v; want an error", found, err)
+	}
+	if len(*requests) != namePages {
+		t.Fatalf("requests = %d; want exactly %d pages", len(*requests), namePages)
+	}
+}

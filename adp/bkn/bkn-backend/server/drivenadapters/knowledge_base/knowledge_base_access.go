@@ -137,7 +137,8 @@ func (kba *knowledgeBaseAccess) FindKnowledgeBasesByName(ctx context.Context, na
 			return matches, nil
 		}
 	}
-	return nil, fmt.Errorf("kb-api name search for %q exceeded %d pages", name, namePages)
+	oteltrace.AddHttpAttrs4Error(span, http.StatusOK, "InternalError", "Name search exceeded the page cap")
+	return nil, fmt.Errorf("kb-api name search exceeded %d pages", namePages)
 }
 
 func (kba *knowledgeBaseAccess) get(ctx context.Context, httpURL string, query url.Values) (int, []byte, error) {
