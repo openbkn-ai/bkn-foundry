@@ -179,6 +179,46 @@ func TestImportKnowledgeBase(t *testing.T) {
 			So(report.Skipped, ShouldBeEmpty)
 		})
 
+		Convey("id 命中但名字不同：不采用该 id，按名字找", func() {
+			// Another environment's 7 is a different knowledge base; mounting it would expose
+			// the wrong data through the proxy.
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(&interfaces.KnowledgeBaseBrief{ID: "7", Name: "员工档案"}, nil)
+			kba.EXPECT().FindKnowledgeBasesByName(gomock.Any(), "合同库").
+				Return([]*interfaces.KnowledgeBaseBrief{{ID: "12", Name: "合同库"}}, nil)
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "12").Return(&interfaces.KnowledgeBaseBrief{ID: "12", Name: "合同库"}, nil)
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), "kn1", "main",
+				interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, "", "12").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", "合同库"))
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 1)
+		})
+
+		Convey("id 命中但名字不同且名字找不到：跳过，不挂 id 指向的库", func() {
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(&interfaces.KnowledgeBaseBrief{ID: "7", Name: "员工档案"}, nil)
+			kba.EXPECT().FindKnowledgeBasesByName(gomock.Any(), "合同库").Return(nil, nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", "合同库"))
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 0)
+			So(report.Skipped[0].Reason, ShouldEqual, CapabilitySkipNotFound)
+		})
+
+		Convey("只写了 id 时按 id 采用", func() {
+			kba.EXPECT().GetKnowledgeBase(gomock.Any(), "7").Return(&interfaces.KnowledgeBaseBrief{ID: "7", Name: "员工档案"}, nil).Times(2)
+			cba.EXPECT().GetBindingByCapability(gomock.Any(), "kn1", "main",
+				interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, "", "7").Return(nil, nil)
+			cba.EXPECT().CreateBindings(gomock.Any(), gomock.Nil(), gomock.Len(1)).Return(nil)
+
+			report, err := service.ImportCapabilities(context.Background(), "kn1", "main", kbDecl("7", ""))
+
+			So(err, ShouldBeNil)
+			So(report.Bound, ShouldEqual, 1)
+		})
+
 		Convey("同名多个不猜，跳过并说明", func() {
 			kba.EXPECT().FindKnowledgeBasesByName(gomock.Any(), "合同库").
 				Return([]*interfaces.KnowledgeBaseBrief{{ID: "21"}, {ID: "22"}}, nil)

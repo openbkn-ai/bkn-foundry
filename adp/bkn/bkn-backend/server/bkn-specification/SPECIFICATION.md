@@ -1215,7 +1215,7 @@ BKN 包只携带对工具的**引用**，不携带工具的实现：
 | 工具箱（OpenAPI 工具、函数工具） | 执行工厂 `GET /impex/export/toolbox/{box_id}` 导出，`POST /impex/import/toolbox` 导入；导出内容包含 OpenAPI 元数据、函数代码与服务地址 | 保留 `box_id`、`tool_id` |
 | MCP 服务 | 执行工厂 `GET /impex/export/mcp/{mcp_id}` 导出，`POST /impex/import/mcp` 导入；包含服务配置、工具列表及依赖的工具箱 | 保留 `mcp_id` |
 | Skill | 下载 zip 包后在目标环境注册 | **不保留**，注册时生成新 ID，只能靠 `capabilities` 中的名称匹配 |
-| 知识库（专业版） | 在目标环境的知识库中新建并接入来源 | **不保留**，只能靠 `capabilities` 中的名称匹配；同名多个时不猜，列为跳过项 |
+| 知识库（专业版） | 在目标环境的知识库中新建并接入来源 | **不保留**，只能靠 `capabilities` 中的名称匹配；ID 是各环境自增的整数，只有 ID 对应的知识库名称与声明一致时才按 ID 采用；同名多个时不猜，列为跳过项 |
 
 按「先导入工具箱与 MCP，再导入 BKN 包」的顺序，行动与逻辑属性的 ID 引用可以直接对上。注意：
 

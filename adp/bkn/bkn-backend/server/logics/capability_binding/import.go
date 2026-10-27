@@ -181,7 +181,8 @@ func (cbs *capabilityBindingService) resolveSkill(ctx context.Context,
 }
 
 // resolveKnowledgeBase finds a declared knowledge base in this environment's kb-api, by id and
-// then by exact name, the same way a skill is found. A deployment without kb-api skips it as
+// then by exact name, the same way a skill is found, except that an id is trusted only together
+// with its declared name. A deployment without kb-api skips it as
 // not_supported rather than failing the import.
 func (cbs *capabilityBindingService) resolveKnowledgeBase(ctx context.Context,
 	declared *bknsdk.BknCapabilityKnowledgeBase) (string, *interfaces.CapabilitySkip) {
@@ -208,12 +209,15 @@ func (cbs *capabilityBindingService) resolveKnowledgeBase(ctx context.Context,
 		return "", unreachable(interfaces.ErrKnowledgeBaseUnavailable)
 	}
 
+	// Knowledge base ids are small integers counted per environment, so a declared id usually
+	// exists elsewhere too, naming a different knowledge base. An id hit counts only when the
+	// declared name agrees; otherwise the name decides, as it would for a missing id.
 	if id := strings.TrimSpace(declared.ID); id != "" {
 		kb, err := cbs.kba.GetKnowledgeBase(ctx, id)
 		if err != nil {
 			return "", unreachable(err)
 		}
-		if kb != nil {
+		if kb != nil && (declared.Name == "" || kb.Name == declared.Name) {
 			return id, nil
 		}
 	}
