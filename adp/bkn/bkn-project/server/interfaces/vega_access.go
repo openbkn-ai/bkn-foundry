@@ -34,7 +34,10 @@ type VegaColumn struct {
 	// Description is the field's description from the catalog's semantic understanding, else
 	// the database comment.
 	Description string
-	Nullable    bool
+	// Comment is the database comment; privacy rules read it even when semantic understanding
+	// gave a description.
+	Comment  string
+	Nullable bool
 }
 
 type VegaIndex struct {

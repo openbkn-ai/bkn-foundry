@@ -118,6 +118,48 @@ func Test_DraftingFloor(t *testing.T) {
 			So(privacyKeyword(col("c1", "string", "联系人手机"), keywords), ShouldEqual, "手机")
 		})
 
+		Convey("A privacy keyword still matches inside one word, with digits, or joined to others\n", func() {
+			keywords := testSetting.PrivacyKeywords
+			for name, keyword := range map[string]string{
+				"birthday": "birth", "cellphone": "phone", "phone2": "phone", "email2": "email", "address1": "address",
+			} {
+				So(privacyKeyword(col(name, "string", ""), keywords), ShouldEqual, keyword)
+			}
+			// A multi-word keyword does not start inside a longer word.
+			So(privacyKeyword(col("materialplanid_number", "string", ""), keywords), ShouldBeEmpty)
+		})
+
+		Convey("The database comment is checked for personal data next to the semantic description\n", func() {
+			c := interfaces.VegaColumn{Name: "lxrsj", Type: "string", DisplayName: "Contact", Description: "Contact of the order", Comment: "联系人手机"}
+
+			So(privacyKeyword(c, testSetting.PrivacyKeywords), ShouldEqual, "手机")
+		})
+
+		Convey("An exact name match beats a suffix match of an earlier table\n", func() {
+			account := table("r_acc", "c1", "account", 0, []string{"account_id"}, col("account_id", "integer", ""))
+			sub := table("r_sub", "c1", "sub_account", 0, []string{"sub_account_id"}, col("sub_account_id", "integer", ""))
+			tx := table("r_tx", "c1", "transactions", 0, []string{"tx_id"}, col("tx_id", "integer", ""), col("sub_account_id", "integer", ""))
+			c := sampleCounter()
+			c.joins[joinKey{"r_tx", "sub_account_id"}] = [4]int64{100, 0, 0, 40}
+
+			items := draftOf(c, account, sub, tx)
+
+			So(relation(items, "transactions", "sub_account"), ShouldNotBeNil)
+			So(relation(items, "transactions", "account"), ShouldBeNil)
+		})
+
+		Convey("A failed inference leaves no key source, with the counts of the field it tried\n", func() {
+			po := table("r_po", "c1", "erp_purchase_order", 0, nil, col("id", "integer", ""), col("billno", "string", ""))
+			c := sampleCounter()
+			c.keys["r_po"] = [3]int64{300, 290, 0}
+
+			o := objectType(draftOf(c, po), "erp_purchase_order")
+
+			So(o.Key.Source, ShouldEqual, interfaces.DRAFT_KEY_NONE)
+			So(o.Key.Field, ShouldEqual, "id")
+			So(o.Key.Distinct, ShouldEqual, 290)
+		})
+
 		Convey("Names and descriptions from the catalog's semantic understanding come first\n", func() {
 			material := table("r_mat", "c1", "erp_material", 0, []string{"matnr"},
 				interfaces.VegaColumn{Name: "matnr", Type: "string", DisplayName: "物料编码", Description: "物料的唯一编码"})

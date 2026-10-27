@@ -277,7 +277,7 @@ func toTable(r *resource) *interfaces.VegaTable {
 		}
 		table.Columns = append(table.Columns, interfaces.VegaColumn{
 			Name: column.Name, DisplayName: d.displayName, Type: d.typ, Description: description,
-			Nullable: column.Nullable,
+			Comment: column.Description, Nullable: column.Nullable,
 		})
 	}
 	table.PrimaryKeys = meta.PrimaryKeys

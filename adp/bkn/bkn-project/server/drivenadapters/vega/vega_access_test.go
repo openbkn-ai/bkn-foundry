@@ -79,7 +79,7 @@ func Test_VegaAccess(t *testing.T) {
 				ID: "r1", CatalogID: "c1", Name: "orders", Description: "Sales orders",
 				SourceName: "orders", SourceSchema: "erp", Rows: 800, RowsCounted: true,
 				Columns: []interfaces.VegaColumn{
-					{Name: "order_id", Type: "string", Description: "Order number"},
+					{Name: "order_id", Type: "string", Description: "Order number", Comment: "Order number"},
 					{Name: "customer_id", Type: "integer", Nullable: true},
 				},
 				PrimaryKeys: []string{"order_id"},
@@ -101,8 +101,8 @@ func Test_VegaAccess(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(tables[0].Columns, ShouldResemble, []interfaces.VegaColumn{
-				{Name: "matnr", DisplayName: "Material code", Type: "string", Description: "Unique material code"},
-				{Name: "maktx", Type: "string", Description: "Short text"},
+				{Name: "matnr", DisplayName: "Material code", Type: "string", Description: "Unique material code", Comment: "MATNR"},
+				{Name: "maktx", Type: "string", Description: "Short text", Comment: "Short text"},
 			})
 		})
 

@@ -98,7 +98,9 @@ type DraftProperty struct {
 
 // DraftKeyEvidence records how the key was found and the full-table counts that check it.
 type DraftKeyEvidence struct {
-	Source   string `json:"source"`
+	Source string `json:"source"`
+	// Field is the field an inferred identity counted; it stays when none qualified.
+	Field    string `json:"field,omitempty"`
 	Computed bool   `json:"computed"`
 	Rows     int64  `json:"rows"`
 	Distinct int64  `json:"distinct"`

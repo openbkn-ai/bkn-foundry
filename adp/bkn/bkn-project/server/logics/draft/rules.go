@@ -131,26 +131,6 @@ func words(name string) []string {
 	return out
 }
 
-// containsWords reports whether want appears in have as consecutive words.
-func containsWords(have []string, want []string) bool {
-	if len(want) == 0 {
-		return false
-	}
-	for i := 0; i+len(want) <= len(have); i++ {
-		match := true
-		for j, w := range want {
-			if have[i+j] != w {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
-}
-
 // isASCII reports whether a keyword is written in Latin letters, which form words.
 func isASCII(s string) bool {
 	for _, r := range s {
@@ -161,23 +141,57 @@ func isASCII(s string) bool {
 	return true
 }
 
-// privacyKeyword returns the keyword a field's name or description matches, or "". A Latin
-// keyword matches whole words (id_number matches id_number, not materialplanid_number); a
-// Chinese one, which has no word breaks, matches as a substring.
+// wordMatches reports whether keyword words kw occur in a field's words: consecutive, the
+// inner ones whole, the first allowed to end a longer word (cellphone) and the last to begin
+// one (birthday, phone2). A one-word keyword may sit anywhere in a word that way, but a
+// longer keyword never starts inside a word: id_number does not match materialplanid_number.
+func wordMatches(have []string, kw []string) bool {
+	n := len(kw)
+	if n == 0 {
+		return false
+	}
+	for i := 0; i+n <= len(have); i++ {
+		match := true
+		for j, k := range kw {
+			w := have[i+j]
+			switch {
+			case n == 1:
+				match = strings.HasPrefix(w, k) || strings.HasSuffix(w, k)
+			case j == 0:
+				match = w == k
+			case j == n-1:
+				match = strings.HasPrefix(w, k)
+			default:
+				match = w == k
+			}
+			if !match {
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+// privacyKeyword returns the keyword a field's name, description or database comment matches,
+// or "". Latin keywords match by words (see wordMatches); Chinese ones, which have no word
+// breaks, match as substrings.
 func privacyKeyword(column interfaces.VegaColumn, keywords []string) string {
-	nameWords, descriptionWords := words(column.Name), words(column.Description)
-	text := strings.ToLower(column.Name + " " + column.Description)
+	texts := []string{column.Name, column.Description, column.Comment}
 	for _, keyword := range keywords {
 		if keyword == "" {
 			continue
 		}
-		if isASCII(keyword) {
-			k := words(keyword)
-			if containsWords(nameWords, k) || containsWords(descriptionWords, k) {
+		for _, text := range texts {
+			if isASCII(keyword) {
+				if wordMatches(words(text), words(keyword)) {
+					return keyword
+				}
+			} else if strings.Contains(strings.ToLower(text), strings.ToLower(keyword)) {
 				return keyword
 			}
-		} else if strings.Contains(text, strings.ToLower(keyword)) {
-			return keyword
 		}
 	}
 	return ""
