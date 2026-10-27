@@ -75,6 +75,12 @@ error_messages = {
         "detail": "The execution failed.",
         "solution": "Check the trace and retry with a new request ID if appropriate.",
     },
+    "BknAgent.MetricDesign.ProposalInvalid": {
+        "code": "BknAgent.MetricDesign.ProposalInvalid",
+        "description": "The metric design proposal failed validation.",
+        "detail": "The suggested metric changes are invalid. Review the field and reason, then retry.",
+        "solution": "Retry the request or adjust the metric description; report the run ID if it persists.",
+    },
     "BknAgent.Auth.AccountRequired": {
         "code": "BknAgent.Auth.AccountRequired",
         "description": "Caller identity is missing.",
