@@ -18,7 +18,7 @@ import (
 type counter interface {
 	keyStats(ctx context.Context, table *interfaces.VegaTable, field string) (rows, distinct, nulls int64, err error)
 	joinStats(ctx context.Context, source *interfaces.VegaTable, field string, target *interfaces.VegaTable,
-		key string) (rows, nulls, orphans int64, err error)
+		key string) (rows, nulls, orphans, distinct int64, err error)
 	codeValues(ctx context.Context, table *interfaces.VegaTable, code, name string, limit int64) ([]interfaces.DraftEnumValue, error)
 }
 
@@ -64,19 +64,20 @@ func (c *vegaCounter) keyStats(ctx context.Context, table *interfaces.VegaTable,
 }
 
 func (c *vegaCounter) joinStats(ctx context.Context, source *interfaces.VegaTable, field string,
-	target *interfaces.VegaTable, key string) (int64, int64, int64, error) {
+	target *interfaces.VegaTable, key string) (int64, int64, int64, int64, error) {
 	f, k := quote(field), quote(key)
 	// Joining the distinct keys keeps a non-unique target key from multiplying source rows.
 	row, err := c.one(ctx, fmt.Sprintf(
 		"SELECT COUNT(*) AS total, "+
 			"SUM(CASE WHEN s.%s IS NULL THEN 1 ELSE 0 END) AS nulls, "+
-			"SUM(CASE WHEN s.%s IS NOT NULL AND t.%s IS NULL THEN 1 ELSE 0 END) AS orphans "+
+			"SUM(CASE WHEN s.%s IS NOT NULL AND t.%s IS NULL THEN 1 ELSE 0 END) AS orphans, "+
+			"COUNT(DISTINCT s.%s) AS distinct_values "+
 			"FROM %s s LEFT JOIN (SELECT DISTINCT %s FROM %s) t ON s.%s = t.%s",
-		f, f, k, ref(source), k, ref(target), f, k))
+		f, f, k, f, ref(source), k, ref(target), f, k))
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
-	return number(row["total"]), number(row["nulls"]), number(row["orphans"]), nil
+	return number(row["total"]), number(row["nulls"]), number(row["orphans"]), number(row["distinct_values"]), nil
 }
 
 func (c *vegaCounter) codeValues(ctx context.Context, table *interfaces.VegaTable, code string,

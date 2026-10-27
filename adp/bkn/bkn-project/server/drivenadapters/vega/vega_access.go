@@ -61,7 +61,9 @@ type resource struct {
 	// database's own.
 	SchemaDefinition []struct {
 		Name         string `json:"name"`
+		DisplayName  string `json:"display_name"`
 		Type         string `json:"type"`
+		Description  string `json:"description"`
 		OriginalName string `json:"original_name"`
 	} `json:"schema_definition"`
 }
@@ -252,17 +254,29 @@ func toTable(r *resource) *interfaces.VegaTable {
 	if table.Description == "" {
 		table.Description = meta.Description
 	}
-	vegaTypes := map[string]string{}
+	// schema_definition carries vega's types and what semantic understanding wrote back:
+	// a display name other than the field's own name, and a description.
+	type defined struct{ typ, displayName, description string }
+	definitions := map[string]defined{}
 	for _, property := range r.SchemaDefinition {
 		name := property.OriginalName
 		if name == "" {
 			name = property.Name
 		}
-		vegaTypes[name] = property.Type
+		d := defined{typ: property.Type, description: property.Description}
+		if property.DisplayName != name && property.DisplayName != property.Name {
+			d.displayName = property.DisplayName
+		}
+		definitions[name] = d
 	}
 	for _, column := range meta.Columns {
+		d := definitions[column.Name]
+		description := d.description
+		if description == "" {
+			description = column.Description
+		}
 		table.Columns = append(table.Columns, interfaces.VegaColumn{
-			Name: column.Name, Type: vegaTypes[column.Name], Description: column.Description,
+			Name: column.Name, DisplayName: d.displayName, Type: d.typ, Description: description,
 			Nullable: column.Nullable,
 		})
 	}

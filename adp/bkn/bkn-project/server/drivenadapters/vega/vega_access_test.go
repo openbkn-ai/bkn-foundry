@@ -88,6 +88,24 @@ func Test_VegaAccess(t *testing.T) {
 			})
 		})
 
+		Convey("GetTables takes the names and descriptions semantic understanding wrote back\n", func() {
+			respBody = `{"entries":[{"id":"r1","name":"erp_material",
+				"schema_definition":[
+					{"name":"matnr","display_name":"Material code","type":"string","description":"Unique material code","original_name":"matnr"},
+					{"name":"maktx","display_name":"maktx","type":"string","description":"","original_name":"maktx"}],
+				"source_metadata":{"name":"erp_material","columns":[
+					{"name":"matnr","type":"varchar(18)","description":"MATNR"},
+					{"name":"maktx","type":"varchar(40)","description":"Short text"}]}}]}`
+
+			tables, err := va.GetTables(ctx, account, []string{"r1"})
+
+			So(err, ShouldBeNil)
+			So(tables[0].Columns, ShouldResemble, []interfaces.VegaColumn{
+				{Name: "matnr", DisplayName: "Material code", Type: "string", Description: "Unique material code"},
+				{Name: "maktx", Type: "string", Description: "Short text"},
+			})
+		})
+
 		Convey("GetTables falls back to the estimated row count, and asks nothing for no ids\n", func() {
 			respBody = `{"entries":[{"id":"r1","estimated_row_count":42}]}`
 

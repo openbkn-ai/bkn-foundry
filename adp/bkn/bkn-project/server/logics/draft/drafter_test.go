@@ -28,8 +28,8 @@ type joinKey struct{ source, field string }
 
 // fakeCounter answers counts from tables of numbers instead of SQL.
 type fakeCounter struct {
-	keys   map[string][3]int64 // table id -> rows, distinct, nulls
-	joins  map[joinKey][3]int64
+	keys   map[string][3]int64  // table id -> rows, distinct, nulls
+	joins  map[joinKey][4]int64 // rows, nulls, orphans, distinct source values
 	codes  map[string][]interfaces.DraftEnumValue
 	failed map[string]bool // table id or table.field whose queries fail
 }
@@ -46,12 +46,12 @@ func (f *fakeCounter) keyStats(_ context.Context, table *interfaces.VegaTable, _
 }
 
 func (f *fakeCounter) joinStats(_ context.Context, source *interfaces.VegaTable, field string,
-	_ *interfaces.VegaTable, _ string) (int64, int64, int64, error) {
+	_ *interfaces.VegaTable, _ string) (int64, int64, int64, int64, error) {
 	if f.failed[source.ID+"."+field] {
-		return 0, 0, 0, errors.New("timeout")
+		return 0, 0, 0, 0, errors.New("timeout")
 	}
 	s := f.joins[joinKey{source.ID, field}]
-	return s[0], s[1], s[2], nil
+	return s[0], s[1], s[2], s[3], nil
 }
 
 func (f *fakeCounter) codeValues(_ context.Context, table *interfaces.VegaTable, _ string, _ string,
@@ -120,10 +120,10 @@ func sample() []*interfaces.VegaTable {
 func sampleCounter() *fakeCounter {
 	return &fakeCounter{
 		keys: map[string][3]int64{"r_customers": {60, 60, 0}, "r_orders": {800, 800, 0}},
-		joins: map[joinKey][3]int64{
-			{"r_orders", "customer_id"}:    {800, 0, 4}, // 796 / 800 = 99.5%
-			{"r_orders", "salesperson_id"}: {800, 0, 80},
-			{"r_orders", "warehouse_id"}:   {800, 100, 400},
+		joins: map[joinKey][4]int64{
+			{"r_orders", "customer_id"}:    {800, 0, 4, 60}, // 796 / 800 = 99.5%
+			{"r_orders", "salesperson_id"}: {800, 0, 80, 40},
+			{"r_orders", "warehouse_id"}:   {800, 100, 400, 30},
 		},
 		codes: map[string][]interfaces.DraftEnumValue{
 			"r_levels": {{Value: "T1", Display: "Tier 1"}, {Value: "T2", Display: "Tier 2"}, {Value: "T3", Display: "Tier 3"}},
@@ -239,13 +239,13 @@ func Test_Drafter(t *testing.T) {
 			So(r.Verification, ShouldEqual, "confirmed")
 			So(r.Cardinality, ShouldEqual, interfaces.DRAFT_CARDINALITY_MANY_TO_ONE)
 			So(r.Mapping, ShouldResemble, []interfaces.DraftFieldMapping{{SourceProperty: "customer_id", TargetProperty: "customer_id"}})
-			So(r.Evidence, ShouldResemble, interfaces.DraftJoinEvidence{Computed: true, Rows: 800, Hits: 796, Orphans: 4, HitRate: 0.995})
+			So(r.Evidence, ShouldResemble, interfaces.DraftJoinEvidence{Computed: true, Rows: 800, Hits: 796, Orphans: 4, HitRate: 0.995, SourceDistinct: 60})
 			So(r.Adopted, ShouldBeTrue)
 		})
 
 		Convey("A foreign key below the suggest rate is kept, not adopted\n", func() {
 			c := sampleCounter()
-			c.joins[joinKey{"r_orders", "customer_id"}] = [3]int64{800, 0, 400}
+			c.joins[joinKey{"r_orders", "customer_id"}] = [4]int64{800, 0, 400, 60}
 			r := relation(run(c), "orders", "customers")
 
 			So(r.Evidence.HitRate, ShouldEqual, 0.5)
@@ -273,13 +273,16 @@ func Test_Drafter(t *testing.T) {
 			So(findProperty(objectType(items, "orders"), "code").ValueTypeID, ShouldBeEmpty)
 		})
 
-		Convey("A table of another catalog is neither a foreign key target nor an uncounted inference\n", func() {
-			items := run(sampleCounter())
+		Convey("An inference to another catalog is kept unverified, not dropped\n", func() {
+			r := relation(run(sampleCounter()), "invoices", "customers")
 
-			// invoices (c2) declares a foreign key to customers and names a field for its key, but
-			// customers is in c1: the key resolves only within c2, and vega-backend cannot count
-			// across catalogs, so the inference has no evidence and is not proposed.
-			So(relation(items, "invoices", "customers"), ShouldBeNil)
+			// invoices (c2) names a field for customers' key in c1; vega-backend cannot count
+			// across catalogs, so the inference stays as an unverified proposal.
+			So(r, ShouldNotBeNil)
+			So(r.Origin, ShouldEqual, interfaces.DRAFT_ORIGIN_NAME_MATCH)
+			So(r.Evidence.Computed, ShouldBeFalse)
+			So(r.Evidence.Reason, ShouldEqual, reasonCrossCatalog)
+			So(r.Adopted, ShouldBeFalse)
 		})
 
 		Convey("A failed count is recorded on its item and drafting goes on\n", func() {
@@ -313,7 +316,7 @@ func Test_Drafter(t *testing.T) {
 			orders.SourceSchema = "public"
 			orders.ForeignKeys = []interfaces.VegaForeignKey{fk("customer_ref", "public.customers", "id")}
 			c := sampleCounter()
-			c.joins[joinKey{"r_o", "customer_ref"}] = [3]int64{10, 0, 0}
+			c.joins[joinKey{"r_o", "customer_ref"}] = [4]int64{10, 0, 0, 10}
 
 			items, err := newDrafter(testSetting, c).draft(ctx, []*interfaces.VegaTable{customers, orders}, nil)
 
@@ -339,7 +342,7 @@ func Test_Drafter(t *testing.T) {
 			orders1.ForeignKeys = []interfaces.VegaForeignKey{fk("cust", "customers", "id")}
 			customers2 := table("r_c2", "c2", "customers", 0, []string{"id"}, col("id", "string", ""))
 			c := sampleCounter()
-			c.joins[joinKey{"r_o1", "cust"}] = [3]int64{10, 0, 0}
+			c.joins[joinKey{"r_o1", "cust"}] = [4]int64{10, 0, 0, 10}
 
 			items, err := newDrafter(testSetting, c).draft(ctx,
 				[]*interfaces.VegaTable{customers1, orders1, customers2}, nil)

@@ -9,10 +9,15 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
+
+// minInferredDistinct is the fewest distinct values a field must have for a relation inferred
+// from its name to be adopted: a status of 1..5 hits any auto-increment id.
+const minInferredDistinct = 10
 
 // Reasons a count was not computed.
 const (
@@ -27,11 +32,13 @@ type drafter struct {
 	setting common.DraftSetting
 	counter counter
 
-	kinds        map[string]string
-	objectTypes  map[string]*interfaces.DraftObjectType // by table id
-	fields       map[string]map[string]string           // table id -> field -> property name
-	valueTypes   map[string]*interfaces.DraftValueType  // by code table id
-	bySourceName map[string]*interfaces.VegaTable       // catalog|schema.name -> table
+	kinds       map[string]string
+	objectTypes map[string]*interfaces.DraftObjectType // by table id
+	fields      map[string]map[string]string           // table id -> field -> property name
+	valueTypes  map[string]*interfaces.DraftValueType  // by code table id
+	// keys holds each entity table's key fields: declared, or inferred once counts confirm them.
+	keys         map[string][]string
+	bySourceName map[string]*interfaces.VegaTable // catalog|schema.name -> table
 	items        interfaces.DraftItems
 }
 
@@ -43,6 +50,7 @@ func newDrafter(setting common.DraftSetting, c counter) *drafter {
 		objectTypes:  map[string]*interfaces.DraftObjectType{},
 		fields:       map[string]map[string]string{},
 		valueTypes:   map[string]*interfaces.DraftValueType{},
+		keys:         map[string][]string{},
 		bySourceName: map[string]*interfaces.VegaTable{},
 		items: interfaces.DraftItems{
 			ObjectTypes:   []*interfaces.DraftObjectType{},
@@ -159,7 +167,7 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 		fields[c.Name] = name
 		objectType.Properties = append(objectType.Properties, &interfaces.DraftProperty{
 			Name:               name,
-			DisplayName:        displayName(c.Description, c.Name),
+			DisplayName:        propertyDisplayName(c),
 			Type:               bknType,
 			Description:        c.Description,
 			MappedField:        c.Name,
@@ -169,6 +177,10 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 	}
 
 	objectType.Key = interfaces.DraftKeyEvidence{Source: source}
+	if source == interfaces.DRAFT_KEY_NONE && len(identityCandidates(table)) > 0 {
+		// An identity is inferred later, once a candidate counts unique and non-null.
+		objectType.Key.Source = interfaces.DRAFT_KEY_INFERRED
+	}
 	for _, field := range key {
 		name, ok := fields[field]
 		c, _ := column(table, field)
@@ -181,11 +193,23 @@ func (d *drafter) addObjectType(table *interfaces.VegaTable, typeIDs map[string]
 	}
 	objectType.NeedsIdentity = len(objectType.PrimaryKeys) == 0
 	objectType.Adopted = !objectType.NeedsIdentity
+	if !objectType.NeedsIdentity {
+		d.keys[table.ID] = key
+	}
 	objectType.DisplayKey = displayKey(table, fields, objectType.PrimaryKeys, d.setting.NameFieldKeywords)
 
 	d.objectTypes[table.ID] = objectType
 	d.fields[table.ID] = fields
 	d.items.ObjectTypes = append(d.items.ObjectTypes, objectType)
+}
+
+// propertyDisplayName is the business name semantic understanding gave the field, else the
+// first clause of its description.
+func propertyDisplayName(c interfaces.VegaColumn) string {
+	if c.DisplayName != "" && utf8.RuneCountInString(c.DisplayName) <= maxDisplayNameRunes {
+		return c.DisplayName
+	}
+	return displayName(c.Description, c.Name)
 }
 
 // displayKey is the first mapped name field, else the first key property.
@@ -203,10 +227,14 @@ func displayKey(table *interfaces.VegaTable, fields map[string]string, primaryKe
 }
 
 // checkKey counts the key over the full table: a key with duplicates or nulls needs a person to
-// decide the identity.
+// decide the identity. A table without a declared key takes the first identity candidate that
+// counts unique and non-null.
 func (d *drafter) checkKey(ctx context.Context, table *interfaces.VegaTable) error {
 	objectType := d.objectTypes[table.ID]
-	key, _ := tableKey(table)
+	if objectType.Key.Source == interfaces.DRAFT_KEY_INFERRED {
+		return d.inferKey(ctx, table, objectType)
+	}
+	key := d.keys[table.ID]
 	switch {
 	case objectType.NeedsIdentity:
 		return nil
@@ -225,6 +253,39 @@ func (d *drafter) checkKey(ctx context.Context, table *interfaces.VegaTable) err
 	objectType.Key.Computed, objectType.Key.Rows, objectType.Key.Distinct, objectType.Key.Nulls = true, rows, distinct, nulls
 	if nulls > 0 || distinct < rows-nulls {
 		objectType.NeedsIdentity, objectType.Adopted = true, false
+		delete(d.keys, table.ID)
+	}
+	return nil
+}
+
+// inferKey tries the identity candidates in order; the counts of the last one tried stay as
+// the evidence when none qualifies.
+func (d *drafter) inferKey(ctx context.Context, table *interfaces.VegaTable, objectType *interfaces.DraftObjectType) error {
+	for _, field := range identityCandidates(table) {
+		property, ok := d.fields[table.ID][field]
+		if !ok {
+			continue
+		}
+		rows, distinct, nulls, err := d.counter.keyStats(ctx, table, field)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			objectType.Key.Reason = fmt.Sprintf("%s: %v", reasonQueryFailed, err)
+			continue
+		}
+		objectType.Key = interfaces.DraftKeyEvidence{
+			Source: interfaces.DRAFT_KEY_INFERRED, Computed: true, Rows: rows, Distinct: distinct, Nulls: nulls,
+		}
+		if rows > 0 && nulls == 0 && distinct == rows {
+			objectType.PrimaryKeys = []string{property}
+			objectType.NeedsIdentity, objectType.Adopted = false, true
+			if objectType.DisplayKey == "" {
+				objectType.DisplayKey = property
+			}
+			d.keys[table.ID] = []string{field}
+			return nil
+		}
 	}
 	return nil
 }
@@ -290,9 +351,8 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 		}
 	}
 
-	key, _ := tableKey(table)
 	inKey := map[string]bool{}
-	for _, field := range key {
+	for _, field := range d.keys[table.ID] {
 		inKey[field] = true
 	}
 	for _, c := range table.Columns {
@@ -303,7 +363,10 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 			if other.ID == table.ID || d.kinds[other.ID] == tableKindLinkTable {
 				continue
 			}
-			otherKey, _ := tableKey(other)
+			otherKey := d.keys[other.ID]
+			if d.kinds[other.ID] == tableKindCodeTable {
+				otherKey, _ = tableKey(other)
+			}
 			if len(otherKey) != 1 || !nameMatches(c.Name, other, otherKey[0]) {
 				continue
 			}
@@ -324,10 +387,15 @@ func (d *drafter) addRelations(ctx context.Context, table *interfaces.VegaTable,
 var genericKeys = map[string]bool{"id": true, "code": true, "key": true, "no": true, "uuid": true, "name": true}
 
 // nameMatches reports whether a field is named for another table's key: <table>_id,
-// <table>_<key>, or the key's own name when that name is not a generic one.
+// <table>_<key>, the key's own name, or a role in front of it (parent_lot_id for lot_id,
+// bom_material_code for material_code). A generic key name (id, code) only matches with the
+// table's name in front.
 func nameMatches(field string, other *interfaces.VegaTable, key string) bool {
 	f, k, table := apiName(field), apiName(key), apiName(other.Name)
-	return f == table+"_id" || f == table+"_"+k || (f == k && !genericKeys[k])
+	if f == table+"_id" || f == table+"_"+k || strings.HasSuffix(f, "_"+table+"_id") {
+		return true
+	}
+	return !genericKeys[k] && (f == k || strings.HasSuffix(f, "_"+k))
 }
 
 // refer drafts what a field referring to another table's key becomes: an enum when the other
@@ -374,7 +442,7 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 	if table.CatalogID != target.CatalogID {
 		relation.Evidence.Reason = reasonCrossCatalog
 	} else {
-		rows, nulls, orphans, err := d.counter.joinStats(ctx, table, field, target, key)
+		rows, nulls, orphans, distinct, err := d.counter.joinStats(ctx, table, field, target, key)
 		switch {
 		case err != nil && ctx.Err() != nil:
 			return ctx.Err()
@@ -382,6 +450,7 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 			relation.Evidence.Reason = fmt.Sprintf("%s: %v", reasonQueryFailed, err)
 		default:
 			relation.Evidence = joinEvidence(rows, nulls, orphans)
+			relation.Evidence.SourceDistinct = distinct
 		}
 	}
 
@@ -389,11 +458,15 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 	switch {
 	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY:
 		relation.Adopted = computed && rate >= d.setting.SuggestHitRate
-	case !computed || rate < d.setting.SuggestHitRate:
-		// An inferred relation without counts that back it is not proposed.
+	case !computed:
+		// Not counted (another catalog, a failed query): proposed for a person to check, never dropped.
+		relation.Adopted = false
+	case rate < d.setting.SuggestHitRate:
+		// Counted and mostly orphans: an inference the data refutes is not proposed.
 		return nil
 	default:
-		relation.Adopted = rate >= d.setting.AdoptHitRate
+		// A field of a few values hits any key by chance, so it is proposed, not adopted.
+		relation.Adopted = rate >= d.setting.AdoptHitRate && relation.Evidence.SourceDistinct >= minInferredDistinct
 	}
 	d.items.RelationTypes = append(d.items.RelationTypes, relation)
 	return nil
