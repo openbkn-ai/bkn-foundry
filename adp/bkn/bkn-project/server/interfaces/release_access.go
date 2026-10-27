@@ -16,4 +16,10 @@ type ReleaseAccess interface {
 	GetReleaseByNetworkID(ctx context.Context, networkID string) (*Release, bool, error)
 	// CreateRelease inserts a release. A second release of the same network fails on the unique key.
 	CreateRelease(ctx context.Context, release *Release) error
+	// GetLatestSwitch returns the lineage's latest switch, and false when there is none.
+	GetLatestSwitch(ctx context.Context, lineageID string) (*Switch, bool, error)
+	// RecordSwitch inserts a switch and, in the same transaction, archives the release of the
+	// network switched away from and sets the release switched to live. A network no release
+	// created, the lineage's base network, has no state to set.
+	RecordSwitch(ctx context.Context, sw *Switch) error
 }

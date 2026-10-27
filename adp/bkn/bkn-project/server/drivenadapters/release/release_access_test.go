@@ -137,5 +137,70 @@ func Test_ReleaseAccess(t *testing.T) {
 
 			So(err, ShouldNotBeNil)
 		})
+
+		Convey("GetLatestSwitch reads the newest switch of the lineage\n", func() {
+			smock.ExpectQuery(regexp.QuoteMeta(
+				"SELECT f_id, f_lineage_id, f_from_network_id, f_to_network_id, f_operator, f_operator_type, f_schedules, f_create_time " +
+					"FROM t_bkn_project_switch WHERE f_lineage_id = ? ORDER BY f_create_time DESC, f_id DESC LIMIT 1")).
+				WithArgs("orders").
+				WillReturnRows(sqlmock.NewRows(switchColumns).AddRow("s2", "orders", "orders", "orders_v1_0_0", "u1", "user",
+					`[{"from_id":"a","to_id":"b","name":"nightly"}]`, int64(9)))
+
+			sw, exist, err := ra.GetLatestSwitch(ctx, "orders")
+
+			So(err, ShouldBeNil)
+			So(exist, ShouldBeTrue)
+			So(sw, ShouldResemble, &interfaces.Switch{
+				ID: "s2", LineageID: "orders", FromNetworkID: "orders", ToNetworkID: "orders_v1_0_0",
+				Operator:   interfaces.AccountInfo{ID: "u1", Type: "user"},
+				Schedules:  []interfaces.SwitchedSchedule{{FromID: "a", ToID: "b", Name: "nightly"}},
+				CreateTime: 9,
+			})
+		})
+
+		Convey("GetLatestSwitch reports a lineage never switched\n", func() {
+			smock.ExpectQuery("FROM t_bkn_project_switch").WillReturnRows(sqlmock.NewRows(switchColumns))
+
+			sw, exist, err := ra.GetLatestSwitch(ctx, "orders")
+
+			So(err, ShouldBeNil)
+			So(exist, ShouldBeFalse)
+			So(sw, ShouldBeNil)
+		})
+
+		Convey("RecordSwitch inserts the switch and moves the live state in one transaction\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(regexp.QuoteMeta(
+				"INSERT INTO t_bkn_project_switch (f_id,f_lineage_id,f_from_network_id,f_to_network_id,f_operator,f_operator_type,f_schedules,f_create_time) VALUES (?,?,?,?,?,?,?,?)")).
+				WithArgs("s1", "orders", "orders_v1_0_0", "orders_v1_1_0", "u1", "user", "[]", int64(5)).
+				WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_release SET f_state = ?, f_update_time = ? WHERE f_network_id = ?")).
+				WithArgs("archived", int64(5), "orders_v1_0_0").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_release SET f_state = ?, f_update_time = ? WHERE f_network_id = ?")).
+				WithArgs("live", int64(5), "orders_v1_1_0").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+
+			err := ra.RecordSwitch(ctx, &interfaces.Switch{
+				ID: "s1", LineageID: "orders", FromNetworkID: "orders_v1_0_0", ToNetworkID: "orders_v1_1_0",
+				Operator: interfaces.AccountInfo{ID: "u1", Type: "user"}, CreateTime: 5,
+			})
+
+			So(err, ShouldBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("RecordSwitch rolls back when a state update fails\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec("INSERT INTO t_bkn_project_switch").WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectExec("UPDATE t_bkn_project_release").WillReturnError(errors.New("lock wait timeout"))
+			smock.ExpectRollback()
+
+			err := ra.RecordSwitch(ctx, &interfaces.Switch{ID: "s1", LineageID: "orders", FromNetworkID: "a", ToNetworkID: "b"})
+
+			So(err, ShouldNotBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
 	})
 }
