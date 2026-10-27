@@ -53,6 +53,16 @@ func TestGetDocumentBoundedLimitsAllResponses(t *testing.T) {
 				if size > 16 && !errors.Is(err, ErrResponseReadBudget) {
 					t.Fatalf("expected budget error: %v", err)
 				}
+
+				if size > 16 {
+					var upstream *StatusError
+					if got := errors.As(err, &upstream); got != (status != 200) {
+						t.Fatalf("oversized upstream status lost: status=%d err=%v", status, err)
+					}
+					if upstream != nil && (upstream.StatusCode != status || upstream.Body != "") {
+						t.Fatalf("unsafe or incorrect upstream status: %+v", upstream)
+					}
+				}
 				if size == 16 && errors.Is(err, ErrResponseReadBudget) {
 					t.Fatalf("exact size is within budget")
 				}

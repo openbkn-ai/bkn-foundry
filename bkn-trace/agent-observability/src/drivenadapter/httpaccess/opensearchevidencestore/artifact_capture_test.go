@@ -91,6 +91,9 @@ func TestReadArtifactForCaptureBudgetMissingScopeAndIdentity(t *testing.T) {
 				return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.raw)), Header: make(http.Header)}, nil
 			}), "evidence")
 			r, e := s.ReadArtifactForCapture(context.Background(), "artifact_capture", tc.scope, tc.budget)
+			if got, want := errors.Is(e, iartifactstore.ErrCaptureContentReadBudget), tc.name == "over"; got != want {
+				t.Fatalf("content budget marker=%v want=%v err=%v", got, want, e)
+			}
 			wantRead := int64(len(tc.raw))
 			if wantRead > tc.budget+1 {
 				wantRead = tc.budget + 1
@@ -106,9 +109,13 @@ func TestReadArtifactForCaptureBudgetMissingScopeAndIdentity(t *testing.T) {
 					t.Fatal(e)
 				}
 			} else if tc.wantErr != nil {
-				if tc.name == "scope" && !r.Exists {t.Fatal("inaccessible content must be distinguished from an absent document")}
- if tc.name == "missing" && r.Exists {t.Fatal("404 must be an authoritative absence")}
- if !errors.Is(e, tc.wantErr) {
+				if tc.name == "scope" && !r.Exists {
+					t.Fatal("inaccessible content must be distinguished from an absent document")
+				}
+				if tc.name == "missing" && r.Exists {
+					t.Fatal("404 must be an authoritative absence")
+				}
+				if !errors.Is(e, tc.wantErr) {
 					t.Fatalf("err=%v", e)
 				}
 			} else if e == nil {

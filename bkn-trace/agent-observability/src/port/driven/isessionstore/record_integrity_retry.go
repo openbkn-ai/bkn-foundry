@@ -43,6 +43,10 @@ type RecordIntegrityRetryStore interface {
 	GetRecordIntegrityRetry(context.Context, string, uint64) (RecordIntegrityRetry, bool, error)
 }
 
+// RecordIntegrityBudgetExceeded is a diagnostic stop, never a missing/complete
+// verdict. Automatic work may resume only for a new source generation.
+const RecordIntegrityBudgetExceeded = "inspection_budget_exceeded"
+
 func RecordIntegrityBackoff(attempt int) time.Duration {
 	d := 30 * time.Second
 	for i := 1; i < attempt && d < 5*time.Minute; i++ {
@@ -55,7 +59,7 @@ func RecordIntegrityBackoff(attempt int) time.Duration {
 }
 func ValidRecordIntegrityRetryReason(reason string) bool {
 	switch reason {
-	case "source_changed", "inspection_failed", "snapshot_unavailable", "persistence_failed", "attempt_timeout", "attempt_canceled", "lease_expired", "attempts_exhausted", "retry_deadline_exceeded":
+	case RecordIntegrityBudgetExceeded, "source_changed", "inspection_failed", "snapshot_unavailable", "persistence_failed", "attempt_timeout", "attempt_canceled", "lease_expired", "attempts_exhausted", "retry_deadline_exceeded":
 		return true
 	}
 	return false
@@ -92,6 +96,9 @@ func RecordIntegrityRetryDue(r RecordIntegrityRetry, now time.Time) bool {
 	return false
 }
 func RecordIntegrityExhaustion(r RecordIntegrityRetry, now time.Time) string {
+	if r.LastFailureReason == RecordIntegrityBudgetExceeded {
+		return RecordIntegrityBudgetExceeded
+	}
 	if !now.Before(r.FirstAttemptAt.Add(RecordIntegrityRetryDeadline)) {
 		return "retry_deadline_exceeded"
 	}

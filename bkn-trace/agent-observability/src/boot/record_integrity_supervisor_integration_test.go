@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	sqlstore "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/dbaccess/mariadb/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
@@ -28,12 +29,16 @@ import (
 // persisted history, source invalidation and verdict CAS use real MariaDB.
 type retryInspectionProbe struct {
 	*sqlstore.Store
-	fail  bool
-	reads int
+	failure error
+	fail    bool
+	reads   int
 }
 
 func (p *retryInspectionProbe) ReadEvidenceSnapshot(ctx context.Context, id string) (sessionvo.EvidenceSnapshot, bool, error) {
 	p.reads++
+	if p.failure != nil {
+		return sessionvo.EvidenceSnapshot{}, false, p.failure
+	}
 	if p.fail {
 		return sessionvo.EvidenceSnapshot{}, false, errors.New("synthetic inspection dependency unavailable")
 	}
@@ -139,5 +144,83 @@ func TestRecordIntegritySupervisorDurableState(t *testing.T) {
 	if err != nil || readErr != nil || !found || old.Status != isessionstore.RecordIntegritySucceeded || old.Attempts != 2 || current.Status != isessionstore.RecordIntegritySucceeded || current.Attempts != 1 {
 		t.Fatalf("generation history: old=%+v new=%+v err=%v/%v", old, current, err, readErr)
 	}
+	// Fixed inspection budgets stop once; a restarted worker must not requeue
+	// that generation or turn the unknown result into a saved verdict.
+	if err = store.InvalidateRecordIntegrity(ctx, id, owner); err != nil {
+		t.Fatal(err)
+	}
+	restarted.failure = fmt.Errorf("bounded artifact read: %w", iartifactstore.ErrCaptureContentReadBudget)
+	if err = run(restarted); !errors.Is(err, evidencesvc.ErrRecordIntegrityInspectionDeferred) {
+		t.Fatalf("budget inspection error: %v", err)
+	}
+	budgetVersion := version + 2
+	state, found, err = store.GetRecordIntegrityRetry(ctx, id, budgetVersion)
+	if err != nil || !found || state.Status != isessionstore.RecordIntegrityExhausted || state.Attempts != 1 || state.Reason != isessionstore.RecordIntegrityBudgetExceeded || state.LastFailureReason != isessionstore.RecordIntegrityBudgetExceeded {
+		t.Fatalf("budget state=%+v err=%v", state, err)
+	}
+	if err = store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error { recovered, found = tx.PeekInteraction(id); return nil }); err != nil || !found || recovered.StoredRecordIntegrity != nil {
+		t.Fatalf("budget verdict must remain unknown: %+v %v", recovered.StoredRecordIntegrity, err)
+	}
+	afterBudget := &retryInspectionProbe{Store: sqlstore.New(db), failure: iartifactstore.ErrCaptureContentReadBudget}
+	if err = run(afterBudget); err != nil || afterBudget.reads != 0 {
+		t.Fatalf("restart retried fixed budget: reads=%d err=%v", afterBudget.reads, err)
+	}
+	if err = store.InvalidateRecordIntegrity(ctx, id, owner); err != nil {
+		t.Fatal(err)
+	}
+	afterBudget.failure = nil
+	if err = run(afterBudget); err != nil || afterBudget.reads != 1 {
+		t.Fatalf("new generation did not resume: reads=%d err=%v", afterBudget.reads, err)
+	}
+	current, found, err = store.GetRecordIntegrityRetry(ctx, id, budgetVersion+1)
+	if err != nil || !found || current.Status != isessionstore.RecordIntegritySucceeded || current.Attempts != 1 {
+		t.Fatalf("budget recovery=%+v err=%v", current, err)
+	}
+
+	// Explicit recovery saves a genuinely rechecked verdict, with a CAS, without
+	// deleting the exhausted generation or changing business source versions.
+	if err = store.InvalidateRecordIntegrity(ctx, id, owner); err != nil {
+		t.Fatal(err)
+	}
+	recheckVersion := budgetVersion + 2
+	claim, won, err := store.ClaimRecordIntegrityRetry(ctx, id, recheckVersion)
+	if err != nil || !won {
+		t.Fatalf("recheck fixture claim: %v", err)
+	}
+	if ok, err := store.FinishRecordIntegrityRetry(ctx, claim, nil, isessionstore.RecordIntegrityBudgetExceeded); err != nil || !ok {
+		t.Fatalf("recheck fixture exhaustion: %v", err)
+	}
+	verdict := sessionvo.StoredRecordIntegrity{SourceVersion: recheckVersion, Applicable: false}
+	stale := verdict
+	stale.SourceVersion--
+	if ok, err := store.SaveRecheckedRecordIntegrity(ctx, id, stale); err != nil || ok {
+		t.Fatalf("stale maintenance CAS accepted: %v", err)
+	}
+
+	// If diagnostic completion fails, the verdict must roll back with it.
+	trigger := fmt.Sprintf("CREATE TRIGGER integrity_recheck_failure BEFORE UPDATE ON bkn_trace_record_integrity_retries FOR EACH ROW BEGIN IF OLD.interaction_id='%s' AND NEW.retry_status='succeeded' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic completion failure'; END IF; END", id)
+	if _, err = db.ExecContext(ctx, trigger); err != nil {
+		t.Fatal(err)
+	}
+	ok, recheckErr := store.SaveRecheckedRecordIntegrity(ctx, id, verdict)
+	_, dropErr := db.ExecContext(ctx, "DROP TRIGGER integrity_recheck_failure")
+	if recheckErr == nil || ok || dropErr != nil {
+		t.Fatalf("completion failure not atomic: ok=%v err=%v drop=%v", ok, recheckErr, dropErr)
+	}
+	var partial int
+	if err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM bkn_trace_interactions WHERE interaction_id=? AND record_integrity_json IS NOT NULL", id).Scan(&partial); err != nil || partial != 0 {
+		t.Fatalf("partial verdict leaked: %d %v", partial, err)
+	}
+	if ok, err := store.SaveRecheckedRecordIntegrity(ctx, id, verdict); err != nil || !ok {
+		t.Fatalf("maintenance verdict not saved: %v", err)
+	}
+	state, found, err = store.GetRecordIntegrityRetry(ctx, id, recheckVersion)
+	if err != nil || !found || state.Status != isessionstore.RecordIntegritySucceeded || state.Attempts != 1 || state.LastFailureReason != isessionstore.RecordIntegrityBudgetExceeded {
+		t.Fatalf("recovery lost history: %+v %v", state, err)
+	}
+	if ok, err := store.SaveRecheckedRecordIntegrity(ctx, id, verdict); err != nil || ok {
+		t.Fatalf("maintenance overwrote existing verdict: %v", err)
+	}
+
 	t.Log("supervisor → MariaDB: failure persisted; restart made 0 premature inspections; retry succeeded; source requeue retained old generation")
 }
