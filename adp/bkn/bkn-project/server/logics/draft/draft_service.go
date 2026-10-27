@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -97,6 +98,17 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	if len(entry.CatalogIDs) == 0 {
 		span.SetStatus(codes.Error, "No catalogs")
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NoCatalogs)
+	}
+	// vega-backend lists no tables for a catalog that is gone, which would draft an empty ontology.
+	missing, err := s.va.MissingCatalogs(ctx, caller, entry.CatalogIDs)
+	if err != nil {
+		span.SetStatus(codes.Error, "Check catalogs failed")
+		return nil, internalError(ctx, "Check catalogs failed", err)
+	}
+	if len(missing) > 0 {
+		span.SetStatus(codes.Error, "Catalog missing")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_CatalogMissing).
+			WithErrorDetails(strings.Join(missing, ", "))
 	}
 
 	now := time.Now().UnixMilli()

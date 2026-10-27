@@ -6,6 +6,7 @@ package capability_binding
 
 import (
 	"context"
+	"errors"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -48,6 +49,7 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 	boxBindings := map[string][]*interfaces.CapabilityBinding{}
 	skillBindings := map[string][]*interfaces.CapabilityBinding{}
 	mcpBindings := map[string][]*interfaces.CapabilityBinding{}
+	kbBindings := map[string][]*interfaces.CapabilityBinding{}
 	for _, binding := range bindings {
 		switch binding.CapabilityType {
 		case interfaces.CAPABILITY_TYPE_FUNCTION:
@@ -56,6 +58,8 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 			skillBindings[binding.CapabilityID] = append(skillBindings[binding.CapabilityID], binding)
 		case interfaces.CAPABILITY_TYPE_MCP_TOOL:
 			mcpBindings[binding.OwnerID] = append(mcpBindings[binding.OwnerID], binding)
+		case interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE:
+			kbBindings[binding.CapabilityID] = append(kbBindings[binding.CapabilityID], binding)
 		}
 	}
 
@@ -70,7 +74,43 @@ func (cbs *capabilityBindingService) backfillMetadata(ctx context.Context,
 	if len(mcpBindings) > 0 {
 		result.available = cbs.backfillMCPTools(ctx, mcpBindings, withDetail) && result.available
 	}
+	if len(kbBindings) > 0 {
+		result.available = cbs.backfillKnowledgeBases(ctx, kbBindings) && result.available
+	}
 	return result
+}
+
+// backfillKnowledgeBases names each mounted knowledge base, one kb-api call per knowledge base on
+// the page, and marks the ones kb-api no longer knows. A deployment without kb-api can resolve no
+// knowledge base at all, so its mounts are missing, not a passing outage: answering "metadata
+// unavailable" there would fail every export of the network for as long as kb-api stays absent.
+// kb-api unreachable degrades to the stored rows like the execution factory does.
+func (cbs *capabilityBindingService) backfillKnowledgeBases(ctx context.Context,
+	kbBindings map[string][]*interfaces.CapabilityBinding) bool {
+	available := true
+	for kbID, bindings := range kbBindings {
+		var kb *interfaces.KnowledgeBaseBrief
+		err := interfaces.ErrKnowledgeBaseUnavailable
+		if cbs.kba != nil {
+			kb, err = cbs.kba.GetKnowledgeBase(ctx, kbID)
+		}
+		if errors.Is(err, interfaces.ErrKnowledgeBaseUnavailable) {
+			kb, err = nil, nil
+		}
+		if err != nil {
+			logger.Warnf("capability metadata backfill: knowledge base %s unreachable: %v", kbID, err)
+			available = false
+			continue
+		}
+		for _, binding := range bindings {
+			if kb == nil {
+				binding.Status = interfaces.CAPABILITY_STATUS_MISSING
+				continue
+			}
+			binding.Name = kb.Name
+		}
+	}
+	return available
 }
 
 // backfillFunctions resolves one tool box per call and reports what is bound versus what the box

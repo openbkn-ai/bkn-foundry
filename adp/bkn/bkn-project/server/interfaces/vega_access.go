@@ -58,6 +58,8 @@ type VegaAccount = AccountInfo
 
 //go:generate mockgen -source ../interfaces/vega_access.go -destination ../interfaces/mock/mock_vega_access.go
 type VegaAccess interface {
+	// MissingCatalogs returns the catalogs that no longer exist, in their order.
+	MissingCatalogs(ctx context.Context, account VegaAccount, catalogIDs []string) ([]string, error)
 	// ListTables returns the table resources of the catalog that the account can see.
 	ListTables(ctx context.Context, account VegaAccount, catalogID string) ([]*VegaTable, error)
 	// GetTables returns the tables with their structure; ids the account cannot see are left out.

@@ -304,6 +304,34 @@ func Test_bknService_ExportCapabilities(t *testing.T) {
 	})
 }
 
+// Test_bknService_ExportKnowledgeBaseCapabilities pins mounted knowledge bases in the dependency
+// section (#2576): without it a release or rollback through the lineage git drops the mount.
+func Test_bknService_ExportKnowledgeBaseCapabilities(t *testing.T) {
+	Convey("导出带知识库依赖声明", t, func() {
+		svc, mockCtrl, kns, cbs := newTestBKNServiceWithCapabilities(t)
+		defer mockCtrl.Finish()
+
+		kns.EXPECT().GetKNByID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, interfaces.Mode_Export).
+			Return(&interfaces.KN{KNID: "kn1", KNName: "合同网络"}, nil)
+		cbs.EXPECT().ListCapabilities(gomock.Any(), gomock.Any()).
+			Return(&interfaces.CapabilityBindingsList{MetadataAvailable: true,
+				Entries: []*interfaces.CapabilityBinding{
+					{ID: "b1", CapabilityType: interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, CapabilityID: "7", Name: "合同库"},
+					{ID: "b2", CapabilityType: interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE, CapabilityID: "8",
+						Status: interfaces.CAPABILITY_STATUS_MISSING},
+				}}, nil)
+
+		data, err := svc.ExportToTar(context.Background(), "kn1", interfaces.MAIN_BRANCH, interfaces.BKN_EXPORT_SPEC_AUTO)
+		So(err, ShouldBeNil)
+		network, err := bknsdk.LoadNetworkFromTar(bytes.NewReader(data))
+		So(err, ShouldBeNil)
+		So(network.Capabilities, ShouldNotBeNil)
+		So(len(network.Capabilities.KnowledgeBases), ShouldEqual, 1)
+		So(network.Capabilities.KnowledgeBases[0].ID, ShouldEqual, "7")
+		So(network.Capabilities.KnowledgeBases[0].Name, ShouldEqual, "合同库")
+	})
+}
+
 // Test_bknService_ExportMCPCapabilities pins the MCP half of the dependency section. An export
 // that dropped it would move a network to another environment with its MCP tools silently
 // unbound, and nothing in the file to say they were ever there.

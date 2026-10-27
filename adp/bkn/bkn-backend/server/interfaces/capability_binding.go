@@ -26,6 +26,11 @@ const (
 	// same line with its type=mcp arm. Folding the two together would leave execute_tool unable
 	// to tell which transport a binding meant.
 	CAPABILITY_TYPE_MCP_TOOL = "mcp_tool"
+	// CAPABILITY_TYPE_KNOWLEDGE_BASE is an Enterprise knowledge base served by kb-api, addressed
+	// by ("knowledge_base", "", kb_id). Mounting one lets the network's proxy read it through
+	// kb-api's read API (#2576); the mount grants the whole knowledge base, which is how kb-api
+	// authorizes, so there is no owner slot.
+	CAPABILITY_TYPE_KNOWLEDGE_BASE = "knowledge_base"
 	// CAPABILITY_TYPE_API is not a stored type. It is a counting bucket: function bindings whose
 	// tool box is an openapi box. The rows still say "function"; only the statistics separate
 	// them, because that is the split Studio shows.
@@ -93,7 +98,7 @@ type CapabilityBinding struct {
 // (mcp_server, for one) cannot silently skip its own write checks.
 func IsValidCapabilityType(capabilityType string) bool {
 	switch capabilityType {
-	case CAPABILITY_TYPE_SKILL, CAPABILITY_TYPE_FUNCTION, CAPABILITY_TYPE_MCP_TOOL:
+	case CAPABILITY_TYPE_SKILL, CAPABILITY_TYPE_FUNCTION, CAPABILITY_TYPE_MCP_TOOL, CAPABILITY_TYPE_KNOWLEDGE_BASE:
 		return true
 	default:
 		return false

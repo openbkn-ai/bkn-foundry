@@ -289,6 +289,19 @@ func buildProxyGrantSourcesWithCapabilities(kn *interfaces.KN,
 				interfaces.OPERATION_TYPE_EXECUTE, detail); err != nil {
 				return nil, "", err
 			}
+		case interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE:
+			// The proxy reads a mounted knowledge base through kb-api's read API, which checks
+			// query_data (#2576). Best effort and outside the planning digest, like a Skill: a
+			// binder who loses access leaves this knowledge base unreadable through the proxy
+			// rather than blocking the network, and an incomplete row is skipped.
+			if strings.TrimSpace(capability.CapabilityID) == "" || strings.TrimSpace(capability.ID) == "" {
+				continue
+			}
+			if err := addSource(false, interfaces.KNProxyBindingTypeCapability, capability.ID,
+				interfaces.KNProxyTargetTypeKnowledgeBase, capability.CapabilityID,
+				interfaces.OPERATION_TYPE_QUERY_DATA, detail); err != nil {
+				return nil, "", err
+			}
 		case interfaces.CAPABILITY_TYPE_FUNCTION:
 			if strings.TrimSpace(capability.CapabilityID) == "" {
 				return nil, "", fmt.Errorf("capability binding %s has no tool id", capability.ID)

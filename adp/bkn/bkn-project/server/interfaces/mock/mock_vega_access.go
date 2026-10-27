@@ -71,6 +71,21 @@ func (mr *MockVegaAccessMockRecorder) ListTables(ctx, account, catalogID any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTables", reflect.TypeOf((*MockVegaAccess)(nil).ListTables), ctx, account, catalogID)
 }
 
+// MissingCatalogs mocks base method.
+func (m *MockVegaAccess) MissingCatalogs(ctx context.Context, account interfaces.VegaAccount, catalogIDs []string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MissingCatalogs", ctx, account, catalogIDs)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MissingCatalogs indicates an expected call of MissingCatalogs.
+func (mr *MockVegaAccessMockRecorder) MissingCatalogs(ctx, account, catalogIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MissingCatalogs", reflect.TypeOf((*MockVegaAccess)(nil).MissingCatalogs), ctx, account, catalogIDs)
+}
+
 // Query mocks base method.
 func (m *MockVegaAccess) Query(ctx context.Context, account interfaces.VegaAccount, sql string, timeoutSeconds int) ([]map[string]any, error) {
 	m.ctrl.T.Helper()
