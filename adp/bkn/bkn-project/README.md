@@ -21,6 +21,13 @@ history is kept as a lineage. See issue #2520 and epic #2519.
 - Projects (`t_bkn_project_project`): each changes one network on its own
   branch `project/<id>` of the network's lineage; projects of one network
   share its lineage. A project is visible to callers who can see its network.
+- Ontology drafts (`t_bkn_project_draft`): drafting a project's ontology from the
+  table structure of its data catalogs, by rules. Entity tables become object
+  types with their keys checked by full-table counts; code tables become enums;
+  link tables become many-to-many relations; declared foreign keys, and fields
+  named for another table's key, become relations checked by a full-table hit
+  rate. Personal fields are excluded. Only counts and code-table values leave
+  vega-backend, which is read as the caller.
 - Health and readiness endpoints.
 
 ## API
@@ -47,6 +54,8 @@ from bkn-backend run with the caller's token, so its permissions apply.
 | GET | `/projects?archived=&name=&limit=&cursor=` | Projects of the networks the caller can see, newest first; cursor paging. `archived` is `false` (default), `true` or `all`; `name` matches names containing it. Each entry has `other_projects`, the other unarchived projects of its network |
 | GET | `/projects/{project_id}` | The project; 404 also when the caller cannot see its network |
 | POST | `/projects/{project_id}:archive`, `:unarchive` | Hides the project from the default list, or shows it again; only its owner may (403). Releases are not affected |
+| POST | `/projects/{project_id}/ontology/draft:generate` | Drafts the ontology from the tables of the project's data catalogs, in the background: 202 with the draft, `drafting`. 400 `Draft.NoCatalogs`, 409 `Draft.Drafting` while drafting |
+| GET | `/projects/{project_id}/ontology/draft` | The draft: `status` (`drafting`, `ready`, `failed` with `error`: `interrupted`, `timeout` or vega-backend's reply) and `items` — `object_types`, `relation_types`, `value_types`, `excluded`, `unreadable`, each with its evidence and whether it is adopted. 404 `Draft.NotFound` before the first draft |
 
 ## Local Development
 
@@ -59,6 +68,13 @@ I18N_MODE_UT=true go test ./...
 
 Configuration: `server/config/bkn-project-config.yaml`. The schema is created
 by data-migrator from `migrations/bkn-project/`.
+
+Drafting rules are under `draft` (defaults in brackets): `codeTableMaxRows` (500)
+and `codeTableMaxColumns` (3) bound a code table; `adoptHitRate` (0.95) and
+`suggestHitRate` (0.8) grade relations by hit rate; `privacyKeywords` match
+personal fields by name or comment; `queryTimeout` (60 s) bounds each count and
+`timeout` (10 min) the whole drafting. Drafting runs in the service process: a
+restart fails drafts left drafting, as `interrupted`.
 
 Regenerate mocks with `make generate-mock` (needs `mockgen` from
 `go.uber.org/mock`).

@@ -20,6 +20,7 @@ func TestImportInitializesErrorCodes(t *testing.T) {
 	}
 	codes = append(codes, perrors.ReleaseErrCodeList...)
 	codes = append(codes, perrors.ProjectErrCodeList...)
+	codes = append(codes, perrors.DraftErrCodeList...)
 	for _, code := range append(codes, perrors.LineageErrCodeList...) {
 		for _, language := range []i18n.Language{i18n.SimplifiedChinese, i18n.AmericanEnglish} {
 			httpErr := httperrors.NewHTTPError(i18n.WithLanguage(t.Context(), language), 400, code)
