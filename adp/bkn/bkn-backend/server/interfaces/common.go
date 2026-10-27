@@ -463,13 +463,13 @@ func GetBKNConceptSchemaDefinition(vectorDim int, defaultSmallModelEnabled bool)
 			Type:         data_type.DATATYPE_STRING,
 			DisplayName:  CONCEPT_FIELD_LIFECYCLE_STATUS,
 			OriginalName: CONCEPT_FIELD_LIFECYCLE_STATUS,
-			Description:  "对象类、关系类、行动类的生命周期状态，仅已弃用的概念有值",
+			Description:  "Lifecycle status of an object type, relation type or action type; set only for deprecated concepts",
 			Features: []PropertyFeature{
 				{
 					FeatureName: "keyword_lifecycle_status",
 					DisplayName: "keyword_lifecycle_status",
 					FeatureType: FieldFeatureType_Keyword,
-					Description: "生命周期状态的关键词特征",
+					Description: "Keyword feature of the lifecycle status",
 					IsDefault:   true,
 					IsNative:    false,
 					Config:      map[string]any{FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE: FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE},
