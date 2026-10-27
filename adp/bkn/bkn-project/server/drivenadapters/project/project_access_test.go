@@ -203,7 +203,10 @@ func Test_ProjectAccess(t *testing.T) {
 			smock.ExpectExec("UPDATE t_bkn_project_project").WithArgs("[]", int64(9), "p1").
 				WillReturnError(errors.New("lock wait timeout"))
 
-			So(pa.SetProjectCatalogs(ctx, "p1", nil, 9), ShouldNotBeNil)
+			err := pa.SetProjectCatalogs(ctx, "p1", nil, 9)
+			// A statement with other arguments would fail on the mismatch instead.
+			So(err, ShouldBeError, "lock wait timeout")
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
 		Convey("SetProjectArchived returns the update error\n", func() {

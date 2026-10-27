@@ -7,6 +7,7 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -51,6 +52,15 @@ func newFixture(ctrl *gomock.Controller) *fixture {
 	}
 	f.svc = &projectService{pa: f.pa, ra: f.ra, bba: f.bba, ls: f.ls}
 	return f
+}
+
+// catalogIDs returns n distinct valid ids, so only their number can be refused.
+func catalogIDs(n int) []string {
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("c%d", i)
+	}
+	return ids
 }
 
 func Test_ProjectService_CreateProject(t *testing.T) {
@@ -184,7 +194,7 @@ func Test_ProjectService_CreateProject(t *testing.T) {
 					perrors.BknProject_Project_InvalidCatalogIDs},
 				{interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders", CatalogIDs: []string{strings.Repeat("c", 41)}},
 					perrors.BknProject_Project_InvalidCatalogIDs},
-				{interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders", CatalogIDs: make([]string, maxCatalogIDs+1)},
+				{interfaces.CreateProjectRequest{Name: "Orders", KNID: "orders", CatalogIDs: catalogIDs(maxCatalogIDs + 1)},
 					perrors.BknProject_Project_InvalidCatalogIDs},
 			} {
 				_, err := f.svc.CreateProject(ctx, token, c.req, owner, author)
@@ -476,7 +486,7 @@ func Test_ProjectService_GetAndArchive(t *testing.T) {
 			_, err := f.svc.SetProjectCatalogs(ctx, token, "p1", []string{"c2"}, interfaces.AccountInfo{ID: "u2", Type: "user"})
 			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
 
-			for _, ids := range [][]string{{""}, {strings.Repeat("c", 41)}, make([]string, 101)} {
+			for _, ids := range [][]string{{""}, {strings.Repeat("c", 41)}, catalogIDs(maxCatalogIDs + 1)} {
 				_, err = f.svc.SetProjectCatalogs(ctx, token, "p1", ids, owner)
 				shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Project_InvalidCatalogIDs)
 			}
