@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.models import AgentLimits, AgentSpec, PromptSpec
+from app.public_auth import BUILTIN_AGENT_IDS
 
 ROOT = Path(__file__).resolve().parents[4]
 MIGRATIONS = ROOT / "migrations/bkn-agent/mariadb"
@@ -232,7 +233,9 @@ def test_fresh_install_and_upgrade_have_identical_defaults_and_preserve_upgrade_
         assert snapshot(fresh)[:2] == snapshot(upgraded)[:2]
         for agent in fresh.execute("SELECT f_agent_id FROM t_agent"):
             assert item_from_db(fresh, agent[0]) == item_from_db(upgraded, agent[0])
-        assert len(snapshot(fresh)[0]) == 9
+        # Every seeded Agent is registered as builtin, so System Admin manages it
+        # and it cannot be unpublished or deleted.
+        assert {row[0] for row in snapshot(fresh)[0]} == set(BUILTIN_AGENT_IDS)
         updated = snapshot(upgraded)
         assert all(row in updated[0] for row in original[0])
         for row in original[1]:
