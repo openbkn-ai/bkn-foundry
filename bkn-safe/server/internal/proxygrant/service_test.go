@@ -157,6 +157,66 @@ func TestGrantIsIdempotentAndLastSourceRevokesOwnedPolicy(t *testing.T) {
 	}
 }
 
+// A knowledge base bound to a network is read through kb-api as the network's
+// proxy (#2576): query_data is grantable, with its view_detail requirement
+// derived; no other knowledge_base operation is.
+func TestGrantAcceptsKnowledgeBaseQueryDataOnly(t *testing.T) {
+	f := newFixture(t)
+	if err := f.db.Create(&model.ResourceType{ID: "knowledge_base", Name: "Knowledge base"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, operation := range []model.Operation{
+		{ResourceTypeID: "knowledge_base", ID: "authorize", Name: "authorize"},
+		{ResourceTypeID: "knowledge_base", ID: "view_detail", Name: "view_detail"},
+		{ResourceTypeID: "knowledge_base", ID: "modify", Name: "modify", RequiredOperationIDs: "view_detail"},
+		{ResourceTypeID: "knowledge_base", ID: "query_data", Name: "query_data", RequiredOperationIDs: "view_detail"},
+	} {
+		if err := f.db.Create(&operation).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.restartRegistry(t)
+	request := func(operation string) proxygrant.GrantRequest {
+		return proxygrant.GrantRequest{
+			ProxyAccountID: f.proxyID,
+			GrantorID:      f.grantor,
+			Source: proxygrant.SourceSpec{
+				ResourceType: "knowledge_base", ResourceID: "7", Operation: operation,
+				SourceType: proxygrant.SourceTypeKNProxyBinding, SourceID: "source-kb",
+				KNID: "kn-1", BindingType: "capability", BindingID: "cap-kb",
+			},
+		}
+	}
+
+	// A network binding delegates the binder's own access: without query_data
+	// on the knowledge base there is nothing to hand the proxy.
+	f.grantTypedOperations(t, f.grantor, "knowledge_base", "7", "view_detail")
+	if _, _, err := f.service.Grant(t.Context(), request("query_data")); !errors.Is(err, proxygrant.ErrForbidden) {
+		t.Fatalf("Grant() without the binder's query_data = %v; want forbidden", err)
+	}
+	f.grantTypedOperations(t, f.grantor, "knowledge_base", "7", "query_data")
+
+	source, changed, err := f.service.Grant(t.Context(), request("query_data"))
+	if err != nil || !changed || source.ResourceType != "knowledge_base" || source.Operation != "query_data" {
+		t.Fatalf("Grant() = (%+v, %v, %v)", source, changed, err)
+	}
+	for _, operation := range []string{"query_data", "view_detail"} {
+		if allowed, err := f.enforcer.Check(f.proxyID, "knowledge_base", "7", operation); err != nil || !allowed {
+			t.Fatalf("proxy %s = %v, %v; want allowed", operation, allowed, err)
+		}
+	}
+	if allowed, err := f.enforcer.Check(f.proxyID, "knowledge_base", "8", "query_data"); err != nil || allowed {
+		t.Fatalf("proxy query_data on another knowledge base = %v, %v; want denied", allowed, err)
+	}
+
+	f.grantTypedOperations(t, f.grantor, "knowledge_base", "7", "modify", "authorize")
+	for _, operation := range []string{"view_detail", "modify", "authorize"} {
+		if _, _, err := f.service.Grant(t.Context(), request(operation)); !errors.Is(err, proxygrant.ErrInvalidRequest) {
+			t.Fatalf("Grant(%s) = %v; want invalid request", operation, err)
+		}
+	}
+}
+
 func TestGrantRejectsNonGrantableOperation(t *testing.T) {
 	f := newFixture(t)
 	f.authorize(t, "r-1", "query_data")
