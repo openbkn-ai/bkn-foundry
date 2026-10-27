@@ -144,7 +144,7 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 					case "bit(17)":
 						nonzero, zero = []byte{1, 0xff, 0xff}, []byte{0, 0, 0}
 					}
-					projection := "NULL"
+					projection := "?"
 					rows := sqlmock.NewRows([]string{"bits", "flag"})
 					switch modeName {
 					case interfaces.BinaryModeContent:
@@ -156,7 +156,11 @@ func TestMariaDBConnectorExecuteQuery(t *testing.T) {
 					default:
 						rows.AddRow(nil, int64(127)).AddRow(nil, int64(0)).AddRow(nil, nil)
 					}
-					mock.ExpectQuery("SELECT " + projection + " AS `bits`, `flag` AS `flag` FROM orders LIMIT 10 OFFSET 0").WillReturnRows(rows)
+					expected := mock.ExpectQuery("SELECT " + projection + " AS `bits`, `flag` AS `flag` FROM orders LIMIT 10")
+					if mode == nil {
+						expected.WithArgs(nil)
+					}
+					expected.WillReturnRows(rows)
 					result, err := connector.ExecuteQuery(context.Background(), resource, &interfaces.ResourceDataQueryParams{BinaryMode: mode, Paging: interfaces.PagingRequest{Limit: 10}})
 					require.NoError(t, err)
 					require.Len(t, result.Entries, 3)

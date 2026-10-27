@@ -404,7 +404,13 @@ func (c *MariaDBConnector) ExecuteSQLBuilder(ctx context.Context, query *sb.Sele
 	}
 	defer func() { _ = rows.Close() }()
 
-	result, err := c.scanQueryRows(rows, nil)
+	binaryColumns := make(map[string]bool)
+	for _, column := range columns {
+		if column.Type == interfaces.DataType_Binary {
+			binaryColumns[column.Name] = true
+		}
+	}
+	result, err := c.scanQueryRows(rows, binaryColumns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan SQL builder query rows: %w", mariadbQueryError(err))
 	}

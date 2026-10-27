@@ -1338,7 +1338,7 @@ func scanSQLCursorRow(session *interfaces.CursorSession) (map[string]any, error)
 	row := make(map[string]any, len(values))
 	for i, column := range session.SQLColumns {
 		value := values[i]
-		if data, ok := value.([]byte); ok {
+		if data, ok := value.([]byte); ok && column.Type != interfaces.DataType_Binary {
 			value = string(data)
 		}
 		row[column.Name] = value

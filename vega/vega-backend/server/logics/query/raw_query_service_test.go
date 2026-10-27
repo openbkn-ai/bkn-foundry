@@ -152,6 +152,52 @@ func (p *deadlineInspectingPolicy) ValidateTableReferences(context.Context, stri
 func TestRawQueryServiceExecute(t *testing.T) {
 	for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB} {
 		t.Run(connectorType+" actual connector", func(t *testing.T) {
+			for _, mode := range []interfaces.PagingMode{interfaces.PagingModeSingle, interfaces.PagingModeCursor} {
+				t.Run(string(mode)+" preserves binary bytes and text through JSON encoding", func(t *testing.T) {
+					svc, rs, cs, cf := mysqlRawServices(t)
+					resource := builderTestResource()
+					mysqlRawMetadata(rs, cs, resource, true, connectorType)
+					mocks := nativeSQLConnectorMocks(t, cf, connectorType, 1)
+					statement := "SELECT `bits`, `payload`, `label`, `flag` FROM `sales.eu`.`order.items` ORDER BY `id` ASC"
+					limit := 2
+					if mode == interfaces.PagingModeSingle {
+						statement += " LIMIT 3"
+						limit = 3
+					}
+					mocks[0].ExpectQuery(statement).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(
+						sqlmock.NewColumn("bits").OfType("BIT", []byte{}),
+						sqlmock.NewColumn("payload").OfType("VARBINARY", []byte{}),
+						sqlmock.NewColumn("label").OfType("TEXT", ""),
+						sqlmock.NewColumn("flag").OfType("TINYINT", int64(0)),
+					).AddRow([]byte{0xff, 0}, []byte{0, 0xff}, []byte("text"), int64(127)).
+						AddRow([]byte{}, []byte{}, []byte{}, int64(0)).AddRow(nil, nil, nil, nil)).RowsWillBeClosed()
+					mocks[0].ExpectClose()
+					result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{
+						QueryFormat: interfaces.QueryFormatSQL,
+						Query:       "SELECT bits, payload, label, flag FROM {{orders}} ORDER BY id",
+						Paging:      interfaces.PagingRequest{Mode: mode, Limit: limit},
+					})
+					require.NoError(t, err)
+					assert.Equal(t, []interfaces.ColumnInfo{{Name: "bits", Type: interfaces.DataType_Binary}, {Name: "payload", Type: interfaces.DataType_Binary}, {Name: "label", Type: interfaces.DataType_Text}, {Name: "flag", Type: interfaces.DataType_Integer}}, result.Columns)
+					entries := result.Entries
+					if mode == interfaces.PagingModeCursor {
+						require.Len(t, entries, 2)
+						require.NotNil(t, result.Paging.NextCursor)
+						mysqlRawMetadata(rs, cs, resource, true, connectorType)
+						result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *result.Paging.NextCursor}})
+						require.NoError(t, err)
+						assert.Nil(t, result.Paging.NextCursor)
+						entries = append(entries, result.Entries...)
+					}
+					require.Len(t, entries, 3)
+					assert.Equal(t, []byte{0xff, 0}, entries[0]["bits"])
+					assert.Equal(t, []byte{0, 0xff}, entries[0]["payload"])
+					wire, err := json.Marshal(entries)
+					require.NoError(t, err)
+					assert.JSONEq(t, `[{"bits":"/wA=","payload":"AP8=","label":"text","flag":127},{"bits":"","payload":"","label":"","flag":0},{"bits":null,"payload":null,"label":null,"flag":null}]`, string(wire))
+					assert.Empty(t, rawQueryCursorSessions.sessions)
+				})
+			}
 			t.Run("single page binds exact values and counts the logical query", func(t *testing.T) {
 				svc, rs, cs, cf := mysqlRawServices(t)
 				mysqlRawMetadata(rs, cs, builderTestResource(), true, connectorType)
