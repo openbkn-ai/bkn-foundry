@@ -152,6 +152,7 @@ BUILTIN_AGENT_IDS = (
     "business_provenance_optimizer",
     "catalog-semantic-understanding",
     "resource-semantic-understanding",
+    "bkn-project-drafter",
 )
 
 
