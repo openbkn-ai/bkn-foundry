@@ -48,9 +48,24 @@ type BknNetworkFrontmatter struct {
 
 // BknCapabilities is the capability dependency section of a network.
 type BknCapabilities struct {
-	Skills    []*BknCapabilitySkill    `yaml:"skills,omitempty"`
-	Functions []*BknCapabilityFunction `yaml:"functions,omitempty"`
-	MCPTools  []*BknCapabilityMCPTool  `yaml:"mcp_tools,omitempty"`
+	Skills         []*BknCapabilitySkill         `yaml:"skills,omitempty"`
+	Functions      []*BknCapabilityFunction      `yaml:"functions,omitempty"`
+	MCPTools       []*BknCapabilityMCPTool       `yaml:"mcp_tools,omitempty"`
+	KnowledgeBases []*BknCapabilityKnowledgeBase `yaml:"knowledge_bases,omitempty"`
+}
+
+// IsEmpty reports whether the section declares nothing, in which case it is not written and a
+// read of it is nil.
+func (c *BknCapabilities) IsEmpty() bool {
+	return c == nil || (len(c.Skills) == 0 && len(c.Functions) == 0 && len(c.MCPTools) == 0 &&
+		len(c.KnowledgeBases) == 0)
+}
+
+// BknCapabilityKnowledgeBase names one Enterprise knowledge base dependency by id and name, like
+// a skill: the id is environment-local, the name is what an import elsewhere resolves.
+type BknCapabilityKnowledgeBase struct {
+	ID   string `yaml:"id,omitempty"`
+	Name string `yaml:"name,omitempty"`
 }
 
 // BknCapabilitySkill names one skill dependency by both id and name.

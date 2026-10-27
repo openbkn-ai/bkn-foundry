@@ -7,6 +7,7 @@ package capability_binding
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -22,6 +23,9 @@ const (
 	CapabilitySkipAmbiguous   = "ambiguous_name"
 	CapabilitySkipUnusable    = "not_usable"
 	CapabilitySkipUnreachable = "execution_factory_unreachable"
+	// A knowledge base declared where kb-api is not deployed, or while it is unreachable.
+	CapabilitySkipNotSupported             = "not_supported"
+	CapabilitySkipKnowledgeBaseUnreachable = "knowledge_base_service_unreachable"
 )
 
 // ImportCapabilities resolves a model file's capability declarations against this environment and
@@ -98,6 +102,21 @@ func (cbs *capabilityBindingService) ImportCapabilitiesTx(ctx context.Context, t
 		})
 	}
 
+	for _, knowledgeBase := range declared.KnowledgeBases {
+		if knowledgeBase == nil {
+			continue
+		}
+		kbID, skip := cbs.resolveKnowledgeBase(ctx, knowledgeBase)
+		if skip != nil {
+			report.Skipped = append(report.Skipped, skip)
+			continue
+		}
+		entries = append(entries, &interfaces.AttachCapabilityEntry{
+			CapabilityType: interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE,
+			CapabilityID:   kbID,
+		})
+	}
+
 	if len(entries) == 0 {
 		return report, nil, nil
 	}
@@ -158,6 +177,62 @@ func (cbs *capabilityBindingService) resolveSkill(ctx context.Context,
 	default:
 		return "", skip(CapabilitySkipAmbiguous,
 			fmt.Sprintf("%d skills are named %q", len(matches), declared.Name))
+	}
+}
+
+// resolveKnowledgeBase finds a declared knowledge base in this environment's kb-api, by id and
+// then by exact name, the same way a skill is found. A deployment without kb-api skips it as
+// not_supported rather than failing the import.
+func (cbs *capabilityBindingService) resolveKnowledgeBase(ctx context.Context,
+	declared *bknsdk.BknCapabilityKnowledgeBase) (string, *interfaces.CapabilitySkip) {
+	label := declared.Name
+	if label == "" {
+		label = declared.ID
+	}
+	skip := func(reason, detail string) *interfaces.CapabilitySkip {
+		return &interfaces.CapabilitySkip{
+			CapabilityType: interfaces.CAPABILITY_TYPE_KNOWLEDGE_BASE,
+			Name:           label,
+			DeclaredID:     declared.ID,
+			Reason:         reason,
+			Detail:         detail,
+		}
+	}
+	unreachable := func(err error) *interfaces.CapabilitySkip {
+		if errors.Is(err, interfaces.ErrKnowledgeBaseUnavailable) {
+			return skip(CapabilitySkipNotSupported, "this deployment has no knowledge base service")
+		}
+		return skip(CapabilitySkipKnowledgeBaseUnreachable, err.Error())
+	}
+	if cbs.kba == nil {
+		return "", unreachable(interfaces.ErrKnowledgeBaseUnavailable)
+	}
+
+	if id := strings.TrimSpace(declared.ID); id != "" {
+		kb, err := cbs.kba.GetKnowledgeBase(ctx, id)
+		if err != nil {
+			return "", unreachable(err)
+		}
+		if kb != nil {
+			return id, nil
+		}
+	}
+
+	if declared.Name == "" {
+		return "", skip(CapabilitySkipNotFound, "no knowledge base with the declared id, and no name to fall back to")
+	}
+	matches, err := cbs.kba.FindKnowledgeBasesByName(ctx, declared.Name)
+	if err != nil {
+		return "", unreachable(err)
+	}
+	switch len(matches) {
+	case 0:
+		return "", skip(CapabilitySkipNotFound, fmt.Sprintf("no knowledge base named %q", declared.Name))
+	case 1:
+		return matches[0].ID, nil
+	default:
+		return "", skip(CapabilitySkipAmbiguous,
+			fmt.Sprintf("%d knowledge bases are named %q", len(matches), declared.Name))
 	}
 }
 
