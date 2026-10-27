@@ -392,3 +392,40 @@ func TestSQLBuilderArguments(t *testing.T) {
 	_, err = sqlBuilderArguments([]any{json.Number("1e10000")})
 	require.Error(t, err)
 }
+
+func TestMariaDBConnectorOpenSQLBuilder(t *testing.T) {
+	t.Run("returns unread Rows and column metadata to caller", func(t *testing.T) {
+		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		require.NoError(t, err)
+		defer func() {
+			mock.ExpectClose()
+			assert.NoError(t, db.Close())
+			assert.NoError(t, mock.ExpectationsWereMet())
+		}()
+		connector := &MariaDBConnector{db: db, connected: true}
+		unread := errors.New("read happens only in caller")
+		mock.ExpectQuery("SELECT `id` FROM `orders` WHERE (`id` > ?)").WithArgs(int64(1)).WillReturnRows(sqlmock.NewRowsWithColumnDefinition(sqlmock.NewColumn("id").OfType("BIGINT", int64(0))).AddRow(2).RowError(0, unread)).RowsWillBeClosed()
+		rows, columns, err := connector.OpenSQLBuilder(context.Background(), sb.Select(&sb.Column{Name: "id"}).From(&sb.Table{SourceIdentifier: "`orders`"}).Where(&sb.Gt{Left: &sb.Column{Name: "id"}, Right: &sb.Param{Value: json.Number("1")}}))
+		require.NoError(t, err)
+		assert.Equal(t, []interfaces.ColumnInfo{{Name: "id", Type: "integer"}}, columns)
+		assert.False(t, rows.Next())
+		assert.ErrorIs(t, rows.Err(), unread)
+		defer func() { assert.NoError(t, rows.Close()) }()
+	})
+	t.Run("duplicate output columns close Rows before returning failure", func(t *testing.T) {
+		db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		require.NoError(t, err)
+		defer func() {
+			mock.ExpectClose()
+			assert.NoError(t, db.Close())
+			assert.NoError(t, mock.ExpectationsWereMet())
+		}()
+		connector := &MariaDBConnector{db: db, connected: true}
+		mock.ExpectQuery("SELECT `id`, `id`").WillReturnRows(sqlmock.NewRows([]string{"id", "id"}).AddRow(1, 1)).RowsWillBeClosed()
+		rows, columns, err := connector.OpenSQLBuilder(context.Background(), sb.Select(&sb.Column{Name: "id"}, &sb.Column{Name: "id"})) //nolint:rowserrcheck // 此失败路径返回 nil Rows，不能读取 Err。
+		assert.Nil(t, rows)
+		assert.Nil(t, columns)
+		var invalid *interfaces.ConditionBuildError
+		assert.ErrorAs(t, err, &invalid)
+	})
+}

@@ -6,8 +6,10 @@ package mariadb
 
 import (
 	"context"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -788,4 +790,30 @@ func TestMariaDBConvertValue(t *testing.T) {
 		assert.Equal(t, int64(1), convertValue(int64(1), false))
 		assert.Nil(t, convertValue(nil, false))
 	})
+}
+
+func TestMariadbQueryError(t *testing.T) {
+	for _, code := range []uint16{1052, 1054, 1055, 1056, 1060, 1064, 1111, 1140, 1210, 1221, 1241, 1582, 1583, 1584, 3065} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			cause := &mysql.MySQLError{Number: code, Message: "private source SQL and values"}
+			err := mariadbQueryError(fmt.Errorf("query failed: %w", cause))
+			var failure *interfaces.SourceQueryInvalidParameterError
+			require.ErrorAs(t, err, &failure)
+			assert.ErrorIs(t, err, cause)
+			detail, ok := interfaces.RequestSideQueryError(err)
+			assert.True(t, ok)
+			assert.NotContains(t, detail, "private")
+			if code == 1054 {
+				assert.Equal(t, interfaces.SourceQueryInvalidParameterUnknownColumn, failure.Reason)
+			} else {
+				assert.Equal(t, "invalid source query parameter", detail)
+			}
+		})
+	}
+	for _, cause := range []error{context.Canceled, driver.ErrBadConn, &mysql.MySQLError{Number: 1040, Message: "connection limit"}, &mysql.MySQLError{Number: 1146, Message: "missing physical table"}, &mysql.MySQLError{Number: 1205, Message: "lock timeout"}} {
+		err := mariadbQueryError(cause)
+		assert.ErrorIs(t, err, cause)
+		_, ok := interfaces.RequestSideQueryError(err)
+		assert.False(t, ok)
+	}
 }

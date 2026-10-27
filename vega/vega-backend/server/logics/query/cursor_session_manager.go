@@ -113,14 +113,16 @@ func (m *cursorSessionManager) create(accountID, catalogID string, resourceIDs [
 		ExpiresAtSec:    now + int64(keepAliveSec),
 	}
 	m.mu.Lock()
-	m.removeExpiredLocked(time.Now().Unix())
+	expired := m.removeExpiredLocked(time.Now().Unix())
 	if err := m.capacityErrorLocked(accountID); err != nil {
 		m.mu.Unlock()
+		closeSQLCursorResources(expired...)
 		return nil, err
 	}
 	m.sessions[session.ID] = session
 	activeSessionsLen := len(m.sessions)
 	m.mu.Unlock()
+	closeSQLCursorResources(expired...)
 	logger.Debugf("Cursor session created: catalog_id=%s, query_format=%s, active_sessions_len=%d", session.CatalogID, session.QueryFormat, activeSessionsLen)
 	return session, nil
 }
@@ -151,14 +153,16 @@ func (m *cursorSessionManager) createResourceData(accountID, quotaOwnerID string
 		ExpiresAtSec:           now + int64(keepAliveSec),
 	}
 	m.mu.Lock()
-	m.removeExpiredLocked(now)
+	expired := m.removeExpiredLocked(now)
 	if err := m.capacityErrorLocked(quotaOwnerID); err != nil {
 		m.mu.Unlock()
+		closeSQLCursorResources(expired...)
 		return nil, err
 	}
 	m.sessions[session.ID] = session
 	activeSessionsLen := len(m.sessions)
 	m.mu.Unlock()
+	closeSQLCursorResources(expired...)
 	logger.Debugf("Cursor session created: catalog_id=%s, query_format=resource_data, active_sessions_len=%d", session.CatalogID, activeSessionsLen)
 	return session, nil
 }
@@ -178,8 +182,9 @@ func (m *cursorSessionManager) reclaimExpired() {
 	defer ticker.Stop()
 	for now := range ticker.C {
 		m.mu.Lock()
-		m.removeExpiredLocked(now.Unix())
+		expired := m.removeExpiredLocked(now.Unix())
 		m.mu.Unlock()
+		closeSQLCursorResources(expired...)
 	}
 }
 
@@ -195,9 +200,10 @@ func (m *cursorSessionManager) acquire(cursor string) (*interfaces.CursorSession
 	}
 	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
 		m.removeLocked(cursor)
-		session.Unlock()
 		activeSessions := len(m.sessions)
 		m.mu.Unlock()
+		closeSQLCursorResources(session)
+		session.Unlock()
 		logger.Debugf("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
 		return nil, false
 	}
@@ -211,8 +217,11 @@ func (m *cursorSessionManager) release(session *interfaces.CursorSession) {
 
 func (m *cursorSessionManager) remove(cursor string) {
 	m.mu.Lock()
-	m.removeLocked(cursor)
+	session, ok := m.removeLocked(cursor)
 	m.mu.Unlock()
+	if ok {
+		closeSQLCursorResources(session)
+	}
 }
 
 func (m *cursorSessionManager) closeSession(cursor string) {
@@ -221,30 +230,50 @@ func (m *cursorSessionManager) closeSession(cursor string) {
 	activeSessions := len(m.sessions)
 	m.mu.Unlock()
 	if ok {
+		closeSQLCursorResources(session)
 		logger.Debugf("Cursor session closed at final page: catalog_id=%s, active_sessions=%d", session.CatalogID, activeSessions)
 	}
 }
 
 func (m *cursorSessionManager) closeForAccount(accountID, cursor string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	session, ok := m.sessions[cursor]
 	if !ok {
+		m.mu.Unlock()
 		return errCursorSessionNotFound
 	}
 	if session.AccountID != accountID {
+		m.mu.Unlock()
 		return errCursorSessionForbidden
 	}
 	if !session.TryLock() {
+		m.mu.Unlock()
 		return errCursorSessionBusy
 	}
 	defer session.Unlock()
-	if time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec) {
-		m.removeLocked(cursor)
+	expired := time.Now().Unix() >= atomic.LoadInt64(&session.ExpiresAtSec)
+	m.removeLocked(cursor)
+	m.mu.Unlock()
+	closeSQLCursorResources(session)
+	if expired {
 		return errCursorSessionNotFound
 	}
-	m.removeLocked(cursor)
 	return nil
+}
+
+// closeSQLCursorResources 在移除会话后调用；网络资源清理不持有会话管理器的全局锁。
+func closeSQLCursorResources(sessions ...*interfaces.CursorSession) {
+	for _, session := range sessions {
+		if session.SQLCancel != nil {
+			session.SQLCancel()
+		}
+		if session.SQLRows != nil {
+			_ = session.SQLRows.Close()
+		}
+		if session.SQLConnector != nil {
+			_ = session.SQLConnector.Close(context.Background())
+		}
+	}
 }
 
 // CloseCursorSession releases a cursor owned by the calling account.
@@ -279,7 +308,8 @@ func (m *cursorSessionManager) removeLocked(cursor string) (*interfaces.CursorSe
 	return session, true
 }
 
-func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
+func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) []*interfaces.CursorSession {
+	var removed []*interfaces.CursorSession
 	for id, session := range m.sessions {
 		// A page execution holds the session lock. Do not remove a session until that
 		// execution finishes, otherwise it can return an unresolvable cursor.
@@ -290,9 +320,11 @@ func (m *cursorSessionManager) removeExpiredLocked(nowSec int64) {
 		session.Unlock()
 		if expired {
 			m.removeLocked(id)
+			removed = append(removed, session)
 			logger.Debugf("Cursor session expired: catalog_id=%s, active_sessions=%d", session.CatalogID, len(m.sessions))
 		}
 	}
+	return removed
 }
 
 func cursorPagingResponse(session *interfaces.CursorSession) *interfaces.PagingResponse {

@@ -6,6 +6,7 @@ package mariadb
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -28,48 +29,63 @@ type sqlBuffer struct {
 // 结果沿用 RawQueryResponse；TotalCount 是本次返回行数，API 分页和会话由调用层负责。
 // MySQL SQL 服务消费此入口，其他连接器继续沿用 ExecuteRawSQL。
 func (c *MariaDBConnector) ExecuteSQLBuilder(ctx context.Context, query *sb.SelectBuilder) (*interfaces.RawQueryResponse, error) {
-	if err := ctx.Err(); err != nil {
+	rows, columns, err := c.OpenSQLBuilder(ctx, query)
+	if err != nil {
 		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result, err := c.scanQueryRows(rows, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan SQL builder query rows: %w", mariadbQueryError(err))
+	}
+	total := int64(len(result.Entries))
+	return &interfaces.RawQueryResponse{Columns: columns, Entries: result.Entries, TotalCount: &total}, nil
+}
+
+// OpenSQLBuilder 只执行一次 SQL，不提前扫描结果；成功后 Rows 的所有权交给调用方。
+func (c *MariaDBConnector) OpenSQLBuilder(ctx context.Context, query *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
 	}
 	text, args, err := ToSql(query)
 	if err != nil {
 		failure := interfaces.NewConditionBuildError("SQL expression is not supported by MySQL")
 		failure.Cause = err
-		return nil, failure
+		return nil, nil, failure
 	}
 	args, err = sqlBuilderArguments(args)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := c.Connect(ctx); err != nil {
-		return nil, fmt.Errorf("failed to connect for SQL builder query: %w", mariadbQueryError(err))
+		return nil, nil, fmt.Errorf("failed to connect for SQL builder query: %w", mariadbQueryError(err))
 	}
 	rows, err := c.db.QueryContext(ctx, text, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute SQL builder query: %w", mariadbQueryError(err))
+		return nil, nil, fmt.Errorf("failed to execute SQL builder query: %w", mariadbQueryError(err))
 	}
-	defer func() { _ = rows.Close() }()
-
-	columnTypes, err := rows.ColumnTypes()
+	transferred := false
+	defer func() {
+		if !transferred {
+			_ = rows.Close()
+		}
+	}()
+	types, err := rows.ColumnTypes()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read result column types: %w", err)
+		return nil, nil, fmt.Errorf("failed to read result column types: %w", err)
 	}
-	columns := make([]interfaces.ColumnInfo, len(columnTypes))
-	names := make(map[string]bool, len(columnTypes))
-	for i, column := range columnTypes {
-		// 对象行无法表达同名列，必须在扫描前拒绝，避免 JOIN 结果被静默覆盖。
+	columns := make([]interfaces.ColumnInfo, len(types))
+	names := make(map[string]bool, len(types))
+	for i, column := range types {
 		if names[column.Name()] {
-			return nil, interfaces.NewConditionBuildError("query result contains duplicate column names; use explicit aliases")
+			return nil, nil, interfaces.NewConditionBuildError("query result contains duplicate column names; use explicit aliases")
 		}
 		names[column.Name()] = true
 		columns[i] = interfaces.ColumnInfo{Name: column.Name(), Type: c.MapType(column.DatabaseTypeName())}
 	}
-	result, err := c.scanQueryRows(rows, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to scan SQL builder query rows: %w", err)
-	}
-	total := int64(len(result.Entries))
-	return &interfaces.RawQueryResponse{Columns: columns, Entries: result.Entries, TotalCount: &total}, nil
+	transferred = true
+	return rows, columns, nil
 }
 
 // render 直接分派具体节点；空指针与未知节点均返回错误。

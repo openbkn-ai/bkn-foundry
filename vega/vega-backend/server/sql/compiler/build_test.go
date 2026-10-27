@@ -6,6 +6,7 @@ package compiler
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,7 +42,9 @@ func TestTreeBuilderExpressions(t *testing.T) {
 		t.Run(tc.input, func(t *testing.T) {
 			query, err := ParseSQL("SELECT " + tc.input + " FROM {{x}}")
 			require.NoError(t, err)
-			text, args, err := mysql.ToSql(sb.Select(query.ColumnsPart[0]))
+			alias, ok := query.ColumnsPart[0].(*sb.Alias)
+			require.True(t, ok)
+			text, args, err := mysql.ToSql(sb.Select(alias.Expr))
 			require.NoError(t, err)
 			assert.Equal(t, "SELECT "+tc.want, text)
 			assert.Equal(t, tc.args, args)
@@ -96,12 +99,12 @@ func TestTreeBuilderCastTypes(t *testing.T) {
 		t.Run(tc.input, func(t *testing.T) {
 			query, err := ParseSQL("SELECT CAST(id AS " + tc.input + ") FROM {{x}}")
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, query.ColumnsPart[0].(*sb.Cast).Type)
+			assert.Equal(t, tc.want, query.ColumnsPart[0].(*sb.Alias).Expr.(*sb.Cast).Type)
 		})
 	}
 	query, err := ParseSQL("SELECT CAST(id AS DECIMAL(100,40)) FROM {{x}}")
 	require.NoError(t, err)
-	assert.Equal(t, []uint64{100, 40}, query.ColumnsPart[0].(*sb.Cast).Parameters)
+	assert.Equal(t, []uint64{100, 40}, query.ColumnsPart[0].(*sb.Alias).Expr.(*sb.Cast).Parameters)
 	query.FromPart.(*sb.Table).SourceIdentifier = "`items`"
 	text, args, err := mysql.ToSql(query)
 	require.Error(t, err) // 目标限制属于 MySQL 生成器，不由语法解析阶段代替检查。
@@ -124,4 +127,83 @@ func TestTreeBuilderOrderPosition(t *testing.T) {
 	assert.Empty(t, args)
 	_, err = ParseSQL("SELECT id FROM {{orders}} ORDER BY 0")
 	require.Error(t, err)
+}
+
+func TestTreeBuilderProjectionNames(t *testing.T) {
+	for _, tc := range []struct {
+		input, want string
+		names       []string
+		args        []any
+	}{
+		{"SELECT 1,2 FROM {{x}}", "SELECT ? AS `1`, ? AS `2` FROM `orders`", []string{"1", "2"}, []any{json.Number("1"), json.Number("2")}},
+		{"SELECT 001,1.20,1e2 FROM {{x}}", "SELECT ? AS `001`, CAST(? AS DECIMAL(3,2)) AS `1.20`, ? AS `1e2` FROM `orders`", []string{"001", "1.20", "1e2"}, []any{json.Number("1"), json.Number("1.20"), json.Number("1e2")}},
+		{"SELECT 'label','a`b','' FROM {{x}}", "SELECT ? AS `label`, ? AS `a``b`, ? AS `` FROM `orders`", []string{"label", "a`b", ""}, []any{"label", "a`b", ""}},
+		{"SELECT 1 +  2, SUM(id) FROM {{x}}", "SELECT (? + ?) AS `1 +  2`, SUM(`id`) AS `SUM(id)` FROM `orders`", []string{"1 +  2", "SUM(id)"}, []any{json.Number("1"), json.Number("2")}},
+		{"SELECT ((001)),(id),a.* FROM {{x}} a", "SELECT ? AS `001`, `id`, `a`.* FROM `orders` AS `a`", []string{"001"}, []any{json.Number("1")}},
+		{"SELECT q.`1` FROM (SELECT 1 FROM {{x}}) q", "SELECT `q`.`1` FROM (SELECT ? AS `1` FROM `orders`) AS `q`", nil, []any{json.Number("1")}},
+		{"SELECT NOW(6) FROM {{x}}", "SELECT NOW(6) AS `NOW(6)` FROM `orders`", []string{"NOW(6)"}, nil},
+		{"SELECT 1 AS explicit_name FROM {{x}}", "SELECT ? AS `explicit_name` FROM `orders`", []string{"explicit_name"}, []any{json.Number("1")}},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			query, err := ParseSQL(tc.input)
+			require.NoError(t, err)
+			if source, ok := query.FromPart.(*sb.Table); ok {
+				source.SourceIdentifier = "`orders`"
+			} else {
+				query.FromPart.(*sb.Subquery).Query.FromPart.(*sb.Table).SourceIdentifier = "`orders`"
+			}
+			text, args, err := mysql.ToSql(query)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, text)
+			assert.Equal(t, tc.args, args)
+			for i, name := range tc.names {
+				assert.Equal(t, name, query.ColumnsPart[i].(*sb.Alias).Name)
+			}
+			count := sb.Select(&sb.Function{Name: "COUNT", Args: []sb.SqlNode{&sb.Star{}}}).FromSelect(query, "total")
+			text, args, err = mysql.ToSql(count)
+			require.NoError(t, err)
+			assert.Equal(t, "SELECT COUNT(*) FROM ("+tc.want+") AS `total`", text)
+			assert.Equal(t, tc.args, args)
+		})
+	}
+	t.Run("implicit names retain Unicode boundaries and literal names", func(t *testing.T) {
+		for _, tc := range []struct{ expression, want string }{
+			{"'  label '", "label "},
+			{"'" + strings.Repeat("中", 100) + "'", strings.Repeat("中", 85)},
+			{"1 /* keep spacing */ +  2", "1 /* keep spacing */ +  2"},
+		} {
+			query, err := ParseSQL("SELECT " + tc.expression + " FROM {{x}}")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, query.ColumnsPart[0].(*sb.Alias).Name)
+		}
+		query, err := ParseSQL("SELECT 'a\\0b' FROM {{x}}")
+		assert.Nil(t, query)
+		var failure *ParseError
+		require.ErrorAs(t, err, &failure)
+		assert.Equal(t, CodeUnsupported, failure.Code)
+		query, err = ParseSQL("SELECT 'a\\0b' AS label FROM {{x}}")
+		require.NoError(t, err)
+		assert.Equal(t, "a\x00b", query.ColumnsPart[0].(*sb.Alias).Expr.(*sb.Param).Value)
+	})
+
+}
+
+func TestTreeBuilderFunctionArguments(t *testing.T) {
+	for _, expr := range []string{"COUNT()", "COUNT(a,b)", "COUNT(DISTINCT *)", "SUM(*)", "SUM(a,b)", "ABS()", "ABS(1,2)", "ABS(DISTINCT id)", "CONCAT(*)", "COALESCE()", "IFNULL(1)", "ROUND(1,2,3)", "SUBSTRING('a')", "SUBSTR('a',1,2,3)", "REPLACE('a','b')", "CONCAT_WS(',')", "NOW(7)", "NOW(-1)", "NOW(id)", "NOW(1.5)", "CURDATE(1)"} {
+		t.Run("reject "+expr, func(t *testing.T) {
+			query, err := ParseSQL("SELECT " + expr + " FROM {{x}}")
+			assert.Nil(t, query)
+			var failure *ParseError
+			require.ErrorAs(t, err, &failure)
+			assert.Equal(t, CodeUnsupported, failure.Code)
+			assert.NotContains(t, err.Error(), expr)
+		})
+	}
+	for _, expr := range []string{"COUNT(*)", "COUNT(id)", "COUNT(DISTINCT id,name)", "SUM(DISTINCT id)", "MIN(DISTINCT id)", "MAX(id)", "ABS(id)", "ROUND(id)", "ROUND(id,2)", "COALESCE(id,0)", "CONCAT(id)", "CONCAT_WS(',',id)", "IFNULL(id,0)", "SUBSTRING(id,1)", "SUBSTR(id,1,2)", "REPLACE(id,'a','b')", "NOW()", "NOW(6)", "CURDATE()", "CURRENT_TIMESTAMP"} {
+		t.Run("accept "+expr, func(t *testing.T) {
+			query, err := ParseSQL("SELECT " + expr + " FROM {{x}}")
+			require.NoError(t, err)
+			require.NotNil(t, query)
+		})
+	}
 }

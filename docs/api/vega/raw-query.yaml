@@ -31,16 +31,25 @@ info:
 
     不支持 `WITH` / CTE、`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、
     锁定读取，以及写入、DDL、事务、权限与过程类语句。MySQL 函数使用明确的只读内置函数名单，
-    包括常用聚合、数值、字符串和日期函数；其他目标仅允许 SQLGlot 可识别的具名内置表达式。
+    包括常用聚合、数值、字符串和日期函数；在访问连接器前检查参数数量及 DISTINCT / * 的组合。
+    例如 COUNT()、COUNT(DISTINCT *)、ABS(1,2) 会返回 400；字段类型及分组语义由目标数据库检查。
+    其他目标仅允许 SQLGlot 可识别的具名内置表达式。
     UDF 与未开放的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
     内置函数（如 `pg_read_file`、`http_get`、`sleep`、`system`）另被显式拒绝。违反策略返回 HTTP 400
     `VegaBackend.Query.InvalidParameter`，`error_details` 为
     MySQL 返回不含 SQL 原文的解析或能力错误，其他目标返回
     `raw query rejected by read-only policy`；请改写为受支持的单条顶层 `SELECT`。
 
+    MySQL 对没有显式别名的计算表达式固定输出名称，避免参数占位符改变列名及子查询引用；
+    例如 SELECT 1,2 的输出列名为 `1`、`2`。重复输出名称仍需使用不同的显式别名。
+
     MySQL 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
-    total_count 统计原始逻辑查询的结果行数。Cursor 在服务端保存 Builder，每次续页重新校验
-    资源权限和源端元数据版本；版本改变返回 HTTP 409，调用方应重新发起查询。
+    total_count 统计原始逻辑查询的结果行数。MySQL cursor 只执行一次数据查询，在服务端保留
+    同一个 Rows 和连接，续页继续扫描，不重复执行 OFFSET 查询；额外预读一行判断是否有下一页。
+    每次续页重新校验资源权限和源端元数据版本；权限撤销或版本改变会关闭 cursor，版本改变返回
+    HTTP 409。读取超时、取消或结果集读取失败会终止 cursor，调用方应重新发起查询；读取前的
+    临时元数据服务错误可重试。首次 HTTP 请求结束不会关闭空闲 Rows，末页、显式关闭或空闲租约
+    到期会释放 Rows 与连接。need_total 的 COUNT 仍独立执行，不保证与数据查询共享同一快照或 NOW() 等时间函数的时间基准。
 
     MySQL/MariaDB 映射为 binary 的结果列（BIT、BINARY、VARBINARY 和各类 BLOB）
     以原始字节的 base64 字符串返回，空字节串返回空字符串，NULL 保持 null。
@@ -147,7 +156,7 @@ components:
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法，
-          SQL 引用不存在字段，或 SQL 违反只读策略（包括 `WITH` / CTE）。字段不存在时
+          SQL 引用不存在字段、函数参数或分组用法非法，或 SQL 违反只读策略（包括 `WITH` / CTE）。字段不存在时
           `error_details` 固定为 `query references an unknown column`，其他连接器明确归类的
           参数错误固定为 `invalid source query parameter`，均不包含数据库驱动原文；
           违反只读策略时固定为 `raw query rejected by read-only policy`
@@ -311,7 +320,7 @@ components:
           description: 可携带但不会覆盖首次请求冻结的值。
           type: boolean
     PagingRequest:
-      description: SQL cursor 使用 OFFSET 分页；为避免底层数据变更导致跨页重复或遗漏，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY。服务端暂不强制校验该排序。
+      description: MySQL cursor 保留同一次数据查询的 Rows，续页继续读取；其他 SQL 连接器使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
       type: object
       allOf:
         - if:

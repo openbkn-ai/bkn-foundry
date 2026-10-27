@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -41,6 +42,9 @@ func (b *treeBuilder) query(ctx g.ISelectQueryContext) *sb.SelectBuilder {
 		expr := b.expr(item.Expression())
 		if item.Identifier() != nil {
 			expr = &sb.Alias{Expr: expr, Name: identifier(item.Identifier())}
+		} else if _, column := expr.(*sb.Column); !column && expr != nil {
+			name := b.projectionName(item.Expression(), expr)
+			expr = &sb.Alias{Expr: expr, Name: name}
 		}
 		query.Columns(expr)
 	}
@@ -281,7 +285,12 @@ func (b *treeBuilder) primary(ctx g.IPrimaryExpressionContext) sb.SqlNode {
 			b.fail(CodeUnsupported, ctx, "函数未开放")
 			return nil
 		}
-		return b.node(ctx, &sb.Function{Name: name, Args: args, Distinct: call.DISTINCT() != nil}, args...)
+		distinct := call.DISTINCT() != nil
+		if !validSQLFunctionArguments(name, args, distinct) {
+			b.fail(CodeUnsupported, ctx, "函数参数数量、DISTINCT 或通配符用法不支持")
+			return nil
+		}
+		return b.node(ctx, &sb.Function{Name: name, Args: args, Distinct: distinct}, args...)
 	case ctx.CAST() != nil:
 		expr := b.expr(ctx.Expression(0))
 		typeName := ctx.TypeName()
@@ -441,6 +450,90 @@ func (b *treeBuilder) castType(ctx g.ITypeNameContext) sb.CastType {
 		b.fail(CodeUnsupported, ctx, "转换目标类型未开放")
 		return ""
 	}
+}
+
+// projectionName 在参数化前固定默认输出名，复用 Alias，保证子查询与 COUNT 包装后的列引用稳定。
+func (b *treeBuilder) projectionName(ctx g.IExpressionContext, expr sb.SqlNode) string {
+	start, stop := ctx.GetStart(), ctx.GetStop()
+	name := start.GetInputStream().GetText(start.GetStart(), stop.GetStop())
+	if param, ok := expr.(*sb.Param); ok {
+		if value, ok := param.Value.(string); ok {
+			name = strings.TrimLeftFunc(value, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) })
+		} else {
+			// 括号不改变字面量的默认名称，数字名称保留输入中的前导零与指数写法。
+			tokens := ctx.GetParser().GetTokenStream()
+			for i := start.GetTokenIndex(); i <= stop.GetTokenIndex(); i++ {
+				token := tokens.Get(i)
+				if token.GetTokenType() != g.SqlBaseParserLPAREN && token.GetTokenType() != g.SqlBaseParserRPAREN {
+					name = token.GetText()
+					break
+				}
+			}
+		}
+	}
+	// MySQL 的默认显示名称最多保留 256 字节，截断时保留完整 UTF-8 字符。
+	if len(name) > 256 {
+		end := 256
+		for !utf8.RuneStart(name[end]) {
+			end--
+		}
+		name = name[:end]
+	}
+	if strings.ContainsRune(name, '\x00') {
+		b.fail(CodeUnsupported, ctx, "默认输出列名包含非法字符，请显式指定别名")
+	}
+	return name
+}
+
+// validSQLFunctionArguments 只检查输入语言的调用形式，不推断源表字段类型或执行聚合绑定。
+func validSQLFunctionArguments(name string, args []sb.SqlNode, distinct bool) bool {
+	aggregate := name == "COUNT" || name == "SUM" || name == "AVG" || name == "MIN" || name == "MAX"
+	if distinct && !aggregate {
+		return false
+	}
+	for _, arg := range args {
+		if star, ok := arg.(*sb.Star); ok {
+			return name == "COUNT" && len(args) == 1 && !distinct && star.Qualifier == ""
+		}
+	}
+	minimum, maximum := 1, 1
+	switch name {
+	case "COUNT":
+		if distinct {
+			maximum = maxTokens
+		}
+	case "ROUND":
+		maximum = 2
+	case "COALESCE", "CONCAT":
+		maximum = maxTokens
+	case "CONCAT_WS":
+		minimum, maximum = 2, maxTokens
+	case "IFNULL", "NULLIF", "DATE_FORMAT", "STR_TO_DATE":
+		minimum, maximum = 2, 2
+	case "SUBSTRING", "SUBSTR":
+		minimum, maximum = 2, 3
+	case "REPLACE":
+		minimum, maximum = 3, 3
+	case "NOW", "CURRENT_TIMESTAMP":
+		minimum, maximum = 0, 1
+		if len(args) == 1 {
+			value, ok := args[0].(*sb.Param)
+			if !ok {
+				return false
+			}
+			number, ok := value.Value.(json.Number)
+			if !ok {
+				return false
+			}
+			precision, err := strconv.ParseUint(string(number), 10, 8)
+			if err != nil || precision > 6 {
+				return false
+			}
+		}
+	case "CURDATE":
+		minimum, maximum = 0, 0
+	}
+	return len(args) >= minimum && len(args) <= maximum
 }
 
 // allowedSQLFunction 只开放已明确为只读的内置函数，避免透传 UDF 或有副作用的调用。

@@ -66,7 +66,11 @@ func TestAliasToSql(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "? AS `value``name`", text)
 	assert.Equal(t, []any{7}, args)
-	for _, alias := range []*sb.Alias{{Expr: &sb.Param{Value: 1}}, {Name: "name"}} {
+	text, args, err = render(&sb.Alias{Expr: &sb.Param{Value: ""}})
+	require.NoError(t, err)
+	assert.Equal(t, "? AS ``", text)
+	assert.Equal(t, []any{""}, args)
+	for _, alias := range []*sb.Alias{{Expr: &sb.Param{Value: 1}, Name: "invalid\x00name"}, {Name: "name"}} {
 		text, args, err := render(alias)
 		require.Error(t, err)
 		assert.Empty(t, text)
@@ -153,6 +157,8 @@ func TestFunctionToSql(t *testing.T) {
 		want     string
 		args     []any
 	}{
+		{&sb.Function{Name: "NOW", Args: []sb.SqlNode{&sb.Param{Value: json.Number("6")}}}, "NOW(6)", nil},
+		{&sb.Function{Name: "CURRENT_TIMESTAMP", Args: []sb.SqlNode{&sb.Param{Value: json.Number("0")}}}, "CURRENT_TIMESTAMP(0)", nil},
 		{&sb.Function{Name: "count", Args: []sb.SqlNode{&sb.Star{}}}, "COUNT(*)", nil},
 		{&sb.Function{Name: "count", Args: []sb.SqlNode{&sb.Column{Name: "id"}}, Distinct: true}, "COUNT(DISTINCT `id`)", nil},
 		{&sb.Function{Name: "coalesce", Args: []sb.SqlNode{&sb.Column{Name: "id"}, &sb.Param{Value: 0}}}, "COALESCE(`id`, ?)", []any{0}},
@@ -162,7 +168,7 @@ func TestFunctionToSql(t *testing.T) {
 		assert.Equal(t, tc.want, text)
 		assert.Equal(t, tc.args, args)
 	}
-	for _, function := range []*sb.Function{{Name: "COUNT(*)"}, {Name: "x); DROP TABLE t; --"}, {}, {Name: "COUNT", Distinct: true}} {
+	for _, function := range []*sb.Function{{Name: "COUNT(*)"}, {Name: "x); DROP TABLE t; --"}, {}, {Name: "COUNT", Distinct: true}, {Name: "NOW", Args: []sb.SqlNode{&sb.Param{Value: json.Number("7")}}}, {Name: "NOW", Args: []sb.SqlNode{&sb.Column{Name: "precision"}}}} {
 		text, args, err := render(function)
 		require.Error(t, err)
 		assert.Empty(t, text)

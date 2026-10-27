@@ -7,6 +7,8 @@
 package interfaces
 
 import (
+	"context"
+	"database/sql"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
@@ -30,6 +32,12 @@ type CursorSession struct {
 	SQLQuery             *sqlbuilder.SelectBuilder
 	SQLResourceVersions  map[string]int64
 	SQLCatalogUpdateTime int64
+	// MySQL cursor 保留首次执行的结果集和连接，续页只继续读取。
+	SQLRows       *sql.Rows
+	SQLColumns    []ColumnInfo
+	SQLPendingRow map[string]any
+	SQLConnector  Connector
+	SQLCancel     context.CancelFunc
 
 	QueryFormat     QueryFormat
 	OpenSearchQuery map[string]any

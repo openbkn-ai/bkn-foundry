@@ -7,6 +7,9 @@ package query
 
 import (
 	"context"
+	"github.com/DATA-DOG/go-sqlmock"
+	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
+	"go.uber.org/mock/gomock"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -315,4 +318,77 @@ func TestCursorPagingResponse(t *testing.T) {
 		assert.Equal(t, session.ID, *response.NextCursor)
 		assert.Equal(t, session.ExpiresAtSec, *response.ExpiresAtSec)
 	})
+}
+
+func TestCursorSessionManagerSQLRowsLifecycle(t *testing.T) {
+	for _, reason := range []string{"remove", "final page", "explicit close", "expired acquire", "expired close", "periodic expiry", "create reclaims expired", "resource data create reclaims expired"} {
+		t.Run(reason, func(t *testing.T) {
+			manager := newCursorSessionManager(2, 1)
+			session, err := manager.create("owner", "catalog", nil, "", 2, 60, 30)
+			require.NoError(t, err)
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			mock.ExpectQuery("SELECT").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1).AddRow(2)).RowsWillBeClosed()
+			ctx, cancel := context.WithCancel(context.Background())
+			session.SQLCancel = cancel
+			rows, err := db.QueryContext(ctx, "SELECT id")
+			require.NoError(t, err)
+			defer func() { assert.NoError(t, rows.Close()) }()
+			require.NoError(t, rows.Err())
+			session.SQLRows = rows
+			mock.ExpectClose()
+			base := vmock.NewMockTableConnector(gomock.NewController(t))
+			base.EXPECT().Close(gomock.Any()).DoAndReturn(func(context.Context) error {
+				assert.ErrorIs(t, ctx.Err(), context.Canceled)
+				// 关闭连接不能持有全局锁，否则一个慢连接将阻塞所有 cursor。
+				unlocked := manager.mu.TryLock()
+				assert.True(t, unlocked)
+				if unlocked {
+					manager.mu.Unlock()
+				}
+				return db.Close()
+			})
+			session.SQLConnector = base
+			assert.ErrorIs(t, manager.closeForAccount("foreign", session.ID), errCursorSessionForbidden)
+			assert.NoError(t, ctx.Err())
+			session.Lock()
+			atomic.StoreInt64(&session.ExpiresAtSec, 0)
+			manager.mu.Lock()
+			removed := manager.removeExpiredLocked(time.Now().Unix())
+			manager.mu.Unlock()
+			assert.Empty(t, removed)
+			assert.NoError(t, ctx.Err())
+			session.Unlock()
+			switch reason {
+			case "remove":
+				manager.remove(session.ID)
+			case "final page":
+				manager.closeSession(session.ID)
+			case "explicit close":
+				atomic.StoreInt64(&session.ExpiresAtSec, time.Now().Unix()+60)
+				require.NoError(t, manager.closeForAccount("owner", session.ID))
+			case "expired acquire":
+				_, ok := manager.acquire(session.ID)
+				assert.False(t, ok)
+			case "expired close":
+				assert.ErrorIs(t, manager.closeForAccount("owner", session.ID), errCursorSessionNotFound)
+			case "periodic expiry":
+				manager.mu.Lock()
+				removed = manager.removeExpiredLocked(time.Now().Unix())
+				manager.mu.Unlock()
+				closeSQLCursorResources(removed...)
+			case "create reclaims expired":
+				_, err = manager.create("owner", "catalog", nil, "", 1, 60, 30)
+				require.NoError(t, err)
+			case "resource data create reclaims expired":
+				_, err = manager.createResourceData("owner", "owner", &interfaces.Resource{ID: "r"}, &interfaces.ResourceDataQueryParams{Paging: interfaces.PagingRequest{Limit: 1}})
+				require.NoError(t, err)
+			}
+			assert.ErrorIs(t, ctx.Err(), context.Canceled)
+			assert.Error(t, session.SQLRows.Scan(new(any)))
+			assert.NotContains(t, manager.sessions, session.ID)
+			manager.remove(session.ID) // 重复释放不能再次关闭连接。
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

@@ -24,10 +24,10 @@ help:
 	@echo "  make test-at-setup    - 检查 AT 测试配置"
 
 generate-query-parser:
-	cd server && go generate ./logics/query/compiler/sqlparser
+	cd server && go generate ./sql/compiler/sqlparser
 
 check-query-parser:
-	cd server && ./logics/query/compiler/sqlparser/generate.sh --check
+	cd server && ./sql/compiler/sqlparser/generate.sh --check
 
 generate-mock:
 	cd server && go generate ./...

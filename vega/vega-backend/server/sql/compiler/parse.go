@@ -53,7 +53,7 @@ type budgetLexer struct {
 
 // ParseSQL 严格消费一条 SELECT，直接返回尚未绑定资源和类型的新 Builder。
 // 数字保留为 json.Number，不经过 float64；标识符和字符串仅解码一次。
-// 函数权限、类型规则及物理目标能力属于后续准备阶段。
+// 此处检查开放函数及调用形式；源表类型规则和物理目标能力由执行阶段检查。
 func ParseSQL(input string) (*sqlbuilder.SelectBuilder, error) {
 	if len(input) > maxSQLBytes {
 		return nil, &ParseError{Code: CodeLimit, Line: 1, Column: 1, Message: "SQL 字节数超限"}

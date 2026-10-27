@@ -386,11 +386,17 @@ func (c *MariaDBConnector) scanQueryRows(rows *sql.Rows, binaryContentColumns ma
 	return result, nil
 }
 
-// mariadbQueryError identifies unknown-column errors while preserving the driver cause.
+// mariadbQueryError 按源端错误码区分查询输入错误，保留驱动原因供诊断，不透传原文到 API。
 func mariadbQueryError(err error) error {
 	var driverErr *mysql.MySQLError
-	if errors.As(err, &driverErr) && driverErr.Number == 1054 {
-		return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
+	if errors.As(err, &driverErr) {
+		switch driverErr.Number {
+		case 1054: // ER_BAD_FIELD_ERROR
+			return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
+		case 1052, 1055, 1056, 1060, 1064, 1111, 1140, 1210, 1221, 1241, 1582, 1583, 1584, 3065:
+			// 歧义/重复列、语法、分组、函数参数和 DISTINCT 排序错误；不将连接或资源失效归为输入错误。
+			return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterInvalidQuery, err)
+		}
 	}
 	return err
 }

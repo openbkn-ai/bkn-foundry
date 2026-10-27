@@ -141,7 +141,7 @@ type Unary struct {
 }
 
 // Function 保存函数名称及结构化参数，不接受包含括号或参数的函数 SQL 文本。
-// 函数白名单、参数类型及聚合使用位置由准备阶段检查。
+// SQL 入口检查函数名单与调用形式；源表字段类型和聚合使用位置由目标数据库检查。
 type Function struct {
 	Name     string
 	Args     []SqlNode

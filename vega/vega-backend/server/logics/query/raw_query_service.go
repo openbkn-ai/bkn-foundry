@@ -212,6 +212,8 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	if err != nil {
 		return nil, cursorSessionCreateError(ctx, err)
 	}
+	session.Lock()
+	defer session.Unlock()
 	session.SQLQuery = prepared.builder
 	session.SQLResourceVersions = prepared.resourceVersions
 	session.SQLCatalogUpdateTime = prepared.catalog.UpdateTime
@@ -220,8 +222,12 @@ func (rqs *rawQueryService) executeInitialSQLCursor(ctx context.Context, req *in
 	session.HasTotalCount = req.NeedTotal
 	session.NeedTotal = req.NeedTotal
 	bindCursorResource(session, req)
-	session.Lock()
-	defer session.Unlock()
+	if session.SQLQuery != nil {
+		if err := rqs.openSQLBuilderCursor(queryCtx, session, prepared.catalog); err != nil {
+			rawQueryCursorSessions.remove(session.ID)
+			return nil, err
+		}
+	}
 	result, err := rqs.executeSQLCursorPage(queryCtx, session, prepared.catalog, prepared.warnings)
 	if err != nil {
 		// The client has not received this token, so it cannot retry this
@@ -252,14 +258,19 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 	defer cancel()
 	catalog, warnings, err := rqs.checkSameDataSource(queryCtx, session.ResourceIDs)
 	if err != nil {
+		invalidateSQLCursor(session, err)
 		return nil, err
 	}
 	if catalog.ID != session.CatalogID {
+		if session.SQLQuery != nil {
+			rawQueryCursorSessions.remove(session.ID)
+		}
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Query_ExecuteFailed).
 			WithErrorDetails("cursor catalog changed")
 	}
 	if session.SQLQuery != nil {
 		if err := rqs.validateSQLBuilderCursor(queryCtx, session, catalog); err != nil {
+			invalidateSQLCursor(session, err)
 			return nil, err
 		}
 	}
@@ -439,20 +450,21 @@ func (rqs *rawQueryService) executeSQLCursorPage(ctx context.Context, session *i
 	defer cancel()
 
 	if session.SQLQuery != nil && session.PageOffset > math.MaxInt-session.PageLimit {
+		rawQueryCursorSessions.remove(session.ID)
 		return nil, mysqlQueryInvalid(ctx, "cursor 分页偏移超出支持范围")
 	}
 	options := &rawSQLBuildOptions{offset: session.PageOffset, limit: session.PageLimit + 1}
 	var result *interfaces.RawQueryResponse
 	var err error
 	if session.SQLQuery != nil {
-		result, err = rqs.executeSQLBuilder(pageCtx, catalog, session.SQLQuery, options)
+		result, err = readSQLCursorPage(pageCtx, session)
 	} else {
 		result, err = rqs.executeSQL(pageCtx, catalog, session.CompiledSQL, interfaces.PagingModeCursor, options)
 	}
 	if err != nil {
 		return nil, err
 	}
-	hasNext := len(result.Entries) > session.PageLimit
+	hasNext := len(result.Entries) > session.PageLimit || session.SQLPendingRow != nil
 	if hasNext {
 		result.Entries = result.Entries[:session.PageLimit]
 		session.PageOffset += session.PageLimit

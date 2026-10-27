@@ -41,9 +41,13 @@ func starSql(s sb.Star) (string, []any, error) {
 }
 
 func aliasSql(a sb.Alias) (string, []any, error) {
-	name, err := quoteIdentifier(a.Name)
-	if err != nil {
-		return "", nil, err
+	name := "``"
+	if a.Name != "" {
+		var err error
+		name, err = quoteIdentifier(a.Name)
+		if err != nil {
+			return "", nil, err
+		}
 	}
 	b := sqlBuffer{}
 	b.writePart(a.Expr)
@@ -168,8 +172,28 @@ func functionSql(f sb.Function) (string, []any, error) {
 	if f.Name == "" || (f.Distinct && len(f.Args) == 0) {
 		return "", nil, fmt.Errorf("函数名称或 DISTINCT 参数为空")
 	}
+	name := strings.ToUpper(f.Name)
+	// 时间精度属于语法参数，MySQL 不接受 NOW(?)；只输出已验证的 0..6 整数。
+	if (name == "NOW" || name == "CURRENT_TIMESTAMP") && len(f.Args) != 0 {
+		if len(f.Args) != 1 || f.Distinct {
+			return "", nil, fmt.Errorf("时间函数精度无效")
+		}
+		param, ok := f.Args[0].(*sb.Param)
+		if !ok || param == nil {
+			return "", nil, fmt.Errorf("时间函数精度必须为整数常量")
+		}
+		number, ok := param.Value.(json.Number)
+		if !ok {
+			return "", nil, fmt.Errorf("时间函数精度必须为整数常量")
+		}
+		precision, err := strconv.ParseUint(string(number), 10, 8)
+		if err != nil || precision > 6 {
+			return "", nil, fmt.Errorf("时间函数精度超出范围")
+		}
+		return name + "(" + strconv.FormatUint(precision, 10) + ")", nil, nil
+	}
 	b := sqlBuffer{}
-	b.writeString(strings.ToUpper(f.Name) + "(")
+	b.writeString(name + "(")
 	if f.Distinct {
 		b.writeString("DISTINCT ")
 	}
