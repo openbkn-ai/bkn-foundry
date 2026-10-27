@@ -468,12 +468,31 @@ func (c *LifecycleClient) StartOperationAttempt(
 	return result, apiErr, err
 }
 
-func (c *LifecycleClient) finishAttempt(
+type preparedFinishAttempt struct {
+	path string
+	body json.RawMessage
+}
+
+func (c *LifecycleClient) finishAttempt(ctx context.Context, input FinishAttemptInput, action, evidenceDurability string) (OperationResult, *APIError, error) {
+	prepared, err := c.prepareFinishAttempt(ctx, input, action, evidenceDurability)
+	if err != nil {
+		return OperationResult{}, nil, err
+	}
+	return c.submitFinishAttempt(ctx, prepared)
+}
+
+func (c *LifecycleClient) submitFinishAttempt(ctx context.Context, prepared preparedFinishAttempt) (OperationResult, *APIError, error) {
+	var result OperationResult
+	apiErr, err := c.do(ctx, http.MethodPost, prepared.path, prepared.body, &result)
+	return result, apiErr, err
+}
+
+func (c *LifecycleClient) prepareFinishAttempt(
 	ctx context.Context,
 	input FinishAttemptInput,
 	action string,
 	evidenceDurability string,
-) (OperationResult, *APIError, error) {
+) (preparedFinishAttempt, error) {
 	body := map[string]any{
 		"receipt_id":          input.ReceiptID,
 		"evidence_durability": evidenceDurability, "retryable": input.Retryable,
@@ -504,11 +523,10 @@ func (c *LifecycleClient) finishAttempt(
 			body["artifact_refs"] = input.ArtifactRefs
 		}
 	}
-	var result OperationResult
 	path := "/operations/" + url.PathEscape(input.OperationID) + "/attempts/" +
 		strconv.FormatUint(uint64(input.Attempt), 10) + ":" + action
-	apiErr, err := c.do(ctx, http.MethodPost, path, body, &result)
-	return result, apiErr, err
+	raw, err := sonic.Marshal(body)
+	return preparedFinishAttempt{path: path, body: json.RawMessage(raw)}, err
 }
 
 //nolint:unused // Intentionally retained.
