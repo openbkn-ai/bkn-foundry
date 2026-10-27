@@ -160,7 +160,7 @@ func TestRolePermissionRegistryFailureRemainsInternalError(t *testing.T) {
 			backendFailure := errors.New("registry backend unavailable")
 			if err := db.Callback().Query().Before("gorm:query").Register("test:registry-failure", func(tx *gorm.DB) {
 				if tx.Statement.Table == "resource_types" || tx.Statement.Table == "operations" {
-					tx.AddError(backendFailure)
+					_ = tx.AddError(backendFailure)
 				}
 			}); err != nil {
 				t.Fatal(err)
