@@ -28,6 +28,7 @@ const (
 	BknProject_Draft_Stale           = "BknProject.Draft.Stale"
 	BknProject_Draft_HasDecisions    = "BknProject.Draft.HasDecisions"
 	BknProject_Draft_FieldNotFound   = "BknProject.Draft.FieldNotFound"
+	BknProject_Draft_CatalogMissing  = "BknProject.Draft.CatalogMissing"
 
 	// 500
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
@@ -54,5 +55,6 @@ var (
 		BknProject_Draft_NotReady,
 		BknProject_Draft_Stale,
 		BknProject_Draft_HasDecisions,
+		BknProject_Draft_CatalogMissing,
 	}
 )

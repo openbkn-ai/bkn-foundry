@@ -26,6 +26,7 @@ var draftEnUS = i18n.I18nMessages{
 		"BknProject.Draft.InvalidIdentity":    "Invalid Identity. Give one or more distinct properties of the object type, each of type string, text, integer or unsigned integer.",
 		"BknProject.Draft.NotRestorable":      "Field Not Restorable. The field was excluded because its type cannot be mapped to BKN.",
 		"BknProject.Draft.FieldNotFound":      "Source Field Not Found. The field is no longer in its table, or you cannot read the table; draft again.",
+		"BknProject.Draft.CatalogMissing":     "Data Catalog Not Found. A data catalog of the project no longer exists; change the project's data catalogs before drafting.",
 		"BknProject.Draft.MissingUpdateTime":  "Missing Update Time. Give update_time, the update time of the draft the change was made on.",
 		"BknProject.Draft.NeedsIdentity":      "Identity Not Chosen. Choose the object type's identity before adopting it.",
 	},

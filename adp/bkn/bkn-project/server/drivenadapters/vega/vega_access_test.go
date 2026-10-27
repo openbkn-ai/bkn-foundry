@@ -58,6 +58,48 @@ func Test_VegaAccess(t *testing.T) {
 			So(tables[0].ID, ShouldEqual, "r1")
 		})
 
+		Convey("MissingCatalogs asks once when every catalog is there\n", func() {
+			respBody = `{"entries":[{"id":"c 1"},{"id":"c2"}]}`
+
+			missing, err := va.MissingCatalogs(ctx, account, []string{"c 1", "c2"})
+
+			So(err, ShouldBeNil)
+			So(missing, ShouldBeEmpty)
+			So(len(got), ShouldEqual, 1)
+			So(got[0].path, ShouldEqual, "/api/vega-backend/in/v1/catalogs/c 1,c2")
+			So(got[0].accountID, ShouldEqual, "u1")
+		})
+
+		Convey("MissingCatalogs asks each catalog when the batch is refused; only a deleted one is missing\n", func() {
+			// vega-backend refuses the batch with 403 before reporting a missing id, and
+			// answers 403 for a catalog the account lacks view_detail on although it may read
+			// its tables, so only 404 means the catalog is gone.
+			byPath := map[string]int{
+				"/api/vega-backend/in/v1/catalogs/c1,c2,c3": http.StatusForbidden,
+				"/api/vega-backend/in/v1/catalogs/c1":       http.StatusOK,
+				"/api/vega-backend/in/v1/catalogs/c2":       http.StatusForbidden,
+				"/api/vega-backend/in/v1/catalogs/c3":       http.StatusNotFound,
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(byPath[r.URL.Path])
+				_, _ = w.Write([]byte(`{}`))
+			}))
+			defer server.Close()
+			each := &vegaAccess{httpClient: rest.NewHTTPClient(), baseUrl: server.URL + "/api/vega-backend/in/v1"}
+
+			missing, err := each.MissingCatalogs(ctx, account, []string{"c1", "c2", "c3"})
+
+			So(err, ShouldBeNil)
+			So(missing, ShouldResemble, []string{"c3"})
+
+			byPath["/api/vega-backend/in/v1/catalogs/c1,c2,c3"] = http.StatusNotFound
+			byPath["/api/vega-backend/in/v1/catalogs/c2"] = http.StatusInternalServerError
+			_, err = each.MissingCatalogs(ctx, account, []string{"c1", "c2", "c3"})
+			var vegaErr *VegaError
+			So(errors.As(err, &vegaErr), ShouldBeTrue)
+			So(vegaErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
+		})
+
 		Convey("GetTables reads the structure, with vega's types and the exact row count\n", func() {
 			respBody = `{"entries":[{"id":"r1","catalog_id":"c1","name":"orders","row_count":800,
 				"estimated_row_count":790,
