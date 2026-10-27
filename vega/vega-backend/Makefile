@@ -24,7 +24,7 @@ help:
 	@echo "  make test-at-setup    - 检查 AT 测试配置"
 
 generate-query-parser:
-	cd server && go generate ./sql/compiler/sqlparser
+	cd server && ./sql/compiler/sqlparser/generate.sh
 
 check-query-parser:
 	cd server && ./sql/compiler/sqlparser/generate.sh --check

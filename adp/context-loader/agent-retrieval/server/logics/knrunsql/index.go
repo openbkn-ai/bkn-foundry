@@ -18,14 +18,14 @@ import (
 var (
 	// ErrSQLRequired sql input parameter is empty.
 	ErrSQLRequired = errors.New("sql is required")
-	// ErrNoResourcePlaceholder SQL did not reference any data resource through the {{.resource_id}} placeholder.
-	ErrNoResourcePlaceholder = errors.New("sql must reference at least one data resource via the {{.resource_id}} placeholder")
+	// ErrNoResourcePlaceholder SQL did not reference any data resource through the {{resource_id}} placeholder.
+	ErrNoResourcePlaceholder = errors.New("sql must reference at least one data resource via the {{resource_id}} placeholder")
 	emitRunSQLFailure        = bkntrace.EmitRunSQLFailure
 )
 
 // RunSQLReq run_sql input (shared by MCP tools and internal REST endpoints).
 type RunSQLReq struct {
-	SQL          string `json:"sql"`           // MySQL dialect SQL, the table name uses {{.resource_id}} placeholder.
+	SQL          string `json:"sql"`           // MySQL dialect SQL, the table name uses {{resource_id}} placeholder.
 	QueryTimeout int    `json:"query_timeout"` // Query timeout (seconds), optional.
 }
 
@@ -79,7 +79,7 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 		return nil, err
 	}
 
-	// The resource must be referenced through the {{.resource_id}} placeholder, otherwise vega cannot locate the data source.
+	// The resource must be referenced through the {{resource_id}} placeholder, otherwise vega cannot locate the data source.
 	resourceIDs := ExtractResourceIDs(req.SQL)
 	if len(resourceIDs) == 0 {
 		emitRunSQLFailure(ctx, nil, req.SQL, nil, bkntrace.RunSQLFailure{

@@ -31,7 +31,7 @@ type RawQueryColumn struct {
 }
 
 // RawQueryRequest is a read-only SQL query submitted to vega-backend. Table
-// references are placeholders of the form {{.<resource_id>}} that vega expands
+// references are placeholders of the form {{<resource_id>}} that vega expands
 // into physical names after checking the caller may read each one.
 //
 // InputDialect must be the catalog's own dialect. Vega only transpiles when it

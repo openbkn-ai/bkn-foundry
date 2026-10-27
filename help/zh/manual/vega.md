@@ -194,7 +194,7 @@ openbkn vega sql -d '<json>'
 openbkn vega help sql
 ```
 
-SQL 必须使用至少一个占位符 `{{.<资源ID>}}` 或 `{{<资源ID>}}`（资源 ID 为 Vega `resource_id`），后端会根据资源所属 Catalog 解析目标连接器并替换为物理表标识。不支持不带资源占位符的原生表名查询。
+SQL 必须使用至少一个占位符 `{{<资源ID>}}`（资源 ID 为 Vega `resource_id`），后端会根据资源所属 Catalog 解析目标连接器并替换为物理表标识。不支持不带资源占位符的原生表名查询。
 
 **三种查询方式对照**
 

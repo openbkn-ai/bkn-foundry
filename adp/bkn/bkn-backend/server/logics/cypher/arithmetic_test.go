@@ -62,58 +62,58 @@ func TestCompileArithmetic(t *testing.T) {
 			// The reported case: an aggregate scaled by a number.
 			name:  "an aggregate times a number",
 			query: "MATCH (l:Line) RETURN count(*) * 2 AS doubled",
-			want:  "SELECT COUNT(*) * 2 AS `doubled` FROM {{.res_line}} t0",
+			want:  "SELECT COUNT(*) * 2 AS `doubled` FROM {{res_line}} t0",
 		},
 		{
 			name:  "an unaliased computed column is named after what was written",
 			query: "MATCH (l:Line) RETURN count(l.id) * 2",
-			want:  "SELECT COUNT(t0.`f_id`) * 2 AS `count(l.id) * 2` FROM {{.res_line}} t0",
+			want:  "SELECT COUNT(t0.`f_id`) * 2 AS `count(l.id) * 2` FROM {{res_line}} t0",
 		},
 		{
 			name:  "count is a number whatever it counts",
 			query: "MATCH (l:Line) RETURN count(l.name) + 1 AS n",
-			want:  "SELECT COUNT(t0.`f_name`) + 1 AS `n` FROM {{.res_line}} t0",
+			want:  "SELECT COUNT(t0.`f_name`) + 1 AS `n` FROM {{res_line}} t0",
 		},
 		{
 			name:  "two properties",
 			query: "MATCH (l:Line) RETURN l.price * l.quantity AS total",
-			want:  "SELECT t0.`f_price` * t0.`f_qty` AS `total` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_price` * t0.`f_qty` AS `total` FROM {{res_line}} t0",
 		},
 		{
 			name:  "parentheses the tree needs are kept",
 			query: "MATCH (l:Line) RETURN (l.price + 1) * 2 AS x",
-			want:  "SELECT (t0.`f_price` + 1) * 2 AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT (t0.`f_price` + 1) * 2 AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "parentheses the tree does not need are dropped",
 			query: "MATCH (l:Line) RETURN l.quantity + (l.id * 2) AS x",
-			want:  "SELECT t0.`f_qty` + t0.`f_id` * 2 AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_qty` + t0.`f_id` * 2 AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "subtraction on the right keeps its parentheses",
 			query: "MATCH (l:Line) RETURN l.quantity - (l.id - 1) AS x",
-			want:  "SELECT t0.`f_qty` - (t0.`f_id` - 1) AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_qty` - (t0.`f_id` - 1) AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "operators of one precedence read left to right",
 			query: "MATCH (l:Line) RETURN l.quantity - l.id - 1 AS x",
-			want:  "SELECT t0.`f_qty` - t0.`f_id` - 1 AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_qty` - t0.`f_id` - 1 AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "a negated property",
 			query: "MATCH (l:Line) RETURN -l.price AS x",
-			want:  "SELECT -t0.`f_price` AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT -t0.`f_price` AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "a negated computation",
 			query: "MATCH (l:Line) RETURN -(l.price + 1) AS x",
-			want:  "SELECT -(t0.`f_price` + 1) AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT -(t0.`f_price` + 1) AS `x` FROM {{res_line}} t0",
 		},
 		{
 			// Written with a space so that no database reads -- as a comment.
 			name:  "a negative number on the right of a minus",
 			query: "MATCH (l:Line) RETURN l.quantity - -1 AS x",
-			want:  "SELECT t0.`f_qty` - -1 AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_qty` - -1 AS `x` FROM {{res_line}} t0",
 		},
 		{
 			// A whole float keeps an exponent: printed as 1 it would make the
@@ -121,114 +121,114 @@ func TestCompileArithmetic(t *testing.T) {
 			// rather than a decimal rounded to four places.
 			name:  "a ratio made fractional by a float",
 			query: "MATCH (l:Line) RETURN count(*) * 1.0 / count(l.id) AS ratio",
-			want:  "SELECT COUNT(*) * 1E+00 / COUNT(t0.`f_id`) AS `ratio` FROM {{.res_line}} t0",
+			want:  "SELECT COUNT(*) * 1E+00 / COUNT(t0.`f_id`) AS `ratio` FROM {{res_line}} t0",
 		},
 		{
 			name:  "dividing by a float property",
 			query: "MATCH (l:Line) RETURN l.quantity / l.price AS x",
-			want:  "SELECT t0.`f_qty` / t0.`f_price` AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_qty` / t0.`f_price` AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "dividing a decimal",
 			query: "MATCH (l:Line) RETURN l.discount / 2 AS x",
-			want:  "SELECT t0.`f_discount` / 2 AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_discount` / 2 AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "avg is a fraction",
 			query: "MATCH (l:Line) RETURN sum(l.quantity) / avg(l.quantity) AS x",
-			want:  "SELECT SUM(t0.`f_qty`) / AVG(t0.`f_qty`) AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT SUM(t0.`f_qty`) / AVG(t0.`f_qty`) AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "remainder of integers",
 			query: "MATCH (l:Line) RETURN l.quantity % 2 AS parity",
-			want:  "SELECT t0.`f_qty` % 2 AS `parity` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_qty` % 2 AS `parity` FROM {{res_line}} t0",
 		},
 		{
 			name:       "a parameter is bound as a number",
 			query:      "MATCH (l:Line) RETURN l.price * $rate AS x",
 			parameters: map[string]any{"rate": 1.5},
-			want:       "SELECT t0.`f_price` * 1.5E+00 AS `x` FROM {{.res_line}} t0",
+			want:       "SELECT t0.`f_price` * 1.5E+00 AS `x` FROM {{res_line}} t0",
 		},
 		{
 			// The model does not say what note is, so the database decides,
 			// as it does for a comparison.
 			name:  "an untyped property",
 			query: "MATCH (l:Line) RETURN l.note + 1 AS x",
-			want:  "SELECT t0.`f_note` + 1 AS `x` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_note` + 1 AS `x` FROM {{res_line}} t0",
 		},
 		{
 			name:  "an aggregate over a computed value",
 			query: "MATCH (l:Line) RETURN l.name AS name, sum(l.price * l.quantity) AS revenue",
 			want: "SELECT t0.`f_name` AS `name`, SUM(t0.`f_price` * t0.`f_qty`) AS `revenue` " +
-				"FROM {{.res_line}} t0 GROUP BY t0.`f_name`",
+				"FROM {{res_line}} t0 GROUP BY t0.`f_name`",
 		},
 		{
 			name:  "an unaliased aggregate over a computed value",
 			query: "MATCH (l:Line) RETURN sum(l.price * l.quantity)",
-			want:  "SELECT SUM(t0.`f_price` * t0.`f_qty`) AS `sum(l.price * l.quantity)` FROM {{.res_line}} t0",
+			want:  "SELECT SUM(t0.`f_price` * t0.`f_qty`) AS `sum(l.price * l.quantity)` FROM {{res_line}} t0",
 		},
 		{
 			name:  "a computed column is a grouping key",
 			query: "MATCH (l:Line) RETURN l.quantity * 2 AS q, count(*) AS n",
-			want: "SELECT t0.`f_qty` * 2 AS `q`, COUNT(*) AS `n` FROM {{.res_line}} t0 " +
+			want: "SELECT t0.`f_qty` * 2 AS `q`, COUNT(*) AS `n` FROM {{res_line}} t0 " +
 				"GROUP BY t0.`f_qty` * 2",
 		},
 		{
 			name:  "a property outside an aggregate that is also returned",
 			query: "MATCH (l:Line) RETURN l.quantity AS q, l.quantity * count(*) AS units",
-			want: "SELECT t0.`f_qty` AS `q`, t0.`f_qty` * COUNT(*) AS `units` FROM {{.res_line}} t0 " +
+			want: "SELECT t0.`f_qty` AS `q`, t0.`f_qty` * COUNT(*) AS `units` FROM {{res_line}} t0 " +
 				"GROUP BY t0.`f_qty`",
 		},
 		{
 			name:  "sorted by the name of a computed column",
 			query: "MATCH (l:Line) RETURN l.name AS name, sum(l.price) * 2 AS x ORDER BY x DESC",
-			want: "SELECT t0.`f_name` AS `name`, SUM(t0.`f_price`) * 2 AS `x` FROM {{.res_line}} t0 " +
+			want: "SELECT t0.`f_name` AS `name`, SUM(t0.`f_price`) * 2 AS `x` FROM {{res_line}} t0 " +
 				"GROUP BY t0.`f_name` ORDER BY `x` DESC",
 		},
 		{
 			name:  "sorted by an aggregate over a computed value",
 			query: "MATCH (l:Line) RETURN l.name AS name, sum(l.price * l.quantity) AS r ORDER BY sum(l.price * l.quantity) DESC",
-			want: "SELECT t0.`f_name` AS `name`, SUM(t0.`f_price` * t0.`f_qty`) AS `r` FROM {{.res_line}} t0 " +
+			want: "SELECT t0.`f_name` AS `name`, SUM(t0.`f_price` * t0.`f_qty`) AS `r` FROM {{res_line}} t0 " +
 				"GROUP BY t0.`f_name` ORDER BY SUM(t0.`f_price` * t0.`f_qty`) DESC",
 		},
 		{
 			name:  "a parenthesized property is the property",
 			query: "MATCH (l:Line) RETURN (l.name)",
-			want:  "SELECT t0.`f_name` AS `(l.name)` FROM {{.res_line}} t0",
+			want:  "SELECT t0.`f_name` AS `(l.name)` FROM {{res_line}} t0",
 		},
 		{
 			name:  "a computed condition",
 			query: "MATCH (l:Line) WHERE l.price * 2 > 10 RETURN l.id AS id",
-			want:  "SELECT t0.`f_id` AS `id` FROM {{.res_line}} t0 WHERE t0.`f_price` * 2 > 10",
+			want:  "SELECT t0.`f_id` AS `id` FROM {{res_line}} t0 WHERE t0.`f_price` * 2 > 10",
 		},
 		{
 			name:       "a computed condition against a parameter",
 			query:      "MATCH (l:Line) WHERE l.price * l.quantity >= $floor AND l.id > 0 RETURN l.id AS id",
 			parameters: map[string]any{"floor": 100},
-			want: "SELECT t0.`f_id` AS `id` FROM {{.res_line}} t0 " +
+			want: "SELECT t0.`f_id` AS `id` FROM {{res_line}} t0 " +
 				"WHERE t0.`f_price` * t0.`f_qty` >= 100 AND t0.`f_id` > 0",
 		},
 		{
 			name:  "arithmetic on both sides",
 			query: "MATCH (l:Line) WHERE l.quantity + 1 = l.id RETURN l.id AS id",
-			want:  "SELECT t0.`f_id` AS `id` FROM {{.res_line}} t0 WHERE t0.`f_qty` + 1 = t0.`f_id`",
+			want:  "SELECT t0.`f_id` AS `id` FROM {{res_line}} t0 WHERE t0.`f_qty` + 1 = t0.`f_id`",
 		},
 		{
 			name:       "a negated parameter",
 			query:      "MATCH (l:Line) WHERE l.price > -$floor RETURN l.id AS id",
 			parameters: map[string]any{"floor": 10},
-			want:       "SELECT t0.`f_id` AS `id` FROM {{.res_line}} t0 WHERE t0.`f_price` > -(10)",
+			want:       "SELECT t0.`f_id` AS `id` FROM {{res_line}} t0 WHERE t0.`f_price` > -(10)",
 		},
 		{
 			// Parentheses around a property alone leave the plain comparison.
 			name:  "a parenthesized property in a condition",
 			query: "MATCH (l:Line) WHERE (l.price) > 3 RETURN l.id AS id",
-			want:  "SELECT t0.`f_id` AS `id` FROM {{.res_line}} t0 WHERE t0.`f_price` > 3",
+			want:  "SELECT t0.`f_id` AS `id` FROM {{res_line}} t0 WHERE t0.`f_price` > 3",
 		},
 		{
 			name:  "sorted by a computed value",
 			query: "MATCH (l:Line) RETURN l.id AS id ORDER BY l.price * l.quantity DESC",
-			want:  "SELECT t0.`f_id` AS `id` FROM {{.res_line}} t0 ORDER BY t0.`f_price` * t0.`f_qty` DESC",
+			want:  "SELECT t0.`f_id` AS `id` FROM {{res_line}} t0 ORDER BY t0.`f_price` * t0.`f_qty` DESC",
 		},
 		{
 			// The weighted ranking from the report: an aggregate and a
@@ -236,13 +236,13 @@ func TestCompileArithmetic(t *testing.T) {
 			name: "sorted by a weighted score",
 			query: "MATCH (l:Line) RETURN l.name AS name, l.quantity AS q, count(l.id) AS n " +
 				"ORDER BY count(l.id) * 0.5 + l.quantity * 0.3 DESC, name",
-			want: "SELECT t0.`f_name` AS `name`, t0.`f_qty` AS `q`, COUNT(t0.`f_id`) AS `n` FROM {{.res_line}} t0 " +
+			want: "SELECT t0.`f_name` AS `name`, t0.`f_qty` AS `q`, COUNT(t0.`f_id`) AS `n` FROM {{res_line}} t0 " +
 				"GROUP BY t0.`f_name`, t0.`f_qty` ORDER BY COUNT(t0.`f_id`) * 5E-01 + t0.`f_qty` * 3E-01 DESC, `name`",
 		},
 		{
 			name:  "distinct computed values",
 			query: "MATCH (l:Line) RETURN DISTINCT l.quantity * 10 AS bucket",
-			want:  "SELECT DISTINCT t0.`f_qty` * 10 AS `bucket` FROM {{.res_line}} t0",
+			want:  "SELECT DISTINCT t0.`f_qty` * 10 AS `bucket` FROM {{res_line}} t0",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

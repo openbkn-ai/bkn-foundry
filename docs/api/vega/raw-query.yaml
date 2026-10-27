@@ -51,6 +51,12 @@ info:
     临时元数据服务错误可重试。首次 HTTP 请求结束不会关闭空闲 Rows，末页、显式关闭或空闲租约
     到期会释放 Rows 与连接。need_total 的 COUNT 仍独立执行，不保证与数据查询共享同一快照或 NOW() 等时间函数的时间基准。
 
+    每个未读完的 MariaDB/MySQL cursor 持有一个源端结果集和连接，应用的 keep_alive_sec
+    仅控制会话回收，不保证源库连接在租约内持续可用。大结果集在客户端暂停读取时可能使源端写入
+    阻塞并触发 net_write_timeout；SELECT 尚未结束时，其持有的元数据锁也可能使 DDL 等待。
+    应结合源端连接预算控制并发 cursor 数，读取完成后及时关闭，不再使用时调用 cursor 关闭接口。
+    源端超时或断连导致续页失败时，会话终止并释放资源，调用方需要重新发起查询。
+
     MySQL/MariaDB 映射为 binary 的结果列（BIT、BINARY、VARBINARY 和各类 BLOB）
     以原始字节的 base64 字符串返回，空字节串返回空字符串，NULL 保持 null。
     BIT（包括 BIT(1)）不解释为 boolean；TINYINT 保留整数值，文本列仍返回文本。

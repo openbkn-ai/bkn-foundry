@@ -195,7 +195,7 @@ openbkn vega sql --help
 
 Other flags: `--limit` / `--offset` / `--need-total`, cursor paging via `--paging-mode cursor` with `--cursor` / `--keep-alive-sec`, and `--query-timeout-sec`.
 
-SQL must contain at least one `{{.<resource_id>}}` or `{{<resource_id>}}` placeholder (using a Vega resource id). The backend resolves the target connector from the resource's Catalog and replaces the placeholder with its physical table identifier. Queries using native table names without resource placeholders are not supported.
+SQL must contain at least one `{{<resource_id>}}` placeholder (using a Vega resource id). The backend resolves the target connector from the resource's Catalog and replaces the placeholder with its physical table identifier. Queries using native table names without resource placeholders are not supported.
 
 **Comparison**
 

@@ -148,8 +148,8 @@ func TestUnionAppliesRowFiltersToEveryPart(t *testing.T) {
 		t.Fatalf("Query: %v", err)
 	}
 	if len(vega.statements) != 2 ||
-		!strings.Contains(vega.statements[0].Query, "{{.res_order}} t0 WHERE t0.`f_region` IN ('east')") ||
-		!strings.Contains(vega.statements[1].Query, "{{.res_customer}} t0 WHERE t0.`f_name` IN ('Ann')") {
+		!strings.Contains(vega.statements[0].Query, "{{res_order}} t0 WHERE t0.`f_region` IN ('east')") ||
+		!strings.Contains(vega.statements[1].Query, "{{res_customer}} t0 WHERE t0.`f_name` IN ('Ann')") {
 		t.Errorf("statements = %+v", vega.statements)
 	}
 	impacted := make([]string, 0, len(result.PermissionImpacts))

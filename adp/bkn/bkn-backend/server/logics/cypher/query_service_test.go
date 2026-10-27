@@ -290,7 +290,7 @@ func TestQueryRunsCompiledStatement(t *testing.T) {
 		t.Fatalf("trace descriptor = %s", result.TraceDescriptor)
 	}
 
-	if want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 LIMIT 5"; vega.request.Query != want {
+	if want := "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 LIMIT 5"; vega.request.Query != want {
 		t.Fatalf("statement = %s, want %s", vega.request.Query, want)
 	}
 	if vega.request.InputDialect != interfaces.VEGA_DIALECT_MYSQL {
@@ -360,7 +360,7 @@ func TestQueryAppliesRowFiltersToEveryMatchedNode(t *testing.T) {
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("permission impacts = %+v, want %+v", got, want)
 	}
-	want := "SELECT COUNT(*) AS `total` FROM {{.res_order}} t0 JOIN {{.res_customer}} t1 ON t0.`f_id` = t1.`f_id` " +
+	want := "SELECT COUNT(*) AS `total` FROM {{res_order}} t0 JOIN {{res_customer}} t1 ON t0.`f_id` = t1.`f_id` " +
 		"WHERE t0.`f_amount` > 10 AND t0.`f_region` IN ('east') AND t1.`f_region` IN ('cn') LIMIT 1000"
 	if got := vega.request.Query; got != want {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
@@ -380,7 +380,7 @@ func TestQueryRowFilterFalseIsPushedIntoSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if got, want := vega.request.Query, "SELECT COUNT(*) AS `total` FROM {{.res_order}} t0 WHERE 1 = 0 LIMIT 1000"; got != want {
+	if got, want := vega.request.Query, "SELECT COUNT(*) AS `total` FROM {{res_order}} t0 WHERE 1 = 0 LIMIT 1000"; got != want {
 		t.Fatalf("statement = %s, want %s", got, want)
 	}
 }
@@ -961,8 +961,8 @@ func TestQueryRetriesRefusedCallerUnderProxyAccount(t *testing.T) {
 	if proxies.knID != "kn_1" || !slices.Equal(proxies.bindings, wantBindings) {
 		t.Fatalf("resolved %s %+v, want %+v", proxies.knID, proxies.bindings, wantBindings)
 	}
-	if !strings.Contains(vega.proxyRequest.Query, "{{.res_order}}") ||
-		!strings.Contains(vega.proxyRequest.Query, "{{.res_customer}}") {
+	if !strings.Contains(vega.proxyRequest.Query, "{{res_order}}") ||
+		!strings.Contains(vega.proxyRequest.Query, "{{res_customer}}") {
 		t.Fatalf("statement = %s", vega.proxyRequest.Query)
 	}
 }
@@ -1165,7 +1165,7 @@ func TestQueryRowFilterGroupsListParameterCondition(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	want := "SELECT t0.`f_id` AS `id` FROM {{.res_order}} t0 WHERE (t0.`f_id` IN ('a''1', 'b2') OR t0.`f_amount` > 10) AND t0.`f_region` IN ('east') LIMIT 1000"
+	want := "SELECT t0.`f_id` AS `id` FROM {{res_order}} t0 WHERE (t0.`f_id` IN ('a''1', 'b2') OR t0.`f_amount` > 10) AND t0.`f_region` IN ('east') LIMIT 1000"
 	if got := vega.request.Query; got != want {
 		t.Fatalf("statement = %s\nwant      = %s", got, want)
 	}

@@ -246,7 +246,7 @@ func buildStatsSQL(ctx context.Context, resourceID string, keyColumns []string) 
 // The policy expression is compiler-produced from bkn-safe's restricted
 // predicate grammar; it is never copied from a client request.
 func buildStatsSQLWithWhere(ctx context.Context, resourceID string, keyColumns []string, where string) (string, error) {
-	table := "{{." + resourceID + "}}"
+	table := "{{" + resourceID + "}}"
 	from := "FROM " + table
 	if where != "" {
 		from += " WHERE " + where

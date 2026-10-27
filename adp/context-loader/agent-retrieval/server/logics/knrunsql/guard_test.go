@@ -13,20 +13,20 @@ import (
 
 func TestEnsureReadOnlySQL_Allowed(t *testing.T) {
 	cases := []string{
-		`SELECT * FROM {{.res1}} LIMIT 10`,
-		`select id, name from {{.res1}} where age > 18`,
-		`WITH t AS (SELECT * FROM {{.res1}}) SELECT * FROM t`,
-		`(SELECT 1 FROM {{.res1}}) UNION (SELECT 2 FROM {{.res2}})`,
-		`SELECT * FROM {{.res1}};`, // A single trailing semicolon is allowed.
-		`SELECT * FROM {{.delete_logs}}`,
-		`SELECT * FROM {{.update_history}}`,
-		`SELECT * FROM {{.res1}} WHERE note = 'please delete later'`,
-		`SELECT COUNT(*) FROM {{.res_audit}} WHERE op = "delete" GROUP BY user_id`,
-		`SELECT * FROM {{.res_logs}} WHERE note = 'it\'s fine' AND op = 'delete'`,
-		`SELECT * FROM {{.res_logs}} WHERE note = "he said \"hi\"; ok"`,
-		"SELECT * FROM {{.res_logs}} WHERE note = 'it''s fine' AND op = 'delete'",
-		"SELECT `delete` FROM {{.res_logs}}",
-		`SELECT * FROM {{.res-001}}`,
+		`SELECT * FROM {{res1}} LIMIT 10`,
+		`select id, name from {{res1}} where age > 18`,
+		`WITH t AS (SELECT * FROM {{res1}}) SELECT * FROM t`,
+		`(SELECT 1 FROM {{res1}}) UNION (SELECT 2 FROM {{res2}})`,
+		`SELECT * FROM {{res1}};`, // A single trailing semicolon is allowed.
+		`SELECT * FROM {{delete_logs}}`,
+		`SELECT * FROM {{update_history}}`,
+		`SELECT * FROM {{res1}} WHERE note = 'please delete later'`,
+		`SELECT COUNT(*) FROM {{res_audit}} WHERE op = "delete" GROUP BY user_id`,
+		`SELECT * FROM {{res_logs}} WHERE note = 'it\'s fine' AND op = 'delete'`,
+		`SELECT * FROM {{res_logs}} WHERE note = "he said \"hi\"; ok"`,
+		"SELECT * FROM {{res_logs}} WHERE note = 'it''s fine' AND op = 'delete'",
+		"SELECT `delete` FROM {{res_logs}}",
+		`SELECT * FROM {{res-001}}`,
 	}
 	for _, sql := range cases {
 		if err := EnsureReadOnlySQL(sql); err != nil {
@@ -39,22 +39,22 @@ func TestEnsureReadOnlySQL_Rejected(t *testing.T) {
 	cases := []string{
 		``,
 		`   `,
-		`DELETE FROM {{.res1}}`,
-		`DROP TABLE {{.res1}}`,
-		`INSERT INTO {{.res1}} VALUES (1)`,
-		`UPDATE {{.res1}} SET a = 1`,
-		`TRUNCATE TABLE {{.res1}}`,
-		`ALTER TABLE {{.res1}} ADD COLUMN x int`,
+		`DELETE FROM {{res1}}`,
+		`DROP TABLE {{res1}}`,
+		`INSERT INTO {{res1}} VALUES (1)`,
+		`UPDATE {{res1}} SET a = 1`,
+		`TRUNCATE TABLE {{res1}}`,
+		`ALTER TABLE {{res1}} ADD COLUMN x int`,
 		`CREATE TABLE x (a int)`,
-		`GRANT ALL ON {{.res1}} TO u`,
-		`SELECT * FROM {{.res1}}; DROP TABLE {{.res1}}`,
+		`GRANT ALL ON {{res1}} TO u`,
+		`SELECT * FROM {{res1}}; DROP TABLE {{res1}}`,
 		`SELECT 1; SELECT 2`,
-		`SELECT * FROM {{.res1}} -- harmless
-			 ; DELETE FROM {{.res1}}`,
-		`SELECT * FROM {{.res1}} WHERE a = 1--2; DROP TABLE t`,
-		"SELECT `a\\` , x FROM {{.res1}}; DROP TABLE t",
-		`SELECT "a\"" FROM {{.res1}}; DROP TABLE t`,
-		`SELECT * INTO OUTFILE '/tmp/x' FROM {{.res1}}`,
+		`SELECT * FROM {{res1}} -- harmless
+			 ; DELETE FROM {{res1}}`,
+		`SELECT * FROM {{res1}} WHERE a = 1--2; DROP TABLE t`,
+		"SELECT `a\\` , x FROM {{res1}}; DROP TABLE t",
+		`SELECT "a\"" FROM {{res1}}; DROP TABLE t`,
+		`SELECT * INTO OUTFILE '/tmp/x' FROM {{res1}}`,
 		`SHOW TABLES`,
 		`CALL some_proc()`,
 	}
@@ -66,7 +66,7 @@ func TestEnsureReadOnlySQL_Rejected(t *testing.T) {
 }
 
 func TestExtractResourceIDs(t *testing.T) {
-	got := ExtractResourceIDs(`SELECT * FROM {{.res_a}} JOIN {{res_b}} ON 1=1 WHERE x IN (SELECT y FROM {{.res_a}})`)
+	got := ExtractResourceIDs(`SELECT * FROM {{res_a}} JOIN {{res_b}} ON 1=1 WHERE x IN (SELECT y FROM {{res_a}})`)
 	want := []string{"res_a", "res_b"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ExtractResourceIDs = %v, want %v", got, want)
@@ -74,10 +74,16 @@ func TestExtractResourceIDs(t *testing.T) {
 	if ids := ExtractResourceIDs(`SELECT 1`); len(ids) != 0 {
 		t.Errorf("expected no ids, got %v", ids)
 	}
-	if ids := ExtractResourceIDs(`SELECT * FROM {{.res-001}}`); !reflect.DeepEqual(ids, []string{"res-001"}) {
+	if ids := ExtractResourceIDs(`SELECT * FROM {{res-001}}`); !reflect.DeepEqual(ids, []string{"res-001"}) {
 		t.Errorf("expected hyphenated resource id, got %v", ids)
 	}
-	if ids := ExtractResourceIDs(`SELECT * FROM {{.RES-001}}`); len(ids) != 0 {
+	if ids := ExtractResourceIDs(`SELECT * FROM {{RES-001}}`); len(ids) != 0 {
 		t.Errorf("expected uppercase resource id to be rejected, got %v", ids)
+	}
+	if ids := ExtractResourceIDs("SELECT * FROM {{ \nres-001\t }}"); !reflect.DeepEqual(ids, []string{"res-001"}) {
+		t.Errorf("expected resource id surrounded by whitespace, got %v", ids)
+	}
+	if ids := ExtractResourceIDs(`SELECT * FROM {{.res-001}}`); len(ids) != 0 {
+		t.Errorf("expected dotted placeholder to be rejected, got %v", ids)
 	}
 }
