@@ -100,16 +100,10 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_NoCatalogs)
 	}
 	// vega-backend lists no tables for a catalog that is gone, which would draft an empty ontology.
-	missing := []string{}
-	for _, catalogID := range entry.CatalogIDs {
-		visible, err := s.va.CatalogVisible(ctx, caller, catalogID)
-		if err != nil {
-			span.SetStatus(codes.Error, "Check catalog failed")
-			return nil, internalError(ctx, "Check catalog failed", err)
-		}
-		if !visible {
-			missing = append(missing, catalogID)
-		}
+	missing, err := s.va.MissingCatalogs(ctx, caller, entry.CatalogIDs)
+	if err != nil {
+		span.SetStatus(codes.Error, "Check catalogs failed")
+		return nil, internalError(ctx, "Check catalogs failed", err)
 	}
 	if len(missing) > 0 {
 		span.SetStatus(codes.Error, "Catalog missing")

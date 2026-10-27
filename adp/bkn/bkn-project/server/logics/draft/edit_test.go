@@ -276,7 +276,7 @@ func Test_GenerateDraftGuards(t *testing.T) {
 		Convey("Drafting again keeps people's decisions unless told to discard them\n", func() {
 			project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", CatalogIDs: []string{"c1"}}}
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil).Times(2)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c1").Return(true, nil).Times(2)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil).Times(2)
 			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(false, interfaces.ErrDraftHasDecisions)
 			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(true, nil)
 

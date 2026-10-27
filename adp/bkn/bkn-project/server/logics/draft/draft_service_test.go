@@ -47,7 +47,7 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("Generate starts drafting as the caller and records the draft when it is done\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c1").Return(true, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
 			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).
 				DoAndReturn(func(_ context.Context, d *interfaces.Draft, staleBefore int64, _ bool) (bool, error) {
 					So(d.Status, ShouldEqual, interfaces.DRAFT_STATUS_DRAFTING)
@@ -92,7 +92,7 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("A failure reading vega-backend fails the draft with its reason\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c1").Return(true, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
 			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return(nil, errors.New("connection refused"))
 			var finished *interfaces.Draft
@@ -109,7 +109,7 @@ func Test_DraftService(t *testing.T) {
 		Convey("Drafting that runs out of time fails as timed out\n", func() {
 			svc.setting.Timeout = time.Nanosecond
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c1").Return(true, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
 			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
 			va.EXPECT().ListTables(gomock.Any(), caller, "c1").
 				DoAndReturn(func(ctx context.Context, _ interfaces.VegaAccount, _ string) ([]*interfaces.VegaTable, error) {
@@ -139,12 +139,10 @@ func Test_DraftService(t *testing.T) {
 			shouldBeHTTPError(err, http.StatusBadRequest, perrors.BknProject_Draft_NoCatalogs)
 		})
 
-		Convey("A project whose catalog is gone or hidden is not drafted into an empty draft\n", func() {
+		Convey("A project whose catalog is gone is not drafted into an empty draft\n", func() {
 			two := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", CatalogIDs: []string{"c1", "c2", "c3"}}}
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(two, nil)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c1").Return(false, nil)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c2").Return(true, nil)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c3").Return(false, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1", "c2", "c3"}).Return([]string{"c1", "c3"}, nil)
 
 			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
 
@@ -154,7 +152,7 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("A failure checking a catalog does not start drafting\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c1").Return(false, errors.New("connection refused"))
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, errors.New("connection refused"))
 
 			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
 
@@ -163,7 +161,7 @@ func Test_DraftService(t *testing.T) {
 
 		Convey("A project that is drafting is not drafted twice\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			va.EXPECT().CatalogVisible(gomock.Any(), caller, "c1").Return(true, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
 			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(false, nil)
 
 			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)

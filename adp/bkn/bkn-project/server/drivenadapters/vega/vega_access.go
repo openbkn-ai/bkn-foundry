@@ -117,33 +117,60 @@ func headers(account interfaces.VegaAccount) map[string]string {
 	}
 }
 
-// CatalogVisible calls GET /catalogs/{id}.
-func (va *vegaAccess) CatalogVisible(ctx context.Context, account interfaces.VegaAccount,
-	catalogID string) (bool, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "CatalogVisible")
+// MissingCatalogs calls GET /catalogs/{id,id,...} once and, when that is not 200, each
+// catalog on its own: vega-backend answers the batch with the first refusal. Only 404 is a
+// missing catalog. 403 is a catalog the account lacks view_detail on, or a built-in one; the
+// account may still read its tables, so it is not taken for missing.
+func (va *vegaAccess) MissingCatalogs(ctx context.Context, account interfaces.VegaAccount,
+	catalogIDs []string) ([]string, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "MissingCatalogs")
 	defer span.End()
-	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	httpUrl := va.baseUrl + "/catalogs/" + url.PathEscape(catalogID)
-	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
-
-	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers(account))
-	logger.Debugf("CatalogVisible finished, catalog_id is [%s], response code is [%d]", catalogID, respCode)
+	if len(catalogIDs) == 0 {
+		return nil, nil
+	}
+	respCode, _, err := va.getCatalogs(ctx, account, catalogIDs)
 	if err != nil {
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalog failed")
-		return false, fmt.Errorf("get catalog %s: %w", catalogID, err)
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalogs failed")
+		return nil, err
 	}
-	switch respCode {
-	case http.StatusOK:
+	if respCode == http.StatusOK {
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		return true, nil
-	// 404 for a catalog that is gone or the account cannot see, 403 for a built-in one.
-	case http.StatusNotFound, http.StatusForbidden:
-		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		return false, nil
+		return nil, nil
 	}
-	oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-	return false, vegaError(respCode, respBody)
+	missing := []string{}
+	for _, catalogID := range catalogIDs {
+		respCode, respBody, err := va.getCatalogs(ctx, account, []string{catalogID})
+		if err != nil {
+			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get catalog failed")
+			return nil, err
+		}
+		switch respCode {
+		case http.StatusOK, http.StatusForbidden:
+		case http.StatusNotFound:
+			missing = append(missing, catalogID)
+		default:
+			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
+			return nil, vegaError(respCode, respBody)
+		}
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	return missing, nil
+}
+
+func (va *vegaAccess) getCatalogs(ctx context.Context, account interfaces.VegaAccount,
+	catalogIDs []string) (int, []byte, error) {
+	escaped := make([]string, 0, len(catalogIDs))
+	for _, id := range catalogIDs {
+		escaped = append(escaped, url.PathEscape(id))
+	}
+	httpUrl := va.baseUrl + "/catalogs/" + strings.Join(escaped, ",")
+	respCode, respBody, err := va.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers(account))
+	logger.Debugf("GetCatalogs finished, %d ids, response code is [%d]", len(catalogIDs), respCode)
+	if err != nil {
+		return respCode, nil, fmt.Errorf("get catalogs: %w", err)
+	}
+	return respCode, respBody, nil
 }
 
 // ListTables calls GET /resources?catalog_id=&category=table&limit=-1.

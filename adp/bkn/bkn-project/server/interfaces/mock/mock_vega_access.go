@@ -41,21 +41,6 @@ func (m *MockVegaAccess) EXPECT() *MockVegaAccessMockRecorder {
 	return m.recorder
 }
 
-// CatalogVisible mocks base method.
-func (m *MockVegaAccess) CatalogVisible(ctx context.Context, account interfaces.VegaAccount, catalogID string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CatalogVisible", ctx, account, catalogID)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CatalogVisible indicates an expected call of CatalogVisible.
-func (mr *MockVegaAccessMockRecorder) CatalogVisible(ctx, account, catalogID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CatalogVisible", reflect.TypeOf((*MockVegaAccess)(nil).CatalogVisible), ctx, account, catalogID)
-}
-
 // GetTables mocks base method.
 func (m *MockVegaAccess) GetTables(ctx context.Context, account interfaces.VegaAccount, ids []string) ([]*interfaces.VegaTable, error) {
 	m.ctrl.T.Helper()
@@ -84,6 +69,21 @@ func (m *MockVegaAccess) ListTables(ctx context.Context, account interfaces.Vega
 func (mr *MockVegaAccessMockRecorder) ListTables(ctx, account, catalogID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTables", reflect.TypeOf((*MockVegaAccess)(nil).ListTables), ctx, account, catalogID)
+}
+
+// MissingCatalogs mocks base method.
+func (m *MockVegaAccess) MissingCatalogs(ctx context.Context, account interfaces.VegaAccount, catalogIDs []string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MissingCatalogs", ctx, account, catalogIDs)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MissingCatalogs indicates an expected call of MissingCatalogs.
+func (mr *MockVegaAccessMockRecorder) MissingCatalogs(ctx, account, catalogIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MissingCatalogs", reflect.TypeOf((*MockVegaAccess)(nil).MissingCatalogs), ctx, account, catalogIDs)
 }
 
 // Query mocks base method.
