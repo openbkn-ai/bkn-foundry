@@ -232,6 +232,35 @@ func (pa *projectAccess) SetProjectArchived(ctx context.Context, id string, arch
 	return nil
 }
 
+func (pa *projectAccess) SetProjectCatalogs(ctx context.Context, id string, catalogIDs []string,
+	updateTime int64) error {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "SetProjectCatalogs")
+	defer span.End()
+
+	if catalogIDs == nil {
+		catalogIDs = []string{}
+	}
+	catalogJSON, err := json.Marshal(catalogIDs)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal catalog ids failed")
+		return err
+	}
+	sqlStr, vals, err := sq.Update(PROJECT_TABLE_NAME).
+		Set("f_catalog_ids", string(catalogJSON)).Set("f_update_time", updateTime).
+		Where(sq.Eq{"f_id": id}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if _, err = pa.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Update data failed")
+		return err
+	}
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // filterProjects adds the networks, archive state and name of query.
 func filterProjects(builder sq.SelectBuilder, query interfaces.ProjectsQuery) sq.SelectBuilder {
 	builder = builder.Where(sq.Eq{"f_kn_id": query.KNIDs})

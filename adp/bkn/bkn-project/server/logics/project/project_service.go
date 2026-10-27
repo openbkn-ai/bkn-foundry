@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -242,6 +243,44 @@ func (s *projectService) SetProjectArchived(ctx context.Context, token string, i
 	return entries[0], nil
 }
 
+// SetProjectCatalogs replaces the catalogs the project drafts from. The draft stays as it
+// is; drafting again reads the new catalogs.
+func (s *projectService) SetProjectCatalogs(ctx context.Context, token string, id string, catalogIDs []string,
+	caller interfaces.AccountInfo) (*interfaces.ProjectEntry, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SetProjectCatalogs")
+	defer span.End()
+
+	catalogIDs, err := checkCatalogIDs(ctx, catalogIDs)
+	if err != nil {
+		span.SetStatus(codes.Error, "Invalid catalog ids")
+		return nil, err
+	}
+	project, err := s.visibleProject(ctx, token, id)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get project failed")
+		return nil, err
+	}
+	if project.Owner != caller {
+		span.SetStatus(codes.Error, "Not the owner")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Project_NotOwner)
+	}
+	if !slices.Equal(project.CatalogIDs, catalogIDs) {
+		project.CatalogIDs = catalogIDs
+		project.UpdateTime = time.Now().UnixMilli()
+		if err = s.pa.SetProjectCatalogs(ctx, id, catalogIDs, project.UpdateTime); err != nil {
+			span.SetStatus(codes.Error, "Set catalogs failed")
+			return nil, internalError(ctx, "Set catalogs failed", err)
+		}
+	}
+	entries, err := s.withOtherProjects(ctx, []*interfaces.Project{project})
+	if err != nil {
+		span.SetStatus(codes.Error, "Count projects failed")
+		return nil, internalError(ctx, "Count projects failed", err)
+	}
+	span.SetStatus(codes.Ok, "")
+	return entries[0], nil
+}
+
 // visibleProject returns the project when the caller can see its network. A
 // project the caller cannot see answers like one that does not exist.
 func (s *projectService) visibleProject(ctx context.Context, token string, id string) (*interfaces.Project, error) {
@@ -332,21 +371,30 @@ func checkCreate(ctx context.Context, req *interfaces.CreateProjectRequest) (str
 	if existing == creating || (creating && strings.TrimSpace(req.NewKN.Name) == "") {
 		return "", nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidNetwork)
 	}
-	if len(req.CatalogIDs) > maxCatalogIDs {
-		return "", nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidCatalogIDs)
+	catalogIDs, err := checkCatalogIDs(ctx, req.CatalogIDs)
+	if err != nil {
+		return "", nil, err
+	}
+	return name, catalogIDs, nil
+}
+
+// checkCatalogIDs returns the de-duplicated catalog ids, in their order.
+func checkCatalogIDs(ctx context.Context, ids []string) ([]string, error) {
+	if len(ids) > maxCatalogIDs {
+		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidCatalogIDs)
 	}
 	catalogIDs := []string{}
 	seen := map[string]bool{}
-	for _, id := range req.CatalogIDs {
+	for _, id := range ids {
 		if id == "" || len(id) > maxCatalogIDLen {
-			return "", nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidCatalogIDs)
+			return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Project_InvalidCatalogIDs)
 		}
 		if !seen[id] {
 			seen[id] = true
 			catalogIDs = append(catalogIDs, id)
 		}
 	}
-	return name, catalogIDs, nil
+	return catalogIDs, nil
 }
 
 func hasCode(err error, code string) bool {
