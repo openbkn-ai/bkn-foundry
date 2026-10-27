@@ -14,6 +14,7 @@ var (
 	DB  *sql.DB
 	AA  interfaces.AuthAccess
 	RA  interfaces.ReleaseAccess
+	PA  interfaces.ProjectAccess
 	GS  interfaces.GitStore
 	BBA interfaces.BknBackendAccess
 	EFA interfaces.ExecutionFactoryAccess
@@ -29,6 +30,10 @@ func SetAuthAccess(aa interfaces.AuthAccess) {
 
 func SetReleaseAccess(ra interfaces.ReleaseAccess) {
 	RA = ra
+}
+
+func SetProjectAccess(pa interfaces.ProjectAccess) {
+	PA = pa
 }
 
 func SetGitStore(gs interfaces.GitStore) {
