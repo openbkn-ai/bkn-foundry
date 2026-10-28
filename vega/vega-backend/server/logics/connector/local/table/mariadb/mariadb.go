@@ -35,6 +35,9 @@ const (
 )
 
 var (
+	_ interfaces.TableConnector     = (*MariaDBConnector)(nil)
+	_ interfaces.SQLBuilderExecutor = (*MariaDBConnector)(nil)
+
 	// SYSTEM_DBS are excluded from discovery when no databases are configured.
 	SYSTEM_DBS = []string{
 		"information_schema",

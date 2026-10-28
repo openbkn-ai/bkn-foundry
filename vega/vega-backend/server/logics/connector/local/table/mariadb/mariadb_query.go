@@ -812,3 +812,9 @@ func sqlBuilderArguments(args []any) ([]any, error) {
 	}
 	return values, nil
 }
+
+// ScanSQLBuilderRow reads one retained SQL row and classifies source errors.
+func (c *MariaDBConnector) ScanSQLBuilderRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
+	row, err := table.ScanSQLRow(rows, columns)
+	return row, mariadbQueryError(err)
+}

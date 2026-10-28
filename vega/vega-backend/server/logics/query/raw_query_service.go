@@ -303,7 +303,7 @@ func (rqs *rawQueryService) executeSQLCursorContinuation(ctx context.Context, re
 }
 
 // prepareSQLQuery is the shared SQL preparation pipeline for both single and
-// cursor execution. MariaDB/MySQL 和 PG 强制使用公共 Builder；其他连接器保留 SQLGlot。
+// cursor execution. MariaDB/MySQL、PG 和 HANA 强制使用公共 Builder；其他连接器保留 SQLGlot。
 func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces.RawQueryRequest) (*preparedSQLQuery, error) {
 	inputDialect := req.EffectiveInputDialect()
 	var resourceIDs []string
@@ -340,9 +340,10 @@ func (rqs *rawQueryService) prepareSQLQuery(ctx context.Context, req *interfaces
 	}
 	if catalog.ConnectorType == interfaces.ConnectorTypeMySQL ||
 		catalog.ConnectorType == interfaces.ConnectorTypeMariaDB ||
-		catalog.ConnectorType == interfaces.ConnectorTypePostgreSQL {
+		catalog.ConnectorType == interfaces.ConnectorTypePostgreSQL ||
+		catalog.ConnectorType == interfaces.ConnectorTypeHANA {
 		if inputDialect != "mysql" {
-			return nil, sqlBuilderQueryInvalid(ctx, "MariaDB/MySQL and PostgreSQL queries only support mysql input syntax")
+			return nil, sqlBuilderQueryInvalid(ctx, "MariaDB/MySQL, PostgreSQL and HANA queries only support mysql input syntax")
 		}
 		if parseErr != nil {
 			return nil, sqlBuilderQueryInvalid(ctx, parseErr.Error())
@@ -1271,7 +1272,7 @@ func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *i
 		return connectorInitializationError(ctx, err)
 	}
 	session.SQLConnector = connector
-	executor, ok := connector.(interfaces.SQLBuilderRowsExecutor)
+	executor, ok := connector.(interfaces.SQLBuilderExecutor)
 	if !ok {
 		return sqlBuilderQueryInvalid(ctx, "connector does not support SQL Rows execution")
 	}
@@ -1279,8 +1280,9 @@ func (rqs *rawQueryService) openSQLBuilderCursor(ctx context.Context, session *i
 	cursorCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	session.SQLCancel = cancel
 	stop := watchSQLCursorRequest(ctx, cancel)
-	rows, columns, err := executor.OpenSQLBuilder(cursorCtx, &read) //nolint:rowserrcheck // Rows 转交会话，scanSQLCursorRow 在读取结束时检查 Err。
+	rows, columns, err := executor.OpenSQLBuilder(cursorCtx, &read) //nolint:rowserrcheck // Rows 转交会话，ScanSQLBuilderRow 在读取结束时检查 Err。
 	stop()
+
 	session.SQLRows, session.SQLColumns = rows, columns
 	if ctx.Err() != nil {
 		return sqlBuilderExecutionError(ctx, ctx.Err())
@@ -1304,8 +1306,12 @@ func watchSQLCursorRequest(ctx context.Context, cancel context.CancelFunc) func(
 
 // readSQLCursorPage 使用同一 Rows，最多缓存一行预读结果。读取失败后无法回退，必须终止会话。
 func readSQLCursorPage(ctx context.Context, session *interfaces.CursorSession) (*interfaces.RawQueryResponse, error) {
+	executor := session.SQLConnector.(interfaces.SQLBuilderExecutor)
 	stop := watchSQLCursorRequest(ctx, session.SQLCancel)
-	result := &interfaces.RawQueryResponse{Columns: session.SQLColumns, Entries: make([]map[string]any, 0, session.PageLimit)}
+	result := &interfaces.RawQueryResponse{
+		Columns: session.SQLColumns,
+		Entries: make([]map[string]any, 0, session.PageLimit),
+	}
 	var err error
 	if session.SQLPendingRow != nil {
 		result.Entries = append(result.Entries, session.SQLPendingRow)
@@ -1313,7 +1319,7 @@ func readSQLCursorPage(ctx context.Context, session *interfaces.CursorSession) (
 	}
 	for len(result.Entries) <= session.PageLimit {
 		var row map[string]any
-		row, err = scanSQLCursorRow(session)
+		row, err = executor.ScanSQLBuilderRow(session.SQLRows, session.SQLColumns)
 		if err != nil || row == nil {
 			break
 		}
@@ -1332,29 +1338,6 @@ func readSQLCursorPage(ctx context.Context, session *interfaces.CursorSession) (
 		return nil, sqlBuilderExecutionError(ctx, err)
 	}
 	return result, nil
-}
-
-func scanSQLCursorRow(session *interfaces.CursorSession) (map[string]any, error) {
-	if !session.SQLRows.Next() {
-		return nil, session.SQLRows.Err()
-	}
-	values := make([]any, len(session.SQLColumns))
-	destinations := make([]any, len(values))
-	for i := range values {
-		destinations[i] = &values[i]
-	}
-	if err := session.SQLRows.Scan(destinations...); err != nil {
-		return nil, err
-	}
-	row := make(map[string]any, len(values))
-	for i, column := range session.SQLColumns {
-		value := values[i]
-		if data, ok := value.([]byte); ok && column.Type != interfaces.DataType_Binary {
-			value = string(data)
-		}
-		row[column.Name] = value
-	}
-	return row, nil
 }
 
 func sqlBuilderExecutionError(ctx context.Context, err error) error {

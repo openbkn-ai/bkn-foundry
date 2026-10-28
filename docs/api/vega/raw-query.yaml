@@ -5,7 +5,7 @@ info:
   description: |
     Vega Backend 原生查询端点（`POST /resources/query`）相关 API。
 
-    本端点执行经服务端校验和资源绑定的原生查询，**不做结构化 filter 解析**：
+    本端点执行经服务端校验和资源绑定的 SQL 或 DSL 原生查询：
 
     - SQL 引擎（MariaDB/MySQL / PostgreSQL / SQL Server / Oracle / HANA / Doris）→ `query` 字段为 SQL 字符串
     - 索引引擎（opensearch / elasticsearch）→ `query` 字段为 DSL JSON 对象
@@ -20,37 +20,35 @@ info:
     | Cursor | `paging.cursor` / `paging.next_cursor` | `paging.cursor` / `paging.next_cursor` |
     | 用途 | 同一 Catalog 内的复杂 SQL / DSL | 应用层结构化访问 |
 
-    **SQL 只读策略**：SQL 只允许单条顶层 `SELECT`，且所有物理表必须由受权限保护的
-    Resource 占位符解析；DSL 的索引同样只能由 Resource 推导。当前可用的 SQL 子集为
-    同一 Catalog 内的 `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和
-    常用聚合函数（`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。子查询不被只读策略单独禁止；
-    MariaDB/MySQL 连接器使用 Vega 的 Go 解析器与结构化 Builder，只接受 `mysql` 输入语法（含默认值），
-    不调用 SQLGlot；支持显式子查询、JOIN、DISTINCT、分组、排序和 LIMIT/OFFSET，窗口函数不开放。
-    PostgreSQL Catalog 同样只接受 mysql 输入（含默认值及 mariadb 别名），强制走 Go parser/Builder，
-    在 PG 连接器内生成双引号标识符和 $n 绑定参数，不调用 SQLGlot；不支持的语法不回退。
-    禁止显式传入 input_dialect=postgres（含大小写变体），查询 PostgreSQL 仅接受 mysql 输入（含默认值及 mariadb 别名），其他输入返回 400。
-    其他连接器继续使用原有 SQLGlot 流程，其窗口函数和其他内置函数须被识别为安全表达式，
-    且由 `input_dialect` 和底层连接器支持。
+    **SQL 查询能力**：执行单条顶层 `SELECT`，所有物理表通过受权限保护的
+    `{{resource_id}}` 占位符解析；DSL 的索引同样由 Resource 推导。支持同一 Catalog 内的
+    `JOIN`、`WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数
+    （`COUNT`、`SUM`、`AVG`、`MIN`、`MAX`）。
 
-    不支持 `WITH` / CTE、`UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、
-    锁定读取，以及写入、DDL、事务、权限与过程类语句。MariaDB/MySQL 函数使用明确的只读内置函数名单，
-    包括常用聚合、数值、字符串和日期函数；在访问连接器前检查参数数量及 DISTINCT / * 的组合。
-    例如 COUNT()、COUNT(DISTINCT *)、ABS(1,2) 会返回 400；字段类型及分组语义由目标数据库检查。
-    PostgreSQL Builder 使用同一输入函数名单，将 IFNULL、LENGTH、日期取值和格式等映射为 PG 表达式；
-    无符号 CAST、动态日期格式以及未映射的格式标记会返回 400。DATE_FORMAT/STR_TO_DATE 的格式
-    必须为字面量，当前标记为 %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%x/%v/%%。
-    字段类型、隐式类型转换和分组合法性仍由 PG 检查，不承诺全部 MySQL 运行时语义。
-    其他输入/目标仅允许 SQLGlot 可识别的具名内置表达式。
-    UDF 与未开放的方言函数一律被拒绝；文件读取、外部访问或休眠等高风险
-    内置函数（如 `pg_read_file`、`http_get`、`sleep`、`system`）另被显式拒绝。违反策略返回 HTTP 400
-    `VegaBackend.Query.InvalidParameter`，`error_details` 为
-    Builder 通道返回不含 SQL 原文的解析或能力错误，SQLGlot 通道返回
-    `raw query rejected by read-only policy`；请改写为受支持的单条顶层 `SELECT`。
+    MariaDB/MySQL、PostgreSQL 和 HANA Catalog 使用 `mysql` 输入语法（省略时默认，
+    `mariadb` 为别名），通过 Go parser/Builder 支持显式子查询、JOIN、DISTINCT、分组、排序和
+    LIMIT/OFFSET，并由目标连接器生成源端 SQL。其他连接器根据 `input_dialect` 和底层连接器
+    能力处理 SQL，其函数调用由 SQLGlot 校验为只读内置表达式。
+
+    MariaDB/MySQL、PostgreSQL 和 HANA 使用明确的只读内置函数名单，涵盖常用聚合、数值、
+    字符串和日期函数，并在访问连接器前校验参数数量及 DISTINCT / * 的组合。
+    PostgreSQL 将 IFNULL、LENGTH、日期取值和格式等映射为 PG 表达式；
+    DATE_FORMAT/STR_TO_DATE 的格式使用字面量，支持 %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%x/%v/%%。
+    HANA 支持常用数值、字符串、日期函数和 HAVING 别名映射，CHAR 接受 ASCII 整数字面量
+    （0–127）及 NULL；DATE_FORMAT/STR_TO_DATE 的字面量格式支持
+    %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%% 和常用分隔符。
+    HANA 的 CHAR_LENGTH/SUBSTRING 使用 CESU-8 字符计数，LENGTH 先编码为 UTF-8，再统计二进制字节。
+    字段类型、隐式类型转换和分组合法性由目标数据库检查。
+    HANA 在只有 OFFSET、未设置 SQL LIMIT 时由方言生成器补充 LIMIT 2147384648。
+
+    语法、函数调用或参数校验失败返回 HTTP 400 `VegaBackend.Query.InvalidParameter`。
+    Builder 通道通过 `error_details` 返回解析或能力错误，SQLGlot 通道的只读策略校验错误为
+    `raw query rejected by read-only policy`。
 
     Builder 通道对没有显式别名的计算表达式固定输出名称，避免参数占位符改变列名及子查询引用；
     例如 SELECT 1,2 的输出列名为 `1`、`2`。重复输出名称仍需使用不同的显式别名。
 
-    MariaDB/MySQL 和 PG 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
+    MariaDB/MySQL、PG 和 HANA 的 API 分页在不修改基础 Builder 的前提下组合 SQL 自带的 LIMIT/OFFSET；
     total_count 统计原始逻辑查询的结果行数。Builder cursor 只执行一次数据查询，在服务端保留
     同一个 Rows 和连接，续页继续扫描，不重复执行 OFFSET 查询；额外预读一行判断是否有下一页。
     每次续页重新校验资源权限和源端元数据版本；权限撤销或版本改变会关闭 cursor，版本改变返回
@@ -105,32 +103,27 @@ paths:
         **请求体的 `query` 字段类型由 `query_format` 和 `input_dialect` 决定**：
 
         - SQL（省略方言，按 MariaDB/MySQL 解析）：`{"query":"SELECT * FROM {{resource_id}}", "query_format":"sql"}`
-        - 查询 PostgreSQL Catalog：省略 input_dialect，或显式使用 `mysql`；`postgres` 输入返回 400。
+        - 查询 PostgreSQL / HANA Catalog：省略 input_dialect，或显式使用 `mysql`。
         - SQL Server T-SQL：`{"query":"SELECT TOP (20) * FROM {{resource_id}}", "query_format":"sql", "input_dialect":"tsql"}`
         - OpenSearch DSL：`{"query":{"resource_id":"...","query":{"match_all":{}}}, "query_format":"dsl", "input_dialect":"opensearch"}`
 
-        实际执行连接器始终从 Resource/Catalog 推导，客户端不能通过输入方言选择数据源。
-        SQL Server Catalog 的目标方言固定为 `tsql`；客户端可直接提交 `tsql`，也可提交受支持的其它 SQL
-        输入方言，由服务端转换为 T-SQL。无论输入方言为何，`EXEC`、`SELECT INTO`、DDL/DML 和多语句
-        都会在访问数据库前被拒绝。由于 total-count 和部分分页查询需要使用 SQL Server 派生表，计算表达式
-        必须显式指定唯一列别名；通配符不能与其它投影列混用，多表 JOIN 的通配符必须指定表名（例如 `orders.*`）。
+        实际执行数据源由 Resource/Catalog 确定，`input_dialect` 描述输入语法。
+        SQL Server Catalog 的目标方言为 `tsql`；客户端可提交 `tsql`，也可提交其他受支持的 SQL
+        输入方言，由服务端转换为 T-SQL。SQL Server 的计算表达式须显式指定唯一列别名，
+        以便 total-count 和分页查询引用派生表的结果列。投影可使用单独的通配符，或明确列出字段和
+        计算表达式；多表 JOIN 的通配符须指定表名，例如 `orders.*`。
 
-        **SQL 语法边界**：只接受单条顶层 `SELECT`。支持同一 Catalog 内的 `JOIN`、
-        `WHERE`、`GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数。子查询不被
-        只读策略单独禁止，但须由所选方言和连接器支持；窗口函数与其他内置函数还必须
-        由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。`WITH` / CTE、
-        `UNION` / `INTERSECT` / `EXCEPT`、多语句、`SELECT INTO`、锁定读取、DML、DDL、
-        事务、权限和过程类语句均被拒绝。CTE 不可通过改写为 `WITH` 规避：请改为单条
-        顶层 `SELECT`，或拆分为多次查询。
+        **SQL 查询能力**：单条顶层 `SELECT`，支持同一 Catalog 内的 `JOIN`、`WHERE`、
+        `GROUP BY` / `HAVING`、`ORDER BY`、`LIMIT` 和常用聚合函数；子查询及内置函数的具体能力
+        由所选输入方言和目标连接器共同决定。
 
         OpenSearch DSL 使用 `paging.mode: cursor` 时必须提供非空 `sort`。客户端提交的
         `search_after` 会被服务端忽略；该位置仅由服务端保存在不透明 cursor 中。排序应
         包含稳定且唯一的 tiebreaker，避免相同排序值跨页重复或遗漏。
 
         OpenSearch 聚合 DSL 仅支持 `paging.mode: single`，服务端强制 `size: 0`，并将
-        metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 `entries`。不能
-        转换为行结构的聚合在访问 OpenSearch 前返回 400；`paging.offset/limit` 应用于
-        展开后的行结果，cursor 模式不支持聚合。
+        metric、terms/date_histogram 及其单链嵌套 bucket 展开为逐行 `entries`；
+        `paging.offset/limit` 应用于展开后的行结果。
       requestBody:
         required: true
         content:
@@ -170,7 +163,7 @@ components:
         请求参数 / 请求体非法。常见 errcode：
         - `VegaBackend.InvalidParameter.RequestBody`：body schema 不合法
         - `VegaBackend.Query.InvalidParameter`：`query_format`、`input_dialect` 或 paging 参数非法，
-          SQL 引用不存在字段、函数参数或分组用法非法，或 SQL 违反只读策略（包括 `WITH` / CTE）。字段不存在时
+          SQL 引用不存在字段、函数参数或分组用法非法，或 SQL 违反只读策略。字段不存在时
           `error_details` 固定为 `query references an unknown column`，其他连接器明确归类的
           参数错误固定为 `invalid source query parameter`，均不包含数据库驱动原文；
           违反只读策略时固定为 `raw query rejected by read-only policy`
@@ -258,11 +251,9 @@ components:
           oneOf:
             - type: string
               description: |
-                SQL 字符串（mysql / postgresql / sqlserver 等）。仅允许单条顶层 `SELECT`；支持同一
-                Catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。
-                不支持 WITH/CTE、集合运算、多语句、SELECT INTO、锁定读取、DML/DDL、
-                事务、权限或过程类语句。子查询须由输入方言与连接器支持；窗口函数和其他
-                内置函数还必须由 SQLGlot 识别为安全表达式，UDF 与未建模的方言函数会被拒绝。
+                SQL 字符串。执行单条顶层 `SELECT`，支持同一 Catalog 内的 JOIN、WHERE、
+                GROUP BY/HAVING、ORDER BY、LIMIT 和常用聚合。子查询及内置函数的具体能力
+                由输入方言和目标连接器共同决定。
             - type: object
               description: DSL JSON 对象（OpenSearch / Elasticsearch）
               additionalProperties: true
@@ -274,11 +265,11 @@ components:
             - dsl
         input_dialect:
           description: |
-            输入方言。SQL 省略时默认 `mysql`；`mariadb` 按 `mysql` 解析，`generic` 使用
-            SQLGlot 通用方言。SQL Server 原生 T-SQL 使用 `tsql`。SQL Server Catalog 的
+            输入方言。SQL 省略时默认 `mysql`；`mariadb` 按 `mysql` 解析。
+            SQL Server 原生 T-SQL 使用 `tsql`。SQL Server Catalog 的
             执行目标方言始终是 `tsql`，必要时由服务端转换。DSL 必须是 `opensearch`。
-            禁止显式传入 `postgres`（含大小写变体）；MariaDB/MySQL 和 PostgreSQL Catalog 仅接受 `mysql`（含默认值及 `mariadb` 别名），其他输入返回 400。
-            `hana` 不是可选输入方言；查询 HANA Catalog 时可使用 `generic`。
+            MariaDB/MySQL、PostgreSQL 和 HANA Catalog 使用 `mysql` 输入语法（含默认值及 `mariadb` 别名）。
+            方言值忽略大小写。
           type: string
           enum:
             - mysql
@@ -286,7 +277,6 @@ components:
             - tsql
             - oracle
             - doris
-            - generic
             - opensearch
         paging:
           allOf:
@@ -332,7 +322,7 @@ components:
           description: 可携带但不会覆盖首次请求冻结的值。
           type: boolean
     PagingRequest:
-      description: MariaDB/MySQL 和 PostgreSQL cursor 保留同一次数据查询的 Rows，续页继续读取；SQLGlot 通道使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
+      description: MariaDB/MySQL、PostgreSQL 和 HANA cursor 保留同一次数据查询的 Rows，续页继续读取；SQLGlot 通道使用 OFFSET 分页，调用方应提供包含唯一 tiebreaker 的确定性 ORDER BY，服务端暂不强制校验该排序。
       type: object
       allOf:
         - if:

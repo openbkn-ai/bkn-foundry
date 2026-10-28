@@ -32,6 +32,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces"
 	vmock "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/mock"
 	sb "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/interfaces/sqlbuilder"
+	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table"
 	mysql "github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/mariadb"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/connector/local/table/postgresql"
 	"github.com/openbkn-ai/bkn-foundry/vega/vega-backend/server/logics/query/querypolicy"
@@ -52,6 +53,7 @@ type builderConnector struct {
 	interfaces.Connector
 	run  func(context.Context, *sb.SelectBuilder) (*interfaces.RawQueryResponse, error)
 	open func(context.Context, *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error)
+	scan func(*sql.Rows, []interfaces.ColumnInfo) (map[string]any, error)
 }
 
 type unavailableSQLPolicy struct{}
@@ -534,6 +536,14 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 
 		assertHTTPError(t, err, http.StatusBadRequest)
 	})
+	for _, dialect := range []string{"generic", "GENERIC", "GeNeRiC"} {
+		t.Run("rejects "+dialect+" before query preparation", func(t *testing.T) {
+			result, err := (&rawQueryService{}).Execute(context.Background(), &interfaces.RawQueryRequest{Query: "SELECT * FROM {{orders}}", QueryFormat: interfaces.QueryFormatSQL, InputDialect: dialect})
+			assert.Nil(t, result)
+			assertHTTPError(t, err, http.StatusBadRequest)
+		})
+	}
+
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
@@ -566,6 +576,28 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			assert.Empty(t, prepared.sql)
 		})
 	}
+	t.Run("HANA prepares MySQL SQL without SQLGlot and preserves source identifiers", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		source := builderTestResource()
+		source.SourceIdentifier = `"SALES.EU"."order.items"`
+		mysqlRawMetadata(rs, cs, source, true, interfaces.ConnectorTypeHANA)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT a.id FROM {{ orders }} a WHERE a.id>1 ORDER BY a.id LIMIT 3", QueryFormat: interfaces.QueryFormatSQL})
+		require.NoError(t, err)
+		require.NotNil(t, prepared.builder)
+		assert.Empty(t, prepared.sql)
+		tables := sqlBuilderTables(prepared.builder)
+		require.Len(t, tables, 1)
+		assert.Equal(t, source.SourceIdentifier, tables[0].SourceIdentifier)
+		assert.Equal(t, "a", tables[0].Alias)
+	})
+	t.Run("HANA parse failures do not fall back to SQLGlot", func(t *testing.T) {
+		svc, rs, cs, _ := mysqlRawServices(t)
+		mysqlRawMetadata(rs, cs, builderTestResource(), false, interfaces.ConnectorTypeHANA)
+		prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: "WITH r AS (SELECT * FROM {{orders}}) SELECT * FROM r", QueryFormat: interfaces.QueryFormatSQL})
+		assert.Nil(t, prepared)
+		assertHTTPError(t, err, http.StatusBadRequest)
+	})
+
 	t.Run("star grouping positions are left to the source without schema expansion", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		resource := builderTestResource()
@@ -579,7 +611,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		assert.Empty(t, args)
 	})
 
-	for _, target := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL} {
+	for _, target := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL, interfaces.ConnectorTypeHANA} {
 		for _, dialect := range []string{"tsql", "oracle", "doris", "generic"} {
 			t.Run(target+" rejects "+dialect+" input before compilation", func(t *testing.T) {
 				svc, rs, cs, _ := mysqlRawServices(t)
@@ -688,7 +720,6 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 		wantDialect   string
 		wantSQL       string
 	}{
-		{name: "generic input for HANA", inputDialect: "generic", connectorType: interfaces.ConnectorTypeHANA, wantDialect: sqlglot.GenericDialect, wantSQL: `SELECT id FROM "APP"."orders"`},
 		{name: "Oracle input for Oracle", inputDialect: "oracle", connectorType: interfaces.ConnectorTypeOracle, wantDialect: "oracle", wantSQL: `SELECT id FROM "APP"."orders"`},
 		{name: "ASCII TSQL input for SQL Server", inputDialect: "tsql", connectorType: interfaces.ConnectorTypeSQLServer, wantDialect: "tsql", wantSQL: "SELECT id FROM [APP].[orders]"},
 	} {
@@ -736,7 +767,7 @@ func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
 			_, err := svc.prepareSQLQuery(context.Background(), &interfaces.RawQueryRequest{
 				Query:        sql,
 				QueryFormat:  interfaces.QueryFormatSQL,
-				InputDialect: "generic",
+				InputDialect: "oracle",
 			})
 			assertHTTPError(t, err, http.StatusBadRequest)
 			var httpErr *httperrors.HTTPError
@@ -858,7 +889,7 @@ func TestRawQueryServiceExecuteInitialSQLQuery(t *testing.T) {
 		}
 		expectRawQueryResources(mockRS, []string{"resource-1"}, resource)
 		mockCS.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{
-			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeHANA,
+			ID: "catalog-1", Enabled: true, ConnectorType: interfaces.ConnectorTypeOracle,
 		}, nil)
 
 		policy := &deadlineInspectingPolicy{}
@@ -1911,6 +1942,12 @@ func (c *builderConnector) ExecuteSQLBuilder(ctx context.Context, q *sb.SelectBu
 func (c *builderConnector) OpenSQLBuilder(ctx context.Context, q *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
 	return c.open(ctx, q)
 }
+func (c *builderConnector) ScanSQLBuilderRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
+	if c.scan != nil {
+		return c.scan(rows, columns)
+	}
+	return table.ScanSQLRow(rows, columns)
+}
 func (unavailableSQLPolicy) ExtractTableResourceIDs(context.Context, string, string) ([]string, error) {
 	return nil, errors.New("SQLGlot must not be called")
 }
@@ -2373,6 +2410,54 @@ func TestRawQueryServiceOpenSQLBuilderCursor(t *testing.T) {
 }
 
 func TestRawQueryServiceSQLRowsCursorContinuation(t *testing.T) {
+	t.Run("connector row conversion preserves decimal and NULL across pages", func(t *testing.T) {
+		svc, rs, cs, cf := mysqlRawServices(t)
+		resource := builderTestResource()
+		mysqlRawMetadata(rs, cs, resource, true)
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		mock.ExpectQuery("SELECT amount").WillReturnRows(sqlmock.NewRows([]string{"amount"}).AddRow("12.5000").AddRow(nil)).RowsWillBeClosed()
+		rows, err := db.Query("SELECT amount")
+		require.NoError(t, err)
+		calls := 0
+		base := vmock.NewMockConnector(gomock.NewController(t))
+		base.EXPECT().Close(gomock.Any()).Return(nil)
+		opened := 0
+		connector := &builderConnector{Connector: base, open: func(context.Context, *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+			opened++
+			return rows, []interfaces.ColumnInfo{{Name: "amount", Type: interfaces.DataType_Decimal}}, nil
+		}, scan: func(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
+			calls++
+			if !rows.Next() {
+				return nil, rows.Err()
+			}
+			var value any
+			if err := rows.Scan(&value); err != nil {
+				return nil, err
+			}
+			if value != nil {
+				value = json.Number(value.(string))
+			}
+			return map[string]any{columns[0].Name: value}, nil
+		}}
+		cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeMySQL, gomock.Any()).Return(connector, nil)
+		first, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT amount FROM {{orders}}", QueryFormat: interfaces.QueryFormatSQL, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"amount": json.Number("12.5000")}}, first.Entries)
+		require.NotNil(t, first.Paging.NextCursor)
+		mysqlRawMetadata(rs, cs, resource, true)
+		second, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *first.Paging.NextCursor}})
+		require.NoError(t, err)
+		assert.Equal(t, []map[string]any{{"amount": nil}}, second.Entries)
+		assert.Nil(t, second.Paging.NextCursor)
+		assert.Empty(t, rawQueryCursorSessions.sessions)
+		assert.Equal(t, 1, opened)
+		assert.Equal(t, 3, calls)
+		require.NoError(t, rows.Err())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("foreign owner does not close Rows and transient metadata failure can retry", func(t *testing.T) {
 		svc, rs, cs, cf := mysqlRawServices(t)
 		resource := builderTestResource()
@@ -2470,4 +2555,55 @@ func TestRawQueryServicePostgreSQLSQLBuilder(t *testing.T) {
 		}
 		assert.Nil(t, result.Paging.NextCursor)
 	})
+}
+
+func TestRawQueryServiceHANAUnlimitedCursor(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		offset int
+		want   []map[string]any
+		next   bool
+	}{
+		{"push offset then continue", 1, []map[string]any{{"id": int64(2)}}, true},
+		{"offset beyond end", 5, []map[string]any{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, rs, cs, cf := mysqlRawServices(t)
+			source := builderTestResource()
+			source.SourceIdentifier = `"APP"."ORDERS"`
+			mysqlRawMetadata(rs, cs, source, true, interfaces.ConnectorTypeHANA)
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			resultRows := sqlmock.NewRows([]string{"id"})
+			if tc.offset == 1 {
+				resultRows.AddRow(int64(2)).AddRow(int64(3))
+			}
+			mock.ExpectQuery("SELECT retained").WillReturnRows(resultRows).RowsWillBeClosed()
+			opened := 0
+			connector := vmock.NewMockConnector(gomock.NewController(t))
+			connector.EXPECT().Close(gomock.Any()).Return(nil).Times(1)
+			bc := &builderConnector{Connector: connector, open: func(ctx context.Context, q *sb.SelectBuilder) (*sql.Rows, []interfaces.ColumnInfo, error) {
+				opened++
+				assert.EqualValues(t, tc.offset, q.OffsetPart, "API offset must be passed to the source renderer")
+				assert.Nil(t, q.LimitPart, "the service leaves the source-specific sentinel to the renderer")
+				rows, err := db.QueryContext(ctx, "SELECT retained")
+				return rows, []interfaces.ColumnInfo{{Name: "id", Type: interfaces.DataType_Integer}}, err
+			}}
+			cf.EXPECT().CreateConnectorInstance(gomock.Any(), interfaces.ConnectorTypeHANA, gomock.Any()).Return(bc, nil)
+			result, err := svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Query: "SELECT id FROM {{orders}} ORDER BY id", QueryFormat: interfaces.QueryFormatSQL, Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Offset: tc.offset, Limit: 1}})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, result.Entries)
+			if tc.next {
+				require.NotEmpty(t, result.Paging.NextCursor)
+				mysqlRawMetadata(rs, cs, source, true, interfaces.ConnectorTypeHANA)
+				result, err = svc.Execute(compileTestContext(), &interfaces.RawQueryRequest{Paging: interfaces.PagingRequest{Cursor: *result.Paging.NextCursor}})
+				require.NoError(t, err)
+				assert.Equal(t, []map[string]any{{"id": int64(3)}}, result.Entries)
+			}
+			assert.Empty(t, result.Paging.NextCursor)
+			assert.Equal(t, 1, opened)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
 }

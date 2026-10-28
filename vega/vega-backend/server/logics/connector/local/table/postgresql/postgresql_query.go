@@ -465,3 +465,9 @@ func (c *PostgresqlConnector) ExecuteSQLBuilder(ctx context.Context, query *sb.S
 	result.TotalCount = &total
 	return result, nil
 }
+
+// ScanSQLBuilderRow reads one retained SQL row and classifies source errors.
+func (c *PostgresqlConnector) ScanSQLBuilderRow(rows *sql.Rows, columns []interfaces.ColumnInfo) (map[string]any, error) {
+	row, err := table.ScanSQLRow(rows, columns)
+	return row, postgresqlQueryError(err)
+}

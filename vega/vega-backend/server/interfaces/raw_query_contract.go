@@ -74,9 +74,6 @@ func (r RawQueryContract) EffectiveInputDialect() string {
 	dialect := strings.ToLower(r.InputDialect)
 	if r.QueryFormat == QueryFormatSQL {
 		switch dialect {
-		case "generic":
-			// SQLGlot names its generic dialect with an empty string.
-			return ""
 		case "mariadb":
 			return "mysql"
 		}
@@ -183,7 +180,7 @@ func (r RawQueryContract) validateInputDialect() error {
 	switch r.QueryFormat {
 	case QueryFormatSQL:
 		switch dialect {
-		case "", "mysql", "tsql", "oracle", "doris":
+		case "mysql", "tsql", "oracle", "doris":
 			return nil
 		default:
 			return fmt.Errorf("unsupported SQL input_dialect: %s", r.InputDialect)
