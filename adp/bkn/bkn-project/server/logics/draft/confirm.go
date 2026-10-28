@@ -43,9 +43,9 @@ func pendingItems(items *interfaces.DraftItems) map[string][]string {
 // The draft is written before the branch and again after it. The first write claims the
 // confirmation, refusing a draft someone changed meanwhile, and records the paths it is about to
 // write apart from those it wrote before. The second records the commit and the paths written,
-// which is what makes the draft confirmed; a refused commit instead drops the paths it was about
-// to write. Only when the service stops between committing and recording do they stay, and the
-// next confirmation takes them as its own.
+// which is what makes the draft confirmed; a refused commit instead writes the draft back as it
+// was read, so it can be confirmed again as it is. Only when the service stops between committing
+// and recording do the paths stay, and the next confirmation takes them as its own.
 func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID string,
 	confirm interfaces.DraftConfirm, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ConfirmDraft")
@@ -89,8 +89,9 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 
 	// What this draft wrote on the branch before is its own to replace or remove; nothing else is.
 	var owned, earlierPending []string
+	previous := draft.Items.Confirmation
 	confirmation := &interfaces.DraftConfirmation{}
-	if previous := draft.Items.Confirmation; previous != nil {
+	if previous != nil {
 		owned = unionSorted(previous.Files, previous.Pending)
 		earlierPending = previous.Pending
 		*confirmation = *previous
@@ -99,7 +100,8 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	// Claim: not confirmed while under way, and what it is about to write recorded apart. The
 	// rest stays the last confirmation's until this one commits.
 	readUpdateTime := draft.UpdateTime
-	draft.UpdateTime = max(time.Now().UnixMilli(), readUpdateTime+1)
+	claimTime := max(time.Now().UnixMilli(), readUpdateTime+1)
+	draft.UpdateTime = claimTime
 	confirmation.UpdateTime, confirmation.Pending = 0, unionSorted(earlierPending, paths)
 	draft.Items.Confirmation = confirmation
 	if err := s.writeDraft(ctx, draft, readUpdateTime); err != nil {
@@ -112,11 +114,11 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	result, err := s.ls.AddDefinitions(ctx, entry.KNID, entry.Branch, compiled.Files, owned, message,
 		interfaces.GitAuthor{Name: caller.ID})
 	if err != nil {
-		// Nothing was written: the paths it was about to write are not the draft's, but what an
-		// earlier confirmation left pending is on the branch still.
-		confirmation.Pending = earlierPending
-		if werr := s.writeDraft(ctx, draft, draft.UpdateTime); werr != nil {
-			otellog.LogWarn(ctx, fmt.Sprintf("Drop pending confirmation of project %s: %v", projectID, werr))
+		// Nothing was written: the draft goes back to what was read, with the last confirmation
+		// and what it left pending, so the person can fix the cause and confirm it as it is.
+		draft.UpdateTime, draft.Items.Confirmation = readUpdateTime, previous
+		if werr := s.writeDraft(ctx, draft, claimTime); werr != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Restore draft of project %s: %v", projectID, werr))
 		}
 		span.SetStatus(codes.Error, "Commit definitions failed")
 		return nil, err
