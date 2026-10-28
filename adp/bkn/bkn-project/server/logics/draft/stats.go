@@ -65,33 +65,26 @@ func (c *vegaCounter) keyStats(ctx context.Context, table *interfaces.VegaTable,
 }
 
 // keyTupleStats counts a key of several fields: the rows, the rows with any of them null, and
-// the distinct keys of the rows with none null, as keyStats counts one field.
+// the distinct keys of the rows with none null, as keyStats counts one field. One query over the
+// groups of the key's values keeps the counts to one scan of the same rows; a group is complete
+// (c = 1) or has a null field (c = 0) for all of its rows. Grouping keeps it to SQL every dialect
+// has; COUNT(DISTINCT a, b) is MySQL's.
 func (c *vegaCounter) keyTupleStats(ctx context.Context, table *interfaces.VegaTable,
 	fields []string) (int64, int64, int64, error) {
 	quoted := make([]string, 0, len(fields))
 	isNull := make([]string, 0, len(fields))
-	notNull := make([]string, 0, len(fields))
 	for _, field := range fields {
 		f := quote(field)
-		quoted = append(quoted, f)
-		isNull, notNull = append(isNull, f+" IS NULL"), append(notNull, f+" IS NOT NULL")
+		quoted, isNull = append(quoted, f), append(isNull, f+" IS NULL")
 	}
 	row, err := c.one(ctx, fmt.Sprintf(
-		"SELECT COUNT(*) AS total, SUM(CASE WHEN %s THEN 1 ELSE 0 END) AS nulls FROM %s",
-		strings.Join(isNull, " OR "), ref(table)))
+		"SELECT SUM(n) AS total, SUM(CASE WHEN c = 0 THEN n ELSE 0 END) AS nulls, SUM(c) AS distinct_values "+
+			"FROM (SELECT COUNT(*) AS n, MIN(CASE WHEN %s THEN 0 ELSE 1 END) AS c FROM %s GROUP BY %s) k",
+		strings.Join(isNull, " OR "), ref(table), strings.Join(quoted, ", ")))
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	rows, nulls := number(row["total"]), number(row["nulls"])
-	// Grouping keeps it to SQL every dialect has; COUNT(DISTINCT a, b) is MySQL's.
-	columns := strings.Join(quoted, ", ")
-	row, err = c.one(ctx, fmt.Sprintf(
-		"SELECT COUNT(*) AS distinct_values FROM (SELECT %s FROM %s WHERE %s GROUP BY %s) k",
-		columns, ref(table), strings.Join(notNull, " AND "), columns))
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	return rows, number(row["distinct_values"]), nulls, nil
+	return number(row["total"]), number(row["distinct_values"]), number(row["nulls"]), nil
 }
 
 func (c *vegaCounter) joinStats(ctx context.Context, source *interfaces.VegaTable, field string,
