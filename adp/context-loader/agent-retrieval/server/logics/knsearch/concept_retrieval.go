@@ -183,6 +183,7 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief, req.IncludeColumns)
 	relationTypesLocal := s.convertRelationTypesToLocal(ctx, rankedRelations, fallbacks, brief)
 	actionTypesLocal := s.convertActionTypesToLocal(actions, req.KnID, objects)
+	s.expandEnums(ctx, req.KnID, objectTypesLocal, relationTypesLocal, brief, req.EnumQuery)
 
 	if boolValue(config.IncludeSampleData) && len(objectTypesLocal) > 0 {
 		if err := s.fetchAuthorizedSampleData(ctx, req.KnID, objectTypesLocal, brief); err != nil {
@@ -997,6 +998,7 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 			ConceptType:          conceptType,
 			ConceptID:            obj.ID,
 			ConceptName:          obj.Name,
+			Aliases:              obj.Aliases,
 			Comment:              obj.Comment,
 			Tags:                 tags,
 			DataSource:           dataSource,
@@ -1071,6 +1073,7 @@ func (s *localSearchImpl) convertRelationTypesToLocal(ctx context.Context, relat
 			ConceptType:        conceptType,
 			ConceptID:          rel.ID,
 			ConceptName:        rel.Name,
+			Aliases:            rel.Aliases,
 			Comment:            rel.Comment,
 			SourceObjectTypeID: rel.SourceObjectTypeID,
 			TargetObjectTypeID: rel.TargetObjectTypeID,
@@ -1103,15 +1106,20 @@ func (s *localSearchImpl) convertRelationTypesToLocal(ctx context.Context, relat
 }
 
 // convertDeclaredProperty converts a data property of an object type or an indirect relation:
-// name, type and semantic at either level, comment and the other declarations in full mode.
+// name, type, semantic and value_type at either level, comment and the other declarations in full
+// mode. expandEnums then fills in the enum of the value type.
 func convertDeclaredProperty(prop *interfaces.DataProperty, brief bool) *interfaces.KnSearchDataProperty {
 	p := &interfaces.KnSearchDataProperty{
 		Name:     prop.Name,
 		Type:     prop.Type,
 		Semantic: prop.Semantic,
 	}
+	if prop.Constraints != nil {
+		p.ValueType = prop.Constraints.ValueType
+	}
 	if !brief {
 		p.Comment = prop.Comment
+		p.Aliases = prop.Aliases
 		p.Required = prop.Required
 		if c := prop.Constraints; c != nil {
 			p.Unit, p.CRS, p.Timezone = c.Unit, c.CRS, c.Timezone
@@ -1138,6 +1146,7 @@ func (s *localSearchImpl) convertActionTypesToLocal(
 		result[i] = &interfaces.KnSearchActionType{
 			ID:             act.ID,
 			Name:           act.Name,
+			Aliases:        act.Aliases,
 			ObjectTypeID:   act.ObjectTypeID,
 			ObjectTypeName: objNameMap[act.ObjectTypeID],
 			Comment:        act.Comment,

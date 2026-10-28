@@ -244,6 +244,12 @@ components:
           description: |
             是否在每个对象类的 `data_properties` 上附带物理列名（取自 `mapped_field`）。
             写 `run_sql` 需要物理列名时置 true；默认 false 以保持响应精简。
+        enum_query:
+          type: string
+          description: |
+            按显示名或编码检索枚举项，多个词用空格隔开，任一词命中即返回。用于没有展开的枚举：
+            超过展开上限（默认 50 项）的大字典，以及精简模式下的所有枚举。不传时这些枚举只给
+            `value_type` 与 `enum_count`。
 
     SearchSchemaScope:
       type: object
@@ -387,6 +393,9 @@ components:
           type: boolean
           default: false
           description: 是否附带物理列名。
+        enum_query:
+          type: string
+          description: 按显示名或编码检索未展开枚举的枚举项。
 
     SearchSchemaResponse:
       type: object

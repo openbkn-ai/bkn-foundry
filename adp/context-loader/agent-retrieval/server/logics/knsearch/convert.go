@@ -40,6 +40,7 @@ func KnSearchReqToLocal(req *interfaces.KnSearchReq) *interfaces.KnSearchLocalRe
 		local.RerankModel = *req.RerankModel
 	}
 	local.IndexOpsOnly = req.IndexOpsOnly
+	local.EnumQuery = req.EnumQuery
 	if req.IncludeColumns != nil {
 		local.IncludeColumns = *req.IncludeColumns
 	}

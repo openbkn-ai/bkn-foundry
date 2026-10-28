@@ -63,6 +63,8 @@ service:
     knn_k: 300
     # Per-object schema read limit in search_schema; a slower read keeps its object type without properties.
     schema_read_timeout_ms: 5000
+    # Most enum items search_schema lists on a property; a larger enum gives its item count.
+    enum_expand_limit: 50
   instance_search_config:
     # 0 keeps the relevance gate off. See agent-retrieval.yaml for how to calibrate it.
     min_reranker_score: 0
