@@ -201,7 +201,7 @@ func Test_RunCheck(t *testing.T) {
 			So(checkStatus(results), ShouldEqual, interfaces.CHECK_STATUS_FAILED)
 		})
 
-		Convey("Ends in another catalog are not counted, which is no failure\n", func() {
+		Convey("Ends in another catalog are not counted: no failure, but no pass either\n", func() {
 			items := checkFixture()
 			items.ObjectTypes[1].Table.CatalogID = "other"
 
@@ -209,7 +209,24 @@ func Test_RunCheck(t *testing.T) {
 
 			So(results.Relations[0].Joins[0].State, ShouldEqual, checkNotCounted)
 			So(results.Relations[0].Joins[0].Reason, ShouldEqual, checkReasonCrossCatalog)
-			So(checkStatus(results), ShouldEqual, interfaces.CHECK_STATUS_PASSED)
+			So(results.Coverage, ShouldResemble, checkCoverage{Counted: 5, Total: 6})
+			So(checkStatus(results), ShouldEqual, interfaces.CHECK_STATUS_PARTIAL)
+		})
+
+		Convey("What is wrong outranks what was not counted\n", func() {
+			items := checkFixture()
+			items.ObjectTypes[1].Table.CatalogID = "other"
+			counter.keys["res_orders.order_id"] = [3]int64{10, 9, 0}
+
+			results := runCheck(ctx, counter, checkInputOf(items), nil)
+
+			So(checkStatus(results), ShouldEqual, interfaces.CHECK_STATUS_ISSUES)
+		})
+
+		Convey("Everything counted covers every item\n", func() {
+			results := runCheck(ctx, counter, input, nil)
+
+			So(results.Coverage, ShouldResemble, checkCoverage{Counted: 6, Total: 6})
 		})
 
 		Convey("An identity of several properties counts the fields together\n", func() {
@@ -229,7 +246,7 @@ func Test_RunCheck(t *testing.T) {
 			out, err := json.Marshal(results)
 
 			So(err, ShouldBeNil)
-			So(string(out), ShouldEqual, `{"keys":[],"relations":[],"excluded_mapped":[]}`)
+			So(string(out), ShouldEqual, `{"keys":[],"relations":[],"excluded_mapped":[],"coverage":{"counted":0,"total":0}}`)
 			So(checkStatus(results), ShouldEqual, interfaces.CHECK_STATUS_PASSED)
 		})
 	})

@@ -455,6 +455,78 @@ func Test_LineageService_CommitDefinitions(t *testing.T) {
 	})
 }
 
+func Test_LineageService_PreflightDefinitions(t *testing.T) {
+	Convey("Test lineageService PreflightDefinitions\n", t, func() {
+		svc := &lineageService{gs: realGS}
+		ctx := context.Background()
+		const branch = "project/p1"
+		v3 := func() map[string][]byte {
+			files := definitions("A part.", "A supplier.")
+			files["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+			return files
+		}
+		lineage := func(files map[string][]byte) string {
+			id := newLineageID()
+			_, err := realGS.InitLineage(ctx, id, files, "init", author)
+			So(err, ShouldBeNil)
+			_, err = svc.CreateBranch(ctx, id, branch, "")
+			So(err, ShouldBeNil)
+			return id
+		}
+
+		Convey("It lists the paths adding would be refused for, as adding does, and commits nothing\n", func() {
+			id := lineage(v3())
+			before, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+
+			preflight, err := svc.PreflightDefinitions(ctx, id, branch,
+				[]string{"object_types/part.bkn", "object_types/plant.bkn"}, nil)
+
+			So(err, ShouldBeNil)
+			So(preflight.NotV3, ShouldBeEmpty)
+			So(preflight.Existing, ShouldResemble, []string{"object_types/part.bkn"})
+			after, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+			So(after, ShouldEqual, before)
+		})
+
+		Convey("A path the draft owns is not in the way\n", func() {
+			id := lineage(v3())
+
+			preflight, err := svc.PreflightDefinitions(ctx, id, branch,
+				[]string{"object_types/part.bkn"}, []string{"object_types/part.bkn"})
+
+			So(err, ShouldBeNil)
+			So(preflight.Existing, ShouldBeEmpty)
+		})
+
+		Convey("A lineage still in BKN 2.x needs its drift committed, then the branch synced\n", func() {
+			id := lineage(definitions("A part.", "A supplier."))
+
+			preflight, err := svc.PreflightDefinitions(ctx, id, branch, []string{"object_types/plant.bkn"}, nil)
+
+			So(err, ShouldBeNil)
+			So(preflight.NotV3, ShouldEqual, interfaces.DEFINITIONS_LINEAGE_NOT_V3)
+
+			_, err = realGS.CommitFiles(ctx, id, "main", v3(), "drift as 3.0", author)
+			So(err, ShouldBeNil)
+			preflight, err = svc.PreflightDefinitions(ctx, id, branch, []string{"object_types/plant.bkn"}, nil)
+
+			So(err, ShouldBeNil)
+			So(preflight.NotV3, ShouldEqual, interfaces.DEFINITIONS_BRANCH_NOT_V3)
+		})
+
+		Convey("main and an unknown branch are refused as adding refuses them\n", func() {
+			id := lineage(v3())
+
+			_, err := svc.PreflightDefinitions(ctx, id, "main", nil, nil)
+			status, _ := httpCode(err)
+			So(status, ShouldEqual, http.StatusForbidden)
+
+			_, err = svc.PreflightDefinitions(ctx, id, "project/none", nil, nil)
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
 func Test_LineageService_AddDefinitions(t *testing.T) {
 	Convey("Test lineageService AddDefinitions\n", t, func() {
 		svc := &lineageService{gs: realGS}

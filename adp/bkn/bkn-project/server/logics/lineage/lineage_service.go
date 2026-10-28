@@ -197,13 +197,13 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 		if err != nil {
 			return err
 		}
-		if !keptInV3(current) {
-			// Syncing moves the branch to 3.0 only once main is; until then main's drift has to
-			// be committed first, which writes main in 3.0.
+		notV3, err := notKeptInV3(ctx, gs, lineageID, current)
+		if err != nil {
+			return err
+		}
+		if notV3 != "" {
 			code := perrors.BknProject_Lineage_BranchNotV3
-			if mainFiles, err := gs.ReadTree(ctx, lineageID, branchRef(interfaces.GIT_MAIN_BRANCH)); err != nil {
-				return err
-			} else if !keptInV3(mainFiles) {
+			if notV3 == interfaces.DEFINITIONS_LINEAGE_NOT_V3 {
 				code = perrors.BknProject_Lineage_LineageNotV3
 			}
 			return httperrors.NewHTTPError(ctx, http.StatusConflict, code)
@@ -212,21 +212,18 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 		for _, p := range owned {
 			mine[p] = true
 		}
-		var existing []string
 		merged := make(map[string][]byte, len(current)+len(files))
 		for p, data := range current {
 			if !mine[p] {
 				merged[p] = data
 			}
 		}
+		paths := make([]string, 0, len(files))
 		for p, data := range files {
-			if _, ok := current[p]; ok && !mine[p] {
-				existing = append(existing, p)
-			}
+			paths = append(paths, p)
 			merged[p] = data
 		}
-		if len(existing) > 0 {
-			sort.Strings(existing)
+		if existing := existingPaths(current, paths, owned); len(existing) > 0 {
 			return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_DefinitionsExist).
 				WithErrorDetails(existing)
 		}
@@ -274,6 +271,67 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 	}
 	span.SetStatus(codes.Ok, "")
 	return result, nil
+}
+
+// PreflightDefinitions reads the branch without the lineage lock: it tells what adding would be
+// refused for now, and adding checks again under the lock.
+func (s *lineageService) PreflightDefinitions(ctx context.Context, lineageID string, branch string,
+	paths []string, owned []string) (*interfaces.DefinitionsPreflight, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "PreflightDefinitions")
+	defer span.End()
+
+	if err := checkProjectBranch(ctx, branch); err != nil {
+		span.SetStatus(codes.Error, "Invalid branch")
+		return nil, err
+	}
+	current, err := s.gs.ReadTree(ctx, lineageID, branchRef(branch))
+	if err != nil {
+		span.SetStatus(codes.Error, "Read branch failed")
+		return nil, toHTTPError(ctx, "Read branch failed", err)
+	}
+	preflight := &interfaces.DefinitionsPreflight{Existing: []string{}}
+	if preflight.NotV3, err = notKeptInV3(ctx, s.gs, lineageID, current); err != nil {
+		span.SetStatus(codes.Error, "Read main failed")
+		return nil, toHTTPError(ctx, "Read main failed", err)
+	}
+	preflight.Existing = append(preflight.Existing, existingPaths(current, paths, owned)...)
+	span.SetStatus(codes.Ok, "")
+	return preflight, nil
+}
+
+// notKeptInV3 says why a branch whose definitions are current is not kept in BKN 3.0, or nothing
+// when it is. Syncing moves the branch to 3.0 only once main is; until then main's drift has to be
+// committed first, which writes main in 3.0.
+func notKeptInV3(ctx context.Context, gs interfaces.GitStore, lineageID string,
+	current map[string][]byte) (string, error) {
+	if keptInV3(current) {
+		return "", nil
+	}
+	mainFiles, err := gs.ReadTree(ctx, lineageID, branchRef(interfaces.GIT_MAIN_BRANCH))
+	if err != nil {
+		return "", err
+	}
+	if !keptInV3(mainFiles) {
+		return interfaces.DEFINITIONS_LINEAGE_NOT_V3, nil
+	}
+	return interfaces.DEFINITIONS_BRANCH_NOT_V3, nil
+}
+
+// existingPaths lists, sorted, the paths the branch holds that the definitions do not own: adding
+// them would replace what someone else wrote.
+func existingPaths(current map[string][]byte, paths []string, owned []string) []string {
+	mine := make(map[string]bool, len(owned))
+	for _, p := range owned {
+		mine[p] = true
+	}
+	var existing []string
+	for _, p := range paths {
+		if _, ok := current[p]; ok && !mine[p] {
+			existing = append(existing, p)
+		}
+	}
+	sort.Strings(existing)
+	return existing
 }
 
 // keptInV3 reports whether a set of definitions declares BKN 3.0 in its network.bkn.
