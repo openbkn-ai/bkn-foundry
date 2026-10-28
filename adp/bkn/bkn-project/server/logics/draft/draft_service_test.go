@@ -93,6 +93,41 @@ func Test_DraftService(t *testing.T) {
 				{ResourceID: "r_hidden", Name: "hidden", CatalogID: "c1", Reason: unreadableNotVisible},
 				{ResourceID: "r_empty", Name: "empty", CatalogID: "c1", Reason: unreadableNoStructure},
 			})
+			// What the draft was made from: the rules, their settings and the tables read.
+			inputs := finished.Items.Inputs
+			So(inputs, ShouldNotBeNil)
+			So(inputs.RulesVersion, ShouldEqual, draftRulesVersion)
+			So(inputs.Settings.AdoptHitRate, ShouldEqual, setting.AdoptHitRate)
+			So(inputs.Settings.CodeTableMaxRows, ShouldEqual, setting.CodeTableMaxRows)
+			So(inputs.Settings.MinInferredDistinct, ShouldEqual, setting.MinInferredDistinct)
+			So(inputs.CatalogIDs, ShouldResemble, []string{"c1"})
+			So(len(inputs.Tables), ShouldEqual, 2)
+			So(inputs.Tables[0].ResourceID, ShouldEqual, "r_customers")
+			So(inputs.Tables[0].Rows, ShouldEqual, 2)
+			So(inputs.Tables[0].Fingerprint, ShouldHaveLength, 64)
+			// Some tables could not be read: the draft is partial.
+			So(inputs.Partial, ShouldBeTrue)
+		})
+
+		Convey("A code table whose values could not be read makes the draft partial\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			va.EXPECT().MissingCatalogs(gomock.Any(), caller, []string{"c1"}).Return(nil, nil)
+			da.EXPECT().StartDraft(gomock.Any(), gomock.Any(), gomock.Any(), false).Return(true, nil)
+			levels := table("r_levels", "c1", "levels", 3, []string{"code"}, col("code", "string", ""), col("name", "string", ""))
+			va.EXPECT().ListTables(gomock.Any(), caller, "c1").Return([]*interfaces.VegaTable{
+				{ID: "r_levels", Name: "levels", CatalogID: "c1"},
+			}, nil)
+			va.EXPECT().GetTables(gomock.Any(), caller, []string{"r_levels"}).Return([]*interfaces.VegaTable{levels}, nil)
+			va.EXPECT().Query(gomock.Any(), caller, gomock.Any(), 60).Return(nil, errors.New("permission denied"))
+			var finished *interfaces.Draft
+			da.EXPECT().FinishDraft(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft) error { finished = d; return nil })
+
+			_, err := svc.GenerateDraft(ctx, token, "p1", caller, false)
+
+			So(err, ShouldBeNil)
+			So(len(finished.Items.Unreadable), ShouldEqual, 1)
+			So(finished.Items.Inputs.Partial, ShouldBeTrue)
 		})
 
 		Convey("A failure reading vega-backend fails the draft with its reason\n", func() {

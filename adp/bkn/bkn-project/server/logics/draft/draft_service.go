@@ -228,7 +228,14 @@ func (s *draftService) draftFromTables(ctx context.Context, catalogIDs []string,
 		}
 	}
 	c := &vegaCounter{va: s.va, account: caller, timeoutSeconds: s.setting.QueryTimeout}
-	return newDrafter(s.setting, c).draft(ctx, tables, unreadable)
+	items, err := newDrafter(s.setting, c).draft(ctx, tables, unreadable)
+	if err != nil {
+		return items, err
+	}
+	// Tables drafting itself could not read, such as a code table whose values it could not
+	// query, are in items.Unreadable too.
+	items.Inputs = draftInputsOf(s.setting, catalogIDs, tables, items.Unreadable)
+	return items, nil
 }
 
 func (s *draftService) GetDraft(ctx context.Context, token string, projectID string) (*interfaces.Draft, error) {
