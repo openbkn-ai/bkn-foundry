@@ -316,6 +316,14 @@ func branchRef(name string) string {
 }
 
 // toHTTPError maps an error of the git store or bkn-backend to the reply.
+// v3ExportRefusals maps bkn-backend's refusals to export a network as BKN 3.0 to bkn-project's
+// codes: some action parameters are misplaced or invalid, or a definition does not read back
+// under the 3.0 rules.
+var v3ExportRefusals = map[string]string{
+	"BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck": perrors.BknProject_Lineage_NetworkNeedsCheck,
+	"BknBackend.KnowledgeNetwork.ExportNotReadableAsV3":   perrors.BknProject_Lineage_NetworkNotReadableAsV3,
+}
+
 func toHTTPError(ctx context.Context, operation string, err error) error {
 	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) {
@@ -339,6 +347,15 @@ func toHTTPError(ctx context.Context, operation string, err error) error {
 			WithErrorDetails(details)
 	}
 	var backendErr *interfaces.BknBackendError
+	if errors.As(err, &backendErr) {
+		// The network's own definitions need fixing before a lineage can hold it as BKN 3.0;
+		// bkn-backend names what to fix, which goes on as it is. Its own advice to export as
+		// 2.x is not one a lineage can take.
+		if code, ok := v3ExportRefusals[backendErr.ErrorCode]; ok {
+			otellog.LogWarn(ctx, fmt.Sprintf("%s: %v", operation, err))
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, code).WithErrorDetails(backendErr.ErrorDetails)
+		}
+	}
 	if errors.As(err, &backendErr) {
 		// A 4xx is the caller's to fix and keeps its status; anything else is a bad gateway.
 		status := backendErr.HTTPCode

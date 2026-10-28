@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-git/go-git/v5"
@@ -179,6 +180,24 @@ func Test_LineageService_SyncBranch(t *testing.T) {
 			})
 		})
 
+		Convey("A branch kept in BKN 2.x syncs with a main now kept in BKN 3.0\n", func() {
+			_, err := realGS.CommitFiles(ctx, id, branch, definitions("A part, edited on the branch.", "A supplier."), "branch edit", author)
+			So(err, ShouldBeNil)
+			main3 := definitions("A part.", "A supplier, edited live.")
+			main3["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+			_, err = realGS.CommitFiles(ctx, id, "main", main3, "drift as 3.0", author)
+			So(err, ShouldBeNil)
+
+			result, err := svc.SyncBranch(ctx, id, branch, author)
+
+			So(err, ShouldBeNil)
+			So(result.Result, ShouldEqual, interfaces.SYNC_RESULT_MERGED)
+			files, err := realGS.ReadTree(ctx, id, "refs/heads/"+branch)
+			So(err, ShouldBeNil)
+			So(string(files["network.bkn"]), ShouldContainSubstring, `bkn_spec: "3.0"`)
+			So(string(files["object_types/part.bkn"]), ShouldContainSubstring, "A part, edited on the branch.")
+		})
+
 		Convey("A conflict replies 409 with the conflicts and commits nothing\n", func() {
 			branchHead, err := realGS.CommitFiles(ctx, id, branch, definitions("Branch wording.", "A supplier."), "branch edit", author)
 			So(err, ShouldBeNil)
@@ -263,6 +282,50 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusForbidden)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_BknBackendRequestFailed)
+		})
+
+		Convey("A network bkn-backend cannot export as BKN 3.0 says what to fix, and leaves no lineage\n", func() {
+			found := map[string]any{"misplaced_parameters": []any{map[string]any{"action_type_id": "restock"}}}
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{
+				HTTPCode: http.StatusBadRequest,
+				BaseError: httperrors.BaseError{
+					ErrorCode:    "BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck",
+					ErrorDetails: found,
+				},
+			})
+
+			_, err := svc.CreateLineage(ctx, token, id, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_NetworkNeedsCheck)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, found)
+			_, refErr := realGS.ResolveRef(ctx, id, "main")
+			So(refErr, ShouldNotBeNil)
+		})
+
+		Convey("A network whose definitions do not read back as BKN 3.0 names the one to fix, and leaves no lineage\n", func() {
+			const unreadable = `load object_types/part.bkn: data property name is empty`
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{
+				HTTPCode: http.StatusBadRequest,
+				BaseError: httperrors.BaseError{
+					ErrorCode:    "BknBackend.KnowledgeNetwork.ExportNotReadableAsV3",
+					ErrorDetails: unreadable,
+				},
+			})
+
+			_, err := svc.CreateLineage(ctx, token, id, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_NetworkNotReadableAsV3)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldEqual, unreadable)
+			_, refErr := realGS.ResolveRef(ctx, id, "main")
+			So(refErr, ShouldNotBeNil)
 		})
 
 		Convey("A bkn-backend server error is a bad gateway\n", func() {
