@@ -153,9 +153,10 @@ func TestExpandEnumsCapsMatchesAtTheLimit(t *testing.T) {
 	backend := &valueTypeBackend{mockBknBackend: &mockBknBackend{}, valueTypes: []*interfaces.ValueType{departments(60)}}
 	p := &interfaces.KnSearchDataProperty{Name: "dept", ValueType: "dept"}
 	newEnumSearch(backend, 10).expandEnums(context.Background(), "kn",
-		[]*interfaces.KnSearchObjectType{{DataProperties: []*interfaces.KnSearchDataProperty{p}}}, nil, false, "科室 检验")
-	if len(p.Enum) != 10 || p.EnumCount != 60 || p.EnumMatchCount != 60 {
-		t.Fatalf("got %d items, enum_count %d, enum_match_count %d; want 10, 60, 60",
+		[]*interfaces.KnSearchObjectType{{DataProperties: []*interfaces.KnSearchDataProperty{p}}}, nil, false, "科室")
+	// D007 is 检验科, so 59 of the 60 items match: the match count is not the enum's size.
+	if len(p.Enum) != 10 || p.EnumCount != 60 || p.EnumMatchCount != 59 {
+		t.Fatalf("got %d items, enum_count %d, enum_match_count %d; want 10, 60, 59",
 			len(p.Enum), p.EnumCount, p.EnumMatchCount)
 	}
 

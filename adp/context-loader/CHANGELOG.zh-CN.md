@@ -4,7 +4,7 @@
 
 ## Unreleased
 
-- `search_schema` 展开枚举并输出别名（BKN 规范 3.0 阶段 2）。引用枚举值类型的属性带 `value_type` 与枚举项 `enum: [{value, display, deprecated}]`，停用项保留；超过展开上限（`concept_search_config.enum_expand_limit`，默认 50）的枚举以及精简模式下的所有枚举只给 `enum_count`，新参数 `enum_query` 按显示名或编码检索枚举项。对象类、关系类、行动类在两种模式下都输出 `aliases`，数据属性的别名只在完整模式输出。`get_kn_detail`、`get_object_types`、`get_relation_types` 不输出别名。无值类型、无别名的网络输出与之前相同。 (#2282)
+- `search_schema` 展开枚举并输出别名（BKN 规范 3.0 阶段 2）。引用枚举值类型的属性带 `value_type` 与枚举项 `enum: [{value, display, deprecated}]`，停用项保留；超过展开上限（`concept_search_config.enum_expand_limit`，默认 50）的枚举以及精简模式下的所有枚举只给 `enum_count`，新参数 `enum_query` 按显示名或编码检索枚举项，命中超过上限时另给命中总数 `enum_match_count`。读取值类型受 `schema_read_timeout_ms` 限制。对象类、关系类、行动类在两种模式下都输出 `aliases`，数据属性的别名只在完整模式输出。`get_kn_detail`、`get_object_types`、`get_relation_types` 不输出别名。无值类型、无别名的网络输出与之前相同。 (#2282)
 
 - `search_schema` 输出 BKN 规范 3.0 的关系声明：`reverse_name`、`cardinality`、`required`、`characteristics`、`verification`、`importance`（primary 时不输出）与关系属性。主关系在 `fallback` 下带上替代路径及替代规则，替代路径不再单独出现：只召回到替代路径时补出它的主关系。对象类、关系类、行动类非 active 时带 `lifecycle`，按 ID 查到已弃用的定义（`get_object_types`、`get_relation_types`、指定 ID 的对象类）时可从中看到替代定义。无这些声明的网络输出与之前相同。 (#2285)
 
