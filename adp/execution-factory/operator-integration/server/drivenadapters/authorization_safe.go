@@ -12,11 +12,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
+	serviceerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
@@ -24,13 +27,37 @@ import (
 // API (/api/safe/v1/authz/*).
 
 type safeAuthorization struct {
-	baseURL string
-	http    *http.Client
-	logger  interfaces.Logger
+	baseURL     string
+	http        *http.Client
+	cleanupHTTP *http.Client
+	logger      interfaces.Logger
 }
 
+const (
+	defaultSafeTimeout            = 5 * time.Second
+	defaultResourceCleanupTimeout = 30 * time.Second
+	resourceCleanupTimeoutEnv     = "BKN_SAFE_RESOURCE_CLEANUP_TIMEOUT"
+)
+
 func newSafeAuthorization(baseURL string, logger interfaces.Logger) *safeAuthorization {
-	return &safeAuthorization{baseURL: baseURL, http: &http.Client{Timeout: 5 * time.Second}, logger: logger}
+	return &safeAuthorization{
+		baseURL:     baseURL,
+		http:        &http.Client{Timeout: defaultSafeTimeout},
+		cleanupHTTP: &http.Client{Timeout: configuredResourceCleanupTimeout()},
+		logger:      logger,
+	}
+}
+
+func configuredResourceCleanupTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(resourceCleanupTimeoutEnv))
+	if raw == "" {
+		return defaultResourceCleanupTimeout
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil || timeout <= 0 {
+		return defaultResourceCleanupTimeout
+	}
+	return timeout
 }
 
 // checkOne queries bkn-safe for a single (accessor, type:id, op) decision.
@@ -284,7 +311,7 @@ func (s *safeAuthorization) CreatePolicy(ctx context.Context, reqs []*interfaces
 // DeletePolicy drops all policies on each resource instance.
 func (s *safeAuthorization) DeletePolicy(ctx context.Context, req *interfaces.AuthDeletePolicyRequest) error {
 	for _, r := range req.Resources {
-		if err := s.del(ctx, "/api/safe/v1/authz/policies", map[string]any{
+		if err := s.delCleanup(ctx, "/api/safe/v1/authz/policies", map[string]any{
 			"resource": map[string]string{"type": r.Type, "id": r.ID},
 		}); err != nil {
 			return err
@@ -323,11 +350,15 @@ func (s *safeAuthorization) get(ctx context.Context, path string, query url.Valu
 	}
 	return nil
 }
-func (s *safeAuthorization) del(ctx context.Context, path string, body any) error {
-	return s.do(ctx, http.MethodDelete, path, body, nil)
+func (s *safeAuthorization) delCleanup(ctx context.Context, path string, body any) error {
+	return s.doWithClient(ctx, s.cleanupHTTP, http.MethodDelete, path, body, nil)
 }
 
 func (s *safeAuthorization) do(ctx context.Context, method, path string, body, out any) error {
+	return s.doWithClient(ctx, s.http, method, path, body, out)
+}
+
+func (s *safeAuthorization) doWithClient(ctx context.Context, client *http.Client, method, path string, body, out any) error {
 	b, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, method, s.baseURL+path, bytes.NewReader(b))
 	if err != nil {
@@ -338,14 +369,15 @@ func (s *safeAuthorization) do(ctx context.Context, method, path string, body, o
 	for key, value := range common.BuildTraceHeaders(ctx) {
 		req.Header.Set(key, value)
 	}
-	resp, err := s.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("bkn-safe %s %s: %d: %s", method, path, resp.StatusCode, data)
+		return serviceerrors.DefaultHTTPError(ctx, resp.StatusCode,
+			fmt.Sprintf("bkn-safe %s %s returned HTTP %d", method, path, resp.StatusCode))
 	}
 	if out != nil && len(data) > 0 {
 		return json.Unmarshal(data, out)

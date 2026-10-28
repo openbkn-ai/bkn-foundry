@@ -797,7 +797,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
 		defer func() {
 			if trackerOwner && err == nil {
-				_ = cleanupTracker.Cleanup(ctx, ats.ps)
+				err = cleanupTracker.Cleanup(ctx, ats.ps)
 			}
 		}()
 	}

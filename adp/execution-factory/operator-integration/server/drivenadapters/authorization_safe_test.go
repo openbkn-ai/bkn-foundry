@@ -11,11 +11,43 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
+
+func TestSafeAuthorizationUsesDedicatedResourceCleanupTimeout(t *testing.T) {
+	t.Setenv(resourceCleanupTimeoutEnv, "17s")
+	client := newSafeAuthorization("http://bkn-safe:3000", testLogger{})
+	if client.http.Timeout != defaultSafeTimeout {
+		t.Fatalf("regular timeout = %s, want %s", client.http.Timeout, defaultSafeTimeout)
+	}
+	if client.cleanupHTTP.Timeout != 17*time.Second {
+		t.Fatalf("cleanup timeout = %s, want 17s", client.cleanupHTTP.Timeout)
+	}
+
+	t.Setenv(resourceCleanupTimeoutEnv, "0s")
+	if got := newSafeAuthorization("http://bkn-safe:3000", testLogger{}).cleanupHTTP.Timeout; got != defaultResourceCleanupTimeout {
+		t.Fatalf("non-positive cleanup timeout fallback = %s, want %s", got, defaultResourceCleanupTimeout)
+	}
+}
+
+func TestSafeAuthorizationPreservesCleanupConflictStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "resource has active proxy grant sources", http.StatusConflict)
+	}))
+	defer server.Close()
+
+	err := newSafeAuthorization(server.URL, testLogger{}).DeletePolicy(t.Context(),
+		&interfaces.AuthDeletePolicyRequest{Resources: []*interfaces.AuthResource{{Type: "skill", ID: "skill-1"}}})
+	httpErr, ok := err.(*httperrors.HTTPError)
+	if !ok || httpErr.HTTPCode != http.StatusConflict {
+		t.Fatalf("DeletePolicy() error = %#v, want HTTP 409", err)
+	}
+}
 
 // fakeAuthz serves the bkn-safe authz endpoints the adapter uses.
 func fakeAuthz(t *testing.T) *httptest.Server {

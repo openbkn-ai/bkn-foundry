@@ -94,18 +94,15 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
 	})
-	// Verify delete permission.
+	// Load deletion markers before authorization. The initiating user may resume
+	// after Safe has already removed the policy, while ordinary reads hide the
+	// marker through SelectToolBox.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
 	}
-	err = s.checkBoxDeletePermission(ctx, accessor, req.BoxID)
-	if err != nil {
-		return
-	}
-	// Check if the toolbox exists.
-	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
+	exist, toolBox, err := s.ToolBoxDB.SelectToolBoxForDelete(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -115,41 +112,53 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// Delete toolbox.
+	if toolBox.Status != model.ToolboxStatusDeleting || toolBox.UpdateUser != req.UserID {
+		err = s.checkBoxDeletePermission(ctx, accessor, req.BoxID)
+		if err != nil {
+			return
+		}
+	}
+	if toolBox.Status != model.ToolboxStatusDeleting {
+		if err = s.markToolBoxDeleting(ctx, req.BoxID, req.UserID); err != nil {
+			return
+		}
+	}
+
+	// Delete resource permissions while the durable marker still identifies the
+	// authorized retry. Safe treats an already absent policy as success.
+	resourceType, typeErr := toolboxAuthorizationType(toolBox.MetadataType)
+	if typeErr != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, typeErr.Error())
+		return
+	}
+	if err = s.AuthService.DeletePolicy(ctx, []string{req.BoxID}, resourceType); err != nil {
+		return
+	}
+
+	// Physically delete the marker and its children only after Safe succeeds. If
+	// this commit fails, the marker survives and the same user can replay DELETE.
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// Registered before the commit below so it runs after it — defers are LIFO — because the
-	// index must not be told about a deleted tool box until the transaction has actually committed.
+	transactionFinished := false
 	defer func() {
-		if err == nil {
-			s.forgetBoxIndex(ctx, req.BoxID)
-		}
-	}()
-	defer func() {
-		if err != nil {
+		if !transactionFinished {
 			_ = tx.Rollback()
-		} else {
-			_ = tx.Commit()
 		}
 	}()
 	err = s.deleteToolBox(ctx, tx, req.BoxID)
 	if err != nil {
 		return
 	}
-
-	// Delete resource permissions policy.
-	resourceType, typeErr := toolboxAuthorizationType(toolBox.MetadataType)
-	if typeErr != nil {
-		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, typeErr.Error())
-		return
-	}
-	err = s.AuthService.DeletePolicy(ctx, []string{req.BoxID}, resourceType)
+	err = tx.Commit()
+	transactionFinished = true
 	if err != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.forgetBoxIndex(ctx, req.BoxID)
 
 	// Record audit log.
 	go func() {
@@ -171,6 +180,27 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 	}()
 	resp = &interfaces.DeleteBoxResp{BoxID: toolBox.BoxID, BoxName: toolBox.Name}
 	return
+}
+
+func (s *ToolServiceImpl) markToolBoxDeleting(ctx context.Context, boxID, userID string) error {
+	tx, err := s.DBTx.GetTx(ctx)
+	if err != nil {
+		return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if err := s.ToolBoxDB.UpdateToolBoxStatus(ctx, tx, boxID, model.ToolboxStatusDeleting, userID); err != nil {
+		return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+	}
+	committed = true
+	return nil
 }
 
 // QueryToolBoxList toolbox management.

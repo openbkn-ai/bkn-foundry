@@ -513,11 +513,13 @@ func (vba *vegaBackendAccess) DeleteDatasetDocumentByID(ctx context.Context, dat
 		return fmt.Errorf("vega dependency request failed")
 	}
 
-	if respCode != http.StatusNoContent && respCode != http.StatusOK {
+	// Whole-network deletion is replayable. A document already absent from the
+	// index is the desired result, not a reason to strand the business row.
+	if respCode != http.StatusNoContent && respCode != http.StatusOK && respCode != http.StatusNotFound {
 		err := fmt.Errorf("DeleteDatasetDocumentByID returned HTTP %d", respCode)
 		common.LogSafeError(ctx, "DeleteDatasetDocumentByID failed", err)
 		logger.Debugf("DeleteDatasetDocumentByID response: %s", common.SafeTextSummary("response", string(respData)))
-		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 204 or 200")
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 204, 200 or 404")
 		return err
 	}
 

@@ -415,6 +415,18 @@ func TestWriteDatasetDocumentUsesExplicitDocumentID(t *testing.T) {
 	require.NoError(t, access.WriteDatasetDocument(context.Background(), "dataset-1", "document-1", document))
 }
 
+func TestDeleteDatasetDocumentByIDIsIdempotentWhenDocumentIsMissing(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+	access := &vegaBackendAccess{baseUrl: "http://vega", httpClient: mockHTTPClient}
+
+	mockHTTPClient.EXPECT().
+		DeleteNoUnmarshal(gomock.Any(), "http://vega/resources/dataset-1/data/document-1", gomock.Any()).
+		Return(http.StatusNotFound, []byte(`{"message":"not found"}`), nil)
+
+	require.NoError(t, access.DeleteDatasetDocumentByID(context.Background(), "dataset-1", "document-1"))
+}
+
 // The admin fallback in buildHeaders would authorize a read as the platform
 // instead of as the caller, turning vega's per-resource check off without any
 // signal. Raw query must refuse before reaching the network.

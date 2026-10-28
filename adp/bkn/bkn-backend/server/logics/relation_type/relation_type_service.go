@@ -737,7 +737,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
 		defer func() {
 			if trackerOwner && err == nil {
-				_ = cleanupTracker.Cleanup(ctx, rts.ps)
+				err = cleanupTracker.Cleanup(ctx, rts.ps)
 			}
 		}()
 	}

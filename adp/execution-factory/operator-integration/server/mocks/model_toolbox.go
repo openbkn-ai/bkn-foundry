@@ -158,6 +158,22 @@ func (mr *MockIToolboxDBMockRecorder) SelectToolBox(ctx, boxID any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectToolBox", reflect.TypeOf((*MockIToolboxDB)(nil).SelectToolBox), ctx, boxID)
 }
 
+// SelectToolBoxForDelete mocks base method.
+func (m *MockIToolboxDB) SelectToolBoxForDelete(ctx context.Context, boxID string) (bool, *model.ToolboxDB, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SelectToolBoxForDelete", ctx, boxID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(*model.ToolboxDB)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// SelectToolBoxForDelete indicates an expected call of SelectToolBoxForDelete.
+func (mr *MockIToolboxDBMockRecorder) SelectToolBoxForDelete(ctx, boxID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SelectToolBoxForDelete", reflect.TypeOf((*MockIToolboxDB)(nil).SelectToolBoxForDelete), ctx, boxID)
+}
+
 // SelectToolBoxByName mocks base method.
 func (m *MockIToolboxDB) SelectToolBoxByName(ctx context.Context, name string, status []string) (bool, *model.ToolboxDB, error) {
 	m.ctrl.T.Helper()

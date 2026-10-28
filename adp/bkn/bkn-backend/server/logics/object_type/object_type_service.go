@@ -1419,7 +1419,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
 		defer func() {
 			if trackerOwner && err == nil {
-				_ = cleanupTracker.Cleanup(ctx, ots.ps)
+				err = cleanupTracker.Cleanup(ctx, ots.ps)
 			}
 		}()
 	}
