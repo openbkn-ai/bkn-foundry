@@ -90,6 +90,16 @@ jobs:
         env:
           BKN_TRACE_TEST_MARIADB_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/bkn_trace_ci?parseTime=true&multiStatements=true
         run: make test-performance
+      - name: Projection outbox historical-volume and lease concurrency regression
+        env:
+          BKN_TRACE_OUTBOX_PERF_ADMIN_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/?parseTime=true&multiStatements=true
+        run: make test-outbox-performance
+      - name: Projection outbox 100k and 500k pending capacity regression
+        env:
+          BKN_TRACE_OUTBOX_PERF_ADMIN_DSN: root:trace-ci-password@tcp(127.0.0.1:3306)/?parseTime=true&multiStatements=true
+          BKN_TRACE_OUTBOX_SCALE_OPENSEARCH_URL: http://127.0.0.1:9200
+          BKN_TRACE_OUTBOX_SCALE_WORKER_DURATION: 10s
+        run: make test-outbox-scale
       - name: OpenSearch projection and alias integration test
         env:
           BKN_TRACE_TEST_OPENSEARCH_ENDPOINT: http://127.0.0.1:9200

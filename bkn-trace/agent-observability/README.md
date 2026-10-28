@@ -827,3 +827,62 @@ OpenSearch返回401/403时，该条输出`opensearch_auth_failed`，不输出凭
 仍使用原有有界读取路径。该维护工具不把未知或真实缺口当成完整，也不补造
 历史调用结束结果；SQL快照仍复用既有实现，命令应在具备数据库维护权限的
 受控环境中串行运行。报告可能含内部记录ID，应按现场诊断文件保护。
+
+### MariaDB 投影领取性能回归
+
+在本模块目录运行 `make test-outbox-performance`，设置
+`BKN_TRACE_OUTBOX_PERF_ADMIN_DSN` 为隔离 MariaDB 11.4 测试服务器的 admin DSN
+（含 `parseTime=true&multiStatements=true`，允许创建和删除数据库）。测试创建并
+清理独立数据库，使用生产 Core 建表脚本，不修改共享审计库。CI 使用相同入口，
+缺少 DSN 时 Makefile 直接失败，避免把跳过测试当作通过。
+
+历史数据集包含 190,148 条终态任务和 14,213 条 pending，最早 pending ID 为
+190149，每条 payload 约 1 KiB；建议测试服务器使用 128 MiB InnoDB buffer pool。
+测试输出候选查询与真实 `FOR UPDATE SKIP LOCKED` 查询的 EXPLAIN；候选分支须使用
+claim-order 覆盖索引且不对大表排序，加锁查询须使用限定候选 ID 的主键路径。
+计时覆盖完整 `Lease()`：事务开始、数据库时钟、候选发现、加锁重检、payload 读取、租约更新和提交；
+20 次单条领取、100 条批量领取和空队列领取均须在独立的 2 秒 deadline 内完成。
+另有跨状态 ID 顺序、跨页锁定前缀补领、候选变更重检、延迟任务重新可用、
+并发领取、过期租约恢复、旧 token fencing 及有数据索引迁移幂等回归。
+结果用于约束代表性数据下的领取路径，不代表其他硬件或任意积压规模的耗时保证。
+
+领取依赖 v040 新增的 `(status, outbox_id, available_at, locked_until)` 覆盖索引。
+每个状态最多取 128 个候选 ID，仅合并排序至多 256 个 ID；之后按主键加锁重检。
+遇到行锁或过期候选时通过 ID 游标补页，每次新领取从头开始，避免遗漏较早的重试任务。
+一次领取共用数据库时间快照，保持跨状态和补页时的时间资格一致。原 pending 索引保留。
+该路径仍可能扫描大量时间未到或有效租约的索引项，不承诺任意分布下的恒定扫描量。
+升级必须先完成索引迁移；应用原有 schema 校验会拒绝缺少 v040 的数据库。
+回滚时先回退依赖新索引的应用代码，再考虑删除索引；不得先删索引导致领取 SQL 失败。
+
+更大积压的容量实验使用 `make test-outbox-scale`，另需设置
+`BKN_TRACE_OUTBOX_SCALE_OPENSEARCH_URL` 为隔离 OpenSearch 实例。该入口独立运行，
+创建约 19 万条历史终态任务及 10 万／50 万条全部到期的 pending，
+分别采样 20 次单条和 10 次百条完整领取事务，输出延迟分位数、错误及超时次数。
+随后使用生产 `projectorsvc.Worker`（BatchSize=1、领取超时 2s、lease 30s），
+分别连接空 sink 和真实 OpenSearch sink，测量交付吞吐及领取／投影／ACK 耗时占比。
+空 sink 只测量 SQL 消费能力，不作为端到端吞吐；真实 sink 的 SQL 交付数与
+OpenSearch 文档数须一致。默认每种 sink 测量 30s，可用
+`BKN_TRACE_OUTBOX_SCALE_WORKER_DURATION=60s` 延长，每 10s 输出一个窗口。
+每种 sink 测量前会在计时之外恢复合成夹具到指定 pending 数量，并核对交付数与
+实际剩余 pending 的差值。CI 独立容量步骤运行相同数据集，每种 sink 测量 10s；
+本地持续吞吐验证建议使用 60s。夹具恢复不用于生产数据。
+采样边界在事务之间检查，避免主动取消最后一笔事务制造假超时。
+2s 门槛失败仍会继续收集后续阶段数据，最后以失败状态退出，不把容量问题静默通过。
+
+`make test-outbox-million` 运行同一压测的 100 万 pending 数据集；也可通过
+`BKN_TRACE_OUTBOX_SCALE_SIZES=1000000` 或逗号分隔列表指定 1～500 万的夹具规模。
+该参数不改变默认 CI 的 10 万／50 万数据集。
+
+`make test-outbox-soak` 运行持续生产与消费实验，默认每档 5 分钟，共 30 分钟。
+阶梯为 1、2、5、10、20、40 次生命周期调用／秒，分别等价于 10～400 个每 10 秒
+调用一次的活跃合成 Agent。每个 Agent 复用会话，每轮真实调用 Session 服务的
+Start、EnsureOperation、CompleteOperationAttempt、Terminate，输入和结果约 1 KiB，
+答案约 16 KiB；真实单槽 worker 处理投影和答案持久化到 OpenSearch。
+这不包含 LLM、MCP 网络传输、鉴权、真实业务工具、完整应用的租约回收和失败补偿，
+不能直接视为完整 Agent 并发上限；失败调用遗留 active interaction 会影响后续档位。
+测试先校准每次调用的任务数（含答案落库后的追加任务），再每 30 秒记录实际流入、
+交付、backlog、最早 pending 年龄、领取与交付分位数。另每约 5 秒探测一次自然
+refresh 后的 OpenSearch 搜索可见性，20 秒超时单独计数，不主动刷新索引。
+高负载积压不会在阶段之间清空；测试完成代表实验执行成功，不代表所有负载档满足 SLO。
+`BKN_TRACE_OUTBOX_SOAK_STAGE_DURATION` 可覆盖每档时长，短测仅用于校验测试工具，
+正式持续负载实验应保留 5m。长测不加入常规 CI，需显式 opt-in、隔离数据库与索引。

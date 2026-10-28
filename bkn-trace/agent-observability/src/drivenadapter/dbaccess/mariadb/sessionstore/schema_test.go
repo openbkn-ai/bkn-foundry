@@ -77,6 +77,7 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 
 func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 	expectedChecksums := map[string]string{
+		"040": "bb8855dc478738ba2340558c177eb894d0ba8d5c52b3ca853c885ffe14e7212f",
 		"038": "f3ce92e0c685cd3a44b6c1fd215cf8f2d946f57f3ec3193030d354f38fcb99e1",
 		"039": "b47bf2a1600931898cccef96ba50915077a67c6f7738622d1a610231ab041873",
 		"037": "4f0239ed18ef4e3c80c28eed4965768a6a484b387604adc0552f3b633031435b",
