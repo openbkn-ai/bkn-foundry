@@ -88,10 +88,11 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	sort.Strings(paths)
 
 	// What this draft wrote on the branch before is its own to replace or remove; nothing else is.
-	var owned []string
+	var owned, earlierPending []string
 	confirmation := &interfaces.DraftConfirmation{}
 	if previous := draft.Items.Confirmation; previous != nil {
 		owned = unionSorted(previous.Files, previous.Pending)
+		earlierPending = previous.Pending
 		*confirmation = *previous
 	}
 
@@ -99,7 +100,7 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	// rest stays the last confirmation's until this one commits.
 	readUpdateTime := draft.UpdateTime
 	draft.UpdateTime = max(time.Now().UnixMilli(), readUpdateTime+1)
-	confirmation.UpdateTime, confirmation.Pending = 0, paths
+	confirmation.UpdateTime, confirmation.Pending = 0, unionSorted(earlierPending, paths)
 	draft.Items.Confirmation = confirmation
 	if err := s.writeDraft(ctx, draft, readUpdateTime); err != nil {
 		span.SetStatus(codes.Error, "Claim confirmation failed")
@@ -111,8 +112,9 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	result, err := s.ls.AddDefinitions(ctx, entry.KNID, entry.Branch, compiled.Files, owned, message,
 		interfaces.GitAuthor{Name: caller.ID})
 	if err != nil {
-		// Nothing was written: the paths it was about to write are not the draft's.
-		confirmation.Pending = nil
+		// Nothing was written: the paths it was about to write are not the draft's, but what an
+		// earlier confirmation left pending is on the branch still.
+		confirmation.Pending = earlierPending
 		if werr := s.writeDraft(ctx, draft, draft.UpdateTime); werr != nil {
 			otellog.LogWarn(ctx, fmt.Sprintf("Drop pending confirmation of project %s: %v", projectID, werr))
 		}

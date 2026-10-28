@@ -119,6 +119,8 @@ func Test_ConfirmDraft(t *testing.T) {
 			earlier := interfaces.AccountInfo{ID: "u0", Type: "user"}
 			before.Items.Confirmation = &interfaces.DraftConfirmation{
 				UpdateTime: readTime, Commit: "c0", By: earlier, Time: 50, Files: []string{"object_types/customers.bkn"},
+				// Left by a confirmation that stopped after committing: on the branch, the draft's own.
+				Pending: []string{"object_types/stopped.bkn"},
 			}
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(before, true, nil)
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
@@ -135,8 +137,8 @@ func Test_ConfirmDraft(t *testing.T) {
 			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
 
 			So(errors.Is(err, refused), ShouldBeTrue)
-			// The paths it was refused for are not its own next time.
-			So(cleared.Pending, ShouldBeEmpty)
+			// The paths it was refused for are not its own next time; those already on the branch are.
+			So(cleared.Pending, ShouldResemble, []string{"object_types/stopped.bkn"})
 			So(cleared.UpdateTime, ShouldEqual, 0)
 			// The record is still the last confirmation's, whole: not mixed with the refused one.
 			So(cleared.Commit, ShouldEqual, "c0")
