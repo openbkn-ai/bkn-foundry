@@ -6,6 +6,7 @@ package toolbox
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -14,7 +15,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// RegisterOpenApiBundle registers OpenAPI operators first, then converts each into toolbox tools.
+// RegisterOpenApiBundle creates one tool per OpenAPI operation in the target toolbox, creating
+// the toolbox first when only box_name is given. Tools are created through CreateTool, so they
+// start disabled like any other newly created tool.
 func (s *ToolServiceImpl) RegisterOpenApiBundle(
 	ctx context.Context,
 	req *interfaces.RegisterOpenApiBundleReq,
@@ -23,9 +26,8 @@ func (s *ToolServiceImpl) RegisterOpenApiBundle(
 	defer oteltrace.EndSpan(ctx, err)
 
 	resp = &interfaces.RegisterOpenApiBundleResp{
-		ToolIDs:     []string{},
-		OperatorIDs: []string{},
-		Links:       []interfaces.OpenApiBundleLink{},
+		ToolIDs: []string{},
+		Links:   []interfaces.OpenApiBundleLink{},
 	}
 
 	boxID := req.BoxID
@@ -47,103 +49,40 @@ func (s *ToolServiceImpl) RegisterOpenApiBundle(
 			return
 		}
 		boxID = createResp.BoxID
-	} else {
-		exist, toolBox, selectErr := s.ToolBoxDB.SelectToolBox(ctx, boxID)
-		if selectErr != nil {
-			s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", selectErr)
-			err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, selectErr.Error())
-			return
-		}
-		if !exist {
-			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound,
-				fmt.Sprintf("toolbox %s not found", boxID))
-			return
-		}
-		if toolBox.MetadataType != string(interfaces.MetadataTypeAPI) {
-			err = errors.DefaultHTTPError(ctx, http.StatusBadRequest,
-				"openapi bundle only supports openapi toolboxes")
-			return
-		}
 	}
 
-	operatorInfo := req.OperatorInfo
-	if operatorInfo == nil {
-		operatorInfo = &interfaces.OperatorInfo{
-			Type:          interfaces.OperatorTypeBase,
-			ExecutionMode: interfaces.ExecutionModeSync,
-			Category:      req.Category,
-			Source:        "custom",
-		}
-	}
-	if operatorInfo.Category == "" {
-		operatorInfo.Category = req.Category
-	}
-
-	registerResults, registerErr := s.OperatorMgnt.RegisterOperatorByOpenAPI(ctx, &interfaces.OperatorRegisterReq{
-		MetadataType:           interfaces.MetadataTypeAPI,
-		Data:                   req.Data,
-		Description:            req.Description,
-		DirectPublish:          req.DirectPublish,
-		OperatorInfo:           operatorInfo,
-		OperatorExecuteControl: req.OperatorExecuteControl,
-		ExtendInfo:             req.ExtendInfo,
-	}, req.UserID)
-	if registerErr != nil {
-		err = registerErr
-		return
+	// CreateTool checks the toolbox exists, is an editable openapi toolbox, and that the caller
+	// may modify it.
+	createResp, err := s.CreateTool(ctx, &interfaces.CreateToolReq{
+		UserID:       req.UserID,
+		BoxID:        boxID,
+		MetadataType: interfaces.MetadataTypeAPI,
+		UseRule:      req.UseRule,
+		ExtendInfo:   req.ExtendInfo,
+		OpenAPIInput: &interfaces.OpenAPIInput{Data: json.RawMessage(req.Data)},
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	for _, result := range registerResults {
-		if result == nil || result.Status != interfaces.ResultStatusSuccess || result.OperatorID == "" {
-			resp.FailureCount++
-			if result != nil && result.Error != nil {
-				resp.Failures = append(resp.Failures, result.Error.Error())
-			} else {
-				resp.Failures = append(resp.Failures, "operator registration failed")
-			}
-			continue
+	for _, failure := range createResp.Failures {
+		resp.FailureCount++
+		msg := "tool creation failed"
+		if failure.Error != nil {
+			msg = failure.Error.Error()
 		}
-
-		if !req.DirectPublish {
-			publishErr := s.OperatorMgnt.UpdateOperatorStatus(ctx, &interfaces.OperatorStatusUpdateReq{
-				UserID: req.UserID,
-				StatusItems: []*interfaces.OperatorStatusItem{{
-					OperatorID: result.OperatorID,
-					Status:     interfaces.BizStatusPublished,
-				}},
-			}, req.UserID)
-			if publishErr != nil {
-				resp.FailureCount++
-				resp.Failures = append(resp.Failures, publishErr.Error())
-				continue
-			}
-		}
-
-		convertResp, convertErr := s.ConvertOperatorToTool(ctx, &interfaces.ConvertOperatorToToolReq{
-			UserID:     req.UserID,
-			OperatorID: result.OperatorID,
-			BoxID:      boxID,
-			UseRule:    req.UseRule,
-		})
-		if convertErr != nil {
-			resp.FailureCount++
-			resp.Failures = append(resp.Failures, convertErr.Error())
-			continue
-		}
-
-		resp.OperatorIDs = append(resp.OperatorIDs, result.OperatorID)
-		resp.ToolIDs = append(resp.ToolIDs, convertResp.ToolID)
-		resp.Links = append(resp.Links, interfaces.OpenApiBundleLink{
-			OperatorID: result.OperatorID,
-			ToolID:     convertResp.ToolID,
-		})
+		resp.Failures = append(resp.Failures, fmt.Sprintf("%s: %s", failure.ToolName, msg))
+	}
+	for _, toolID := range createResp.SuccessIDs {
+		resp.ToolIDs = append(resp.ToolIDs, toolID)
+		resp.Links = append(resp.Links, interfaces.OpenApiBundleLink{ToolID: toolID})
 	}
 
 	if len(resp.ToolIDs) == 0 {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "no tools created from openapi bundle")
-		return
+		return nil, err
 	}
 
 	resp.BoxID = boxID
-	return
+	return resp, nil
 }

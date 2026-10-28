@@ -73,19 +73,19 @@ Pod 的监控指标，用于获取 CPU、内存、网络等实时数据。
 | start | input | - | 范围查询开始时间 |
 | end | input | - | 范围查询结束时间 |
 
-#### pod_operator
+#### pod_diagnose
 
-Pod 的自定义算子，用于执行复杂计算逻辑。
+Pod 的诊断工具，由工具箱中的工具执行复杂计算逻辑。
 
-- **类型**: operator
-- **来源**: pod_operator (operator)
-- **说明**: Pod的自定义算子
+- **类型**: tool
+- **来源**: pod_diagnose (tool)
+- **说明**: Pod的诊断工具
 
 | 参数名 | 来源 | 绑定值 |
 |--------|------|--------|
-| operator_param1 | property | id |
-| operator_param2 | property | pod_name |
-| operator_param3 | input | - |
+| pod_id | property | id |
+| pod_name | property | pod_name |
+| query | input | - |
 
 ---
 

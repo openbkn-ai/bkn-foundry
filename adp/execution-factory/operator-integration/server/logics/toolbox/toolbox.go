@@ -658,13 +658,8 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 		return
 	}
 	checkTools := []string{}
-	sourceMap := map[model.SourceType][]string{}
-	sourceMap[model.SourceTypeOperator] = []string{}
 	for _, v := range tools {
 		checkTools = append(checkTools, v.ToolID)
-		if v.SourceType == model.SourceTypeOperator {
-			sourceMap[v.SourceType] = append(sourceMap[v.SourceType], v.SourceID)
-		}
 	}
 	// Compare tool ID exists.
 	clist := utils.FindMissingElements(toolIDs, checkTools)
@@ -672,25 +667,6 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotFound,
 			fmt.Sprintf("tools %v not found", clist))
 		return
-	}
-	if len(sourceMap[model.SourceTypeOperator]) > 0 {
-		// Check whether dependent resources exist.
-		var sourceIDToMetadataMap map[string]interfaces.IMetadataDB
-		sourceIDToMetadataMap, err = s.MetadataService.BatchGetMetadataBySourceIDs(ctx, sourceMap)
-		if err != nil {
-			s.Logger.WithContext(ctx).Errorf("batch get metadata failed, err: %v", err)
-			err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
-			return
-		}
-		for _, v := range tools {
-			if v.SourceType == model.SourceTypeOperator {
-				if _, ok := sourceIDToMetadataMap[v.SourceID]; !ok {
-					err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolRefOperatorNotFound,
-						fmt.Sprintf("tool %s ref operator %s not found", v.ToolID, v.SourceID), v.Name)
-					return
-				}
-			}
-		}
 	}
 
 	// Update tool status.

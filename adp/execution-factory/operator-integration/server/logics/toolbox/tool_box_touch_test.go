@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"sort"
 	"testing"
 
 	"github.com/agiledragon/gomonkey/v2"
@@ -118,9 +117,10 @@ func TestToolWritesTouchTheirToolBox(t *testing.T) {
 			name: "delete",
 			run: func(t *testing.T, f *touchFixture) error {
 				f.toolDB.EXPECT().SelectToolBoxByID(gomock.Any(), touchBoxID, []string{touchToolID}).
-					Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOperator}}, nil)
+					Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOpenAPI, SourceID: "source-a"}}, nil)
 				gomock.InOrder(
 					f.expectTouchInTx(nil),
+					f.metadata.EXPECT().BatchDeleteMetadata(gomock.Any(), f.tx, interfaces.MetadataTypeAPI, []string{"source-a"}).Return(nil),
 					f.toolDB.EXPECT().DeleteBoxByIDAndTools(gomock.Any(), f.tx, touchBoxID, []string{touchToolID}).Return(nil),
 				)
 				_, err := f.svc.DeleteBoxTool(context.Background(), &interfaces.BatchDeleteToolReq{
@@ -175,37 +175,6 @@ func TestToolBoxTouchFailureOutsideTransactionIsNotReported(t *testing.T) {
 	}
 }
 
-// Deleting an operator disables the tools built from it; each toolbox that lost an enabled tool
-// is touched once, and a toolbox whose tool was already disabled is left alone.
-func TestOperatorDeleteEventTouchesToolBoxesOfDisabledTools(t *testing.T) {
-	f := newTouchFixture(t)
-	const operatorID = "operator-1"
-	f.toolDB.EXPECT().SelectToolBySource(gomock.Any(), model.SourceTypeOperator, operatorID).Return([]*model.ToolDB{
-		{ToolID: "t1", BoxID: "box-a", Status: string(interfaces.ToolStatusTypeEnabled)},
-		{ToolID: "t2", BoxID: "box-a", Status: string(interfaces.ToolStatusTypeEnabled)},
-		{ToolID: "t3", BoxID: "box-b", Status: string(interfaces.ToolStatusTypeEnabled)},
-		{ToolID: "t4", BoxID: "box-c", Status: string(interfaces.ToolStatusTypeDisabled)},
-	}, nil)
-	f.toolDB.EXPECT().UpdateToolStatus(gomock.Any(), gomock.Nil(), gomock.Any(),
-		interfaces.ToolStatusTypeDisabled.String(), touchUserID).Return(nil).Times(3)
-	var touched []string
-	f.toolBoxDB.EXPECT().TouchToolBox(gomock.Any(), gomock.Nil(), gomock.Any(), touchUserID).
-		DoAndReturn(func(_ context.Context, _ *sql.Tx, boxID, _ string) error {
-			touched = append(touched, boxID)
-			return nil
-		}).AnyTimes()
-
-	err := f.svc.HandleOperatorDeleteEvent(context.Background(),
-		[]byte(`{"operator_id":"`+operatorID+`","update_user":"`+touchUserID+`"}`))
-	if err != nil {
-		t.Fatalf("err = %v, want nil", err)
-	}
-	sort.Strings(touched)
-	if len(touched) != 2 || touched[0] != "box-a" || touched[1] != "box-b" {
-		t.Fatalf("touched toolboxes %v, want [box-a box-b]", touched)
-	}
-}
-
 // Deleting a toolbox takes its row before its tool rows, the same order every tool write takes
 // them in, so the two cannot deadlock on the same toolbox.
 func TestDeleteToolBoxRemovesTheToolBoxRowBeforeItsTools(t *testing.T) {
@@ -213,9 +182,10 @@ func TestDeleteToolBoxRemovesTheToolBoxRowBeforeItsTools(t *testing.T) {
 	config := mocks.NewMockIIntCompConfigService(gomock.NewController(t))
 	f.svc.IntCompConfigSvc = config
 	f.toolDB.EXPECT().SelectToolByBoxID(gomock.Any(), touchBoxID).
-		Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOperator}}, nil)
+		Return([]*model.ToolDB{{ToolID: touchToolID, BoxID: touchBoxID, SourceType: model.SourceTypeOpenAPI, SourceID: "source-a"}}, nil)
 	gomock.InOrder(
 		f.toolBoxDB.EXPECT().DeleteToolBox(gomock.Any(), f.tx, touchBoxID).Return(nil),
+		f.metadata.EXPECT().BatchDeleteMetadata(gomock.Any(), f.tx, interfaces.MetadataTypeAPI, []string{"source-a"}).Return(nil),
 		f.toolDB.EXPECT().DeleteBoxByIDAndTools(gomock.Any(), f.tx, touchBoxID, []string{touchToolID}).Return(nil),
 		config.EXPECT().DeleteConfig(gomock.Any(), f.tx, interfaces.ComponentTypeToolBox.String(), touchBoxID).Return(nil),
 	)

@@ -36,8 +36,6 @@ type ToolBoxHandler interface {
 	DebugTool(c *gin.Context)
 	// tool execution.
 	ExecuteTool(c *gin.Context)
-	// Operators converted into tools.
-	OperatorToTool(c *gin.Context)
 	// OpenAPI capability package.
 	RegisterOpenApiBundle(c *gin.Context)
 	// Query toolbox information.

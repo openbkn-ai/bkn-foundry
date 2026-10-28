@@ -1,0 +1,69 @@
+openapi: "3.0.2"
+info:
+  title: "执行工厂分类接口"
+  description: "工具箱、MCP Server 与 Skill 共用的分类字典（公开只读接口）"
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:9000/api/agent-operator-integration/v1
+    description: 服务器地址
+
+paths:
+  /category:
+    get:
+      summary: "获取分类列表"
+      description: "返回工具箱、MCP Server 与 Skill 共用的分类列表。`category_type` 为机器值（注册与过滤时使用），`name` 随请求语言本地化。只读接口不做权限判定。"
+      tags:
+        - "分类管理"
+      parameters:
+        - name: Authorization
+          in: header
+          description: "Bearer token"
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "成功"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryInfo"
+        "500":
+          description: "内部错误"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    CategoryInfo:
+      type: object
+      properties:
+        category_type:
+          type: string
+          description: "分类机器值，例如 other_category、system 或自定义分类"
+        name:
+          type: string
+          description: "分类显示名，支持国际化"
+    Error:
+      type: object
+      description: "错误信息"
+      properties:
+        code:
+          type: string
+          description: "错误码"
+        description:
+          type: string
+          description: "错误信息"
+        detail:
+          type: object
+          description: "错误详情"
+        solution:
+          type: string
+          description: "错误解决方案"
+        link:
+          type: string
+          description: "错误链接"

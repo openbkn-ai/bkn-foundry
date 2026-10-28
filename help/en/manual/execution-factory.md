@@ -2,34 +2,39 @@
 
 ## 📖 Overview
 
-The **Execution Factory** registers and runs **operators**, **tools**, and **skills** that agents invoke under policy. It bridges LLM planning to concrete business actions (HTTP tools, code runners, MCP integrations, etc.).
+The **Execution Factory** registers and runs **toolbox tools**, **MCP servers**, and **skills** that agents invoke under policy. It bridges LLM planning to concrete business actions (HTTP tools, code runners, MCP integrations, etc.).
 
 Typical ingress prefix:
 
 | Prefix | Role |
 | --- | --- |
-| `/api/agent-operator-integration/v1` | Operator integration and tool execution surface |
+| `/api/agent-operator-integration/v1` | Toolbox, MCP, and Skill management and tool execution surface |
 
 ## CLI
 
-### Calling Operator APIs
+### Toolboxes and Tools
 
-The `openbkn call` command invokes any registered operator API by path, acting as a lightweight HTTP client wired into the platform auth and routing.
+A toolbox groups tools into one publishable box. An `openapi` box proxies its tools to a service; a `function` box holds platform functions. A tool can be executed only when it is enabled and its toolbox is published.
 
 ```bash
-# GET an operator endpoint
-openbkn call GET /api/agent-operator-integration/v1/operators
+# List toolboxes (the id is `box_id`)
+openbkn toolbox list
 
-# POST with a JSON body
-openbkn call POST /api/agent-operator-integration/v1/operators/op-weather/invoke \
-  --data '{"city": "Shanghai", "units": "metric"}'
+# List the tools in a toolbox
+openbkn tool list --toolbox <box_id>
 
-# PUT to update an operator definition
-openbkn call PUT /api/agent-operator-integration/v1/operators/op-weather \
-  --data '{"description": "Updated weather lookup", "timeout": 30}'
+# Inspect one tool: metadata, parameters, usage rule
+openbkn tool get <tool_id> --toolbox <box_id>
 
-# DELETE an operator
-openbkn call DELETE /api/agent-operator-integration/v1/operators/op-weather
+# Execute an enabled tool in a published toolbox
+openbkn tool execute <tool_id> --toolbox <box_id> \
+  --body '{"city": "Shanghai", "units": "metric"}'
+```
+
+The `openbkn call` command invokes any Execution Factory API by path, acting as a lightweight HTTP client wired into the platform auth and routing:
+
+```bash
+openbkn call GET /api/agent-operator-integration/v1/tool-box/list
 ```
 
 ### Skill Management
@@ -77,12 +82,12 @@ openbkn skill content skill-kg-analyzer
 # 5. Read the skill's documentation
 openbkn skill read-file skill-kg-analyzer SKILL.md
 
-# 6. Call an operator API to list registered operators
-openbkn call GET /api/agent-operator-integration/v1/operators
+# 6. List the tools of a toolbox
+openbkn tool list --toolbox <box_id>
 
-# 7. Invoke an operator directly
-openbkn call POST /api/agent-operator-integration/v1/operators/op-sql-query/invoke \
-  --data '{"sql": "SELECT COUNT(*) FROM orders WHERE status = '\''pending'\''"}'
+# 7. Execute a tool directly
+openbkn tool execute <tool_id> --toolbox <box_id> \
+  --body '{"sql": "SELECT COUNT(*) FROM orders WHERE status = '\''pending'\''"}'
 ```
 
 ---
@@ -94,14 +99,14 @@ import { createClient } from '@openbkn/bkn-sdk';
 
 const bkn = createClient({ baseUrl: 'https://<access-address>', token: process.env.BKN_TOKEN });
 
-// List operators (operator endpoints have no typed helper — use the generic passthrough)
-const operators = await bkn.call('/api/agent-operator-integration/v1/operators', { method: 'GET' });
-console.log('operators:', operators);
+// List toolboxes (generic passthrough)
+const toolboxes = await bkn.call('/api/agent-operator-integration/v1/tool-box/list', { method: 'GET' });
+console.log('toolboxes:', toolboxes);
 
-// Invoke an operator
+// Execute a tool in a published toolbox
 const result = await bkn.call(
-  '/api/agent-operator-integration/v1/operators/op-weather/invoke',
-  { method: 'POST', body: { city: 'Shanghai', units: 'metric' } },
+  '/api/agent-operator-integration/v1/tool-box/<box_id>/proxy/<tool_id>',
+  { method: 'POST', body: { body: { city: 'Shanghai', units: 'metric' } } },
 );
 console.log('result:', result);
 
@@ -134,38 +139,26 @@ await bkn.skills.install('skill-kg-analyzer', './installed/skill-kg-analyzer');
 ## curl
 
 ```bash
-# List operators
-curl -sk "https://<access-address>/api/agent-operator-integration/v1/operators" \
+# List toolboxes
+curl -sk "https://<access-address>/api/agent-operator-integration/v1/tool-box/list" \
   -H "Authorization: Bearer $(openbkn token)"
 
-# Get operator details
-curl -sk "https://<access-address>/api/agent-operator-integration/v1/operators/op-weather" \
+# Get toolbox details
+curl -sk "https://<access-address>/api/agent-operator-integration/v1/tool-box/<box_id>" \
   -H "Authorization: Bearer $(openbkn token)"
 
-# Invoke an operator
-curl -sk -X POST "https://<access-address>/api/agent-operator-integration/v1/operators/op-weather/invoke" \
+# List the tools in a toolbox
+curl -sk "https://<access-address>/api/agent-operator-integration/v1/tool-box/<box_id>/tools/list?page=1&page_size=10" \
+  -H "Authorization: Bearer $(openbkn token)"
+
+# Execute an enabled tool in a published toolbox
+curl -sk -X POST "https://<access-address>/api/agent-operator-integration/v1/tool-box/<box_id>/proxy/<tool_id>" \
   -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
-  -d '{"city": "Shanghai", "units": "metric"}'
+  -d '{"body": {"city": "Shanghai", "units": "metric"}}'
 
-# Register a new operator
-curl -sk -X POST "https://<access-address>/api/agent-operator-integration/v1/operators" \
-  -H "Authorization: Bearer $(openbkn token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "weather-lookup",
-    "type": "http",
-    "description": "Look up current weather by city",
-    "endpoint": "https://api.weather.example.com/v1/current",
-    "method": "GET",
-    "parameters": [
-      {"name": "city", "type": "string", "required": true},
-      {"name": "units", "type": "string", "default": "metric"}
-    ]
-  }'
-
-# Delete an operator
-curl -sk -X DELETE "https://<access-address>/api/agent-operator-integration/v1/operators/op-weather" \
+# Delete a toolbox
+curl -sk -X DELETE "https://<access-address>/api/agent-operator-integration/v1/tool-box/<box_id>" \
   -H "Authorization: Bearer $(openbkn token)"
 
 # List skills

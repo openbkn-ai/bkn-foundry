@@ -77,7 +77,6 @@ type AppSetting struct {
 	VegaBackendUrl string
 	// AgentOperatorUrl is the single agent-operator-integration internal-v1 base, e.g.
 	// {scheme}://{host}:{port}/api/agent-operator-integration/internal-v1
-	// (A trailing /operator suffix is accepted for backward compatibility and normalized away.)
 	AgentOperatorUrl string
 }
 

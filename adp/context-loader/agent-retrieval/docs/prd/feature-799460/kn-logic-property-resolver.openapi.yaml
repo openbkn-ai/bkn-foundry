@@ -3,7 +3,7 @@ info:
   title: 逻辑属性解析服务
   version: 1.0.0
   description: |
-    基于 query + 上下文生成 dynamic_params，并调用底层 ontology-query 接口批量获取逻辑属性值（metric + operator）。
+    基于 query + 上下文生成 dynamic_params，并调用底层 ontology-query 接口批量获取逻辑属性值（metric + tool）。
 servers:
   - url: http://agent-retrieval:30779
 paths:
@@ -12,11 +12,11 @@ paths:
       summary: 逻辑属性解析接口
       description: |
         ## 功能说明
-        解析并查询知识网络中对象的逻辑属性值（包括 metric 指标和 operator 算子属性）。
+        解析并查询知识网络中对象的逻辑属性值（包括 metric 指标和 tool 工具属性）。
 
         ## 典型使用场景
         - 查询企业在指定时间段的药品上市数量（metric 指标）
-        - 计算企业的健康度评分（operator 算子）
+        - 计算企业的健康度评分（tool 工具）
         - 批量查询多个对象的多个逻辑属性值
       parameters:
         - name: x-account-id
@@ -149,7 +149,7 @@ components:
           description: |
             需要查询的逻辑属性名称列表。支持两种类型：
             - **metric**: 指标属性（如药品上市数量、销售额趋势等）
-            - **operator**: 算子属性（如健康度评分、风险等级等）
+            - **tool**: 工具属性（如健康度评分、风险等级等）
 
             本接口会自动为每个属性生成 dynamic_params 并查询其值。
           example: ["approved_drug_count", "business_health_score"]

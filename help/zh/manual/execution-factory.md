@@ -2,45 +2,47 @@
 
 ## 📖 概述
 
-**Execution Factory** 负责注册与执行智能体可调用的**算子**、**工具**与**技能（Skill）**，在策略控制下将 LLM 规划落地为具体业务动作（HTTP 工具、代码执行、MCP 等）。
+**Execution Factory** 负责注册与执行智能体可调用的**工具箱工具**、**MCP** 与**技能（Skill）**，在策略控制下将 LLM 规划落地为具体业务动作（HTTP 工具、代码执行、MCP 等）。
 
 核心能力：
 
 | 能力 | 说明 |
 | --- | --- |
-| 算子（Operator） | 平台内置或用户注册的可执行单元，通过统一接口调用 |
-| 工具（Tool） | HTTP/MCP/代码类工具，由智能体运行时按需调用 |
+| 工具箱与工具（ToolBox / Tool） | 工具箱把一组工具打包发布：`openapi` 工具箱把工具代理到外部服务，`function` 工具箱承载平台函数；工具由智能体运行时按需调用 |
+| MCP | 接入的 MCP Server 及其工具 |
 | 技能包（Skill） | 可分发、可安装的能力包，包含文档与元数据 |
 
 典型 Ingress 前缀：
 
 | 前缀 | 作用 |
 | --- | --- |
-| `/api/agent-operator-integration/v1` | 算子集成与工具执行面 |
+| `/api/agent-operator-integration/v1` | 工具箱、MCP、Skill 管理与工具执行面 |
 
 ### CLI
 
-#### 算子调用
+#### 工具箱与工具
 
-通过 `openbkn call` 直接调用已注册的算子 API：
+工具需处于启用状态、且所在工具箱已发布，才能被执行。
 
 ```bash
-# 调用算子 — 传入 JSON 请求体
-openbkn call POST /api/agent-operator-integration/v1/operators/op_text_extract/invoke \
-  -d '{"input": {"url": "https://example.com/report.pdf"}, "params": {"format": "markdown"}}'
+# 列出工具箱（ID 字段为 box_id）
+openbkn toolbox list
 
-# 列出所有已注册算子
-openbkn call GET /api/agent-operator-integration/v1/operators
+# 列出工具箱内的工具
+openbkn tool list --toolbox <box_id>
 
-# 获取算子详情
-openbkn call GET /api/agent-operator-integration/v1/operators/op_text_extract
+# 查看单个工具：元数据、参数、使用规则
+openbkn tool get <tool_id> --toolbox <box_id>
 
-# 列出工具
-openbkn call GET /api/agent-operator-integration/v1/tools
+# 执行已发布工具箱中已启用的工具
+openbkn tool execute <tool_id> --toolbox <box_id> \
+  --body '{"query": "BKN Foundry 最新版本", "limit": 5}'
+```
 
-# 调用工具
-openbkn call POST /api/agent-operator-integration/v1/tools/tool_web_search/invoke \
-  -d '{"query": "BKN Foundry 最新版本", "limit": 5}'
+也可以通过 `openbkn call` 按路径直接调用 Execution Factory API：
+
+```bash
+openbkn call GET /api/agent-operator-integration/v1/tool-box/list
 ```
 
 #### 技能包管理
@@ -81,10 +83,6 @@ openbkn skill list
 
 # 4. 查看技能说明
 openbkn skill read-file data-quality-checker SKILL.md
-
-# 5. 通过算子接口调用技能
-openbkn call POST /api/agent-operator-integration/v1/operators/data_quality_checker/invoke \
-  -d '{"input": {"table": "orders", "rules": ["not_null", "unique"]}}'
 ```
 
 ---
@@ -96,14 +94,14 @@ import { createClient } from '@openbkn/bkn-sdk';
 
 const bkn = createClient({ baseUrl: 'https://<访问地址>', token: process.env.BKN_TOKEN });
 
-// 列出算子（算子端点无 typed 方法 —— 用通用 passthrough）
-const operators = await bkn.call('/api/agent-operator-integration/v1/operators', { method: 'GET' });
-console.log('算子:', operators);
+// 列出工具箱（通用 passthrough）
+const toolboxes = await bkn.call('/api/agent-operator-integration/v1/tool-box/list', { method: 'GET' });
+console.log('工具箱:', toolboxes);
 
-// 调用算子
+// 执行已发布工具箱中的工具
 const result = await bkn.call(
-  '/api/agent-operator-integration/v1/operators/op-weather/invoke',
-  { method: 'POST', body: { city: 'Shanghai', units: 'metric' } },
+  '/api/agent-operator-integration/v1/tool-box/<box_id>/proxy/<tool_id>',
+  { method: 'POST', body: { body: { city: 'Shanghai', units: 'metric' } } },
 );
 console.log('结果:', result);
 
@@ -136,34 +134,24 @@ await bkn.skills.install('skill-kg-analyzer', './installed/skill-kg-analyzer');
 ### curl
 
 ```bash
-# 列出算子
-curl -sk "https://<访问地址>/api/agent-operator-integration/v1/operators" \
+# 列出工具箱
+curl -sk "https://<访问地址>/api/agent-operator-integration/v1/tool-box/list" \
   -H "Authorization: Bearer $(openbkn token)"
 
-# 获取算子详情
-curl -sk "https://<访问地址>/api/agent-operator-integration/v1/operators/op_text_extract" \
+# 获取工具箱详情
+curl -sk "https://<访问地址>/api/agent-operator-integration/v1/tool-box/<box_id>" \
   -H "Authorization: Bearer $(openbkn token)"
 
-# 调用算子
-curl -sk -X POST "https://<访问地址>/api/agent-operator-integration/v1/operators/op_text_extract/invoke" \
+# 列出工具箱内的工具
+curl -sk "https://<访问地址>/api/agent-operator-integration/v1/tool-box/<box_id>/tools/list?page=1&page_size=10" \
+  -H "Authorization: Bearer $(openbkn token)"
+
+# 执行工具
+curl -sk -X POST "https://<访问地址>/api/agent-operator-integration/v1/tool-box/<box_id>/proxy/<tool_id>" \
   -H "Authorization: Bearer $(openbkn token)" \
   -H "Content-Type: application/json" \
   -d '{
-    "input": {"url": "https://example.com/report.pdf"},
-    "params": {"format": "markdown"}
-  }'
-
-# 列出工具
-curl -sk "https://<访问地址>/api/agent-operator-integration/v1/tools" \
-  -H "Authorization: Bearer $(openbkn token)"
-
-# 调用工具
-curl -sk -X POST "https://<访问地址>/api/agent-operator-integration/v1/tools/tool_web_search/invoke" \
-  -H "Authorization: Bearer $(openbkn token)" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "BKN Foundry 最新版本",
-    "limit": 5
+    "body": {"query": "BKN Foundry 最新版本", "limit": 5}
   }'
 
 # 列出已安装技能包

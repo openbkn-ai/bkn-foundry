@@ -671,37 +671,6 @@ func (h *toolBoxHandler) RegisterOpenApiBundle(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// OperatorToTool operator is converted into a tool.
-func (h *toolBoxHandler) OperatorToTool(c *gin.Context) {
-	req := &interfaces.ConvertOperatorToToolReq{}
-	err := c.ShouldBindHeader(req)
-	if err != nil {
-		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
-		rest.ReplyError(c, err)
-		return
-	}
-	err = c.ShouldBindJSON(req)
-	if err != nil {
-		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
-		rest.ReplyError(c, err)
-		return
-	}
-	err = validator.New().Struct(req)
-	if err != nil {
-		rest.ReplyError(c, err)
-		return
-	}
-	resp, err := h.ToolService.ConvertOperatorToTool(c.Request.Context(), req)
-	if err != nil {
-		rest.ReplyError(c, err)
-		return
-	}
-	if resp != nil && resp.ToolID != "" {
-		c.Set(operationaudit.ToolIDContextKey, resp.ToolID)
-	}
-	rest.ReplyOK(c, http.StatusOK, resp)
-}
-
 // Get publishing toolbox information.
 func (h *toolBoxHandler) GetReleaseToolBoxInfo(c *gin.Context) {
 	req := &interfaces.GetReleaseToolBoxInfoReq{}

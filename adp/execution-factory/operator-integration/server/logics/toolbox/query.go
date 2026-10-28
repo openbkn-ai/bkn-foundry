@@ -127,15 +127,6 @@ func (s *ToolServiceImpl) toolDBToToolInfo(ctx context.Context, toolDB *model.To
 			return
 		}
 	}
-	var resourceObject interfaces.ResourceObjectType
-	switch toolDB.SourceType {
-	case model.SourceTypeFunction, model.SourceTypeOpenAPI:
-		resourceObject = interfaces.ResourceObjectTool
-	case model.SourceTypeOperator:
-		resourceObject = interfaces.ResourceObjectOperator
-	default:
-		resourceObject = interfaces.ResourceObjectTool
-	}
 	toolInfo = &interfaces.ToolInfo{
 		ToolID:           toolDB.ToolID,
 		Name:             toolDB.Name,
@@ -148,7 +139,7 @@ func (s *ToolServiceImpl) toolDBToToolInfo(ctx context.Context, toolDB *model.To
 		CreateTime:       toolDB.CreateTime,
 		UpdateUser:       toolDB.UpdateUser,
 		CreateUser:       toolDB.CreateUser,
-		ResourceObject:   resourceObject,
+		ResourceObject:   interfaces.ResourceObjectTool,
 	}
 	return
 }

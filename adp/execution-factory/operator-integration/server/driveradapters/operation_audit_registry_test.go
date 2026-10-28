@@ -6,7 +6,7 @@ import (
 )
 
 func TestRegisteredOperationAuditExcludesRuntimeEndpoints(t *testing.T) {
-	for _, endpoint := range []string{"/operator/debug", "/operator/proxy/:operator_id", "/tool-box/:box_id/proxy/:tool_id", "/mcp/:mcp_id/tool/:tool_name/debug", "/skills/:skill_id/execute", "/skills/index/build"} {
+	for _, endpoint := range []string{"/tool-box/:box_id/tool/:tool_id/debug", "/tool-box/:box_id/proxy/:tool_id", "/mcp/:mcp_id/tool/:tool_name/debug", "/skills/:skill_id/execute", "/skills/index/build"} {
 		if _, ok := registeredOperationAudit(http.MethodPost, endpoint); ok {
 			t.Fatalf("runtime endpoint %s must remain trace-only", endpoint)
 		}
@@ -19,10 +19,19 @@ func TestRegisteredOperationAuditCoversSkillLifecycle(t *testing.T) {
 	}
 }
 
-func TestRegisteredOperationAuditCoversConvertOperatorToTool(t *testing.T) {
-	rule, ok := registeredOperationAudit(http.MethodPost, "/operator/convert/tool")
-	if !ok || rule.Action != "create" || rule.TargetType != "tool" {
-		t.Fatalf("convert-to-tool audit rule = %+v, %v", rule, ok)
+// The retired operator routes must not keep management audit rules.
+func TestRegisteredOperationAuditHasNoOperatorRoutes(t *testing.T) {
+	for _, test := range []struct{ method, path string }{
+		{http.MethodPost, "/operator/register"},
+		{http.MethodPost, "/operator/convert/tool"},
+		{http.MethodPost, "/operator/category"},
+	} {
+		if _, ok := registeredOperationAudit(test.method, test.path); ok {
+			t.Fatalf("retired route %s %s still has a public audit rule", test.method, test.path)
+		}
+		if _, ok := registeredPrivateOperationAudit(test.method, test.path); ok {
+			t.Fatalf("retired route %s %s still has a private audit rule", test.method, test.path)
+		}
 	}
 }
 

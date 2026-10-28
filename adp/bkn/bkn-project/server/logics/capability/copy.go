@@ -61,8 +61,7 @@ func copyName(name string, id string, oldNetworkID string, newNetworkID string, 
 
 // CopyFunction turns the export of a toolbox into the import of its copy for
 // newNetworkID: new box and tool ids, a new name and oldNetworkID rewritten to
-// newNetworkID wherever it stands as a word. The operators that operator tools
-// run are left out: the copy's tools run the same operators, which keep their ids.
+// newNetworkID wherever it stands as a word.
 func CopyFunction(item *Item, oldNetworkID string, newNetworkID string) ([]byte, *Copy, error) {
 	doc, err := decodeJSON(replaceNetworkID(item.Files[TOOLBOX_FILE], oldNetworkID, newNetworkID))
 	if err != nil {
@@ -102,7 +101,6 @@ func CopyFunction(item *Item, oldNetworkID string, newNetworkID string) ([]byte,
 			}
 		}
 	}
-	delete(doc, "operator")
 	data, err := encodeJSON(doc)
 	if err != nil {
 		return nil, nil, err

@@ -72,7 +72,7 @@
 - `test`: 测试用例
 - `chore`: 构建/工具链变动
 
-**示例**: `feat:(execution-factory)add operator execution logic`
+**示例**: `feat:(execution-factory)add toolbox execution logic`
 
 ### 代码质量
 - **Lint**: 提交前请运行 `./project.sh -l` 确保无 Lint 错误。

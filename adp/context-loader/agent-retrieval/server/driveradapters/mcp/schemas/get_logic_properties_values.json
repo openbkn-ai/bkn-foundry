@@ -33,7 +33,7 @@
       },
       "properties": {
         "type": "array",
-        "description": "逻辑属性名列表（metric/operator）。必须为 Schema 中存在的逻辑属性",
+        "description": "逻辑属性名列表（metric/tool）。必须为 Schema 中存在的逻辑属性",
         "items": {
           "type": "string"
         }

@@ -290,8 +290,8 @@ func TestSafeAuthorizationOperationChecksPreservesOrderedDecisions(t *testing.T)
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"allowed": false,
 			"results": []map[string]any{
-				{"resource_type": "operator", "resource_id": "op-1", "operation": "delete", "allowed": true},
-				{"resource_type": "operator", "resource_id": "op-2", "operation": "delete", "allowed": false},
+				{"resource_type": "skill", "resource_id": "skill-1", "operation": "delete", "allowed": true},
+				{"resource_type": "skill", "resource_id": "skill-2", "operation": "delete", "allowed": false},
 			},
 		})
 	}))
@@ -301,8 +301,8 @@ func TestSafeAuthorizationOperationChecksPreservesOrderedDecisions(t *testing.T)
 		context.Background(), &interfaces.AuthOperationChecksRequest{
 			Accessor: &interfaces.AuthAccessor{ID: "user-1"},
 			Checks: []*interfaces.AuthOperationRequirement{
-				{Resource: &interfaces.AuthResource{Type: "operator", ID: "op-1"}, Operation: interfaces.AuthOperationTypeDelete},
-				{Resource: &interfaces.AuthResource{Type: "operator", ID: "op-2"}, Operation: interfaces.AuthOperationTypeDelete},
+				{Resource: &interfaces.AuthResource{Type: "skill", ID: "skill-1"}, Operation: interfaces.AuthOperationTypeDelete},
+				{Resource: &interfaces.AuthResource{Type: "skill", ID: "skill-2"}, Operation: interfaces.AuthOperationTypeDelete},
 			},
 		})
 	if err != nil {

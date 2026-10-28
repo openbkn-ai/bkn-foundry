@@ -25,17 +25,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	DefaultOperatorNameMaxLength  = 50 // Maximum length of operator name.
-	DefaultOperatorHistoryRecords = 10 // Maximum number of operator history records retained.
-)
+const ()
 
 // Config configuration.
 type Config struct {
 	Project                 Project                   `yaml:"project"`
 	OAuth                   OAuthConfig               `yaml:"oauth"`
 	DB                      DBConfig                  `yaml:"db"`
-	OperatorConfig          OperatorConfig            `yaml:"operator"`
 	Logger                  interfaces.Logger         `yaml:"-"`
 	RedisConfig             RedisConfig               `yaml:"redis"`
 	ProxyModuleConfig       ProxyModuleConfig         `yaml:"proxy_module"`
@@ -191,13 +187,6 @@ type ProxyModuleConfig struct {
 	ClientLifetime int64 `yaml:"client_lifetime" default:"300"` // Unit: seconds.
 }
 
-// OperatorConfig operator configuration.
-type OperatorConfig struct {
-	ImportFileSizeLimit    int64 `yaml:"import_file_size_limit" default:"2097152"  validate:"min=0,max=104857600"` // Default 2MB.
-	ImportOperatorMaxCount int64 `yaml:"import_operator_max_count" default:"10" validate:"min=1"`                  // Default 10.
-	DescLengthLimit        int64 `yaml:"operator_description_length_limit" default:"255" validate:"min=1"`         // Maximum length of operator description, unit: bytes.
-}
-
 // MCPConfig MCP configuration.
 type MCPConfig struct {
 	ConnTimeout int64 `yaml:"conn_timeout" default:"10"` // Unit: seconds.
@@ -218,9 +207,9 @@ type MCPConfig struct {
 	CleanupInterval int64 `yaml:"cleanup_interval" default:"60"` // Unit: seconds.
 }
 
-// CategoryConfig operator classification configuration.
+// CategoryConfig category configuration.
 type CategoryConfig struct {
-	InitSwitch bool `yaml:"init_switch"` // Whether to initialize operator classification.
+	InitSwitch bool `yaml:"init_switch"` // Whether to initialize built-in categories.
 }
 
 // DBConfig database configuration.

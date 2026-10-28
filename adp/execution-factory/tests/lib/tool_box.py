@@ -111,11 +111,6 @@ class ToolBox():
             return Request.query_post(self, url, params, data, headers)
         return Request.post(self, url, data, headers)
 
-    '''Operators converted into tools.'''
-    def ConvertOperatorToTool(self, data, headers):
-        url = f"{self.base_url.replace('/tool-box', '/operator/convert/tool')}"
-        return Request.post(self, url, data, headers)
-
     '''Get Toolbox Market Details.'''
     def GetMarketDetail(self, box_id, fields, headers):
         url = f"{self.base_url}/market/{box_id}/{fields}"

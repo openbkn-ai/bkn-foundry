@@ -27,7 +27,7 @@ import (
 // under /admin (admin-only). It manages the "grant a specific object to a
 // specific user or role" matrix that sits ON TOP of role-based RBAC: each grant
 // binds one accessor to concrete ops on one concrete resource instance
-// (catalog/operator/knowledge_network/…).
+// (catalog/tool_box/knowledge_network/…).
 //
 // This is the gateway-exposed, audited management surface for object grants.
 // The internal /api/safe/v1/authz/policies endpoints stay for service-to-service
@@ -113,11 +113,11 @@ const (
 	//
 	// The three types that carry data no longer have one: sharing a knowledge
 	// network, a data connection or a table is its creator's call, so the grant
-	// sits on the object rather than the type (#513, #977, #1150). network_builder
-	// still holds it type-wide on connector_type, stream_data_pipeline and the
-	// execution-factory types (operator, skill, mcp, tool_box), and a custom role
-	// may be given one anywhere — this branch is what makes such a grant decide
-	// something.
+	// sits on the object rather than the type (#513, #977, #1150). A role may
+	// still hold it type-wide — for example on connector_type or the
+	// execution-factory types (tool_box, function, mcp, skill) — and a custom
+	// role may be given one anywhere; this branch is what makes such a grant
+	// decide something.
 	authorityTypeAuthorize grantAuthority = "type-authorize"
 )
 

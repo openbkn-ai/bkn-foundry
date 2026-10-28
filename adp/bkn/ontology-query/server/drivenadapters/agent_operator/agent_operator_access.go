@@ -30,9 +30,8 @@ var (
 )
 
 type agentOperatorAccess struct {
-	appSetting       *common.AppSetting
-	agentOperatorUrl string
-	httpClient       rest.HTTPClient
+	appSetting *common.AppSetting
+	httpClient rest.HTTPClient
 }
 
 type integrationError struct {
@@ -54,9 +53,8 @@ type executionResult struct {
 func NewAgentOperatorAccess(appSetting *common.AppSetting) interfaces.AgentOperatorAccess {
 	aoAccessOnce.Do(func() {
 		aoAccess = &agentOperatorAccess{
-			appSetting:       appSetting,
-			agentOperatorUrl: appSetting.AgentOperatorUrl,
-			httpClient:       common.NewHTTPClient(),
+			appSetting: appSetting,
+			httpClient: common.NewHTTPClient(),
 		}
 	})
 

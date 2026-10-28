@@ -32,11 +32,11 @@ tags: [{标签1}, {标签2}]
 
 ## 逻辑属性
 
-<!-- 可选：指标、算子等扩展属性 -->
+<!-- 可选：指标、工具等扩展属性 -->
 
 ### {logic_property_name}
 
-- **类型**: metric | operator
+- **类型**: metric | tool
 - **来源**: {source_id} ({source_type})
 - **说明**: {说明}
 

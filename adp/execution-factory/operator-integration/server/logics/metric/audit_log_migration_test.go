@@ -29,7 +29,7 @@ func TestNewAuditLogBuilderWithoutKafkaConfigFailsOpen(t *testing.T) {
 		TokenInfo: &interfaces.TokenInfo{VisitorID: "user-1", VisitorTyp: interfaces.RealName},
 		Accessor:  &interfaces.AuthAccessor{ID: "user-1"},
 		Operation: AuditLogOperationExecute,
-		Object:    &AuditLogObject{Type: AuditLogObjectOperator, ID: "operator-1"},
+		Object:    &AuditLogObject{Type: AuditLogObjectMCP, ID: "mcp-1"},
 	})
 }
 
@@ -185,7 +185,7 @@ func TestAuditLogBuilderUsesFrozenActorFallbacks(t *testing.T) {
 			builder.Logger(context.Background(), &AuditLogBuilderParams{
 				TokenInfo: &interfaces.TokenInfo{VisitorID: tc.visitorID, VisitorTyp: tc.visitorType},
 				Accessor:  &interfaces.AuthAccessor{ID: tc.accessorID}, Operation: AuditLogOperationExecute,
-				Object: &AuditLogObject{Type: AuditLogObjectOperator, ID: "operator-1"},
+				Object: &AuditLogObject{Type: AuditLogObjectMCP, ID: "mcp-1"},
 			})
 			var payload map[string]any
 			if err := json.Unmarshal(publisher.value, &payload); err != nil {
@@ -205,7 +205,7 @@ func TestAuditLogBuilderDropsInvalidEnvironment(t *testing.T) {
 	builder.Logger(context.Background(), &AuditLogBuilderParams{
 		TokenInfo: &interfaces.TokenInfo{VisitorID: "user-1", VisitorTyp: interfaces.RealName},
 		Accessor:  &interfaces.AuthAccessor{ID: "user-1"}, Operation: AuditLogOperationExecute,
-		Object: &AuditLogObject{Type: AuditLogObjectOperator, ID: "operator-1"},
+		Object: &AuditLogObject{Type: AuditLogObjectMCP, ID: "mcp-1"},
 	})
 	if len(publisher.value) != 0 {
 		t.Fatalf("invalid environment was published: %s", publisher.value)

@@ -7,17 +7,13 @@ project:
   pod_id: "POD_ID"
   machine_id: ""
   debug: false
-operator:
-  import_file_size_limit: 100000000
-  import_operator_max_count: 10
-  operator_description_length_limit: 500
 mcp:
   conn_timeout: 10 # Unit: second.
   max_instances: 200
   instance_ttl: 1800 # Unit: second.
   cleanup_interval: 60 # Unit: second.
 category:
-  init_switch: true # Whether to initialize operator classification.
+  init_switch: true # Whether to initialize built-in categories.
 
 proxy_module:
   default_timeout: 30 # Unit: second.

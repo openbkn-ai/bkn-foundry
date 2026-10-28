@@ -1,9 +1,9 @@
 # Execution Factory API Documentation
 
 > OpenAPI 3.0.3 definitions for the Execution Factory HTTP API, whose service
-> name is `agent-operator-integration`. Platform capabilities—code, operators,
-> toolboxes, MCP servers, and Skills—are registered, debugged, published, and
-> executed through this service.
+> name is `agent-operator-integration`. Platform capabilities—code, toolboxes,
+> MCP servers, and Skills—are registered, debugged, published, and executed
+> through this service.
 
 ## File index
 
@@ -12,19 +12,19 @@
 | [function.yaml](function.yaml) | Functions | `POST /function/execute`, `POST /function/infer-schema`, `GET /function/dependencies`, `GET /function/dependency-versions/{package_name}`, `GET /template/{template_type}`, `POST /ai_generate/function/{type}`, `GET /ai_generate/prompt/{type}` |
 | [sandbox.yaml](sandbox.yaml) | Sandbox observability | `GET /sandbox/health`, `GET /sandbox/pool`, `GET /sandbox/sessions`, `GET /sandbox/sessions/{id}` |
 | [impex.yaml](impex.yaml) | Import/export | `GET /impex/export/{type}/{id}`, `POST /impex/import/{type}` |
-| [operator.yaml](operator.yaml) | Operators | Registration, editing, update, list, detail, batch names, status, deletion, debugging, history, market, and category: 14 operations |
+| [category.yaml](category.yaml) | Categories | `GET /category` — the category list shared by toolboxes, MCP servers, and Skills |
 | [mcp.yaml](mcp.yaml) | MCP | Probe, CRUD, status, tool debugging, three market operations, proxy tool listing and invocation, and three exposed operations: 16 operations |
-| [toolbox.yaml](toolbox.yaml) | Toolboxes | Toolbox CRUD and status, tool CRUD and enablement, debug and proxy calls, operator conversion, OpenAPI capability packages, and four market operations: 21 operations |
+| [toolbox.yaml](toolbox.yaml) | Toolboxes | Toolbox CRUD and status, tool CRUD and enablement, debug and proxy calls, OpenAPI capability packages, and four market operations: 20 operations |
 | [skill.yaml](skill.yaml) | Skills | Registration, list, detail, metadata and package updates, publishing and history, two market operations, three consumer reads, three management reads, execution, and five index-build operations: 25 operations |
 
-**The principal public surface has 90 documented operations, including MCP transport.**
-The separate [capabilities-lab.yaml](capabilities-lab.yaml) covers 35 operations.
+**The principal public surface has 76 documented operations, including MCP transport.**
+The separate [capabilities-lab.yaml](capabilities-lab.yaml) covers 31 operations.
 
 The separate
 [managed-proxy contract](../bkn-safe/proxy-execution-pep.yaml)
 documents the cluster-internal, fail-closed Action and Schedule Tool/MCP
 execution boundary. It is linted but unpublished and is not part of the
-90-operation public API count.
+76-operation public API count.
 
 ## Run a function end to end
 
@@ -116,13 +116,13 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 
 - **OpenAPI version:** 3.0.3.
 - **Authentication:** `Authorization: Bearer <token>` with an OAuth access token or a self-issued AppKey with the `bak_` prefix.
-- **Authorization:** Function execution requires `execute` on the operator. AI generation requires `create`. Check role grants after a 403 response.
-- **Authorization outage (503):** An endpoint that checks a permission on one resource or resource type — creating, editing, publishing, deleting or executing operators, MCP servers, toolboxes and Skills, plus categories, sandbox administration and function execution — answers `503` with code `AgentOperatorIntegration.ServiceUnavailable.CommonAuthorizationUnavailable` when bkn-safe returns no decision (unreachable, timed out, or a non-2xx response). The request is not performed. Unlike a 403, this does not mean a grant is missing: retry later, and check bkn-safe if it persists. Only a 403 means the account was denied. List endpoints filter results through a batch check and answer `500` in the same situation.
+- **Authorization:** Function execution requires `execute` on the `function` resource type (checked against `function:adhoc`). AI generation requires `create` on `function`. Check role grants after a 403 response.
+- **Authorization outage (503):** An endpoint that checks a permission on one resource or resource type — creating, editing, publishing, deleting or executing MCP servers, toolboxes and Skills, plus categories, sandbox administration and function execution — answers `503` with code `AgentOperatorIntegration.ServiceUnavailable.CommonAuthorizationUnavailable` when bkn-safe returns no decision (unreachable, timed out, or a non-2xx response). The request is not performed. Unlike a 403, this does not mean a grant is missing: retry later, and check bkn-safe if it persists. Only a 403 means the account was denied. List endpoints filter results through a batch check and answer `500` in the same situation.
 - **Error envelope:** Local failures use `comm-go/httperrors.BaseError` with `error_code`, `description`, `error_details`, and optional `metadata`, as defined by [`Error`](../_shared/errors.yaml), which is also used by context-loader. Raw proxy responses retain their dependency-owned envelope.
 - **Internal APIs:** `/api/agent-operator-integration/internal-v1` is the internal surface and includes operations such as `POST /function/exec/{version}`, which executes a registered function version with a millisecond timeout. This documentation excludes internal APIs.
-- **Capabilities surface:** `/api/capabilities-lab/v1` is another route group merged from the former capabilities-lab service. Its 35 registered operations, including conditional metrics, are documented separately in [capabilities-lab.yaml](capabilities-lab.yaml).
-- **All `*_time` fields are nanoseconds:** Operator, MCP, toolbox, and Skill timestamps use `time.Now().UnixNano()`, for example `1784880971306127803`. Parsing them as milliseconds produces a date near 1970. Sandbox-observability fields ending in `*_at`, including `created_at`, `last_used_at`, and `checked_at`, are RFC3339 strings.
-- **Contract inspection:** Read-only GET operations are probed by default and need no annotation. The 13 `x-contract-probe` annotations in this module are only for operations that must run in batches. List operations use `provides` to feed values such as `box_id`, `skill_id`, and `mcp_id` into detail operations in later batches. See [tools/README.md](../tools/README.md).
+- **Capabilities surface:** `/api/capabilities-lab/v1` is another route group merged from the former capabilities-lab service. Its 31 registered operations, including conditional metrics, are documented separately in [capabilities-lab.yaml](capabilities-lab.yaml).
+- **All `*_time` fields are nanoseconds:** MCP, toolbox, and Skill timestamps use `time.Now().UnixNano()`, for example `1784880971306127803`. Parsing them as milliseconds produces a date near 1970. Sandbox-observability fields ending in `*_at`, including `created_at`, `last_used_at`, and `checked_at`, are RFC3339 strings.
+- **Contract inspection:** Read-only GET operations are probed by default and need no annotation. The 11 `x-contract-probe` annotations in this module are only for operations that must run in batches. List operations use `provides` to feed values such as `box_id`, `skill_id`, and `mcp_id` into detail operations in later batches. See [tools/README.md](../tools/README.md).
 
 ## Publication scope
 
@@ -137,9 +137,9 @@ documentation.
 
 ## Coverage boundary
 
-All 90 documented operations on the public `/api/agent-operator-integration/v1`
+All 76 documented operations on the public `/api/agent-operator-integration/v1`
 surface are covered. The count includes the MCP transport route. Internal routes and `/api/capabilities-lab/v1` are
-separate surfaces. The capabilities-lab surface has 35 registered operations documented in [capabilities-lab.yaml](capabilities-lab.yaml).
+separate surfaces. The capabilities-lab surface has 31 registered operations documented in [capabilities-lab.yaml](capabilities-lab.yaml).
 
 ### Two levels of verification
 
@@ -157,7 +157,9 @@ three observed errors, so drafts are not authoritative.
 > was still 91, before the two intcomp operations were removed. Those operations
 > were unprobed writes, so only the total changed from 91 to 89 and the write
 > count from 42 to 40. Other categories are unaffected; the original numbers
-> remain here to preserve the inspection record.
+> remain here to preserve the inspection record. The operator endpoints were
+> removed later as well; the counts below still include them, but the removed
+> endpoints are no longer named.
 
 The contract inspection ran against development VM `parallels@10.211.55.4`
 using image `0.1.3-main.20260730112246.sha185a9c2`. Thirty of 91 operations
@@ -171,10 +173,10 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=parallels@10.211.55.4 \
 
 | Category | Count | Notes |
 |---|---|---|
-| Field-level comparison completed | 30 | No gaps. Four responses were empty (`function/dependencies`, `operator/info/list`, `operator/market`, `skills/index/build`), leaving 112 fields under empty arrays unobserved. Do not treat their zero-gap result as full verification |
+| Field-level comparison completed | 30 | No gaps. Four responses were empty (`function/dependencies`, `skills/index/build`, and two list endpoints that have since been removed), leaving 112 fields under empty arrays unobserved. Do not treat their zero-gap result as full verification |
 | Writes or operations not marked read-only | 42 | Registration, editing, deletion, publication, and execution are intentionally not sent |
 | HTTP 200 without a JSON body | 7 | Deletion, status changes, SSE streams, and `.adp` import have no 200 response schema to compare |
-| Missing path parameters | 7 | The environment lacked data such as operator versions or MCP tool names |
+| Missing path parameters | 7 | The environment lacked data such as MCP tool names or version parameters of endpoints that have since been removed |
 | Environment-dependent failure | 5 | An unreachable MCP proxy (503), proxy MCP without a connection address (400), two non-JSON Skill package downloads, and a required `tool_name` for `/tool-box/market/tools` that could not be synthesized |
 
 ### Observed production-like usage
@@ -183,8 +185,9 @@ Access logs from test environment `14.103.77.23` were compared over three days.
 Thirty-one of the then-current 91 operations were observed. This does not imply
 that the others are unused; writes, market operations, history, and index
 rebuilds are naturally less frequent in a test environment. Example hot paths
-were `GET /tool-box/list` with 265 calls, `GET /skills` with 87,
-`GET /operator/category` with 74, and `GET /mcp/list` with 67.
+were `GET /tool-box/list` with 265 calls, `GET /skills` with 87, the category
+list with 74 (served then at a path since replaced by `GET /category`), and
+`GET /mcp/list` with 67.
 
 Another 40 paths in the logs belonged to `internal-v1`, used inside the cluster
 by bkn-agent and context-loader through ClusterIP for tool proxying and

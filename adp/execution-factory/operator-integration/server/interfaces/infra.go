@@ -104,12 +104,8 @@ type MetricLogger interface {
 	Log(ctx context.Context, logType string, params interface{}) (err error)
 }
 
-// Validator verification interface: used to verify operator name, description, number of single imports, imported data size, etc.
+// Validator verification interface: used to verify names and descriptions of toolboxes, tools, MCP servers and categories.
 type Validator interface {
-	ValidateOperatorName(ctx context.Context, name string) (err error)
-	ValidateOperatorDesc(ctx context.Context, desc string) (err error)
-	ValidateOperatorImportCount(ctx context.Context, count int64) (err error)
-	ValidateOperatorImportSize(ctx context.Context, size int64) (err error)
 	ValidatorToolBoxName(ctx context.Context, name string) (err error)
 	ValidatorToolBoxDesc(ctx context.Context, desc string) (err error)
 	ValidatorToolName(ctx context.Context, name string) (err error)

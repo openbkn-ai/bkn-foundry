@@ -1,8 +1,8 @@
 asyncapi: 2.6.0
 info:
-  title: 算子平台异步消息接口
+  title: 执行工厂异步消息接口
   version: 1.0.0
-  description: 算子删除事件通知接口规范
+  description: 执行工厂对外发布的事件通知接口规范
 
 servers:
   production:
@@ -11,41 +11,32 @@ servers:
     description: 生产环境消息队列
 
 channels:
-  agent_operator_integration.operator.delete:
+  authorization.resource.name.modify:
+    description: 工具箱、函数工具箱或 MCP 名称变更后发布，用于同步授权资源名称。
     subscribe:
       message:
-        $ref: "#/components/messages/OperatorDeleteMessage"
+        $ref: "#/components/messages/AuthResourceNameModifyMessage"
 
 components:
   messages:
-    OperatorDeleteMessage:
+    AuthResourceNameModifyMessage:
       payload:
         type: object
+        required:
+          - id
+          - type
+          - name
         properties:
-          operator_id:
+          id:
             type: string
-            format: uuid
-          version:
+            description: 资源 ID（工具箱 box_id 或 MCP mcp_id）
+          type:
             type: string
-            format: uuid
-          status:
-            type: string
+            description: 授权资源类型
             enum:
-              - offline
-              - unpublish
-              - published
-              - editing
-          is_internal:
-            type: boolean
-          is_data_source:
-            type: boolean
-          extend_info:
-            type: object
-            properties:
-              dag_id:
-                type: string
-          operator_type:
+              - tool_box
+              - function
+              - mcp
+          name:
             type: string
-            enum:
-              - composite
-              - basic
+            description: 变更后的资源名称

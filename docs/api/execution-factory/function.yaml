@@ -6,9 +6,9 @@ info:
     执行工厂（服务名 `agent-operator-integration`）的**函数面**：写一段 Python、
     在沙箱里跑起来、看输出。围绕它还有依赖查询、代码模板与 AI 生成三组辅助接口。
 
-    函数是执行工厂里最基础的能力形态——算子（operator）、工具箱里的工具、Skill
-    最终都可能落到一次沙箱内的函数执行。本文件只描述**直接执行任意代码**这条路径；
-    把函数注册成可复用的算子见 [operator.yaml](operator.yaml)。
+    函数是执行工厂里最基础的能力形态——工具箱里的函数工具、Skill 最终都可能落到
+    一次沙箱内的函数执行。本文件只描述**直接执行任意代码**这条路径；把函数注册成
+    工具箱里可复用的函数工具见 [toolbox.yaml](toolbox.yaml)。
 
     **执行是隔离的、无状态的**：每次调用从会话池取一个沙箱会话，跑完即释放，
     不保证同一会话被复用，也不要依赖上次执行留下的文件或全局变量。
@@ -30,7 +30,8 @@ info:
     完整骨架（含注释）随 `GET /template/{template_type}` 返回，文案会按请求语言本地化。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
-    AppKey）。执行类接口要求调用方具备算子的 execute 权限，AI 生成类要求 create 权限。
+    AppKey）。执行类接口要求调用方具备函数（`function`）的 execute 权限，AI 生成类要求
+    函数的 create 权限。
   version: 0.1.3
 servers:
   - url: /api/agent-operator-integration/v1
@@ -46,7 +47,7 @@ paths:
       operationId: functionExecute
       description: |
         把 `code` 送进沙箱执行，`event` 作为入参传给入口函数。用于调试期直接跑代码，
-        不需要先把它注册成算子。
+        不需要先把它注册成函数工具。
 
         **`timeout` 的单位是秒**（注意：内部面的
         `POST /internal-v1/function/exec/{version}` 用的是毫秒，两者不一致）。
@@ -488,7 +489,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: |
-            当前账户没有算子的 create 权限。
+            当前账户没有函数（`function`）的 create 权限。
 
             注意：模型侧的鉴权失败**不会**表现为 403——mf-model-api 与模型厂商
             之间的 401/403/404 一律收敛成 502，避免被误读成调用方凭据失效。
@@ -515,7 +516,7 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorOpenAI'
         '500':
-          description: 算子服务自身内部错误（大模型调用失败见 429 / 502 / 503）
+          description: 执行工厂服务自身内部错误（大模型调用失败见 429 / 502 / 503）
           headers:
             Content-Language:
               $ref: '#/components/headers/ContentLanguage'
@@ -587,7 +588,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: 当前账户没有算子的 create 权限
+          description: 当前账户没有函数（`function`）的 create 权限
           headers:
             Content-Language:
               $ref: '#/components/headers/ContentLanguage'
@@ -633,9 +634,10 @@ components:
             $ref: '../_shared/errors.yaml#/components/schemas/Error'
     ExecuteForbidden:
       description: |
-        当前账户没有算子类型的 execute 权限（`operator:*`）。授权服务已给出拒绝判定，
-        代码未执行。`details` 给出缺少的权限，可直接交给管理员授权；单个算子、
-        知识网络等资源上的授权不能代替这一类型级权限。
+        当前账户没有函数（`function`）的 execute 权限，判定的资源为
+        `function:adhoc`（临时代码，不对应任何已注册的函数工具箱）。授权服务已给出
+        拒绝判定，代码未执行。`details` 给出缺少的权限，可直接交给管理员授权；
+        单个工具箱、知识网络等资源上的授权不能代替这一权限。
       headers:
         Content-Language:
           $ref: '#/components/headers/ContentLanguage'
@@ -649,8 +651,8 @@ components:
             solution: 请联系管理员
             link: 无
             details:
-              resource_type: operator
-              resource_id: '*'
+              resource_type: function
+              resource_id: adhoc
               operation: execute
     AuthorizationUnavailable:
       description: |

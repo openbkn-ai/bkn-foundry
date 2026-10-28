@@ -172,7 +172,6 @@ func (s *Service) listHttpCapabilitiesPaged(
 			group := groupFromBox(box)
 			for _, tool := range resp.Tools {
 				capability := s.httpCapabilityFromTool(box, tool, group)
-				capability.Orchestration = s.orchestrationFromResourceObject(tool)
 				if status != "" && status != "all" && !capabilityStatusMatches(capability.Status, status) {
 					continue
 				}
@@ -223,7 +222,6 @@ func (s *Service) listHttpCapabilitiesInGroupPaged(
 	items := make([]model.Capability, 0, len(resp.Tools))
 	for _, tool := range resp.Tools {
 		capability := s.httpCapabilityFromTool(boxInfo, tool, group)
-		capability.Orchestration = s.orchestrationFromResourceObject(tool)
 		items = append(items, capability)
 	}
 
@@ -265,7 +263,6 @@ func (s *Service) collectHttpCapabilities(
 		group := groupFromBox(box)
 		for _, tool := range tools {
 			capability := s.httpCapabilityFromTool(box, tool, group)
-			capability.Orchestration = s.orchestrationFromResourceObject(tool)
 			items = append(items, capability)
 			if limit > 0 && len(items) >= limit {
 				return items, total, nil
@@ -297,7 +294,6 @@ func (s *Service) collectHttpCapabilitiesInGroup(
 	items := make([]model.Capability, 0, len(tools))
 	for _, tool := range tools {
 		capability := s.httpCapabilityFromTool(boxInfo, tool, group)
-		capability.Orchestration = s.orchestrationFromResourceObject(tool)
 		items = append(items, capability)
 	}
 

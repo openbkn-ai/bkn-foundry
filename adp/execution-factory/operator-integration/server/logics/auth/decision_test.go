@@ -38,7 +38,7 @@ func TestOperationCheckAllSeparatesDenialFromDependencyFailure(t *testing.T) {
 				Return(&interfaces.AuthOperationCheckResponse{Result: true}, nil)
 
 			allowed, err := service.OperationCheckAll(context.Background(), accessor, interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute)
+				interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeExecute)
 
 			So(err, ShouldBeNil)
 			So(allowed, ShouldBeTrue)
@@ -49,7 +49,7 @@ func TestOperationCheckAllSeparatesDenialFromDependencyFailure(t *testing.T) {
 				Return(&interfaces.AuthOperationCheckResponse{Result: false}, nil)
 
 			allowed, err := service.OperationCheckAll(context.Background(), accessor, interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute)
+				interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeExecute)
 
 			So(err, ShouldBeNil)
 			So(allowed, ShouldBeFalse)
@@ -63,7 +63,7 @@ func TestOperationCheckAllSeparatesDenialFromDependencyFailure(t *testing.T) {
 				Do(func(format string, args ...interface{}) { logged = fmt.Sprintf(format, args...) })
 
 			allowed, err := service.OperationCheckAll(context.Background(), accessor, interfaces.ResourceIDAll,
-				interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeExecute)
+				interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeExecute)
 
 			So(allowed, ShouldBeFalse)
 			var httpErr *httperrors.HTTPError

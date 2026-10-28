@@ -216,10 +216,6 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 				return
 			}
 			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, functionInput)
-		case model.SourceTypeOperator:
-			// The tool converted by the operator does not allow direct editing of metadata.
-			err = oerrors.NewHTTPError(ctx, http.StatusMethodNotAllowed, oerrors.ErrExtToolOperatorNotAllowEdit,
-				"operator tool not allow edit metadata")
 		}
 		if err != nil {
 			return
@@ -303,11 +299,6 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		currentMetadataDB.SetScriptType(metadata.GetScriptType())
 		currentMetadataDB.SetDependencies(metadata.GetDependencies())
 		currentMetadataDB.SetDependenciesURL(metadata.GetDependenciesURL())
-	case model.SourceTypeOperator:
-		// The tool converted by the operator does not allow direct editing of metadata.
-		err = oerrors.NewHTTPError(ctx, http.StatusMethodNotAllowed, oerrors.ErrExtToolOperatorNotAllowEdit,
-			"operator tool not allow edit metadata")
-		return
 	}
 	// Update metadata.
 	currentMetadataDB.SetUpdateInfo(toolDB.UpdateUser)

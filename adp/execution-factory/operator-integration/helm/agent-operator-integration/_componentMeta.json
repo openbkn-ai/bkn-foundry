@@ -49,32 +49,14 @@
                 "type": "object",
                 "title": "服务配置",
                 "properties": {
-                    "operator": {
-                        "type": "object",
-                        "title": "算子服务配置",
-                        "properties": {
-                            "importFileSizeLimit": {
-                                "type": "number",
-                                "title": "导入文件大小限制,单位B"
-                            },
-                            "importOperatorMaxCount": {
-                                "type": "number",
-                                "title": "导入算子最大数量"
-                            },
-                            "descriptionLengthLimit": {
-                                "type": "number",
-                                "title": "算子描述长度限制，单位字符"
-                            }
-                        }
-                    },
                     "category": {
                         "type": "object",
-                        "description": "算子分类配置",
+                        "description": "分类配置",
                         "properties": {
                             "initSwitch": {
                                 "type": "boolean",
-                                "title": "是否初始化算子分类",
-                                "description": "初始化算子分类开关，默认true",
+                                "title": "是否初始化内置分类",
+                                "description": "初始化内置分类开关，默认true",
                                 "default": true
                             }
                         }

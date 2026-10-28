@@ -78,7 +78,7 @@ var ErrorMessagesEnUS = i18n.I18nMessages{
 		"agentRetrieval.Detail.FunctionCodeRequired":                     "Code is required for sandbox execution.",
 		"agentRetrieval.Detail.FunctionExecutionRequestFailed":           "Unable to execute the sandbox function.",
 		"agentRetrieval.Detail.FunctionExecutionResponseInvalid":         "The sandbox execution response is invalid.",
-		"agentRetrieval.Detail.FunctionExecuteForbidden":                 "This account lacks permission to run ad hoc code (execute on the operator type, operator:*), so the code was not run. Ask an administrator for that grant; grants on a knowledge network or a single operator do not cover it.",
+		"agentRetrieval.Detail.FunctionExecuteForbidden":                 "This account lacks permission to run ad hoc code (execute on function:adhoc, which a type-wide function grant also covers), so the code was not run. Ask an administrator for that grant; grants on a knowledge network or a single function toolbox do not cover it.",
 		"agentRetrieval.Detail.FunctionAuthorizationUnavailable":         "The execution permission check is temporarily unavailable, so no authorization decision was made and the code was not run. This does not mean the permission is missing. Retry later; if it keeps failing, ask an administrator to check bkn-safe.",
 		"agentRetrieval.Detail.SkillListRequestFailed":                   "Unable to retrieve the skill list.",
 		"agentRetrieval.Detail.SkillListResponseInvalid":                 "The skill list response is invalid.",

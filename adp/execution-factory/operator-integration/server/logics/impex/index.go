@@ -16,7 +16,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcp"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/operator"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/toolbox"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
@@ -30,10 +29,9 @@ var (
 type componentImpexManager struct {
 	Logger      interfaces.Logger
 	AuthService interfaces.IAuthorizationService
-	OperatorMgr interfaces.OperatorManager // Added operator management.
-	ToolboxMgr  interfaces.IToolService    // Added toolbox management.
-	MCPMgr      interfaces.IMCPService     // Added MCP management.
-	DBTx        model.DBTx                 // Added transaction support.
+	ToolboxMgr  interfaces.IToolService // Added toolbox management.
+	MCPMgr      interfaces.IMCPService  // Added MCP management.
+	DBTx        model.DBTx              // Added transaction support.
 	Validator   interfaces.Validator
 }
 
@@ -44,7 +42,6 @@ func NewComponentImpexManager() interfaces.IComponentImpexConfig {
 		impexManager = &componentImpexManager{
 			Logger:      conf.GetLogger(),
 			AuthService: auth.NewAuthServiceImpl(),
-			OperatorMgr: operator.NewOperatorManager(),
 			ToolboxMgr:  toolbox.NewToolServiceImpl(),
 			MCPMgr:      mcp.NewMCPServiceImpl(),
 			DBTx:        dbaccess.NewBaseTx(),
@@ -64,8 +61,6 @@ func (m *componentImpexManager) ExportConfig(ctx context.Context, req *interface
 		IDs:    []string{req.ID},
 	}
 	switch req.Type {
-	case interfaces.ComponentTypeOperator:
-		data, err = m.OperatorMgr.Export(ctx, exportReq)
 	case interfaces.ComponentTypeToolBox:
 		data, err = m.ToolboxMgr.Export(ctx, exportReq)
 	case interfaces.ComponentTypeMCP:
@@ -84,9 +79,8 @@ func (m *componentImpexManager) ExportConfig(ctx context.Context, req *interface
 func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *interfaces.ImportConfigReq) (err error) {
 	// Parse data.
 	data := &interfaces.ComponentImpexConfigModel{
-		Operator: &interfaces.OperatorImpexConfig{},
-		Toolbox:  &interfaces.ToolBoxImpexConfig{},
-		MCP:      &interfaces.MCPImpexConfig{},
+		Toolbox: &interfaces.ToolBoxImpexConfig{},
+		MCP:     &interfaces.MCPImpexConfig{},
 	}
 	err = jsoniter.Unmarshal(importReq.Data, data)
 	if err != nil {
@@ -120,7 +114,6 @@ func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *int
 			}
 		}
 		switch resourceType {
-		case interfaces.AuthResourceTypeOperator:
 		case interfaces.AuthResourceTypeToolBox:
 			if data.Toolbox == nil {
 				err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "toolbox import data is missing")
@@ -130,19 +123,7 @@ func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *int
 			if err != nil {
 				return
 			}
-			if data.Operator != nil && len(data.Operator.Configs) > 0 {
-				err = m.AuthService.CheckCreatePermission(ctx, accessor, interfaces.AuthResourceTypeOperator)
-				if err != nil {
-					return
-				}
-			}
 		case interfaces.AuthResourceTypeMCP:
-			if data.Operator != nil && len(data.Operator.Configs) > 0 {
-				err = m.AuthService.CheckCreatePermission(ctx, accessor, interfaces.AuthResourceTypeOperator)
-				if err != nil {
-					return
-				}
-			}
 			if data.Toolbox != nil && len(data.Toolbox.Configs) > 0 {
 				err = checkToolboxImportCreatePermissions(ctx, m.AuthService, accessor, data.Toolbox.Configs)
 				if err != nil {
@@ -224,8 +205,6 @@ func (m *componentImpexManager) importConfigWithTx(ctx context.Context, compType
 		}
 	}()
 	switch compType {
-	case interfaces.ComponentTypeOperator:
-		err = m.OperatorMgr.Import(ctx, tx, mode, data.Operator, userID)
 	case interfaces.ComponentTypeToolBox:
 		err = m.ToolboxMgr.Import(ctx, tx, mode, data, userID)
 	case interfaces.ComponentTypeMCP:
@@ -240,8 +219,6 @@ func (m *componentImpexManager) importConfigWithTx(ctx context.Context, compType
 // Component and resource type conversion.
 func convertResourceType(componentType interfaces.ComponentType) interfaces.AuthResourceType {
 	switch componentType {
-	case interfaces.ComponentTypeOperator:
-		return interfaces.AuthResourceTypeOperator
 	case interfaces.ComponentTypeToolBox:
 		return interfaces.AuthResourceTypeToolBox
 	case interfaces.ComponentTypeMCP:

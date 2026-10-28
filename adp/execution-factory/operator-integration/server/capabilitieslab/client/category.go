@@ -25,7 +25,7 @@ func (c *OperatorIntegrationClient) ListCategories(ctx context.Context) ([]Categ
 	if err := c.doJSON(
 		ctx,
 		http.MethodGet,
-		"/api/agent-operator-integration/v1/operator/category",
+		"/api/agent-operator-integration/v1/category",
 		nil,
 		&resp,
 	); err != nil {

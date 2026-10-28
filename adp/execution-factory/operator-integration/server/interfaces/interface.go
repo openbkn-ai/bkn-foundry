@@ -26,8 +26,7 @@ const (
 type ResourceObjectType string
 
 const (
-	ResourceObjectTool     ResourceObjectType = "tool"     // Tools.
-	ResourceObjectOperator ResourceObjectType = "operator" // operator.
+	ResourceObjectTool ResourceObjectType = "tool" // Tools.
 )
 
 // ResourceDeployType resource deployment type.

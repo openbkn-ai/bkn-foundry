@@ -15,8 +15,6 @@ const (
 	ComponentTypeToolBox ComponentType = "toolbox"
 	// ComponentTypeMCP MCP component.
 	ComponentTypeMCP ComponentType = "mcp"
-	// ComponentTypeOperator operator component.
-	ComponentTypeOperator ComponentType = "operator"
 )
 
 func (c ComponentType) String() string {

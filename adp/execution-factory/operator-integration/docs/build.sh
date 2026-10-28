@@ -3,11 +3,11 @@
 # swagger-cli bundle apis/api_private/index.yaml --outfile apis/api_private/index.json --type json
 # redoc-cli bundle -o apis/api_private/index.html apis/api_private/index.json
 
-# operator.
-swagger-cli bundle apis/api_public/operator.yaml --outfile apis/api_public/operator.json --type json
-redoc-cli bundle -o apis/api_public/operator.html apis/api_public/operator.json
-swagger-cli bundle apis/api_private/operator.yaml --outfile apis/api_private/operator.json --type json
-redoc-cli bundle -o apis/api_private/operator.html apis/api_private/operator.json
+# Category.
+swagger-cli bundle apis/api_public/category.yaml --outfile apis/api_public/category.json --type json
+redoc-cli bundle -o apis/api_public/category.html apis/api_public/category.json
+swagger-cli bundle apis/api_private/category.yaml --outfile apis/api_private/category.json --type json
+redoc-cli bundle -o apis/api_private/category.html apis/api_private/category.json
 
 # Tools.
 swagger-cli bundle apis/api_public/toolbox.yaml --outfile apis/api_public/toolbox.json --type json

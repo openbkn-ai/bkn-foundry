@@ -29,7 +29,6 @@ type Server struct {
 	httpHealthHandler     interfaces.HTTPRouterInterface
 	restPublicHandler     interfaces.HTTPRouterInterface
 	restPrivateHandler    interfaces.HTTPRouterInterface
-	MQHandler             interfaces.MQHandler
 	config                *config.Config
 	skillIndexSyncService interfaces.SkillIndexSyncService
 	skillIndexBuildWorker interfaces.App
@@ -72,12 +71,12 @@ func (s *Server) Start() {
 		routerHealth := engine.Group("/health")
 		s.httpHealthHandler.RegisterRouter(routerHealth)
 
-		// Register internal interface routing - operator-related interfaces.
+		// Register internal interface routing.
 		routerInternalGroup := engine.Group("/api/agent-operator-integration/internal-v1")
 		routerInternalGroup.Use(gin.Recovery())
 		s.restPrivateHandler.RegisterRouter(routerInternalGroup)
 
-		// Register external routes - operator related interfaces.
+		// Register external routes.
 		routerGroup := engine.Group("/api/agent-operator-integration/v1")
 		routerGroup.Use(gin.Recovery())
 		s.restPublicHandler.RegisterRouter(routerGroup)
@@ -94,8 +93,6 @@ func (s *Server) Start() {
 			s.config.Logger.Errorf("start server failed, error: %v", err)
 		}
 	}()
-	// Start MQ processing.
-	go s.MQHandler.Subscribe()
 }
 
 // startCapabilityReconciler starts the periodic reconcile of Function tools and MCP tools.
@@ -149,7 +146,6 @@ func main() {
 		httpHealthHandler:     driveradapters.NewHTTPHealthHandler(),
 		restPublicHandler:     driveradapters.NewRestPublicHandler(),
 		restPrivateHandler:    driveradapters.NewRestPrivateHandler(),
-		MQHandler:             driveradapters.NewMQHandler(),
 		skillIndexSyncService: skill.NewSkillIndexSyncService(),
 		skillIndexBuildWorker: skill.NewSkillIndexBuildWorker(),
 		capabilityIndexSync:   capability.NewCapabilityIndexSyncService(),

@@ -81,7 +81,7 @@ func (a *apiMetadataDB) InsertAPIMetadata(ctx context.Context, tx *sql.Tx, metad
 		return
 	}
 	if !ok {
-		err = fmt.Errorf("insert operator failed, err: %v", err)
+		err = fmt.Errorf("insert api metadata failed, err: %v", err)
 	}
 	return
 }
@@ -117,7 +117,7 @@ func (a *apiMetadataDB) InsertAPIMetadatas(ctx context.Context, tx *sql.Tx, meta
 	}
 	row, err := exec(ctx, query, args...)
 	if err != nil {
-		err = errors.Wrapf(err, "insert operator failed, err: %v", err)
+		err = errors.Wrapf(err, "insert api metadata failed, err: %v", err)
 		return
 	}
 	_, err = checkAffected(row)

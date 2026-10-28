@@ -20,7 +20,7 @@ import (
 )
 
 type restPrivateHandler struct {
-	OperatorRestHandler    OperatorRestHandler
+	CategoryRestHandler    CategoryRestHandler
 	ToolBoxRestHandler     ToolBoxRestHandler
 	MCPRestHandler         MCPRestHandler
 	UpgradeHandler         common.UpgradeHandler
@@ -39,7 +39,7 @@ type restPrivateHandler struct {
 // NewRestPrivateHandler creates a restHandler instance.
 func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 	return &restPrivateHandler{
-		OperatorRestHandler:    NewOperatorRestHandler(),
+		CategoryRestHandler:    NewCategoryRestHandler(),
 		ToolBoxRestHandler:     NewToolBoxRestHandler(),
 		MCPRestHandler:         NewMCPRestHandler(),
 		UpgradeHandler:         common.NewUpgradeHandler(),
@@ -69,8 +69,8 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	)
 	engine.Use(mws...)
 	engine.GET("/authorization-resources", r.AuthorizationResources.ListAuthorizationResources)
-	// Operator interface.
-	r.OperatorRestHandler.RegisterPrivate(engine)
+	// Category interface.
+	r.CategoryRestHandler.RegisterPrivate(engine)
 	// toolbox interface.
 	r.ToolBoxRestHandler.RegisterPrivate(engine)
 	// MCP related interfaces.

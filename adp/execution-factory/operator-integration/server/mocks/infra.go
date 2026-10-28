@@ -527,62 +527,6 @@ func (m *MockValidator) EXPECT() *MockValidatorMockRecorder {
 	return m.recorder
 }
 
-// ValidateOperatorDesc mocks base method.
-func (m *MockValidator) ValidateOperatorDesc(ctx context.Context, desc string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateOperatorDesc", ctx, desc)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ValidateOperatorDesc indicates an expected call of ValidateOperatorDesc.
-func (mr *MockValidatorMockRecorder) ValidateOperatorDesc(ctx, desc any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateOperatorDesc", reflect.TypeOf((*MockValidator)(nil).ValidateOperatorDesc), ctx, desc)
-}
-
-// ValidateOperatorImportCount mocks base method.
-func (m *MockValidator) ValidateOperatorImportCount(ctx context.Context, count int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateOperatorImportCount", ctx, count)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ValidateOperatorImportCount indicates an expected call of ValidateOperatorImportCount.
-func (mr *MockValidatorMockRecorder) ValidateOperatorImportCount(ctx, count any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateOperatorImportCount", reflect.TypeOf((*MockValidator)(nil).ValidateOperatorImportCount), ctx, count)
-}
-
-// ValidateOperatorImportSize mocks base method.
-func (m *MockValidator) ValidateOperatorImportSize(ctx context.Context, size int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateOperatorImportSize", ctx, size)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ValidateOperatorImportSize indicates an expected call of ValidateOperatorImportSize.
-func (mr *MockValidatorMockRecorder) ValidateOperatorImportSize(ctx, size any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateOperatorImportSize", reflect.TypeOf((*MockValidator)(nil).ValidateOperatorImportSize), ctx, size)
-}
-
-// ValidateOperatorName mocks base method.
-func (m *MockValidator) ValidateOperatorName(ctx context.Context, name string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateOperatorName", ctx, name)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ValidateOperatorName indicates an expected call of ValidateOperatorName.
-func (mr *MockValidatorMockRecorder) ValidateOperatorName(ctx, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateOperatorName", reflect.TypeOf((*MockValidator)(nil).ValidateOperatorName), ctx, name)
-}
-
 // ValidatorCategoryName mocks base method.
 func (m *MockValidator) ValidatorCategoryName(ctx context.Context, name string) error {
 	m.ctrl.T.Helper()

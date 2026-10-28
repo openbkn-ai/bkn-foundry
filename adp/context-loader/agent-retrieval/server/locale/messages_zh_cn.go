@@ -77,7 +77,7 @@ var ErrorMessagesZhCN = i18n.I18nMessages{
 		"agentRetrieval.Detail.FunctionCodeRequired":                     "沙箱执行必须提供代码。",
 		"agentRetrieval.Detail.FunctionExecutionRequestFailed":           "调用沙箱执行失败。",
 		"agentRetrieval.Detail.FunctionExecutionResponseInvalid":         "沙箱执行响应无效。",
-		"agentRetrieval.Detail.FunctionExecuteForbidden":                 "当前账号缺少临时代码执行权限（算子类型 operator:* 的 execute 权限），代码未执行。请联系管理员授予该权限；知识网络或单个算子上的授权不能代替它。",
+		"agentRetrieval.Detail.FunctionExecuteForbidden":                 "当前账号缺少临时代码执行权限（function:adhoc 的 execute 权限，函数类型级授权也可覆盖），代码未执行。请联系管理员授予该权限；知识网络或单个函数工具箱上的授权不能代替它。",
 		"agentRetrieval.Detail.FunctionAuthorizationUnavailable":         "执行权限校验服务暂时不可用，未能完成授权判定，代码未执行。这不代表缺少权限，请稍后重试；持续失败请联系管理员检查 bkn-safe。",
 		"agentRetrieval.Detail.SkillListRequestFailed":                   "获取技能列表失败。",
 		"agentRetrieval.Detail.SkillListResponseInvalid":                 "技能列表响应无效。",
