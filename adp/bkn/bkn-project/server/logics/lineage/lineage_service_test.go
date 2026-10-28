@@ -470,7 +470,7 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 		Convey("The files join what the branch holds, which stays as it is\n", func() {
 			plant := objectType("plant", "Plant", "A plant.")
 
-			result, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{"object_types/plant.bkn": plant}, "confirm", author)
+			result, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{"object_types/plant.bkn": plant}, nil, "confirm", author)
 
 			So(err, ShouldBeNil)
 			So(result.Changed, ShouldResemble, interfaces.PathDiff{Added: []string{"object_types/plant.bkn"}, Changed: []string{}, Removed: []string{}})
@@ -481,13 +481,35 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 			So(files["network.bkn"], ShouldResemble, base["network.bkn"])
 		})
 
+		Convey("What the same source wrote before is replaced, and removed once no longer written\n", func() {
+			first := map[string][]byte{
+				"object_types/plant.bkn": objectType("plant", "Plant", "A plant."),
+				"object_types/depot.bkn": objectType("depot", "Depot", "A depot."),
+			}
+			_, err := svc.AddDefinitions(ctx, id, branch, first, nil, "confirm", author)
+			So(err, ShouldBeNil)
+			again := map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant, renamed.")}
+
+			result, err := svc.AddDefinitions(ctx, id, branch, again,
+				[]string{"object_types/plant.bkn", "object_types/depot.bkn"}, "confirm again", author)
+
+			So(err, ShouldBeNil)
+			So(result.Changed, ShouldResemble, interfaces.PathDiff{
+				Added: []string{}, Changed: []string{"object_types/plant.bkn"}, Removed: []string{"object_types/depot.bkn"},
+			})
+			files, _ := realGS.ReadTree(ctx, id, "refs/heads/"+branch)
+			So(files["object_types/part.bkn"], ShouldResemble, base["object_types/part.bkn"])
+			_, kept := files["object_types/depot.bkn"]
+			So(kept, ShouldBeFalse)
+		})
+
 		Convey("A path the branch holds is refused and listed, and nothing is committed\n", func() {
 			before, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
 
 			_, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{
 				"object_types/part.bkn":  objectType("part", "Part", "Another part."),
 				"object_types/plant.bkn": objectType("plant", "Plant", "A plant."),
-			}, "", author)
+			}, nil, "", author)
 
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusConflict)
@@ -501,7 +523,7 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 
 		Convey("Files the BKN loader cannot read with the branch are refused\n", func() {
 			_, err := svc.AddDefinitions(ctx, id, branch,
-				map[string][]byte{"object_types/plant.bkn": []byte("---\ntype: object_type\nid: plant\n---\n")}, "", author)
+				map[string][]byte{"object_types/plant.bkn": []byte("---\ntype: object_type\nid: plant\n---\n")}, nil, "", author)
 
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusBadRequest)
@@ -516,7 +538,7 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 			So(err, ShouldBeNil)
 
 			_, err = svc.AddDefinitions(ctx, id2, branch,
-				map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}, "", author)
+				map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}, nil, "", author)
 
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusConflict)
@@ -524,16 +546,16 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 		})
 
 		Convey("main, nothing to add and an unknown branch are refused\n", func() {
-			_, err := svc.AddDefinitions(ctx, id, "main", base, "", author)
+			_, err := svc.AddDefinitions(ctx, id, "main", base, nil, "", author)
 			status, _ := httpCode(err)
 			So(status, ShouldEqual, http.StatusForbidden)
 
-			_, err = svc.AddDefinitions(ctx, id, branch, map[string][]byte{}, "", author)
+			_, err = svc.AddDefinitions(ctx, id, branch, map[string][]byte{}, nil, "", author)
 			_, code := httpCode(err)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
 
 			_, err = svc.AddDefinitions(ctx, id, "project/none",
-				map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}, "", author)
+				map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}, nil, "", author)
 			_, code = httpCode(err)
 			So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotFound)
 		})

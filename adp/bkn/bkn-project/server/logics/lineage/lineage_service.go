@@ -163,12 +163,14 @@ func (s *lineageService) CommitDefinitions(ctx context.Context, lineageID string
 	return result, nil
 }
 
-// AddDefinitions reads the branch, adds files and writes it under one hold of the lineage lock, so
-// nothing a concurrent writer committed in between is lost. It replaces nothing: a path the branch
-// holds is refused, listed. The branch has to be kept in BKN 3.0, the rules the files are written
-// in; a branch started in 2.x moves to 3.0 when it syncs.
+// AddDefinitions reads the branch, writes files and commits under one hold of the lineage lock, so
+// nothing a concurrent writer committed in between is lost. It replaces only what the same source
+// wrote before (owned), removing what of it files no longer hold; any other path the branch holds
+// is refused, listed. The branch has to be kept in BKN 3.0, the rules the files are written in; a
+// branch started in 2.x moves to 3.0 when it syncs.
 func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, branch string,
-	files map[string][]byte, message string, author interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+	files map[string][]byte, owned []string, message string,
+	author interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "AddDefinitions")
 	defer span.End()
 
@@ -198,13 +200,19 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 		if err != nil || network.BknSpec != bkn.BknSpecV3 {
 			return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_BranchNotV3)
 		}
+		mine := make(map[string]bool, len(owned))
+		for _, p := range owned {
+			mine[p] = true
+		}
 		var existing []string
 		merged := make(map[string][]byte, len(current)+len(files))
 		for p, data := range current {
-			merged[p] = data
+			if !mine[p] {
+				merged[p] = data
+			}
 		}
 		for p, data := range files {
-			if _, ok := current[p]; ok {
+			if _, ok := current[p]; ok && !mine[p] {
 				existing = append(existing, p)
 			}
 			merged[p] = data
