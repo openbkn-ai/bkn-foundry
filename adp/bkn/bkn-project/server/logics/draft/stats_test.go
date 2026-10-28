@@ -61,6 +61,32 @@ func Test_VegaCounter(t *testing.T) {
 				"FROM {{r_orders}} s LEFT JOIN (SELECT DISTINCT `customer_id` FROM {{r_customers}}) t ON s.`customer_id` = t.`customer_id`")
 		})
 
+		Convey("keyTupleStats counts rows, rows with a null field, and distinct complete keys in one query\n", func() {
+			vega.rows = []map[string]any{{"total": float64(60), "nulls": "2", "distinct_values": float64(57)}}
+
+			rows, distinct, nulls, err := c.keyTupleStats(ctx, orders, []string{"order_id", "line`no"})
+
+			So(err, ShouldBeNil)
+			So([]int64{rows, distinct, nulls}, ShouldResemble, []int64{60, 57, 2})
+			// One scan, one snapshot: the counts are of the same rows. Each group of the key's
+			// values is complete (c = 1) or has a null field (c = 0) for all of its rows.
+			So(vega.sql, ShouldResemble, []string{
+				"SELECT SUM(n) AS total, SUM(CASE WHEN c = 0 THEN n ELSE 0 END) AS nulls, SUM(c) AS distinct_values " +
+					"FROM (SELECT COUNT(*) AS n, " +
+					"MIN(CASE WHEN `order_id` IS NULL OR `line``no` IS NULL THEN 0 ELSE 1 END) AS c " +
+					"FROM {{r_orders}} GROUP BY `order_id`, `line``no`) k",
+			})
+		})
+
+		Convey("keyTupleStats reads an empty table as no rows\n", func() {
+			vega.rows = []map[string]any{{"total": nil, "nulls": nil, "distinct_values": nil}}
+
+			rows, distinct, nulls, err := c.keyTupleStats(ctx, orders, []string{"order_id", "line_no"})
+
+			So(err, ShouldBeNil)
+			So([]int64{rows, distinct, nulls}, ShouldResemble, []int64{0, 0, 0})
+		})
+
 		Convey("An answer without exactly one row is an error\n", func() {
 			vega.rows = nil
 

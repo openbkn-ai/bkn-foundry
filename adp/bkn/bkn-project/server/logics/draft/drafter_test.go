@@ -7,6 +7,7 @@ package draft
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -46,6 +47,11 @@ func (f *fakeCounter) keyStats(_ context.Context, table *interfaces.VegaTable, f
 		s = [3]int64{10, 10, 0}
 	}
 	return s[0], s[1], s[2], nil
+}
+
+func (f *fakeCounter) keyTupleStats(ctx context.Context, table *interfaces.VegaTable,
+	fields []string) (int64, int64, int64, error) {
+	return f.keyStats(ctx, table, strings.Join(fields, "+"))
 }
 
 func (f *fakeCounter) joinStats(_ context.Context, source *interfaces.VegaTable, field string,
