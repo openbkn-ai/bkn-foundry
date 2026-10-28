@@ -69,6 +69,7 @@ var (
 	// sentinel through errors.Is.
 	ErrNoUpdatableFields      = fmt.Errorf("%w: no updatable fields provided", ErrInvalid)
 	ErrWildcardGrant          = fmt.Errorf("%w: wildcard grant", ErrInvalid)
+	ErrSubResourceWildcard    = fmt.Errorf("%w: sub-resource wildcard grant", ErrInvalid)
 	ErrTypeWideActionExecute  = fmt.Errorf("%w: type-wide action execute", ErrInvalid)
 	ErrAdminConsolePermission = fmt.Errorf("%w: admin console permission", ErrForbidden)
 )
