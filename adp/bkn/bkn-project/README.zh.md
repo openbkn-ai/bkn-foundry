@@ -25,7 +25,8 @@
   用全表命中率核对。无法计数的推断关系作为"未核对"保留；取值很少的字段（少于
   `draft.minInferredDistinct`，默认 10）推断出的关系只推荐不采用。推荐而未采用的关系在
   `proposed_because` 中说明原因：`not_counted`、`below_suggest_hit_rate`、
-  `below_adopt_hit_rate` 或 `few_values`。个人信息字段（隐私关键词按词匹配）排除。优先使用数据目录语义
+  `below_adopt_hit_rate`、`few_values` 或 `end_not_adopted`（一端的对象类还在等人
+  决定）。个人信息字段（隐私关键词按词匹配）排除。优先使用数据目录语义
   理解给出的名称和描述。以调用方身份读取 vega-backend，只取回计数和代码表取值。
 - 健康检查与就绪检查接口。
 

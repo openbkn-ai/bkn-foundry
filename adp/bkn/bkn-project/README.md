@@ -32,7 +32,8 @@ history is kept as a lineage. See issue #2520 and epic #2519.
   ones over a field of few values (fewer than `draft.minInferredDistinct`, 10 by
   default) are proposed, not adopted. A relation proposed rather than adopted
   says why in `proposed_because`: `not_counted`, `below_suggest_hit_rate`,
-  `below_adopt_hit_rate` or `few_values`. Personal fields
+  `below_adopt_hit_rate`, `few_values` or `end_not_adopted` (an object type at an
+  end waits for a person). Personal fields
   (privacy keywords matched as whole words) are excluded. Names and descriptions
   from the catalog's semantic understanding come first. Only counts and
   code-table values leave vega-backend, which is read as the caller.

@@ -29,6 +29,7 @@ const (
 	proposedBelowSuggestRate = "below_suggest_hit_rate"
 	proposedBelowAdoptRate   = "below_adopt_hit_rate"
 	proposedFewValues        = "few_values"
+	proposedEndNotAdopted    = "end_not_adopted"
 )
 
 // drafter drafts an ontology from the structure of readable tables.
@@ -133,7 +134,9 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 		adopted[objectType.ID] = objectType.Adopted
 	}
 	for _, relation := range d.items.RelationTypes {
-		relation.Adopted = relation.Adopted && adopted[relation.Source] && adopted[relation.Target]
+		if relation.Adopted && !(adopted[relation.Source] && adopted[relation.Target]) {
+			relation.Adopted, relation.ProposedBecause = false, proposedEndNotAdopted
+		}
 	}
 	return d.items, nil
 }
