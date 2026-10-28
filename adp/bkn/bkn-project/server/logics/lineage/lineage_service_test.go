@@ -454,6 +454,92 @@ func Test_LineageService_CommitDefinitions(t *testing.T) {
 	})
 }
 
+func Test_LineageService_AddDefinitions(t *testing.T) {
+	Convey("Test lineageService AddDefinitions\n", t, func() {
+		svc := &lineageService{gs: realGS}
+		ctx := context.Background()
+		id := newLineageID()
+		const branch = "project/p1"
+		base := definitions("A part.", "A supplier.")
+		base["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+		_, err := realGS.InitLineage(ctx, id, base, "init", author)
+		So(err, ShouldBeNil)
+		_, err = svc.CreateBranch(ctx, id, branch, "")
+		So(err, ShouldBeNil)
+
+		Convey("The files join what the branch holds, which stays as it is\n", func() {
+			plant := objectType("plant", "Plant", "A plant.")
+
+			result, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{"object_types/plant.bkn": plant}, "confirm", author)
+
+			So(err, ShouldBeNil)
+			So(result.Changed, ShouldResemble, interfaces.PathDiff{Added: []string{"object_types/plant.bkn"}, Changed: []string{}, Removed: []string{}})
+			files, err := realGS.ReadTree(ctx, id, "refs/heads/"+branch)
+			So(err, ShouldBeNil)
+			So(files["object_types/plant.bkn"], ShouldResemble, plant)
+			So(files["object_types/part.bkn"], ShouldResemble, base["object_types/part.bkn"])
+			So(files["network.bkn"], ShouldResemble, base["network.bkn"])
+		})
+
+		Convey("A path the branch holds is refused and listed, and nothing is committed\n", func() {
+			before, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+
+			_, err := svc.AddDefinitions(ctx, id, branch, map[string][]byte{
+				"object_types/part.bkn":  objectType("part", "Part", "Another part."),
+				"object_types/plant.bkn": objectType("plant", "Plant", "A plant."),
+			}, "", author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_DefinitionsExist)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, []string{"object_types/part.bkn"})
+			after, _ := realGS.ResolveRef(ctx, id, "refs/heads/"+branch)
+			So(after, ShouldEqual, before)
+		})
+
+		Convey("Files the BKN loader cannot read with the branch are refused\n", func() {
+			_, err := svc.AddDefinitions(ctx, id, branch,
+				map[string][]byte{"object_types/plant.bkn": []byte("---\ntype: object_type\nid: plant\n---\n")}, "", author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+		})
+
+		Convey("A branch still kept in BKN 2.x is refused until it syncs\n", func() {
+			id2 := newLineageID()
+			_, err := realGS.InitLineage(ctx, id2, definitions("A part.", "A supplier."), "init", author)
+			So(err, ShouldBeNil)
+			_, err = svc.CreateBranch(ctx, id2, branch, "")
+			So(err, ShouldBeNil)
+
+			_, err = svc.AddDefinitions(ctx, id2, branch,
+				map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}, "", author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusConflict)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotV3)
+		})
+
+		Convey("main, nothing to add and an unknown branch are refused\n", func() {
+			_, err := svc.AddDefinitions(ctx, id, "main", base, "", author)
+			status, _ := httpCode(err)
+			So(status, ShouldEqual, http.StatusForbidden)
+
+			_, err = svc.AddDefinitions(ctx, id, branch, map[string][]byte{}, "", author)
+			_, code := httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+
+			_, err = svc.AddDefinitions(ctx, id, "project/none",
+				map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}, "", author)
+			_, code = httpCode(err)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotFound)
+		})
+	})
+}
+
 func Test_LineageService_CheckDrift(t *testing.T) {
 	Convey("Test lineageService CheckDrift\n", t, func() {
 		mockCtrl := gomock.NewController(t)

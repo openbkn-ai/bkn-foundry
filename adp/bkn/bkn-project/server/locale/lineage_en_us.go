@@ -24,6 +24,8 @@ var lineageEnUS = i18n.I18nMessages{
 		"BknProject.Lineage.AlreadyExists":           "Lineage Already Exists. This knowledge network already has a lineage.",
 		"BknProject.Lineage.BranchAlreadyExists":     "Branch Already Exists. Please choose another branch name.",
 		"BknProject.Lineage.MergeConflict":           "Merge Conflict. main and the branch changed the same definitions differently; error_details lists the conflicts.",
+		"BknProject.Lineage.BranchNotV3":             "Project Branch Uses the Old Format. This project branch is still kept in BKN 2.x and cannot take new definitions. Sync the branch, which moves it to BKN 3.0, then try again.",
+		"BknProject.Lineage.DefinitionsExist":        "Definitions Already on the Branch. Definitions to add have the same names as definitions already on the branch, and none were overwritten. error_details lists them.",
 		"BknProject.Lineage.BknBackendRequestFailed": "BKN Backend Request Failed. bkn-backend refused the request; error_details holds its reply.",
 		"BknProject.Lineage.CapabilityRequestFailed": "Function or Skill Request Failed. Reading or copying a function (toolbox) or Skill the network uses failed; error_details names it and holds the reason. A Skill must be published to be followed.",
 		"BknProject.Lineage.InternalError":           "Internal Error. Please contact the administrator.",

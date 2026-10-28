@@ -108,6 +108,10 @@ type LineageService interface {
 	// CommitDefinitions replaces the definitions on a project branch with files.
 	CommitDefinitions(ctx context.Context, lineageID string, branch string, files map[string][]byte,
 		message string, author GitAuthor) (*CommitDefinitionsResult, error)
+	// AddDefinitions adds files to the definitions on a project branch, which must be kept in BKN
+	// 3.0, without replacing any: a path the branch already holds is refused, listed in the error.
+	AddDefinitions(ctx context.Context, lineageID string, branch string, files map[string][]byte,
+		message string, author GitAuthor) (*CommitDefinitionsResult, error)
 	// SyncBranch brings main into a project branch: no-op, fast-forward or semantic merge.
 	SyncBranch(ctx context.Context, lineageID string, branch string, author GitAuthor) (*SyncBranchResult, error)
 	// CheckDrift compares the live network knID with main; with commit it also commits the live set to main.
