@@ -25,9 +25,11 @@ const (
 	draftActionGenerate = "draft:generate"
 	draftActionRestore  = "draft:restore"
 	draftActionConfirm  = "draft:confirm"
+	checkActionRun      = "check:run"
 )
 
 func (r *restHandler) GetDraftByEx(c *gin.Context)       { r.withExVisitor(c, r.GetDraft) }
+func (r *restHandler) GetCheckByEx(c *gin.Context)       { r.withExVisitor(c, r.GetCheck) }
 func (r *restHandler) EditDraftItemByEx(c *gin.Context)  { r.withExVisitor(c, r.EditDraftItem) }
 func (r *restHandler) ChooseIdentityByEx(c *gin.Context) { r.withExVisitor(c, r.ChooseIdentity) }
 
@@ -37,8 +39,8 @@ type generateDraftRequest struct {
 	DiscardDecisions bool `json:"discard_decisions"`
 }
 
-// OntologyActionByEx serves POST /projects/{project_id}/ontology/draft:generate and
-// draft:restore.
+// OntologyActionByEx serves POST /projects/{project_id}/ontology/draft:generate,
+// draft:restore, draft:confirm and check:run.
 func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 	switch c.Param("action") {
 	case draftActionGenerate:
@@ -47,6 +49,8 @@ func (r *restHandler) OntologyActionByEx(c *gin.Context) {
 		r.withExVisitor(c, r.RestoreExcluded)
 	case draftActionConfirm:
 		r.withExVisitor(c, r.ConfirmDraft)
+	case checkActionRun:
+		r.withExVisitor(c, r.RunCheck)
 	default:
 		replyNotFound(c)
 	}
@@ -114,6 +118,42 @@ func (r *restHandler) GetDraft(c *gin.Context, visitor hydra.Visitor) {
 	}
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, draft)
+}
+
+// GetCheck replies the check of the project's last confirmation.
+func (r *restHandler) GetCheck(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	check, err := r.drs.GetCheck(ctx, visitor.TokenID, id)
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, check)
+}
+
+// RunCheck checks the last confirmation again in the background and replies the check, running.
+func (r *restHandler) RunCheck(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("project_id")
+	span.SetAttributes(attr.Key("project_id").String(id))
+
+	check, err := r.drs.RunCheck(ctx, visitor.TokenID, id, visitorAccount(visitor))
+	if err != nil {
+		replyError(c, span, err)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusAccepted)
+	rest.ReplyOK(c, http.StatusAccepted, check)
 }
 
 func (r *restHandler) EditDraftItem(c *gin.Context, visitor hydra.Visitor) {
