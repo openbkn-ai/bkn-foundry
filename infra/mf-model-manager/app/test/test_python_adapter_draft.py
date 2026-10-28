@@ -122,6 +122,27 @@ def test_valid_adapter_can_be_saved_even_when_saved_code_is_broken(controller, o
     assert write.call_args.args[0].adapter_code == VALID
 
 
+@pytest.mark.parametrize("operation", ["add", "edit"])
+def test_save_bounds_probe_batch_without_changing_config(controller, operation):
+    data = payload()
+    data["batch_size"] = 2048
+    if operation == "edit":
+        data["model_id"] = MODEL_ID
+    schema = SCHEMAS.AddExternalSmallModel if operation == "add" else SCHEMAS.EditExternalSmallModel
+    response = asyncio.run(getattr(controller, operation + "_model")(schema(**data), "user", "en-US", "admin"))
+    assert response.status_code == 200
+    write = controller.small_model_dao.add_model_with_default if operation == "add" else controller.small_model_dao.edit_model_info
+    assert write.call_args.args[0].batch_size == 2048
+
+
+def test_embedding_adapter_accepts_runtime_compatible_data_only_response(controller):
+    code = '''async def main(texts):
+    return {"data": [{"embedding": [0.1, 0.2, 0.3, 0.4]} for text in texts]}
+'''
+    request = SCHEMAS.TestSmallModel(**payload(code))
+    assert asyncio.run(controller.test_model(request, "user", "en-US", "admin")).status_code == 200
+
+
 def test_test_retains_key_without_mutating_request(controller):
     client = Mock(test_embedding=AsyncMock(return_value={"data": [{"embedding": [0] * 4}] * 2}))
     client.uses_single_input_embedding_requests.return_value = False

@@ -482,9 +482,11 @@ class InnerClient:
                     result = await self._post_embedding(session, texts)
                 if self._is_volcengine_embedding():
                     result = self._validate_volcengine_embedding_response(result)
-        required_keys = ["object", "data", "model", "usage"]
-        if not isinstance(result, dict) or not all(key in result for key in required_keys):
-            raise ValueError(f"Invalid adapter response format, missing one of: {required_keys}")
+        # Match mf-model-api's consumer contract: only `data[].embedding` is
+        # required for an embedding adapter response. Some deployed adapters
+        # omit OpenAI-style envelope fields such as object, model, and usage.
+        if not isinstance(result, dict) or "data" not in result:
+            raise ValueError("Invalid adapter response format, missing data")
 
         if not isinstance(result["data"], list) or len(result["data"]) != len(texts) or not all(
                 isinstance(item, dict) and "embedding" in item and

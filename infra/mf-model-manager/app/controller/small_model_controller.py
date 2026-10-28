@@ -177,9 +177,14 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
 
 
 async def _validate_adapter_for_save(config_info, user_id, language, role):
-    # Already validated DTO; omit the ID to test this exact draft, never stored code.
+    # Keep save-time probes bounded without changing the configured batch size.
+    # The model API accepts adapter responses with the same data shape it consumes.
+    probe_config = config_info.dict()
+    if probe_config.get("model_type") == "embedding" and probe_config.get("batch_size") is not None:
+        probe_config["batch_size"] = min(
+            probe_config["batch_size"], MAX_EMBEDDING_TEST_BATCH_SIZE)
     request = logics.TestSmallModel.construct(**{
-        **config_info.dict(), "model_id": None, "change": True,
+        **probe_config, "model_id": None, "change": True,
     })
     return await test_model(request, user_id, language, role)
 
