@@ -107,6 +107,10 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
                                                                       role=role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
+        if config_info.adapter:
+            validation = await _validate_adapter_for_save(config_info, userId, language, role)
+            if validation.status_code != 200:
+                return validation
         duplicate_model = small_model_dao.find_model_by_duplicate_config(config_info)
         if duplicate_model:
             can_manage_default = request.default and await can_manage_default_small_model(userId, role)
@@ -172,6 +176,19 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
         return JSONResponse(status_code=400, content=error_dict)
 
 
+async def _validate_adapter_for_save(config_info, user_id, language, role):
+    # Keep save-time probes bounded without changing the configured batch size.
+    # The model API accepts adapter responses with the same data shape it consumes.
+    probe_config = config_info.dict()
+    if probe_config.get("model_type") == "embedding" and probe_config.get("batch_size") is not None:
+        probe_config["batch_size"] = min(
+            probe_config["batch_size"], MAX_EMBEDDING_TEST_BATCH_SIZE)
+    request = logics.TestSmallModel.construct(**{
+        **probe_config, "model_id": None, "change": True,
+    })
+    return await test_model(request, user_id, language, role)
+
+
 async def test_model(request, userId, language, role):
     try:
         model_id = request.model_id
@@ -180,39 +197,35 @@ async def test_model(request, userId, language, role):
         batch_size = request.batch_size
         model_type = request.model_type
         model_info = None
-        if model_id and (not change or batch_size is None):
+        # Credential retention must not select the version of adapter code tested.
+        has_draft = bool(model_config_new) or bool(
+            {"adapter", "adapter_code"} & request.__fields_set__)
+        if model_id and (not change or batch_size is None or not has_draft):
             model_info = small_model_dao.get_model_info_by_id(model_id)
             if not model_info:
                 return JSONResponse(status_code=400,
                                     content=ModelFactory_SmallModelController_ModelApiDoc_ModelNotFoundError)
             if batch_size is None:
                 batch_size = model_info[0]["f_batch_size"]
-        if not change:
-            config_info_old = json.loads(model_info[0]["f_model_config"])
-            if not model_config_new:
-                config_info = config_info_old
-                model_type = model_info[0]["f_model_type"]
-                adapter = model_info[0]["f_adapter"]
-                adapter_code = model_info[0]["f_adapter_code"]
-                embedding_dim = model_info[0]["f_embedding_dim"]
-                api_model = config_info.get("api_model", "")
-            else:
-                config_info = request.model_config
-                if 'api_key' in config_info:
-                    config_info['api_key'] = config_info_old.get("api_key", "")
-                model_type = request.model_type
-                api_model = config_info.get("api_model", "")
-                adapter = request.adapter
-                adapter_code = request.adapter_code
-                embedding_dim = request.embedding_dim
+        if model_info and not has_draft:
+            saved = model_info[0]
+            config_info = json.loads(saved["f_model_config"])
+            model_type = saved["f_model_type"]
+            adapter = saved["f_adapter"]
+            adapter_code = saved["f_adapter_code"]
+            embedding_dim = saved["f_embedding_dim"]
         else:
-            config_info = request.model_config
-            model_type = request.model_type
-            api_model = config_info.get("api_model", "")
+            config_info = dict(model_config_new or {})
+            if model_info and not change and 'api_key' in config_info:
+                config_info['api_key'] = json.loads(
+                    model_info[0]["f_model_config"]).get("api_key", "")
             adapter = request.adapter
             adapter_code = request.adapter_code
             embedding_dim = request.embedding_dim
+        api_model = config_info.get("api_model", "")
         try:
+            if adapter and not adapter_code:
+                raise ValueError("Adapter code is required.")
             client = InnerClient(url=config_info.get("api_url", ""), model_name=api_model,
                                  api_key=config_info.get("api_key", ""),
                                  adapter=adapter, adapter_code=adapter_code,
@@ -305,6 +318,10 @@ async def edit_model(request: logics.EditExternalSmallModel, userId, language, r
             max_tokens=request.max_tokens,
             embedding_dim=request.embedding_dim
         )
+        if config_info.adapter:
+            validation = await _validate_adapter_for_save(config_info, userId, language, role)
+            if validation.status_code != 200:
+                return validation
         small_model_dao.edit_model_info(config_info, userId)
         set_operation_audit_target(audit_request, [request.model_id], [request.model_name])
         cache_keys = {
