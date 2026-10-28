@@ -530,6 +530,15 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
 		})
 
+		Convey("An object type named as one the branch holds is refused, though the loader reads it\n", func() {
+			_, err := svc.AddDefinitions(ctx, id, branch,
+				map[string][]byte{"object_types/part2.bkn": objectType("part2", "Part", "Another part.")}, nil, "", author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_InvalidDefinitions)
+		})
+
 		Convey("A branch still kept in BKN 2.x is refused until it syncs\n", func() {
 			id2 := newLineageID()
 			_, err := realGS.InitLineage(ctx, id2, definitions("A part.", "A supplier."), "init", author)
@@ -537,12 +546,26 @@ func Test_LineageService_AddDefinitions(t *testing.T) {
 			_, err = svc.CreateBranch(ctx, id2, branch, "")
 			So(err, ShouldBeNil)
 
-			_, err = svc.AddDefinitions(ctx, id2, branch,
-				map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}, nil, "", author)
+			plant := map[string][]byte{"object_types/plant.bkn": objectType("plant", "Plant", "A plant.")}
 
+			_, err = svc.AddDefinitions(ctx, id2, branch, plant, nil, "", author)
+
+			// main is 2.x too: syncing would change nothing until its drift is committed.
 			status, code := httpCode(err)
 			So(status, ShouldEqual, http.StatusConflict)
-			So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotV3)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_LineageNotV3)
+
+			Convey("and once main is 3.0, syncing the branch is what is left\n", func() {
+				main3 := definitions("A part.", "A supplier.")
+				main3["network.bkn"] = []byte(strings.Replace(networkText, "name: Supply chain\n", "name: Supply chain\nbkn_spec: \"3.0\"\n", 1))
+				_, err := realGS.CommitFiles(ctx, id2, "main", main3, "drift as 3.0", author)
+				So(err, ShouldBeNil)
+
+				_, err = svc.AddDefinitions(ctx, id2, branch, plant, nil, "", author)
+
+				_, code := httpCode(err)
+				So(code, ShouldEqual, perrors.BknProject_Lineage_BranchNotV3)
+			})
 		})
 
 		Convey("main, nothing to add and an unknown branch are refused\n", func() {

@@ -196,9 +196,16 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 		if err != nil {
 			return err
 		}
-		network, err := bkn.ParseNetworkFile(string(current[bkn.RootFileName]), bkn.RootFileName)
-		if err != nil || network.BknSpec != bkn.BknSpecV3 {
-			return httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_BranchNotV3)
+		if !keptInV3(current) {
+			// Syncing moves the branch to 3.0 only once main is; until then main's drift has to
+			// be committed first, which writes main in 3.0.
+			code := perrors.BknProject_Lineage_BranchNotV3
+			if mainFiles, err := gs.ReadTree(ctx, lineageID, branchRef(interfaces.GIT_MAIN_BRANCH)); err != nil {
+				return err
+			} else if !keptInV3(mainFiles) {
+				code = perrors.BknProject_Lineage_LineageNotV3
+			}
+			return httperrors.NewHTTPError(ctx, http.StatusConflict, code)
 		}
 		mine := make(map[string]bool, len(owned))
 		for _, p := range owned {
@@ -234,6 +241,16 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
 				WithErrorDetails(err.Error())
 		}
+		// The loader lets through what the specification's checks refuse, such as an object type
+		// named as one the branch holds; only what these files bring in is refused.
+		introduced, err := merge.IntroducedErrors(current, merged)
+		if err != nil {
+			return err
+		}
+		if len(introduced) > 0 {
+			return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_InvalidDefinitions).
+				WithErrorDetails(introduced)
+		}
 		if result.Commit, err = gs.CommitFiles(ctx, lineageID, branch, merged, message, author); err != nil {
 			return err
 		}
@@ -250,6 +267,12 @@ func (s *lineageService) AddDefinitions(ctx context.Context, lineageID string, b
 	}
 	span.SetStatus(codes.Ok, "")
 	return result, nil
+}
+
+// keptInV3 reports whether a set of definitions declares BKN 3.0 in its network.bkn.
+func keptInV3(files map[string][]byte) bool {
+	network, err := bkn.ParseNetworkFile(string(files[bkn.RootFileName]), bkn.RootFileName)
+	return err == nil && network.BknSpec == bkn.BknSpecV3
 }
 
 // SyncBranch reads both heads, decides and writes under one hold of the lineage
