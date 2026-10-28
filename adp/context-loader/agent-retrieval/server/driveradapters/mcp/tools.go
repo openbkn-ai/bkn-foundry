@@ -866,7 +866,7 @@ func handleGetRelationTypes(bkn interfaces.BknBackendAccess) func(ctx context.Co
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		// Relation declarations other than lifecycle are search_schema's to surface (#2285).
+		// Relation declarations are search_schema's to surface, but for lifecycle and the fallback marking (#2285).
 		interfaces.OmitRelationDeclarations(matched)
 		bkntrace.EmitSchemaSnapshotEvents(ctx, nil, "relation", knID, schemaRelationTypeIDs(matched), matched, len(matched) == len(args.IDs))
 		resp := &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched}

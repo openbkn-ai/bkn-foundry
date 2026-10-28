@@ -58,11 +58,7 @@ func (s *localSearchImpl) pairFallbackRelations(ctx context.Context, knID string
 
 	primaries := map[string]*interfaces.RelationType{}
 	if len(missingPrimaries) > 0 {
-		found, err := s.bknBackend.GetRelationTypeDetail(ctx, knID, missingPrimaries, true)
-		if err != nil {
-			s.logger.WithContext(ctx).Warnf("[ConceptRetrieval] primary relations of recalled fallback paths unreadable, fallback paths left out: %v", err)
-		}
-		for _, rel := range found {
+		for _, rel := range s.readRelations(ctx, knID, missingPrimaries) {
 			if rel != nil && rel.Lifecycle.Inactive() == nil && fallbacks[rel.ID] != nil {
 				primaries[rel.ID] = rel
 			}
@@ -97,6 +93,29 @@ func (s *localSearchImpl) pairFallbackRelations(ctx context.Context, knID string
 
 	s.findFallbacks(ctx, knID, out, fallbacks)
 	return out, fallbacks
+}
+
+// readRelations reads relation types by id. bkn-backend refuses a whole batch when one id is
+// missing or denied, so a failed batch is read again one id at a time: one primary that cannot be
+// read must not take the others' fallback paths with it.
+func (s *localSearchImpl) readRelations(ctx context.Context, knID string, ids []string) []*interfaces.RelationType {
+	found, err := s.bknBackend.GetRelationTypeDetail(ctx, knID, ids, true)
+	if err == nil || len(ids) == 1 {
+		if err != nil {
+			s.logger.WithContext(ctx).Warnf("[ConceptRetrieval] primary relation %v of a recalled fallback path unreadable, fallback path left out: %v", ids, err)
+		}
+		return found
+	}
+	found = nil
+	for _, id := range ids {
+		one, err := s.bknBackend.GetRelationTypeDetail(ctx, knID, []string{id}, true)
+		if err != nil {
+			s.logger.WithContext(ctx).Warnf("[ConceptRetrieval] primary relation %s of a recalled fallback path unreadable, fallback path left out: %v", id, err)
+			continue
+		}
+		found = append(found, one...)
+	}
+	return found
 }
 
 // findFallbacks looks up, in one search, the fallback paths of the primaries in relations that may

@@ -594,7 +594,7 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 		}
 	}
 	// Property and relation declarations are search_schema's to surface; no level of this answer
-	// carries them. Lifecycle stays.
+	// carries them, except lifecycle and the fallback marking (see OmitRelationDeclarations).
 	OmitPropertyDeclarations(d.ObjectTypes)
 	OmitRelationDeclarations(d.RelationTypes)
 	if level == DetailLevelFull {
@@ -1039,9 +1039,11 @@ func OmitPropertyDeclarations(objectTypes []*ObjectType) {
 	}
 }
 
-// OmitRelationDeclarations clears the BKN spec 3.0 relation declarations other than lifecycle from
-// the given relation types. search_schema surfaces them; get_kn_detail and get_relation_types keep
-// only lifecycle, which says what replaces a deprecated relation looked up by id.
+// OmitRelationDeclarations clears the BKN spec 3.0 relation declarations from the given relation
+// types, keeping the ones a caller needs to use a relation listed or looked up by id safely:
+// lifecycle says what replaces a deprecated relation, and importance with fallback_for marks a
+// fallback path, which these answers list beside its primary. Without them a caller could add up
+// the results of both (SPECIFICATION.md §7.6). search_schema surfaces the rest.
 func OmitRelationDeclarations(relationTypes []*RelationType) {
 	for _, r := range relationTypes {
 		if r == nil {
@@ -1050,8 +1052,6 @@ func OmitRelationDeclarations(relationTypes []*RelationType) {
 		r.ReverseName = ""
 		r.Cardinality = ""
 		r.Constraints = nil
-		r.Importance = ""
-		r.FallbackFor = ""
 		r.Verification = ""
 	}
 }

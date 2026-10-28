@@ -21,6 +21,7 @@ type fallbackBackend struct {
 	relations   []*interfaces.RelationType
 	detailIDs   [][]string
 	detailErr   error
+	deniedIDs   map[string]bool
 	searches    []*interfaces.QueryConceptsReq
 	searchError error
 }
@@ -29,6 +30,11 @@ func (b *fallbackBackend) GetRelationTypeDetail(_ context.Context, _ string, ids
 	b.detailIDs = append(b.detailIDs, ids)
 	if b.detailErr != nil {
 		return nil, b.detailErr
+	}
+	for _, id := range ids {
+		if b.deniedIDs[id] {
+			return nil, errors.New("403 " + id)
+		}
 	}
 	var out []*interfaces.RelationType
 	for _, id := range ids {
@@ -164,6 +170,29 @@ func TestPairFallbackRelations(t *testing.T) {
 	})
 }
 
+// bkn-backend refuses a whole batch for one denied id; the other primaries still pair.
+func TestPairFallbackRelationsReadsPrimariesOneByOneAfterABatchFails(t *testing.T) {
+	other := fallbackRelation()
+	other.ID, other.FallbackFor = "other_fallback", "other_primary"
+	otherPrimary := primaryRelation()
+	otherPrimary.ID = "other_primary"
+	backend := &fallbackBackend{mockBknBackend: &mockBknBackend{},
+		relations: []*interfaces.RelationType{primaryRelation(), otherPrimary},
+		deniedIDs: map[string]bool{"other_primary": true}}
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
+	out, fallbacks := svc.pairFallbackRelations(context.Background(), "kn1",
+		[]*interfaces.RelationType{fallbackRelation(), other})
+	if got := strings.Join(relationIDs(out), ","); got != "report_belongs_to_order" {
+		t.Fatalf("relations = %s", got)
+	}
+	if fallbacks["report_belongs_to_order"] == nil || fallbacks["other_primary"] != nil {
+		t.Fatalf("fallbacks = %v", fallbacks)
+	}
+	if len(backend.detailIDs) != 3 {
+		t.Fatalf("detail lookups = %v, want the batch then one per id", backend.detailIDs)
+	}
+}
+
 func TestConvertRelationTypesToLocal_Declarations(t *testing.T) {
 	ctx := context.Background()
 	svc := &localSearchImpl{}
@@ -221,9 +250,11 @@ func TestConvertRelationTypesToLocal_UndeclaredUnchanged(t *testing.T) {
 	}
 }
 
-// Recall leaves deprecated concepts out; one looked up by id says what replaces it.
-func TestOmitRelationDeclarationsKeepsLifecycle(t *testing.T) {
-	rel := primaryRelation()
+// Recall leaves deprecated concepts out; one looked up by id says what replaces it. A fallback path
+// listed beside its primary stays marked as one, so the two are not added up.
+func TestOmitRelationDeclarationsKeepsLifecycleAndFallbackMarking(t *testing.T) {
+	rel := fallbackRelation()
+	rel.ReverseName, rel.Cardinality = "reverse", "many_to_one"
 	rel.Lifecycle = &interfaces.Lifecycle{Status: "deprecated", Reason: "merged", ReplacedBy: "order_reports_merged"}
 	interfaces.OmitRelationDeclarations([]*interfaces.RelationType{rel})
 	out, _ := json.Marshal(rel)
@@ -232,7 +263,10 @@ func TestOmitRelationDeclarationsKeepsLifecycle(t *testing.T) {
 			t.Fatalf("%s kept: %s", key, out)
 		}
 	}
-	if !strings.Contains(string(out), `"replaced_by":"order_reports_merged"`) {
-		t.Fatalf("lifecycle lost: %s", out)
+	for _, kept := range []string{`"replaced_by":"order_reports_merged"`, `"importance":"secondary"`,
+		`"fallback_for":"report_belongs_to_order"`} {
+		if !strings.Contains(string(out), kept) {
+			t.Fatalf("%s lost: %s", kept, out)
+		}
 	}
 }
