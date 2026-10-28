@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
@@ -252,7 +253,13 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	client := c.http
+	if method == http.MethodDelete && path == "/api/safe/v1/authz/policies" {
+		deleteClient := *c.http
+		deleteClient.Timeout = common.SafeDeleteTimeout()
+		client = &deleteClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

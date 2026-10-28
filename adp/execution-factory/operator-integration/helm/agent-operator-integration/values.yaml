@@ -8,6 +8,9 @@ moduleName: agent-operator-integration
 # bkn-safe API used for authorization, directory lookups, and AppKey introspection.
 bknSafe:
   url: "http://bkn-safe:3000"
+  # Per-resource policy DELETE budget (Go duration); reads remain at five seconds.
+  # Tune together with the gateway and calling SDK timeouts after measurement.
+  deleteTimeout: "30s"
 
 # Set to dev for development mode.
 runMode: release

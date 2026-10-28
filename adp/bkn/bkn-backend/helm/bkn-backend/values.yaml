@@ -9,6 +9,9 @@ env:
 # bkn-safe service base URL. Authentication requires an absolute HTTP(S) URL with a host.
 bknSafe:
   url: "http://bkn-safe:3000"
+  # Per-resource DELETE budget (Go duration). Tune against SQL and end-to-end latency.
+  # Other authorization requests keep their existing five-second timeout.
+  deleteTimeout: "30s"
 
 # Enterprise knowledge base (kb-api) base URL, e.g. http://kb-api.openbkn:8001. Empty where
 # kb-api is not deployed: a knowledge network then cannot mount a knowledge base.

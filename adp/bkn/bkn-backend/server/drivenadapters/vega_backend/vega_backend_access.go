@@ -497,7 +497,9 @@ func (vba *vegaBackendAccess) DeleteDatasetDocumentByID(ctx context.Context, dat
 	span.SetAttributes(attr.Key("dataset_id").String(datasetID))
 	span.SetAttributes(attr.Key("doc_id").String(docID))
 
-	httpUrl := fmt.Sprintf("%s/resources/%s/data/%s", vba.baseUrl, url.PathEscape(datasetID), url.PathEscape(docID))
+	// Cleanup may have succeeded before another deletion step failed. Ask Vega
+	// to tolerate missing documents, while still reporting a missing dataset.
+	httpUrl := fmt.Sprintf("%s/resources/%s/data/%s?ignore_missing=true", vba.baseUrl, url.PathEscape(datasetID), url.PathEscape(docID))
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
 		HttpUrl:    httpUrl,
 		HttpMethod: http.MethodDelete,

@@ -97,8 +97,8 @@ const (
 type ProxyGrantSource struct {
 	ID              string     `json:"id" gorm:"primaryKey;size:64"`
 	ProxyAccountID  string     `json:"proxy_account_id" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:1;index:idx_proxy_grant_tuple,priority:1"`
-	ResourceType    string     `json:"resource_type" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:2;index:idx_proxy_grant_tuple,priority:2"`
-	ResourceID      string     `json:"resource_id" gorm:"size:257;uniqueIndex:uidx_proxy_grant_source,priority:3;index:idx_proxy_grant_tuple,priority:3"`
+	ResourceType    string     `json:"resource_type" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:2;index:idx_proxy_grant_tuple,priority:2;index:idx_proxy_grant_resource,priority:1"`
+	ResourceID      string     `json:"resource_id" gorm:"size:257;uniqueIndex:uidx_proxy_grant_source,priority:3;index:idx_proxy_grant_tuple,priority:3;index:idx_proxy_grant_resource,priority:2"`
 	Operation       string     `json:"operation" gorm:"size:64;uniqueIndex:uidx_proxy_grant_source,priority:4;index:idx_proxy_grant_tuple,priority:4"`
 	SourceType      string     `json:"source_type" gorm:"size:32;uniqueIndex:uidx_proxy_grant_source,priority:5;index"`
 	SourceID        string     `json:"source_id" gorm:"size:128;uniqueIndex:uidx_proxy_grant_source,priority:6;index"`
@@ -106,7 +106,7 @@ type ProxyGrantSource struct {
 	BindingType     string     `json:"binding_type" gorm:"size:64"`
 	BindingID       string     `json:"binding_id" gorm:"size:128"`
 	GrantedBy       string     `json:"granted_by" gorm:"size:64;index"`
-	LifecycleStatus string     `json:"lifecycle_status" gorm:"size:16;index"`
+	LifecycleStatus string     `json:"lifecycle_status" gorm:"size:16;index;index:idx_proxy_grant_resource,priority:3"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	RevokedAt       *time.Time `json:"revoked_at,omitempty" gorm:"index"`
@@ -167,10 +167,10 @@ func (ProxyGrantAuditLog) TableName() string { return "proxy_grant_audit_log" }
 // used only to narrow exact-tuple lookups; the query still verifies every tuple
 // field, so correctness never depends on hash uniqueness.
 type AuthorizationGrant struct {
-	GrantID         string `json:"grant_id" gorm:"primaryKey;size:64"`
+	GrantID         string `json:"grant_id" gorm:"primaryKey;size:64;index:idx_authorization_grant_object,priority:2"`
 	ProjectionKey   string `json:"projection_key" gorm:"size:64;index"`
 	AccessorID      string `json:"accessor_id" gorm:"size:64;index:idx_authorization_grant_scope,priority:1"`
-	Object          string `json:"object" gorm:"size:322"`
+	Object          string `json:"object" gorm:"size:322;index:idx_authorization_grant_object,priority:1"`
 	Operation       string `json:"operation" gorm:"size:64"`
 	Effect          string `json:"effect" gorm:"size:16;index:idx_authorization_grant_scope,priority:2"`
 	PolicySource    string `json:"policy_source" gorm:"size:32;index:idx_authorization_grant_scope,priority:3"`

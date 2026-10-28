@@ -998,7 +998,14 @@ func (en *Enforcer) RemoveAccessor(accessorID string) error {
 // exclusively to proxy-grant sources, and the KN deletion flow must remove
 // those sources before generic resource policy cleanup.
 func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) error {
-	return en.Transaction(context.Background(), func(tx *PolicyTransaction) error {
+	return en.RemoveResourcePoliciesContext(context.Background(), resourceType, resourceID)
+}
+
+// RemoveResourcePoliciesContext removes policies and the resource's parent edge
+// atomically. A canceled request must not leave a committed policy teardown with
+// an unremoved hierarchy edge, or continue queued work after its caller leaves.
+func (en *Enforcer) RemoveResourcePoliciesContext(ctx context.Context, resourceType, resourceID string) error {
+	return en.Transaction(ctx, func(tx *PolicyTransaction) error {
 		var activeSources int64
 		if err := tx.db.Model(&safemodel.ProxyGrantSource{}).
 			Where("resource_type = ? AND resource_id = ? AND lifecycle_status = ?", resourceType, resourceID, "active").
@@ -1008,8 +1015,11 @@ func (en *Enforcer) RemoveResourcePolicies(resourceType, resourceID string) erro
 		if activeSources > 0 {
 			return ErrManagedProxyPolicies
 		}
-		_, err := tx.enforcer.removePolicyGrants(PolicyFilter{Object: obj(resourceType, resourceID)})
-		return err
+		if _, err := tx.enforcer.removePolicyGrants(PolicyFilter{Object: obj(resourceType, resourceID)}); err != nil {
+			return err
+		}
+		return tx.db.Where("resource_type_id = ? AND resource_id = ?", resourceType, resourceID).
+			Delete(&safemodel.ResourceParent{}).Error
 	})
 }
 

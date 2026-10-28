@@ -1423,13 +1423,6 @@ func (kns *knowledgeNetworkService) UpdateKN(ctx context.Context, tx *sql.Tx, kn
 func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces.KN) (err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete knowledge network")
 	defer span.End()
-	deletionCommitted := false
-	ctx, cleanupTracker, trackerOwner := permission.WithAuthorizationCleanupTracker(ctx)
-	defer func() {
-		if trackerOwner && (err == nil || deletionCommitted) {
-			_ = cleanupTracker.Cleanup(ctx, kns.ps)
-		}
-	}()
 
 	// Check whether the user ID can delete business knowledge networks.
 	err = kns.ps.CheckPermission(ctx, interfaces.PermissionResource{
@@ -1445,93 +1438,11 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		return err
 	}
 	defer kns.releaseProxyLock(context.WithoutCancel(ctx), proxyPlan)
-
-	// 0. Begin the transaction.
-	tx, err := kns.db.Begin()
-	if err != nil {
-		otellog.LogError(ctx, "Begin transaction error", err)
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	defer func() { _ = tx.Rollback() }()
-
-	// Delete business knowledge networks.
-	rowsAffect, err := kns.kna.DeleteKN(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteKN error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络失败")
-
-		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
-	}
-	logger.Infof("DeleteKN: Rows affected is %v, request delete KNID is %s!", rowsAffect, kn.KNID)
-	if rowsAffect != 1 {
-		otellog.LogWarn(ctx, fmt.Sprintf("Delete kns number %v not equal 1!", rowsAffect))
-	}
-
-	// Delete all object types, relation types, action types, and concept groups under the business knowledge network.
-	// Get object type IDs under the business knowledge network.
-	err = kns.ots.DeleteObjectTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteObjectTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络对象类失败")
+	if err = kns.revokeProxyForDelete(ctx, proxyPlan); err != nil {
 		return err
 	}
 
-	// Delete all relation types under the business knowledge network.
-	err = kns.rts.DeleteRelationTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteRelationTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络关系类失败")
-		return err
-	}
-
-	// Delete all action types under the business knowledge network.
-	err = kns.ats.DeleteActionTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteActionTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络动作类失败")
-		return err
-	}
-
-	// Delete versioned object metrics in the same transaction as the network.
-	if archive, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1); ok {
-		if err := archive.DeleteObjectMetricArchive(ctx, tx, kn.KNID, kn.Branch); err != nil {
-			return err
-		}
-	}
-	// Delete all risk types under the business knowledge network.
-	err = kns.riskTypeS.DeleteRiskTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteRiskTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络风险类失败")
-		return err
-	}
-
-	// Delete all value types under the business knowledge network.
-	if err = kns.vts.DeleteValueTypesByKnID(ctx, tx, kn.KNID, kn.Branch); err != nil {
-		logger.Errorf("DeleteValueTypesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "delete knowledge network value types failed")
-		return err
-	}
-
-	// Delete all concept groups under the business knowledge network.
-	err = kns.cgs.DeleteConceptGroupsByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "删除业务知识网络概念分组失败")
-		return err
-	}
-
-	// Delete the capability bindings of the business knowledge network. A knowledge network ID
-	// can be supplied by the caller, so leaving the rows behind would let a network recreated
-	// under the same ID inherit Skills and functions its owner never mounted.
-	err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, kn.KNID, kn.Branch)
-	if err != nil {
-		logger.Errorf("DeleteCapabilitiesByKnID error: %s", err.Error())
-		span.SetStatus(codes.Error, "delete knowledge network capability bindings failed")
+	if err = kns.cleanupKNChildren(ctx, kn); err != nil {
 		return err
 	}
 
@@ -1571,17 +1482,106 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			WithErrorDetails(err.Error())
 	}
 
+	if proxyPlan != nil {
+		if err = kns.renewProxyLock(ctx, proxyPlan); err != nil {
+			return err
+		}
+	}
+
+	// External cleanup is complete; this transaction only deletes business rows.
+	tx, err := kns.db.BeginTx(ctx, nil)
+	if err != nil {
+		otellog.LogError(ctx, "Begin transaction error", err)
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed).
+			WithErrorDetails(err.Error())
+	}
+
+	defer func() { _ = tx.Rollback() }()
+
+	// Delete versioned object metrics in the same transaction as the network.
+	if archive, ok := logics.OMA.(interfaces.ObjectMetricArchiveAccessV1); ok {
+		if err := archive.DeleteObjectMetricArchive(ctx, tx, kn.KNID, kn.Branch); err != nil {
+			return err
+		}
+	}
+	// Delete all action types under the business knowledge network.
+	err = kns.ats.DeleteActionTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteActionTypesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "删除业务知识网络动作类失败")
+		return err
+	}
+
+	// Delete all relation types under the business knowledge network.
+	err = kns.rts.DeleteRelationTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteRelationTypesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "删除业务知识网络关系类失败")
+		return err
+	}
+
+	// Delete object types after their dependents.
+	err = kns.ots.DeleteObjectTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteObjectTypesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "删除业务知识网络对象类失败")
+		return err
+	}
+
+	// Delete all risk types under the business knowledge network.
+	err = kns.riskTypeS.DeleteRiskTypesByKnID(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteRiskTypesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "删除业务知识网络风险类失败")
+		return err
+	}
+
+	// Delete all value types under the business knowledge network.
+	if err = kns.vts.DeleteValueTypesByKnID(ctx, tx, kn.KNID, kn.Branch); err != nil {
+		logger.Errorf("DeleteValueTypesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "delete knowledge network value types failed")
+		return err
+	}
+
+	// Delete all concept groups under the business knowledge network.
+	err = kns.cgs.DeleteConceptGroupsByKnID(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteConceptGroupsByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "删除业务知识网络概念分组失败")
+		return err
+	}
+
+	// Delete the capability bindings of the business knowledge network. A knowledge network ID
+	// can be supplied by the caller, so leaving the rows behind would let a network recreated
+	// under the same ID inherit Skills and functions its owner never mounted.
+	err = kns.cbs.DeleteCapabilitiesByKnID(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteCapabilitiesByKnID error: %s", err.Error())
+		span.SetStatus(codes.Error, "delete knowledge network capability bindings failed")
+		return err
+	}
+
+	// Delete business knowledge networks.
+	rowsAffect, err := kns.kna.DeleteKN(ctx, tx, kn.KNID, kn.Branch)
+	if err != nil {
+		logger.Errorf("DeleteKN error: %s", err.Error())
+		span.SetStatus(codes.Error, "删除业务知识网络失败")
+
+		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
+	}
+	logger.Infof("DeleteKN: Rows affected is %v, request delete KNID is %s!", rowsAffect, kn.KNID)
+	if rowsAffect != 1 {
+		otellog.LogWarn(ctx, fmt.Sprintf("Delete kns number %v not equal 1!", rowsAffect))
+	}
+
 	if err = tx.Commit(); err != nil {
 		otellog.LogError(ctx, "DeleteKN Transaction Commit Failed", err)
 		return httperrors.NewHTTPError(ctx, http.StatusInternalServerError,
 			berrors.BknBackend_KnowledgeNetwork_InternalError).WithErrorDetails(err.Error())
 	}
-	deletionCommitted = true
-	if proxyPlan == nil {
-		err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
-	} else {
-		err = kns.finalizeProxyDelete(ctx, proxyPlan)
-	}
+	err = kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{kn.KNID})
 	if err != nil {
 		logger.Errorf("Finalize knowledge network authorization deletion error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络资源策略失败")

@@ -145,6 +145,7 @@ The Helm values are:
 | Value | Default | Meaning |
 | --- | --- | --- |
 | `bknSafe.url` | `http://bkn-safe:3000` | bkn-safe service root |
+| `bknSafe.deleteTimeout` | `30s` | Per-resource policy DELETE timeout (`BKN_SAFE_DELETE_TIMEOUT`, Go duration); other Safe calls remain at five seconds |
 | `knowledgeBase.url` | `""` | Enterprise kb-api root (`KB_API_URL`), read to mount knowledge bases on a network; empty where kb-api is not deployed, and mounting one is then refused |
 | `auth.knChildResourceFilterChunkSize` | `0` | Optional caller-side chunk size; `0` sends one request and is not a server limit |
 

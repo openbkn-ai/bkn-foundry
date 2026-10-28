@@ -1041,7 +1041,10 @@ func (kns *knowledgeNetworkService) prepareProxyDelete(ctx context.Context, knID
 	}
 	plan.mapping = lockedMapping
 	plan.modelVersion = lockedMapping.PublishedModelVersion
-	if lockedMapping.LifecycleStatus != interfaces.KNProxyLifecycleArchived &&
+	// An earlier DELETE may have disabled the proxy and reserved a generation
+	// before grant cleanup failed. Its own retry must be allowed to finish that
+	// synchronization; only an active proxy with pending publication blocks us.
+	if lockedMapping.LifecycleStatus == interfaces.KNProxyLifecycleActive &&
 		(lockedMapping.SyncStatus != interfaces.KNProxySyncReady ||
 			lockedMapping.PublishedGeneration != lockedMapping.SyncGeneration) {
 		kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
@@ -1051,6 +1054,18 @@ func (kns *knowledgeNetworkService) prepareProxyDelete(ctx context.Context, knID
 }
 
 func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, plan *proxyPublishPlan) error {
+	if err := kns.revokeProxyForDelete(ctx, plan); err != nil {
+		return err
+	}
+	if plan == nil {
+		return nil
+	}
+	return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID})
+}
+
+// revokeProxyForDelete disables the proxy and revokes only its derived grants.
+// Keep the network's own policies until its business deletion has committed.
+func (kns *knowledgeNetworkService) revokeProxyForDelete(ctx context.Context, plan *proxyPublishPlan) error {
 	if plan == nil {
 		return nil
 	}
@@ -1058,7 +1073,7 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 		if err := kns.kpa.DeletePublishedSnapshot(ctx, plan.mapping.KNID); err != nil {
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable, "clear archived knowledge network proxy grant snapshot")
 		}
-		return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID})
+		return nil
 	}
 	account, err := kns.mpa.Disable(ctx, plan.mapping.ProxyAccountID)
 	if err != nil {
@@ -1099,7 +1114,7 @@ func (kns *knowledgeNetworkService) finalizeProxyDelete(ctx context.Context, pla
 		time.Now().UnixMilli()); err != nil {
 		return proxyHTTPError(ctx, http.StatusServiceUnavailable, "record archived knowledge network proxy")
 	}
-	return kns.ps.DeleteResources(ctx, interfaces.RESOURCE_TYPE_KN, []string{plan.mapping.KNID})
+	return nil
 }
 
 // FinalizeKNProxyDeletion resumes the recoverable tail of an ordered deletion

@@ -1932,300 +1932,195 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 }
 
 func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
-	Convey("Test DeleteKN\n", t, func() {
-		ctx := context.Background()
-		mockCtrl := gomock.NewController(t)
-		defer mockCtrl.Finish()
-
-		appSetting := &common.AppSetting{}
-		kna := bmock.NewMockKNAccess(mockCtrl)
-		ps := bmock.NewMockPermissionService(mockCtrl)
-		vbs := bmock.NewMockVegaBackendService(mockCtrl)
-		ots := bmock.NewMockObjectTypeService(mockCtrl)
-		rts := bmock.NewMockRelationTypeService(mockCtrl)
-		ats := bmock.NewMockActionTypeService(mockCtrl)
-		riskTypeS := bmock.NewMockRiskTypeService(mockCtrl)
-		cgs := bmock.NewMockConceptGroupService(mockCtrl)
-		cbs := bmock.NewMockCapabilityBindingService(mockCtrl)
-		vts := bmock.NewMockValueTypeService(mockCtrl)
-
-		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
-
-		service := &knowledgeNetworkService{
-			appSetting: appSetting,
-			kna:        kna,
-			ps:         ps,
-			vbs:        vbs,
-			ots:        ots,
-			rts:        rts,
-			ats:        ats,
-			riskTypeS:  riskTypeS,
-			cgs:        cgs,
-			cbs:        cbs,
-			vts:        vts,
-			db:         db,
-		}
-
-		Convey("Success deleting KN\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
+	for _, failure := range []string{"", "permission", "action_ids", "relation_ids", "object_ids", "risk_ids", "group_ids", "child_policies", "child_parents", "network_document", "child_documents", "begin", "actions", "relations", "objects", "risks", "values", "groups", "bindings", "network_record", "commit", "network_policies"} {
+		t.Run("failure_"+failure, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			db, smock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
 			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			// Deleting a network must clear its capability bindings: a knowledge network ID can
-			// be supplied by the caller, so leftover rows would be inherited by a network
-			// recreated under the same ID.
-			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			smock.ExpectCommit()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldBeNil)
-		})
-
-		Convey("Failed when permission check fails\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
+			t.Cleanup(func() { _ = db.Close() })
+			ps := bmock.NewMockPermissionService(ctrl)
+			kna := bmock.NewMockKNAccess(ctrl)
+			ats := bmock.NewMockActionTypeService(ctrl)
+			rts := bmock.NewMockRelationTypeService(ctrl)
+			ots := bmock.NewMockObjectTypeService(ctrl)
+			risks := bmock.NewMockRiskTypeService(ctrl)
+			values := bmock.NewMockValueTypeService(ctrl)
+			groups := bmock.NewMockConceptGroupService(ctrl)
+			bindings := bmock.NewMockCapabilityBindingService(ctrl)
+			vbs := bmock.NewMockVegaBackendService(ctrl)
+			service := &knowledgeNetworkService{db: db, ps: ps, kna: kna, ats: ats, rts: rts, ots: ots,
+				riskTypeS: risks, vts: values, cgs: groups, cbs: bindings, vbs: vbs}
+			injected := httperrors.NewHTTPError(context.Background(), 500, berrors.BknBackend_KnowledgeNetwork_InternalError)
+			stepError := func(step string) error {
+				if failure == step {
+					return injected
+				}
+				return nil
 			}
-
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 403, berrors.BknBackend_KnowledgeNetwork_InternalError))
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when DeleteKN returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
+			assertNoTransaction := func() {
+				t.Helper()
+				if n := db.Stats().InUse; n != 0 {
+					t.Fatalf("external cleanup holds %d database connections", n)
+				}
 			}
+			calls := []any{ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_DELETE}).Return(stepError("permission"))}
 
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when DeleteObjectTypesByKnID returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
+			if failure == "" {
+				previous := rootlogics.OMA
+				t.Cleanup(func() { rootlogics.OMA = previous })
+				metricPoliciesRemoved, metricParentsRemoved, archiveDeleted := false, false, false
+				rootlogics.OMA = &deleteMetricAccessStub{
+					listIDs: func(_ context.Context, query interfaces.ObjectMetricListQueryV1) ([]string, error) {
+						assertNoTransaction()
+						if !reflect.DeepEqual(query, interfaces.ObjectMetricListQueryV1{KNID: "kn1", Branch: interfaces.MAIN_BRANCH}) {
+							t.Fatalf("metric query = %#v", query)
+						}
+						return []string{"metric1"}, nil
+					},
+					deleteArchive: func(_ context.Context, tx *sql.Tx, knID, branch string) error {
+						if !metricPoliciesRemoved || !metricParentsRemoved {
+							t.Fatal("metric records deleted before authorization cleanup")
+						}
+						if tx == nil || db.Stats().InUse != 1 || knID != "kn1" || branch != interfaces.MAIN_BRANCH {
+							t.Fatal("metric archive deletion must use the network transaction")
+						}
+						archiveDeleted = true
+						return nil
+					},
+				}
+				t.Cleanup(func() {
+					if !archiveDeleted {
+						t.Error("metric archive was not deleted")
+					}
+				})
+				calls = append(calls,
+					ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC, []string{"kn1/metric1"}).DoAndReturn(func(context.Context, string, []string) error {
+						assertNoTransaction()
+						metricPoliciesRemoved = true
+						return nil
+					}),
+					ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC, []string{"kn1/metric1"}).DoAndReturn(func(context.Context, string, []string) error {
+						assertNoTransaction()
+						metricParentsRemoved = true
+						return nil
+					}),
+				)
 			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when DeleteRelationTypesByKnID returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
+			if failure != "permission" {
+				external := []struct {
+					name   string
+					expect func() *gomock.Call
+				}{
+					{"action_ids", func() *gomock.Call {
+						return ats.EXPECT().GetActionTypeIDsByKnID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, stepError("action_ids"))
+					}},
+					{"relation_ids", func() *gomock.Call {
+						return rts.EXPECT().GetRelationTypeIDsByKnID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, stepError("relation_ids"))
+					}},
+					{"object_ids", func() *gomock.Call {
+						return ots.EXPECT().GetObjectTypeIDsByKnID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return([]string{"ot1"}, stepError("object_ids"))
+					}},
+					{"child_policies", func() *gomock.Call {
+						return ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{"kn1/ot1"}).DoAndReturn(func(context.Context, string, []string) error {
+							assertNoTransaction()
+							return stepError("child_policies")
+						})
+					}},
+					{"child_parents", func() *gomock.Call {
+						return ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, []string{"kn1/ot1"}).Return(stepError("child_parents"))
+					}},
+					{"risk_ids", func() *gomock.Call {
+						return risks.EXPECT().GetAllRiskTypesByKnID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, stepError("risk_ids"))
+					}},
+					{"group_ids", func() *gomock.Call {
+						return groups.EXPECT().GetConceptGroupIDsByKnID(gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(nil, stepError("group_ids"))
+					}},
+					{"network_document", func() *gomock.Call {
+						return vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).DoAndReturn(func(context.Context, string, string) error {
+							assertNoTransaction()
+							return stepError("network_document")
+						})
+					}},
+					{"child_documents", func() *gomock.Call {
+						return vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(stepError("child_documents"))
+					}},
+				}
+				externalFailed := false
+				for _, step := range external {
+					calls = append(calls, step.expect())
+					if failure == step.name {
+						externalFailed = true
+						break
+					}
+				}
+				if !externalFailed {
+					begin := smock.ExpectBegin()
+					if failure == "begin" {
+						begin.WillReturnError(injected)
+					} else {
+						business := []struct {
+							name   string
+							expect func() *gomock.Call
+						}{
+							{"actions", func() *gomock.Call {
+								return ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(stepError("actions"))
+							}},
+							{"relations", func() *gomock.Call {
+								return rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(stepError("relations"))
+							}},
+							{"objects", func() *gomock.Call {
+								return ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(stepError("objects"))
+							}},
+							{"risks", func() *gomock.Call {
+								return risks.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(stepError("risks"))
+							}},
+							{"values", func() *gomock.Call {
+								return values.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(stepError("values"))
+							}},
+							{"groups", func() *gomock.Call {
+								return groups.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(stepError("groups"))
+							}},
+							{"bindings", func() *gomock.Call {
+								return bindings.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(stepError("bindings"))
+							}},
+							{"network_record", func() *gomock.Call {
+								return kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).Return(int64(1), stepError("network_record"))
+							}},
+						}
+						for _, step := range business {
+							calls = append(calls, step.expect())
+							if failure == step.name {
+								break
+							}
+						}
+						if failure == "" || failure == "commit" || failure == "network_policies" {
+							commit := smock.ExpectCommit()
+							if failure == "commit" {
+								commit.WillReturnError(injected)
+							} else {
+								calls = append(calls, ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN, []string{"kn1"}).DoAndReturn(func(context.Context, string, []string) error {
+									assertNoTransaction()
+									return stepError("network_policies")
+								}))
+							}
+						} else {
+							smock.ExpectRollback()
+						}
+					}
+				}
 			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when DeleteActionTypesByKnID returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
+			gomock.InOrder(calls...)
+			err = service.DeleteKN(context.Background(), &interfaces.KN{KNID: "kn1", Branch: interfaces.MAIN_BRANCH})
+			if (err != nil) != (failure != "") {
+				t.Fatalf("DeleteKN() = %v, failure=%q", err, failure)
 			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when DeleteConceptGroupsByKnID returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
+			if err := smock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
 			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
 		})
-
-		Convey("Failed when DeleteDatasetDocumentByID returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			// Deleting a network must clear its capability bindings: a knowledge network ID can
-			// be supplied by the caller, so leftover rows would be inherited by a network
-			// recreated under the same ID.
-			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when DeleteDatasetDocumentsByQuery returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			// Deleting a network must clear its capability bindings: a knowledge network ID can
-			// be supplied by the caller, so leftover rows would be inherited by a network
-			// recreated under the same ID.
-			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed after commit when DeleteResources returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			// Deleting a network must clear its capability bindings: a knowledge network ID can
-			// be supplied by the caller, so leftover rows would be inherited by a network
-			// recreated under the same ID.
-			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectCommit()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when DeleteRiskTypesByKnID returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("Failed when DeleteValueTypesByKnID returns error\n", func() {
-			kn := &interfaces.KN{
-				KNID:   "kn1",
-				KNName: "kn1",
-				Branch: interfaces.MAIN_BRANCH,
-			}
-
-			smock.ExpectBegin()
-			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
-				Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ValueType_InternalError))
-			smock.ExpectRollback()
-
-			err := service.DeleteKN(ctx, kn)
-			So(err, ShouldNotBeNil)
-		})
-	})
+	}
 }
 
 func Test_knowledgeNetworkService_ListKnSrcs(t *testing.T) {

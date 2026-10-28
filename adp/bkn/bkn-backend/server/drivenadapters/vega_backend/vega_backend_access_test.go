@@ -24,6 +24,26 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-backend/server/interfaces"
 )
 
+func TestDeleteDatasetDocumentAllowsRepeatCleanupWithoutIgnoringFailures(t *testing.T) {
+	for _, status := range []int{http.StatusNoContent, http.StatusNotFound, http.StatusForbidden, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			mockClient := rmock.NewMockHTTPClient(gomock.NewController(t))
+			// The server tolerates an absent document via this explicit option;
+			// 404 still means the dataset/route is absent and must remain an error.
+			mockClient.EXPECT().DeleteNoUnmarshal(gomock.Any(),
+				"http://vega/resources/dataset/data/kn%2Fmain?ignore_missing=true", gomock.Any()).
+				Return(status, []byte{}, nil).Times(2)
+			access := &vegaBackendAccess{httpClient: mockClient, baseUrl: "http://vega"}
+			for range 2 {
+				err := access.DeleteDatasetDocumentByID(t.Context(), "dataset", "kn/main")
+				if (err != nil) != (status != http.StatusNoContent) {
+					t.Fatalf("status %d: error = %v", status, err)
+				}
+			}
+		})
+	}
+}
+
 func TestResourceDataQueryRequestUsesPagingContract(t *testing.T) {
 	t.Run("first page", func(t *testing.T) {
 		request, err := resourceDataQueryRequest(&interfaces.ResourceDataQueryParams{

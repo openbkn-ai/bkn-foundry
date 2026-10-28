@@ -270,17 +270,21 @@ func (tracker *AuthorizationCleanupTracker) Cleanup(ctx context.Context, ps inte
 	tracker.entries = map[string]trackedAuthorizationCleanup{}
 	tracker.mu.Unlock()
 
+	// Business changes have committed; allow bounded cleanup after caller cancellation.
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resourceParentCleanupTimeout)
+	defer cancel()
+
 	var cleanupErrs []error
 	for _, entry := range entries {
-		if err := CleanupKNChildAuthorization(ctx, ps, entry.resourceType, entry.knID, entry.childIDs); err != nil {
+		if err := CleanupKNChildAuthorization(cleanupCtx, ps, entry.resourceType, entry.knID, entry.childIDs); err != nil {
 			cleanupErrs = append(cleanupErrs, err)
 		}
 	}
 	return errors.Join(cleanupErrs...)
 }
 
-// CleanupKNChildAuthorization attempts both policy and parent-edge cleanup.
-// Failures are logged per resource so an operations job can replay them later.
+// CleanupKNChildAuthorization removes policies before parent edges. A policy
+// failure (including active proxy sources) must not detach a protected resource.
 func CleanupKNChildAuthorization(ctx context.Context, ps interfaces.PermissionService,
 	resourceType, knID string, childIDs []string) error {
 
@@ -288,25 +292,25 @@ func CleanupKNChildAuthorization(ctx context.Context, ps interfaces.PermissionSe
 	if len(resourceIDs) == 0 {
 		return nil
 	}
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authorizationCleanupTimeout)
-	defer cancel()
 
-	var cleanupErrs []error
-	if err := ps.DeleteResources(cleanupCtx, resourceType, resourceIDs); err != nil {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := ps.DeleteResources(ctx, resourceType, resourceIDs); err != nil {
 		for _, resourceID := range resourceIDs {
 			logAuthorizationCleanupFailure("policy", resourceType, resourceID,
 				interfaces.RESOURCE_TYPE_KN, knID, err)
 		}
-		cleanupErrs = append(cleanupErrs, err)
+		return err
 	}
-	if err := ps.DeleteResourceParents(cleanupCtx, resourceType, resourceIDs); err != nil {
+	if err := ps.DeleteResourceParents(ctx, resourceType, resourceIDs); err != nil {
 		for _, resourceID := range resourceIDs {
 			logAuthorizationCleanupFailure("resource_parent", resourceType, resourceID,
 				interfaces.RESOURCE_TYPE_KN, knID, err)
 		}
-		cleanupErrs = append(cleanupErrs, err)
+		return err
 	}
-	return errors.Join(cleanupErrs...)
+	return nil
 }
 
 func logAuthorizationCleanupFailure(cleanupKind, resourceType, resourceID, parentType, parentID string, err error) {

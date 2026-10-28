@@ -57,6 +57,8 @@ spec:
           env:
               - name: BKN_SAFE_URL
                 value: {{ .Values.bknSafe.url | quote }}
+              - name: BKN_SAFE_DELETE_TIMEOUT
+                value: {{ .Values.bknSafe.deleteTimeout | default "30s" | quote }}
             {{- if .Values.skill }}
               - name: SKILL_INTERNAL_READ_AUTHZ
                 value: {{ .Values.skill.internalReadAuthz | default "shadow" | quote }}

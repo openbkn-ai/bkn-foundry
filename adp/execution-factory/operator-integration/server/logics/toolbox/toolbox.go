@@ -121,20 +121,7 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// Registered before the commit below so it runs after it — defers are LIFO — because the
-	// index must not be told about a deleted tool box until the transaction has actually committed.
-	defer func() {
-		if err == nil {
-			s.forgetBoxIndex(ctx, req.BoxID)
-		}
-	}()
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		} else {
-			_ = tx.Commit()
-		}
-	}()
+	defer func() { _ = tx.Rollback() }()
 	err = s.deleteToolBox(ctx, tx, req.BoxID)
 	if err != nil {
 		return
@@ -150,6 +137,11 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 	if err != nil {
 		return
 	}
+	if err = tx.Commit(); err != nil {
+		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.forgetBoxIndex(ctx, req.BoxID)
 
 	// Record audit log.
 	go func() {

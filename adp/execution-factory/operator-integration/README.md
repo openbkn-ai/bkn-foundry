@@ -124,6 +124,13 @@ req.Header.Set("x-account-type", "user")
 HTTP(S) service URL without credentials, query, fragment, or a non-root path;
 invalid configuration stops the service at startup.
 
+`BKN_SAFE_DELETE_TIMEOUT` controls the policy DELETE timeout per resource (default
+`30s`, configured by Helm `bknSafe.deleteTimeout`). Other authorization calls keep
+their five-second budget. Sequential resource deletes each receive this budget,
+subject to the caller's deadline. Tune it using measured SQL and end-to-end
+latency, and check gateway/SDK deadlines; 30 seconds is an initial default, not a
+performance guarantee. Invalid or non-positive durations use the default.
+
 Tool, MCP, and Skill execution checks the authenticated subject's
 `execute` operation on the concrete `tool_box`, `function`, `mcp`, or `skill`
 resource. A denied or failed decision returns 403 and the target is not invoked.

@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
@@ -338,7 +339,13 @@ func (s *safeAuthorization) do(ctx context.Context, method, path string, body, o
 	for key, value := range common.BuildTraceHeaders(ctx) {
 		req.Header.Set(key, value)
 	}
-	resp, err := s.http.Do(req)
+	client := s.http
+	if method == http.MethodDelete && path == "/api/safe/v1/authz/policies" {
+		deleteClient := *s.http
+		deleteClient.Timeout = safeDeleteTimeout()
+		client = &deleteClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -351,4 +358,12 @@ func (s *safeAuthorization) do(ctx context.Context, method, path string, body, o
 		return json.Unmarshal(data, out)
 	}
 	return nil
+}
+
+// safeDeleteTimeout is independent of the five-second authorization read budget.
+func safeDeleteTimeout() time.Duration {
+	if timeout, err := time.ParseDuration(os.Getenv("BKN_SAFE_DELETE_TIMEOUT")); err == nil && timeout > 0 {
+		return timeout
+	}
+	return 30 * time.Second
 }
