@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -22,10 +23,15 @@ type valueTypeBackend struct {
 	valueTypes []*interfaces.ValueType
 	listErr    error
 	listCalls  int
+	hang       bool // answer only when the caller gives up
 }
 
-func (b *valueTypeBackend) ListValueTypes(_ context.Context, _ string) ([]*interfaces.ValueType, error) {
+func (b *valueTypeBackend) ListValueTypes(ctx context.Context, _ string) ([]*interfaces.ValueType, error) {
 	b.listCalls++
+	if b.hang {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	return b.valueTypes, b.listErr
 }
 
@@ -141,14 +147,46 @@ func TestExpandEnums(t *testing.T) {
 	}
 }
 
-// The matches of enum_query are capped at the expansion limit like any listed enum.
+// The matches of enum_query are capped at the expansion limit like any listed enum, and a cut list
+// says how many items matched, so the caller does not filter by an incomplete set of codes.
 func TestExpandEnumsCapsMatchesAtTheLimit(t *testing.T) {
 	backend := &valueTypeBackend{mockBknBackend: &mockBknBackend{}, valueTypes: []*interfaces.ValueType{departments(60)}}
 	p := &interfaces.KnSearchDataProperty{Name: "dept", ValueType: "dept"}
 	newEnumSearch(backend, 10).expandEnums(context.Background(), "kn",
-		[]*interfaces.KnSearchObjectType{{DataProperties: []*interfaces.KnSearchDataProperty{p}}}, nil, false, "科室")
-	if len(p.Enum) != 10 || p.EnumCount != 60 {
-		t.Fatalf("got %d items of %d, want 10 of 60", len(p.Enum), p.EnumCount)
+		[]*interfaces.KnSearchObjectType{{DataProperties: []*interfaces.KnSearchDataProperty{p}}}, nil, false, "科室 检验")
+	if len(p.Enum) != 10 || p.EnumCount != 60 || p.EnumMatchCount != 60 {
+		t.Fatalf("got %d items, enum_count %d, enum_match_count %d; want 10, 60, 60",
+			len(p.Enum), p.EnumCount, p.EnumMatchCount)
+	}
+
+	p = &interfaces.KnSearchDataProperty{Name: "dept", ValueType: "dept"}
+	newEnumSearch(backend, 10).expandEnums(context.Background(), "kn",
+		[]*interfaces.KnSearchObjectType{{DataProperties: []*interfaces.KnSearchDataProperty{p}}}, nil, false, "检验")
+	if len(p.Enum) != 1 || p.EnumMatchCount != 0 {
+		t.Fatalf("an uncut list: got %d items, enum_match_count %d; want 1, absent", len(p.Enum), p.EnumMatchCount)
+	}
+}
+
+// A value type read that does not answer within the schema read timeout is given up like a failed
+// one, so it cannot hold the whole search.
+func TestExpandEnumsGivesUpASlowRead(t *testing.T) {
+	backend := &valueTypeBackend{mockBknBackend: &mockBknBackend{}, hang: true}
+	s := newEnumSearch(backend, 0)
+	s.config.ConceptSearchConfig.SchemaReadTimeoutMS = 20
+	p := &interfaces.KnSearchDataProperty{Name: "status", ValueType: "apply_status"}
+	done := make(chan struct{})
+	go func() {
+		s.expandEnums(context.Background(), "kn",
+			[]*interfaces.KnSearchObjectType{{DataProperties: []*interfaces.KnSearchDataProperty{p}}}, nil, false, "")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("value type read not bounded by the schema read timeout")
+	}
+	if got := enumJSON(t, p); got != `{"name":"status","value_type":"apply_status"}` {
+		t.Fatalf("got %s", got)
 	}
 }
 

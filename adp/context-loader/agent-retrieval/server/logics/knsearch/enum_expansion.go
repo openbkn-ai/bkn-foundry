@@ -32,8 +32,9 @@ func (s *localSearchImpl) enumExpandLimit() int {
 //     the items whose display name or code contains one of its words, up to the expansion limit.
 //   - A value type that is not an enum adds nothing, so value_type is dropped with it.
 //
-// The value types are one read, made only when some property names one. When it fails the
-// properties keep their value_type and go without the enum.
+// The value types are one read, made only when some property names one, and bounded by the schema
+// read timeout. When it fails or times out the properties keep their value_type and go without the
+// enum.
 func (s *localSearchImpl) expandEnums(ctx context.Context, knID string, objectTypes []*interfaces.KnSearchObjectType,
 	relationTypes []*interfaces.KnSearchRelationType, brief bool, enumQuery string) {
 	var props []*interfaces.KnSearchDataProperty
@@ -57,7 +58,9 @@ func (s *localSearchImpl) expandEnums(ctx context.Context, knID string, objectTy
 	if !ok {
 		return
 	}
-	valueTypes, err := reader.ListValueTypes(ctx, knID)
+	readCtx, cancel := context.WithTimeout(ctx, s.schemaReadTimeout())
+	defer cancel()
+	valueTypes, err := reader.ListValueTypes(readCtx, knID)
 	if err != nil {
 		s.logger.WithContext(ctx).Warnf("[ConceptRetrieval] value types unreadable, enums not expanded: %v", err)
 		return
@@ -78,32 +81,37 @@ func (s *localSearchImpl) expandEnums(ctx context.Context, knID string, objectTy
 			continue
 		}
 		if !brief && len(vt.Enum) <= limit {
-			p.Enum = enumItems(vt.Enum, nil, limit)
+			p.Enum, _ = enumItems(vt.Enum, nil, limit)
 			continue
 		}
 		p.EnumCount = len(vt.Enum)
 		if len(words) > 0 {
-			p.Enum = enumItems(vt.Enum, words, limit)
+			var matched int
+			p.Enum, matched = enumItems(vt.Enum, words, limit)
+			if matched > len(p.Enum) {
+				p.EnumMatchCount = matched
+			}
 		}
 	}
 }
 
 // enumItems lists the enum items that match one of words, all of them when words is empty, up to
-// limit items.
-func enumItems(items []*interfaces.ValueTypeEnum, words []string, limit int) []*interfaces.KnSearchEnumItem {
+// limit items. It also returns how many items matched, so a cut list can say so.
+func enumItems(items []*interfaces.ValueTypeEnum, words []string, limit int) ([]*interfaces.KnSearchEnumItem, int) {
 	var out []*interfaces.KnSearchEnumItem
+	matched := 0
 	for _, item := range items {
-		if len(out) == limit {
-			break
-		}
 		if item == nil || (len(words) > 0 && !enumItemMatches(item, words)) {
 			continue
 		}
-		out = append(out, &interfaces.KnSearchEnumItem{
-			Value: item.Value, Display: item.Display, Deprecated: item.Deprecated,
-		})
+		matched++
+		if len(out) < limit {
+			out = append(out, &interfaces.KnSearchEnumItem{
+				Value: item.Value, Display: item.Display, Deprecated: item.Deprecated,
+			})
+		}
 	}
-	return out
+	return out, matched
 }
 
 func enumItemMatches(item *interfaces.ValueTypeEnum, words []string) bool {

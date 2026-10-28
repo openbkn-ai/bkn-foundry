@@ -229,9 +229,11 @@ type KnSearchDataProperty struct {
 	// ValueType names the enum value type the property takes its values from (SPECIFICATION.md
 	// §16). Enum lists its items when the enum is expanded, or the items enum_query matched when
 	// it is not; EnumCount says how many items there are whenever Enum is not all of them.
-	ValueType string              `json:"value_type,omitempty"`
-	Enum      []*KnSearchEnumItem `json:"enum,omitempty"`
-	EnumCount int                 `json:"enum_count,omitempty"`
+	// EnumMatchCount says how many items enum_query matched when Enum lists only the first of them.
+	ValueType      string              `json:"value_type,omitempty"`
+	Enum           []*KnSearchEnumItem `json:"enum,omitempty"`
+	EnumCount      int                 `json:"enum_count,omitempty"`
+	EnumMatchCount int                 `json:"enum_match_count,omitempty"`
 }
 
 // KnSearchEnumItem is one enum item of a property's value type. A deprecated item stays listed:
