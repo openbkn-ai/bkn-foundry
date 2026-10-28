@@ -74,6 +74,13 @@ type checkResults struct {
 	Keys           []checkKeyResult      `json:"keys"`
 	Relations      []checkRelationResult `json:"relations"`
 	ExcludedMapped []checkExcludedResult `json:"excluded_mapped"`
+	Coverage       checkCoverage         `json:"coverage"`
+}
+
+// checkCoverage is how many of the items to count — identities and joins — were counted.
+type checkCoverage struct {
+	Counted int `json:"counted"`
+	Total   int `json:"total"`
 }
 
 // checkKeyResult is whether an object type's identity is unique and filled.
@@ -224,6 +231,20 @@ func runCheck(ctx context.Context, c counter, input *checkInput, previous *check
 		}
 		results.Relations = append(results.Relations, relation)
 	}
+	for _, k := range results.Keys {
+		results.Coverage.Total++
+		if k.State == checkCounted {
+			results.Coverage.Counted++
+		}
+	}
+	for _, rel := range results.Relations {
+		for _, j := range rel.Joins {
+			results.Coverage.Total++
+			if j.State == checkCounted {
+				results.Coverage.Counted++
+			}
+		}
+	}
 	return results
 }
 
@@ -313,8 +334,9 @@ func (r *checkResults) join(relationType string, index int) *checkJoinResult {
 }
 
 // checkStatus is failed while an item failed; issues when an identity has duplicates or nulls or
-// a property maps an excluded field; passed otherwise. Orphans are reported, not judged: a
-// relation's data may be partial by nature.
+// a property maps an excluded field; partial when nothing is wrong but some items were not
+// counted, so a pass is never claimed for what was not looked at; passed otherwise. Orphans are
+// reported, not judged: a relation's data may be partial by nature.
 func checkStatus(results *checkResults) string {
 	issues := len(results.ExcludedMapped) > 0
 	for _, k := range results.Keys {
@@ -332,6 +354,9 @@ func checkStatus(results *checkResults) string {
 	}
 	if issues {
 		return interfaces.CHECK_STATUS_ISSUES
+	}
+	if results.Coverage.Counted < results.Coverage.Total {
+		return interfaces.CHECK_STATUS_PARTIAL
 	}
 	return interfaces.CHECK_STATUS_PASSED
 }

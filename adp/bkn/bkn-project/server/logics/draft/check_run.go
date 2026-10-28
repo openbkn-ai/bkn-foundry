@@ -43,7 +43,8 @@ func (s *draftService) startCheck(ctx context.Context, projectID string, commit 
 		return
 	}
 	if exist && existing.Commit == commit &&
-		(existing.Status == interfaces.CHECK_STATUS_PASSED || existing.Status == interfaces.CHECK_STATUS_ISSUES) {
+		(existing.Status == interfaces.CHECK_STATUS_PASSED || existing.Status == interfaces.CHECK_STATUS_ISSUES ||
+			existing.Status == interfaces.CHECK_STATUS_PARTIAL) {
 		return
 	}
 	inputJSON, err := json.Marshal(input)
