@@ -190,6 +190,32 @@ func validationErrors(files map[string][]byte) (map[string]bkn.ValidationError, 
 	return out, nil
 }
 
+// IntroducedErrors lists the validation errors of after that before does not have: the
+// specification's checks and the 3.0 declarations that span definitions, such as two object types
+// of one name, which the loader alone lets through. A set's own older errors are not the writer's.
+func IntroducedErrors(before map[string][]byte, after map[string][]byte) ([]bkn.ValidationError, error) {
+	had, err := validationErrors(before)
+	if err != nil {
+		return nil, err
+	}
+	has, err := validationErrors(after)
+	if err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(has))
+	for key := range has {
+		if _, ok := had[key]; !ok {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	introduced := make([]bkn.ValidationError, 0, len(keys))
+	for _, key := range keys {
+		introduced = append(introduced, has[key])
+	}
+	return introduced, nil
+}
+
 // loadNetwork loads a file set with the SDK loader. The 3.0 declarations that span definitions are
 // left to declarationErrors: a merge of two valid sides can break them, which is a conflict to
 // report, not a set that fails to load.

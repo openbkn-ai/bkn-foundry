@@ -36,6 +36,15 @@ type CreateBranchResult struct {
 	Commit string `json:"commit"`
 }
 
+// DefinitionError is a check of the BKN specification a set of definitions fails: where (the
+// table, such as object_type:part, and the column), what (code) and why (message).
+type DefinitionError struct {
+	Table   string `json:"table"`
+	Column  string `json:"column,omitempty"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 type CommitDefinitionsResult struct {
 	Commit string `json:"commit"`
 	// Changed lists the bkn/ paths the commit added, changed or removed; all empty
@@ -108,6 +117,12 @@ type LineageService interface {
 	// CommitDefinitions replaces the definitions on a project branch with files.
 	CommitDefinitions(ctx context.Context, lineageID string, branch string, files map[string][]byte,
 		message string, author GitAuthor) (*CommitDefinitionsResult, error)
+	// AddDefinitions writes files into the definitions on a project branch, which must be kept in
+	// BKN 3.0. owned are the paths an earlier write from the same source made: they may be
+	// replaced, and those not in files are removed. Any other path the branch holds is not
+	// replaced: it is refused, listed in the error.
+	AddDefinitions(ctx context.Context, lineageID string, branch string, files map[string][]byte,
+		owned []string, message string, author GitAuthor) (*CommitDefinitionsResult, error)
 	// SyncBranch brings main into a project branch: no-op, fast-forward or semantic merge.
 	SyncBranch(ctx context.Context, lineageID string, branch string, author GitAuthor) (*SyncBranchResult, error)
 	// CheckDrift compares the live network knID with main; with commit it also commits the live set to main.
