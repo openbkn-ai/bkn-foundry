@@ -5,11 +5,12 @@
 """Shared publication validation follows the Studio String.prototype.trim rule."""
 
 import asyncio
+import re
 
 import pytest
 
 from app import dao
-from app.models import PromptPublish
+from app.models import PromptPublish, PromptVersionPublish, SharedPromptPublish
 from app.test.test_agent_settings import ADMIN
 from app.test.test_public_execution import AUTH, environment
 
@@ -72,3 +73,14 @@ def test_non_blank_publication_keeps_original_format(monkeypatch, versioned, con
 
 def test_internal_prompt_publication_keeps_its_existing_contract():
     assert PromptPublish(content="\t").content == "\t"
+
+
+@pytest.mark.parametrize("model", [SharedPromptPublish, PromptVersionPublish])
+def test_exported_content_pattern_supports_client_matching_modes(model):
+    pattern = re.compile(model.model_json_schema()["properties"]["content"]["pattern"])
+    valid = ("Answer", " \n\t你好 {question}\n\ufeff ", "\u0085", "\u001c", "\u200b", "A\nB\n")
+    invalid = ("", *JS_WHITESPACE, " \n\t ", JS_WHITESPACE * 2)
+    for content, expected in [(value, True) for value in valid] + [(value, False) for value in invalid]:
+        # JSON Schema searches, while generated clients may match a prefix or the whole value.
+        for match in (pattern.search, pattern.match, pattern.fullmatch):
+            assert bool(match(content)) is expected, (match.__name__, repr(content))

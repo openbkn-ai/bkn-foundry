@@ -495,10 +495,10 @@ class PromptPublish(BaseModel):
     vars_schema: Optional[dict[str, Any]] = None
 
 
-# Match Studio String.prototype.trim, including BOM but not Python-only whitespace.
+# Match Studio trim whitespace; consume the whole value for generated clients.
 _SHARED_PROMPT_CONTENT_PATTERN = (
-    r"[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a"
-    r"\u2028\u2029\u202f\u205f\u3000\ufeff]"
+    r"^[\s\S]*[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a"
+    r"\u2028\u2029\u202f\u205f\u3000\ufeff][\s\S]*$"
 )
 
 

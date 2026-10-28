@@ -2955,7 +2955,7 @@ components:
         content:
           type: string
           minLength: 1
-          pattern: '[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
+          pattern: ^[\s\S]*[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff][\s\S]*$
           title: Content
           description: Must contain a character outside ECMAScript trim whitespace;
             original formatting is preserved.
@@ -3137,7 +3137,7 @@ components:
         content:
           type: string
           minLength: 1
-          pattern: '[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
+          pattern: ^[\s\S]*[^\u0009-\u000d\u0020\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff][\s\S]*$
           title: Content
           description: Must contain a character outside ECMAScript trim whitespace;
             original formatting is preserved.
