@@ -8,11 +8,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
+	"go.opentelemetry.io/otel/codes"
 
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
@@ -51,10 +56,22 @@ func (s *draftService) startCheck(ctx context.Context, projectID string, commit 
 		otellog.LogWarn(ctx, fmt.Sprintf("Write check input of project %s: %v", projectID, err))
 		return
 	}
+	if _, err := s.beginCheck(ctx, projectID, commit, inputJSON, runner); err != nil {
+		otellog.LogWarn(ctx, fmt.Sprintf("Start check of project %s: %v", projectID, err))
+	}
+}
+
+// beginCheck starts a run of the commit over input unless that commit is being checked already,
+// and returns the check, or nil when it did not start.
+func (s *draftService) beginCheck(ctx context.Context, projectID string, commit string, inputJSON json.RawMessage,
+	runner interfaces.AccountInfo) (*interfaces.Check, error) {
+	var input checkInput
+	if err := json.Unmarshal(inputJSON, &input); err != nil {
+		return nil, fmt.Errorf("read check input: %w", err)
+	}
 	runID, err := uuid.NewV7()
 	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("New check run of project %s: %v", projectID, err))
-		return
+		return nil, fmt.Errorf("new check run: %w", err)
 	}
 	now := time.Now()
 	check := &interfaces.Check{
@@ -62,12 +79,8 @@ func (s *draftService) startCheck(ctx context.Context, projectID string, commit 
 		Attempt: 1, Runner: runner, Input: inputJSON, StartTime: now.UnixMilli(),
 	}
 	started, err := s.ca.StartCheck(ctx, check, now.Add(-s.checkStaleAfter()).UnixMilli())
-	if err != nil {
-		otellog.LogWarn(ctx, fmt.Sprintf("Start check of project %s: %v", projectID, err))
-		return
-	}
-	if !started {
-		return
+	if err != nil || !started {
+		return nil, err
 	}
 	// The run outlives the request; it keeps the trace but not the request's cancellation.
 	// A later run of the project stops it, so replaced runs do not keep counting on the source.
@@ -82,8 +95,90 @@ func (s *draftService) startCheck(ctx context.Context, projectID string, commit 
 			cancel()
 			s.checkRuns.CompareAndDelete(projectID, run)
 		}()
-		s.check(background, check, input, counter)
+		s.check(background, check, &input, counter)
 	})
+	return check, nil
+}
+
+// GetCheck returns the check of the project's last confirmation to whoever can see the project.
+func (s *draftService) GetCheck(ctx context.Context, token string, projectID string) (*interfaces.Check, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetCheck")
+	defer span.End()
+
+	if _, err := s.ps.GetProject(ctx, token, projectID); err != nil {
+		span.SetStatus(codes.Error, "Get project failed")
+		return nil, err
+	}
+	check, exist, err := s.ca.GetCheck(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get check failed")
+		return nil, internalError(ctx, "Get check failed", err)
+	}
+	if !exist {
+		span.SetStatus(codes.Error, "Check not found")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Check_NotFound)
+	}
+	span.SetStatus(codes.Ok, "")
+	return check, nil
+}
+
+// RunCheck checks the last confirmation again, all of it, counting as the owner. What was
+// confirmed is read from the draft while it is still confirmed, and otherwise from the last
+// check of that commit.
+func (s *draftService) RunCheck(ctx context.Context, token string, projectID string,
+	caller interfaces.AccountInfo) (*interfaces.Check, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "RunCheck")
+	defer span.End()
+
+	entry, err := s.unarchivedProject(ctx, token, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get project failed")
+		return nil, err
+	}
+	if entry.Owner.ID != caller.ID {
+		span.SetStatus(codes.Error, "Not the owner")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusForbidden, perrors.BknProject_Check_NotOwner)
+	}
+	draft, exist, err := s.da.GetDraft(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get draft failed")
+		return nil, internalError(ctx, "Get draft failed", err)
+	}
+	if !exist || draft.Items.Confirmation == nil || draft.Items.Confirmation.Commit == "" {
+		span.SetStatus(codes.Error, "Nothing confirmed")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Check_NothingConfirmed)
+	}
+	confirmation := draft.Items.Confirmation
+	existing, checked, err := s.ca.GetCheck(ctx, projectID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get check failed")
+		return nil, internalError(ctx, "Get check failed", err)
+	}
+	var inputJSON json.RawMessage
+	switch {
+	case draft.Status == interfaces.DRAFT_STATUS_READY && confirmation.UpdateTime == draft.UpdateTime:
+		if inputJSON, err = json.Marshal(checkInputOf(&draft.Items)); err != nil {
+			span.SetStatus(codes.Error, "Write check input failed")
+			return nil, internalError(ctx, "Write check input failed", err)
+		}
+	case checked && existing.Commit == confirmation.Commit && len(existing.Input) > 0:
+		inputJSON = existing.Input
+	default:
+		// Changed since, and never checked: what was confirmed is on the branch only.
+		span.SetStatus(codes.Error, "Confirmation unknown")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Check_ConfirmAgain)
+	}
+	check, err := s.beginCheck(ctx, projectID, confirmation.Commit, inputJSON, caller)
+	if err != nil {
+		span.SetStatus(codes.Error, "Start check failed")
+		return nil, internalError(ctx, "Start check failed", err)
+	}
+	if check == nil {
+		span.SetStatus(codes.Error, "Check running")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Check_Running)
+	}
+	span.SetStatus(codes.Ok, "")
+	return check, nil
 }
 
 // check runs a started check and records its outcome. Each attempt has the check timeout; a

@@ -33,6 +33,11 @@ type DraftService interface {
 	// definitions, for the project owner, and records the confirmation on the draft.
 	ConfirmDraft(ctx context.Context, token string, projectID string, confirm DraftConfirm,
 		caller AccountInfo) (*Draft, error)
-	// FailInterrupted fails the drafts a previous run of the service left drafting.
+	// GetCheck returns the check of the project's last confirmation.
+	GetCheck(ctx context.Context, token string, projectID string) (*Check, error)
+	// RunCheck checks the last confirmation again in the background, for the project owner, and
+	// returns the check, running.
+	RunCheck(ctx context.Context, token string, projectID string, caller AccountInfo) (*Check, error)
+	// FailInterrupted fails the drafts and checks a previous run of the service left going.
 	FailInterrupted(ctx context.Context) error
 }
