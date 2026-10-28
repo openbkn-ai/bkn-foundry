@@ -40,7 +40,7 @@ def test_limit_enforced_on_every_lookup_and_cache_path(identity, cached, limit, 
                             set_str=AsyncMock())
     provider = SimpleNamespace(reranker=AsyncMock(return_value={"results": [{"index": 0}], "usage": {}}))
     loader = Mock(return_value=[row])
-    module = load("controller/small_model_controller.py", {"reranker_model_used"},
+    module = load("controller/small_model_controller.py", {"reranker_model_used", "_model_type_error"},
                   dict(redis_util=redis, json=json, JSONResponse=JSONResponse, _load_small_model=loader,
                        RERANKER_MODEL_TYPE="reranker", _model_cache_ttl=lambda default: 60 if default else 86400,
                        InnerClient=Mock(return_value=provider), StandLogger=Mock(), get_logger=lambda: None,

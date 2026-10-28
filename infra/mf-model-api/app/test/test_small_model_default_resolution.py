@@ -130,6 +130,7 @@ class TestEmbeddingProviderErrorMapping:
         redis = AsyncMock()
         redis.get_str.return_value = None
         model_info = [{
+            "f_model_type": "embedding",
             "f_model_config": json.dumps({"api_url": "https://provider.example", "api_model": "embed"}),
             "f_adapter": False,
             "f_model_id": "embedding-id",
@@ -162,6 +163,7 @@ class TestEmbeddingProviderErrorMapping:
         redis = AsyncMock()
         redis.get_str.return_value = None
         model_info = [{
+            "f_model_type": "embedding",
             "f_model_config": json.dumps({"api_url": "https://provider.example", "api_model": "embed"}),
             "f_adapter": False,
             "f_model_id": "embedding-id",
