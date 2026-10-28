@@ -1,0 +1,119 @@
+// Copyright openbkn.ai
+//
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+package interfaces
+
+// A project's status is computed on each request from its draft, confirmation and check: where
+// the project stands, what blocks it and who it waits for, what is out of date, and what can be
+// done next. Nothing of it is stored. Codes are for machines; clients word them.
+
+// Project stages, in the order a project goes through them.
+const (
+	PROJECT_STAGE_ARCHIVED              = "archived"
+	PROJECT_STAGE_NO_DRAFT              = "no_draft"
+	PROJECT_STAGE_DRAFTING              = "drafting"
+	PROJECT_STAGE_DRAFT_FAILED          = "draft_failed"
+	PROJECT_STAGE_DECIDING              = "deciding"
+	PROJECT_STAGE_READY_TO_CONFIRM      = "ready_to_confirm"
+	PROJECT_STAGE_CHECK_NOT_STARTED     = "check_not_started"
+	PROJECT_STAGE_CHECKING              = "checking"
+	PROJECT_STAGE_CHECK_NEEDS_ATTENTION = "check_needs_attention"
+	PROJECT_STAGE_CONFIRMED             = "confirmed"
+)
+
+// What blocks a project from its next stage.
+const (
+	BLOCKER_NO_CATALOGS     = "no_catalogs"
+	BLOCKER_NEEDS_IDENTITY  = "needs_identity"
+	BLOCKER_UNADOPTED_ENDS  = "unadopted_ends"
+	BLOCKER_NOTHING_ADOPTED = "nothing_adopted"
+	BLOCKER_CHECK_ISSUES    = "check_issues"
+	BLOCKER_CHECK_PARTIAL   = "check_partial"
+	BLOCKER_CHECK_FAILED    = "check_failed"
+)
+
+// Who a blocker waits for.
+const (
+	WAITING_FOR_OWNER  = "owner"
+	WAITING_FOR_EDITOR = "editor"
+	WAITING_FOR_SYSTEM = "system"
+)
+
+// What is out of date.
+const (
+	STALE_CONFIRMATION_OUTDATED = "confirmation_outdated"
+	STALE_CHECK_OUTDATED        = "check_outdated"
+)
+
+// What can be done next.
+const (
+	ACTION_UNARCHIVE      = "unarchive"
+	ACTION_SET_CATALOGS   = "set_catalogs"
+	ACTION_GENERATE_DRAFT = "generate_draft"
+	ACTION_ADOPT_ITEMS    = "adopt_items"
+	ACTION_CONFIRM_DRAFT  = "confirm_draft"
+	ACTION_RUN_CHECK      = "run_check"
+	ACTION_WAIT           = "wait"
+)
+
+// Why an action cannot be done by the caller; otherwise a blocker code.
+const (
+	ACTION_REASON_NOT_OWNER = "not_owner"
+	ACTION_REASON_RUNNING   = "running"
+)
+
+type ProjectStatus struct {
+	ProjectID    string                    `json:"project_id"`
+	Stage        string                    `json:"stage"`
+	Draft        *ProjectStatusDraft       `json:"draft,omitempty"`
+	Confirmation *ProjectStatusConfirmed   `json:"confirmation,omitempty"`
+	Check        *ProjectStatusCheck       `json:"check,omitempty"`
+	Blockers     []ProjectStatusBlocker    `json:"blockers"`
+	Stale        []string                  `json:"stale"`
+	NextActions  []ProjectStatusNextAction `json:"next_actions"`
+	// Links are the reads that show the details: the draft, its pending items and the check.
+	Links      map[string]string `json:"links"`
+	ComputedAt int64             `json:"computed_at"`
+}
+
+type ProjectStatusDraft struct {
+	Status     string `json:"status"`
+	UpdateTime int64  `json:"update_time"`
+	Decisions  int    `json:"decisions"`
+}
+
+type ProjectStatusConfirmed struct {
+	Commit string `json:"commit"`
+	Time   int64  `json:"time"`
+	// Current is whether the confirmation is of the draft as it now is.
+	Current bool `json:"current"`
+}
+
+type ProjectStatusCheck struct {
+	Commit string `json:"commit"`
+	Status string `json:"status"`
+	// Current is whether the check is of the current confirmation.
+	Current bool `json:"current"`
+}
+
+type ProjectStatusBlocker struct {
+	Code       string `json:"code"`
+	Count      int    `json:"count,omitempty"`
+	WaitingFor string `json:"waiting_for"`
+}
+
+// ProjectStatusNextAction is a request a client can send, its path relative to the API root and
+// filled in. Allowed says whether the caller may send it; Reason says why not.
+type ProjectStatusNextAction struct {
+	Action  string         `json:"action"`
+	Method  string         `json:"method"`
+	Path    string         `json:"path"`
+	Body    map[string]any `json:"body,omitempty"`
+	Allowed bool           `json:"allowed"`
+	Reason  string         `json:"reason,omitempty"`
+	// RetryAfterS is when to read the status again, for waiting.
+	RetryAfterS int `json:"retry_after_s,omitempty"`
+	// DiscardsDecisions is how many decisions drafting again would discard.
+	DiscardsDecisions int `json:"discards_decisions,omitempty"`
+}
