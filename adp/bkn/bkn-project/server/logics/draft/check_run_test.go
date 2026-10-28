@@ -128,7 +128,8 @@ func Test_StartCheck(t *testing.T) {
 		})
 
 		Convey("A commit already checked is not checked again\n", func() {
-			for _, status := range []string{interfaces.CHECK_STATUS_PASSED, interfaces.CHECK_STATUS_ISSUES} {
+			for _, status := range []string{interfaces.CHECK_STATUS_PASSED, interfaces.CHECK_STATUS_ISSUES,
+				interfaces.CHECK_STATUS_PARTIAL} {
 				ca.EXPECT().GetCheck(gomock.Any(), "p1").
 					Return(&interfaces.Check{ProjectID: "p1", Commit: "c1", Status: status}, true, nil)
 
@@ -222,6 +223,17 @@ func Test_RunCheckJob(t *testing.T) {
 
 			So(finished.Status, ShouldEqual, interfaces.CHECK_STATUS_FAILED)
 			So(finished.Attempt, ShouldEqual, 2)
+		})
+
+		Convey("A check not counted in full is not retried: counting again would not count it\n", func() {
+			partial := checkFixture()
+			partial.ObjectTypes[1].Table.CatalogID = "other"
+			finish(true)
+
+			svc.check(ctx, running(), checkInputOf(partial), counter)
+
+			So(finished.Status, ShouldEqual, interfaces.CHECK_STATUS_PARTIAL)
+			So(finished.Attempt, ShouldEqual, 1)
 		})
 
 		Convey("A check with issues is not retried\n", func() {

@@ -15,6 +15,8 @@ const (
 	CHECK_STATUS_RUNNING = "running"
 	CHECK_STATUS_PASSED  = "passed"
 	CHECK_STATUS_ISSUES  = "issues"
+	// CHECK_STATUS_PARTIAL is a check that found nothing wrong but could not count every item.
+	CHECK_STATUS_PARTIAL = "partial"
 	CHECK_STATUS_FAILED  = "failed"
 )
 
