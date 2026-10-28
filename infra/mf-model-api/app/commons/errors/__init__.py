@@ -1188,6 +1188,13 @@ ModelFactory_ExternalSmallModel_Used_InvalidParameter = {
     "solution": "Adjust the model batch size, token limit, or embedding dimension and retry.",
     "link": ""
 }
+ModelFactory_ExternalSmallModel_Used_InvalidResponse = {
+    "code": "ModelFactory.ExternalSmallModel.Used.InvalidResponse",
+    "description": "The model provider returned an invalid embedding response.",
+    "detail": "Expected a non-empty data array containing non-empty numeric embedding vectors.",
+    "solution": "Check the embedding provider configuration and adapter output.",
+    "link": ""
+}
 ModelFactory_ExternalSmallModel_Used_ModelError = {
     "code": "ModelFactory.ExternalSmallModel.Used.ModelError",
     "description": "模型调用过程中出错",
