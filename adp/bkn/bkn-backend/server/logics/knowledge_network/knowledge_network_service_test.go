@@ -1809,7 +1809,6 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			vbs:        vbs,
 			db:         db,
 		}
-
 		Convey("Success updating KN\n", func() {
 			kn := &interfaces.KN{
 				KNID:   "kn1",
@@ -1965,6 +1964,8 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			vts:        vts,
 			db:         db,
 		}
+		kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn1"}, interfaces.MAIN_BRANCH).
+			Return(nil, nil).AnyTimes()
 
 		Convey("Success deleting KN\n", func() {
 			kn := &interfaces.KN{
@@ -2017,6 +2018,15 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cbs.EXPECT().DeleteCapabilitiesByKnID(gomock.Any(), gomock.Any(), "kn1", gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -2033,7 +2043,10 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -2050,8 +2063,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -2068,9 +2080,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -2087,12 +2096,9 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -2109,7 +2115,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -2136,7 +2141,6 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -2193,10 +2197,8 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -2213,11 +2215,11 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			kna.EXPECT().DeleteKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().DeleteActionTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			rts.EXPECT().DeleteRelationTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ots.EXPECT().DeleteObjectTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vts.EXPECT().DeleteValueTypesByKnID(gomock.Any(), gomock.Any(), "kn1", interfaces.MAIN_BRANCH).
 				Return(httperrors.NewHTTPError(ctx, 500, berrors.BknBackend_ValueType_InternalError))
 			smock.ExpectRollback()
@@ -2226,6 +2228,34 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
+}
+
+func TestCleanupKNChildAuthorizationFollowsDependencyOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	kna := bmock.NewMockKNAccess(ctrl)
+	ps := bmock.NewMockPermissionService(ctrl)
+	service := &knowledgeNetworkService{kna: kna, ps: ps}
+
+	kna.EXPECT().ListKNChildResourceCandidates(gomock.Any(), []string{"kn1"}, interfaces.MAIN_BRANCH).
+		Return([]interfaces.KNChildResourceCandidate{
+			{KNID: "kn1", Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ResourceID: "object-1"},
+			{KNID: "kn1", Type: interfaces.RESOURCE_TYPE_RELATION_TYPE, ResourceID: "relation-1"},
+			{KNID: "other", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, ResourceID: "ignored"},
+			{KNID: "kn1", Type: interfaces.RESOURCE_TYPE_METRIC, ResourceID: "metric-1"},
+			{KNID: "kn1", Type: interfaces.RESOURCE_TYPE_METRIC, ResourceID: "metric-1"},
+		}, nil)
+	gomock.InOrder(
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC,
+			[]string{"kn1/metric-1"}).Return(nil),
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_RELATION_TYPE,
+			[]string{"kn1/relation-1"}).Return(nil),
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+			[]string{"kn1/object-1"}).Return(nil),
+	)
+
+	if err := service.cleanupKNChildAuthorization(t.Context(), "kn1", interfaces.MAIN_BRANCH); err != nil {
+		t.Fatalf("cleanupKNChildAuthorization() error = %v", err)
+	}
 }
 
 func Test_knowledgeNetworkService_ListKnSrcs(t *testing.T) {

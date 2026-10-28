@@ -22,6 +22,7 @@ var testSetting = common.DraftSetting{
 	CodeTableMaxColumns: 3,
 	AdoptHitRate:        0.95,
 	SuggestHitRate:      0.8,
+	MinInferredDistinct: 10,
 	PrivacyKeywords:     append([]string{"手机"}, common.DefaultPrivacyKeywords...),
 	NameFieldKeywords:   append([]string{"名称"}, common.DefaultNameFieldKeywords...),
 }
@@ -227,6 +228,10 @@ func Test_Drafter(t *testing.T) {
 			orders := objectType(items, "orders")
 			So(orders.NeedsIdentity, ShouldBeTrue)
 			So(orders.Key.Distinct, ShouldEqual, 798)
+			// Its relations wait with it, and say why.
+			r := relation(items, "orders", "customers")
+			So(r.Adopted, ShouldBeFalse)
+			So(r.ProposedBecause, ShouldEqual, proposedEndNotAdopted)
 		})
 
 		Convey("A code table becomes an enum on the fields that refer to it\n", func() {
@@ -260,6 +265,7 @@ func Test_Drafter(t *testing.T) {
 
 			So(r.Evidence.HitRate, ShouldEqual, 0.5)
 			So(r.Adopted, ShouldBeFalse)
+			So(r.ProposedBecause, ShouldEqual, proposedBelowSuggestRate)
 		})
 
 		Convey("A relation inferred from names is proposed from the suggest rate and adopted from the adopt rate\n", func() {

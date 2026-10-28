@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 )
 
 //go:generate mockgen -source=asset_store.go -destination=../../mocks/skill_asset_store.go -package=mocks
@@ -69,7 +72,22 @@ func (s *ossGatewaySkillAssetStore) Download(ctx context.Context, object *interf
 }
 
 func (s *ossGatewaySkillAssetStore) Delete(ctx context.Context, object *interfaces.OssObject) error {
-	return s.client.DeleteFile(ctx, object)
+	err := s.client.DeleteFile(ctx, object)
+	if err != nil && object != nil && isOSSStorageNotFound(err) {
+		currentID, idErr := s.client.CurrentStorageID(ctx)
+		if idErr != nil || currentID == "" || currentID == object.StorageID {
+			return err
+		}
+		err = s.client.DeleteFile(ctx, &interfaces.OssObject{
+			StorageID:  currentID,
+			StorageKey: object.StorageKey,
+		})
+	}
+	var httpErr *httperrors.HTTPError
+	if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusNotFound {
+		return nil
+	}
+	return err
 }
 
 func (s *ossGatewaySkillAssetStore) GetDownloadURL(ctx context.Context, object *interfaces.OssObject) (string, error) {

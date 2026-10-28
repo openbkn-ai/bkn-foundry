@@ -40,6 +40,20 @@ const (
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
 )
 
+// The check of a confirmed draft.
+const (
+	// 403
+	BknProject_Check_NotOwner = "BknProject.Check.NotOwner"
+
+	// 404
+	BknProject_Check_NotFound = "BknProject.Check.NotFound"
+
+	// 409
+	BknProject_Check_NothingConfirmed = "BknProject.Check.NothingConfirmed"
+	BknProject_Check_ConfirmAgain     = "BknProject.Check.ConfirmAgain"
+	BknProject_Check_Running          = "BknProject.Check.Running"
+)
+
 var (
 	DraftErrCodeList = []string{
 		BknProject_Draft_NoCatalogs,
@@ -66,5 +80,10 @@ var (
 		BknProject_Draft_InvalidItem,
 		BknProject_Draft_NotOwner,
 		BknProject_Draft_HasPending,
+		BknProject_Check_NotOwner,
+		BknProject_Check_NotFound,
+		BknProject_Check_NothingConfirmed,
+		BknProject_Check_ConfirmAgain,
+		BknProject_Check_Running,
 	}
 )

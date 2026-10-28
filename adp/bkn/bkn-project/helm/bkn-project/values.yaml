@@ -91,6 +91,8 @@ config:
     codeTableMaxColumns: 3
     adoptHitRate: 0.95
     suggestHitRate: 0.8
+    # A relation inferred from a field name is only proposed when the field has fewer distinct values.
+    minInferredDistinct: 10
     queryTimeout: 60
     timeout: 10m
     # Each attempt of the check after a draft is confirmed; a failed attempt is retried once.

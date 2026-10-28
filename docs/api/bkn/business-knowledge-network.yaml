@@ -296,14 +296,17 @@ paths:
           in: path
           required: true
         - name: branch
-          description: Branch. Defaults to main.
+          description: Branch to delete. Only the main branch is currently supported.
           schema:
             type: string
+            enum: [main]
             default: main
           in: query
       responses:
         "204":
           description: Deletion succeeded
+        "400":
+          description: A non-main branch was requested
       summary: Delete a business knowledge network
       description: Deletes a business knowledge network and all of its object types, relation types, action types, and concept groups.
     parameters:

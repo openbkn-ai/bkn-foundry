@@ -261,7 +261,9 @@ func (v *vegaBackendClient) DeleteDatasetDocumentByID(ctx context.Context, datas
 		v.logger.WithContext(ctx).Errorf("failed to delete vega dataset document, resource_id=%s, doc_id=%s, url=%s, err=%v", datasetID, docID, src, err)
 		return err
 	}
-	if respCode != http.StatusNoContent && respCode != http.StatusOK {
+	// Deletion is replayed after partial resource cleanup. A missing document
+	// already represents the desired terminal state.
+	if respCode != http.StatusNoContent && respCode != http.StatusOK && respCode != http.StatusNotFound {
 		return fmt.Errorf("delete dataset document failed: %s", string(respData))
 	}
 	return nil

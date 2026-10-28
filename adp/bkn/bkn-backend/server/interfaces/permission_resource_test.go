@@ -51,3 +51,20 @@ func TestIsValidAuthorizationID(t *testing.T) {
 		}
 	}
 }
+
+func TestIsValidKNChildResourceID(t *testing.T) {
+	for _, tt := range []struct {
+		id    string
+		valid bool
+	}{
+		{id: "kn-1/object-1", valid: true},
+		{id: "kn-1/*"},
+		{id: "kn-1"},
+		{id: "kn-1/object-1/extra"},
+		{id: " kn-1/object-1"},
+	} {
+		if got := IsValidKNChildResourceID(tt.id); got != tt.valid {
+			t.Errorf("IsValidKNChildResourceID(%q) = %v, want %v", tt.id, got, tt.valid)
+		}
+	}
+}

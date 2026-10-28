@@ -41,6 +41,9 @@ type DraftSetting struct {
 	// field names below SuggestHitRate is not proposed.
 	AdoptHitRate   float64 `mapstructure:"adoptHitRate"`
 	SuggestHitRate float64 `mapstructure:"suggestHitRate"`
+	// MinInferredDistinct is the fewest distinct values a field must have for a relation inferred
+	// from its name to be adopted: a field of a few values hits any auto-increment key by chance.
+	MinInferredDistinct int64 `mapstructure:"minInferredDistinct"`
 	// PrivacyKeywords match field names and comments, case-insensitively; matching fields are excluded.
 	PrivacyKeywords []string `mapstructure:"privacyKeywords"`
 	// NameFieldKeywords name the fields that hold a record's name, matched as a field name or its end.
@@ -128,6 +131,7 @@ func initSetting(vp *viper.Viper) {
 	vp.SetDefault("draft.codeTableMaxColumns", 3)
 	vp.SetDefault("draft.adoptHitRate", 0.95)
 	vp.SetDefault("draft.suggestHitRate", 0.8)
+	vp.SetDefault("draft.minInferredDistinct", 10)
 	vp.SetDefault("draft.privacyKeywords", DefaultPrivacyKeywords)
 	vp.SetDefault("draft.nameFieldKeywords", DefaultNameFieldKeywords)
 	vp.SetDefault("draft.queryTimeout", 60)

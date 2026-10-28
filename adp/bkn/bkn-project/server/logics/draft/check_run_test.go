@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/common"
+	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	pmock "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces/mock"
 )
@@ -250,5 +252,143 @@ func Test_RunCheckJob(t *testing.T) {
 			So(func() { svc.check(ctx, running(), input, counter) }, ShouldNotPanic)
 		})
 
+	})
+}
+
+func Test_CheckService(t *testing.T) {
+	Convey("Test draftService GetCheck and RunCheck\n", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ca := pmock.NewMockCheckAccess(ctrl)
+		da := pmock.NewMockDraftAccess(ctrl)
+		ps := pmock.NewMockProjectService(ctrl)
+		var ran []func()
+		svc := &draftService{setting: common.DraftSetting{CheckTimeout: time.Minute}, ca: ca, da: da, ps: ps,
+			run: func(fn func()) { ran = append(ran, fn) }}
+		ctx := context.Background()
+		project := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller}}
+		confirmed := func() *interfaces.Draft {
+			d := confirmableDraft()
+			d.Items.Confirmation = &interfaces.DraftConfirmation{UpdateTime: readTime, Commit: "c1"}
+			return d
+		}
+		var started interfaces.Check
+		var run *interfaces.Check
+		starts := func(ok bool) {
+			ca.EXPECT().StartCheck(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, c *interfaces.Check, _ int64) (bool, error) {
+					started, run = *c, c
+					return ok, nil
+				})
+		}
+
+		Convey("GetCheck returns the project's check to whoever sees the project\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{ProjectID: "p1", Commit: "c1"}, true, nil)
+
+			check, err := svc.GetCheck(ctx, token, "p1")
+
+			So(err, ShouldBeNil)
+			So(check.Commit, ShouldEqual, "c1")
+		})
+
+		Convey("GetCheck reports a project not checked yet\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			_, err := svc.GetCheck(ctx, token, "p1")
+
+			shouldBeHTTPError(err, http.StatusNotFound, perrors.BknProject_Check_NotFound)
+		})
+
+		Convey("RunCheck checks the confirmed draft again, even a commit that passed\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmed(), true, nil)
+			// The commit confirmed passed already: a person asking again is checked again.
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").
+				Return(&interfaces.Check{ProjectID: "p1", Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
+			starts(true)
+
+			check, err := svc.RunCheck(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			// The reply is the check as started, not the run's own, which the run goes on writing.
+			So(check, ShouldNotPointTo, run)
+			So(check.Status, ShouldEqual, interfaces.CHECK_STATUS_RUNNING)
+			So(started.Commit, ShouldEqual, "c1")
+			var input checkInput
+			So(json.Unmarshal(started.Input, &input), ShouldBeNil)
+			So(input, ShouldResemble, *checkInputOf(&confirmed().Items))
+			So(len(ran), ShouldEqual, 1)
+		})
+
+		Convey("RunCheck reads what was confirmed from the last check of that commit once the draft changed\n", func() {
+			edited := confirmed()
+			edited.UpdateTime = readTime + 5
+			edited.Items.ObjectTypes[0].Name = "Edited"
+			snapshot := json.RawMessage(`{"object_types":[],"relation_types":[]}`)
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(edited, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(&interfaces.Check{
+				ProjectID: "p1", Commit: "c1", Status: interfaces.CHECK_STATUS_FAILED, Input: snapshot,
+			}, true, nil)
+			starts(true)
+
+			_, err := svc.RunCheck(ctx, token, "p1", caller)
+
+			So(err, ShouldBeNil)
+			So(string(started.Input), ShouldEqual, string(snapshot))
+		})
+
+		Convey("RunCheck asks to confirm again when what was confirmed is no longer known\n", func() {
+			edited := confirmed()
+			edited.UpdateTime = readTime + 5
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(edited, true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+
+			_, err := svc.RunCheck(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Check_ConfirmAgain)
+		})
+
+		Convey("RunCheck refuses a draft never confirmed\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+
+			_, err := svc.RunCheck(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Check_NothingConfirmed)
+		})
+
+		Convey("RunCheck refuses while the commit is being checked\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmed(), true, nil)
+			ca.EXPECT().GetCheck(gomock.Any(), "p1").Return(nil, false, nil)
+			starts(false)
+
+			_, err := svc.RunCheck(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Check_Running)
+			So(ran, ShouldBeEmpty)
+		})
+
+		Convey("RunCheck is the owner's\n", func() {
+			other := interfaces.AccountInfo{ID: "u2", Type: "user"}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+
+			_, err := svc.RunCheck(ctx, token, "p1", other)
+
+			shouldBeHTTPError(err, http.StatusForbidden, perrors.BknProject_Check_NotOwner)
+		})
+
+		Convey("RunCheck refuses an archived project\n", func() {
+			archived := &interfaces.ProjectEntry{Project: &interfaces.Project{ID: "p1", Owner: caller, Archived: true}}
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(archived, nil)
+
+			_, err := svc.RunCheck(ctx, token, "p1", caller)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Draft_ProjectArchived)
+		})
 	})
 }

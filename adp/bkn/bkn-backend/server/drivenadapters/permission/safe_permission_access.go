@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -21,9 +22,16 @@ import (
 
 // safeClient talks to bkn-safe's clean authz API (/api/safe/v1/authz/*).
 type safeClient struct {
-	baseURL string
-	http    *http.Client
+	baseURL     string
+	http        *http.Client
+	cleanupHTTP *http.Client
 }
+
+const (
+	defaultSafeTimeout            = 5 * time.Second
+	defaultResourceCleanupTimeout = 30 * time.Second
+	resourceCleanupTimeoutEnv     = "BKN_SAFE_RESOURCE_CLEANUP_TIMEOUT"
+)
 
 // safeHTTPStatusError preserves the response status as structured data so
 // callers never need to inspect a potentially sensitive dependency error
@@ -53,9 +61,22 @@ var concreteResourceOperations = []string{
 
 func newSafeClient(baseURL string) *safeClient {
 	return &safeClient{
-		baseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"),
-		http:    &http.Client{Timeout: 5 * time.Second},
+		baseURL:     strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		http:        &http.Client{Timeout: defaultSafeTimeout},
+		cleanupHTTP: &http.Client{Timeout: configuredResourceCleanupTimeout()},
 	}
+}
+
+func configuredResourceCleanupTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(resourceCleanupTimeoutEnv))
+	if raw == "" {
+		return defaultResourceCleanupTimeout
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil || timeout <= 0 {
+		return defaultResourceCleanupTimeout
+	}
+	return timeout
 }
 
 func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
@@ -237,6 +258,14 @@ func (c *safeClient) deleteResourceParents(ctx context.Context, resourceType str
 }
 
 func (c *safeClient) do(ctx context.Context, method, path string, body, out any) error {
+	return c.doWithClient(ctx, c.http, method, path, body, out)
+}
+
+func (c *safeClient) doCleanup(ctx context.Context, method, path string, body, out any) error {
+	return c.doWithClient(ctx, c.cleanupHTTP, method, path, body, out)
+}
+
+func (c *safeClient) doWithClient(ctx context.Context, client *http.Client, method, path string, body, out any) error {
 	var requestBody io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -252,7 +281,7 @@ func (c *safeClient) do(ctx context.Context, method, path string, body, out any)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -365,7 +394,7 @@ func (s *safePermissionAccess) CreateResources(ctx context.Context, policies []i
 
 func (s *safePermissionAccess) DeleteResources(ctx context.Context, resources []interfaces.PermissionResource) error {
 	for _, r := range resources {
-		if err := s.safe.do(ctx, http.MethodDelete, "/api/safe/v1/authz/policies", map[string]any{
+		if err := s.safe.doCleanup(ctx, http.MethodDelete, "/api/safe/v1/authz/policies", map[string]any{
 			"resource": map[string]string{"type": r.Type, "id": r.ID},
 		}, nil); err != nil {
 			return err

@@ -170,6 +170,14 @@ func TestVegaBackendClient(t *testing.T) {
 			So(err, ShouldBeNil)
 		})
 
+		Convey("deleting a missing dataset document is idempotent", func() {
+			httpClient.EXPECT().DeleteNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_capability_dataset/data/skill-1", internalDatasetHeaders).
+				Return(http.StatusNotFound, []byte(`{"message":"not found"}`), nil)
+
+			err := client.DeleteDatasetDocumentByID(ctx, "bkn_execution_factory_capability_dataset", "skill-1")
+			So(err, ShouldBeNil)
+		})
+
 		Convey("queries the internal capability dataset as administrator", func() {
 			queryHeaders := map[string]string{
 				"Content-Type":           "application/json",

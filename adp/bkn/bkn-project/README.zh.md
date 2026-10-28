@@ -22,8 +22,11 @@
   实体表起草为对象类，主键用全表统计核对；没有声明主键的表，取一个全表唯一且无
   空值的标识类字段作为推断主键。代码表起草为枚举；关联表起草为多对多关系；声明的
   外键、以及按对方主键命名的字段（含带角色前缀的，如 parent_lot_id）起草为关系，
-  用全表命中率核对。无法计数的推断关系作为"未核对"保留；取值很少的字段推断出的
-  关系只推荐不采用。个人信息字段（隐私关键词按词匹配）排除。优先使用数据目录语义
+  用全表命中率核对。无法计数的推断关系作为"未核对"保留；取值很少的字段（少于
+  `draft.minInferredDistinct`，默认 10）推断出的关系只推荐不采用。推荐而未采用的关系在
+  `proposed_because` 中说明原因：`not_counted`、`below_suggest_hit_rate`、
+  `below_adopt_hit_rate`、`few_values` 或 `end_not_adopted`（一端的对象类还在等人
+  决定）。个人信息字段（隐私关键词按词匹配）排除。优先使用数据目录语义
   理解给出的名称和描述。以调用方身份读取 vega-backend，只取回计数和代码表取值。
 - 健康检查与就绪检查接口。
 
@@ -64,7 +67,9 @@ bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出
 | PATCH | `/projects/{project_id}/ontology/draft/items/{kind}/{item_id}` | 修改已就绪草稿中的一项；`kind` 为 `object_types`、`relation_types` 或 `value_types`。请求体：修改所基于的草稿 `update_time`，以及 `adopted`、`name`（1–128 个字符）、`description`（最长 1000）中的任意几项。每处修改都记为一条决定，带被替换的值；不采用某个对象类时，连到它的关系类一并改为不采用。返回草稿。400 `Draft.MissingUpdateTime`、`Draft.EmptyEdit`、`Draft.NeedsIdentity`（对象类还没选定唯一标识就采用）、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.EndpointNotAdopted`（关系类两端的对象类没有都采用）；404 `Draft.ItemNotFound`；409 `Draft.Stale`（`update_time` 之后草稿已被修改，需重新加载）、`Draft.NotReady`、`Draft.ProjectArchived` |
 | PUT | `/projects/{project_id}/ontology/draft/object_types/{item_id}/identity` | 选定对象类的唯一标识属性。请求体：`update_time` 和 `properties`，即一个或多个不重复的属性，类型须为 `string`、`text`、`integer` 或 `unsigned integer`。单属性的标识会以调用者身份做全表计数，有重复或空值也照样接受，计数写入 `key`（`source` 为 `chosen`）；复合标识不计数。清除 `needs_identity`；是否采用仍需单独修改。400 `Draft.MissingUpdateTime`、`Draft.InvalidIdentity`；404 `Draft.ItemNotFound`；409 同修改草稿项 |
 | POST | `/projects/{project_id}/ontology/draft:restore` | 把被隐私规则排除的字段恢复为属性，字段信息以调用者身份从 vega-backend 重新读取。请求体：`update_time`、`object_type`、`field`。400 `Draft.MissingUpdateTime`、`Draft.NotRestorable`（因类型无法映射而排除）；404 `Draft.ItemNotFound`；409 `Draft.FieldNotFound`（字段已不在表中，或无权读取），以及同修改草稿项的情形 |
-| POST | `/projects/{project_id}/ontology/draft:confirm` | 确认就绪的草稿：把已采纳的项写成 BKN 3.0 定义，提交到项目分支，与分支已有内容并存；返回草稿，`items.confirmation` 记录 `commit`、`by`、`time`、`files`、`skipped_value_types`。`items.confirmation.update_time` 等于草稿的 `update_time` 时为已确认；之后任何编辑都会推进草稿的更新时间，再次确认会替换或删除上次确认写入的文件（`files`），分支上的其他内容不会被替换。重新起草会保留 `items.confirmation`（不再算已确认），之后的确认仍能替换或删除这些文件。请求体 `{"update_time"}`。仅负责人：403 `Draft.NotOwner`。400 `Draft.MissingUpdateTime`、`Draft.NothingAdopted`、`Draft.InvalidItem`；409 `Draft.HasPending`（`error_details`：仍需选定唯一标识的已采纳对象类、两端未全部采纳的已采纳关系）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`、`Lineage.DefinitionsExist`（分支上已有同路径的定义，列出）、`Lineage.BranchNotV3`（先同步分支）、`Lineage.LineageNotV3`（main 也是 2.x：先提交漂移，再同步分支）；与分支合并后不符合 BKN 校验时 400 `Lineage.InvalidDefinitions`（`error_details`：`table`、`column`、`code`、`message`）。被拒的确认不改变草稿：处理原因后可用同一个 `update_time` 再次确认。BKN 3.0 不接受的值类型（如基础类型为 `text`）不写入，列在 `skipped_value_types`，引用它的属性保留基础类型 |
+| POST | `/projects/{project_id}/ontology/draft:confirm` | 确认就绪的草稿：把已采纳的项写成 BKN 3.0 定义，提交到项目分支，与分支已有内容并存；返回草稿，`items.confirmation` 记录 `commit`、`by`、`time`、`files`、`skipped_value_types`。`items.confirmation.update_time` 等于草稿的 `update_time` 时为已确认；之后任何编辑都会推进草稿的更新时间，再次确认会替换或删除上次确认写入的文件（`files`），分支上的其他内容不会被替换。重新起草会保留 `items.confirmation`（不再算已确认），之后的确认仍能替换或删除这些文件。确认的 commit 随后在后台校验（`ontology/check`）。请求体 `{"update_time"}`。仅负责人：403 `Draft.NotOwner`。400 `Draft.MissingUpdateTime`、`Draft.NothingAdopted`、`Draft.InvalidItem`；409 `Draft.HasPending`（`error_details`：仍需选定唯一标识的已采纳对象类、两端未全部采纳的已采纳关系）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`、`Lineage.DefinitionsExist`（分支上已有同路径的定义，列出）、`Lineage.BranchNotV3`（先同步分支）、`Lineage.LineageNotV3`（main 也是 2.x：先提交漂移，再同步分支）；与分支合并后不符合 BKN 校验时 400 `Lineage.InvalidDefinitions`（`error_details`：`table`、`column`、`code`、`message`）。被拒的确认不改变草稿：处理原因后可用同一个 `update_time` 再次确认。BKN 3.0 不接受的值类型（如基础类型为 `text`）不写入，列在 `skipped_value_types`，引用它的属性保留基础类型 |
+| GET | `/projects/{project_id}/ontology/check` | 上次确认的校验。确认后在后台自动运行，以确认人的身份计数：`commit`、`status`（`running`、`passed`、`issues`，或 `failed`；服务重启中断时 `error` 为 `interrupted`）、`attempt`、`runner`、`start_time`、`finish_time` 和 `results`：`keys`（每个对象类的唯一标识：`rows`、`duplicates`、`nulls`）、`relations`（每个关系的 `joins`，每连到一端一条：`rows`、`nulls`、`orphans`、`hit_rate`）、`excluded_mapped`（映射到隐私规则排除字段的属性）。每一项带 `state`：`counted`；`not_counted` 并带 `reason`（`cross_catalog`、`several_fields`、`unmapped`、`no_key`）；或 `failed`（`query_failed`、`timeout`）。`issues` 表示唯一标识有重复或缺失，或映射了排除字段；孤儿记录只报告，不判定。一次失败后自动重试一次，只重算失败项。结果只作提示，不会撤销确认。还没有校验时 404 `Check.NotFound` |
+| POST | `/projects/{project_id}/ontology/check:run` | 以调用者身份重新校验上次确认的全部内容，返回 202 和校验（`running`）。仅负责人：403 `Check.NotOwner`。409 `Draft.ProjectArchived`、`Check.NothingConfirmed`、`Check.Running`（这次确认正在校验）、`Check.ConfirmAgain`（确认后草稿又改过，而那次确认从未校验过：请再确认一次） |
 
 ## 本地开发
 

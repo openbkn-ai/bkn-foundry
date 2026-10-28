@@ -16,6 +16,7 @@ const (
 
 	KNProxyLifecycleActive    = "active"
 	KNProxyLifecycleDisabling = "disabling"
+	KNProxyLifecycleDeleting  = "deleting"
 	KNProxyLifecycleArchived  = "archived"
 
 	KNProxySyncPending = "pending"
@@ -198,31 +199,39 @@ type ProxyGrantSyncResult struct {
 	Unchanged   int `json:"unchanged"`
 }
 
+// AuthorizationCleanupTarget is a durable post-proxy cleanup carried by the
+// existing KN proxy outbox. ResourceIDs are canonical Safe resource IDs.
+type AuthorizationCleanupTarget struct {
+	ResourceType string   `json:"resource_type"`
+	ResourceIDs  []string `json:"resource_ids"`
+}
+
 // KNProxyOutboxEvent is one durable, ordered Safe grant delta. Bindings and
 // sources are persisted in the payload and are never reconstructed from newer
 // business rows while the event is being retried.
 type KNProxyOutboxEvent struct {
-	ID             string                 `json:"id"`
-	KNID           string                 `json:"kn_id"`
-	ProxyAccountID string                 `json:"proxy_account_id"`
-	GrantorID      string                 `json:"grantor_id"`
-	Generation     int64                  `json:"generation"`
-	BaseVersion    string                 `json:"base_version"`
-	TargetVersion  string                 `json:"target_version"`
-	Bindings       []KNProxyBindingRef    `json:"bindings"`
-	DesiredSources []ProxyGrantSourceSpec `json:"desired_sources"`
-	Upserts        []ProxyGrantSourceSpec `json:"upserts"`
-	Removals       []ProxyGrantSourceSpec `json:"removals"`
-	Status         string                 `json:"status"`
-	AttemptCount   int                    `json:"attempt_count"`
-	NextRetryAt    int64                  `json:"next_retry_at"`
-	LeaseOwner     string                 `json:"lease_owner"`
-	LeaseUntil     int64                  `json:"lease_until"`
-	LastError      string                 `json:"last_error"`
-	CreatedAt      int64                  `json:"created_at"`
-	UpdatedAt      int64                  `json:"updated_at"`
-	CompletedAt    int64                  `json:"completed_at"`
-	SafeApplied    bool                   `json:"-"`
+	ID                    string                       `json:"id"`
+	KNID                  string                       `json:"kn_id"`
+	ProxyAccountID        string                       `json:"proxy_account_id"`
+	GrantorID             string                       `json:"grantor_id"`
+	Generation            int64                        `json:"generation"`
+	BaseVersion           string                       `json:"base_version"`
+	TargetVersion         string                       `json:"target_version"`
+	Bindings              []KNProxyBindingRef          `json:"bindings"`
+	DesiredSources        []ProxyGrantSourceSpec       `json:"desired_sources"`
+	Upserts               []ProxyGrantSourceSpec       `json:"upserts"`
+	Removals              []ProxyGrantSourceSpec       `json:"removals"`
+	AuthorizationCleanups []AuthorizationCleanupTarget `json:"authorization_cleanups,omitempty"`
+	Status                string                       `json:"status"`
+	AttemptCount          int                          `json:"attempt_count"`
+	NextRetryAt           int64                        `json:"next_retry_at"`
+	LeaseOwner            string                       `json:"lease_owner"`
+	LeaseUntil            int64                        `json:"lease_until"`
+	LastError             string                       `json:"last_error"`
+	CreatedAt             int64                        `json:"created_at"`
+	UpdatedAt             int64                        `json:"updated_at"`
+	CompletedAt           int64                        `json:"completed_at"`
+	SafeApplied           bool                         `json:"-"`
 }
 
 type ProxyGrantReconcileResult struct {
