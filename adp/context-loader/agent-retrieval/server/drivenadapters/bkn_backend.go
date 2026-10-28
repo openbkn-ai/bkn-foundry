@@ -398,6 +398,21 @@ func (b *bknBackendAccess) ListObjectTypes(ctx context.Context, knID string, off
 	}, nil
 }
 
+// ListValueTypes reads every value type of a knowledge network's main branch in one page. A
+// network has few value types; the long ones are enums, which search_schema needs whole to match
+// enum_query against.
+func (b *bknBackendAccess) ListValueTypes(ctx context.Context, knID string) ([]*interfaces.ValueType, error) {
+	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/value-types", b.baseURL, url.PathEscape(knID))
+	query := url.Values{}
+	query.Set("limit", "-1")
+
+	page := &knPagedEnvelope[*interfaces.ValueType]{}
+	if err := b.getKnowledgeNetworkJSON(ctx, src, "bkn.value_type.list", query, page); err != nil {
+		return nil, err
+	}
+	return page.Entries, nil
+}
+
 // GetObjectTypeDetail gets object type details.
 func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types/%s", b.baseURL, url.PathEscape(knID), pathIDList(otIds))

@@ -290,6 +290,8 @@ type KnSearchReq struct {
 	// Not entering the request contract: the comparison operator can be deduced according to the attribute type, and issuing it one by one is pure noise to the Agent; the REST caller.
 	// Consumers with direct BKN connections (such as Studio) still get the full amount.
 	IndexOpsOnly bool `json:"-"`
+	// EnumQuery See SearchSchemaReq field of the same name.
+	EnumQuery string `json:"enum_query,omitempty"`
 }
 
 // SetKnIDs Sets knIDs (internal use, converted from KnID)

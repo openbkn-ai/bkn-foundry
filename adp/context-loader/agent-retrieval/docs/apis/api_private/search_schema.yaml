@@ -145,6 +145,12 @@ components:
             是否在每个对象类的 data_property 上额外返回物理列名 column（取自 mapped_field）。
             写 run_sql 时列名要用 column（物理列），而非 name（逻辑名）——二者可不同，
             且同一资源可被多个对象类用不同逻辑名映射。默认 false 以保持响应精简。
+        enum_query:
+          type: string
+          description: >-
+            按显示名或编码检索枚举项，多个词用空格隔开，任一词命中即返回。用于没有展开的枚举：
+            超过展开上限（默认 50 项）的大字典，以及精简模式下的所有枚举。不传时这些枚举只给
+            value_type 与 enum_count。
 
     SearchScope:
       type: object

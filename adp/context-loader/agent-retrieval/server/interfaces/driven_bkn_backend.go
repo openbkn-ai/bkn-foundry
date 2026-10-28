@@ -73,6 +73,7 @@ type DataProperty struct {
 
 	// BKN spec 3.0 property declarations (SPECIFICATION.md §6.8), stored and returned by
 	// bkn-backend. A property without declarations carries none of them.
+	Aliases     []string             `json:"aliases,omitempty"`
 	Semantic    string               `json:"semantic,omitempty"`
 	Required    bool                 `json:"required,omitempty"` // Absent means false; bkn-backend omits false
 	Constraints *PropertyConstraints `json:"constraints,omitempty"`
@@ -146,6 +147,8 @@ type ObjectType struct {
 	// It reaches every answer that carries the object type, so one looked up by id says what
 	// replaces it.
 	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
+	// Aliases are other names of the object type (BKN spec 3.0 §6.8). search_schema surfaces them.
+	Aliases []string `json:"aliases,omitempty"`
 
 	// RelatedMetrics are published Object Metrics V1 owned by this object type.
 	// get_object_types fills this list for caller-visible definitions.
@@ -193,6 +196,7 @@ type RelationType struct {
 	// BKN spec 3.0 relation declarations (SPECIFICATION.md §7.6), as bkn-backend returns them.
 	// Relation properties ride in mapping_rules.properties of an indirect relation.
 	ReverseName  string               `json:"reverse_name,omitempty"`
+	Aliases      []string             `json:"aliases,omitempty"`
 	Cardinality  string               `json:"cardinality,omitempty"`
 	Constraints  *RelationConstraints `json:"constraints,omitempty"`
 	Importance   string               `json:"importance,omitempty"`
@@ -271,6 +275,8 @@ type ActionType struct {
 	ObjectTypeID string `json:"object_type_id"` // Object type ID bound to action type
 	// Lifecycle says whether the action type is still in use (BKN spec 3.0 §4.3); nil is active.
 	Lifecycle *Lifecycle `json:"lifecycle,omitempty"`
+	// Aliases are other names of the action type (BKN spec 3.0 §8.2). search_schema surfaces them.
+	Aliases []string `json:"aliases,omitempty"`
 }
 
 // ConceptGroup BKN concept group structure used by exported knowledge-network detail.
@@ -591,6 +597,7 @@ func (d *KnowledgeNetworkDetail) Slim(level string) {
 	for _, a := range d.ActionTypes {
 		if a != nil {
 			a.Score = 0
+			a.Aliases = nil
 		}
 	}
 	// Property and relation declarations are search_schema's to surface; no level of this answer
@@ -959,6 +966,30 @@ type KNProxyResolver interface {
 	ResolveKNProxyBinding(ctx context.Context, binding KNProxyBinding) (*KNProxyAccount, error)
 }
 
+// ValueTypeReader reads a knowledge network's value types. It is implemented by the bkn-backend
+// client next to BknBackendAccess rather than inside it, so that test doubles of that interface
+// need not grow a method only search_schema uses.
+type ValueTypeReader interface {
+	// ListValueTypes returns every value type of the network's main branch.
+	ListValueTypes(ctx context.Context, knID string) ([]*ValueType, error)
+}
+
+// ValueType is a BKN spec 3.0 value type (SPECIFICATION.md §16), as bkn-backend returns it. Only
+// the enum is read: search_schema expands it on the properties that name the value type.
+type ValueType struct {
+	ID       string           `json:"id"`
+	Name     string           `json:"name"`
+	BaseType string           `json:"base_type"`
+	Enum     []*ValueTypeEnum `json:"enum,omitempty"`
+}
+
+// ValueTypeEnum is one enum item. The value is text whatever the base type.
+type ValueTypeEnum struct {
+	Value      string `json:"value"`
+	Display    string `json:"display"`
+	Deprecated bool   `json:"deprecated,omitempty"`
+}
+
 // CapabilityRef is one capability a knowledge network branch has bound. Only the reference
 // travels: the master data lives in the execution factory, and Context Loader reads it there
 // directly, so having bkn-backend fill in names would only add a hop.
@@ -1020,18 +1051,21 @@ const (
 	CapabilityTypeMCPTool = "mcp_tool"
 )
 
-// OmitPropertyDeclarations clears the BKN spec 3.0 property declarations from the given object
-// types. Only search_schema surfaces them; get_kn_detail and get_object_types answer as they did
-// before declarations existed, which keeps their size where it was.
+// OmitPropertyDeclarations clears the BKN spec 3.0 property declarations and the object type and
+// property aliases from the given object types. Only search_schema surfaces them; get_kn_detail
+// and get_object_types answer as they did before declarations existed, which keeps their size
+// where it was.
 func OmitPropertyDeclarations(objectTypes []*ObjectType) {
 	for _, o := range objectTypes {
 		if o == nil {
 			continue
 		}
+		o.Aliases = nil
 		for _, p := range o.DataProperties {
 			if p == nil {
 				continue
 			}
+			p.Aliases = nil
 			p.Semantic = ""
 			p.Required = false
 			p.Constraints = nil
@@ -1050,6 +1084,7 @@ func OmitRelationDeclarations(relationTypes []*RelationType) {
 			continue
 		}
 		r.ReverseName = ""
+		r.Aliases = nil
 		r.Cardinality = ""
 		r.Constraints = nil
 		r.Verification = ""

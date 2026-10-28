@@ -16,6 +16,9 @@ concept_search_config:
   # Per-object schema read limit in search_schema, in milliseconds. A read that has not answered by
   # then keeps its object type without properties instead of failing the whole search.
   schema_read_timeout_ms: 5000
+  # Most enum items search_schema lists on a property; a larger enum gives its item count, and
+  # enum_query looks items up in it.
+  enum_expand_limit: 50
 instance_search_config:
   # Reject instances the reranker scores below this, and return nothing when no candidate clears it.
   # 0 leaves the gate off. Calibrate per deployment: run a few queries the network can answer and a

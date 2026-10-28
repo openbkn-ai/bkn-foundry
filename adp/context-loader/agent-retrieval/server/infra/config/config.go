@@ -180,6 +180,9 @@ type KnConceptSearchConfig struct {
 	// search_schema. A read that has not answered by then keeps its object type
 	// without properties instead of holding the whole search (#1906).
 	SchemaReadTimeoutMS int `yaml:"schema_read_timeout_ms" env:"CONTEXT_LOADER_SCHEMA_READ_TIMEOUT_MS" default:"5000"`
+	// EnumExpandLimit is the most enum items search_schema lists on a property. A larger enum
+	// gives its value type and item count, and enum_query looks items up in it.
+	EnumExpandLimit int `yaml:"enum_expand_limit" default:"50"`
 }
 
 // KnInstanceSearchConfig holds the deployment-calibrated knobs of semantic instance retrieval.
