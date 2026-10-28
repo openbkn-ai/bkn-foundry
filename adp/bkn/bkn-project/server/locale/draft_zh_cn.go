@@ -34,6 +34,7 @@ var draftZhCN = i18n.I18nMessages{
 		"BknProject.Check.NothingConfirmed":   "本体还没有确认 请先确认本体草稿，确认后会自动校验。",
 		"BknProject.Check.ConfirmAgain":       "请重新确认 确认之后草稿又改过，上次确认的内容已无法校验，请再确认一次。",
 		"BknProject.Check.Running":            "正在校验 本次确认的内容正在校验，请等待完成。",
+		"BknProject.Draft.PartialNotAccepted": "草稿不完整 起草时有表没能读取，草稿里没有这些表的内容；确认时请明确认可，见 error_details。",
 		"BknProject.Draft.HasPending":         "还有待你决定的事 确认前请先为已采纳的对象类选定唯一标识，并处理连接了未采纳对象类的关系，见 error_details。",
 		"BknProject.Draft.CatalogMissing":     "数据目录不存在 项目引用的数据目录已不存在，请先更换项目的数据目录，再起草。",
 		"BknProject.Draft.MissingUpdateTime":  "缺少更新时间 请提供 update_time，即所修改草稿的更新时间。",

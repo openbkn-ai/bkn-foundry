@@ -65,6 +65,13 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_HasPending).
 			WithErrorDetails(pending)
 	}
+	// A draft missing tables it could not read is confirmed only by an owner who accepts it.
+	partial := draft.Items.Inputs != nil && draft.Items.Inputs.Partial
+	if partial && !confirm.AcceptPartial {
+		span.SetStatus(codes.Error, "Partial not accepted")
+		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_PartialNotAccepted).
+			WithErrorDetails(unreadableIDs(&draft.Items))
+	}
 	adopted := 0
 	for _, ot := range draft.Items.ObjectTypes {
 		if ot.Adopted {
@@ -130,6 +137,12 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	confirmation.By, confirmation.Time = caller, draft.UpdateTime
 	confirmation.Files, confirmation.Pending = paths, nil
 	confirmation.SkippedValueTypes = compiled.SkippedValueTypes
+	if partial {
+		draft.Items.Decisions = append(draft.Items.Decisions, &interfaces.DraftDecision{
+			Kind: interfaces.DRAFT_KIND_DRAFT, Action: interfaces.DRAFT_DECISION_ACCEPT_PARTIAL,
+			After: unreadableIDs(&draft.Items), By: caller, Time: draft.UpdateTime,
+		})
+	}
 	if err := s.writeDraft(context.WithoutCancel(ctx), draft, draft.UpdateTime); err != nil {
 		span.SetStatus(codes.Error, "Record confirmation failed")
 		return nil, err
@@ -138,6 +151,15 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	s.startCheck(context.WithoutCancel(ctx), projectID, result.Commit, checkInputOf(&draft.Items), caller)
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
+}
+
+// unreadableIDs lists the resource IDs of the tables drafting could not read.
+func unreadableIDs(items *interfaces.DraftItems) []string {
+	ids := make([]string, 0, len(items.Unreadable))
+	for _, t := range items.Unreadable {
+		ids = append(ids, t.ResourceID)
+	}
+	return ids
 }
 
 // writeDraft writes the draft unless someone changed it since readUpdateTime.
