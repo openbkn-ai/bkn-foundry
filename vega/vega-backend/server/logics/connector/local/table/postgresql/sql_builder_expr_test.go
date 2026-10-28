@@ -203,6 +203,7 @@ func TestToSql(t *testing.T) {
 		{"SELECT IFNULL(a,'x') AS n", `SELECT COALESCE("a", $1) AS "n"`},
 		{"SELECT CONCAT(a,NULL) AS n", `SELECT (CAST("a" AS TEXT) || CAST($1 AS TEXT)) AS "n"`},
 		{"SELECT LENGTH(a) AS n", `SELECT OCTET_LENGTH("a") AS "n"`},
+		{"SELECT OCTET_LENGTH(a) AS n", `SELECT OCTET_LENGTH("a") AS "n"`},
 		{"SELECT NOW(6) AS n", `SELECT LOCALTIMESTAMP(6) AS "n"`},
 		{"SELECT CURDATE() AS n", `SELECT CURRENT_DATE AS "n"`},
 		{"SELECT CAST(a AS SIGNED) AS n", `SELECT CAST("a" AS BIGINT) AS "n"`},
@@ -224,6 +225,15 @@ func TestToSql(t *testing.T) {
 			assert.Equal(t, want, text)
 		})
 	}
+	t.Run("byte length alias preserves Unicode and NULL bindings", func(t *testing.T) {
+		query, err := compiler.ParseSQL("SELECT OCTET_LENGTH('中文') AS bytes,OCTET_LENGTH(NULL) AS absent FROM {{r}}")
+		require.NoError(t, err)
+		query.FromPart.(*sb.Table).SourceIdentifier = `"s"."t"`
+		text, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT OCTET_LENGTH($1) AS "bytes", OCTET_LENGTH($2) AS "absent" FROM "s"."t"`, text)
+		assert.Equal(t, []any{"中文", nil}, args)
+	})
 	t.Run("LIKE escape and structured regex remain bound", func(t *testing.T) {
 		escape := "!"
 		query := sb.Select(&sb.Star{}).Where(&sb.Like{Expr: &sb.Column{Name: "label"}, Pattern: &sb.Param{Value: "a!_%"}, Escape: &escape}, &sb.Regex{Expr: &sb.Column{Name: "label"}, Pattern: &sb.Param{Value: "^a"}})

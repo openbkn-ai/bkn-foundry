@@ -290,6 +290,10 @@ func (b *treeBuilder) primary(ctx g.IPrimaryExpressionContext) sb.SqlNode {
 			b.fail(CodeUnsupported, ctx, "unsupported function argument count, DISTINCT, or wildcard usage")
 			return nil
 		}
+		// 公共字节长度别名归一化；默认输出列名仍由原始表达式生成。
+		if name == "OCTET_LENGTH" {
+			name = "LENGTH"
+		}
 		return b.node(ctx, &sb.Function{Name: name, Args: args, Distinct: distinct}, args...)
 	case ctx.CAST() != nil:
 		expr := b.expr(ctx.Expression(0))
@@ -536,13 +540,14 @@ func validSQLFunctionArguments(name string, args []sb.SqlNode, distinct bool) bo
 	return len(args) >= minimum && len(args) <= maximum
 }
 
-// allowedSQLFunction 只开放已明确为只读的内置函数，避免透传 UDF 或有副作用的调用。
+// allowedSQLFunction 显式开放已定义只读语义的公共函数；扩展规则见 sql/README.md。
 func allowedSQLFunction(name string) bool {
 	switch name {
-	case "COUNT", "SUM", "AVG", "MIN", "MAX", "ABS", "ROUND", "FLOOR", "CEIL", "CEILING", "COALESCE",
-		"IFNULL", "NULLIF", "CONCAT", "CONCAT_WS", "CHAR", "UPPER", "LOWER", "LENGTH", "CHAR_LENGTH",
-		"SUBSTRING", "SUBSTR", "TRIM", "LTRIM", "RTRIM", "REPLACE", "DATE", "YEAR", "MONTH", "DAY", "DAYOFMONTH",
-		"HOUR", "MINUTE", "SECOND", "DATE_FORMAT", "STR_TO_DATE", "NOW", "CURRENT_TIMESTAMP", "CURDATE":
+	case "COUNT", "SUM", "AVG", "MIN", "MAX", "ABS", "ROUND", "FLOOR", "CEIL", "CEILING",
+		"COALESCE", "IFNULL", "NULLIF", "CONCAT", "CONCAT_WS", "CHAR", "UPPER", "LOWER", "LENGTH",
+		"OCTET_LENGTH", "CHAR_LENGTH", "SUBSTRING", "SUBSTR", "TRIM", "LTRIM", "RTRIM", "REPLACE",
+		"DATE", "YEAR", "MONTH", "DAY", "DAYOFMONTH", "HOUR", "MINUTE", "SECOND", "DATE_FORMAT",
+		"STR_TO_DATE", "NOW", "CURRENT_TIMESTAMP", "CURDATE":
 		return true
 	default:
 		return false

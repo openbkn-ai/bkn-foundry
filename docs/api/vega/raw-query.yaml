@@ -32,12 +32,14 @@ info:
 
     MariaDB/MySQL、PostgreSQL 和 HANA 使用明确的只读内置函数名单，涵盖常用聚合、数值、
     字符串和日期函数，并在访问连接器前校验参数数量及 DISTINCT / * 的组合。
+    OCTET_LENGTH 与 LENGTH 同义，返回字节长度；CHAR_LENGTH 返回字符长度。
     PostgreSQL 将 IFNULL、LENGTH、日期取值和格式等映射为 PG 表达式；
     DATE_FORMAT/STR_TO_DATE 的格式使用字面量，支持 %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%x/%v/%%。
     HANA 支持常用数值、字符串、日期函数和 HAVING 别名映射，CHAR 接受 ASCII 整数字面量
     （0–127）及 NULL；DATE_FORMAT/STR_TO_DATE 的字面量格式支持
     %Y/%y/%m/%d/%H/%h/%i/%s/%S/%f/%p/%% 和常用分隔符。
-    HANA 的 CHAR_LENGTH/SUBSTRING 使用 CESU-8 字符计数，LENGTH 先编码为 UTF-8，再统计二进制字节。
+    HANA 的 CHAR_LENGTH/SUBSTRING 使用 CESU-8 字符计数，LENGTH/OCTET_LENGTH 先编码为 UTF-8，再统计二进制字节。
+    PostgreSQL 和 HANA 的 SECOND 返回去除小数部分的整数秒。
     字段类型、隐式类型转换和分组合法性由目标数据库检查。
     HANA 在只有 OFFSET、未设置 SQL LIMIT 时由方言生成器补充 LIMIT 2147384648。
 

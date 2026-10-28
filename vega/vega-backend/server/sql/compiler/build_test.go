@@ -33,6 +33,8 @@ func TestTreeBuilderExpressions(t *testing.T) {
 		{"a NOT LIKE 'x!%' ESCAPE '!'", "(`a` NOT LIKE ? ESCAPE ?)", []any{"x!%", "!"}},
 		{"COUNT(DISTINCT a)", "COUNT(DISTINCT `a`)", nil},
 		{"COALESCE(a,0)", "COALESCE(`a`, ?)", []any{json.Number("0")}},
+		{"OCTET_LENGTH('中文')", "LENGTH(?)", []any{"中文"}},
+		{"octet_length(NULL)", "LENGTH(?)", []any{nil}},
 		{"CURRENT_TIMESTAMP", "CURRENT_TIMESTAMP()", nil},
 		{"CURRENT_TIMESTAMP()", "CURRENT_TIMESTAMP()", nil},
 		{"CASE a WHEN 1 THEN 'one' ELSE NULL END", "CASE `a` WHEN ? THEN ? ELSE ? END", []any{json.Number("1"), "one", nil}},
@@ -206,6 +208,20 @@ func TestTreeBuilderProjectionNames(t *testing.T) {
 }
 
 func TestTreeBuilderFunctionArguments(t *testing.T) {
+	t.Run("byte length alias keeps the original output name", func(t *testing.T) {
+		query, err := ParseSQL("SELECT OCTET_LENGTH(label) FROM {{x}}")
+		require.NoError(t, err)
+		alias := query.ColumnsPart[0].(*sb.Alias)
+		assert.Equal(t, "OCTET_LENGTH(label)", alias.Name)
+		assert.Equal(t, "LENGTH", alias.Expr.(*sb.Function).Name)
+	})
+	for _, expr := range []string{"OCTET_LENGTH()", "OCTET_LENGTH(1,2)", "OCTET_LENGTH(*)", "OCTET_LENGTH(DISTINCT id)"} {
+		t.Run("reject "+expr, func(t *testing.T) {
+			query, err := ParseSQL("SELECT " + expr + " FROM {{x}}")
+			assert.Nil(t, query)
+			require.Error(t, err)
+		})
+	}
 	for _, expr := range []string{"CHAR(31)", "CHAR(65,66)", "CHAR(NULL,65,NULL)", "CHAR(id+64)", "CHAR(50089)"} {
 		t.Run("accept "+expr, func(t *testing.T) {
 			query, err := ParseSQL("SELECT " + expr + " AS value FROM {{x}}")
