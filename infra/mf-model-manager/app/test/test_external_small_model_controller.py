@@ -377,6 +377,8 @@ class TestEditModel(TestCase):
         asyncio.set_event_loop(loop)
         small_model_dao.get_model_info_by_id = mock.Mock(return_value=[{
             "f_model_id": "1234567890987654321",
+            "f_model_name": "1",
+            "f_model_type": "embedding",
             "f_model_config": '{"api_key": "xxx", "api_url": "http://x", "api_model": "m"}',
         }])
         small_model_dao.name_check = mock.Mock(return_value=[])
