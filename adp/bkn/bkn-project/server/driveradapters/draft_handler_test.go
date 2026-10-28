@@ -109,6 +109,16 @@ func Test_DraftRestHandler(t *testing.T) {
 			So(serveBody(handler, http.MethodPost, base+"/draft:restore", nil).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
+		Convey("draft:confirm confirms the draft made at the update time the body names\n", func() {
+			drs.EXPECT().ConfirmDraft(gomock.Any(), "Bearer t", "p1", interfaces.DraftConfirm{UpdateTime: 7}, caller).
+				Return(&interfaces.Draft{ProjectID: "p1", UpdateTime: 8}, nil)
+
+			w := serveBody(handler, http.MethodPost, base+"/draft:confirm", []byte(`{"update_time":7}`))
+
+			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
+			So(serveBody(handler, http.MethodPost, base+"/draft:confirm", nil).Result().StatusCode, ShouldEqual, http.StatusBadRequest)
+		})
+
 		Convey("Any other ontology action is not found\n", func() {
 			So(serve(handler, http.MethodPost, base+"/draft:delete").Result().StatusCode, ShouldEqual, http.StatusNotFound)
 		})

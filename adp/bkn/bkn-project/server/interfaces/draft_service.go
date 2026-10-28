@@ -29,6 +29,10 @@ type DraftService interface {
 	// field from vega-backend as the caller, and records it as a decision.
 	RestoreExcluded(ctx context.Context, token string, projectID string, restore DraftRestore,
 		caller AccountInfo) (*Draft, error)
+	// ConfirmDraft commits the adopted items of a ready draft to the project branch as BKN
+	// definitions, for the project owner, and records the confirmation on the draft.
+	ConfirmDraft(ctx context.Context, token string, projectID string, confirm DraftConfirm,
+		caller AccountInfo) (*Draft, error)
 	// FailInterrupted fails the drafts a previous run of the service left drafting.
 	FailInterrupted(ctx context.Context) error
 }

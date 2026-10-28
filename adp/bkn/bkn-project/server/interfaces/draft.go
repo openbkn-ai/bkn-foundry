@@ -95,6 +95,31 @@ type DraftItems struct {
 	// Decisions people made on the items, oldest first. They are kept with the items so a
 	// draft and its decisions are read and written together.
 	Decisions []*DraftDecision `json:"decisions"`
+	// Confirmation records the last time the draft was confirmed. The draft is confirmed while
+	// its update time is the draft's: any change since moves the draft's on.
+	Confirmation *DraftConfirmation `json:"confirmation,omitempty"`
+}
+
+// DraftConfirmation records a draft committed to its project branch as BKN definitions.
+type DraftConfirmation struct {
+	// UpdateTime is the draft's update time as confirmed.
+	UpdateTime int64 `json:"update_time"`
+	// Commit is the branch commit; empty while the definitions are being committed, or when
+	// committing them failed.
+	Commit string      `json:"commit"`
+	By     AccountInfo `json:"by"`
+	Time   int64       `json:"time"`
+	// Files are the definition paths the confirmation writes on the branch; the next one may
+	// replace or remove them.
+	Files []string `json:"files"`
+	// SkippedValueTypes are adopted value types BKN 3.0 would refuse; their properties keep
+	// their base type.
+	SkippedValueTypes []string `json:"skipped_value_types"`
+}
+
+// DraftConfirm asks to commit the draft made at UpdateTime to the project branch.
+type DraftConfirm struct {
+	UpdateTime int64 `json:"update_time"`
 }
 
 // DraftDecision records one change a person made to a draft item. Before and After are the

@@ -23,6 +23,7 @@ import (
 	perrors "github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics"
+	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/lineage"
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/logics/project"
 )
 
@@ -48,6 +49,8 @@ type draftService struct {
 	da      interfaces.DraftAccess
 	va      interfaces.VegaAccess
 	ps      interfaces.ProjectService
+	// ls commits a confirmed draft to its project branch.
+	ls interfaces.LineageService
 	// run drafts in the background; tests replace it to run in line.
 	run func(fn func())
 }
@@ -59,6 +62,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 			da:      logics.DA,
 			va:      logics.VA,
 			ps:      project.NewProjectService(),
+			ls:      lineage.NewLineageService(),
 			run:     func(fn func()) { go fn() },
 		}
 	})

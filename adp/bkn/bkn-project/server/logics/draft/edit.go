@@ -148,27 +148,35 @@ func applyEdit(ctx context.Context, items *interfaces.DraftItems, kind string, i
 // the draft is ready, and it is the draft the edit was made on.
 func (s *draftService) readyDraft(ctx context.Context, token string, projectID string,
 	updateTime int64) (*interfaces.Draft, error) {
+	_, draft, err := s.readyDraftOf(ctx, token, projectID, updateTime)
+	return draft, err
+}
+
+// readyDraftOf is readyDraft that also returns the project.
+func (s *draftService) readyDraftOf(ctx context.Context, token string, projectID string,
+	updateTime int64) (*interfaces.ProjectEntry, *interfaces.Draft, error) {
 	if updateTime <= 0 {
 		// Reloading would not help a change made on no draft, so it is not reported as stale.
-		return nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_MissingUpdateTime)
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Draft_MissingUpdateTime)
 	}
-	if _, err := s.unarchivedProject(ctx, token, projectID); err != nil {
-		return nil, err
+	entry, err := s.unarchivedProject(ctx, token, projectID)
+	if err != nil {
+		return nil, nil, err
 	}
 	draft, exist, err := s.da.GetDraft(ctx, projectID)
 	if err != nil {
-		return nil, internalError(ctx, "Get draft failed", err)
+		return nil, nil, internalError(ctx, "Get draft failed", err)
 	}
 	if !exist {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusNotFound, perrors.BknProject_Draft_NotFound)
 	}
 	if draft.Status != interfaces.DRAFT_STATUS_READY {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_NotReady)
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_NotReady)
 	}
 	if draft.UpdateTime != updateTime {
-		return nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Stale)
+		return nil, nil, httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Draft_Stale)
 	}
-	return draft, nil
+	return entry, draft, nil
 }
 
 // commit records the decisions on the draft and writes it, unless no one changed it since it

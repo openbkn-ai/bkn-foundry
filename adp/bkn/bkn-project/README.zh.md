@@ -33,6 +33,13 @@
 令牌，与 bkn-backend 的外部接口一样通过 Hydra 校验。从 bkn-backend 导出时使用
 调用方的令牌，因此 bkn-backend 的权限同样生效。
 
+所有谱系都按 BKN 3.0 保存：导出时向 bkn-backend 请求 `bkn_spec=3.0`，`main`、
+项目分支和发布读回的内容都遵循 3.0 规则，草稿写出的值类型只有 3.0 能容纳。
+bkn-backend 无法按 3.0 导出的网络以 400 拒绝，`error_details` 指出要修正的内容，
+不会建出任何东西：行动参数未通过网络检查时为 `BknProject.Lineage.NetworkNeedsCheck`，
+有定义按 3.0 规则读不回时为 `BknProject.Lineage.NetworkNotReadableAsV3`。以 2.x
+开始的谱系在提交漂移时转为 3.0，其分支在同步时转为 3.0。
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/health` | 服务信息 |
@@ -57,6 +64,7 @@
 | PATCH | `/projects/{project_id}/ontology/draft/items/{kind}/{item_id}` | 修改已就绪草稿中的一项；`kind` 为 `object_types`、`relation_types` 或 `value_types`。请求体：修改所基于的草稿 `update_time`，以及 `adopted`、`name`（1–128 个字符）、`description`（最长 1000）中的任意几项。每处修改都记为一条决定，带被替换的值；不采用某个对象类时，连到它的关系类一并改为不采用。返回草稿。400 `Draft.MissingUpdateTime`、`Draft.EmptyEdit`、`Draft.NeedsIdentity`（对象类还没选定唯一标识就采用）、`Draft.InvalidName`、`Draft.InvalidDescription`、`Draft.EndpointNotAdopted`（关系类两端的对象类没有都采用）；404 `Draft.ItemNotFound`；409 `Draft.Stale`（`update_time` 之后草稿已被修改，需重新加载）、`Draft.NotReady`、`Draft.ProjectArchived` |
 | PUT | `/projects/{project_id}/ontology/draft/object_types/{item_id}/identity` | 选定对象类的唯一标识属性。请求体：`update_time` 和 `properties`，即一个或多个不重复的属性，类型须为 `string`、`text`、`integer` 或 `unsigned integer`。单属性的标识会以调用者身份做全表计数，有重复或空值也照样接受，计数写入 `key`（`source` 为 `chosen`）；复合标识不计数。清除 `needs_identity`；是否采用仍需单独修改。400 `Draft.MissingUpdateTime`、`Draft.InvalidIdentity`；404 `Draft.ItemNotFound`；409 同修改草稿项 |
 | POST | `/projects/{project_id}/ontology/draft:restore` | 把被隐私规则排除的字段恢复为属性，字段信息以调用者身份从 vega-backend 重新读取。请求体：`update_time`、`object_type`、`field`。400 `Draft.MissingUpdateTime`、`Draft.NotRestorable`（因类型无法映射而排除）；404 `Draft.ItemNotFound`；409 `Draft.FieldNotFound`（字段已不在表中，或无权读取），以及同修改草稿项的情形 |
+| POST | `/projects/{project_id}/ontology/draft:confirm` | 确认就绪的草稿：把已采纳的项写成 BKN 3.0 定义，提交到项目分支，与分支已有内容并存；返回草稿，`items.confirmation` 记录 `commit`、`by`、`time`、`files`、`skipped_value_types`。`items.confirmation.update_time` 等于草稿的 `update_time` 时为已确认；之后任何编辑都会推进草稿的更新时间，再次确认会替换或删除上次确认写入的文件。请求体 `{"update_time"}`。仅负责人：403 `Draft.NotOwner`。400 `Draft.MissingUpdateTime`、`Draft.NothingAdopted`、`Draft.InvalidItem`；409 `Draft.HasPending`（`error_details`：仍需选定唯一标识的已采纳对象类、两端未全部采纳的已采纳关系）、`Draft.Stale`、`Draft.NotReady`、`Draft.ProjectArchived`、`Lineage.DefinitionsExist`（分支上已有同路径的定义，列出）、`Lineage.BranchNotV3`（先同步分支）、`Lineage.LineageNotV3`（main 也是 2.x：先提交漂移，再同步分支）；与分支合并后不符合 BKN 校验时 400 `Lineage.InvalidDefinitions`（`error_details`：`table`、`column`、`code`、`message`）。BKN 3.0 不接受的值类型（如基础类型为 `text`）不写入，列在 `skipped_value_types`，引用它的属性保留基础类型 |
 
 ## 本地开发
 
