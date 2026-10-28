@@ -47,7 +47,7 @@ func compileDraft(items *interfaces.DraftItems) (*compiledDraft, error) {
 		},
 	}
 
-	result := &compiledDraft{Files: map[string][]byte{}}
+	result := &compiledDraft{Files: map[string][]byte{}, SkippedValueTypes: []string{}}
 	valueTypes, names := map[string]bool{}, map[string]bool{}
 	for _, vt := range items.ValueTypes {
 		if !vt.Adopted {

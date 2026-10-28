@@ -113,29 +113,35 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(draft.Items.Confirmation.Files, ShouldResemble, compiledPaths())
 		})
 
-		Convey("A refused commit drops what it was about to write, and the draft is not confirmed\n", func() {
+		Convey("A refused commit leaves the draft as it was read\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
-			before := confirmableDraft()
 			earlier := interfaces.AccountInfo{ID: "u0", Type: "user"}
-			before.Items.Confirmation = &interfaces.DraftConfirmation{
-				UpdateTime: readTime, Commit: "c0", By: earlier, Time: 50, Files: []string{"object_types/customers.bkn"},
-				// Left by a confirmation that stopped after committing: on the branch, the draft's own.
-				Pending: []string{"object_types/stopped.bkn"},
+			last := func() *interfaces.DraftConfirmation {
+				return &interfaces.DraftConfirmation{
+					UpdateTime: readTime, Commit: "c0", By: earlier, Time: 50, Files: []string{"object_types/customers.bkn"},
+					// Left by a confirmation that stopped after committing: on the branch, the draft's own.
+					Pending: []string{"object_types/stopped.bkn"},
+				}
 			}
+			before := confirmableDraft()
+			before.Items.Confirmation = last()
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(before, true, nil)
 			var claimed []string
+			var claimTime int64
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).
 				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
 					claimed = append([]string{}, d.Items.Confirmation.Pending...)
+					claimTime = d.UpdateTime
 					return true, nil
 				})
 			refused := httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_DefinitionsExist)
 			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
 				gomock.Any(), gomock.Any()).Return(nil, refused)
-			var cleared interfaces.DraftConfirmation
+			var restored interfaces.Draft
+			var restoredOver int64
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
-				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
-					cleared = *d.Items.Confirmation
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, read int64) (bool, error) {
+					restored, restoredOver = *d, read
 					return true, nil
 				})
 
@@ -144,14 +150,86 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(errors.Is(err, refused), ShouldBeTrue)
 			// The claim kept what was left pending beside what this attempt was about to write.
 			So(claimed, ShouldResemble, unionSorted([]string{"object_types/stopped.bkn"}, compiledPaths()))
-			// The paths it was refused for are not its own next time; those already on the branch are.
-			So(cleared.Pending, ShouldResemble, []string{"object_types/stopped.bkn"})
-			So(cleared.UpdateTime, ShouldEqual, 0)
-			// The record is still the last confirmation's, whole: not mixed with the refused one.
-			So(cleared.Commit, ShouldEqual, "c0")
-			So(cleared.By, ShouldResemble, earlier)
-			So(cleared.Time, ShouldEqual, 50)
-			So(cleared.Files, ShouldResemble, []string{"object_types/customers.bkn"})
+			// Written back over the claim, as read: still confirmed by the last confirmation, and
+			// confirmable again with the update time the person read.
+			So(restoredOver, ShouldEqual, claimTime)
+			So(restored.UpdateTime, ShouldEqual, readTime)
+			So(restored.Items.Confirmation, ShouldResemble, last())
+		})
+
+		Convey("A refused commit is written back after the caller went away\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			gone, cancel := context.WithCancel(ctx)
+			refused := httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_DefinitionsExist)
+			// The caller disconnects while the branch is being written.
+			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, string, string, map[string][]byte, []string, string,
+					interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+					cancel()
+					return nil, refused
+				})
+			var restoreErr error
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(c context.Context, _ *interfaces.Draft, _ int64) (bool, error) {
+					restoreErr = c.Err()
+					return true, nil
+				})
+
+			_, err := svc.ConfirmDraft(gone, token, "p1", confirm, caller)
+
+			So(errors.Is(err, refused), ShouldBeTrue)
+			So(restoreErr, ShouldBeNil)
+		})
+
+		Convey("A committed confirmation is recorded after the caller went away\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			gone, cancel := context.WithCancel(ctx)
+			// The caller disconnects while the branch is being written.
+			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any()).
+				DoAndReturn(func(context.Context, string, string, map[string][]byte, []string, string,
+					interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
+					cancel()
+					return &interfaces.CommitDefinitionsResult{Commit: "c1"}, nil
+				})
+			var recordErr error
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(c context.Context, _ *interfaces.Draft, _ int64) (bool, error) {
+					recordErr = c.Err()
+					return true, nil
+				})
+
+			draft, err := svc.ConfirmDraft(gone, token, "p1", confirm, caller)
+
+			So(err, ShouldBeNil)
+			So(recordErr, ShouldBeNil)
+			So(draft.Items.Confirmation.Commit, ShouldEqual, "c1")
+		})
+
+		Convey("A refused first commit leaves the draft without a confirmation\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
+			refused := httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_LineageNotV3)
+			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any()).Return(nil, refused)
+			var restored interfaces.Draft
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+					restored = *d
+					return true, nil
+				})
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			So(errors.Is(err, refused), ShouldBeTrue)
+			So(restored.UpdateTime, ShouldEqual, readTime)
+			So(restored.Items.Confirmation, ShouldBeNil)
 		})
 
 		Convey("What a confirmation stopped after committing left pending is the draft's own\n", func() {
