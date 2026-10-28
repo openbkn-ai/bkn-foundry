@@ -259,7 +259,8 @@ async def test_model(model_config, userId, language):
                 model_type = info[0]["f_model_type"]
             else:
                 config = model_config['model_config']
-                if 'api_key' in config:
+                # Clients may omit an unchanged secret; keep keyless models keyless.
+                if 'api_key' in model_config_old or 'api_key' in config:
                     config['api_key'] = model_config_old.get("api_key","")
                 series = model_config['model_series']
                 model_type = model_config['model_type']
@@ -330,7 +331,8 @@ async def edit_model(model_para, userId, language, role="", audit_request=None):
                         config_new["api_key"], config_old.get("api_key", "")):
                     change = False
                 if not change:
-                    if 'api_key' in config_new:
+                    # Preserve stored credentials even when omitted by the client.
+                    if 'api_key' in config_old or 'api_key' in config_new:
                         config_new["api_key"] = config_old.get("api_key","")
                 model_config = config_new
                 model_series = model_para["model_series"]
