@@ -53,7 +53,15 @@ func NewBknBackendAccess(appSetting *common.AppSetting) interfaces.BknBackendAcc
 	return bbaAccess
 }
 
-// ExportBKN calls GET /bkns/{kn_id}?branch=main, which replies with a tar of the network files.
+// exportBknSpec is the BKN specification every lineage is kept in. A package without a declared
+// specification is read by the 2.x rules, which have no place for value types and other 3.0
+// declarations a project's draft writes; exporting every network as 3.0 keeps one set of rules for
+// main, the project branches and what a release reads back.
+const exportBknSpec = "3.0"
+
+// ExportBKN calls GET /bkns/{kn_id}?branch=main&bkn_spec=3.0, which replies with a tar of the
+// network files. bkn-backend refuses a network a 3.0 package cannot hold as it is
+// (ExportNeedsNetworkCheck), naming what to fix.
 func (bba *bknBackendAccess) ExportBKN(ctx context.Context, token string, knID string) (map[string][]byte, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "ExportBKN")
 	defer span.End()
@@ -62,7 +70,7 @@ func (bba *bknBackendAccess) ExportBKN(ctx context.Context, token string, knID s
 	httpUrl := fmt.Sprintf("%s/bkns/%s", bba.baseUrl, url.PathEscape(knID))
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{HttpUrl: httpUrl, HttpMethod: http.MethodGet})
 
-	query := url.Values{"branch": []string{interfaces.GIT_MAIN_BRANCH}}
+	query := url.Values{"branch": []string{interfaces.GIT_MAIN_BRANCH}, "bkn_spec": []string{exportBknSpec}}
 	respCode, respBody, err := bba.httpClient.GetNoUnmarshal(ctx, httpUrl, query, map[string]string{"Authorization": token})
 	logger.Debugf("ExportBKN finished, kn_id is [%s], response code is [%d]", knID, respCode)
 	if err != nil {

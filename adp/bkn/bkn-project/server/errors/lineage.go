@@ -12,6 +12,9 @@ const (
 	BknProject_Lineage_InvalidDefinitions  = "BknProject.Lineage.InvalidDefinitions"
 	BknProject_Lineage_NotLiveNetwork      = "BknProject.Lineage.NotLiveNetwork"
 	BknProject_Lineage_InvalidSwitchTarget = "BknProject.Lineage.InvalidSwitchTarget"
+	// The network cannot be kept as a BKN 3.0 package until the action parameters bkn-backend
+	// names are fixed.
+	BknProject_Lineage_NetworkNeedsCheck = "BknProject.Lineage.NetworkNeedsCheck"
 
 	// 403
 	BknProject_Lineage_MainBranchReadOnly = "BknProject.Lineage.MainBranchReadOnly"
@@ -43,6 +46,7 @@ var (
 		BknProject_Lineage_InvalidDefinitions,
 		BknProject_Lineage_NotLiveNetwork,
 		BknProject_Lineage_InvalidSwitchTarget,
+		BknProject_Lineage_NetworkNeedsCheck,
 		BknProject_Lineage_MainBranchReadOnly,
 		BknProject_Lineage_NotFound,
 		BknProject_Lineage_BranchNotFound,

@@ -14,6 +14,7 @@ var lineageEnUS = i18n.I18nMessages{
 		"BknProject.Lineage.InvalidBranchName":       "Invalid Branch Name. Use a git branch name such as project/<id>; main, names with spaces and names with \"..\" are not allowed.",
 		"BknProject.Lineage.InvalidDefinitions":      "Invalid Definitions. The request body must be a non-empty BKN tar in the format bkn-backend exports.",
 		"BknProject.Lineage.NotLiveNetwork":          "Not the lineage's live network. A drift check only runs against the network of the lineage's latest release, or the network it was started from before any release; see error_details.",
+		"BknProject.Lineage.NetworkNeedsCheck":       "Knowledge Network Needs Its Action Parameters Fixed. Some action parameters of this knowledge network are misplaced or invalid, so it cannot be used for a project yet. Fix the parameters listed in error_details as the knowledge network check suggests, then try again.",
 		"BknProject.Lineage.InvalidSwitchTarget":     "Invalid switch target. Consumers can only switch to a network a release of the lineage created, or the network the lineage was started from.",
 		"BknProject.Lineage.AlreadyInUse":            "Network already in use. The lineage's consumers already use this network.",
 		"BknProject.Lineage.MainBranchReadOnly":      "Main Branch Is Read-Only. main changes only by syncing from the live network or by publishing.",

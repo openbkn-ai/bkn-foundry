@@ -316,6 +316,10 @@ func branchRef(name string) string {
 }
 
 // toHTTPError maps an error of the git store or bkn-backend to the reply.
+// bknBackendExportNeedsNetworkCheck is bkn-backend's refusal to export a network as BKN 3.0 while
+// some of its action parameters are misplaced or invalid.
+const bknBackendExportNeedsNetworkCheck = "BknBackend.KnowledgeNetwork.ExportNeedsNetworkCheck"
+
 func toHTTPError(ctx context.Context, operation string, err error) error {
 	var httpErr *httperrors.HTTPError
 	if errors.As(err, &httpErr) {
@@ -339,6 +343,13 @@ func toHTTPError(ctx context.Context, operation string, err error) error {
 			WithErrorDetails(details)
 	}
 	var backendErr *interfaces.BknBackendError
+	if errors.As(err, &backendErr) && backendErr.ErrorCode == bknBackendExportNeedsNetworkCheck {
+		// The network's own definitions need fixing before a lineage can hold it; bkn-backend
+		// names the parameters, which go on as they are.
+		otellog.LogWarn(ctx, fmt.Sprintf("%s: %v", operation, err))
+		return httperrors.NewHTTPError(ctx, http.StatusBadRequest, perrors.BknProject_Lineage_NetworkNeedsCheck).
+			WithErrorDetails(backendErr.ErrorDetails)
+	}
 	if errors.As(err, &backendErr) {
 		// A 4xx is the caller's to fix and keeps its status; anything else is a bad gateway.
 		status := backendErr.HTTPCode

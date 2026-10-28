@@ -41,6 +41,15 @@ Prefix: `/api/bkn-project/v1`. All routes except `/health` and `/ready` need an
 OAuth token, verified through Hydra like bkn-backend's external routes. Exports
 from bkn-backend run with the caller's token, so its permissions apply.
 
+Every lineage is kept in BKN 3.0: exports ask bkn-backend for `bkn_spec=3.0`, so
+`main`, the project branches and what a release reads back share the 3.0 rules,
+which hold the value types a draft writes. A network whose action parameters a
+3.0 package cannot hold as they are is refused with 400
+`BknProject.Lineage.NetworkNeedsCheck`, its `error_details` naming the
+parameters to fix (bkn-backend's network check); nothing is created. A lineage
+started in 2.x moves to 3.0 when its drift is committed, and its branches when
+they sync.
+
 | Method | Path | Description |
 | --- | --- | --- |
 | GET | `/health` | Service information |

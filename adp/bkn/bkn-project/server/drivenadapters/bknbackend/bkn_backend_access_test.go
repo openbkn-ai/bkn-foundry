@@ -55,10 +55,11 @@ func readTar(data []byte) map[string]string {
 
 func Test_BknBackendAccess_ExportBKN(t *testing.T) {
 	Convey("Test bknBackendAccess ExportBKN\n", t, func() {
-		var gotPath, gotBranch, gotAuth string
+		var gotPath, gotBranch, gotSpec, gotAuth string
 		reply := func(w http.ResponseWriter) {}
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			gotPath, gotBranch, gotAuth = r.URL.Path, r.URL.Query().Get("branch"), r.Header.Get("Authorization")
+			gotSpec = r.URL.Query().Get("bkn_spec")
 			reply(w)
 		}))
 		defer server.Close()
@@ -83,6 +84,8 @@ func Test_BknBackendAccess_ExportBKN(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(gotPath, ShouldEqual, "/api/bkn-backend/v1/bkns/orders")
 			So(gotBranch, ShouldEqual, "main")
+			// Every lineage is kept as BKN 3.0, whatever the network declares.
+			So(gotSpec, ShouldEqual, "3.0")
 			So(gotAuth, ShouldEqual, token)
 			So(files, ShouldResemble, map[string][]byte{
 				"network.bkn":            []byte("network"),
