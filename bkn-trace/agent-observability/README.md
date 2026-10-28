@@ -851,8 +851,7 @@ claim-order 覆盖索引且不对大表排序，加锁查询须使用限定候�
 遇到行锁或过期候选时通过 ID 游标补页，每次新领取从头开始，避免遗漏较早的重试任务。
 一次领取共用数据库时间快照，保持跨状态和补页时的时间资格一致。原 pending 索引保留。
 该路径仍可能扫描大量时间未到或有效租约的索引项，不承诺任意分布下的恒定扫描量。
-升级必须先完成索引迁移；应用原有 schema 校验会拒绝缺少 v040 的数据库。
-回滚时先回退依赖新索引的应用代码，再考虑删除索引；不得先删索引导致领取 SQL 失败。
+升级与恢复需同时核对物理索引和迁移账本，见下文“v040 升级与恢复约束”。
 
 更大积压的容量实验使用 `make test-outbox-scale`，另需设置
 `BKN_TRACE_OUTBOX_SCALE_OPENSEARCH_URL` 为隔离 OpenSearch 实例。该入口独立运行，
@@ -886,3 +885,98 @@ refresh 后的 OpenSearch 搜索可见性，20 秒超时单独计数，不主动
 高负载积压不会在阶段之间清空；测试完成代表实验执行成功，不代表所有负载档满足 SLO。
 `BKN_TRACE_OUTBOX_SOAK_STAGE_DURATION` 可覆盖每档时长，短测仅用于校验测试工具，
 正式持续负载实验应保留 5m。长测不加入常规 CI，需显式 opt-in、隔离数据库与索引。
+
+### v040 升级与恢复约束
+
+`GET_LOCK(..., 30)` 的 30 秒是其他启动实例等待迁移建议锁的预算，不是索引构建上限。
+当前 Chart 的 startup probe 为 `periodSeconds: 10`、`failureThreshold: 12`，启动窗口约两分钟。
+大 outbox 的索引构建若超过这些窗口，等待锁的副本可能启动失败，迁移实例也可能被重启。
+不能仅凭缩为一个副本就认为长 DDL 已被解决。
+
+升级前应在代表性数据上评估索引构建时长、空间、I/O 与 metadata lock 影响，并安排受控窗口。
+需要预建索引时，由运维按
+[原始 v040 SQL](https://github.com/openbkn-ai/bkn-foundry/blob/6c0da73e31e5b7e26441336ea7bc0dfbca256370/bkn-trace/agent-observability/migrations/mariadb/v040/init.sql)
+创建并核对索引名、列顺序和定义；不要让多副本
+同时承担首次大表 DDL。之后由一个受控升级实例沿现有允许自动迁移的启动流程完成迁移
+清单校验和账本登记，确认就绪后再将其余副本升级为同一迁移兼容镜像并恢复自动伸缩。
+该实例正常启动后可能消费任务，
+应纳入升级影响范围。若不预建索引，单实例迁移仍必须具有覆盖实测 DDL 耗时的启动窗口；
+不能假设当前 Chart 提供了可直接设置的探针时长参数。
+
+预建索引后，`CREATE INDEX IF NOT EXISTS` 可跳过同名索引的重复创建，**账本登记仍必须完成**。
+只手工建索引、未登记 `040`，在 `autoMigrate=false` 的环境仍会报 schema 落后并拒绝启动。
+不得手工伪造校验和来代替正常迁移。在线 DDL 仍有 metadata lock 和资源开销，不能承诺零写入影响；
+参见 [MariaDB CREATE INDEX](https://mariadb.com/docs/server/reference/sql-statements/data-definition/create/create-index)。
+
+v040 写入 `bkn_trace_schema_migrations` 后，不包含该版本的旧镜像会报
+`schema migration 040 is newer than this BKN Trace image`，即使索引保留且 SQL 向后兼容，
+也不能只回退镜像；关闭自动迁移同样不会绕过账本检查。部署系统的自动镜像回退也受此约束。
+
+本变更默认采用**兼容当前账本的前滚修复**。若必须恢复旧版本，应使用升级前一致性备份
+及经过验证的恢复方案，评估升级后写入的恢复点/数据损失，并在独立批准的维护窗口执行。
+不将删除单条迁移账本记录作为常规回滚步骤，也不关闭版本/校验和校验。
+仍有新代码运行时不得先删索引，否则 `FORCE INDEX` 领取会失败。
+
+### Issue #2585 开发环境测量记录
+
+以下为特定开发环境的可复现记录和待验证候选设置，不是产品手册的生产并发等级。
+相关实现与复现入口见 [PR #2597](https://github.com/openbkn-ai/bkn-foundry/pull/2597)
+及本节之前的 `make test-outbox-*` 说明。
+
+| 项目 | 本次实测 | 与生产配置的差异 |
+| --- | --- | --- |
+| Docker VM | 6 vCPU、约 15.6 GiB，共享已有开发负载 | 非独占生产环境 |
+| Trace/负载驱动 | 宿主 Go 进程，无 Pod CPU 硬限制 | Chart 默认 requests 100m/128Mi、limits 500m/512Mi |
+| MariaDB | 11.4.13、buffer pool 128 MiB | 不是生产内存推荐值 |
+| Core 连接池 | 最大 32、Go 默认最多 2 idle | 生产代码为 16 open / 4 idle |
+| OpenSearch | 2.19.4、heap 512 MiB、容器上限 1.5 GiB | 测试配置 |
+| 投影 worker | 单个、BatchSize=1、领取预算 2s、lease 30s | 未验证水平扩容容量 |
+
+各规模另有 190,148 条历史终态记录；每种 sink 前在计时外恢复准确 pending 数量。
+完整领取包含 BeginTx、数据库时间、候选、加锁重检、payload、租约更新和 Commit。
+
+| 初始 pending | 单条采样最大（20 次） | 百条采样最大（10 次） | 真实 OpenSearch worker（每阶段 60s） |
+| --- | ---: | ---: | ---: |
+| 100,000 | 4.95ms | 57.04ms | 237.1 任务/s |
+| 500,000 | 7.11ms | 80.00ms | 82.2 任务/s |
+| 1,000,000 | 22.46ms | 155.23ms | 50.5 任务/s |
+
+上述实验均无领取超时，SQL 交付量、pending 减少量与 OpenSearch 文档数一致。
+前一轮没有逐阶段恢复积压的有序领取测试同样通过，但吞吐不同；这里采用准确恢复规模的
+最终复测数据。宿主负载、缓存和实验配置有波动，不能外推为稳定生产 SLA。
+
+持续负载实验总计约 30 分钟，每档 5 分钟、阶段间不清积压。模型为每个合成 Agent 每 10 秒
+一轮、每轮一个工具调用、约 1 KiB 输入/结果、16 KiB 答案，复用会话一轮实测 10 条任务，
+首次新会话 12 条，均包含答案持久化后的追加任务。
+
+| 活跃 Agent 等价 | 目标调用/s | 发生器发起 | 调用失败 | pending 净增加 | 阶段末 pending |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10 | 1 | 300 | 0 | 8 | 8 |
+| 20 | 2 | 599 | 0 | 29 | 37 |
+| 50 | 5 | 1,500 | 0 | 6 | 43 |
+| 100 | 10 | 2,994 | 1 | 6,133 | 6,176 |
+| 200 | 20 | 5,963 | 1,128 | 25,646 | 31,821 |
+| 400 | 40 | 11,785 | 6,437 | 33,541 | 65,361 |
+
+最后一档丢弃 82 个无法排入的请求，实际处理 11,703 个；阶段间交接会有在途任务。
+50 档查询可见性抽样 p95 约 2.19s、p99 约 4.21s；100 档起出现大量超过 20s 的探测超时。
+高档不能仅用少量成功探测的分位数判断可用性。长测领取零超时，最慢约 1.13s，投影重试/
+死信均为零；这些指标不等于业务容量充足。每档仅五分钟也不构成长期稳态容量认证。
+
+实验只覆盖 Session 服务、SQL、worker、真实 OpenSearch 与答案持久化，未覆盖完整
+MCP/HTTP、鉴权、LLM、真实业务工具、Evidence Kafka、租约回收器及失败补偿。
+生命周期死锁重试耗尽和遗留 active interaction 会影响后续高档错误率，不能当作生产错误率。
+100 万静态积压实验与持续流入实验分开执行，未验证两者同时施压的查询新鲜度。
+
+以下候选资源数值未经上述限额复测，不是默认配置、Agent 等级或容量承诺：
+
+| 组件 | 下一轮验收候选 | 需要观察 |
+| --- | --- | --- |
+| agent-observability | 1 副本；requests 1CPU/512Mi；limits 2CPU/1Gi | throttling、RSS、请求与消费延迟 |
+| MariaDB 专用预算 | 2vCPU/4Gi，buffer pool 先 2Gi，SSD | 工作集、物理读、fsync、锁和连接等待 |
+| OpenSearch 单节点 | 2vCPU/4Gi，heap 2Gi，SSD | heap/GC、索引、refresh 与查询延迟 |
+| Core 池与 worker | 先按生产 16 open/4 idle、单 worker 验收 | 多副本连接与锁竞争、恢复余量 |
+
+资源规划方法和验收维度见
+[容量参考手册](https://github.com/openbkn-ai/bkn-foundry/blob/main/help/zh/manual/bkn-trace-resources.md)。
+本记录不包含完整平台安装规格，不代表已完成生产 DDL、上线或现场 Trace 恢复验收。

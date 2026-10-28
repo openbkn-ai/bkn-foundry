@@ -14,6 +14,8 @@ Typical ingress prefix:
 
 **Related modules:** platform-wide logging and metrics pipelines (feed-ingester integration).
 
+See [resource and Agent / Trace capacity planning](bkn-trace-resources.md) for workload sizing and acceptance boundaries.
+
 ## Community and EE API boundary
 
 Community exposes authorized recorded facts and technical Trace reads. Native
