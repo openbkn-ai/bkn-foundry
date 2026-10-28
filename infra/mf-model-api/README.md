@@ -49,6 +49,26 @@ lands in OpenAI's `code` field, preserving the machine-readable identity.
 
 Regression tests are in `app/test/test_openai_error.py` and `app/test/test_llm_error_contract.py`.
 
+## Optional Streaming Usage
+
+For OpenAI-compatible API models (`OtherClient`), missing or null `usage` does
+not fail a completed stream. Available provider counts are used for metering;
+missing counts retain the existing integer placeholder of zero. Zero in this
+case means unreported usage, not measured zero or an estimate. The success log
+includes `usage_known: false` unless both input and output counts were reported.
+The adapter does not fabricate a usage object for the client.
+
+`[DONE]` terminates upstream reading. Provider cleanup and success metering finish
+before exactly one terminal marker is sent. An upstream error or EOF without
+`[DONE]` records failure once and closes with an error frame. A connection failure
+after content has started is not retried, avoiding duplicate output. Client
+cancellation propagates and releases the provider connection without recording a
+model success or failure. Success diagnostic logging failures do not alter the
+model outcome; metering transport failures retain their existing best-effort
+behavior.
+
+Regression tests are in `app/test/test_llm_error_contract.py`.
+
 ## Claude System Messages
 
 Claude calls accept both OpenAI-style `messages` entries with `role: "system"`
