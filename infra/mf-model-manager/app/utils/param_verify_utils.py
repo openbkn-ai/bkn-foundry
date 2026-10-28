@@ -14,6 +14,20 @@ from app.dao.prompt_dao import prompt_dao
 
 
 async def llm_add_verify(schema_para, userId, check_duplicate=True):
+    if "model_config" not in schema_para:
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.Router.ParamError.ParamMissing", parameters="model_config")
+    model_config = schema_para["model_config"]
+    if not isinstance(model_config, dict):
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.Router.ParamError.TypeError", parameters="model_config")
+    if "api_model" not in model_config:
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.Router.ParamError.ParamMissing", parameters="model_config.api_model")
+    api_model = model_config["api_model"]
+    if not isinstance(api_model, str) or not api_model.strip():
+        return error_with_message(
+            LLMAdd2Error, "ModelFactory.Validation.NonEmptyString", parameter="model_config.api_model")
     # model_name
     model_name = schema_para.get("model_name", "")
     if not isinstance(model_name, str) or model_name == "":
@@ -33,10 +47,9 @@ async def llm_add_verify(schema_para, userId, check_duplicate=True):
             message_key = "ModelFactory.ConnectController.LLMAdd.NameRepeat.OtherUser"
         return error_with_message(error_dict, message_key)
     if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9]{,50}$',
-                     schema_para['model_config']['api_model']) or len(
-        schema_para['model_config']['api_model'].replace(' ', '')) == 0:
+                     api_model):
         return error_with_message(
-            LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="api_model")
+            LLMAdd2Error, "ModelFactory.Validation.InvalidFormat", parameter="model_config.api_model")
     if not isinstance(schema_para['max_model_len'], int) or schema_para['max_model_len'] <= 0:
         return error_with_message(
             LLMAdd2Error, "ModelFactory.Validation.PositiveInteger", parameter="max_model_len")
