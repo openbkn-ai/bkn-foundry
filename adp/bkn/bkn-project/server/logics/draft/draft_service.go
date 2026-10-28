@@ -47,8 +47,10 @@ var (
 type draftService struct {
 	setting common.DraftSetting
 	da      interfaces.DraftAccess
-	va      interfaces.VegaAccess
-	ps      interfaces.ProjectService
+	// ca records the check run after a draft is confirmed.
+	ca interfaces.CheckAccess
+	va interfaces.VegaAccess
+	ps interfaces.ProjectService
 	// ls commits a confirmed draft to its project branch.
 	ls interfaces.LineageService
 	// run drafts in the background; tests replace it to run in line.
@@ -60,6 +62,7 @@ func NewDraftService(appSetting *common.AppSetting) interfaces.DraftService {
 		ds = &draftService{
 			setting: appSetting.DraftSetting,
 			da:      logics.DA,
+			ca:      logics.CA,
 			va:      logics.VA,
 			ps:      project.NewProjectService(),
 			ls:      lineage.NewLineageService(),
@@ -254,6 +257,13 @@ func (s *draftService) FailInterrupted(ctx context.Context) error {
 	}
 	if n > 0 {
 		logger.Warnf("Failed %d drafts left drafting by a previous run", n)
+	}
+	// A check is not retried by itself after a restart: a person runs it again.
+	if n, err = s.ca.FailRunning(ctx, FailureInterrupted, time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	if n > 0 {
+		logger.Warnf("Failed %d checks left running by a previous run", n)
 	}
 	return nil
 }

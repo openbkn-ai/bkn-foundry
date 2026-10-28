@@ -16,6 +16,7 @@ var (
 	RA  interfaces.ReleaseAccess
 	PA  interfaces.ProjectAccess
 	DA  interfaces.DraftAccess
+	CA  interfaces.CheckAccess
 	VA  interfaces.VegaAccess
 	GS  interfaces.GitStore
 	BBA interfaces.BknBackendAccess
@@ -40,6 +41,10 @@ func SetProjectAccess(pa interfaces.ProjectAccess) {
 
 func SetDraftAccess(da interfaces.DraftAccess) {
 	DA = da
+}
+
+func SetCheckAccess(ca interfaces.CheckAccess) {
+	CA = ca
 }
 
 func SetVegaAccess(va interfaces.VegaAccess) {

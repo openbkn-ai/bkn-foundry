@@ -93,6 +93,8 @@ config:
     suggestHitRate: 0.8
     queryTimeout: 60
     timeout: 10m
+    # Each attempt of the check after a draft is confirmed; a failed attempt is retried once.
+    checkTimeout: 10m
     privacyKeywords: [姓名, 手机, 电话, 身份证, 证件, 邮箱, 住址, 地址, 银行卡, 出生,
       full_name, first_name, last_name, phone, mobile, telephone, id_card, id_number,
       passport, email, address, bank_card, card_number, birth]

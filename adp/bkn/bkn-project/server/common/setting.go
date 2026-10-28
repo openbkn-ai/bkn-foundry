@@ -48,6 +48,8 @@ type DraftSetting struct {
 	// QueryTimeout bounds each count query in seconds; Timeout bounds the whole drafting.
 	QueryTimeout int           `mapstructure:"queryTimeout"`
 	Timeout      time.Duration `mapstructure:"timeout"`
+	// CheckTimeout bounds each attempt of the check after a confirmation.
+	CheckTimeout time.Duration `mapstructure:"checkTimeout"`
 }
 
 type GitStoreSetting struct {
@@ -130,6 +132,7 @@ func initSetting(vp *viper.Viper) {
 	vp.SetDefault("draft.nameFieldKeywords", DefaultNameFieldKeywords)
 	vp.SetDefault("draft.queryTimeout", 60)
 	vp.SetDefault("draft.timeout", 10*time.Minute)
+	vp.SetDefault("draft.checkTimeout", 10*time.Minute)
 
 	vp.AddConfigPath(configPath)
 	vp.SetConfigName(configName)

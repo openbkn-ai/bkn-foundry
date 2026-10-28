@@ -134,6 +134,8 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 		span.SetStatus(codes.Error, "Record confirmation failed")
 		return nil, err
 	}
+	// What was written is checked in the background; the check never undoes the confirmation.
+	s.startCheck(context.WithoutCancel(ctx), projectID, result.Commit, checkInputOf(&draft.Items), caller)
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
 }
