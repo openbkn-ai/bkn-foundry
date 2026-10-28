@@ -51,6 +51,8 @@ const (
 	DRAFT_KIND_VALUE_TYPES    = "value_types"
 	// DRAFT_KIND_EXCLUDED names decisions on excluded fields; their item is the object type.
 	DRAFT_KIND_EXCLUDED = "excluded"
+	// DRAFT_KIND_DRAFT names decisions on the draft as a whole; they have no item.
+	DRAFT_KIND_DRAFT = "draft"
 )
 
 // What a person decided about a draft item.
@@ -61,6 +63,9 @@ const (
 	DRAFT_DECISION_DESCRIBE = "describe"
 	DRAFT_DECISION_IDENTITY = "identity"
 	DRAFT_DECISION_RESTORE  = "restore"
+	// DRAFT_DECISION_ACCEPT_PARTIAL confirms a draft knowing the tables it could not read, the
+	// resource IDs in After.
+	DRAFT_DECISION_ACCEPT_PARTIAL = "accept_partial"
 )
 
 // Limits of what people write into a draft, those of BKN definitions.
@@ -161,6 +166,8 @@ type DraftConfirmation struct {
 // DraftConfirm asks to commit the draft made at UpdateTime to the project branch.
 type DraftConfirm struct {
 	UpdateTime int64 `json:"update_time"`
+	// AcceptPartial confirms a partial draft knowing the tables drafting could not read.
+	AcceptPartial bool `json:"accept_partial"`
 }
 
 // DraftDecision records one change a person made to a draft item. Before and After are the

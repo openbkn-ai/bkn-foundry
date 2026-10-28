@@ -222,6 +222,68 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(draft.Items.Confirmation.Commit, ShouldEqual, "c1")
 		})
 
+		Convey("A partial draft is not confirmed unless its owner accepts what drafting could not read\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			partial := confirmableDraft()
+			partial.Items.Unreadable = []*interfaces.DraftTable{{ResourceID: "r_hidden", Name: "hidden", Reason: "not_visible"}}
+			partial.Items.Inputs = &interfaces.DraftInputs{Partial: true}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(partial, true, nil)
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			shouldBeHTTPError(err, http.StatusConflict, perrors.BknProject_Draft_PartialNotAccepted)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldResemble, []string{"r_hidden"})
+		})
+
+		Convey("Accepting a partial draft is recorded as a decision once the confirmation commits\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			partial := confirmableDraft()
+			partial.Items.Unreadable = []*interfaces.DraftTable{{ResourceID: "r_hidden", Reason: "not_visible"}}
+			partial.Items.Inputs = &interfaces.DraftInputs{Partial: true}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(partial, true, nil)
+			var claimed int
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+					claimed = len(d.Items.Decisions)
+					return true, nil
+				})
+			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any()).Return(&interfaces.CommitDefinitionsResult{Commit: "c1"}, nil)
+			var recorded []*interfaces.DraftDecision
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+					recorded = d.Items.Decisions
+					return true, nil
+				})
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1",
+				interfaces.DraftConfirm{UpdateTime: readTime, AcceptPartial: true}, caller)
+
+			So(err, ShouldBeNil)
+			So(claimed, ShouldEqual, 0)
+			So(len(recorded), ShouldEqual, 1)
+			So(recorded[0].Kind, ShouldEqual, interfaces.DRAFT_KIND_DRAFT)
+			So(recorded[0].Action, ShouldEqual, interfaces.DRAFT_DECISION_ACCEPT_PARTIAL)
+			So(recorded[0].After, ShouldResemble, []string{"r_hidden"})
+			So(recorded[0].By, ShouldResemble, caller)
+		})
+
+		Convey("A draft drafted before inputs were recorded is confirmed as before\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			older := confirmableDraft()
+			older.Items.Unreadable = []*interfaces.DraftTable{{ResourceID: "r_hidden", Reason: "not_visible"}}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(older, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
+			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				gomock.Any(), gomock.Any()).Return(&interfaces.CommitDefinitionsResult{Commit: "c1"}, nil)
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			So(err, ShouldBeNil)
+		})
+
 		Convey("A refused first commit leaves the draft without a confirmation\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)

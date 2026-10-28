@@ -34,6 +34,7 @@ var draftEnUS = i18n.I18nMessages{
 		"BknProject.Check.NothingConfirmed":   "Ontology Not Confirmed. Confirm the ontology draft first; it is checked once confirmed.",
 		"BknProject.Check.ConfirmAgain":       "Confirm Again. The draft changed after it was confirmed, so what was confirmed can no longer be checked; confirm it again.",
 		"BknProject.Check.Running":            "Checking. What was confirmed is being checked; wait for it to finish.",
+		"BknProject.Draft.PartialNotAccepted": "Draft Incomplete. Drafting could not read some tables, so the draft holds nothing of them; accept that when confirming, see error_details.",
 		"BknProject.Draft.HasPending":         "Items Wait for You. Before confirming, choose the identity of adopted object types and settle relations that connect an object type not adopted, see error_details.",
 		"BknProject.Draft.CatalogMissing":     "Data Catalog Not Found. A data catalog of the project no longer exists; change the project's data catalogs before drafting.",
 		"BknProject.Draft.MissingUpdateTime":  "Missing Update Time. Give update_time, the update time of the draft the change was made on.",

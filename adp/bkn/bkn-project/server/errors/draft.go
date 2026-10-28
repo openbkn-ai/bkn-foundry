@@ -27,14 +27,15 @@ const (
 	BknProject_Draft_ItemNotFound = "BknProject.Draft.ItemNotFound"
 
 	// 409
-	BknProject_Draft_Drafting        = "BknProject.Draft.Drafting"
-	BknProject_Draft_ProjectArchived = "BknProject.Draft.ProjectArchived"
-	BknProject_Draft_NotReady        = "BknProject.Draft.NotReady"
-	BknProject_Draft_Stale           = "BknProject.Draft.Stale"
-	BknProject_Draft_HasDecisions    = "BknProject.Draft.HasDecisions"
-	BknProject_Draft_FieldNotFound   = "BknProject.Draft.FieldNotFound"
-	BknProject_Draft_CatalogMissing  = "BknProject.Draft.CatalogMissing"
-	BknProject_Draft_HasPending      = "BknProject.Draft.HasPending"
+	BknProject_Draft_Drafting           = "BknProject.Draft.Drafting"
+	BknProject_Draft_ProjectArchived    = "BknProject.Draft.ProjectArchived"
+	BknProject_Draft_NotReady           = "BknProject.Draft.NotReady"
+	BknProject_Draft_Stale              = "BknProject.Draft.Stale"
+	BknProject_Draft_HasDecisions       = "BknProject.Draft.HasDecisions"
+	BknProject_Draft_FieldNotFound      = "BknProject.Draft.FieldNotFound"
+	BknProject_Draft_CatalogMissing     = "BknProject.Draft.CatalogMissing"
+	BknProject_Draft_HasPending         = "BknProject.Draft.HasPending"
+	BknProject_Draft_PartialNotAccepted = "BknProject.Draft.PartialNotAccepted"
 
 	// 500
 	BknProject_Draft_InternalError = "BknProject.Draft.InternalError"
@@ -80,6 +81,7 @@ var (
 		BknProject_Draft_InvalidItem,
 		BknProject_Draft_NotOwner,
 		BknProject_Draft_HasPending,
+		BknProject_Draft_PartialNotAccepted,
 		BknProject_Check_NotOwner,
 		BknProject_Check_NotFound,
 		BknProject_Check_NothingConfirmed,

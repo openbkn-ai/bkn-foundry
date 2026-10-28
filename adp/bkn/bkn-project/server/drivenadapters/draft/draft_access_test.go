@@ -141,6 +141,23 @@ func Test_DraftAccess(t *testing.T) {
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
+		Convey("StartDraft replaces a draft whose only decision is on the draft as a whole\n", func() {
+			// Accepting a partial draft is not an edit: drafting again decides partial anew.
+			accepted := `{"decisions":[{"kind":"draft","item_id":"","action":"accept_partial","after":["r_hidden"]}]}`
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(1), accepted))
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?")).
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+
+			started, err := da.StartDraft(ctx, drafting, 3, false)
+
+			So(err, ShouldBeNil)
+			So(started, ShouldBeTrue)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("StartDraft keeps a draft people made decisions on unless told to discard them\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
