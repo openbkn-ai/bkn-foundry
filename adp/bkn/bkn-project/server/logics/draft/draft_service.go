@@ -144,7 +144,9 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 	catalogIDs := entry.CatalogIDs
 	// Drafting outlives the request; it keeps the trace but not the request's cancellation.
 	background := context.WithoutCancel(ctx)
-	s.run(func() { s.draft(background, projectID, catalogIDs, caller) })
+	// StartDraft kept what the last confirmation wrote; the new draft keeps it too.
+	carried := draft.Items.Confirmation
+	s.run(func() { s.draft(background, projectID, catalogIDs, caller, carried) })
 
 	span.SetStatus(codes.Ok, "")
 	return draft, nil
@@ -152,7 +154,7 @@ func (s *draftService) GenerateDraft(ctx context.Context, token string, projectI
 
 // draft reads the catalogs' tables as the caller, drafts and records the result.
 func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs []string,
-	caller interfaces.AccountInfo) {
+	caller interfaces.AccountInfo, confirmation *interfaces.DraftConfirmation) {
 	ctx, cancel := context.WithTimeout(ctx, s.setting.Timeout)
 	defer cancel()
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DraftFromTables")
@@ -168,6 +170,7 @@ func (s *draftService) draft(ctx context.Context, projectID string, catalogIDs [
 	default:
 		result.Items = items
 	}
+	result.Items.Confirmation = confirmation
 	if err != nil {
 		otellog.LogWarn(ctx, fmt.Sprintf("Draft of project %s failed: %v", projectID, err))
 		span.SetStatus(codes.Error, "Draft failed")

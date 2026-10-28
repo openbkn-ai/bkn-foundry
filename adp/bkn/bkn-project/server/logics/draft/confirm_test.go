@@ -63,7 +63,9 @@ func Test_ConfirmDraft(t *testing.T) {
 					claimed = *d.Items.Confirmation
 					return true, nil
 				})
-			ls.EXPECT().AddDefinitions(gomock.Any(), "supply", "project/p1", gomock.Any(), paths, gomock.Any(),
+			// Nothing on the branch is this draft's yet: an existing definition of the same path is
+			// refused, not replaced.
+			ls.EXPECT().AddDefinitions(gomock.Any(), "supply", "project/p1", gomock.Any(), []string(nil), gomock.Any(),
 				interfaces.GitAuthor{Name: caller.ID}).
 				DoAndReturn(func(_ context.Context, _ string, _ string, files map[string][]byte, _ []string, _ string,
 					_ interfaces.GitAuthor) (*interfaces.CommitDefinitionsResult, error) {
@@ -75,13 +77,16 @@ func Test_ConfirmDraft(t *testing.T) {
 			draft, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
 
 			So(err, ShouldBeNil)
-			// Claimed before the branch: no commit yet, every path it may write recorded.
+			// Claimed before the branch: not confirmed, what it is about to write recorded apart.
+			So(claimed.UpdateTime, ShouldEqual, 0)
 			So(claimed.Commit, ShouldEqual, "")
-			So(claimed.Files, ShouldResemble, paths)
+			So(claimed.Files, ShouldBeEmpty)
+			So(claimed.Pending, ShouldResemble, paths)
 			c := draft.Items.Confirmation
 			So(c.Commit, ShouldEqual, "c1")
 			So(c.By, ShouldResemble, caller)
 			So(c.Files, ShouldResemble, paths)
+			So(c.Pending, ShouldBeEmpty)
 			So(c.SkippedValueTypes, ShouldBeEmpty)
 			// Confirmed is the confirmation of the draft as it now is.
 			So(c.UpdateTime, ShouldEqual, draft.UpdateTime)
@@ -96,9 +101,9 @@ func Test_ConfirmDraft(t *testing.T) {
 			}
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(previous, true, nil)
 			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
-			owned := append(compiledPaths(), "object_types/audit_log.bkn")
-			sort.Strings(owned)
-			ls.EXPECT().AddDefinitions(gomock.Any(), "supply", "project/p1", gomock.Any(), owned, gomock.Any(), gomock.Any()).
+			// Only what the last confirmation wrote is the draft's own.
+			ls.EXPECT().AddDefinitions(gomock.Any(), "supply", "project/p1", gomock.Any(),
+				[]string{"object_types/audit_log.bkn"}, gomock.Any(), gomock.Any()).
 				Return(&interfaces.CommitDefinitionsResult{Commit: "c2"}, nil)
 
 			draft, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
@@ -108,17 +113,43 @@ func Test_ConfirmDraft(t *testing.T) {
 			So(draft.Items.Confirmation.Files, ShouldResemble, compiledPaths())
 		})
 
-		Convey("A refused commit leaves the claim, with no commit, so the draft is not confirmed\n", func() {
+		Convey("A refused commit drops what it was about to write, and the draft is not confirmed\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmableDraft(), true, nil)
-			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil).Times(1)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), readTime).Return(true, nil)
 			refused := httperrors.NewHTTPError(ctx, http.StatusConflict, perrors.BknProject_Lineage_DefinitionsExist)
 			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
 				gomock.Any(), gomock.Any()).Return(nil, refused)
+			var cleared interfaces.DraftConfirmation
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, d *interfaces.Draft, _ int64) (bool, error) {
+					cleared = *d.Items.Confirmation
+					return true, nil
+				})
 
 			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
 
 			So(errors.Is(err, refused), ShouldBeTrue)
+			// The paths it was refused for are not its own next time.
+			So(cleared.Pending, ShouldBeEmpty)
+			So(cleared.UpdateTime, ShouldEqual, 0)
+		})
+
+		Convey("What a confirmation stopped after committing left pending is the draft's own\n", func() {
+			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
+			stopped := confirmableDraft()
+			stopped.Items.Confirmation = &interfaces.DraftConfirmation{
+				Files: []string{"object_types/audit_log.bkn"}, Pending: []string{"object_types/orders.bkn"},
+			}
+			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(stopped, true, nil)
+			da.EXPECT().UpdateDraft(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
+			ls.EXPECT().AddDefinitions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+				[]string{"object_types/audit_log.bkn", "object_types/orders.bkn"}, gomock.Any(), gomock.Any()).
+				Return(&interfaces.CommitDefinitionsResult{Commit: "c3"}, nil)
+
+			_, err := svc.ConfirmDraft(ctx, token, "p1", confirm, caller)
+
+			So(err, ShouldBeNil)
 		})
 
 		Convey("Someone other than the owner cannot confirm\n", func() {

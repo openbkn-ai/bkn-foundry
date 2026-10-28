@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
@@ -40,9 +41,11 @@ func pendingItems(items *interfaces.DraftItems) map[string][]string {
 // ConfirmDraft commits the adopted items of a ready draft to the project branch.
 //
 // The draft is written before the branch and again after it. The first write claims the
-// confirmation, refusing a draft someone changed meanwhile, and records every path it may write:
-// were committing to stop half way, the next confirmation still knows which paths are its own to
-// replace. The second records the commit, which is what makes the draft confirmed.
+// confirmation, refusing a draft someone changed meanwhile, and records the paths it is about to
+// write apart from those it wrote before. The second records the commit and the paths written,
+// which is what makes the draft confirmed; a refused commit instead drops the paths it was about
+// to write. Only when the service stops between committing and recording do they stay, and the
+// next confirmation takes them as its own.
 func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID string,
 	confirm interfaces.DraftConfirm, caller interfaces.AccountInfo) (*interfaces.Draft, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ConfirmDraft")
@@ -84,21 +87,20 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	}
 	sort.Strings(paths)
 
-	// Claim: the paths of the previous confirmation and these, so a confirmation stopped half way
-	// leaves none of its own paths to be refused next time.
-	owned := paths
+	// What this draft wrote on the branch before is its own to replace or remove; nothing else is.
+	var owned []string
+	confirmation := &interfaces.DraftConfirmation{}
 	if previous := draft.Items.Confirmation; previous != nil {
-		owned = unionSorted(previous.Files, paths)
+		owned = unionSorted(previous.Files, previous.Pending)
+		*confirmation = *previous
 	}
+
+	// Claim: not confirmed while under way, and what it is about to write recorded apart.
 	readUpdateTime := draft.UpdateTime
 	draft.UpdateTime = max(time.Now().UnixMilli(), readUpdateTime+1)
-	draft.Items.Confirmation = &interfaces.DraftConfirmation{
-		UpdateTime:        draft.UpdateTime,
-		By:                caller,
-		Time:              draft.UpdateTime,
-		Files:             owned,
-		SkippedValueTypes: compiled.SkippedValueTypes,
-	}
+	confirmation.UpdateTime, confirmation.By, confirmation.Time = 0, caller, draft.UpdateTime
+	confirmation.Pending, confirmation.SkippedValueTypes = paths, compiled.SkippedValueTypes
+	draft.Items.Confirmation = confirmation
 	if err := s.writeDraft(ctx, draft, readUpdateTime); err != nil {
 		span.SetStatus(codes.Error, "Claim confirmation failed")
 		return nil, err
@@ -109,13 +111,18 @@ func (s *draftService) ConfirmDraft(ctx context.Context, token string, projectID
 	result, err := s.ls.AddDefinitions(ctx, entry.KNID, entry.Branch, compiled.Files, owned, message,
 		interfaces.GitAuthor{Name: caller.ID})
 	if err != nil {
+		// Nothing was written: the paths it was about to write are not the draft's.
+		confirmation.Pending = nil
+		if werr := s.writeDraft(ctx, draft, draft.UpdateTime); werr != nil {
+			otellog.LogWarn(ctx, fmt.Sprintf("Drop pending confirmation of project %s: %v", projectID, werr))
+		}
 		span.SetStatus(codes.Error, "Commit definitions failed")
 		return nil, err
 	}
 
-	// Record the commit on the draft as claimed; its update time stays, so it reads as confirmed.
-	draft.Items.Confirmation.Commit = result.Commit
-	draft.Items.Confirmation.Files = paths
+	// Record the commit; the draft's update time stays, so it reads as confirmed.
+	confirmation.UpdateTime, confirmation.Commit = draft.UpdateTime, result.Commit
+	confirmation.Files, confirmation.Pending = paths, nil
 	if err := s.writeDraft(ctx, draft, draft.UpdateTime); err != nil {
 		span.SetStatus(codes.Error, "Record confirmation failed")
 		return nil, err

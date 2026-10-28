@@ -64,6 +64,26 @@ func Test_DraftAccess(t *testing.T) {
 			So(smock.ExpectationsWereMet(), ShouldBeNil)
 		})
 
+		Convey("StartDraft keeps what the last confirmation wrote, but not as confirmed\n", func() {
+			confirmed := `{"decisions":[],"confirmation":{"update_time":2,"commit":"c1","by":{"id":"u1","type":"user"},"time":2,"files":["object_types/orders.bkn"],"skipped_value_types":[]}}`
+			smock.ExpectBegin()
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2), confirmed))
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?, f_items = ?, f_error = ?")).
+				WithArgs("drafting", sqlmock.AnyArg(), "", "u1", "user", int64(5), int64(5), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
+			smock.ExpectCommit()
+			fresh := *drafting
+
+			started, err := da.StartDraft(ctx, &fresh, 3, false)
+
+			So(err, ShouldBeNil)
+			So(started, ShouldBeTrue)
+			So(fresh.Items.Confirmation, ShouldNotBeNil)
+			So(fresh.Items.Confirmation.Files, ShouldResemble, []string{"object_types/orders.bkn"})
+			So(fresh.Items.Confirmation.UpdateTime, ShouldEqual, 0)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
 		Convey("StartDraft leaves a project that is drafting alone\n", func() {
 			smock.ExpectBegin()
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(4), emptyItems))

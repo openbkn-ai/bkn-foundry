@@ -114,6 +114,15 @@ func (da *draftAccess) StartDraft(ctx context.Context, draft *interfaces.Draft,
 		span.SetStatus(codes.Ok, "")
 		return false, interfaces.ErrDraftHasDecisions
 	default:
+		// What the last confirmation wrote on the project branch stays the draft's to replace or
+		// remove; the new draft is not confirmed.
+		if carried := carriedConfirmation(itemsRead); carried != nil {
+			draft.Items.Confirmation = carried
+			if itemsJSON, err = json.Marshal(draft.Items); err != nil {
+				span.SetStatus(codes.Error, "Marshal items failed")
+				return false, err
+			}
+		}
 		sqlStr, vals, err = sq.Update(DRAFT_TABLE_NAME).
 			Set("f_status", draft.Status).Set("f_items", string(itemsJSON)).Set("f_error", draft.Error).
 			Set("f_drafter", draft.Drafter.ID).Set("f_drafter_type", draft.Drafter.Type).
@@ -227,6 +236,19 @@ func hasDecisions(itemsJSON string) bool {
 		Decisions []json.RawMessage `json:"decisions"`
 	}
 	return json.Unmarshal([]byte(itemsJSON), &items) == nil && len(items.Decisions) > 0
+}
+
+// carriedConfirmation is the confirmation of a replaced draft as its successor keeps it: the
+// definitions it wrote, no longer confirmed.
+func carriedConfirmation(itemsJSON string) *interfaces.DraftConfirmation {
+	var items struct {
+		Confirmation *interfaces.DraftConfirmation `json:"confirmation"`
+	}
+	if json.Unmarshal([]byte(itemsJSON), &items) != nil || items.Confirmation == nil {
+		return nil
+	}
+	items.Confirmation.UpdateTime = 0
+	return items.Confirmation
 }
 
 // scanDraft reads one row selected with draftColumns.

@@ -54,6 +54,8 @@ func Test_DraftService(t *testing.T) {
 					So(d.Drafter, ShouldResemble, caller)
 					// Stale after the drafting timeout and a minute to record it.
 					So(d.CreateTime-staleBefore, ShouldEqual, (2 * time.Minute).Milliseconds())
+					// The replaced draft had been confirmed: StartDraft hands on what it wrote.
+					d.Items.Confirmation = &interfaces.DraftConfirmation{Commit: "c1", Files: []string{"object_types/old.bkn"}}
 					return true, nil
 				})
 			levels := table("r_levels", "c1", "levels", 3, []string{"code"}, col("code", "string", ""), col("name", "string", ""))
@@ -84,6 +86,8 @@ func Test_DraftService(t *testing.T) {
 			So(finished.Status, ShouldEqual, interfaces.DRAFT_STATUS_READY)
 			So(finished.Items.ObjectTypes[0].ID, ShouldEqual, "customers")
 			So(finished.Items.ValueTypes[0].ID, ShouldEqual, "levels")
+			// The new draft keeps what the last confirmation wrote, to replace or remove it.
+			So(finished.Items.Confirmation.Files, ShouldResemble, []string{"object_types/old.bkn"})
 			So(finished.Items.Unreadable, ShouldResemble, []*interfaces.DraftTable{
 				{ResourceID: "r_hidden", Name: "hidden", CatalogID: "c1", Reason: unreadableNotVisible},
 				{ResourceID: "r_empty", Name: "empty", CatalogID: "c1", Reason: unreadableNoStructure},

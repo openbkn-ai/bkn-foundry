@@ -96,22 +96,27 @@ type DraftItems struct {
 	// draft and its decisions are read and written together.
 	Decisions []*DraftDecision `json:"decisions"`
 	// Confirmation records the last time the draft was confirmed. The draft is confirmed while
-	// its update time is the draft's: any change since moves the draft's on.
+	// its update time is the draft's: any change since moves the draft's on. Drafting again keeps
+	// it, unconfirmed, so what it wrote on the branch stays the draft's.
 	Confirmation *DraftConfirmation `json:"confirmation,omitempty"`
 }
 
 // DraftConfirmation records a draft committed to its project branch as BKN definitions.
 type DraftConfirmation struct {
-	// UpdateTime is the draft's update time as confirmed.
+	// UpdateTime is the draft's update time as confirmed; 0 while a confirmation is under way,
+	// after one failed, and once the draft is drafted again.
 	UpdateTime int64 `json:"update_time"`
-	// Commit is the branch commit; empty while the definitions are being committed, or when
-	// committing them failed.
+	// Commit is the branch commit of the last confirmation that committed.
 	Commit string      `json:"commit"`
 	By     AccountInfo `json:"by"`
 	Time   int64       `json:"time"`
-	// Files are the definition paths the confirmation writes on the branch; the next one may
+	// Files are the definition paths the last confirmation wrote on the branch; the next one may
 	// replace or remove them.
 	Files []string `json:"files"`
+	// Pending are the paths a confirmation under way is about to write. A confirmation that
+	// fails drops them; they stay only when one stopped between committing and recording it, and
+	// are then the draft's too.
+	Pending []string `json:"pending,omitempty"`
 	// SkippedValueTypes are adopted value types BKN 3.0 would refuse; their properties keep
 	// their base type.
 	SkippedValueTypes []string `json:"skipped_value_types"`
