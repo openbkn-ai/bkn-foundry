@@ -386,7 +386,8 @@ func postgresqlQueryError(err error) error {
 		switch string(driverErr.Code) {
 		case "42703":
 			return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterUnknownColumn, err)
-		case "42601", "42701", "42702", "42803", "42804", "42846", "42883", "42P10", "42P18", "22023", "2201B", "22P02", "22003", "22007", "22008", "22012", "22018":
+		case "42601", "42701", "42702", "42803", "42804", "42846", "42883", "42P10", "42P18",
+			"22023", "2201B", "22P02", "22003", "22007", "22008", "22012", "22018", "22021":
 			return interfaces.NewSourceQueryInvalidParameterError(interfaces.SourceQueryInvalidParameterInvalidQuery, err)
 		}
 	}

@@ -254,6 +254,7 @@ func TestPostgresqlConnectorExecuteQuery(t *testing.T) {
 		total       int64
 	}{
 		{name: "groups without a metric", groups: []*interfaces.GroupByItem{{Property: "label"}}, statement: `SELECT "label" AS "label" FROM "public"."orders" GROUP BY "label"`, total: 8},
+		{name: "HAVING aggregate alias matches its source column", groups: []*interfaces.GroupByItem{{Property: "label"}}, aggregation: &interfaces.Aggregation{Property: "id", Aggr: "sum", Alias: "id"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 2}, statement: `SELECT "label" AS "label", SUM("id") AS "id" FROM "public"."orders" GROUP BY "label" HAVING (SUM("id") > CAST($1 AS BIGINT))`, args: []driver.Value{2}, total: 3},
 		{name: "group count after HAVING", groups: []*interfaces.GroupByItem{{Property: "label"}}, aggregation: &interfaces.Aggregation{Property: "id", Aggr: "count", Alias: "total"}, having: &interfaces.HavingClause{Field: "__value", Operation: ">", Value: 2}, statement: `SELECT "label" AS "label", COUNT("id") AS "total" FROM "public"."orders" GROUP BY "label" HAVING (COUNT("id") > CAST($1 AS BIGINT))`, args: []driver.Value{2}, total: 3},
 		{name: "ungrouped aggregate is one result row", aggregation: &interfaces.Aggregation{Property: "*", Aggr: "count"}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders"`, total: 1},
 		{name: "implicit count HAVING without grouping", having: &interfaces.HavingClause{Field: "count(*)", Operation: ">", Value: 100}, statement: `SELECT COUNT(*) AS "__value" FROM "public"."orders" HAVING (COUNT(*) > CAST($1 AS BIGINT))`, args: []driver.Value{100}, total: 0},
@@ -554,7 +555,7 @@ func TestPostgresqlConnectorExecuteSQLBuilder(t *testing.T) {
 		assert.Equal(t, int64(1), *result.TotalCount)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
-	for _, code := range []string{"42703", "42803", "42883", "22P02", "22003", "08006"} {
+	for _, code := range []string{"42703", "42803", "42883", "22P02", "22003", "22021", "08006"} {
 		t.Run(code, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)

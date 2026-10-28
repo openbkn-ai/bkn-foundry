@@ -537,6 +537,35 @@ func TestRawQueryServiceValidateRequest(t *testing.T) {
 }
 
 func TestRawQueryServicePrepareSQLQuery(t *testing.T) {
+	for _, connectorType := range []string{interfaces.ConnectorTypeMySQL, interfaces.ConnectorTypeMariaDB, interfaces.ConnectorTypePostgreSQL} {
+		t.Run(connectorType+" composite key statistics use the native parser and builder", func(t *testing.T) {
+			svc, rs, cs, _ := mysqlRawServices(t)
+			resource := builderTestResource()
+			mysqlRawMetadata(rs, cs, resource, true, connectorType)
+			input := "SELECT COUNT(*) AS row_count, COUNT(CASE WHEN `a` IS NOT NULL AND `b` IS NOT NULL THEN 1 END) AS keyed_rows, COUNT(DISTINCT CASE WHEN `a` IS NOT NULL AND `b` IS NOT NULL THEN CONCAT_WS(CHAR(31), `a`, `b`) END) AS primary_key_distinct FROM {{orders}}"
+			prepared, err := svc.prepareSQLQuery(compileTestContext(), &interfaces.RawQueryRequest{Query: input, QueryFormat: interfaces.QueryFormatSQL, InputDialect: "mysql"})
+			require.NoError(t, err)
+			require.NotNil(t, prepared.builder)
+			var text string
+			var args []any
+			if connectorType == interfaces.ConnectorTypePostgreSQL {
+				text, args, err = postgresql.ToSql(prepared.builder)
+			} else {
+				text, args, err = mysql.ToSql(prepared.builder)
+			}
+			require.NoError(t, err)
+			assert.Contains(t, text, "CONCAT_WS(")
+			assert.Contains(t, text, "COUNT(DISTINCT CASE WHEN")
+			require.Len(t, args, 2)
+			if connectorType == interfaces.ConnectorTypePostgreSQL {
+				assert.Equal(t, "31", args[1])
+			} else {
+				assert.Contains(t, text, "CHAR(")
+				assert.Equal(t, json.Number("31"), args[1])
+			}
+			assert.Empty(t, prepared.sql)
+		})
+	}
 	t.Run("star grouping positions are left to the source without schema expansion", func(t *testing.T) {
 		svc, rs, cs, _ := mysqlRawServices(t)
 		resource := builderTestResource()

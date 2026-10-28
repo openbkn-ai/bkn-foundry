@@ -206,6 +206,22 @@ func TestTreeBuilderProjectionNames(t *testing.T) {
 }
 
 func TestTreeBuilderFunctionArguments(t *testing.T) {
+	for _, expr := range []string{"CHAR(31)", "CHAR(65,66)", "CHAR(NULL,65,NULL)", "CHAR(id+64)", "CHAR(50089)"} {
+		t.Run("accept "+expr, func(t *testing.T) {
+			query, err := ParseSQL("SELECT " + expr + " AS value FROM {{x}}")
+			require.NoError(t, err)
+			assert.IsType(t, &sb.Function{}, query.ColumnsPart[0].(*sb.Alias).Expr)
+		})
+	}
+	for _, expr := range []string{"CHAR()", "CHAR(*)", "CHAR(DISTINCT id)"} {
+		t.Run("reject "+expr, func(t *testing.T) {
+			query, err := ParseSQL("SELECT " + expr + " AS value FROM {{x}}")
+			assert.Nil(t, query)
+			var failure *ParseError
+			require.ErrorAs(t, err, &failure)
+			assert.Equal(t, CodeUnsupported, failure.Code)
+		})
+	}
 	for _, expr := range []string{"COUNT()", "COUNT(a,b)", "COUNT(DISTINCT *)", "SUM(*)", "SUM(a,b)", "ABS()", "ABS(1,2)", "ABS(DISTINCT id)", "CONCAT(*)", "COALESCE()", "IFNULL(1)", "ROUND(1,2,3)", "SUBSTRING('a')", "SUBSTR('a',1,2,3)", "REPLACE('a','b')", "CONCAT_WS(',')", "NOW(7)", "NOW(-1)", "NOW(id)", "NOW(1.5)", "CURDATE(1)"} {
 		t.Run("reject "+expr, func(t *testing.T) {
 			query, err := ParseSQL("SELECT " + expr + " FROM {{x}}")

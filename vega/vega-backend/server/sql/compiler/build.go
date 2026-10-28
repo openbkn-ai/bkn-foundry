@@ -504,7 +504,7 @@ func validSQLFunctionArguments(name string, args []sb.SqlNode, distinct bool) bo
 		}
 	case "ROUND":
 		maximum = 2
-	case "COALESCE", "CONCAT":
+	case "COALESCE", "CONCAT", "CHAR":
 		maximum = maxTokens
 	case "CONCAT_WS":
 		minimum, maximum = 2, maxTokens
@@ -539,8 +539,8 @@ func validSQLFunctionArguments(name string, args []sb.SqlNode, distinct bool) bo
 // allowedSQLFunction 只开放已明确为只读的内置函数，避免透传 UDF 或有副作用的调用。
 func allowedSQLFunction(name string) bool {
 	switch name {
-	case "COUNT", "SUM", "AVG", "MIN", "MAX", "ABS", "ROUND", "FLOOR", "CEIL", "CEILING",
-		"COALESCE", "IFNULL", "NULLIF", "CONCAT", "CONCAT_WS", "UPPER", "LOWER", "LENGTH", "CHAR_LENGTH",
+	case "COUNT", "SUM", "AVG", "MIN", "MAX", "ABS", "ROUND", "FLOOR", "CEIL", "CEILING", "COALESCE",
+		"IFNULL", "NULLIF", "CONCAT", "CONCAT_WS", "CHAR", "UPPER", "LOWER", "LENGTH", "CHAR_LENGTH",
 		"SUBSTRING", "SUBSTR", "TRIM", "LTRIM", "RTRIM", "REPLACE", "DATE", "YEAR", "MONTH", "DAY", "DAYOFMONTH",
 		"HOUR", "MINUTE", "SECOND", "DATE_FORMAT", "STR_TO_DATE", "NOW", "CURRENT_TIMESTAMP", "CURDATE":
 		return true

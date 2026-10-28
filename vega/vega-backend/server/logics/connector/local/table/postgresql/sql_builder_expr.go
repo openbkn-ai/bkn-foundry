@@ -388,7 +388,14 @@ func (b *pgSQLBuffer) writeNode(node sb.SqlNode) {
 			b.fail("unsupported interval unit")
 		}
 	case *sb.Function:
+		aliases := b.havingAliases
+		switch strings.ToUpper(n.Name) {
+		case "COUNT", "SUM", "AVG", "MIN", "MAX":
+			// 聚合参数引用 FROM 字段，不能将同名投影别名再次展开成聚合。
+			b.havingAliases = nil
+		}
 		b.function(*n)
+		b.havingAliases = aliases
 	case *sb.Case:
 		if len(n.WhenParts) == 0 {
 			b.fail("CASE requires a WHEN branch")
@@ -431,7 +438,7 @@ func (b *pgSQLBuffer) selectQuery(q *sb.SelectBuilder) {
 	previousExpressions := b.expressions
 	b.havingAliases = nil
 	b.expressions = nil
-	if len(q.GroupByPart) > 0 {
+	if len(q.GroupByPart) > 0 || q.DistinctPart {
 		b.expressions = map[string][]pgSQLPart{}
 	}
 	b.write("SELECT ")
@@ -649,6 +656,25 @@ func (b *pgSQLBuffer) function(f sb.Function) {
 			b.write(")")
 			return
 		}
+	case "CHAR":
+		if len(f.Args) == 0 || f.Distinct {
+			b.fail("CHAR requires at least one argument and does not support DISTINCT")
+			return
+		}
+		// MySQL 按每个整数的低 32 位构造最少 1 字节，不能按 Unicode 码点调用 CHR。
+		// 先逐参数补齐偶数位十六进制再拼接；CONCAT 跳过 NULL，跨参数的 UTF-8 字节一起解码。
+		// PG text 无法保存 NUL 或非法 UTF-8，这些字节由源端返回可分类的输入错误。
+		b.write("CONVERT_FROM(DECODE(CONCAT(")
+		for i, arg := range f.Args {
+			if i > 0 {
+				b.write(", ")
+			}
+			b.write("REGEXP_REPLACE(TO_HEX((CAST(MOD(CAST(")
+			b.node(arg)
+			b.write(" AS NUMERIC), 4294967296) AS BIGINT) & 4294967295)), '^(.{1}|.{3}|.{5}|.{7})$', '0\\1')")
+		}
+		b.write("), 'hex'), 'UTF8')")
+		return
 	case "FROM_UNIXTIME":
 		if len(f.Args) != 1 || f.Distinct {
 			b.fail("FROM_UNIXTIME requires one argument")
@@ -852,7 +878,7 @@ func pgDateFormat(format string) (string, error) {
 				i++
 			}
 			result.WriteByte('"')
-			result.WriteString(strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(format[start:i]))
+			result.WriteString(strings.NewReplacer("\\", "\\\\", "\"", "\\\"").Replace(format[start:i]))
 			result.WriteByte('"')
 		}
 	}

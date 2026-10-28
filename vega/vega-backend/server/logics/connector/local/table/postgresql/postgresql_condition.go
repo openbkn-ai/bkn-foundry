@@ -20,7 +20,7 @@ import (
 )
 
 // Special 仅转义 LIKE 模式字符；参数绑定负责 SQL 字面量。
-var Special = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+var Special = strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
 
 // ConvertFilterCondition 将已验证的过滤条件转换为公共结构化节点。
 func (c *PostgresqlConnector) ConvertFilterCondition(condition interfaces.FilterCondition) (sb.SqlNode, error) {

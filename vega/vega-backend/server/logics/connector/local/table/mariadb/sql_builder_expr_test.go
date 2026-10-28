@@ -157,6 +157,8 @@ func TestFunctionToSql(t *testing.T) {
 		want     string
 		args     []any
 	}{
+		{&sb.Function{Name: "CHAR", Args: []sb.SqlNode{&sb.Param{Value: json.Number("31")}}}, "CHAR(?)", []any{json.Number("31")}},
+		{&sb.Function{Name: "CHAR", Args: []sb.SqlNode{&sb.Param{Value: nil}, &sb.Param{Value: 65}, &sb.Param{Value: 66}}}, "CHAR(?, ?, ?)", []any{nil, 65, 66}},
 		{&sb.Function{Name: "NOW", Args: []sb.SqlNode{&sb.Param{Value: json.Number("6")}}}, "NOW(6)", nil},
 		{&sb.Function{Name: "CURRENT_TIMESTAMP", Args: []sb.SqlNode{&sb.Param{Value: json.Number("0")}}}, "CURRENT_TIMESTAMP(0)", nil},
 		{&sb.Function{Name: "count", Args: []sb.SqlNode{&sb.Star{}}}, "COUNT(*)", nil},

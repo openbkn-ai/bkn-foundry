@@ -17,6 +17,42 @@ import (
 
 // TestToSql 检查 PG 目标生成的标识符、绑定编号、类型、子句及拒绝边界。
 func TestToSql(t *testing.T) {
+	t.Run("CHAR preserves byte construction and bound arguments", func(t *testing.T) {
+		query, err := compiler.ParseSQL("SELECT CHAR(31,NULL,50089,ID+64) AS value FROM {{r}}")
+		require.NoError(t, err)
+		query.FromPart.(*sb.Table).SourceIdentifier = `"s"."t"`
+		text, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Contains(t, text, "CONVERT_FROM(DECODE(CONCAT(")
+		assert.Contains(t, text, "TO_HEX(")
+		assert.Contains(t, text, "4294967296")
+		assert.Contains(t, text, "4294967295")
+		assert.Equal(t, []any{"31", nil, "50089", "64"}, args)
+		assert.NotContains(t, text, "CHR(")
+	})
+	t.Run("DISTINCT repeats the projected expression bindings in ORDER BY", func(t *testing.T) {
+		query, err := compiler.ParseSQL("SELECT DISTINCT DATE_FORMAT(TIME_VALUE,'%Y-%m') AS m FROM {{r}} ORDER BY DATE_FORMAT(TIME_VALUE,'%Y-%m')")
+		require.NoError(t, err)
+		query.FromPart.(*sb.Table).SourceIdentifier = `"s"."t"`
+		text, args, err := ToSql(query)
+		require.NoError(t, err)
+		assert.Equal(t, `SELECT DISTINCT TO_CHAR(CAST("TIME_VALUE" AS TIMESTAMP), $1) AS "m" FROM "s"."t" ORDER BY TO_CHAR(CAST("TIME_VALUE" AS TIMESTAMP), $1) ASC NULLS FIRST`, text)
+		assert.Equal(t, []any{`YYYY"-"MM`}, args)
+	})
+	t.Run("HAVING aggregate arguments resolve source columns rather than aliases", func(t *testing.T) {
+		for _, function := range []string{"COUNT", "SUM", "AVG", "MIN", "MAX"} {
+			t.Run(function, func(t *testing.T) {
+				query, err := compiler.ParseSQL("SELECT dept," + function + "(amount) AS amount FROM {{r}} GROUP BY dept HAVING " + function + "(amount)>100 AND amount>200")
+				require.NoError(t, err)
+				query.FromPart.(*sb.Table).SourceIdentifier = `"s"."t"`
+				text, args, err := ToSql(query)
+				require.NoError(t, err)
+				assert.Contains(t, text, ` HAVING ((`+function+`("amount") > CAST($1 AS BIGINT)) AND (`+function+`("amount") > CAST($2 AS BIGINT)))`)
+				assert.NotContains(t, text, function+"("+function+"(")
+				assert.Equal(t, []any{"100", "200"}, args)
+			})
+		}
+	})
 	t.Run("equivalent rendered fragments reuse bindings without matching AST shapes", func(t *testing.T) {
 		query, err := compiler.ParseSQL("SELECT DATE(STR_TO_DATE('2020-01-02','%Y-%m-%d')) AS d,COUNT(*) AS n FROM {{r}} GROUP BY CAST(STR_TO_DATE('2020-01-02','%Y-%m-%d') AS DATE)")
 		require.NoError(t, err)
@@ -203,7 +239,7 @@ func TestToSql(t *testing.T) {
 		assert.Equal(t, []any{nil}, args)
 	})
 	t.Run("unmapped and malformed nodes fail without partial SQL", func(t *testing.T) {
-		for _, node := range []sb.SqlNode{nil, &sb.Cast{Expr: &sb.Param{Value: 1}, Type: sb.CastUnsignedInteger}, &sb.Function{Name: "pg_read_file", Args: []sb.SqlNode{&sb.Param{Value: "secret"}}}, &sb.In{Expr: &sb.Column{Name: "id"}}, &sb.Column{Name: "bad\x00name"}, &sb.Param{Value: json.Number("1;DROP TABLE t")}, &sb.Cast{Expr: &sb.Param{Value: 1}, Type: sb.CastDecimal, Parameters: []uint64{2, 3}}} {
+		for _, node := range []sb.SqlNode{nil, &sb.Cast{Expr: &sb.Param{Value: 1}, Type: sb.CastUnsignedInteger}, &sb.Function{Name: "pg_read_file", Args: []sb.SqlNode{&sb.Param{Value: "secret"}}}, &sb.Function{Name: "CHAR"}, &sb.Function{Name: "CHAR", Args: []sb.SqlNode{&sb.Param{Value: 65}}, Distinct: true}, &sb.In{Expr: &sb.Column{Name: "id"}}, &sb.Column{Name: "bad\x00name"}, &sb.Param{Value: json.Number("1;DROP TABLE t")}, &sb.Cast{Expr: &sb.Param{Value: 1}, Type: sb.CastDecimal, Parameters: []uint64{2, 3}}} {
 			text, args, err := ToSql(sb.Select(node))
 			require.Error(t, err)
 			assert.Empty(t, text)
