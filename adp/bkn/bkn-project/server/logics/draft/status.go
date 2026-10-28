@@ -61,12 +61,20 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		generate.DiscardsDecisions = len(draft.Items.Decisions)
 		generate.Body = map[string]any{"discard_decisions": true}
 	}
-	if len(project.CatalogIDs) == 0 {
-		block(interfaces.BLOCKER_NO_CATALOGS, 0, interfaces.WAITING_FOR_OWNER)
-		act(ownerOnly(interfaces.ProjectStatusNextAction{
-			Action: interfaces.ACTION_SET_CATALOGS, Method: http.MethodPut, Path: base + "/catalogs",
-		}))
+	// Without catalogs nothing can be drafted. That blocks the project only where drafting is its
+	// next step; a draft made before keeps its stage, and only drafting it again is refused.
+	noCatalogs := len(project.CatalogIDs) == 0
+	if noCatalogs {
 		generate.Allowed, generate.Reason = false, interfaces.BLOCKER_NO_CATALOGS
+	}
+	draftNext := func() {
+		if noCatalogs {
+			block(interfaces.BLOCKER_NO_CATALOGS, 0, interfaces.WAITING_FOR_OWNER)
+			act(ownerOnly(interfaces.ProjectStatusNextAction{
+				Action: interfaces.ACTION_SET_CATALOGS, Method: http.MethodPut, Path: base + "/catalogs",
+			}))
+		}
+		act(generate)
 	}
 	wait := interfaces.ProjectStatusNextAction{
 		Action: interfaces.ACTION_WAIT, Method: http.MethodGet, Path: base + "/status", Allowed: true,
@@ -75,7 +83,7 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 
 	if draft == nil {
 		s.Stage = interfaces.PROJECT_STAGE_NO_DRAFT
-		act(generate)
+		draftNext()
 		return s
 	}
 	s.Draft = &interfaces.ProjectStatusDraft{
@@ -88,7 +96,7 @@ func projectStatus(project *interfaces.Project, draft *interfaces.Draft, check *
 		return s
 	case draft.Status != interfaces.DRAFT_STATUS_READY:
 		s.Stage = interfaces.PROJECT_STAGE_DRAFT_FAILED
-		act(generate)
+		draftNext()
 		return s
 	}
 

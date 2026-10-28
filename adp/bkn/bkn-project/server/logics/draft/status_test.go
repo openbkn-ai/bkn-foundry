@@ -83,6 +83,31 @@ func Test_ProjectStatus(t *testing.T) {
 			So(action(s, interfaces.ACTION_GENERATE_DRAFT).Reason, ShouldEqual, interfaces.BLOCKER_NO_CATALOGS)
 		})
 
+		Convey("Catalogs emptied after drafting block only drafting again\n", func() {
+			p := project()
+			p.CatalogIDs = []string{}
+
+			for _, s := range []*interfaces.ProjectStatus{
+				status(p, ready(), nil, owner, fresh),
+				status(p, confirmed(), checkOf("c1", interfaces.CHECK_STATUS_PASSED), owner, fresh),
+			} {
+				So(s.Blockers, ShouldBeEmpty)
+				So(action(s, interfaces.ACTION_SET_CATALOGS), ShouldBeNil)
+				generate := action(s, interfaces.ACTION_GENERATE_DRAFT)
+				So(generate.Allowed, ShouldBeFalse)
+				So(generate.Reason, ShouldEqual, interfaces.BLOCKER_NO_CATALOGS)
+			}
+			So(status(p, confirmed(), checkOf("c1", interfaces.CHECK_STATUS_PASSED), owner, fresh).Stage,
+				ShouldEqual, interfaces.PROJECT_STAGE_CONFIRMED)
+
+			failed := &interfaces.Draft{ProjectID: "p1", Status: interfaces.DRAFT_STATUS_FAILED, UpdateTime: 100}
+			s := status(p, failed, nil, owner, fresh)
+			So(s.Blockers, ShouldResemble, []interfaces.ProjectStatusBlocker{
+				{Code: interfaces.BLOCKER_NO_CATALOGS, WaitingFor: interfaces.WAITING_FOR_OWNER},
+			})
+			So(action(s, interfaces.ACTION_SET_CATALOGS).Allowed, ShouldBeTrue)
+		})
+
 		Convey("A project not drafted yet can be drafted\n", func() {
 			s := status(project(), nil, nil, editor, fresh)
 
