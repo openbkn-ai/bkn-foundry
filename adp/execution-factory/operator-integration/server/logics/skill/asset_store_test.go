@@ -3,10 +3,12 @@ package skill
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/httperrors"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 )
@@ -36,6 +38,42 @@ func TestOSSGatewaySkillAssetStoreUploadUsesCurrentStorageIDEvenWhenClientStarts
 		})
 		So(checksum, ShouldEqual, checksumSHA256([]byte("content")))
 	})
+}
+
+func TestOSSGatewaySkillAssetStoreDeleteTreatsMissingObjectAsSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockClient := mocks.NewMockOSSGatewayBackendClient(ctrl)
+	store := &ossGatewaySkillAssetStore{client: mockClient}
+	object := &interfaces.OssObject{StorageID: "storage-1", StorageKey: "skill/skill-1/v1/SKILL.md"}
+	mockClient.EXPECT().DeleteFile(gomock.Any(), object).
+		Return(&httperrors.HTTPError{HTTPCode: http.StatusNotFound})
+
+	if err := store.Delete(t.Context(), object); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+}
+
+func TestOSSGatewaySkillAssetStoreDeleteFallsBackToCurrentStorageID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockClient := mocks.NewMockOSSGatewayBackendClient(ctrl)
+	store := &ossGatewaySkillAssetStore{client: mockClient}
+	object := &interfaces.OssObject{StorageID: "stale-storage", StorageKey: "skill/skill-1/v1/SKILL.md"}
+	missingStorage := &httperrors.HTTPError{
+		HTTPCode: http.StatusNotFound,
+		BaseError: httperrors.BaseError{
+			ErrorDetails: "storage not found",
+		},
+	}
+	mockClient.EXPECT().DeleteFile(gomock.Any(), object).Return(missingStorage)
+	mockClient.EXPECT().CurrentStorageID(gomock.Any()).Return("current-storage", nil)
+	mockClient.EXPECT().DeleteFile(gomock.Any(), &interfaces.OssObject{
+		StorageID:  "current-storage",
+		StorageKey: object.StorageKey,
+	}).Return(nil)
+
+	if err := store.Delete(t.Context(), object); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
 }
 
 func TestOSSGatewaySkillAssetStoreDownloadFallsBackToCurrentStorageID(t *testing.T) {

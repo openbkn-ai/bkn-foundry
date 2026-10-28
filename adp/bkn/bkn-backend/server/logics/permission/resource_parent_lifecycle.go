@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,9 +24,22 @@ import (
 )
 
 const (
-	authorizationCleanupTimeout  = 5 * time.Second
-	resourceParentCleanupTimeout = 30 * time.Second
+	defaultAuthorizationCleanupTimeout = 30 * time.Second
+	resourceParentCleanupTimeout       = 30 * time.Second
+	resourceCleanupTimeoutEnv          = "BKN_SAFE_RESOURCE_CLEANUP_TIMEOUT"
 )
+
+func authorizationCleanupTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(resourceCleanupTimeoutEnv))
+	if raw == "" {
+		return defaultAuthorizationCleanupTimeout
+	}
+	timeout, err := time.ParseDuration(raw)
+	if err != nil || timeout <= 0 {
+		return defaultAuthorizationCleanupTimeout
+	}
+	return timeout
+}
 
 type resourceParentTrackerKey struct{}
 type authorizationCleanupTrackerKey struct{}
@@ -198,7 +213,7 @@ func (tracker *CreatedPolicyTracker) Cleanup(ctx context.Context, ps interfaces.
 	tracker.entries = map[string]trackedCreatedPolicy{}
 	tracker.mu.Unlock()
 
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authorizationCleanupTimeout)
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authorizationCleanupTimeout())
 	defer cancel()
 
 	resourceTypes := make([]string, 0, len(byType))
@@ -270,17 +285,61 @@ func (tracker *AuthorizationCleanupTracker) Cleanup(ctx context.Context, ps inte
 	tracker.entries = map[string]trackedAuthorizationCleanup{}
 	tracker.mu.Unlock()
 
+	cleanupCtx := context.WithoutCancel(ctx)
 	var cleanupErrs []error
 	for _, entry := range entries {
-		if err := CleanupKNChildAuthorization(ctx, ps, entry.resourceType, entry.knID, entry.childIDs); err != nil {
+		if err := CleanupKNChildAuthorization(cleanupCtx, ps, entry.resourceType, entry.knID, entry.childIDs); err != nil {
 			cleanupErrs = append(cleanupErrs, err)
 		}
 	}
 	return errors.Join(cleanupErrs...)
 }
 
-// CleanupKNChildAuthorization attempts both policy and parent-edge cleanup.
-// Failures are logged per resource so an operations job can replay them later.
+// PendingResources snapshots queued cleanups without consuming them. It is
+// used to attach cleanup work to the same durable outbox event that revokes the
+// corresponding proxy sources.
+func (tracker *AuthorizationCleanupTracker) PendingResources() []interfaces.AuthorizationCleanupTarget {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	byType := make(map[string][]string)
+	for _, entry := range tracker.entries {
+		byType[entry.resourceType] = append(byType[entry.resourceType],
+			interfaces.KNChildResourceIDs(entry.knID, entry.childIDs)...)
+	}
+	resourceTypes := make([]string, 0, len(byType))
+	for resourceType := range byType {
+		resourceTypes = append(resourceTypes, resourceType)
+	}
+	sort.Strings(resourceTypes)
+	result := make([]interfaces.AuthorizationCleanupTarget, 0, len(resourceTypes))
+	for _, resourceType := range resourceTypes {
+		resourceIDs := byType[resourceType]
+		sort.Strings(resourceIDs)
+		resourceIDs = compactSortedResourceIDs(resourceIDs)
+		result = append(result, interfaces.AuthorizationCleanupTarget{
+			ResourceType: resourceType,
+			ResourceIDs:  append([]string(nil), resourceIDs...),
+		})
+	}
+	return result
+}
+
+func compactSortedResourceIDs(values []string) []string {
+	if len(values) < 2 {
+		return values
+	}
+	result := values[:1]
+	for _, value := range values[1:] {
+		if value != result[len(result)-1] {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+// CleanupKNChildAuthorization atomically removes policies and parent edges
+// through Safe's resource-policy deletion endpoint. Failures are logged per
+// resource so the owning DELETE request can be retried.
 func CleanupKNChildAuthorization(ctx context.Context, ps interfaces.PermissionService,
 	resourceType, knID string, childIDs []string) error {
 
@@ -288,25 +347,17 @@ func CleanupKNChildAuthorization(ctx context.Context, ps interfaces.PermissionSe
 	if len(resourceIDs) == 0 {
 		return nil
 	}
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authorizationCleanupTimeout)
+	cleanupCtx, cancel := context.WithTimeout(ctx, authorizationCleanupTimeout())
 	defer cancel()
 
-	var cleanupErrs []error
 	if err := ps.DeleteResources(cleanupCtx, resourceType, resourceIDs); err != nil {
 		for _, resourceID := range resourceIDs {
 			logAuthorizationCleanupFailure("policy", resourceType, resourceID,
 				interfaces.RESOURCE_TYPE_KN, knID, err)
 		}
-		cleanupErrs = append(cleanupErrs, err)
+		return err
 	}
-	if err := ps.DeleteResourceParents(cleanupCtx, resourceType, resourceIDs); err != nil {
-		for _, resourceID := range resourceIDs {
-			logAuthorizationCleanupFailure("resource_parent", resourceType, resourceID,
-				interfaces.RESOURCE_TYPE_KN, knID, err)
-		}
-		cleanupErrs = append(cleanupErrs, err)
-	}
-	return errors.Join(cleanupErrs...)
+	return nil
 }
 
 func logAuthorizationCleanupFailure(cleanupKind, resourceType, resourceID, parentType, parentID string, err error) {

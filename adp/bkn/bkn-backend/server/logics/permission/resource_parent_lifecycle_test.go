@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -127,13 +128,12 @@ func TestCreatedPolicyTrackerCompensatesNestedWritesInTypeBatches(t *testing.T) 
 	}
 }
 
-func TestCleanupKNChildAuthorizationAttemptsPolicyAndParent(t *testing.T) {
+func TestCleanupKNChildAuthorizationUsesAtomicSafeCleanup(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := bmock.NewMockPermissionService(ctrl)
 	policyErr := errors.New("policy cleanup failed")
 	resourceIDs := []string{"kn-1/ot-1"}
 	ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, resourceIDs).Return(policyErr)
-	ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_OBJECT_TYPE, resourceIDs).Return(nil)
 	if err := CleanupKNChildAuthorization(context.Background(), ps, interfaces.RESOURCE_TYPE_OBJECT_TYPE,
 		"kn-1", []string{"ot-1"}); !errors.Is(err, policyErr) {
 		t.Fatalf("CleanupKNChildAuthorization() error = %v, want %v", err, policyErr)
@@ -150,8 +150,12 @@ func TestAuthorizationCleanupTrackerBatchesAndDeduplicatesResources(t *testing.T
 	TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_METRIC, "kn-1", []string{"metric-1"})
 	TrackKNChildAuthorizationCleanup(ctx, interfaces.RESOURCE_TYPE_METRIC, "kn-1", []string{"metric-1", "metric-2"})
 	resourceIDs := []string{"kn-1/metric-1", "kn-1/metric-2"}
+	pending := tracker.PendingResources()
+	if len(pending) != 1 || pending[0].ResourceType != interfaces.RESOURCE_TYPE_METRIC ||
+		!slices.Equal(pending[0].ResourceIDs, resourceIDs) {
+		t.Fatalf("PendingResources() = %#v, want one deterministic metric cleanup", pending)
+	}
 	ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC, resourceIDs).Return(nil)
-	ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_METRIC, resourceIDs).Return(nil)
 	if err := tracker.Cleanup(ctx, ps); err != nil {
 		t.Fatalf("Cleanup() error = %v", err)
 	}

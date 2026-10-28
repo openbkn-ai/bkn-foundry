@@ -8,6 +8,8 @@ moduleName: agent-operator-integration
 # bkn-safe API used for authorization, directory lookups, and AppKey introspection.
 bknSafe:
   url: "http://bkn-safe:3000"
+  # Timeout for resource policy teardown only. Other authorization calls keep their short timeout.
+  resourceCleanupTimeout: "30s"
 
 # Set to dev for development mode.
 runMode: release

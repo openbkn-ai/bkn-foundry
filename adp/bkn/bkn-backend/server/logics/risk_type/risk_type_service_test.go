@@ -283,8 +283,6 @@ func TestRiskTypeServiceDeleteRiskTypesAuthorizationCleanup(t *testing.T) {
 		dbMock.ExpectCommit()
 		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
 			[]string{"kn-1/risk-1"}).Return(nil)
-		ps.EXPECT().DeleteResourceParents(gomock.Any(), interfaces.RESOURCE_TYPE_RISK_TYPE,
-			[]string{"kn-1/risk-1"}).Return(nil)
 
 		err := service.DeleteRiskTypesByIDs(context.Background(), nil, "kn-1", interfaces.MAIN_BRANCH,
 			[]string{"risk-1"})

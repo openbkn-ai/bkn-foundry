@@ -527,6 +527,7 @@ func (kns *knowledgeNetworkService) stageProxyDelta(ctx context.Context, tx *sql
 		ID: uuid.NewString(), KNID: plan.mapping.KNID, ProxyAccountID: plan.mapping.ProxyAccountID,
 		GrantorID: plan.delegatorID, BaseVersion: delta.baseVersion, TargetVersion: delta.targetVersion,
 		Bindings: delta.bindings, DesiredSources: delta.desired, Upserts: delta.upserts, Removals: delta.removals,
+		AuthorizationCleanups: plan.authorizationCleanups,
 	}
 	generation, err := kns.kpoa.StageDelta(ctx, tx, event, plan.lockOwner,
 		delta.bindings, delta.desired, time.Now().UnixMilli())

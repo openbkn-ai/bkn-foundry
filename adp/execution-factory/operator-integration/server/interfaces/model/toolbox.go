@@ -7,6 +7,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
+const ToolboxStatusDeleting = "deleting"
+
 // ToolboxDB ToolboxDB.
 //
 //go:generate mockgen -source=toolbox.go -destination=../../mocks/model_toolbox.go -package=mocks
@@ -40,11 +42,13 @@ type IToolboxDB interface {
 	InsertToolBox(ctx context.Context, tx *sql.Tx, toolbox *ToolboxDB) (boxID string, err error)
 	UpdateToolBox(ctx context.Context, tx *sql.Tx, toolbox *ToolboxDB) error
 	SelectToolBox(ctx context.Context, boxID string) (bool, *ToolboxDB, error)
+	SelectToolBoxForDelete(ctx context.Context, boxID string) (bool, *ToolboxDB, error)
 	SelectToolBoxList(ctx context.Context, filter map[string]interface{}, sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) ([]*ToolboxDB, error)
 	DeleteToolBox(ctx context.Context, tx *sql.Tx, boxID string) error
 	CountToolBox(ctx context.Context, filter map[string]interface{}) (int64, error)
 	SelectToolBoxByName(ctx context.Context, name string, status []string) (bool, *ToolboxDB, error)
 	UpdateToolBoxStatus(ctx context.Context, tx *sql.Tx, boxID, status string, updateUser string) (err error)
+	RestoreToolBoxAfterDeleteConflict(ctx context.Context, tx *sql.Tx, toolbox *ToolboxDB, deletingUser string) error
 	TouchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) error
 	SelectListByBoxIDs(ctx context.Context, boxIDs []string, status ...string) ([]*ToolboxDB, error)
 	SelectListByBoxIDsFilter(ctx context.Context, boxIDs []string, status string, filter map[string]interface{}) ([]*ToolboxDB, error)

@@ -111,7 +111,8 @@ func (b *toolboxDB) UpdateToolBox(ctx context.Context, tx *sql.Tx, toolbox *mode
 		"f_release_user": toolbox.ReleaseUser,
 		"f_release_time": toolbox.ReleaseTime,
 		"f_status":       toolbox.Status,
-	}).WhereEq("f_box_id", toolbox.BoxID).Execute(ctx)
+	}).WhereEq("f_box_id", toolbox.BoxID).
+		WhereNe("f_status", model.ToolboxStatusDeleting).Execute(ctx)
 	if err != nil {
 		err = errors.Wrapf(err, "update toolbox error")
 		return
@@ -130,7 +131,17 @@ func (b *toolboxDB) UpdateToolBox(ctx context.Context, tx *sql.Tx, toolbox *mode
 func (b *toolboxDB) SelectToolBox(ctx context.Context, boxID string) (exist bool, toolbox *model.ToolboxDB, err error) {
 	toolbox = &model.ToolboxDB{}
 	orm := b.orm
-	err = orm.Select().From(tbToolBox).WhereEq("f_box_id", boxID).First(ctx, toolbox)
+	err = orm.Select().From(tbToolBox).WhereEq("f_box_id", boxID).
+		WhereNe("f_status", model.ToolboxStatusDeleting).First(ctx, toolbox)
+	exist, err = checkHasQueryErr(err)
+	return
+}
+
+// SelectToolBoxForDelete includes a persisted deletion marker so the same
+// DELETE can resume after an external cleanup or local commit failure.
+func (b *toolboxDB) SelectToolBoxForDelete(ctx context.Context, boxID string) (exist bool, toolbox *model.ToolboxDB, err error) {
+	toolbox = &model.ToolboxDB{}
+	err = b.orm.Select().From(tbToolBox).WhereEq("f_box_id", boxID).First(ctx, toolbox)
 	exist, err = checkHasQueryErr(err)
 	return
 }
@@ -179,7 +190,7 @@ func (b *toolboxDB) buildQueryConditions(query *ormhelper.SelectBuilder, conditi
 // CountToolBox queries the number of toolboxes.
 func (b *toolboxDB) CountToolBox(ctx context.Context, filter map[string]interface{}) (count int64, err error) {
 	orm := b.orm
-	queryBuilder := orm.Select().From(tbToolBox)
+	queryBuilder := orm.Select().From(tbToolBox).WhereNe("f_status", model.ToolboxStatusDeleting)
 	queryBuilder = b.buildQueryConditions(queryBuilder, filter)
 	count, err = queryBuilder.Count(ctx)
 	return
@@ -188,7 +199,7 @@ func (b *toolboxDB) CountToolBox(ctx context.Context, filter map[string]interfac
 // SelectToolBoxList Query tool list.
 func (b *toolboxDB) SelectToolBoxList(ctx context.Context, filter map[string]interface{}, sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) (toolboxList []*model.ToolboxDB, err error) {
 	orm := b.orm
-	queryBuilder := orm.Select().From(tbToolBox)
+	queryBuilder := orm.Select().From(tbToolBox).WhereNe("f_status", model.ToolboxStatusDeleting)
 	queryBuilder = b.buildQueryConditions(queryBuilder, filter)
 	queryBuilder.Cursor(cursor)
 	queryBuilder.Sort(sort)
@@ -219,7 +230,8 @@ func (b *toolboxDB) SelectToolBoxByName(ctx context.Context, name string, status
 	for _, s := range status {
 		args = append(args, s)
 	}
-	err := orm.Select().From(tbToolBox).WhereEq("f_name", name).WhereIn("f_status", args...).First(ctx, toolbox)
+	err := orm.Select().From(tbToolBox).WhereEq("f_name", name).
+		WhereNe("f_status", model.ToolboxStatusDeleting).WhereIn("f_status", args...).First(ctx, toolbox)
 	exist, err := checkHasQueryErr(err)
 	return exist, toolbox, err
 }
@@ -258,7 +270,8 @@ func (b *toolboxDB) UpdateToolBoxStatus(ctx context.Context, tx *sql.Tx, boxID, 
 		"f_update_time":  now,
 		"f_release_time": now,
 		"f_release_user": userID,
-	}).WhereEq("f_box_id", boxID).Execute(ctx)
+	}).WhereEq("f_box_id", boxID).
+		WhereNe("f_status", model.ToolboxStatusDeleting).Execute(ctx)
 	if err != nil {
 		err = errors.Wrapf(err, "update toolbox status error")
 		return
@@ -273,6 +286,37 @@ func (b *toolboxDB) UpdateToolBoxStatus(ctx context.Context, tx *sql.Tx, boxID, 
 	return
 }
 
+// RestoreToolBoxAfterDeleteConflict makes a toolbox visible again when Safe
+// rejected deletion before removing its policy. The deleting status and user
+// fence ensure that a concurrent retry cannot be overwritten.
+func (b *toolboxDB) RestoreToolBoxAfterDeleteConflict(ctx context.Context, tx *sql.Tx,
+	toolbox *model.ToolboxDB, deletingUser string) (err error) {
+	orm := b.orm
+	if tx != nil {
+		orm = b.orm.WithTx(tx)
+	}
+	row, err := orm.Update(tbToolBox).SetData(map[string]interface{}{
+		"f_status":       toolbox.Status,
+		"f_update_user":  toolbox.UpdateUser,
+		"f_update_time":  toolbox.UpdateTime,
+		"f_release_user": toolbox.ReleaseUser,
+		"f_release_time": toolbox.ReleaseTime,
+	}).WhereEq("f_box_id", toolbox.BoxID).
+		WhereEq("f_status", model.ToolboxStatusDeleting).
+		WhereEq("f_update_user", deletingUser).Execute(ctx)
+	if err != nil {
+		return errors.Wrapf(err, "restore toolbox after delete conflict error")
+	}
+	ok, err := checkAffected(row)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("restore toolbox after delete conflict failed")
+	}
+	return nil
+}
+
 // TouchToolBox records a change to one of the toolbox's tools as a change to the
 // toolbox, so its update time and updater follow the newest tool edit.
 func (b *toolboxDB) TouchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID string) (err error) {
@@ -283,7 +327,8 @@ func (b *toolboxDB) TouchToolBox(ctx context.Context, tx *sql.Tx, boxID, userID 
 	row, err := orm.Update(tbToolBox).SetData(map[string]interface{}{
 		"f_update_user": userID,
 		"f_update_time": time.Now().UnixNano(),
-	}).WhereEq("f_box_id", boxID).Execute(ctx)
+	}).WhereEq("f_box_id", boxID).
+		WhereNe("f_status", model.ToolboxStatusDeleting).Execute(ctx)
 	if err != nil {
 		err = errors.Wrapf(err, "touch toolbox error")
 		return
@@ -309,7 +354,8 @@ func (b *toolboxDB) SelectListByBoxIDs(ctx context.Context, boxIDs []string, sta
 	if len(values) == 0 {
 		return
 	}
-	query := orm.Select().From(tbToolBox).WhereIn("f_box_id", values...)
+	query := orm.Select().From(tbToolBox).WhereIn("f_box_id", values...).
+		WhereNe("f_status", model.ToolboxStatusDeleting)
 	if len(status) > 0 {
 		args := []interface{}{}
 		for _, s := range status {
@@ -352,6 +398,7 @@ func (b *toolboxDB) SelectListByBoxIDsFilter(ctx context.Context, boxIDs []strin
 		sortOrder = "DESC"
 	}
 	err = orm.Select().From(tbToolBox).WhereIn("f_box_id", values...).
+		WhereNe("f_status", model.ToolboxStatusDeleting).
 		WhereEq("f_status", status).Sort(&ormhelper.SortParams{
 		Fields: []ormhelper.SortField{
 			{
@@ -374,7 +421,8 @@ func (b *toolboxDB) SelectListByNamesAndStatus(ctx context.Context, names []stri
 	for _, name := range names {
 		values = append(values, name)
 	}
-	query := orm.Select().From(tbToolBox).WhereIn("f_name", values...)
+	query := orm.Select().From(tbToolBox).WhereIn("f_name", values...).
+		WhereNe("f_status", model.ToolboxStatusDeleting)
 	if len(status) > 0 {
 		args := []interface{}{}
 		for _, s := range status {

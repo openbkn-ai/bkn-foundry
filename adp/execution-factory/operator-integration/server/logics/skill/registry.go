@@ -499,12 +499,11 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
 	})
-	// Check delete permissions.
+	// Load the durable deletion marker before authorization. Once Safe cleanup
+	// has succeeded, the initiating user must still be able to resume local and
+	// object-store cleanup without the policy that was just removed.
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
-		return err
-	}
-	if err = r.AuthService.CheckDeletePermission(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill); err != nil {
 		return err
 	}
 	skill, err := r.skillRepo.SelectSkillByID(ctx, nil, req.SkillID)
@@ -512,33 +511,42 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("select skill by id failed: %s", err.Error()))
 		return
 	}
-	// The skill does not exist or has been deleted.
-	if skill == nil || skill.IsDeleted {
+	if skill == nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("skill not found: %s", req.SkillID))
 		return
 	}
-	// Delete status verification and use public status management.
-	if !common.CanDelete(interfaces.BizStatus(skill.Status)) {
+	if !skill.IsDeleted || skill.UpdateUser != req.UserID {
+		if err = r.AuthService.CheckDeletePermission(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill); err != nil {
+			return err
+		}
+	}
+	// A persisted deletion marker means an earlier request stopped during an
+	// external cleanup. Re-entering the same DELETE resumes that cleanup.
+	if !skill.IsDeleted && !common.CanDelete(interfaces.BizStatus(skill.Status)) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtSkillUnSupportDelete,
 			fmt.Sprintf("skill can not be deleted in status: %s", skill.Status))
 		return
 	}
-	tx, err := r.dbTx.GetTx(ctx)
-	if err != nil {
-		return fmt.Errorf("get tx failed: %w", err)
+	if !skill.IsDeleted {
+		if err = r.runSkillDeleteTransaction(ctx, func(tx *sql.Tx) error {
+			return r.skillRepo.UpdateSkillDeleted(ctx, tx, req.SkillID, true, req.UserID)
+		}); err != nil {
+			return err
+		}
 	}
-	defer r.finishIndexedSkillWrite(ctx, tx, &err, req.SkillID, true)
+	// Safe cleanup runs before any irreversible asset deletion. A managed-proxy
+	// conflict therefore leaves a complete tombstone that can continue after the
+	// resource is unbound; a timeout can be replayed by the initiating user.
+	if err = r.AuthService.DeletePolicy(ctx, []string{req.SkillID}, interfaces.AuthResourceTypeSkill); err != nil {
+		return err
+	}
 
-	// Mark the skill as being deleted, TODO: You need to design a separate coroutine to handle the deletion interruption strategy.
-	if err = r.skillRepo.UpdateSkillDeleted(ctx, tx, req.SkillID, true, req.UserID); err != nil {
-		return err
-	}
-	// Find index file.
-	files, err := r.fileRepo.SelectSkillFileBySkillID(ctx, tx, req.SkillID, skill.Version)
+	// Keep file metadata until every object has been removed. A retry can then
+	// rediscover the same storage keys after a partial object-store failure.
+	files, err := r.fileRepo.SelectSkillFileBySkillID(ctx, nil, req.SkillID, skill.Version)
 	if err != nil {
 		return err
 	}
-	// Delete records in object storage first, then delete records in database.
 	for _, file := range files {
 		if err = r.assetStore.Delete(ctx, &interfaces.OssObject{
 			StorageID:  file.StorageID,
@@ -548,27 +556,51 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 			return err
 		}
 	}
-	if err = r.fileRepo.DeleteSkillFileBySkillID(ctx, tx, req.SkillID, skill.Version); err != nil {
-		return err
-	}
-	if r.releaseRepo != nil {
-		if err = r.deletePublishedSkillSnapshot(ctx, tx, req.SkillID); err != nil {
+	if err = r.runSkillDeleteTransaction(ctx, func(tx *sql.Tx) error {
+		if err := r.fileRepo.DeleteSkillFileBySkillID(ctx, tx, req.SkillID, skill.Version); err != nil {
 			return err
 		}
-	}
-	if r.releaseHistoryRepo != nil {
-		if err = r.releaseHistoryRepo.DeleteBySkillID(ctx, tx, req.SkillID); err != nil {
-			return err
+		if r.releaseRepo != nil {
+			if err := r.deletePublishedSkillSnapshot(ctx, tx, req.SkillID); err != nil {
+				return err
+			}
 		}
-	}
-	if err = r.skillRepo.DeleteSkillByID(ctx, tx, req.SkillID); err != nil {
-		return err
-	}
-	// Delete the permission policy of a skill.
-	if err = r.AuthService.DeletePolicy(ctx, []string{req.SkillID}, interfaces.AuthResourceTypeSkill); err != nil {
+		if r.releaseHistoryRepo != nil {
+			if err := r.releaseHistoryRepo.DeleteBySkillID(ctx, tx, req.SkillID); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
+	if r.indexSync != nil {
+		indexCtx, cancel := context.WithTimeout(ctx, skillIndexOperationTimeout)
+		defer cancel()
+		if err = r.indexSync.DeleteSkill(indexCtx, req.SkillID); err != nil {
+			return err
+		}
+	}
+	if r.notifyIndexSync != nil {
+		r.notifyIndexSync()
+	}
+	return nil
+}
+
+func (r *skillRegistry) runSkillDeleteTransaction(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := r.dbTx.GetTx(ctx)
+	if err != nil {
+		return fmt.Errorf("get tx failed: %w", err)
+	}
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
 	return nil
 }
 

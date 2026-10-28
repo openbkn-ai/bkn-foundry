@@ -317,6 +317,16 @@ func validateOutboxPayload(event *interfaces.KNProxyOutboxEvent) error {
 		strings.TrimSpace(event.TargetVersion) == "" {
 		return errors.New("proxy outbox payload has no grantor or target version")
 	}
+	for _, cleanup := range event.AuthorizationCleanups {
+		if !isKNChildAuthorizationResourceType(cleanup.ResourceType) || len(cleanup.ResourceIDs) == 0 {
+			return errors.New("proxy outbox payload contains an invalid authorization cleanup")
+		}
+		for _, resourceID := range cleanup.ResourceIDs {
+			if !interfaces.IsValidKNChildResourceID(resourceID) {
+				return errors.New("proxy outbox payload contains an invalid authorization cleanup resource")
+			}
+		}
+	}
 	bindings := make(map[string]struct{}, len(event.Bindings))
 	for _, binding := range event.Bindings {
 		if strings.TrimSpace(binding.BindingType) == "" || strings.TrimSpace(binding.BindingID) == "" {
@@ -375,6 +385,20 @@ func validateOutboxPayload(event *interfaces.KNProxyOutboxEvent) error {
 		}
 	}
 	return nil
+}
+
+func isKNChildAuthorizationResourceType(resourceType string) bool {
+	switch resourceType {
+	case interfaces.RESOURCE_TYPE_METRIC,
+		interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		interfaces.RESOURCE_TYPE_RISK_TYPE,
+		interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *outboxAccess) RenewLease(ctx context.Context, eventID, owner string, now, leaseUntil int64) (bool, error) {
