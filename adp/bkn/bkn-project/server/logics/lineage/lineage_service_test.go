@@ -306,6 +306,28 @@ func Test_LineageService_CreateLineage(t *testing.T) {
 			So(refErr, ShouldNotBeNil)
 		})
 
+		Convey("A network whose definitions do not read back as BKN 3.0 names the one to fix, and leaves no lineage\n", func() {
+			const unreadable = `load object_types/part.bkn: data property name is empty`
+			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{
+				HTTPCode: http.StatusBadRequest,
+				BaseError: httperrors.BaseError{
+					ErrorCode:    "BknBackend.KnowledgeNetwork.ExportNotReadableAsV3",
+					ErrorDetails: unreadable,
+				},
+			})
+
+			_, err := svc.CreateLineage(ctx, token, id, author)
+
+			status, code := httpCode(err)
+			So(status, ShouldEqual, http.StatusBadRequest)
+			So(code, ShouldEqual, perrors.BknProject_Lineage_NetworkNotReadableAsV3)
+			var httpErr *httperrors.HTTPError
+			So(errors.As(err, &httpErr), ShouldBeTrue)
+			So(httpErr.ErrorDetails, ShouldEqual, unreadable)
+			_, refErr := realGS.ResolveRef(ctx, id, "main")
+			So(refErr, ShouldNotBeNil)
+		})
+
 		Convey("A bkn-backend server error is a bad gateway\n", func() {
 			bba.EXPECT().ExportBKN(gomock.Any(), token, id).Return(nil, &interfaces.BknBackendError{HTTPCode: http.StatusInternalServerError})
 
