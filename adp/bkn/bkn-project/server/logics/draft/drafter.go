@@ -16,16 +16,21 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/bkn/bkn-project/server/interfaces"
 )
 
-// minInferredDistinct is the fewest distinct values a field must have for a relation inferred
-// from its name to be adopted: a status of 1..5 hits any auto-increment id.
-const minInferredDistinct = 10
-
 // Reasons a count was not computed.
 const (
 	reasonCompositeKey = "composite_key"
 	reasonCrossCatalog = "cross_catalog"
 	reasonLinkTable    = "link_table"
 	reasonQueryFailed  = "query_failed"
+)
+
+// Why a drafted relation is proposed rather than adopted, stored as codes for the client to word.
+const (
+	proposedNotCounted       = "not_counted"
+	proposedBelowSuggestRate = "below_suggest_hit_rate"
+	proposedBelowAdoptRate   = "below_adopt_hit_rate"
+	proposedFewValues        = "few_values"
+	proposedEndNotAdopted    = "end_not_adopted"
 )
 
 // drafter drafts an ontology from the structure of readable tables.
@@ -141,7 +146,9 @@ func (d *drafter) draft(ctx context.Context, tables []*interfaces.VegaTable,
 		adopted[objectType.ID] = objectType.Adopted
 	}
 	for _, relation := range d.items.RelationTypes {
-		relation.Adopted = relation.Adopted && adopted[relation.Source] && adopted[relation.Target]
+		if relation.Adopted && !(adopted[relation.Source] && adopted[relation.Target]) {
+			relation.Adopted, relation.ProposedBecause = false, proposedEndNotAdopted
+		}
 	}
 	return d.items, nil
 }
@@ -513,18 +520,22 @@ func (d *drafter) refer(ctx context.Context, table *interfaces.VegaTable, source
 
 	rate, computed := relation.Evidence.HitRate, relation.Evidence.Computed
 	switch {
-	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY:
-		relation.Adopted = computed && rate >= d.setting.SuggestHitRate
 	case !computed:
 		// Not counted (another catalog, a failed query): proposed for a person to check, never dropped.
-		relation.Adopted = false
+		relation.ProposedBecause = proposedNotCounted
+	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY && rate < d.setting.SuggestHitRate:
+		relation.ProposedBecause = proposedBelowSuggestRate
+	case origin == interfaces.DRAFT_ORIGIN_FOREIGN_KEY:
 	case rate < d.setting.SuggestHitRate:
 		// Counted and mostly orphans: an inference the data refutes is not proposed.
 		return false, nil
-	default:
+	case rate < d.setting.AdoptHitRate:
+		relation.ProposedBecause = proposedBelowAdoptRate
+	case relation.Evidence.SourceDistinct < d.setting.MinInferredDistinct:
 		// A field of a few values hits any key by chance, so it is proposed, not adopted.
-		relation.Adopted = rate >= d.setting.AdoptHitRate && relation.Evidence.SourceDistinct >= minInferredDistinct
+		relation.ProposedBecause = proposedFewValues
 	}
+	relation.Adopted = relation.ProposedBecause == ""
 	d.items.RelationTypes = append(d.items.RelationTypes, relation)
 	return true, nil
 }

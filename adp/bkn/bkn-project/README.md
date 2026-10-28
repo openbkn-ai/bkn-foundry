@@ -29,7 +29,11 @@ history is kept as a lineage. See issue #2520 and epic #2519.
   parent_lot_id), become relations checked by a full-table hit rate. A table
   without a declared key takes an identity-like field that counts unique and
   non-null. Inferred relations that cannot be counted are proposed unverified;
-  ones over a field of few values are proposed, not adopted. Personal fields
+  ones over a field of few values (fewer than `draft.minInferredDistinct`, 10 by
+  default) are proposed, not adopted. A relation proposed rather than adopted
+  says why in `proposed_because`: `not_counted`, `below_suggest_hit_rate`,
+  `below_adopt_hit_rate`, `few_values` or `end_not_adopted` (an object type at an
+  end waits for a person). Personal fields
   (privacy keywords matched as whole words) are excluded. Names and descriptions
   from the catalog's semantic understanding come first. Only counts and
   code-table values leave vega-backend, which is read as the caller.
