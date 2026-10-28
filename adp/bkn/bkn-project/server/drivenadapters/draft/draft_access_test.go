@@ -33,14 +33,17 @@ func Test_DraftAccess(t *testing.T) {
 		}
 		lockRow := regexp.QuoteMeta("SELECT f_status, f_update_time, f_items FROM t_bkn_project_draft WHERE f_project_id = ? FOR UPDATE")
 		lockCols := []string{"f_status", "f_update_time", "f_items"}
+		ensureRow := regexp.QuoteMeta(
+			"INSERT INTO t_bkn_project_draft (f_project_id,f_items,f_error) VALUES (?,?,?) ON DUPLICATE KEY UPDATE f_project_id = f_project_id")
 
-		Convey("StartDraft inserts the first draft of a project\n", func() {
+		Convey("StartDraft writes the first draft of a project into the row it makes sure of\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols))
-			smock.ExpectExec(regexp.QuoteMeta(
-				"INSERT INTO t_bkn_project_draft (f_project_id,f_status,f_items,f_error,f_drafter,f_drafter_type,f_create_time,f_update_time) VALUES (?,?,?,?,?,?,?,?)")).
-				WithArgs("p1", "drafting", emptyItems, "", "u1", "user", int64(5), int64(5)).
-				WillReturnResult(sqlmock.NewResult(1, 1))
+			// Two first starts both find the row: the second waits on the first's, then sees it drafting.
+			smock.ExpectExec(ensureRow).WithArgs("p1", "", "").WillReturnResult(sqlmock.NewResult(1, 1))
+			smock.ExpectQuery(lockRow).WithArgs("p1").WillReturnRows(sqlmock.NewRows(lockCols).AddRow("", int64(0), ""))
+			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?, f_items = ?, f_error = ?")).
+				WithArgs("drafting", emptyItems, "", "u1", "user", int64(5), int64(5), "p1").
+				WillReturnResult(sqlmock.NewResult(0, 1))
 			smock.ExpectCommit()
 
 			started, err := da.StartDraft(ctx, drafting, 3, false)
@@ -52,6 +55,7 @@ func Test_DraftAccess(t *testing.T) {
 
 		Convey("StartDraft replaces a finished draft\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(1), emptyItems))
 			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?, f_items = ?, f_error = ?")).
 				WillReturnResult(sqlmock.NewResult(0, 1))
@@ -67,6 +71,7 @@ func Test_DraftAccess(t *testing.T) {
 		Convey("StartDraft keeps what the last confirmation wrote, but not as confirmed\n", func() {
 			confirmed := `{"decisions":[],"confirmation":{"update_time":2,"commit":"c1","by":{"id":"u1","type":"user"},"time":2,"files":["object_types/orders.bkn"],"skipped_value_types":[]}}`
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(2), confirmed))
 			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?, f_items = ?, f_error = ?")).
 				WithArgs("drafting", sqlmock.AnyArg(), "", "u1", "user", int64(5), int64(5), "p1").
@@ -86,6 +91,7 @@ func Test_DraftAccess(t *testing.T) {
 
 		Convey("StartDraft leaves a project that is drafting alone\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(4), emptyItems))
 			smock.ExpectRollback()
 
@@ -98,6 +104,7 @@ func Test_DraftAccess(t *testing.T) {
 
 		Convey("StartDraft takes over a draft left drafting since before the stale time\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("drafting", int64(2), emptyItems))
 			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?")).
 				WillReturnResult(sqlmock.NewResult(0, 1))
@@ -112,8 +119,20 @@ func Test_DraftAccess(t *testing.T) {
 
 		Convey("StartDraft rolls back when the write fails\n", func() {
 			smock.ExpectBegin()
-			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols))
-			smock.ExpectExec("INSERT INTO t_bkn_project_draft").WillReturnError(errors.New("lock wait timeout"))
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
+			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(1), emptyItems))
+			smock.ExpectExec("UPDATE t_bkn_project_draft").WillReturnError(errors.New("lock wait timeout"))
+			smock.ExpectRollback()
+
+			_, err := da.StartDraft(ctx, drafting, 3, false)
+
+			So(err, ShouldNotBeNil)
+			So(smock.ExpectationsWereMet(), ShouldBeNil)
+		})
+
+		Convey("StartDraft rolls back when the row cannot be made sure of\n", func() {
+			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnError(errors.New("lock wait timeout"))
 			smock.ExpectRollback()
 
 			_, err := da.StartDraft(ctx, drafting, 3, false)
@@ -124,6 +143,7 @@ func Test_DraftAccess(t *testing.T) {
 
 		Convey("StartDraft keeps a draft people made decisions on unless told to discard them\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(1), decidedItems))
 			smock.ExpectRollback()
 
@@ -136,6 +156,7 @@ func Test_DraftAccess(t *testing.T) {
 
 		Convey("StartDraft discards the decisions when told to\n", func() {
 			smock.ExpectBegin()
+			smock.ExpectExec(ensureRow).WillReturnResult(sqlmock.NewResult(0, 0))
 			smock.ExpectQuery(lockRow).WillReturnRows(sqlmock.NewRows(lockCols).AddRow("ready", int64(1), decidedItems))
 			smock.ExpectExec(regexp.QuoteMeta("UPDATE t_bkn_project_draft SET f_status = ?")).
 				WillReturnResult(sqlmock.NewResult(0, 1))
