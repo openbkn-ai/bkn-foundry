@@ -1220,6 +1220,23 @@ func (kns *knowledgeNetworkService) FinalizeKNProxyDeletion(ctx context.Context,
 		return proxyHTTPError(ctx, http.StatusNotFound, "knowledge network proxy mapping not found")
 	}
 	if mapping.LifecycleStatus == interfaces.KNProxyLifecycleDeleting {
+		plan := &proxyPublishPlan{mapping: mapping, lockOwner: uuid.NewString()}
+		if err := kns.acquireProxyLock(ctx, knID, plan.lockOwner); err != nil {
+			return err
+		}
+		defer kns.releaseProxyLock(context.WithoutCancel(ctx), plan)
+
+		lockedMapping, loadErr := kns.kpa.Get(ctx, knID)
+		if loadErr != nil || lockedMapping == nil {
+			return proxyHTTPError(ctx, http.StatusServiceUnavailable,
+				"refresh knowledge network proxy deletion state")
+		}
+		plan.mapping = lockedMapping
+		if lockedMapping.LifecycleStatus != interfaces.KNProxyLifecycleDeleting {
+			return proxyHTTPError(ctx, http.StatusConflict,
+				"knowledge network proxy deletion state changed")
+		}
+
 		kn, loadErr := kns.kna.GetKNByID(ctx, knID, interfaces.MAIN_BRANCH)
 		if loadErr != nil {
 			return proxyHTTPError(ctx, http.StatusServiceUnavailable,
@@ -1237,7 +1254,13 @@ func (kns *knowledgeNetworkService) FinalizeKNProxyDeletion(ctx context.Context,
 		// The durable deleting marker proves that an authorized deletion already
 		// committed. Resume this idempotent tail even when the parent policy was
 		// removed before the previous lifecycle update failed.
-		return kns.finalizeProxyAuthorizationDelete(ctx, &proxyPublishPlan{mapping: mapping})
+		heartbeatCtx, stopHeartbeat := kns.keepProxyLockAlive(ctx, plan)
+		finalizeErr := kns.finalizeProxyAuthorizationDelete(heartbeatCtx, plan)
+		heartbeatErr := stopHeartbeat()
+		if finalizeErr != nil {
+			return finalizeErr
+		}
+		return heartbeatErr
 	}
 	if err := kns.ps.CheckPermission(ctx, interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID},
 		[]string{interfaces.OPERATION_TYPE_DELETE}); err != nil {

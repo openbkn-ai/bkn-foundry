@@ -2059,6 +2059,9 @@ func TestFinalizeKNProxyDeletionArchivesCommittedDeletionWithoutParentPolicy(t *
 	if !reflect.DeepEqual(events, []string{"policy:delete", "mapping:archived"}) {
 		t.Fatalf("finalize events = %#v", events)
 	}
+	if !kpa.lockAcquired || !kpa.lockReleased {
+		t.Fatal("committed deletion tail was not fenced by the proxy lock")
+	}
 }
 
 func TestPrepareProxyPublishDeniedPreflightCompensatesNewProxy(t *testing.T) {
