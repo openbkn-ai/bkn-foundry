@@ -31,6 +31,7 @@ func draftInputsOf(setting common.DraftSetting, catalogIDs []string, tables []*i
 			CodeTableMaxColumns: setting.CodeTableMaxColumns,
 			AdoptHitRate:        setting.AdoptHitRate,
 			SuggestHitRate:      setting.SuggestHitRate,
+			MinInferredDistinct: setting.MinInferredDistinct,
 			PrivacyKeywords:     setting.PrivacyKeywords,
 			NameFieldKeywords:   setting.NameFieldKeywords,
 		},

@@ -99,6 +99,7 @@ func Test_DraftService(t *testing.T) {
 			So(inputs.RulesVersion, ShouldEqual, draftRulesVersion)
 			So(inputs.Settings.AdoptHitRate, ShouldEqual, setting.AdoptHitRate)
 			So(inputs.Settings.CodeTableMaxRows, ShouldEqual, setting.CodeTableMaxRows)
+			So(inputs.Settings.MinInferredDistinct, ShouldEqual, setting.MinInferredDistinct)
 			So(inputs.CatalogIDs, ShouldResemble, []string{"c1"})
 			So(len(inputs.Tables), ShouldEqual, 2)
 			So(inputs.Tables[0].ResourceID, ShouldEqual, "r_customers")

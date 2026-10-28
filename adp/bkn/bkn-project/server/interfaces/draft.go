@@ -121,6 +121,7 @@ type DraftRuleSettings struct {
 	CodeTableMaxColumns int      `json:"code_table_max_columns"`
 	AdoptHitRate        float64  `json:"adopt_hit_rate"`
 	SuggestHitRate      float64  `json:"suggest_hit_rate"`
+	MinInferredDistinct int64    `json:"min_inferred_distinct"`
 	PrivacyKeywords     []string `json:"privacy_keywords"`
 	NameFieldKeywords   []string `json:"name_field_keywords"`
 }
