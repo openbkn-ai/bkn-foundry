@@ -1384,6 +1384,7 @@ class OtherClient:
         while retry_time > 0:
             retry_time -= 1
             start_time = time.perf_counter()
+            stream_started = False
             try:
                 chunk_id = ""
                 if messages[len(messages) - 1]["role"] != "user" and self.api_model.find("qianxun") != -1:
@@ -1423,6 +1424,9 @@ class OtherClient:
                 }
                 prompt_tokens = 0
                 completion_tokens = 0
+                total_tokens = 0
+                usage_fields = set()
+                stream_done = False
                 first_token_time = None
                 async with aiohttp.ClientSession(timeout=base_config.aiohttp_timeout) as session:
                     async with session.post(self.api_url, json=params, headers=headers, ssl=False) as response:
@@ -1456,21 +1460,50 @@ class OtherClient:
                         async for chunk in response.content:
                             if not first_token_time:
                                 first_token_time = time.perf_counter()
-                            chunk = chunk.decode(encoding='utf-8')
-                            if chunk.endswith('\n'):
-                                chunk = chunk[:-1]
-                            elif chunk.endswith('\r\n'):
-                                chunk = chunk[:-2]
-                            if len(chunk) >= 6 and chunk[0:6] != "data: ":
+                            chunk = chunk.decode(encoding='utf-8').rstrip('\r\n')
+                            if chunk == "data: [DONE]":
+                                stream_done = True
+                                break
+                            if not chunk.startswith("data: "):
                                 continue
-                            if chunk != "data: [DONE]" and chunk != "":
+                            try:
+                                datas = json.loads(chunk[6:])
+                            except json.JSONDecodeError:
+                                continue
+                            stream_started = True
+                            if "error" in datas:
+                                log_info = logics.AddModelUsedAudit(
+                                    model_id=self.model_id, user_id=user_id, status="failed")
+                                await add_llm_model_call_log(log_info)
+                                yield openai_error.error_frame(openai_error.from_upstream(datas, 502))
+                                return
+                            usage = datas.get("usage")
+                            if isinstance(usage, dict):
+                                # Missing counts remain unknown; zero is the legacy
+                                # integer metering placeholder, not an estimate.
+                                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                                    value = usage.get(key)
+                                    if value is not None and (type(value) is not int or value < 0):
+                                        raise ValueError("Invalid upstream token usage")
+                                usage_fields.update(key for key in ("prompt_tokens", "completion_tokens")
+                                                    if usage.get(key) is not None)
+                                if usage.get("prompt_tokens") is not None:
+                                    prompt_tokens = usage["prompt_tokens"]
+                                if usage.get("completion_tokens") is not None:
+                                    completion_tokens = usage["completion_tokens"]
+                                total_tokens = usage.get("total_tokens")
+                                if total_tokens is None:
+                                    total_tokens = prompt_tokens + completion_tokens
+                                if usage.get("prompt_tokens") is not None:
+                                    details = usage.get("prompt_tokens_details")
+                                    if details is None:
+                                        details = {"cache_type": "implicit", "cached_tokens": 0}
+                                        usage["prompt_tokens_details"] = details
+                                    if isinstance(details, dict):
+                                        cached = details.get("cached_tokens") or 0
+                                        details["uncached_tokens"] = prompt_tokens - cached
+                            if datas:
                                 if self.model_type == "rlm":
-                                    if chunk[0:6] == "data: ":
-                                        chunk = chunk[6:]
-                                    try:
-                                        datas = json.loads(chunk)
-                                    except Exception:
-                                        continue
                                     try:
                                         if chunk_id == "":
                                             chunk_id = datas.get("id", "")
@@ -1487,50 +1520,17 @@ class OtherClient:
                                         if "error" in datas.keys():
                                             yield json.dumps(datas, ensure_ascii=False)
                                             return
+                                    if not datas.get("choices"):
+                                        yield json.dumps(datas, ensure_ascii=False)
+                                        continue
                                     if rlm_type == "":
                                         if "reasoning_content" in datas["choices"][0]["delta"]:
                                             rlm_type = "saas"
                                         elif datas["choices"][0]["delta"].get("content", "") not in ["", None]:
                                             rlm_type = "inner"
                                     if rlm_type == "saas":
-                                        if "usage" in datas.keys() and completion_tokens == 0:
-                                            try:
-                                                prompt_tokens = datas["usage"]["prompt_tokens"]
-                                                completion_tokens = datas["usage"]["completion_tokens"]
-                                                total_tokens = datas["usage"]["total_tokens"]
-                                                # Add uncached_tokens to usage metadata.
-                                                if "prompt_tokens_details" not in datas["usage"]:
-                                                    datas["usage"]["prompt_tokens_details"] = {
-                                                        "cache_type": "implicit",
-                                                        "cached_tokens": 0
-                                                    }
-                                                prompt_tokens_details = datas["usage"]["prompt_tokens_details"]
-                                                cached_tokens = prompt_tokens_details.get("cached_tokens", 0)
-                                                uncached_tokens = prompt_tokens - cached_tokens
-                                                datas["usage"]["prompt_tokens_details"][
-                                                    "uncached_tokens"] = uncached_tokens
-                                            except Exception:
-                                                pass
                                         yield json.dumps(datas, ensure_ascii=False)
                                     elif rlm_type == "inner":
-                                        if "usage" in datas.keys() and completion_tokens == 0:
-                                            try:
-                                                prompt_tokens = datas["usage"]["prompt_tokens"]
-                                                completion_tokens = datas["usage"]["completion_tokens"]
-                                                total_tokens = datas["usage"]["total_tokens"]
-                                                # Add uncached_tokens to usage metadata.
-                                                if "prompt_tokens_details" not in datas["usage"]:
-                                                    datas["usage"]["prompt_tokens_details"] = {
-                                                        "cache_type": "implicit",
-                                                        "cached_tokens": 0
-                                                    }
-                                                prompt_tokens_details = datas["usage"]["prompt_tokens_details"]
-                                                cached_tokens = prompt_tokens_details.get("cached_tokens", 0)
-                                                uncached_tokens = prompt_tokens - cached_tokens
-                                                datas["usage"]["prompt_tokens_details"][
-                                                    "uncached_tokens"] = uncached_tokens
-                                            except Exception:
-                                                pass
                                         if think_done is False:
                                             if think_start is False:
                                                 start_pattern = r"<think>(.*?)"
@@ -1584,66 +1584,37 @@ class OtherClient:
                                                 datas["choices"][0]["delta"]["reasoning_content"] = None
                                             yield json.dumps(datas, ensure_ascii=False)
                                 else:
-                                    if chunk[0:6] == "data: ":
-                                        chunk = chunk[6:]
-                                    try:
-                                        datas = json.loads(chunk)
-                                    except Exception as e:
-                                        continue
-                                    # try:
-                                    #     delta = datas["choices"][0]["delta"]
-                                    #     if "content" in delta:
-                                    #         token = delta["content"]
-                                    #         if token is not None:
-                                    #             token_len += 1
-                                    #             ans += token
-                                    # except Exception as e:
-                                    #     if "error" in datas.keys():
-                                    #         yield json.dumps(datas, ensure_ascii=False)
-                                    #         return
-                                    if "usage" in datas.keys() and completion_tokens == 0:
-                                        try:
-                                            prompt_tokens = datas["usage"]["prompt_tokens"]
-                                            completion_tokens = datas["usage"]["completion_tokens"]
-                                            total_tokens = datas["usage"]["total_tokens"]
-                                            # Add uncached_tokens to usage metadata.
-                                            if "prompt_tokens_details" not in datas["usage"]:
-                                                datas["usage"]["prompt_tokens_details"] = {
-                                                    "cache_type": "implicit",
-                                                    "cached_tokens": 0
-                                                }
-                                            prompt_tokens_details = datas["usage"]["prompt_tokens_details"]
-                                            cached_tokens = prompt_tokens_details.get("cached_tokens", 0)
-                                            uncached_tokens = prompt_tokens - cached_tokens
-                                            datas["usage"]["prompt_tokens_details"]["uncached_tokens"] = uncached_tokens
-                                        except Exception:
-                                            pass
                                     yield json.dumps(datas, ensure_ascii=False)
-
-                            else:
-
-                                if chunk == "data: [DONE]":
-                                    yield "[DONE]"
-                        end_time = time.perf_counter()
-                        first_time = first_token_time - start_time
-                        total_time = end_time - start_time
-                        log_info = logics.AddModelUsedAudit(
-                            model_id=self.model_id, user_id=user_id, input_tokens=prompt_tokens,
-                            output_tokens=completion_tokens, first_time=first_time, total_time=total_time,
-                            status="success")
-                        await add_llm_model_call_log(log_info)
-                        if get_logger():
-                            get_logger().info(
-                                f'{{"model_name":{self.api_model},"resourece_type":"LLM","user_id":{user_id},'
-                                f'"prompt_tokens":{prompt_tokens},"completion_tokens":{completion_tokens},'
-                                f'"total_tokens":{total_tokens},"func_module":{func_module},"status":"success"}}')
-                        return
+                        if not stream_done:
+                            raise ValueError("Upstream stream ended without DONE")
+                end_time = time.perf_counter()
+                first_time = first_token_time - start_time if first_token_time is not None else 0.0
+                total_time = end_time - start_time
+                log_info = logics.AddModelUsedAudit(
+                    model_id=self.model_id, user_id=user_id, input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens, first_time=first_time, total_time=total_time,
+                    status="success")
+                await add_llm_model_call_log(log_info)
+                try:
+                    logger = get_logger()
+                    if logger:
+                        logger.info(json.dumps({
+                            "model_name": self.api_model, "resourece_type": "LLM", "user_id": user_id,
+                            "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                            "total_tokens": total_tokens, "usage_known": len(usage_fields) == 2,
+                            "func_module": func_module, "status": "success",
+                        }))
+                except Exception:
+                    # A diagnostic sink failure cannot change the model outcome.
+                    StandLogger.warn("Could not write model stream success log")
+                yield "[DONE]"
+                return
             except aiohttp.ClientError as e:
                 StandLogger.error(
                     f"call llmModelError {self.api_model} error "
                     f"request={log_redact.request_digest(params)},"
                     f"headers={log_redact.safe_headers(headers)},error={e}")
-                if retry_time <= 0:
+                if stream_started or retry_time <= 0:
                     log_info = logics.AddModelUsedAudit(
                         model_id=self.model_id, user_id=user_id, input_tokens=0,
                         output_tokens=0, first_time=0.0, total_time=0.0,
