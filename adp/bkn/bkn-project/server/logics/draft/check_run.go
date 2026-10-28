@@ -90,6 +90,8 @@ func (s *draftService) beginCheck(ctx context.Context, projectID string, commit 
 		previous.(*checkRun).cancel()
 	}
 	counter := &vegaCounter{va: s.va, account: runner, timeoutSeconds: s.setting.QueryTimeout}
+	// The reply is the check as started; the run goes on writing its own.
+	reply := *check
 	s.run(func() {
 		defer func() {
 			cancel()
@@ -97,7 +99,7 @@ func (s *draftService) beginCheck(ctx context.Context, projectID string, commit 
 		}()
 		s.check(background, check, &input, counter)
 	})
-	return check, nil
+	return &reply, nil
 }
 
 // GetCheck returns the check of the project's last confirmation to whoever can see the project.

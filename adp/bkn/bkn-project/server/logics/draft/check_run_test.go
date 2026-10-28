@@ -261,10 +261,11 @@ func Test_CheckService(t *testing.T) {
 			return d
 		}
 		var started interfaces.Check
+		var run *interfaces.Check
 		starts := func(ok bool) {
 			ca.EXPECT().StartCheck(gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, c *interfaces.Check, _ int64) (bool, error) {
-					started = *c
+					started, run = *c, c
 					return ok, nil
 				})
 		}
@@ -291,13 +292,16 @@ func Test_CheckService(t *testing.T) {
 		Convey("RunCheck checks the confirmed draft again, even a commit that passed\n", func() {
 			ps.EXPECT().GetProject(gomock.Any(), token, "p1").Return(project, nil)
 			da.EXPECT().GetDraft(gomock.Any(), "p1").Return(confirmed(), true, nil)
+			// The commit confirmed passed already: a person asking again is checked again.
 			ca.EXPECT().GetCheck(gomock.Any(), "p1").
-				Return(&interfaces.Check{ProjectID: "p1", Commit: "c0", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
+				Return(&interfaces.Check{ProjectID: "p1", Commit: "c1", Status: interfaces.CHECK_STATUS_PASSED}, true, nil)
 			starts(true)
 
 			check, err := svc.RunCheck(ctx, token, "p1", caller)
 
 			So(err, ShouldBeNil)
+			// The reply is the check as started, not the run's own, which the run goes on writing.
+			So(check, ShouldNotPointTo, run)
 			So(check.Status, ShouldEqual, interfaces.CHECK_STATUS_RUNNING)
 			So(started.Commit, ShouldEqual, "c1")
 			var input checkInput
